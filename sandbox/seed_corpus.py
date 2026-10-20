@@ -632,6 +632,8 @@ def seed_pages(
         if check and action != "leave":
             problems.append(f"page {key}: would {action}")
         elif action != "leave":
+            sys.stdout.write(f"{action} page {key}\n")
+            sys.stdout.flush()
             ids[key] = write_page(client, space_id, page, (storage, parent_id, matched.get(key)))
     named = set(ids.values())
     problems += [
