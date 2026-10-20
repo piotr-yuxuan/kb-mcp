@@ -682,4 +682,46 @@ and the list of their children.
 
 ## Seeding and checking
 
-To be written with the script (plan 002, step 3).
+The sandbox site needs Confluence, Jira and Jira Product Discovery (all on the Free
+plan), and the Product Discovery project `PRB`. `seed_corpus.py` does the rest, through
+the sandbox token, which sops gives to that process alone. With `C` the absolute path of
+`atlassian-test-credientials.sops.json`:
+
+```bash
+sops exec-env "$C" 'uv run sandbox/seed_corpus.py --import-file /tmp/eng-tickets.csv'
+```
+
+A run brings the site in line with the repository, then says what is left to do:
+
+1. It creates the space `QM` if it is absent, then creates, updates or leaves each page:
+   a page is left alone when its title, parent and body are what the corpus gives and
+   nobody has edited it since. Pages it does not know are reported, never deleted.
+2. It creates or updates the five ideas in `PRB`, found by summary.
+3. It creates the project `ENG` with its Scrum board, a Kanban board and the 40 sprints.
+4. It writes the tickets absent from `ENG` to the import file, in Jira's CSV format.
+   Jira's REST API cannot backdate tickets; its CSV importer can. Import the file as a
+   Jira administrator: Settings, System, External System Import, CSV, in the older
+   experience. Choose the project `ENG`, the date format `yyyy-MM-dd HH:mm`, and map
+   each column to the field of the same name (Work Item Key, Work item ID, Parent,
+   Summary, Work Type, Status, Resolution, Priority, Date Created, Date Resolved,
+   Sprint, Description, Labels, Comment). The importer keeps the keys; it sets every
+   ticket's `updated` date to the time of the import.
+5. Once every ticket is in, the next run starts and closes sprints 1 to 39 in order,
+   and starts sprint 40. Jira stamps each closed sprint with the time it was closed.
+
+Run it again until it reports nothing to do; a rerun after a failure resumes where it
+stopped. Then check, which writes nothing and exits 1 on any difference:
+
+```bash
+sops exec-env "$C" 'uv run sandbox/seed_corpus.py --check'
+```
+
+It compares every page, its links and its section; every idea; every ticket's summary,
+status, resolution, creation date and sprint; and it lists pages with their versions and
+tickets with their `updated` dates, so that two listings can be compared.
+
+The tests need pandoc on `PATH`:
+
+```bash
+uv run --with-requirements sandbox/seed_corpus.py --with pytest pytest sandbox
+```
