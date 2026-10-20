@@ -1,0 +1,748 @@
+epic:
+  key: ENG-26
+  summary: Dark mode for Merchant Hub
+  sprints: [31, 40]
+  labels: [merchant-hub]
+  description: |
+    **Goal.** A merchant who prefers a dark theme can use the twenty most visited
+    Merchant Hub pages without a white flash and without losing anything that colour
+    carried in the light theme. The theme switches with `data-theme="dark"` on the root
+    element, so the same Inkwell components serve both themes.
+
+    **Scope**
+
+    - Inkwell: dark values for every semantic colour token, `ThemeProvider` and
+      `color-scheme` (3.3); the dark chart palette, `ThemedImage`, `LogoChip` and
+      `ThemedValue` (3.4).
+    - Merchant Hub: the appearance setting, the head script that avoids the flash, and
+      the twenty most visited pages converted in order of traffic, behind the Switchboard
+      flag `sb.merchant-hub.dark-mode`.
+    - Testing both themes in Storybook, visual regression and Playwright.
+
+    **Out of scope**
+
+    - Emails sent by `notify`, PDF statements and exports, and Beacon.
+    - Merchant-branded colour themes.
+    - Pages beyond the top twenty, including onboarding: they belong to the idea "Dark
+      mode for every Merchant Hub page" in `PRB`.
+
+    See [Theming and dark mode](../../corpus/design/theming.md) and the
+    [dark mode brief](../../corpus/product/brief-dark-mode.md).
+  comments:
+    - "Priya: Design System owns the tokens and components, Merchant Experience owns the pages. Design questions go to design review, not to review threads."
+    - "Noor: Pages are converted in order of traffic, and each joins the preview only after design review in dark."
+tickets:
+  - key: ENG-1006
+    type: Task
+    summary: Audit Merchant Hub for literal colour values
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      Dark mode only works where every colour comes from a token. Before any page is
+      converted, list every hex value, `rgb()`, `hsl()` and named colour written
+      straight into Merchant Hub's stylesheets and components, and every `palette.*`
+      import, grouped by page group.
+
+      Sort each value into one of two piles: a mechanical replacement a codemod can
+      make, because the value matches a semantic token in an obvious role, or a case
+      that needs a design decision. Share the list in `#team-merchant-hub` and with
+      `#team-inkwell`.
+    comments:
+      - "Felix: 212 literal colour values in total. Most map one to one onto a semantic token; the charts and the email previews do not."
+  - key: ENG-1007
+    type: Story
+    summary: 'Switch the theme with data-theme="dark" on the root element'
+    status: Done
+    priority: Highest
+    labels: [merchant-hub]
+    description: |
+      As a merchant who prefers a dark interface, I want Merchant Hub to switch theme
+      without a second stylesheet, so that every component behaves the same in both
+      themes.
+
+      Acceptance criteria:
+
+      - The theme is set by one attribute on the `html` element: `data-theme="dark"`
+        or `data-theme="light"`. No attribute means light.
+      - Dark values redefine the same `--ink-*` custom properties under the dark theme
+        selector; components read only semantic properties and change with no
+        JavaScript.
+      - Setting the attribute on an inner element is not supported, because modals,
+        menus and toasts render at the end of `body`.
+
+      Details on [Theming and dark mode](../../corpus/design/theming.md).
+    comments:
+      - "Teodor: Agreed with Joss: one attribute, on `html`, and nowhere else."
+      - "Priya: This is the decision the rest of the epic hangs on. The stylesheet prototype in ENG-1008 can close."
+  - key: ENG-1008
+    type: Task
+    summary: Prototype a separate dark stylesheet for Merchant Hub
+    status: Won't Do
+    priority: Low
+    labels: [merchant-hub]
+    description: |
+      Build a second stylesheet that overrides Merchant Hub's colours for a dark theme
+      and loads instead of the light one, to compare with switching the theme through
+      an attribute on the root element. Measure how many overrides it takes, whether
+      portalled modals and toasts follow it, and how it would be kept in step with
+      Inkwell releases.
+    comments:
+      - "Joss: Won't do. We switch the theme with `data-theme` on the root element instead (ENG-1007). A second stylesheet would duplicate every colour rule and drift from the components."
+  - key: ENG-1009
+    type: Story
+    summary: Give every semantic colour token a dark value
+    status: Done
+    priority: High
+    labels: [merchant-hub]
+    description: |
+      As a product engineer, I want every semantic colour token to have a dark value,
+      so that a component built with tokens is correct in both themes for free.
+
+      Acceptance criteria:
+
+      - The dark theme is designed, not inverted: `color.surface.default` is `#14161A`,
+        `color.surface.raised` `#1D2026`, `color.text.primary` `#ECEEF2` and
+        `color.action.primary.background` `#8EA6FF`, with dark text on top.
+      - Elevation is lightness: raised and overlay surfaces are lighter than the page.
+      - Status colours keep their meaning, retuned for contrast.
+      - `pnpm tokens:contrast` passes every documented pairing in both themes.
+
+      See [Inkwell design tokens and principles](../../corpus/design/tokens.md).
+    comments:
+      - "Dafydd: The page is not black on purpose. Pure black behind white text causes halation, and it leaves no room for sunken surfaces."
+  - key: ENG-1010
+    type: Story
+    summary: Add ThemeProvider with light, dark and system preferences
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      As a product engineer, I want one provider to manage the theme attribute, so that
+      no page sets it by hand.
+
+      Acceptance criteria:
+
+      - `ThemeProvider` accepts a `theme` of `light`, `dark` or `system`; `system`
+        follows `prefers-color-scheme` and updates live when it changes.
+      - `useTheme()` returns `preference`, `resolvedTheme` and `setPreference`;
+        `resolvedTheme` is always `light` or `dark`.
+
+      ```typescript
+      <ThemeProvider theme={savedPreference}>
+        <Routes />
+      </ThemeProvider>
+      ```
+  - key: ENG-1011
+    type: Story
+    summary: Apply the saved theme before first paint from the qm_theme cookie
+    status: Done
+    priority: High
+    labels: [merchant-hub]
+    description: |
+      As a merchant who chose dark, I do not want a white flash on every page load,
+      which is what happens if the attribute is set only after React hydrates.
+
+      Acceptance criteria:
+
+      - A small script, inlined into the document head by Merchant Hub's server
+        template, reads the `qm_theme` cookie and sets the attribute before first paint.
+      - The settings page writes the cookie alongside the user's saved preference.
+      - `ThemeProvider` reads the attribute on mount and takes over, so the two never
+        disagree.
+
+      ```typescript
+      const match = document.cookie.match(/(?:^|; )qm_theme=(light|dark|system)/);
+      ```
+    comments:
+      - "Joss: Measured on a slow laptop: no flash on any of the pages we tried."
+  - key: ENG-1012
+    type: Task
+    summary: Replace literal colours in Merchant Hub with tokens by codemod
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      Run a codemod over Merchant Hub that replaces the mechanical cases from the audit
+      in ENG-1006 with semantic tokens: values that match a token's light value in a
+      role the codemod can recognise, such as text, border or surface. Review the
+      changes page group by page group, in both themes, before merging.
+
+      Leave the chart colours and the email previews alone: each of those needs a
+      design decision rather than a search and replace.
+    comments:
+      - "Felix: 170 of the 212 values replaced and reviewed. The 42 left are all in charts or email previews, as expected."
+  - key: ENG-1013
+    type: Task
+    summary: Decide whether new users follow their device theme by default
+    status: To Do
+    priority: Low
+    labels: [merchant-hub]
+    description: |
+      Every user starts in the light theme until they choose otherwise. The brief
+      leaves an open question: should "Match my device" become the default for new
+      users, or stay opt-in until general availability?
+
+      Decide with Product and Design. If the answer is yes, change the preference that
+      `ThemeProvider` receives for users with no saved choice, and the fallback in the
+      head script, which is `light` today. See the
+      [dark mode brief](../../corpus/product/brief-dark-mode.md).
+    comments:
+      - "Linnea: Parked until the preview has been running for a while. No change for now."
+  - key: ENG-1014
+    type: Task
+    summary: Test every story and main journey in both themes
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      "I checked it in light" should not be possible. Make testing both themes
+      automatic:
+
+      - Storybook gets a theme switch in the toolbar and a "Side by side" mode that
+        renders a story in both themes at once.
+      - Visual regression takes snapshots of every Inkwell story in both themes on
+        every pull request.
+      - Merchant Hub's Playwright suite runs its main journeys under both themes, sets
+        the `qm_theme` cookie and checks the attribute on `html`.
+
+      A change that alters only the dark snapshot is often the first sign of a raw
+      colour.
+    comments:
+      - "Hamza: The doubled visual tests add a few minutes to the Inkwell pipeline. Acceptable."
+  - key: ENG-1015
+    type: Bug
+    summary: Autofilled text fields keep a light background in the dark theme
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      **Steps to reproduce.** In Storybook's side-by-side mode, let the browser autofill
+      the business name in a `TextField`.
+
+      **Expected.** The field keeps Inkwell's surface and text colours in both themes.
+
+      **Actual.** In dark, the browser paints its own pale autofill background behind
+      light text, and the value is unreadable.
+
+      **Fix.** Reset the autofill colours to Inkwell surfaces inside `TextField`. With
+      `color-scheme` declared in the generated stylesheet, the browser also draws its
+      own controls in the matching scheme.
+  - key: ENG-1016
+    type: Task
+    summary: Release Inkwell 3.3 with dark values for the semantic colour tokens
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      Ship the July minor release of Inkwell with the groundwork for dark mode: dark
+      values for every semantic colour token (ENG-1009), `ThemeProvider` with `system`
+      (ENG-1010), and `color-scheme` in the generated stylesheet, so that native
+      scrollbars, date pickers and autofill backgrounds follow the theme. The lint rule
+      `inkwell/no-outline-none` becomes an error in this release, as announced in 3.2.
+
+      ```bash
+      pnpm add @quillmoor/inkwell@^3.3.0
+      pnpm lint
+      ```
+    comments:
+      - "Teodor: Merchant Experience usually takes a minor within two weeks of release, so dark values reach Merchant Hub soon after 3.3 ships."
+  - key: ENG-1017
+    type: Bug
+    summary: Modals render light when data-theme is set on an inner element
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      **Steps to reproduce.** On the reports prototype branch, which set the theme
+      attribute on its layout `div`, switch to dark and open "Rename report".
+
+      **Expected.** The modal is dark, like the page.
+
+      **Actual.** The modal is light on a dark page. Modals, menus and toasts render at
+      the end of `body`, outside the `div`, so they escape the theme.
+
+      **Fix.** Remove the attribute from the inner element and let `ThemeProvider` set
+      it on `html` only. Add a development warning when `data-theme` appears on any
+      other element.
+  - key: ENG-1018
+    type: Story
+    summary: Reject new literal colours in Merchant Hub builds
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      As a Merchant Hub reviewer, I want new literal colours to fail the build, so that
+      the codemod's work is not undone while pages are being converted.
+
+      Acceptance criteria:
+
+      - From sprint 34, `inkwell/no-raw-colour` runs as an error in Merchant Hub's
+        continuous integration and rejects hex, `rgb()`, `hsl()` and named colours in
+        stylesheets, inline styles and styled components.
+      - The literals that remain are listed in a baseline file that may only shrink.
+      - `palette.*` imports are rejected too.
+    comments:
+      - "Felix: On in CI. The baseline holds the 42 known literals and nothing else."
+  - key: ENG-1019
+    type: Story
+    summary: Add the appearance setting to Merchant Hub settings
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      As a merchant, I want to choose between light, dark and my device's theme, and
+      have the choice remembered.
+
+      Acceptance criteria:
+
+      - Settings shows an "Appearance" radio group with "Light", "Dark" and "Match my
+        device", and a hint saying which theme is showing now.
+      - Choosing saves the preference and writes the `qm_theme` cookie for the head
+        script.
+      - The setting appears only where `sb.merchant-hub.dark-mode` is on.
+    comments:
+      - "Wren: Labels agreed in design review. Match my device reads better than System for merchants."
+  - key: ENG-1020
+    type: Story
+    summary: Pin unconverted pages to the light theme with forceTheme
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      As a merchant using the dark theme, I would rather see a whole light page than a
+      half-dark one.
+
+      Acceptance criteria:
+
+      - The page layout accepts `forceTheme="light"`, which pins the attribute to light
+        while the page is open.
+      - Leaving the page restores the user's choice.
+      - Every page group not yet converted passes it, and the list lives in one place
+        so that it is easy to see what is left.
+    comments:
+      - "Joss: Not elegant, but better than a half-dark page. It goes when the conversions are done (ENG-1025)."
+  - key: ENG-1021
+    type: Story
+    summary: Tell users when a page is pinned to the light theme
+    status: To Do
+    priority: Low
+    labels: [merchant-hub]
+    description: |
+      Another open question from the brief: do we show a notice on pages that are not
+      yet dark, or switch silently? Today, pages pinned with `forceTheme` switch to
+      light without a word, which some merchants may take for a bug.
+
+      Acceptance criteria, if design review says yes:
+
+      - Pinned pages show a short note that the page is not yet available in dark.
+      - The note uses Inkwell components, is announced once and can be dismissed.
+      - It disappears from a page group as soon as that group is converted.
+  - key: ENG-1022
+    type: Story
+    summary: Convert profile settings to the dark theme
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      As a merchant, I want the page where I choose the theme to be dark itself. Profile
+      settings hosts the appearance setting, so it is converted first.
+
+      Acceptance criteria:
+
+      - No literal colours remain on the page and it drops `forceTheme`.
+      - Every focus ring, border and status colour is visible in both themes, checked by
+        eye with the screen brightness turned down.
+      - The Playwright settings journey passes in both themes.
+      - Design review sees the page in dark before merging.
+  - key: ENG-1023
+    type: Story
+    summary: Convert the payouts list and payout detail pages
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      As an operations manager reading payouts at night, I want the payouts pages in
+      dark without losing any meaning that colour carried.
+
+      Acceptance criteria:
+
+      - The payouts list and the payout detail page use tokens only and drop
+        `forceTheme`.
+      - Statuses stay distinguishable: a failed payout shows a red icon and the word
+        "Failed" in both themes.
+      - Table rules use `color.border.subtle` and stay visible in dark.
+      - The Playwright payouts journey passes in both themes.
+    comments:
+      - "Wren: Passed design review in dark with no contrast findings."
+  - key: ENG-1024
+    type: Story
+    summary: Show notify email previews on a sunken frame in the dark theme
+    status: To Do
+    priority: Lowest
+    labels: [merchant-hub, follow-up]
+    description: |
+      Emails sent by `notify` stay light: mail clients apply their own dark treatments,
+      and we design emails to survive them. Merchant Hub's email previews show those
+      emails inside the page, so in dark a white preview reads as a hole in the page.
+
+      Acceptance criteria:
+
+      - Previews sit on a `color.surface.sunken` frame in both themes, as screenshots
+        and documents do.
+      - The email inside the preview stays light.
+      - The last literal colours in the previews leave the lint baseline.
+    comments:
+      - "Noor: Likely to move to the backlog at the end of sprint 40. Previews are rarely opened."
+  - key: ENG-1025
+    type: Task
+    summary: Remove forceTheme once the twenty most visited pages are converted
+    status: To Do
+    priority: Low
+    labels: [merchant-hub, tech-debt]
+    description: |
+      `forceTheme="light"` is a stopgap that keeps unconverted pages whole. Once every
+      page of the twenty most visited is converted, remove it from those page groups and
+      delete them from the pinned list.
+
+      Pages beyond the top twenty, such as onboarding, keep it until the idea "Dark mode
+      for every Merchant Hub page" in `PRB` is planned. Add a test that fails if a
+      converted page group passes `forceTheme`.
+  - key: ENG-1026
+    type: Story
+    summary: Convert the payments list and the payment detail drawer
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      As a merchant checking payments during a night shift, I want the payments pages in
+      dark, including the drawer I open from each row.
+
+      Acceptance criteria:
+
+      - The payments list and the payment detail drawer use tokens only and drop
+        `forceTheme`.
+      - The drawer sits on `color.surface.overlay`, lighter than the page, so it reads
+        as on top without a shadow.
+      - Amounts keep tabular figures and status badges pass contrast in both themes.
+      - The Playwright payments journey passes in both themes.
+  - key: ENG-1027
+    type: Task
+    summary: Turn on sb.merchant-hub.dark-mode for all Quillmoor staff
+    status: Done
+    priority: High
+    labels: [merchant-hub]
+    description: |
+      On 17 August 2026, turn the Switchboard flag `sb.merchant-hub.dark-mode` on for
+      every Quillmoor staff account, so that staff use the converted pages in dark
+      before any merchant does. Merchant Support dogfoods it through August and reports
+      problems in `#team-merchant-hub`.
+
+      The flip needs no deploy and is logged with its reason. If something goes badly
+      wrong, switching the flag off returns everyone to light. See
+      [Feature flags and kill switches](../../corpus/release/feature-flags.md).
+    comments:
+      - "Joss: Merchants see no change from this flip; only staff accounts are in the targeting rule."
+      - "Femi: Support agents will use it on late shifts and report anything odd in the channel."
+  - key: ENG-1028
+    type: Bug
+    summary: White flash on navigation for staff using the dark theme
+    status: Done
+    priority: High
+    labels: [merchant-hub]
+    description: |
+      **Steps to reproduce.** As a staff user who chose "Dark", sign out, sign in again
+      and move between pages.
+
+      **Expected.** Every page renders dark from the first paint.
+
+      **Actual.** A white flash on every page load. Signing in cleared the `qm_theme`
+      cookie, so the head script fell back to light until `ThemeProvider` mounted and
+      read the saved preference.
+
+      **Fix.** Write the cookie from the saved preference at sign-in as well as from the
+      settings page. The head script falls back to light only for users with no saved
+      preference.
+    comments:
+      - "Joss: Reported by three support agents on the first evening of dogfooding."
+  - key: ENG-1029
+    type: Task
+    summary: Audit the Merchant Hub pages beyond the twenty most visited
+    status: In Progress
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      This epic covers the twenty most visited pages. The rest, including onboarding,
+      belong to the idea "Dark mode for every Merchant Hub page" in `PRB`, which is not
+      committed for this epic. Product needs an estimate before deciding on it.
+
+      List each remaining page with its traffic, whether it predates Inkwell, how many
+      literal colours it holds, and whether it shares components with the public sign-up
+      flow, as onboarding does. Attach the result to the idea.
+    comments:
+      - "Linnea: About 60% of the page list is done. The pages that predate Inkwell are most of the cost."
+  - key: ENG-1030
+    type: Bug
+    summary: Syntax colours in developer code samples fall below 4.5:1 in dark
+    status: In Progress
+    priority: Medium
+    labels: [merchant-hub, follow-up]
+    description: |
+      **Steps to reproduce.** Open the API keys page in dark and look at the request
+      example under a key.
+
+      **Expected.** Code samples sit on the sunken surface and every part of the code
+      reaches 4.5:1.
+
+      **Actual.** The syntax highlighter's built-in theme colours comments and strings
+      with literal values that fall below 4.5:1 on `color.surface.sunken`.
+
+      **Fix in progress.** Map the highlighter's classes to Inkwell text and feedback
+      tokens, and add the code sample to the side-by-side stories so that the contrast
+      check covers it.
+    comments:
+      - "Felix: Found while checking the developer pages in dark. The highlighter's CSS slipped past the lint rule because it ships inside the package."
+  - key: ENG-1031
+    type: Task
+    summary: Release Inkwell 3.4 with the dark chart palette and LogoChip
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      Ship the September minor release of Inkwell with what the remaining pages need:
+
+      - the chart palette `color.chart.1` to `color.chart.8`, with tuned dark values,
+        whose adjacent series reach 3:1 against each other and the surface in both
+        themes;
+      - `ThemedImage`, which takes `lightSrc` and `darkSrc` and follows the theme
+        attribute;
+      - `LogoChip`, so that a merchant's dark logo never disappears on a dark surface;
+      - `ThemedValue`, for third-party code that insists on a literal colour string.
+    comments:
+      - "Priya: Charts in product code take their colours from `color.chart.*` only, through `ThemedValue` where a library wants a string."
+  - key: ENG-1032
+    type: Story
+    summary: Convert the home page and its chart to the dark theme
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      As a merchant, I want the first page I see to be dark, chart included.
+
+      Acceptance criteria:
+
+      - The home page uses tokens only and drops `forceTheme`.
+      - Its chart takes `color.chart.*` through `ThemedValue` and draws gridlines with
+        `color.border.subtle`.
+      - The merchant's logo sits on a `LogoChip`.
+      - The chart keeps its summary sentence and its table, so its content does not
+        depend on colour.
+    comments:
+      - "Joss: Holding the chart until 3.4 lands, so that it uses the real palette rather than a stopgap."
+  - key: ENG-1033
+    type: Bug
+    summary: Home page chart series fall below 3:1 against each other in dark
+    status: In Progress
+    priority: High
+    labels: [merchant-hub, follow-up]
+    description: |
+      **Steps to reproduce.** In dark, open the home page for an account with more than
+      three series in the payments chart.
+
+      **Expected.** Adjacent series reach 3:1 against each other.
+
+      **Actual.** The chart keeps each series' colour but draws the series ordered by
+      volume, so colours that are not neighbours in the palette end up side by side and
+      blur together.
+
+      **Fix in progress.** Assign palette colours in drawing order, and label each series
+      at its end so that colour is not the only signal.
+    comments:
+      - "Wren: One of the two chart colour issues from the Q3 review."
+  - key: ENG-1034
+    type: Task
+    summary: Open the dark mode preview to merchants who opt in
+    status: Done
+    priority: Highest
+    labels: [merchant-hub]
+    description: |
+      On 15 September 2026, turn `sb.merchant-hub.dark-mode` on as a preview for every
+      merchant who opts in from the profile menu, which offers light, dark or follow the
+      device. The preview covers six pages: home, payments, payment detail, payouts,
+      payout detail and profile settings.
+
+      Pages outside the preview stay light through `forceTheme`, and that switch is
+      deliberate. Product's reasoning and success measures are in the
+      [dark mode brief](../../corpus/product/brief-dark-mode.md).
+    comments:
+      - "Linnea: Go from Product. Measures: issue reports under 10 a week, and satisfaction no lower than light-theme users."
+      - "Joss: The opt-in in the profile menu writes the same preference as the appearance setting."
+  - key: ENG-1035
+    type: Task
+    summary: Triage issue reports from dark mode preview users
+    status: In Progress
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      Every week, go through the issue reports from preview users and sort them: token
+      problems go to `#team-inkwell`, page problems to Merchant Experience, and reports
+      about things that stay light by design, such as emails, PDF statements and Beacon,
+      get a standard answer.
+
+      The brief's target is fewer than 10 reports a week. Raise a ticket in this epic
+      for each real defect and link the reports to it.
+    comments:
+      - "Joss: About six reports a week, mostly charts with low contrast between series."
+  - key: ENG-1036
+    type: Story
+    summary: Bring the remaining reports pages into the preview
+    status: In Progress
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      As a merchant, I want the reports I use every week in dark, not only the
+      settlement reports.
+
+      Acceptance criteria:
+
+      - Each remaining reports page in the top twenty is converted in order of traffic
+        and drops `forceTheme`.
+      - Charts use the 3.4 palette through ENG-1041 before the page joins the preview.
+      - Exports and PDF statements stay light.
+      - Each page passes design review in dark and the Playwright reports journey in
+        both themes.
+  - key: ENG-1037
+    type: Bug
+    summary: Chart legends tell series apart by colour alone
+    status: To Do
+    priority: Medium
+    labels: [merchant-hub, follow-up]
+    description: |
+      **Steps to reproduce.** In dark, open a chart with a legend and try to match each
+      series to its legend entry.
+
+      **Expected.** Series differ in pattern or label as well as hue, as the a11y
+      checklist asks.
+
+      **Actual.** Legends show colour swatches only, and in dark the swatches are
+      harder to tell apart.
+
+      **Fix.** Label lines at their ends and give bars a pattern, in a shared chart
+      wrapper so that every page gets it. This is the second chart colour issue from
+      the Q3 review.
+  - key: ENG-1038
+    type: Story
+    summary: Convert the refunds, disputes and developer pages
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      As a merchant, I want the next pages by traffic in dark.
+
+      Acceptance criteria:
+
+      - Refunds: the list, the refund dialog and the approval queue.
+      - Disputes: evidence uploads keep the merchant's own document colours, shown on a
+        `color.surface.sunken` frame so that a white document reads as an object.
+      - Developers: API keys and webhooks, with code samples on the sunken surface.
+      - Each group drops `forceTheme` and passes its Playwright journey in both themes.
+    comments:
+      - "Joss: All three groups are ready to join the preview."
+  - key: ENG-1039
+    type: Story
+    summary: Convert settlement reports and team settings
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      As a finance user, I want the settlement reports and the team settings in dark.
+
+      Acceptance criteria:
+
+      - Settlement reports: tables, filters, totals and currency labels use tokens only.
+      - Team settings: the member list, roles and invitations use tokens only.
+      - Both drop `forceTheme` and pass design review in dark.
+      - The charts on the reports pages move to the 3.4 palette separately, in
+        ENG-1041.
+  - key: ENG-1040
+    type: Task
+    summary: Extend the dark mode preview to fourteen pages
+    status: Done
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      In October, add disputes, refunds, settlement reports, team settings and the
+      developer pages to the preview, on top of the six it launched with. That makes 14
+      of the 20 most visited pages. Merchants keep opting in from the profile menu; no
+      new announcement is needed.
+
+      Update the pinned list, check the Playwright journeys in both themes on
+      production, and add the entry to the
+      [Merchant Hub release notes](../../corpus/product/merchant-hub-release-notes-2026.md).
+    comments:
+      - "Linnea: I will add the October entry to the release notes once these pages are in the preview."
+  - key: ENG-1041
+    type: Story
+    summary: Move the reports charts to the Inkwell 3.4 palettes
+    status: In Progress
+    priority: High
+    labels: [merchant-hub]
+    description: |
+      As a merchant reading a settlement chart in dark, I want every series to stand
+      out from its neighbours.
+
+      Acceptance criteria:
+
+      - Every chart on the reports pages takes `color.chart.1` to `color.chart.8`
+        through `ThemedValue` instead of the chart library's default palette.
+      - Gridlines use `color.border.subtle`.
+      - Adjacent series reach 3:1 against each other and against the surface in both
+        themes.
+      - The last chart literals leave the lint baseline.
+    comments:
+      - "Joss: Pairing with Priya on the palettes in the first week of sprint 40, so that reports can switch theme as soon as they land."
+  - key: ENG-1042
+    type: Story
+    summary: Convert the last top-twenty pages still outside the preview
+    status: To Do
+    priority: Medium
+    labels: [merchant-hub]
+    description: |
+      As a merchant, I want every page I use most to be available in dark. Fourteen of
+      the twenty most visited pages are in the preview, and the reports pages are in
+      hand under ENG-1036.
+
+      Acceptance criteria:
+
+      - The remaining pages of the top twenty are converted in order of traffic.
+      - Pages that predate Inkwell are migrated to Inkwell components first.
+      - Each page passes design review in dark and drops `forceTheme`.
+  - key: ENG-1043
+    type: Story
+    summary: Make dark mode generally available on the twenty most visited pages
+    status: To Do
+    priority: High
+    labels: [merchant-hub]
+    description: |
+      As a merchant, I want dark mode without having to join a preview.
+
+      Acceptance criteria:
+
+      - All twenty pages are converted and preview reports stay under 10 a week.
+      - The appearance setting and the profile menu switch are available to every
+        merchant.
+      - The launch avoids the change freezes, and Merchant Support is briefed first.
+      - The [product roadmap](../../corpus/product/roadmap-2026.md) and the release
+        notes record the change of stage.
+  - key: ENG-1044
+    type: Task
+    summary: Remove the sb.merchant-hub.dark-mode flag after full rollout
+    status: To Do
+    priority: Low
+    labels: [merchant-hub, tech-debt]
+    description: |
+      A release flag must be removed within 90 days of full rollout. Once dark mode is
+      generally available, delete the off branch of the code in Merchant Hub, remove
+      `sb.merchant-hub.dark-mode` from `switchboard.yaml`, and ship the release that does
+      both. Switching the flag off in the console does not count. See
+      [Feature flags and kill switches](../../corpus/release/feature-flags.md).

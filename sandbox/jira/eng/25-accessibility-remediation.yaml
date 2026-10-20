@@ -1,0 +1,716 @@
+epic:
+  key: ENG-25
+  summary: Accessibility remediation
+  sprints: [19, 27]
+  labels: [design-system]
+  description: |
+    **Goal.** Bring Merchant Hub and every Inkwell component up to WCAG 2.2 at level AA,
+    starting from a full audit of Merchant Hub, and make sure the same classes of problem
+    are caught in design review afterwards rather than in the next audit.
+
+    **Scope**
+
+    - The audit of Merchant Hub and the triage of its findings.
+    - Fixes in Inkwell components, released together as Inkwell 3.2.
+    - Fixes in Merchant Hub code, made by Merchant Experience in the same sprints.
+    - Automated checks that keep the fixes fixed, and a rewritten a11y checklist.
+
+    **Out of scope**
+
+    - Internal tools beyond the Inkwell components they use: they aim for the same bar
+      and record any gap in their README.
+    - A dark theme, which is planned as its own epic.
+
+    See the [Accessibility checklist](../../corpus/design/accessibility.md) and the
+    [Inkwell 3.2 release notes](../../corpus/design/release-notes-inkwell-3-2.md).
+  comments:
+    - "Dafydd: The audit logged 47 issues. 41 sit in Inkwell components and 6 in Merchant Hub code; tickets for both are in this epic."
+    - "Priya: The checklist rewrite at the end is what should stop us needing another audit like this one."
+tickets:
+  - key: ENG-967
+    type: Task
+    summary: Audit Merchant Hub against WCAG 2.2 AA
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      Run a full audit of Merchant Hub against WCAG 2.2 at level AA, covering the main
+      journeys: payments, payouts, refunds, disputes, settings and the developer pages.
+      For each page, complete the main task by keyboard alone, with a screen reader, at
+      200% and 400% zoom, and check the contrast of text and interface parts.
+
+      Log every issue with the page, the component involved and the WCAG success
+      criterion it fails. This is the December 2025 audit that opens the epic; the
+      standard is on the [Accessibility checklist](../../corpus/design/accessibility.md).
+    comments:
+      - "Dafydd: Audit finished with 47 issues. The largest classes are focus visibility, icon actions under 24 by 24 CSS pixels, and form errors that are not linked to their fields."
+  - key: ENG-968
+    type: Task
+    summary: Sort the 47 audit findings between Inkwell and Merchant Hub
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      For each of the 47 findings, decide whether the cause sits in an Inkwell
+      component or in Merchant Hub code around the components: a custom colour, a click
+      handler on a `div`, a dialog built by hand.
+
+      Inkwell's fixes are planned into one minor release so that Merchant Hub upgrades
+      once. Merchant Hub's fixes go to Merchant Experience, who take them in the same
+      sprints. Raise one ticket per fix in this epic and link the finding.
+    comments:
+      - "Teodor: 41 findings are Inkwell's and 6 are Merchant Hub's."
+      - "Noor: Merchant Experience takes the six and will fix them alongside the Inkwell work."
+  - key: ENG-969
+    type: Task
+    summary: Run axe-core against every Inkwell Storybook story
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      Automated tests catch about a third of real problems, but they stop the same
+      problem coming back. Run axe-core against every Storybook story in Inkwell's
+      continuous integration, and fail the build on violations with impact "serious" or
+      "critical". Existing violations from the audit are listed in an allow-list that
+      only shrinks, with the ticket that fixes each one.
+    comments:
+      - "Teodor: It will run on every pull request. The allow-list starts with the audit's findings that axe can detect."
+  - key: ENG-970
+    type: Story
+    summary: Design a focus ring that stays visible on any fill
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      As a keyboard user, I need to see which control has focus, whatever its fill
+      colour.
+
+      Acceptance criteria:
+
+      - The ring is two-tone: a 2 px inner ring in a new token, `color.focus.gap`, and a
+        2 px outer ring in `color.focus.ring`.
+      - The inner gap separates the outer ring from any fill, so the ring reaches 3:1
+        against its surroundings on primary, secondary, tertiary and destructive
+        buttons.
+      - It is drawn with `outline` and `box-shadow`, so that it survives
+        `overflow: hidden` on most containers.
+      - A designer signs off, as every change to the focus ring requires.
+    comments:
+      - "Dafydd: Tested on every fill we have, including the red one."
+  - key: ENG-971
+    type: Story
+    summary: Require an aria-label on icon-only buttons
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a screen reader user, I need every icon-only button to say what it does; the
+      audit found several that announced "button" and nothing else.
+
+      Acceptance criteria:
+
+      - `Button` with `iconOnly` requires `aria-label` in its TypeScript types, and
+        development builds log an error when it is missing.
+      - The icon inside stays decorative and hidden from assistive technology.
+
+      ```typescript
+      <Button
+        variant="tertiary"
+        size="small"
+        iconOnly="download"
+        aria-label={`Download statement for ${statement.period}`}
+      />
+      ```
+  - key: ENG-972
+    type: Bug
+    summary: Focus ring invisible on the destructive button
+    status: Done
+    priority: Highest
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** On the developer page, press Tab until the "Revoke key"
+      button has focus.
+
+      **Expected.** A visible focus indicator that reaches 3:1 against its surroundings
+      (WCAG 2.4.7).
+
+      **Actual.** No visible ring. The ring used `color.focus.ring`, but a component
+      token override set `button.destructive.focus` to the destructive red for "visual
+      harmony", which put a red ring on a red button.
+
+      **Fix.** Use the two-tone ring from ENG-970: its inner gap separates the ring from
+      any fill. The override stops having any effect. Ships in Inkwell 3.2; the
+      [button page](../../corpus/design/button.md) tells the story.
+    comments:
+      - "Dafydd: Found in the audit on the developer page, then on every destructive button in Merchant Hub."
+      - "Teodor: Fixed on the 3.2 branch. The ring is no longer red, and that is the fix."
+  - key: ENG-973
+    type: Story
+    summary: Draw the two-tone focus ring on every Inkwell component
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      As a keyboard user, I want the same focus ring on every focusable Inkwell
+      component, so that focus looks the same wherever I am.
+
+      Acceptance criteria:
+
+      - Every focusable component draws the ring on `:focus-visible`, in every state.
+      - Custom controls can reuse it:
+
+      ```text
+      .my-custom-control:focus-visible {
+        outline: 2px solid var(--ink-color-focus-ring);
+        outline-offset: 2px;
+        box-shadow: 0 0 0 2px var(--ink-color-focus-gap);
+      }
+      ```
+
+      - The release notes warn that the ring is 2 px wider overall and may be clipped in
+        tight layouts.
+  - key: ENG-974
+    type: Task
+    summary: Deprecate the button.destructive.focus component token
+    status: Done
+    priority: Low
+    labels: [design-system, tech-debt]
+    description: |
+      The two-tone ring makes the component token `button.destructive.focus`
+      pointless, and it is the cause of the invisible ring in ENG-972. Make it have no
+      effect from 3.2, log a warning in development builds when someone sets it, name
+      the two-tone ring as the replacement in the changeset, and record its removal for
+      4.0. Search Merchant Hub for overrides and remove them.
+  - key: ENG-975
+    type: Story
+    summary: Add the inkwell/no-outline-none lint rule
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a reviewer, I want removed focus outlines caught automatically, since they are
+      easy to miss in a diff and hard to miss for a keyboard user.
+
+      Acceptance criteria:
+
+      - `inkwell/no-outline-none` flags `outline: none` and `outline: 0` unless a
+        replacement indicator is drawn in the same rule.
+      - It is a warning in 3.2 and an error from 3.3, so teams have one minor release to
+        clean up.
+      - It runs on every pull request in Inkwell and Merchant Hub.
+    comments:
+      - "Felix: Merchant Hub has a few warnings to clear before 3.3. Tracking them in our backlog."
+  - key: ENG-976
+    type: Story
+    summary: Give every icon action a hit area of at least 24 by 24 CSS pixels
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      As a merchant using a trackpad or a touch screen, I want small icon actions to be
+      easy to hit.
+
+      Acceptance criteria:
+
+      - Every Inkwell icon action meets the 24 by 24 CSS pixel minimum (WCAG 2.5.8)
+        without changing the icon's drawn size.
+      - The pattern pads the hit area, not the icon:
+
+      ```typescript
+      <button type="button" className="inline-remove" aria-label={label} onClick={onRemove}>
+        <Icon name="close" size={16} />
+      </button>
+      ```
+
+      - The checklist explains the pattern for custom controls.
+    comments:
+      - "Dafydd: Close crosses, inline row actions and chart legend toggles were the worst offenders."
+  - key: ENG-977
+    type: Story
+    summary: Grow the Tag and Banner close buttons to 24 px hit areas
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a merchant clearing filters, I want the close button on a tag to be easy to
+      hit.
+
+      Acceptance criteria:
+
+      - The close buttons on `Tag` and `Banner` grow from 16 to 24 px hit areas.
+      - The icon stays 16 px.
+      - The 3.2 release notes ask teams to check dense filter bars, where the larger hit
+        areas may need more room.
+  - key: ENG-978
+    type: Story
+    summary: Keep focused rows clear of the sticky DataTable header
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a keyboard user moving down a long table, I want the focused row to stay
+      visible rather than sliding under the sticky header (WCAG 2.4.11).
+
+      Acceptance criteria:
+
+      - `DataTable` sets `scroll-padding-top` to the header's height when
+        `stickyHeader` is on, so focused rows scroll into view below it.
+      - The release notes tell teams to remove any workaround they wrote for this.
+      - An interaction test tabs through fifty rows and checks each one is visible.
+  - key: ENG-979
+    type: Story
+    summary: Let merchants turn off the slash search shortcut
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a merchant using speech input, I need single-character shortcuts to be
+      switchable, because dictated text can trigger them (WCAG 2.1.4).
+
+      Acceptance criteria:
+
+      - "/" to search stays Merchant Hub's only single-character shortcut enabled by
+        default.
+      - A setting in Merchant Hub turns it off, and the choice is saved per user.
+      - The shortcut never fires while focus is in a text field.
+
+      This is one of the six findings in Merchant Hub code.
+  - key: ENG-980
+    type: Bug
+    summary: TextField error messages are not linked to their inputs
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** With a screen reader on, submit the webhook form with an
+      invalid endpoint URL, then move focus to the field.
+
+      **Expected.** The reader announces the label, the hint and the error.
+
+      **Actual.** It announces the label only; the error is visible but not tied to the
+      input.
+
+      **Fix.** Link the hint and the error with `aria-describedby`, in that order, and
+      set `aria-invalid="true"` in the error state. See the
+      [text field](../../corpus/design/text-field.md).
+    comments:
+      - "Teodor: Fixed. The error is still shown with an icon and text, never by the red border alone."
+  - key: ENG-981
+    type: Story
+    summary: Link hints and errors to Select and TextArea fields
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a screen reader user, I want every form control to announce its hint and its
+      error, not only text fields.
+
+      Acceptance criteria:
+
+      - `Select` and `TextArea` link hint and error text with `aria-describedby`, as
+        `TextField` now does.
+      - The error state sets `aria-invalid="true"`.
+      - Interaction tests check what is announced, not the DOM structure.
+  - key: ENG-982
+    type: Story
+    summary: Add an ErrorSummary component that takes focus on submit
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a keyboard or screen reader user, I want to know straight away that a form
+      failed and why.
+
+      Acceptance criteria:
+
+      - A new `ErrorSummary` component lists the form's errors at the top of the form.
+      - On submit with errors, focus moves to the summary.
+      - Each entry links to its field and names the problem in the field's words.
+      - Merchant Hub forms use it on submit.
+    comments:
+      - "Wren: The entries reuse the field error text, so there is only one message to write per error."
+  - key: ENG-983
+    type: Story
+    summary: Mark required fields in words on Merchant Hub forms
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a merchant who cannot tell colours apart, I need to know which fields are
+      required without relying on a red asterisk.
+
+      Acceptance criteria:
+
+      - Merchant Hub forms use the `required` and `optional` props of `TextField`
+        instead of hand-drawn asterisks.
+      - Each form marks whichever kind of field is rarer, in words: "(required)" or
+        "(optional)".
+      - No form marks a field by colour alone.
+
+      This is one of the six findings in Merchant Hub code.
+  - key: ENG-984
+    type: Bug
+    summary: Modal returns focus to the page body when its opener is gone
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** Open "Rename report" from a row's menu, save, and let the
+      row re-render.
+
+      **Expected.** Focus returns somewhere sensible on the page.
+
+      **Actual.** The element that opened the dialog no longer exists, so focus returns
+      to the page body and a keyboard user starts again from the top.
+
+      **Fix.** When the opener has gone, return focus to the page's main heading. See
+      the [modal dialog](../../corpus/design/modal.md).
+  - key: ENG-985
+    type: Bug
+    summary: First toast after page load is sometimes not announced
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** Load the payouts page with a screen reader on and update
+      the payout schedule straight away.
+
+      **Expected.** "Payout schedule updated" is announced.
+
+      **Actual.** It is shown but often not announced, because the live region is
+      created together with the first toast and screen readers miss its first content.
+
+      **Fix.** Create the live regions at page load: a polite one for most tones and an
+      assertive one for errors. See the [toast component](../../corpus/design/toast.md).
+    comments:
+      - "Teodor: Fixed by mounting both regions with the toast provider."
+  - key: ENG-986
+    type: Story
+    summary: Move focus to the toast region with F6
+    status: Done
+    priority: Low
+    labels: [design-system]
+    description: |
+      As a keyboard user, I want to reach the "Undo" action in a toast without tabbing
+      through the whole page.
+
+      Acceptance criteria:
+
+      - Pressing F6 moves focus to the toast region; pressing it again returns focus to
+        where it was.
+      - The toast's timer pauses while focus is inside it.
+      - The toast page documents the key.
+  - key: ENG-987
+    type: Story
+    summary: Announce sort changes in DataTable
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a screen reader user, I want to hear that a table has been re-sorted, since I
+      cannot see the arrow change.
+
+      Acceptance criteria:
+
+      - Changing the sort announces it once through a polite live region, for example
+        "Sorted by amount, descending".
+      - Sort buttons live inside the header cells and are reachable by Tab.
+      - Header cells keep their `scope` attributes.
+  - key: ENG-988
+    type: Task
+    summary: Turn on arrow-key cell navigation in every DataTable
+    status: Won't Do
+    priority: Lowest
+    labels: [design-system]
+    description: |
+      Suggestion from the audit's keyboard pass: make `gridNavigation`, which moves
+      between cells with the arrow keys, the default for every `DataTable`, so that
+      keyboard users can move through large tables faster. Sort buttons and row actions
+      would be reached through the grid instead of by Tab.
+    comments:
+      - "Dafydd: Won't do. Grid navigation changes how Tab behaves, which surprises people on ordinary pages. It stays available, off by default, for spreadsheet-like screens."
+  - key: ENG-989
+    type: Story
+    summary: Reorder table columns from the column menu without dragging
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a merchant who cannot drag precisely, I want to reorder table columns another
+      way (WCAG 2.5.7).
+
+      Acceptance criteria:
+
+      - The column menu offers "Move left" and "Move right".
+      - Dragging still works for those who prefer it.
+      - The new order is announced, and focus stays on the moved column's header.
+      - The [data table](../../corpus/design/data-table.md) page describes both ways.
+  - key: ENG-990
+    type: Story
+    summary: Reach every row of the payments, payouts and disputes tables by keyboard
+    status: Done
+    priority: Highest
+    labels: [design-system]
+    description: |
+      As a finance assistant who uses only the keyboard, I need to open any payment,
+      payout or dispute from its list.
+
+      Acceptance criteria:
+
+      - Rows no longer rely on a click handler on the row element; the identifying cell
+        of each row is a link to the detail page.
+      - Row actions sit in a tertiary icon button labelled with the row, such as
+        "Actions for payout PO-2041".
+      - The main task on each list can be completed with Tab, Enter and the arrow keys.
+
+      This is one of the six findings in Merchant Hub code.
+    comments:
+      - "Felix: Done on all three lists. Middle-click now opens a payout in a new tab, which merchants had been asking for anyway."
+  - key: ENG-991
+    type: Bug
+    summary: Drawer ignores prefers-reduced-motion
+    status: Done
+    priority: Low
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** Turn on reduced motion in the operating system and open
+      the payment detail drawer.
+
+      **Expected.** The drawer appears without sliding.
+
+      **Actual.** It slides in over `motion.duration.slow` as usual.
+
+      **Fix.** Read `prefers-reduced-motion` in `Drawer` and set its duration to
+      `motion.duration.instant`, as other Inkwell components do. The pattern is in the
+      [motion guidelines](../../corpus/design/motion.md).
+  - key: ENG-992
+    type: Bug
+    summary: Chevron icons are not mirrored in right-to-left layouts
+    status: Done
+    priority: Low
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** Render a breadcrumb or a "Show more" button with the
+      document direction set to right-to-left.
+
+      **Expected.** Directional icons point the other way.
+
+      **Actual.** Icons named `arrow-` are mirrored, but `chevron-` icons are not.
+
+      **Fix.** Mirror every icon whose name starts with `arrow-` or `chevron-`, and add
+      a story for each in right-to-left. See the
+      [icon library](../../corpus/design/icons.md).
+  - key: ENG-993
+    type: Story
+    summary: Raise status badge text contrast to 4.5:1
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a merchant reading a payout's status, I want the badge text to be legible on
+      every surface.
+
+      Acceptance criteria:
+
+      - `StatusBadge` text reaches 4.5:1 against its fill for every status: succeeded,
+        pending and failed.
+      - Each badge pairs its colour with a word and an icon, so colour is never the only
+        signal.
+      - The new pairings are added to the documented pairings that the contrast script
+        checks.
+    comments:
+      - "Dafydd: Pending was the worst of the three. All three pass now."
+  - key: ENG-994
+    type: Story
+    summary: Keep disabled control labels legible at about 3:1
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a merchant, I want to read the label of a disabled control, even though I
+      cannot use it.
+
+      Acceptance criteria:
+
+      - Disabled text in Inkwell controls sits at about 3:1 against its background.
+      - WCAG exempts disabled controls from contrast rules; the checklist explains that
+        we still want them readable.
+      - Disabled buttons show the reason nearby, as the button guidance asks.
+  - key: ENG-995
+    type: Bug
+    summary: Links in Merchant Hub help text fall below 4.5:1
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** Open any settings page with help text containing a link,
+      such as the bank account form, and measure the link colour against the page.
+
+      **Expected.** At least 4.5:1, as for all text.
+
+      **Actual.** Below 4.5:1: the help text uses a custom link colour written in
+      Merchant Hub rather than Inkwell's link token.
+
+      **Fix.** Use the `Link` component and remove the custom colour. This is one of the
+      six findings in Merchant Hub code.
+  - key: ENG-996
+    type: Story
+    summary: Announce a button's loading state once with loadingLabel
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a screen reader user, I want to know that my refund is being issued after I
+      press the button, without hearing it repeated.
+
+      Acceptance criteria:
+
+      - `Button` gains a `loadingLabel` prop, `"Loading"` by default.
+      - When `loading` turns on, the label is announced once through a polite live
+        region.
+      - The button sets `aria-busy` and `aria-disabled` and stays focusable.
+  - key: ENG-997
+    type: Story
+    summary: Ask for typed confirmation before unrecoverable destructive actions
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a merchant about to close an account, I want a confirmation that I cannot pass
+      by pressing Enter out of habit.
+
+      Acceptance criteria:
+
+      - `confirm.requireText` on a destructive button adds a text field to the
+        confirmation dialog.
+      - The confirm button stays disabled until the text matches, such as the account
+        name.
+      - Focus starts on "Cancel", as in every `ConfirmDialog`.
+    comments:
+      - "Wren: The field label says exactly what to type. No puzzles."
+  - key: ENG-998
+    type: Task
+    summary: Relax text contrast to 3:1 for large headings
+    status: Won't Do
+    priority: Low
+    labels: [design-system]
+    description: |
+      WCAG allows large text to reach 3:1 rather than 4.5:1. Some of the audit's
+      contrast findings are on large headings, and relaxing the rule for headings would
+      close them without changing any colour. Proposal: follow WCAG and allow 3:1 for
+      text at heading sizes.
+    comments:
+      - "Priya: Won't do. Our large headings sit next to small figures, and we want one rule for all text: 4.5:1. The findings get new colours instead."
+  - key: ENG-999
+    type: Story
+    summary: Name the page first in Merchant Hub page titles
+    status: Done
+    priority: Low
+    labels: [design-system]
+    description: |
+      As a screen reader user with several tabs open, I want each tab's title to start
+      with the page, not the product.
+
+      Acceptance criteria:
+
+      - Page titles name the page first: "Payouts, Merchant Hub", not "Merchant Hub,
+        Payouts".
+      - The title changes on every navigation, including within a page group.
+      - The page layout sets the title from the route, so new pages cannot forget it.
+
+      This is one of the six findings in Merchant Hub code.
+  - key: ENG-1000
+    type: Story
+    summary: Reflow Inkwell layouts at 320 CSS pixels without horizontal scrolling
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a merchant who zooms the browser to 400%, I want pages to reflow rather than
+      scroll sideways (WCAG 1.4.10).
+
+      Acceptance criteria:
+
+      - Inkwell's layout components reflow at 320 CSS pixels wide.
+      - Data tables are the allowed exception: they scroll sideways inside their own
+        container.
+      - Containers of text have no fixed heights, so increased letter, word and line
+        spacing does not break them.
+  - key: ENG-1001
+    type: Task
+    summary: Retest the 47 audit findings by keyboard and screen reader
+    status: Done
+    priority: Medium
+    labels: [design-system, follow-up]
+    description: |
+      Before the release candidate, retest every one of the 47 findings against a build
+      of Merchant Hub running the 3.2 branch and the Merchant Hub fixes. Use the same
+      method as the audit: keyboard only, a screen reader, zoom to 200% and 400%, and
+      contrast checks. Record each finding as fixed or not, with a note, and reopen the
+      ticket for anything that is not.
+    comments:
+      - "Dafydd: Retesting against the 3.2 branch and the Merchant Hub fixes. Anything that fails goes back to its ticket."
+  - key: ENG-1002
+    type: Bug
+    summary: Screen readers announce the payouts total twice
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** Open the payouts page with a screen reader and read the
+      summary at the top.
+
+      **Expected.** The total is announced once.
+
+      **Actual.** It is announced twice: once from the visible amount and once from a
+      visually hidden copy added years ago for an older screen reader.
+
+      **Fix.** Remove the hidden copy. This is one of the six findings in Merchant Hub
+      code; it is listed in the April entry of the
+      [Merchant Hub release notes](../../corpus/product/merchant-hub-release-notes-2026.md).
+  - key: ENG-1003
+    type: Task
+    summary: Rewrite the accessibility checklist around the audit's largest classes
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      The audit's largest classes, focus visibility, small targets and unlinked form
+      errors, should be caught in design review, not in an audit. Rewrite the
+      [Accessibility checklist](../../corpus/design/accessibility.md) as a checklist
+      rather than an essay: star the items reviewers ask about in design review,
+      contrast, focus, targets and form labels, and add a section saying what Inkwell
+      guarantees and what the product team owns.
+    comments:
+      - "Wren: Draft shared in `#team-inkwell`. The starred items match what design review already asks."
+  - key: ENG-1004
+    type: Task
+    summary: Write the Inkwell 3.2 release notes
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      Write the release notes for 3.2, the a11y release: the 41 Inkwell fixes from the
+      audit, the new components and props, the deprecation of
+      `button.destructive.focus`, and the visual changes teams should check before
+      merging, since there are no breaking API changes. Publish them as
+      [Inkwell 3.2 release notes](../../corpus/design/release-notes-inkwell-3-2.md).
+  - key: ENG-1005
+    type: Task
+    summary: Cut the Inkwell 3.2 release candidate
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      Publish the 3.2 release candidate once every Inkwell fix in the epic is merged.
+      Run the full test suite, axe-core on every story and the visual regression
+      tests, and ask colleagues to test it with screen readers and keyboard only. The
+      final release follows once the candidate has been tested.
+
+      ```bash
+      pnpm add @quillmoor/inkwell@^3.2.0
+      pnpm lint
+      pnpm test:visual
+      ```
+    comments:
+      - "Teodor: Volunteers from Merchant Experience and Support have signed up to test the candidate with screen readers and keyboard only."

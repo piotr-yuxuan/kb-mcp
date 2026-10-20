@@ -1,0 +1,735 @@
+epic:
+  key: ENG-24
+  summary: Inkwell tokens v2
+  sprints: [7, 14]
+  labels: [design-system]
+  description: |
+    **Goal.** Give Inkwell tokens that name their role rather than their look, so that
+    a rebrand, a contrast fix or a future dark theme changes values in one place. Tokens
+    v2 ships as Inkwell 3.0, a major release, with a codemod that rewrites the old names.
+
+    **Scope**
+
+    - A naming grammar, `category.role.variant.state`, and three tiers: palette,
+      semantic and component.
+    - Surface colours renamed to `color.surface.*`, text colours to `color.text.*`, and
+      the custom property prefix changed from `--qm-` to `--ink-`.
+    - A spacing scale in steps of 4 px, control sizes, typography, radius and shadow
+      tokens.
+    - Typed tokens for TypeScript, a plain stylesheet, the lint rules
+      `inkwell/no-raw-colour` and `inkwell/spacing-scale`, and the `tokens-v2` codemod.
+
+    **Out of scope**
+
+    - Dark values for the tokens: the surface tokens are the foundation for a dark
+      theme, which is a later epic.
+    - Aliases for the old names: they are removed, not aliased.
+
+    See [Inkwell design tokens and principles](../../corpus/design/tokens.md) and the
+    [Inkwell 3.0 release notes](../../corpus/design/release-notes-inkwell-3-0.md).
+  comments:
+    - "Priya: Kick-off agreed in design review. Teodor manages the 3.0 release, Dafydd owns the colour pairings, and Merchant Experience pilot the codemod."
+    - "Teodor: Merchant Experience will take 3.0 first, since they are piloting the codemod on Merchant Hub."
+tickets:
+  - key: ENG-928
+    type: Task
+    summary: Survey product teams on token naming
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      Before renaming anything, find out how teams choose tokens today. Tokens v1 used
+      literal names such as `grey-50` and `blue-primary`, and since 2024 semantic names
+      have lived alongside them, so most teams use a mix of both.
+
+      Post a short survey in `#team-inkwell` and send it to the Merchant Experience
+      leads. Ask which tokens people reach for, where they hard-code a value instead, and
+      what they would expect the page, card and modal backgrounds to be called. Summarise
+      the answers for the naming grammar in ENG-930.
+    comments:
+      - "Dafydd: The answers agree on one thing: nobody knows whether a panel is `color.bg.card` or `grey-50`, so people take whichever autocomplete offers first."
+  - key: ENG-929
+    type: Task
+    summary: Inventory every colour token in use across Merchant Hub
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      Count every reference to a colour token, literal or semantic, and every raw hex
+      value in Merchant Hub and in the internal tools built on Inkwell. Group the results
+      by token and by file.
+
+      The inventory tells us how large the rename is, which literal names have no
+      semantic equivalent yet, and where a codemod would need hand-written rules rather
+      than a simple mapping. Share the summary in `#team-inkwell` before the naming
+      grammar is settled.
+    comments:
+      - "Joss: Merchant Hub alone has a few thousand references. Doing this by hand is not an option, so a codemod is part of the plan from the start."
+  - key: ENG-930
+    type: Story
+    summary: Define the token naming grammar
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      As an engineer picking a token, I want names that say what a value is for, so that
+      I choose by role and not by colour.
+
+      Acceptance criteria:
+
+      - Names follow `category.role.variant.state`, lowercase and dot-separated.
+      - The category comes first: `color`, `space`, `size`, `radius`, `shadow`, `font`,
+        `motion`, `z`.
+      - The role says where the value is used: `surface`, `text`, `border`, `action`,
+        `feedback`, `focus`.
+      - States are the last segment and use the same words everywhere: `hover`,
+        `active`, `disabled`, `selected`.
+      - No hues in semantic names: `color.feedback.critical`, not `color.red`.
+
+      The grammar is written up on
+      [Inkwell design tokens and principles](../../corpus/design/tokens.md).
+    comments:
+      - "Priya: Agreed in design review. States go last, always, even where it reads oddly."
+  - key: ENG-931
+    type: Task
+    summary: Rewrite two Inkwell principles for tokens v2
+    status: Done
+    priority: Low
+    labels: [design-system]
+    description: |
+      The principles settle arguments in design review, and two of them no longer
+      match what tokens v2 asks of people.
+
+      - "Name the intent, not the value": a token says what a value is for
+        (`color.surface.raised`), never what it looks like (`grey-50`), because intent
+        names survive a rebrand and a contrast fix.
+      - "One source of truth": every colour, space, radius, shadow, font size and
+        duration comes from a token, and nothing consumes a raw hex value.
+
+      Keep the order of the six principles unchanged: when two pull in different
+      directions, the earlier one wins.
+  - key: ENG-932
+    type: Story
+    summary: Split tokens into palette, semantic and component tiers
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As an Inkwell maintainer, I want tokens in three tiers, so that a theme or a
+      contrast fix changes one layer without touching product code.
+
+      Acceptance criteria:
+
+      - Palette tokens such as `palette.ink.900` and `palette.quill.500` hold raw values,
+        each hue in ten steps from 50 to 900, and only Inkwell's theme files use them.
+      - Semantic tokens such as `color.surface.raised`, `color.text.secondary` and
+        `space.4` carry meaning for components, and for product code when no component
+        fits.
+      - Component tokens such as `button.primary.background` belong to the component
+        that owns them; `button.primary.background` points at
+        `color.action.primary.background` by default.
+    comments:
+      - "Teodor: Component tokens are deliberately few. They let us retune the button without touching every other primary action."
+  - key: ENG-933
+    type: Story
+    summary: Rename colour tokens to color.surface.*
+    status: Done
+    priority: Highest
+    labels: [design-system]
+    description: |
+      As an engineer, I want background colours named after the surface they paint, so
+      that a card, a well and a modal each have one obvious token.
+
+      Acceptance criteria:
+
+      - The background colour tokens are renamed to `color.surface.*`:
+        - `color.bg.page` becomes `color.surface.default`;
+        - `color.bg.card` becomes `color.surface.raised`;
+        - `color.bg.well` becomes `color.surface.sunken`;
+        - `color.bg.modal` becomes `color.surface.overlay`.
+      - The old names are removed, not aliased; the codemod rewrites them.
+      - In the light theme `color.surface.raised` stays `#FFFFFF` and is lifted by
+        `shadow.small`, so a card is white on white with a shadow.
+    comments:
+      - "Teodor: Merged on the 3.0 branch. No Inkwell component reads `color.bg.*` any more."
+      - "Dafydd: These are the names a dark theme will need, which was half the point of the rename."
+  - key: ENG-934
+    type: Story
+    summary: Rename the foreground tokens to color.text.primary and color.text.secondary
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      As an engineer, I want text colours to sit under the `text` role, so that body
+      text and hints are as easy to find as surfaces.
+
+      Acceptance criteria:
+
+      - `color.fg.default` becomes `color.text.primary` (`#1A1D23`) for body text and
+        headings.
+      - `color.fg.muted` becomes `color.text.secondary` (`#525866`) for hints, metadata
+        and timestamps.
+      - A new `color.text.on-action` (`#FFFFFF`) covers text on a filled action.
+      - The codemod maps both old names; neither is kept as an alias.
+  - key: ENG-935
+    type: Task
+    summary: Stop exporting palette tokens from the public entry point
+    status: Done
+    priority: Medium
+    labels: [design-system, tech-debt]
+    description: |
+      Palette tokens exist so that theme files have something to point at. When product
+      code imports `palette.*`, it gets a hard-coded colour with extra steps, and the
+      value will not follow a future theme.
+
+      Remove the palette tokens from the public entry point of
+      `@quillmoor/inkwell/tokens`, keep them available to Inkwell's own theme files, and
+      add a line to the tokens page saying why. List the current product imports of
+      `palette.*` so that their owners can move to semantic tokens before 3.0.
+  - key: ENG-936
+    type: Story
+    summary: Change the CSS custom property prefix from --qm- to --ink-
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As an engineer reading a stylesheet, I want Inkwell's custom properties to be
+      recognisable at a glance and to follow the token names exactly.
+
+      Acceptance criteria:
+
+      - Every custom property uses the prefix `--ink-`, with the dots of the token name
+        turned into hyphens:
+
+      ```text
+      color.surface.raised          ->  --ink-color-surface-raised
+      color.action.primary.hover    ->  --ink-color-action-primary-hover
+      space.4                       ->  --ink-space-4
+      ```
+
+      - The codemod rewrites `var(--qm-...)` references in CSS and styled components.
+      - The upgrade notes warn that hand-written stylesheets need checking.
+  - key: ENG-937
+    type: Bug
+    summary: Literal and semantic greys drift apart after a contrast retune
+    status: Done
+    priority: Medium
+    labels: [design-system, tech-debt]
+    description: |
+      **Steps to reproduce.** Open the payouts page and the statements page of Merchant
+      Hub side by side and compare the wells behind read-only values.
+
+      **Expected.** Both wells are the same grey.
+
+      **Actual.** The payouts page uses the literal `grey-50` and the statements page the
+      semantic `color.bg.well`. When the semantic token was retuned, the literal one was
+      not, so the two greys now differ.
+
+      **Fix.** Point `grey-50` at the semantic value for the remaining weeks of 2.x. The
+      underlying cause, two names for one value, goes away when tokens v2 removes the
+      literal names (ENG-933).
+    comments:
+      - "Wren: This is the coexistence problem in one screenshot. Good evidence for removing rather than aliasing."
+  - key: ENG-938
+    type: Story
+    summary: Trim the spacing scale to steps of 4 px
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      As a designer, I want one spacing scale that everyone uses, so that layouts line
+      up without nudging by eye.
+
+      Acceptance criteria:
+
+      - Every padding, margin and gap is a multiple of 4 px, and the token names the
+        multiple: `space.3` is 3 × 4 = 12 px.
+      - The scale is `space.0` (0 px), `space.1` (4), `space.2` (8), `space.3` (12),
+        `space.4` (16), `space.5` (20), `space.6` (24), `space.8` (32), `space.10` (40),
+        `space.12` (48) and `space.16` (64).
+      - `space.7`, `space.9`, `space.11` and the 2 px half-step are removed, and there is
+        nothing between 48 and 64 px.
+
+      Background on [Inkwell design tokens and principles](../../corpus/design/tokens.md).
+    comments:
+      - "Dafydd: Almost every use of the removed steps was someone nudging a layout by eye. If the scale lacks a value, the layout usually needs a different structure."
+      - "Joss: Fine by Merchant Experience, as long as the codemod lists every value it rounds."
+  - key: ENG-939
+    type: Story
+    summary: Add control size tokens at 32, 40 and 48 px
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As an Inkwell maintainer, I want control heights in their own category, so that
+      changing a gap never changes a button.
+
+      Acceptance criteria:
+
+      - New tokens `size.control.small` (32 px), `size.control.medium` (40 px) and
+        `size.control.large` (48 px), on the same 4 px grid as the spacing scale.
+      - `Button`, `TextField` and `Select` read their heights from these tokens.
+      - Nothing in Inkwell sets a control height in pixels any more.
+  - key: ENG-940
+    type: Story
+    summary: Bundle typography tokens with size, line height and weight
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As an engineer, I want size, line height and weight to travel together, so that
+      text cannot end up with a heading's size and a body line height.
+
+      Acceptance criteria:
+
+      - `font.body.medium` 14 / 20 px at 400, `font.body.large` 16 / 24 px at 400.
+      - `font.label.medium` 14 / 20 px at 500.
+      - `font.heading.small` 16 / 24 px, `font.heading.medium` 20 / 28 px and
+        `font.heading.large` 28 / 36 px, all at 600.
+      - Every line height is a multiple of 4 px, so text sits on the spacing grid.
+      - The font stack is `"Quill Sans", system-ui, sans-serif`.
+  - key: ENG-941
+    type: Story
+    summary: Add font.numeric tokens with tabular figures for amounts
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a merchant scanning a column of payouts, I want the digits to line up, so that
+      I can compare amounts at a glance.
+
+      Acceptance criteria:
+
+      - `font.numeric.medium` is 14 / 20 px, weight 500, with tabular figures.
+      - `DataTable` amount columns and the `Money` component use `font.numeric.*`.
+      - The tokens page says that amounts in tables always use `font.numeric.*`.
+    comments:
+      - "Joss: Tried it on the payouts table in a branch. The pence finally line up."
+  - key: ENG-942
+    type: Story
+    summary: Define radius and shadow tokens
+    status: Done
+    priority: Low
+    labels: [design-system]
+    description: |
+      As a designer, I want a short list of corner radii and elevations, so that cards,
+      inputs and modals look related across Merchant Hub.
+
+      Acceptance criteria:
+
+      - `radius.small` (4 px) for inputs and tags, `radius.medium` (8 px) for cards and
+        buttons, `radius.large` (12 px) for modals.
+      - `shadow.small`, `shadow.medium` and `shadow.large` for elevation;
+        `color.surface.raised` is paired with `shadow.small` in the light theme.
+      - Components use these tokens and no other radius or shadow values.
+  - key: ENG-943
+    type: Story
+    summary: Generate typed tokens for TypeScript
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As an engineer computing a value in code, for example to size a chart, I want
+      autocompletion for every semantic token.
+
+      Acceptance criteria:
+
+      - `@quillmoor/inkwell/tokens` exports a typed `tokens` object generated from the
+        token source.
+      - Each entry returns the CSS variable reference, not the resolved value, so it
+        still follows the theme.
+
+      ```typescript
+      import { tokens } from "@quillmoor/inkwell/tokens";
+
+      const chartPadding = {
+        top: tokens.space[4], // "var(--ink-space-4)"
+        left: tokens.space[8],
+      };
+      ```
+    comments:
+      - "Teodor: Generated at build time, so the types cannot drift from the source."
+  - key: ENG-944
+    type: Story
+    summary: Ship the tokens as a plain stylesheet for apps without React
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As the owner of an internal tool that does not use React, I want Inkwell's tokens
+      without the component library, so that my tool looks like Merchant Hub.
+
+      Acceptance criteria:
+
+      - `@quillmoor/inkwell/tokens/css` ships every semantic token as a custom property
+        on `:root`, as a plain stylesheet.
+      - `@quillmoor/inkwell/tokens/json` exports the raw values for anything else, such
+        as a build script.
+      - Both are generated from the same source as the typed tokens.
+  - key: ENG-945
+    type: Story
+    summary: Add resolveToken for code that needs a resolved value
+    status: Done
+    priority: Low
+    labels: [design-system]
+    description: |
+      As an engineer passing a width to a canvas library, I need a number, not a CSS
+      variable.
+
+      Acceptance criteria:
+
+      - `resolveToken("space.4")` reads the computed style and returns the resolved
+        value.
+      - The tokens page explains that it is slower than the custom property and should
+        be kept for third-party code that cannot take `var(--ink-*)`.
+      - Unit tests cover a spacing token and a colour token.
+  - key: ENG-946
+    type: Story
+    summary: Reject raw colours with the inkwell/no-raw-colour lint rule
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      As a reviewer, I want raw colour values caught by a machine, so that review time
+      goes on design rather than on spotting hex codes.
+
+      Acceptance criteria:
+
+      - The rule `inkwell/no-raw-colour` rejects hex values, `rgb()` and named colours in
+        stylesheets and inline styles.
+      - It runs in Inkwell's continuous integration and fails the build.
+      - It ships in the Inkwell lint configuration, so that product apps can turn it on
+        when they upgrade to 3.0.
+    comments:
+      - "Teodor: Inkwell itself had a handful of hits, all in stories. Fixed in the same change."
+  - key: ENG-947
+    type: Story
+    summary: Reject off-scale spacing with the inkwell/spacing-scale lint rule
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a designer, I want spacing outside the scale caught in code, so that the
+      4 px grid survives contact with real pages.
+
+      Acceptance criteria:
+
+      - `inkwell/spacing-scale` rejects pixel values for margin, padding and gap that
+        are not on the scale.
+      - Adding tokens together in `calc()` is allowed only for negative margins.
+      - The rule runs in continuous integration next to `inkwell/no-raw-colour`.
+  - key: ENG-948
+    type: Story
+    summary: Write the tokens-v2 codemod
+    status: Done
+    priority: Highest
+    labels: [design-system]
+    description: |
+      As a product engineer upgrading to 3.0, I want the renames applied for me, so that
+      the upgrade takes about half a day rather than a sprint.
+
+      Acceptance criteria:
+
+      - The codemod touches TypeScript, CSS and styled components.
+      - It maps each literal name to its semantic token, renames `color.bg.*` and
+        `color.fg.*`, changes `--qm-` to `--ink-` and renames the `Banner` prop `kind`
+        to `tone`.
+      - It prints a summary of what it changed.
+
+      ```bash
+      pnpm exec inkwell-codemod tokens-v2 src/
+      pnpm lint
+      ```
+    comments:
+      - "Teodor: Dry run on Inkwell's own stories rewrote everything except the spacing values, which are ENG-949."
+  - key: ENG-949
+    type: Story
+    summary: Round removed spacing values in the codemod and flag them for review
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a product engineer, I want removed spacing steps handled without silent
+      changes to my layout.
+
+      Acceptance criteria:
+
+      - Values that used `space.7`, `space.9`, `space.11` or the 2 px half-step are
+        rounded to the nearest step on the scale.
+      - Each rounded value gets a comment in the code saying what it was.
+      - The codemod's summary lists every rounded value, since each one needs a human
+        look.
+  - key: ENG-950
+    type: Task
+    summary: Retune every documented colour pairing for contrast
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      Token pairs are chosen so that the default combinations pass contrast, and the
+      rename is the moment to check every one of them. Go through each documented
+      foreground and background pairing, text on surfaces, text on filled actions,
+      borders on surfaces, and retune the values that fall short of WCAG 2.2 AA: 4.5:1
+      for text and 3:1 for interface parts. Record the old and new values in the 3.0
+      changeset.
+    comments:
+      - "Dafydd: Done. `color.text.secondary` moved to `#525866` so that it clears 4.5:1 on the sunken surface too."
+  - key: ENG-951
+    type: Task
+    summary: Add a contrast script for the documented token pairings
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      Contrast should be checked by a script, not by whoever remembers to. Add
+      `pnpm tokens:contrast` to the Inkwell repository: it checks every documented
+      foreground and background pairing and prints each pair below the thresholds on
+      the [a11y checklist](../../corpus/design/accessibility.md). Run it in continuous
+      integration, and make it a required step for any proposal that adds or changes a
+      colour token.
+  - key: ENG-952
+    type: Bug
+    summary: Codemod misses token references inside styled components
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** Run the codemod on a file with a styled component whose
+      template literal reads `var(--qm-color-bg-card)`.
+
+      **Expected.** The reference becomes `var(--ink-color-surface-raised)`.
+
+      **Actual.** The template literal is left untouched. The build still passes,
+      because an undefined custom property is not an error, and the card renders with a
+      transparent background.
+
+      **Fix.** Parse tagged template literals with the CSS parser the codemod already
+      uses for stylesheets, and add fixtures for `styled.div` and `css` blocks.
+    comments:
+      - "Felix: Confirmed fixed on the Merchant Hub branch: the transparent cards are back to white."
+  - key: ENG-953
+    type: Story
+    summary: Default Button to the secondary variant
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a designer, I want the primary button to be a deliberate choice, so that pages
+      stop growing two primary actions side by side.
+
+      Acceptance criteria:
+
+      - `Button` defaults to `variant="secondary"`.
+      - The release notes list this as a breaking change: add `variant="primary"` where
+        a page relied on the old default.
+      - The [button page](../../corpus/design/button.md) explains why secondary is the
+        default.
+  - key: ENG-954
+    type: Task
+    summary: Make button the default Button type
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      A `Button` inside a form currently renders with the browser's default type,
+      `submit`, so a "Cancel" or "Show more" button in a form submits it. Change the
+      default `type` to `button`.
+
+      Submitting buttons must now say `type="submit"` explicitly, or pressing Enter in a
+      field does nothing. List this under the breaking changes in the 3.0 release notes,
+      with the fix.
+    comments:
+      - "Joss: Merchant Hub will add `type=submit` to its forms as part of the upgrade, by hand rather than in the codemod."
+  - key: ENG-955
+    type: Task
+    summary: Rename the Banner prop kind to tone and deprecate the Toast option type
+    status: Done
+    priority: Low
+    labels: [design-system]
+    description: |
+      Feedback components should share one word for their tone. Rename the `Banner`
+      prop `kind` to `tone`, as a breaking change the codemod rewrites. Deprecate the
+      `Toast` option `type` in favour of `tone`: it still works in 3.0 and logs a
+      warning in development builds, naming the replacement. Update the component pages
+      and the changeset.
+  - key: ENG-956
+    type: Story
+    summary: Add the Stack layout component
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      As a product engineer, I want a layout primitive that takes spacing tokens, so
+      that I stop writing margins between siblings.
+
+      Acceptance criteria:
+
+      - `Stack` takes `direction`, `gap` (a spacing token) and `justify`.
+      - `gap` accepts only tokens from the scale.
+
+      ```typescript
+      <Stack direction="row" gap="space.2" justify="end">
+        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+        <Button variant="primary" type="submit">Save schedule</Button>
+      </Stack>
+      ```
+  - key: ENG-957
+    type: Task
+    summary: Keep aliases for the old colour names for one minor release
+    status: Won't Do
+    priority: Low
+    labels: [design-system]
+    description: |
+      Proposal from a product team: ship 3.0 with aliases from the literal names and
+      the `color.bg.*` family to the new tokens, warn in development builds, and remove
+      the aliases in 3.1. This would let teams upgrade without running the codemod
+      straight away and spread the work over a quarter.
+    comments:
+      - "Priya: Won't do. Literal and semantic names coexisted for a year from 2024 and that was a mistake; aliases would repeat it. 3.0 is a major release and the codemod makes the removal cheap."
+  - key: ENG-958
+    type: Task
+    summary: Raise the minimum React version to 18
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      Several 3.0 changes, including the typed tokens and `Stack`, rely on React 18.
+      Make React 18 the minimum peer dependency of `@quillmoor/inkwell`, drop the
+      compatibility code for older versions, and check which internal tools still run
+      an older React. Teams must upgrade React before they upgrade Inkwell; say so at
+      the top of the breaking changes in the release notes.
+    comments:
+      - "Teodor: The internal tools still on older React have been told; their owners are upgrading before 3.0."
+  - key: ENG-959
+    type: Bug
+    summary: Select menus open off-screen near the bottom of a modal
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** Open a modal whose last field is a `Select`, such as
+      "Add a team member", on a short window, and open the menu.
+
+      **Expected.** The menu opens upwards when there is no room below.
+
+      **Actual.** It opens downwards and is cut off by the bottom of the viewport.
+
+      **Fix.** Measure the space against the viewport rather than the modal body, and
+      flip the menu when it would overflow. See the
+      [modal dialog](../../corpus/design/modal.md) for how the dialog body scrolls.
+  - key: ENG-960
+    type: Bug
+    summary: DataTable loses its scroll position when rows update
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** Scroll halfway down the payments list and wait for the
+      next refresh of the rows.
+
+      **Expected.** The table stays where the user left it.
+
+      **Actual.** It jumps back to the top, because the body is re-mounted when the
+      rows change.
+
+      **Fix.** Key rows by `getRowId` and keep the body mounted, so that the browser
+      keeps the scroll position. Add an interaction test that scrolls, updates the rows
+      and checks the position.
+  - key: ENG-961
+    type: Bug
+    summary: Tooltip stays open after its trigger is removed
+    status: Done
+    priority: Low
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** Hover a row action that shows a tooltip, then remove the
+      row with the keyboard while the tooltip is visible.
+
+      **Expected.** The tooltip closes with its trigger.
+
+      **Actual.** It stays on screen, floating over the next row, until the page is
+      reloaded.
+
+      **Fix.** Close the tooltip when its trigger unmounts and add a test for it.
+  - key: ENG-962
+    type: Task
+    summary: Pilot the tokens-v2 codemod on Merchant Hub
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      Merchant Hub is Inkwell's largest consumer, so it pilots the codemod against a
+      pre-release build of 3.0 before anyone else. Merchant Experience run the codemod
+      on a branch, review every change it reports, check the rounded spacing values by
+      hand and run the visual tests.
+
+      Report the numbers back to `#team-inkwell`: how many references were rewritten
+      and how many rounded values needed a decision. Raise a bug for anything the
+      codemod got wrong.
+    comments:
+      - "Noor: The codemod rewrote 3,412 token references in Merchant Hub. 57 rounded spacing values needed manual review."
+      - "Joss: All 57 reviewed. Most rounded to the same place a designer would have chosen."
+  - key: ENG-963
+    type: Bug
+    summary: Codemod rewrites the old prefix inside vendored stylesheets
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      **Steps to reproduce.** Run the codemod on Merchant Hub's `src/`, which includes a
+      vendored copy of a date picker's stylesheet that defines its own `--qm-` variables.
+
+      **Expected.** Third-party files are left alone.
+
+      **Actual.** The codemod renames the vendored variables too, and the date picker
+      loses its styles.
+
+      **Fix.** Skip `node_modules` and any `vendor` folder by default, and list skipped
+      files in the summary. Found during the pilot in ENG-962.
+  - key: ENG-964
+    type: Task
+    summary: Add a space.7 token for 28 px gaps
+    status: Won't Do
+    priority: Lowest
+    labels: [design-system]
+    description: |
+      Request from a product team: their filter bar sits 28 px above the table, which
+      the old scale allowed with `space.7`. They would like `space.7` back so that the
+      codemod does not round their gap to 24 or 32 px and change the page they shipped
+      last quarter.
+    comments:
+      - "Priya: Won't do. The scale has no step between `space.6` and `space.8` on purpose. Use `space.6`; if that looks wrong, the layout needs a different structure, not a new number."
+  - key: ENG-965
+    type: Task
+    summary: Write the Inkwell 3.0 release notes and upgrade guide
+    status: Done
+    priority: Medium
+    labels: [design-system]
+    description: |
+      Write the release notes for 3.0: summary, highlights, a table of breaking changes
+      with what to do for each, new and fixed items, deprecations, and the upgrade
+      commands. Include the codemod's numbers from the Merchant Hub pilot so that teams
+      can size their own upgrade. Publish them on the wiki as
+      [Inkwell 3.0 release notes](../../corpus/design/release-notes-inkwell-3-0.md) and
+      update the tokens page to match.
+    comments:
+      - "Wren: Edited for plain English. Every breaking change now says what to do in one line."
+  - key: ENG-966
+    type: Task
+    summary: Cut the Inkwell 3.0 release candidate
+    status: Done
+    priority: High
+    labels: [design-system]
+    description: |
+      Publish the 3.0 release candidate from the release branch once every tokens v2
+      ticket is closed. Run the full test suite, the lint rules and the contrast script,
+      and ask Merchant Experience to install it on their pilot branch and confirm the
+      visual diffs. The final release follows when they sign off.
+
+      ```bash
+      pnpm add @quillmoor/inkwell@^3.0.0
+      pnpm exec inkwell-codemod tokens-v2 src/
+      pnpm lint
+      ```
+    comments:
+      - "Teodor: Release candidate published. Waiting on Merchant Experience's visual review before the final release."
