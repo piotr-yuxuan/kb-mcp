@@ -120,9 +120,11 @@ def attach(client: httpx.Client, page_id: str, filename: str, data: bytes) -> No
 
 def seed_issue(client: httpx.Client, key: str) -> None:
     """Attach an image to an issue, unless it has one, and show it in the description."""
-    issue = client.get(f"/rest/api/3/issue/{key}", params={"fields": "attachment"})
+    # Version 2 of the API speaks wiki markup, in which !name! shows an attachment.
+    issue = client.get(f"/rest/api/2/issue/{key}", params={"fields": "attachment,description"})
     issue.raise_for_status()
-    names = {attachment["filename"] for attachment in issue.json()["fields"]["attachment"]}
+    fields = issue.json()["fields"]
+    names = {attachment["filename"] for attachment in fields["attachment"]}
     if "probe-issue.png" not in names:
         uploaded = client.post(
             f"/rest/api/3/issue/{key}/attachments",
@@ -130,7 +132,8 @@ def seed_issue(client: httpx.Client, key: str) -> None:
             headers={"X-Atlassian-Token": "no-check"},
         )
         uploaded.raise_for_status()
-    # Version 2 of the API takes wiki markup, in which !name! shows an attachment.
+    if "!probe-issue.png" in (fields.get("description") or ""):
+        return
     described = client.put(
         f"/rest/api/2/issue/{key}",
         json={"fields": {"description": "An image for the probe.\n\n!probe-issue.png!"}},
@@ -196,15 +199,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"<table><tbody><tr><th>Owner</th><td>Team {number}</td></tr>"
                 f"<tr><th>State</th><td>Draft {number}</td></tr></tbody></table>"
             )
-            ids[title], created = ensure_page(
+            ids[title], _ = ensure_page(
                 client, space_id, home_id, title, macro("details", properties)
             )
-            if created:
-                labelled = client.post(
-                    f"/wiki/rest/api/content/{ids[title]}/label",
-                    json=[{"prefix": "global", "name": "probe-props"}],
-                )
-                labelled.raise_for_status()
+            # Labelled on every run: a label already there is left as it is.
+            labelled = client.post(
+                f"/wiki/rest/api/content/{ids[title]}/label",
+                json=[{"prefix": "global", "name": "probe-props"}],
+            )
+            labelled.raise_for_status()
         # Children display lists this page alone, apart from the report's pages.
         ids["Probe child"], _ = ensure_page(
             client, space_id, ids["Probe complex"], "Probe child", "<p>A child page.</p>"
