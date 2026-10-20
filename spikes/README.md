@@ -34,9 +34,11 @@ The pages, to create by hand otherwise, in any space:
    - an Info panel, a Code block, an Expand with text inside, and a table of three rows
      and three columns;
    - an uploaded image.
-4. Two child pages of *Probe complex*, each with a Page properties macro (a table of
-   two rows) and the label `probe-props`.
-5. **Probe long**: about 3,000 words of public-domain text, with headings.
+4. **Probe properties 1** and **Probe properties 2**, outside *Probe complex*, each
+   with a Page properties macro (a table of two rows) and the label `probe-props`.
+5. **Probe child**, a child of *Probe complex*, so that children display lists a page
+   that the report does not.
+6. **Probe long**: about 3,000 words of public-domain text, with headings.
 
 A page's id is the number after `/pages/` in its address.
 

@@ -167,7 +167,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"<tr><th>State</th><td>Draft {number}</td></tr></tbody></table>"
             )
             ids[title], created = ensure_page(
-                client, space_id, ids["Probe complex"], title, macro("details", properties)
+                client, space_id, home_id, title, macro("details", properties)
             )
             if created:
                 labelled = client.post(
@@ -175,6 +175,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     json=[{"prefix": "global", "name": "probe-props"}],
                 )
                 labelled.raise_for_status()
+        # Children display lists this page alone, apart from the report's pages.
+        ids["Probe child"], _ = ensure_page(
+            client, space_id, ids["Probe complex"], "Probe child", "<p>A child page.</p>"
+        )
         ids["Probe long"], _ = ensure_page(client, space_id, home_id, "Probe long", LONG_PAGE)
         attach(client, ids["Probe innermost"], "probe-innermost.png", png("innermost", 1200, 800))
         attach(client, ids["Probe complex"], "probe-complex.png", png("complex", 1600, 900))
