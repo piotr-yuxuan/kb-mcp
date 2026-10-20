@@ -101,7 +101,15 @@ def ensure_page(
 
 
 def attach(client: httpx.Client, page_id: str, filename: str, data: bytes) -> None:
-    """Create or replace an attachment of a page."""
+    """Attach a file to a page, unless one of that name is there already.
+
+    Uploading again would make a new version, and leave a page edited since then with a
+    reference to the old one.
+    """
+    found = client.get(f"/wiki/api/v2/pages/{page_id}/attachments", params={"filename": filename})
+    found.raise_for_status()
+    if found.json().get("results"):
+        return
     response = client.put(
         f"/wiki/rest/api/content/{page_id}/child/attachment",
         files={"file": (filename, data, "image/png")},
