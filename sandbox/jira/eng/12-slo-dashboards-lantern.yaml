@@ -1,0 +1,723 @@
+epic:
+  key: ENG-12
+  summary: SLO dashboards in Lantern
+  sprints: [12, 19]
+  labels: [sre]
+  description: |
+    ## Goal
+
+    Publish SLOs for the services where merchants feel reliability first, measure them
+    in Lantern, and alert on how fast each error budget is being spent instead of on
+    every blip.
+
+    ## Scope
+
+    - SLOs for `card-auth`, `payout-gateway` and `merchant-api`, each with a good-event
+      definition, a 28-day rolling window and an error budget.
+    - The Lantern dashboard "SLO overview", with one panel per SLO.
+    - Fast and slow burn alerts, routed through Klaxon to the owning teams.
+    - The error budget policy and the SLO catalogue.
+
+    ## Out of scope
+
+    - Latency commitments, such as the `card-auth` p99 budget of 800 ms, which
+      `CardAuthP99High` enforces.
+    - SLOs for `ledger`, `fx-quote`, `notify` and `merchant-hub`.
+    - Anything quoted to merchants: contract commitments belong to Legal.
+
+    ## Pages
+
+    - [SLO catalogue](../../corpus/incidents/slo-catalogue.md)
+    - [On-call rota and paging policy](../../corpus/incidents/on-call.md)
+  comments:
+    - "Lukas: Starting with card-auth, payout-gateway and merchant-api, where merchants feel reliability first."
+    - "Lukas: Burn alerts are live for all three SLOs. What is left is polish and the error budget view for planning."
+tickets:
+  - key: ENG-460
+    type: Task
+    summary: Agree one format for writing down an SLO
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Before choosing any numbers, agree how an SLO is written down, so that every
+      team's reads the same way and Lantern can load it. Each SLO states its service,
+      its objective, its window, what counts as a good event and what counts at all:
+
+      ```yaml
+      service: merchant-api
+      objective: 99.9%
+      window: 28 days, rolling
+      good: any response other than a 5xx, measured at our edge
+      total: every request that reaches our edge
+      owner: Merchant Experience
+      ```
+
+      The error budget is what the objective leaves over the window. A rolling window
+      means a bad day leaves the budget gradually, not at the start of a month.
+    comments:
+      - "Bram: Agreed. One format for every team, please, including the ones that come later."
+  - key: ENG-461
+    type: Story
+    summary: Set the card-auth SLO at 99.95% of authorisations answered with a decision
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      As Payments Core, we want an objective that says whether `card-auth` is answering
+      merchants, whatever the issuers decide.
+
+      Acceptance criteria:
+
+      - good event: an authorisation request answered with a decision, approve or
+        decline, without a Quillmoor-side error;
+      - an issuer's own decline is a good event: we answered;
+      - objective 99.95% over 28 days, rolling, which leaves 0.05% of requests, about
+        20 minutes of total outage per window;
+      - whether `CAU-1207` timeouts count against the budget is decided in ENG-470.
+    comments:
+      - "Corinne: About 20 minutes of total outage a window. Tight, which is right for the service merchants feel first."
+  - key: ENG-462
+    type: Story
+    summary: Set the payout-gateway SLO at 99.9% of batches acknowledged without PGW-5021
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      As Payouts, we want an objective that says whether payout batches leave on time
+      and reach our settlement bank.
+
+      Acceptance criteria:
+
+      - good event: a payout batch submitted on its 15-minute schedule and acknowledged
+        by the bank without `PGW-5021`;
+      - objective 99.9% over 28 days, rolling: 0.1% of batches, about 40 minutes of
+        total outage per window;
+      - a batch that becomes stuck is a bad event, whatever the cause, including a slow
+        bank.
+    comments:
+      - "Yusuf: Agreed that a stuck batch counts even when the bank caused it. Sellers do not care whose fault it was."
+  - key: ENG-463
+    type: Story
+    summary: Set the merchant-api SLO at 99.9% of requests answered without a 5xx
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      As Merchant Experience, we want an objective that matches what a merchant's
+      integration sees.
+
+      Acceptance criteria:
+
+      - good event: a request answered with anything other than a 5xx status;
+      - a 429 is a good event: rate limiting is the API working as designed;
+      - objective 99.9% over 28 days, rolling: 0.1% of requests, about 40 minutes of
+        total outage per window;
+      - measured at our edge, which ENG-467 sets up.
+    comments:
+      - "Malik: Merchant Experience signs up to this. We would rather argue about 429s now than during an incident."
+  - key: ENG-464
+    type: Task
+    summary: Record good and total events for the three SLOs in Lantern
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Add recording rules in Lantern that count good and total events every minute for
+      each SLO, from metrics the services already export. For `card-auth`, that is the
+      count of `cardauth_request_duration_seconds` by outcome; for `payout-gateway`,
+      batches submitted and batches in `PGW-5021`.
+
+      Keep the rules next to the SLO definitions from ENG-460, so that changing a
+      definition changes its measurement in the same review. Check each rule against a
+      day of raw numbers before anything is built on it.
+  - key: ENG-465
+    type: Story
+    summary: Build the SLO overview dashboard in Lantern
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      As an owning team, we want one place to see every SLO and how much budget is
+      left.
+
+      Acceptance criteria:
+
+      - a Lantern dashboard "SLO overview", with one panel per SLO;
+      - each panel shows the objective, the attainment over the last 28 days, the error
+        budget remaining and a burn-down over the window;
+      - each panel links to the service's runbook and to its definition;
+      - the dashboard loads in under five seconds over the full window.
+    comments:
+      - "Lukas: First version is up at lantern.quillmoor.example under SLO overview."
+  - key: ENG-466
+    type: Story
+    summary: Break down bad events by cause on each SLO panel
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As an on-call engineer looking at a falling budget, I want to see what is
+      spending it without opening another dashboard.
+
+      Acceptance criteria:
+
+      - `card-auth`: bad events by error code, so `CAU-1207` and `CAU-1301` stand
+        apart;
+      - `payout-gateway`: stuck batches by currency;
+      - `merchant-api`: 5xx responses by status code and endpoint;
+      - each breakdown covers the same 28-day window as the panel above it.
+  - key: ENG-467
+    type: Story
+    summary: Measure the merchant-api SLO at our edge instead of inside the service
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Measured inside `merchant-api`, a request that failed before reaching the
+      service is invisible, so our own failures at the front door would never count.
+
+      Acceptance criteria:
+
+      - good and total events come from our edge's access logs;
+      - our failures between the edge and the service count as bad events;
+      - a merchant's own network problems do not count, since they never reach us;
+      - the panel says where the measurement is taken.
+  - key: ENG-468
+    type: Bug
+    summary: 429 responses counted as bad events in the merchant-api SLO
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** Open the `merchant-api` panel on "SLO overview" for an
+      hour in which a merchant's burst was rate limited.
+
+      **Expected.** 429 responses count as good events, as the definition in ENG-463
+      says.
+
+      **Actual.** Attainment for the hour fell sharply and the budget burn-down dipped.
+      The recording rule counted every status of 400 and above as bad.
+
+      **Fix.** Only 5xx statuses count as bad. The rule now has a test with a sample of
+      2xx, 4xx, 429 and 5xx responses.
+    comments:
+      - "Malik: That explains the dip we saw on Tuesday. Thanks."
+  - key: ENG-469
+    type: Story
+    summary: Backfill a quarter of SLO history so the panels open with data
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As a team lead, I want the panels to open with history, so that the first error
+      budget we quote means something and the first weeks are not blank.
+
+      Acceptance criteria:
+
+      - good and total events for all three SLOs backfilled for the previous quarter
+        from the metrics Lantern already holds;
+      - backfilled periods are marked on each panel;
+      - where a metric did not exist for the whole quarter, the panel starts when it
+        did, and says so.
+  - key: ENG-470
+    type: Story
+    summary: Count CAU-1207 issuer timeouts against the card-auth error budget
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      An issuer timeout is caused by the issuer, but a merchant cannot tell the
+      difference: the buyer sees a failed payment either way.
+
+      Decision and acceptance criteria:
+
+      - `CAU-1207 ISSUER_TIMEOUT` counts as a bad event for the `card-auth` SLO;
+      - an issuer's own decline stays a good event;
+      - the catalogue explains why.
+
+      The SEV1 of 17 September 2025 spent the whole of that window's budget in under two
+      hours; see the
+      [incident report](../../corpus/incidents/report-2025-09-17-card-auth-latency.md).
+    comments:
+      - "Nadia: Agreed. It means one issuer's bad evening can pause our releases, and that is the honest consequence."
+  - key: ENG-471
+    type: Bug
+    summary: Batches held by the scheduler kill switch burned the payout-gateway budget
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** In staging, flip `ks.payout-gateway.batch-scheduler` to
+      killed for 30 minutes, then resume.
+
+      **Expected.** Batches held back by the kill switch are not counted either way.
+
+      **Actual.** Every schedule slot missed during the pause counted as a bad event,
+      so a deliberate pause during an incident would have spent budget on top of the
+      incident itself.
+
+      **Fix.** No batch is counted while the switch is killed. A batch that becomes
+      stuck is still a bad event. The pause is part of the
+      [payout-gateway rollback runbook](../../corpus/payments/payout-gateway-rollback.md).
+    comments:
+      - "Jonah: Good catch. Nobody should hesitate to pause the scheduler because of a dashboard."
+  - key: ENG-472
+    type: Bug
+    summary: Error budget reset on the first of each month instead of rolling over 28 days
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** Open "SLO overview" just after midnight UTC on the first
+      day of a month.
+
+      **Expected.** Each budget reflects the last 28 days.
+
+      **Actual.** Every budget jumped back to 100% at midnight. The panels used a
+      calendar-month window, copied from the old availability reports.
+
+      **Fix.** All three SLOs use a 28-day rolling window, as the definitions say. The
+      burn-down now drifts back up as bad days leave the window, instead of jumping.
+  - key: ENG-473
+    type: Task
+    summary: Write the error budget policy for services that spend their whole budget
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      Agree what happens when a service has spent its whole error budget for the
+      current window:
+
+      1. the owning team pauses releases that add features to that service; fixes,
+         security patches and reliability work continue;
+      2. the team lead posts in `#team-sre` what spent the budget and what is being
+         done;
+      3. the pause ends when the rolling window recovers, or earlier with the agreement
+         of the head of the owning department.
+
+      The first case was `card-auth` after the SEV1 of 17 September 2025. The policy is
+      published in the [SLO catalogue](../../corpus/incidents/slo-catalogue.md).
+    comments:
+      - "Ottilie: Approved. Heads of department own the exceptions, not Site Reliability."
+      - "Nadia: Payments Core will follow it. We would have paused anyway after September."
+  - key: ENG-474
+    type: Task
+    summary: Publish the SLO catalogue in the incidents section
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Write the catalogue page: what an SLO and an error budget are, the three SLOs
+      with their good events, windows and budgets, the notes on each definition, and a
+      short section on services that have no SLO yet.
+
+      Say plainly that these are internal figures, never to be quoted to a merchant or
+      put in a contract.
+
+      Published as [SLO catalogue](../../corpus/incidents/slo-catalogue.md).
+  - key: ENG-475
+    type: Story
+    summary: Error budget burn alerts for every published SLO
+    status: Done
+    priority: Highest
+    labels: [sre]
+    description: |
+      As an owning team, we want to hear when a budget is being spent fast enough to
+      matter, and not otherwise.
+
+      Acceptance criteria, for each of the three SLOs:
+
+      | Alert | Fires when | Action |
+      |---|---|---|
+      | Fast burn | 2% of the window's budget is spent in 1 hour | Pages the owning team's on-call |
+      | Slow burn | 10% of the budget is spent in 3 days | Ticket for the owning team, raised in its channel |
+
+      - both alerts evaluate every minute;
+      - a fast burn page is handled like any other page under the on-call policy.
+    comments:
+      - "Lukas: Live for all three. A fast burn alert is often the first sign of an incident."
+      - "Corinne: Seen one fire in a staging exercise already. The page says what is burning and how fast."
+  - key: ENG-476
+    type: Story
+    summary: Route fast burn pages to the owning team's Klaxon rota
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As the owning team's on-call, I want fast burn pages to reach me through the same
+      rota as my other alerts.
+
+      Acceptance criteria:
+
+      - `card-auth` and `payout-gateway` fast burn pages go to `payments-primary`;
+      - `merchant-api` fast burn pages go to `merchant-exp-primary`;
+      - the pages follow each rota's usual escalation chain, as in the
+        [on-call rota and paging policy](../../corpus/incidents/on-call.md);
+      - nothing pages Site Reliability directly unless the service has no owner.
+  - key: ENG-477
+    type: Story
+    summary: Raise slow burn tickets in the owning team's channel
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      As a team lead, I want a slow burn to become work in the sprint, not a page at
+      night.
+
+      Acceptance criteria:
+
+      - a slow burn alert opens an ENG ticket for the owning team and posts it in the
+        team's channel;
+      - the ticket links the SLO panel and the bad-event breakdown;
+      - the ticket is updated, not duplicated, while the same burn continues.
+  - key: ENG-478
+    type: Story
+    summary: Link the runbook and the SLO panel from every burn alert
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As someone paged at night, I want the burn alert to tell me where to look first.
+
+      Acceptance criteria:
+
+      - every burn page and ticket links its panel on "SLO overview";
+      - it links the service's runbook: for `card-auth`, the
+        [card authorisation latency runbook](../../corpus/payments/card-auth-latency.md);
+        for `payout-gateway`, the rollback runbook;
+      - it states the budget left and the current burn rate.
+  - key: ENG-479
+    type: Bug
+    summary: Fast burn alert paged at night for a single stuck payout batch
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** At night, when each cycle submits few batches, let one
+      batch become stuck with `PGW-5021`.
+
+      **Expected.** No page. One stuck batch spends far less than 2% of the window's
+      budget.
+
+      **Actual.** On the first night with the alert enabled for `payout-gateway`, it
+      compared the hour's error ratio with the objective. With so few batches in the
+      hour, one stuck batch looked like a fast burn, and `payments-primary` was paged
+      for a batch resolved by the next cycle.
+
+      **Fix.** The alert now measures the budget actually spent in the hour, in
+      batches, against the whole window's budget.
+    comments:
+      - "Jonah: Please fix this before the alert is enabled everywhere. It would page us most nights."
+  - key: ENG-480
+    type: Story
+    summary: Show deploys and Switchboard changes on the SLO overview panels
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As an on-call engineer, I want to see at a glance whether a drop in an SLO
+      followed a change.
+
+      Acceptance criteria:
+
+      - an annotation strip along every SLO panel, with Shipwright deploys and
+        Switchboard flag changes and kill switch flips for that service;
+      - each annotation links the release or the switch's change log;
+      - annotations can be hidden for a cleaner screenshot in a PIR.
+  - key: ENG-481
+    type: Task
+    summary: Keep SLO definitions, dashboards and burn alerts in one reviewed repository
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Today the definitions, the recording rules, the dashboard and the alerts live in
+      four places, and a change to one can silently break another. Move all four into
+      Site Reliability's repository:
+
+      - Lantern loads dashboards and alert rules from the repository on merge;
+      - a change to an SLO needs review by Site Reliability and the owning team;
+      - a check fails the build if an alert points at a rota that does not exist in
+        Klaxon.
+    comments:
+      - "Teodor: Platform reviewed the loader. Fine by us."
+  - key: ENG-482
+    type: Story
+    summary: Post a monthly SLO report in #team-sre
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As Site Reliability, we want a monthly look at all three SLOs that does not
+      depend on someone remembering to open the dashboard.
+
+      Acceptance criteria:
+
+      - on the first Monday of each month, a post in `#team-sre` with each SLO's
+        attainment, the budget left and the burn alerts that fired;
+      - each line links its panel;
+      - a service that spent its whole budget is listed first, with its team lead
+        tagged.
+  - key: ENG-483
+    type: Task
+    summary: Rehearse the burn alerts with a synthetic budget burn in staging-eu
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Before trusting the alerts in production, prove them in `staging-eu`:
+
+      - inject failures for each of the three services at a rate that should trigger a
+        fast burn, and check that the page arrives within the expected time;
+      - inject a slower rate and check that a slow burn ticket is raised, once;
+      - inject a single failure and check that nothing fires.
+
+      Record the injected rates and the observed firing times in this ticket.
+    comments:
+      - "Lukas: All three fast burns paged within the hour as expected; slow burns opened one ticket each. The single failure fired nothing."
+  - key: ENG-484
+    type: Bug
+    summary: Error budget panel showed more than 100% remaining after a metrics gap
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** Look at the `card-auth` panel over a period in which
+      Lantern received no metrics for about 20 minutes, during a node pool upgrade.
+
+      **Expected.** The gap counts as no data: neither good nor bad.
+
+      **Actual.** The panel showed 104% of the budget remaining. The gap was counted as
+      zero total events but carried the previous minute's good events forward.
+
+      **Fix.** Minutes without data are left out of both counts and shown on the panel
+      as a shaded band.
+  - key: ENG-485
+    type: Story
+    summary: Add a p99 latency SLO for card-auth
+    status: Won't Do
+    priority: Low
+    labels: [sre]
+    description: |
+      As Payments Core, we might want latency to sit in the catalogue next to
+      availability, so that slow authorisations spend budget too.
+
+      Proposal: an SLO on the share of authorisations answered within 800 ms, over the
+      same 28-day window, with its own burn alerts.
+    comments:
+      - "Lukas: Won't Do. The 800 ms p99 budget is a separate commitment, enforced by CardAuthP99High, and Payments Core want it kept that way. Two numbers for the same thing would only argue with each other."
+  - key: ENG-486
+    type: Task
+    summary: Publish an availability SLO for the ledger
+    status: Won't Do
+    priority: Lowest
+    labels: [sre]
+    description: |
+      Work out a good-event definition for `ledger` availability, based on the share
+      of journal writes accepted through the posting API, so that the ledger can join
+      the catalogue with its own panel on "SLO overview" and its own burn alerts. Check
+      the definition against a quarter of history before proposing an objective.
+    comments:
+      - "Kwabena: Won't Do. The ledger is judged by its reconciliation, not its availability. LedgerReconBreak already tells us what matters, and an availability figure would look reassuring on a night the books did not balance."
+  - key: ENG-487
+    type: Task
+    summary: Draft SLO proposals for fx-quote, notify and merchant-hub
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      The first catalogue covers three services. Draft a proposal for each of the next
+      candidates, `fx-quote`, `notify` and `merchant-hub`, with the owning team: a
+      good-event definition, a first guess at the objective, and what history exists to
+      check it against.
+
+      The proposals go to `#team-sre` for discussion. None is published as part of this
+      epic.
+    comments:
+      - "Lukas: Drafts posted in #team-sre. None is ready to publish; they stay under discussion."
+  - key: ENG-488
+    type: Task
+    summary: Document how a team proposes a new SLO
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      Add a short section to the SLO catalogue on how a service joins it:
+
+      - the team writes the SLO up in the agreed format, with a good-event definition;
+      - it brings a quarter of history measured against that definition;
+      - Site Reliability reviews it, adds it to the catalogue and to "SLO overview",
+        and sets up its burn alerts.
+
+      Nothing joins the catalogue without that quarter of history.
+  - key: ENG-489
+    type: Bug
+    summary: Slow burn alert opened a new ticket at every evaluation
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** In `staging-eu`, let `merchant-api` spend 10% of its
+      budget over three days.
+
+      **Expected.** One ticket in `#team-merchant-hub`, updated while the burn
+      continues.
+
+      **Actual.** A new ticket at every evaluation, several in the first hour, until
+      the alert was silenced.
+
+      **Fix.** Tickets are keyed by alert episode: a new one opens only after the burn
+      has stopped for a full day.
+    comments:
+      - "Malik: Closed the duplicates in our channel. Thanks for catching it in staging."
+  - key: ENG-490
+    type: Task
+    summary: Retire the availability alerts that the burn alerts replace
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      An alert that pages and needs nothing done should be deleted or turned into a
+      ticket. For each of the three services, list the threshold alerts on error rate
+      that the fast burn alert now covers, then:
+
+      - delete those that never paged on their own in the last month;
+      - downgrade the rest to tickets;
+      - keep alerts that measure something else, such as `CardAuthP99High` and
+        `PayoutQueueBacklog`.
+    comments:
+      - "Yusuf: PayoutQueueBacklog stays, please. It is one of the rollback runbook's triggers."
+  - key: ENG-491
+    type: Story
+    summary: Highlight error budgets close to exhaustion on the SLO overview
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As an on-call engineer at hand-over, I want to see which budgets are close to
+      running out without reading every panel.
+
+      Acceptance criteria:
+
+      - a strip at the top of "SLO overview" lists every SLO with less than 25% of its
+        budget left, with the owning team;
+      - a service that has spent its whole budget is shown first, with a link to the
+        error budget policy;
+      - the monthly report in `#team-sre` uses the same list.
+  - key: ENG-492
+    type: Bug
+    summary: Issuer declines counted as bad events in the card-auth SLO
+    status: Done
+    priority: Highest
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** Compare the `card-auth` SLO panel with "card-auth
+      overview" on a day of high issuer declines.
+
+      **Expected.** An issuer's own decline is a good event: we answered.
+
+      **Actual.** Declines returned with a reason code from the issuer were counted as
+      failures, so a busy shopping day looked like an outage and the budget fell
+      towards the release pause.
+
+      **Fix.** Events are classified by decision outcome. Only Quillmoor-side errors and
+      `CAU-1207` timeouts are bad; approvals and issuer declines are good.
+    comments:
+      - "Corinne: This would have paused our releases for nothing on a good trading day."
+  - key: ENG-493
+    type: Story
+    summary: Show the budget left and the time to exhaustion on burn alert pages
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      As someone paged for a fast burn, I want to know how long I have.
+
+      Acceptance criteria:
+
+      - every burn page and ticket shows the share of the window's budget left;
+      - it shows the time until the budget runs out at the current burn rate;
+      - when the budget is already spent, it says so and links the error budget
+        policy.
+  - key: ENG-494
+    type: Story
+    summary: Give quarterly planning an error budget view per service
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As a head of department planning a quarter, I want to see how much budget each
+      service spent over the last quarter, so that reliability work is planned rather
+      than squeezed in.
+
+      Acceptance criteria:
+
+      - a view on "SLO overview" showing each service's budget spent per 28-day window
+        over the last quarter;
+      - the largest causes of spend for each service;
+      - linked from [quarterly planning](../../corpus/product/quarterly-planning.md).
+    comments:
+      - "Ama: Exactly what we need for the reliability line in planning."
+  - key: ENG-495
+    type: Task
+    summary: Add error budgets to the on-call hand-over checklist
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      Add a line to the "State of production" part of the
+      [on-call handover checklist](../../corpus/incidents/handover-checklist.md): error
+      budgets close to exhaustion, checked on the SLO dashboard.
+
+      The outgoing and incoming person look at the strip on "SLO overview" together,
+      so that the incoming person knows which services are near the release pause
+      before the week starts.
+  - key: ENG-496
+    type: Task
+    summary: Walk each owning team through the SLO overview dashboard
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Run a half-hour session with Payments Core, Payouts and Merchant Experience:
+
+      - how to read a panel and its burn-down;
+      - what a fast and a slow burn alert mean, and what to do with each;
+      - the error budget policy, and who decides on exceptions.
+
+      Record one session and link it from the SLO catalogue for people who join later.
+    comments:
+      - "Malik: Merchant Experience's session is done; the recording is linked."
+  - key: ENG-497
+    type: Task
+    summary: Review the first weeks of burn alerts with the owning teams
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Go through every burn alert since they went live with Payments Core, Payouts and
+      Merchant Experience:
+
+      - which fast burn pages led to action, and which did not;
+      - whether any incident spent budget without a burn alert firing;
+      - whether a threshold should change.
+
+      Write the outcome in this ticket. Any threshold change goes through the SLO
+      repository like any other change.
+    comments:
+      - "Lukas: No threshold changes. Every fast burn page since the night-time fix was worth answering."
+  - key: ENG-498
+    type: Task
+    summary: Add SLO attainment to Site Reliability's monthly review
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      Site Reliability already reviews every rota monthly from Klaxon's page reports.
+      Add the three SLOs to the same review, so that page load and reliability are read
+      side by side:
+
+      - attainment and budget spent per service for the month;
+      - burn alerts fired and what they led to;
+      - services that hit the error budget policy, and when their pause ended.
