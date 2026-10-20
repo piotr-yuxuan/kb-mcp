@@ -1,0 +1,725 @@
+epic:
+  key: ENG-16
+  summary: Hardware security keys for admins
+  sprints: [28, 35]
+  labels: [security]
+  description: |
+    ## Goal
+
+    Every production administrator signs in with hardware security keys only, with
+    push approvals and one-time codes disabled on their account. A key resists
+    phishing: it will not answer a look-alike domain.
+
+    ## Scope
+
+    - Who counts as an administrator, as the
+      [password and MFA standard](../../corpus/security/password-and-mfa.md) defines it.
+    - Two Security-issued keys per administrator, a primary and a backup. Personal
+      keys are not accepted.
+    - Enrolment team by team, then key-only sign-in once both keys are enrolled.
+    - Lost keys, recovery, and keys before any new privileged entitlement.
+    - Closing pen test finding PT26-04: three production administrators could still
+      sign in with push approvals instead of hardware security keys.
+
+    ## Out of scope
+
+    - Keys for staff who are not administrators. They may use one, but it is not
+      required.
+    - The quarterly access review itself (ENG-15), which this epic only extends.
+
+    ## Pages
+
+    - [Penetration test 2026 summary](../../corpus/security/pen-test-2026.md)
+    - [Quarterly access reviews](../../corpus/security/access-reviews.md)
+  comments:
+    - "Callum: PT26-04 sets our pace. Its 90-day deadline for a medium falls at the end of June."
+    - "Nadia: Payments is enrolled apart from three remote administrators waiting for their keys. I will chase them as soon as the keys arrive."
+tickets:
+  - key: ENG-616
+    type: Task
+    summary: Define who counts as an administrator for the key requirement
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Before ordering keys, agree the rule for the list. For this epic, an
+      administrator is anyone with:
+
+      - production access to Kubernetes, Shipwright or the databases;
+      - write access to production paths in Strongroom;
+      - administrator rights in the identity provider, email, chat or Harbour;
+      - the `merchant-api-admin` role.
+
+      Write the definition into the
+      [password and MFA standard](../../corpus/security/password-and-mfa.md), so that
+      the phishing playbook and the access reviews use the same one.
+  - key: ENG-617
+    type: Story
+    summary: List every administrator from the access review connectors
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As Security, I want the list of administrators built from the systems
+      themselves, not from memory, so that nobody is missed.
+
+      Acceptance criteria:
+
+      - The review tool from ENG-15 lists every person holding an administrator
+        entitlement, by system.
+      - The list refreshes nightly and shows, for each person, whether two
+        Security-issued keys are enrolled.
+      - Contractors appear with their end date.
+    comments:
+      - "Callum: First list is out. Managers have a week to correct it before we order keys."
+  - key: ENG-618
+    type: Task
+    summary: Order two Security-issued keys for each administrator
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Each administrator receives a primary key and a backup. Only keys issued by
+      Security are accepted, so that we know the model and can revoke it.
+
+      - Order from the list built in ENG-617, with spares for joiners and lost keys.
+      - Raise the purchase order in Tally.
+      - Deliver to Quill House and Maison Lanterne for office staff, and by courier to
+        remote staff.
+    comments:
+      - "Arjun: Purchase order approved."
+  - key: ENG-619
+    type: Story
+    summary: Accept only Security-issued key models in the identity provider
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      As Security, I want the identity provider to accept only the keys we issue, so
+      that every key in use is one we know and can revoke.
+
+      Acceptance criteria:
+
+      - A hardware key is accepted only if its model is on Security's list, checked
+        when it is registered.
+      - A key of another model is refused, with a message pointing to
+        `security@quillmoor.example`.
+      - Each registered key is recorded against its owner, so that Security can
+        revoke it.
+  - key: ENG-620
+    type: Task
+    summary: Plan the fix for PT26-04 around the enrolment waves
+    status: Done
+    priority: Medium
+    labels: [security, vuln]
+    description: |
+      PT26-04 (medium): three production administrators could still sign in with push
+      approvals instead of hardware security keys. Under the vulnerability management
+      SLAs a medium is fixed within 90 days of triage, which puts the deadline at the
+      end of June.
+
+      - Put the three administrators in the earliest wave their location allows.
+      - Follow their enrolment on this epic.
+      - If keys cannot reach them in time, prepare a risk acceptance before the
+        deadline.
+
+      Details are in the
+      [penetration test 2026 summary](../../corpus/security/pen-test-2026.md).
+  - key: ENG-621
+    type: Story
+    summary: Enrol a primary and a backup key in one sitting
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As an administrator, I want to register both keys at once, so that losing one
+      never locks me out.
+
+      Acceptance criteria:
+
+      - The enrolment page asks for the primary key, then the backup, and does not
+        finish with only one.
+      - Each key is labelled primary or backup, and Security can see the labels.
+      - The page reminds the administrator to keep the backup somewhere safe and
+        separate, such as a locked drawer at home.
+  - key: ENG-622
+    type: Story
+    summary: Switch administrators to key-only sign-in once both keys are enrolled
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      As Security, I want administrators' accounts to accept nothing but their keys, so
+      that a phished password and an approved prompt are not enough.
+
+      Acceptance criteria:
+
+      - Once both keys are enrolled, the account moves to the key-only policy: push
+        approvals and one-time codes are disabled.
+      - Every application behind the identity provider asks for the key at sign-in.
+      - The switch is logged, and the administrator receives an email explaining it.
+      - An administrator without two keys stays on the current policy until enrolled.
+  - key: ENG-623
+    type: Bug
+    summary: Registering the backup key replaced the primary key
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      **Steps to reproduce:** enrol a primary key, then register the backup key on the
+      same page.
+
+      **Expected:** two keys listed, labelled primary and backup.
+
+      **Actual:** one key listed, the backup; the primary no longer signs in.
+
+      **Cause:** the page reused the primary key's registration.
+
+      **Fix:** each key gets its own registration, and the page refuses to finish
+      unless two distinct keys are listed.
+    comments:
+      - "Lukas: Hit this during the Site Reliability wave. Re-enrolled both keys after the fix without trouble."
+  - key: ENG-624
+    type: Task
+    summary: Enrol Platform and Site Reliability administrators
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      The first wave: Platform and Site Reliability hold the most production access,
+      and most of them work from London.
+
+      - Book 20-minute enrolment slots at Quill House. Remote staff enrol on a video
+        call once their keys have arrived.
+      - Switch each account to key-only once both keys are registered (ENG-622).
+      - Check that on-call engineers can still acknowledge pages in Klaxon and reach
+        Lantern after the switch.
+    comments:
+      - "Bram: Platform's slots are booked for the week the keys arrive."
+      - "Lukas: Platform and Site Reliability are enrolled, including this week's on-call, with no missed pages."
+  - key: ENG-625
+    type: Story
+    summary: Show enrolment progress per team in Lantern
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As a team lead, I want to see who in my team still has to enrol, so that I can
+      chase them before Security does.
+
+      Acceptance criteria:
+
+      - A Lantern panel lists, per team, administrators enrolled, waiting for keys, and
+        not started.
+      - It reads the nightly list from ENG-617.
+      - Team leads see the names in their own team; everyone else sees counts only.
+  - key: ENG-626
+    type: Task
+    summary: Enrol Payments Core, Payouts and Ledger administrators
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      The second wave: the payments teams, whose administrators reach `card-auth`,
+      `payout-gateway`, `ledger` and the card data environment.
+
+      - Enrol office staff at Quill House and Maison Lanterne.
+      - Remote administrators enrol on a video call once their keys arrive by
+        courier.
+      - Agree timings with each team's on-call rota, so that nobody switches to
+        key-only in the middle of a shift.
+    comments:
+      - "Nadia: Three of our administrators are remote, two in Payouts and one in Ledger. Their keys go by courier; everyone else enrols at Quill House."
+  - key: ENG-627
+    type: Story
+    summary: Ask for the hardware key on Strongroom prod paths
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      As Security, I want reading or writing a production secret to need the key, so
+      that a stolen password is not enough to reach `prod/` paths.
+
+      Acceptance criteria:
+
+      - `strongroom login` asks for the hardware security key before granting access
+        to `prod/` paths; other paths keep the usual sign-in.
+      - A request on a `prod/` path without the key fails with
+        `hardware key required`.
+      - The error and its fix are listed in
+        [Using Strongroom](../../corpus/security/strongroom-how-to.md).
+    comments:
+      - "Callum: Live. Two people asked why their scripts stopped: both were reading prod paths with a person's account, which services must never do."
+  - key: ENG-628
+    type: Story
+    summary: Revoke a lost key the same day and replace it within 2 business days
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As an administrator who has lost a key, I want one place to report it, so that
+      the key stops working at once and I can carry on with my backup.
+
+      Acceptance criteria:
+
+      - A lost or damaged key reported to `security@quillmoor.example` is revoked by
+        Security the same day.
+      - The administrator signs in with the backup meanwhile.
+      - A replacement is issued within 2 business days and registered in place of the
+        lost key.
+      - With both keys lost, there is no administrator access until Security has
+        verified the person's identity.
+  - key: ENG-629
+    type: Task
+    summary: Hand out keys at the Paris office
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Paris administrators collect their keys at Maison Lanterne, where Élodie Vasseur
+      keeps the stock in a locked cabinet.
+
+      - Hand each person their two keys against a signature.
+      - Enrol them on the spot, with someone from Security on a video call.
+      - Keep the spares locked in the cabinet for replacements, and send the list of
+        serial numbers to Security.
+    comments:
+      - "Élodie: Keys received and locked in the cabinet. Hand-out sessions are booked for next week."
+  - key: ENG-630
+    type: Bug
+    summary: Revoking a lost key left the Strongroom CLI token valid
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      **Steps to reproduce:** as a test administrator, sign in to Strongroom on the
+      command line, report the key lost, and let Security revoke the key and the
+      identity provider sessions.
+
+      **Expected:** every session the key opened ends, Strongroom's included.
+
+      **Actual:** `strongroom get` on a `prod/` path kept working. The command-line
+      tool holds its own long-lived token, which the identity provider's revocation
+      does not reach.
+
+      **Fix:** the lost-key steps now also run `strongroom sessions revoke --user` for
+      the person, as the [phishing playbook](../../corpus/security/phishing.md) does
+      when credentials were entered.
+    comments:
+      - "Callum: Added to the lost-key checklist. Retested with a spare key: the CLI session ends with the rest."
+  - key: ENG-631
+    type: Task
+    summary: Enrol Data Platform, Risk ML and Merchant Experience administrators
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      The third wave: Data Platform's administrators of the warehouse databases, Risk
+      ML's engineers with production access to `risk-scorer`, and holders of the
+      `merchant-api-admin` role in Merchant Experience.
+
+      - Use the same enrolment slots and video calls as the earlier waves.
+      - Check the list from ENG-617 with each team lead first; this wave has the most
+        contractors.
+      - Switch each account to key-only once both keys are registered.
+    comments:
+      - "Tomasz: Data Platform enrolled."
+      - "Mireille: Risk ML too. Kiln access was unaffected."
+  - key: ENG-632
+    type: Story
+    summary: Email administrators a week before their enrolment wave
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As an administrator, I want notice before my account changes, so that enrolment
+      does not land in the middle of an on-call shift or a release.
+
+      Acceptance criteria:
+
+      - Seven days before their team's wave, each administrator receives an email with
+        the dates, what changes, and how to book an enrolment slot.
+      - A reminder follows two days before the wave.
+      - Administrators who have not booked by the start of the wave are listed for
+        their team lead.
+  - key: ENG-633
+    type: Task
+    summary: Show the June retest where PT26-04 stands
+    status: Done
+    priority: Medium
+    labels: [security, vuln]
+    description: |
+      The testers retest from 15 to 17 June 2026. PT26-04 will still be open: the
+      three administrators it concerns work remotely and are waiting for their keys.
+
+      - Prepare the enrolment list for every other administrator, showing two keys and
+        key-only sign-in.
+      - Write down the plan for the three remaining accounts and its expected date.
+      - Hand both to the testers on the first morning of the retest.
+    comments:
+      - "Callum: Evidence pack ready: the enrolment list, the policy export and the plan for the three remote accounts."
+  - key: ENG-634
+    type: Bug
+    summary: Enrolment panel counted revoked keys as active
+    status: Done
+    priority: Low
+    labels: [security]
+    description: |
+      **Steps to reproduce:** revoke a test administrator's backup key, then open the
+      enrolment panel in Lantern.
+
+      **Expected:** the administrator shows as waiting for a key.
+
+      **Actual:** the administrator shows as enrolled, with two keys.
+
+      **Fix:** the nightly list counts only keys that are registered and not revoked,
+      and the panel shows the date of each key's last use.
+  - key: ENG-635
+    type: Story
+    summary: Recover an administrator who has lost both keys
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As Security, I want a recovery procedure that nobody can talk their way through.
+
+      Acceptance criteria:
+
+      - Security verifies the person's identity on a video call, camera on.
+      - The manager confirms in the same call, or in writing from their own account.
+      - Recovery is never done over email or chat alone, nor at the request of someone
+        calling on the person's behalf.
+      - It takes up to one business day; out of hours, only administrators needed for
+        an active incident are recovered.
+
+      The procedure joins the
+      [password and MFA standard](../../corpus/security/password-and-mfa.md).
+  - key: ENG-636
+    type: Task
+    summary: Enrol identity provider, email, chat and Harbour administrators
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      The fourth wave: administrators of the identity provider, email and chat, and
+      Harbour's administrators in Merchant Support.
+
+      - Enrol Harbour administrators with Femi Haldane's help, between support shifts.
+      - Enrol identity provider administrators last, after checking that every other
+        administrator can still sign in with their keys.
+      - Switch each account to key-only once both keys are registered.
+    comments:
+      - "Femi: Happy to help. We will book slots between shifts so that no queue is left unattended."
+  - key: ENG-637
+    type: Task
+    summary: Raise a risk acceptance for PT26-04 while remote keys are in transit
+    status: Done
+    priority: Highest
+    labels: [security, vuln]
+    description: |
+      PT26-04's 90-day deadline falls before the three remaining administrators can
+      enrol: they work remotely, and their keys have not arrived.
+
+      - Write the acceptance: the finding, the reason, the compensating control
+        (ENG-638) and a new date, at most 90 days away.
+      - The head of security signs it. Because Security owns the finding, the chief
+        technology officer countersigns.
+      - Record it against PT26-04.
+    comments:
+      - "Callum: Draft ready for signature, with the managed-laptop limit as the compensating control."
+      - "Ottilie: Read it. I will countersign once the limit is in place; keep it until the last key is in use."
+  - key: ENG-638
+    type: Story
+    summary: Limit the three PT26-04 accounts to sign-ins from managed laptops
+    status: Done
+    priority: Medium
+    labels: [security, vuln]
+    description: |
+      The compensating control for the risk acceptance in ENG-637, until the three
+      administrators have enrolled their keys.
+
+      Acceptance criteria:
+
+      - The identity provider refuses sign-ins to the three accounts from any device
+        that device management does not report as a compliant company laptop.
+      - Push approvals keep working, but only for sign-ins from such a laptop.
+      - The limit is listed in the acceptance, and removed once each account is
+        key-only.
+  - key: ENG-639
+    type: Bug
+    summary: Key-only policy dropped when an administrator changed team
+    status: Done
+    priority: Highest
+    labels: [security]
+    description: |
+      **Steps to reproduce:** switch a test administrator to key-only, then record a
+      change of team in Haven.
+
+      **Expected:** the account stays key-only, since the person keeps privileged
+      entitlements during the 30-day overlap.
+
+      **Actual:** the new role profile replaced the account's groups, including the
+      key-only policy group, and push approvals worked again.
+
+      **Fix:** the key-only policy follows privileged entitlements, not team groups.
+    comments:
+      - "Callum: Found by a mover who noticed a push prompt and reported it. Two other movers were affected; all three are key-only again."
+  - key: ENG-640
+    type: Story
+    summary: Issue keys at onboarding when a role includes production administration
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As a joiner in a role that includes production administration, I want my keys on
+      day one, so that I never sign in to an administrator account without them.
+
+      Acceptance criteria:
+
+      - The joiner request asks the manager whether the role includes production
+        administration.
+      - If it does, the joiner receives two keys with the laptop and enrols them during
+        the first sign-in.
+      - Remote joiners' keys travel with the laptop by courier.
+
+      The joiner's side is in
+      [new joiner onboarding](../../corpus/people/onboarding.md).
+  - key: ENG-641
+    type: Story
+    summary: Flag privileged entitlement holders without keys in the access review
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      Every holder of a privileged entitlement must have hardware security keys
+      enrolled, and the quarterly review is the safety net.
+
+      Acceptance criteria:
+
+      - The review tool marks each privileged entitlement whose holder does not have
+        two Security-issued keys enrolled.
+      - The list goes to Security when the campaign opens, not to managers.
+      - Security follows up every flagged person before the certification deadline.
+
+      See [quarterly access reviews](../../corpus/security/access-reviews.md).
+    comments:
+      - "Callum: First run in the July review. It flagged only the three PT26-04 accounts, which we already knew about."
+  - key: ENG-642
+    type: Story
+    summary: Require keys before granting any privileged entitlement
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      PT26-04 showed that people could hold administrator rights before having keys.
+      From now on, keys come first.
+
+      Acceptance criteria:
+
+      - The access request form checks that the requester has two Security-issued keys
+        enrolled before a privileged entitlement can be approved.
+      - Otherwise the request waits, and the requester is sent to enrolment.
+      - Exceptions need the head of security's approval, with an end date no more than
+        90 days away.
+  - key: ENG-643
+    type: Task
+    summary: Add lost-key and recovery steps to the password and MFA standard
+    status: Done
+    priority: Low
+    labels: [security]
+    description: |
+      The standard says that administrators need keys, but not what happens when one
+      goes missing. Add:
+
+      - two keys each, issued by Security only;
+      - a lost or damaged key reported the same day, revoked, and replaced within 2
+        business days;
+      - recovery when every factor is lost, by video call with the manager confirming;
+      - exceptions approved by the head of security, for 90 days at most.
+  - key: ENG-644
+    type: Bug
+    summary: Access request form approved privileged access when the key check timed out
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      **Steps to reproduce:** in staging, request a privileged entitlement while the
+      identity provider's factor lookup is delayed by 10 seconds.
+
+      **Expected:** the request waits, or is refused, until the check answers.
+
+      **Actual:** the check timed out after 5 seconds, the form treated it as passed,
+      and the approval went through.
+
+      **Fix:** the check fails closed. A timeout leaves the request pending and
+      retries, and the approver sees why it is waiting.
+    comments:
+      - "Callum: Found in staging before ENG-642 reached production. It ships with this fix."
+  - key: ENG-645
+    type: Story
+    summary: Disable text message, voice and email codes in the identity provider
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      These factors can be intercepted, or talked out of people, and administrators
+      already use keys only.
+
+      Acceptance criteria:
+
+      - Text message, voice call and email codes are disabled for every account in the
+        identity provider.
+      - People still using one are told two weeks ahead, and helped to move to the
+        authenticator app or a key.
+      - The factor table in the password and MFA standard lists them as allowed for
+        nobody.
+  - key: ENG-646
+    type: Story
+    summary: Require number matching on push approvals for everyone else
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Staff who are not administrators keep push approvals, which can be approved by
+      mistake during a burst of prompts.
+
+      Acceptance criteria:
+
+      - Every push approval shows a number on the sign-in screen, which must be typed
+        in the authenticator app.
+      - One-time codes stay available as a fallback when push is unavailable.
+      - Administrators are unaffected: their accounts accept keys only.
+  - key: ENG-647
+    type: Story
+    summary: Accept administrators' personal hardware keys
+    status: Won't Do
+    priority: Low
+    labels: [security]
+    description: |
+      Several administrators already own hardware keys and asked to register those
+      instead of waiting for ours.
+
+      Proposal:
+
+      - accept any key that meets the identity provider's standard;
+      - let administrators register it themselves, as a primary or a backup;
+      - record the model so that Security knows what is in use.
+    comments:
+      - "Callum: Won't do. Only keys issued by Security are accepted, so that we know the model and can revoke it. Personal keys stay personal."
+  - key: ENG-648
+    type: Task
+    summary: Courier keys to the last three remote administrators
+    status: Done
+    priority: Medium
+    labels: [security, vuln]
+    description: |
+      The three administrators covered by the PT26-04 risk acceptance work remotely,
+      two in Payouts and one in Ledger, and their keys were held up in delivery.
+
+      - Send their keys by tracked courier from Quill House, signed for on delivery.
+      - Book each person's enrolment call for the day after delivery.
+      - Update the risk acceptance with the expected dates.
+    comments:
+      - "Gwen: Three parcels sent from Quill House by tracked courier. I will post here when each is signed for."
+  - key: ENG-649
+    type: Story
+    summary: Keep one-time codes for administrators while they travel
+    status: Won't Do
+    priority: Lowest
+    labels: [security]
+    description: |
+      An administrator asked for a one-time code as a fallback abroad, in case the key
+      is lost while travelling.
+
+      Proposal: a one-time code factor, switched on for the length of a trip and
+      removed on return.
+
+      Travel guidance is in
+      [travelling with company devices](../../corpus/security/travel-with-devices.md).
+    comments:
+      - "Callum: Won't do. Administrators sign in with keys only. Keep the key in your hand luggage and the backup safe at home; outside the UK and the EU, production access is paused for the trip anyway."
+  - key: ENG-650
+    type: Bug
+    summary: Enrolment panel listed contractors twice
+    status: Done
+    priority: Lowest
+    labels: [security]
+    description: |
+      **Steps to reproduce:** open the enrolment panel in Lantern for Platform.
+
+      **Expected:** each administrator listed once.
+
+      **Actual:** contractors appear twice, once under their team and once under a
+      separate "Contractors" heading.
+
+      **Fix:** contractors are listed under their team only, with their end date beside
+      their name.
+  - key: ENG-651
+    type: Story
+    summary: Alert when an administrator account still allows push approvals
+    status: Done
+    priority: Medium
+    labels: [security, follow-up]
+    description: |
+      ENG-639 showed that an account can slip back from key-only without anyone
+      noticing.
+
+      Acceptance criteria:
+
+      - Every night, the list of administrators is compared with the identity
+        provider's policies.
+      - Any administrator account that allows push approvals or one-time codes raises
+        a Lantern alert in `#team-security`.
+      - The alert names the account and the entitlement that makes it an
+        administrator.
+  - key: ENG-652
+    type: Task
+    summary: Remove leftover push and one-time code registrations from administrators
+    status: Done
+    priority: Low
+    labels: [security, tech-debt]
+    description: |
+      Accounts switched to key-only (ENG-622) still store the push and one-time code
+      registrations they had before, unused. A policy mistake like ENG-639 could bring
+      them back to life.
+
+      - Delete those registrations from every account on the key-only policy.
+      - Leave the three accounts covered by the PT26-04 risk acceptance alone until
+        they are enrolled.
+      - Check with ENG-651's nightly comparison that nothing was missed.
+  - key: ENG-653
+    type: Task
+    summary: Close PT26-04 now that every administrator signs in with keys
+    status: Done
+    priority: Medium
+    labels: [security, vuln]
+    description: |
+      With ENG-654 done, the cause of PT26-04 is gone: no production administrator can
+      sign in with push approvals.
+
+      - Attach the enrolment list and an export of the identity provider's policies to
+        the finding.
+      - Close the risk acceptance raised in ENG-637, and remove the managed-laptop
+        limit from ENG-638 on the three accounts.
+      - Update the penetration test summary for engineering leads and the leadership
+        team.
+    comments:
+      - "Callum: Policy export and enrolment evidence attached to the finding. It closes as soon as ENG-654 is done, and with it the last high or medium finding from the 2026 test."
+  - key: ENG-654
+    type: Task
+    summary: Enrol every production administrator
+    status: Done
+    priority: Highest
+    labels: [security]
+    description: |
+      The tracking task for the epic. Done when the nightly list from ENG-617 shows
+      every production administrator with two Security-issued keys enrolled and
+      key-only sign-in, with no exceptions.
+
+      - Enrol the three remaining remote administrators, two in Payouts and one in
+        Ledger, now that their keys have arrived.
+      - Confirm with each team lead that their list is complete.
+      - Hand the final list to Security to close PT26-04 (ENG-653).
+    comments:
+      - "Nadia: Keys have reached all three remote administrators, two in Payouts and one in Ledger. Their enrolment calls are booked for Monday."
+      - "Callum: Every production administrator is on keys. Closing."
