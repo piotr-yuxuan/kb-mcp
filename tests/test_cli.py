@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
 
+from atlassian_offline_mcp import commands
 from atlassian_offline_mcp.cli import main
 
 if TYPE_CHECKING:
@@ -27,12 +29,26 @@ def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     return scratch
 
 
-def test_help_lists_the_subcommands(capsys: CaptureFixture[str]) -> None:
-    """The subcommands found in the commands package are offered."""
-    with pytest.raises(SystemExit) as stopped:
-        main(["--help"])
+def test_help_lists_the_subcommands(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Every module of the commands package is offered, except shared private ones."""
+    (tmp_path / "extra.py").write_text(
+        "def register(subparsers):\n"
+        "    subparsers.add_parser('extra', help='a command added by a module')\n",
+        "utf-8",
+    )
+    (tmp_path / "_shared.py").write_text("SHARED = True\n", "utf-8")
+    monkeypatch.setattr(commands, "__path__", [*commands.__path__, str(tmp_path)])
+    try:
+        with pytest.raises(SystemExit) as stopped:
+            main(["--help"])
+    finally:
+        sys.modules.pop(f"{commands.__name__}.extra", None)
     assert stopped.value.code == 0
-    assert "check" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "check" in out
+    assert "a command added by a module" in out
 
 
 def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture[str]) -> None:

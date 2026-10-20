@@ -20,7 +20,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         description="An offline mirror of Confluence and Jira Cloud, served over MCP.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True, metavar="command")
-    for module in sorted(pkgutil.iter_modules(commands.__path__), key=lambda found: found.name):
-        importlib.import_module(f"{commands.__name__}.{module.name}").register(subparsers)
+    # A module whose name begins with _ is shared by commands, not one of them.
+    found = sorted(module.name for module in pkgutil.iter_modules(commands.__path__))
+    for name in (name for name in found if not name.startswith("_")):
+        importlib.import_module(f"{commands.__name__}.{name}").register(subparsers)
     arguments = parser.parse_args(argv)
     return int(arguments.run(arguments))
