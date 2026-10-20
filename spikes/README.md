@@ -8,21 +8,21 @@ sandbox first, then on a real site.
 
 ## 1. Prepare the sandbox
 
-**Jira.** The sandbox site has no Jira yet. Add Jira (Free plan) to the site, then
-create a project with the key `PRB` and three issues. In the first issue, paste an
-image into the description.
+**Jira.** Add Jira (a Free plan) to the site, with a space of key `PRB` that holds a
+few issues. The seed script below gives one of them an image in its description.
 
 **Confluence.** `spikes/seed_sandbox.py` creates these pages through the REST API,
-all but the Jira issues macro, which needs Jira on the site first. Run it through sops,
-so the token reaches that one process:
+all but the Jira table. Running it again changes nothing. Run it through sops, so the
+token reaches that one process:
 
 ```bash
 sops exec-env <credentials file> 'uv run spikes/seed_sandbox.py --space MFS --issue PRB-1'
 ```
 
-`--issue` gives that issue an image in its description. Insert the Jira issues table by
-hand: `/jira` in the editor now adds a Smart Link table, which the probe reads as well
-as the classic Jira issues macro. Publish the page afterwards.
+Insert the Jira table by hand on *Probe complex*, with `/jira` in the editor, then
+publish the page. Since April 2026, `/jira` adds a Smart Link table. The classic Jira
+issues macro, written in storage format, renders only an error ("Unable to locate Jira
+server") unless it points at a Data Center site; the probe compares it word for word.
 
 The pages, to create by hand otherwise, in any space:
 1. **Probe innermost**: an Excerpt macro around one sentence, then an uploaded image
@@ -32,7 +32,7 @@ The pages, to create by hand otherwise, in any space:
 3. **Probe complex**, with:
    - an Include page macro showing *Probe middle*, which nests two levels deep;
    - an Excerpt include macro showing *Probe innermost*;
-   - a Jira issues macro in table mode, with the JQL `project = PRB ORDER BY key`;
+   - a Jira table inserted with `/jira`, with the JQL `project = PRB ORDER BY key`;
    - a Page properties report on the label `probe-props`;
    - a Children display macro;
    - an Info panel, a Code block, an Expand with text inside, and a table of three rows
@@ -52,8 +52,9 @@ In your usual Chrome, signed in, open these addresses on the site, with `<id>` t
 of the most complex page:
 1. `/wiki/api/v2/spaces?limit=1` and `/rest/api/3/myself` show JSON.
 2. `/wiki/api/v2/pages/<id>?body-format=view`: in `body.view.value`, Cmd-F finds a
-   sentence from the innermost include. A Jira table is not there: the browser draws
-   it, and steps 3 and 4 read it instead.
+   sentence from the innermost include, and an issue key of the Jira table, which REST
+   renders as a plain table. A page properties report shows only a placeholder there;
+   the probe checks it through its query.
 3. `/wiki/api/v2/pages/<id>?body-format=storage` holds the Jira table's JQL: in the
    `jql` of a `data-datasource` attribute for a table inserted with `/jira`, or in the
    `jqlQuery` parameter of an older Jira issues macro.
@@ -108,13 +109,14 @@ counts both.
 |---|---|
 | `sign-in` | Seconds until REST answered from inside the signed-in page |
 | `<carrier>: <read>` | Status, media type, bytes and milliseconds of one read through one carrier: `httpx` (no browser), `request context` (Playwright) or `in-page fetch` |
-| `page-N: macro <name>` | How many of the page's macros of that kind have output in the REST `view` body; a third-party macro shows as `custom-N` |
-| `page-N: words` | The share of the words shown in the browser that the `view` body holds; the target is 98% |
-| `page-N: tables`, `page-N: images` | Tables and images in each; attachment images are compared at full size, external images are counted apart |
-| `page-N: jql N`, `cql N`, `key N` | A dynamic table's query run over REST (a JQL search, a CQL search, or the one issue read): how many of its results the browser shows, and how many the macro's own output in the `view` body holds. No result over REST is a FAIL, since nothing is compared |
-| `page-N: timing` | REST reads against a full render in the browser |
+| `page-N: macro <name>` | How many of the page's own macros of that kind have output in the REST `view` body (one nested from an included page is not counted again); a third-party macro shows as `custom-N`, a Smart Link list as `jira-datasource` or `smart-link-list` |
+| `page-N: words` | The share of the words shown in the browser that the `view` body holds, outside dynamic tables (the Smart Link table of Jira issues, the page properties report) and excerpt include headers; it passes at 98% |
+| `page-N: tables`, `page-N: images` | Tables and images in each. Attachment images outside dynamic tables are compared at full size; external images are counted apart, and images inside collapsed expands are loaded by opening them |
+| `page-N: dynamic tables` | Dynamic tables in the browser against those with a query read on this page: more in the browser means a table from an included page, which nothing compares |
+| `page-N: jql N`, `cql N`, `key N` | A query run over REST (a JQL search, a CQL search, or the one issue read): how many of its results the browser shows in that table, and how many the macro's own output in the `view` body holds. No result over REST is a FAIL, since nothing is compared |
+| `page-N: timing` | REST reads against the browser's first render, before the probe opens expands and scrolls |
 | `issue: …` | The issue over REST, the images of its rendered description, and its first image downloaded |
-| `tls: public CA bundle` | A FAIL means TLS inspection; the probe verifies with your system's certificates anyway |
+| `tls: public CA bundle` | A FAIL means a certificate that the public bundle cannot verify, the mark of TLS inspection; no connection is inconclusive. The probe's reads verify with your system's certificates anyway |
 
 The report holds no title, text, address, id or cookie, so it can leave the machine.
 Read it before copying it anyway. Plan 001's outcome table says what each result
