@@ -1,0 +1,13 @@
+# Encrypted secrets, such as atlassian-test-credientials.sops.json, stay local.
+*.sops*
+*.gpg
+.env*
+
+# Worktrees of plans.
+.worktree/
+
+# Python caches.
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
