@@ -1,5 +1,7 @@
 line-length = 100
-target-version = "py312"
+target-version = "py314"
+# The spikes are standalone scripts that declare Python 3.12 inline; they stay as merged.
+per-file-target-version = { "spikes/**" = "py312" }
 
 [lint]
 select = ["ALL"]
