@@ -18,11 +18,14 @@ IDENTIFIER = re.compile(r"[A-Za-z0-9_-]+")
 SPACE_KEY = re.compile(r"~?[A-Za-z0-9]+")
 PROJECT_KEY = re.compile(r"[A-Z][A-Z0-9_]+")
 ISSUE_KEY = re.compile(r"[A-Z][A-Z0-9_]+-[0-9]+")
+# A path on the site, never another host's: one slash, no second one, no backslash.
+SITE_PATH = re.compile(r"/(?![/\\])[^\s\\]*")
 
 
-def _require(pattern: re.Pattern[str], value: str, what: str) -> None:
+def _require(pattern: re.Pattern[str], value: str, name: str) -> None:
+    # The message names the field and the rule, never the value, which is content.
     if not pattern.fullmatch(value):
-        message = f"not {what}: {value!r}"
+        message = f"{name}: does not match {pattern.pattern}"
         raise ValueError(message)
 
 
@@ -44,8 +47,8 @@ class Space:
 
     def __post_init__(self) -> None:
         """Refuse an id or a key that could not name a folder."""
-        _require(IDENTIFIER, self.id, "an id")
-        _require(SPACE_KEY, self.key, "a space key")
+        _require(IDENTIFIER, self.id, "id")
+        _require(SPACE_KEY, self.key, "key")
 
 
 @dataclass(frozen=True)
@@ -60,10 +63,8 @@ class Attachment:
 
     def __post_init__(self) -> None:
         """Refuse an id that could not name a file, and a download off the site."""
-        _require(IDENTIFIER, self.id, "an id")
-        if not self.download.startswith("/") or self.download.startswith("//"):
-            message = f"not a site-relative path: {self.download!r}"
-            raise ValueError(message)
+        _require(IDENTIFIER, self.id, "id")
+        _require(SITE_PATH, self.download, "download")
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,7 @@ class Document:
 
     def __post_init__(self) -> None:
         """Refuse an id that could not name a folder."""
-        _require(IDENTIFIER, self.id, "an id")
+        _require(IDENTIFIER, self.id, "id")
 
     @property
     def revision(self) -> str:
@@ -114,6 +115,11 @@ class ConfluenceDocument(Document):
     space_id: str
     version: int
     status: str  # current, archived, trashed, and so on
+
+    def __post_init__(self) -> None:
+        """Refuse an id or a space id that could not name a folder or a listing."""
+        super().__post_init__()
+        _require(IDENTIFIER, self.space_id, "space_id")
 
     @property
     def revision(self) -> str:
@@ -154,8 +160,8 @@ class Issue(Document):
     def __post_init__(self) -> None:
         """Refuse an id, a key or a project key that could not name a file."""
         super().__post_init__()
-        _require(ISSUE_KEY, self.key, "an issue key")
-        _require(PROJECT_KEY, self.project, "a project key")
+        _require(ISSUE_KEY, self.key, "key")
+        _require(PROJECT_KEY, self.project, "project")
 
 
 @dataclass(frozen=True)

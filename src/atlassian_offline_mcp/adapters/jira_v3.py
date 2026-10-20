@@ -30,18 +30,20 @@ COMMENTS = "comments.json"
 
 def person(fields: Fields) -> Person:
     """Read a user; the email address, when there is one, is left behind."""
-    return Person(fields.text("accountId"), fields.optional_text("displayName"))
+    with fields.refusals():
+        return Person(fields.text("accountId"), fields.optional_text("displayName"))
 
 
 def attachment(fields: Fields) -> Attachment:
-    """Read an attachment; its file is the path of its ``content`` address."""
-    return Attachment(
-        fields.text("id"),
-        fields.text("filename"),
-        fields.text("mimeType"),
-        fields.integer("size"),
-        urlsplit(fields.text("content")).path,
-    )
+    """Read an attachment; its file is at the path of its ``content`` address."""
+    with fields.refusals():
+        return Attachment(
+            fields.text("id"),
+            fields.text("filename"),
+            fields.text("mimeType"),
+            fields.integer("size"),
+            urlsplit(fields.text("content")).path,
+        )
 
 
 def issue(fields: Fields) -> Issue:
@@ -51,41 +53,46 @@ def issue(fields: Fields) -> Issue:
     assignee = values.optional_object("assignee")
     parent = values.optional_object("parent")
     key = fields.text("key")
-    return Issue(
-        id=fields.text("id"),
-        title=values.text("summary"),
-        author=None if reporter is None else person(reporter),
-        created=values.time("created"),
-        updated=values.time("updated"),
-        url=f"/browse/{key}",
-        labels=values.texts("labels"),
-        key=key,
-        project=values.object("project").text("key"),
-        issue_type=values.object("issuetype").text("name"),
-        status=values.object("status").text("name"),
-        assignee=None if assignee is None else person(assignee),
-        parent=None if parent is None else parent.text("key"),
-    )
+    with fields.refusals():
+        return Issue(
+            id=fields.text("id"),
+            title=values.text("summary"),
+            author=None if reporter is None else person(reporter),
+            created=values.time("created"),
+            updated=values.time("updated"),
+            url=f"/browse/{key}",
+            labels=values.texts("labels"),
+            key=key,
+            project=values.object("project").text("key"),
+            issue_type=values.object("issuetype").text("name"),
+            status=values.object("status").text("name"),
+            assignee=None if assignee is None else person(assignee),
+            parent=None if parent is None else parent.text("key"),
+        )
 
 
 def comment(fields: Fields) -> Comment:
     """Read a comment fetched with ``expand=renderedBody``."""
     author = fields.optional_object("author")
-    return Comment(
-        fields.text("id"),
-        None if author is None else person(author),
-        fields.time("created"),
-        fields.optional_text("renderedBody") or "",
-    )
+    with fields.refusals():
+        return Comment(
+            fields.text("id"),
+            None if author is None else person(author),
+            fields.time("created"),
+            fields.text("renderedBody"),
+        )
 
 
 def snapshot(responses: Mapping[str, object]) -> Snapshot:
-    """Read an issue from the responses that its snapshot keeps."""
+    """Read an issue from the responses that its snapshot keeps.
+
+    An issue without a description has a null one among its rendered fields; the
+    rendered fields themselves are always there when they were asked for.
+    """
     fields = Fields(responses.get(ISSUE), ISSUE)
-    rendered = fields.optional_object("renderedFields")
     return Snapshot(
         issue(fields),
-        (rendered.optional_text("description") if rendered else None) or "",
+        fields.object("renderedFields").optional_text("description") or "",
         tuple(attachment(item) for item in fields.object("fields").objects("attachment")),
         tuple(comment(item) for item in Fields.each(responses.get(COMMENTS), COMMENTS)),
     )
