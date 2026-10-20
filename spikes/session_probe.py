@@ -81,6 +81,8 @@ BUILT_IN_MACROS = frozenset(
         "profile", "recently-updated", "roadmap", "section", "status",
         "tasks-report-macro", "tip", "toc", "toc-zone", "view-file", "viewpdf",
         "warning", "widget",
+        # Not a macro: a Smart Link table of Jira issues, which /jira now inserts.
+        "jira-datasource",
     }
 )  # fmt: skip
 # (macro, parameter) pairs whose text is a query that a dynamic macro runs.
@@ -239,13 +241,22 @@ class StorageScanner(HTMLParser):
         return Counter(use.name for use in self.uses)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        """Open a macro, or start reading one of its parameters."""
+        """Open a macro, start reading one of its parameters, or read a Jira table's JQL."""
         attributes = dict(attrs)
         if tag == "ac:structured-macro":
             self._open_macros.append((attributes.get("ac:name") or "", []))
         elif tag == "ac:parameter" and self._open_macros:
             self._parameter = attributes.get("ac:name")
             self._parameter_text = []
+        elif tag == "a" and attributes.get("data-datasource"):
+            # A Smart Link table: its JSON parameters hold the JQL it shows.
+            self.uses.append(MacroUse("jira-datasource", ""))
+            try:
+                jql = json.loads(attributes["data-datasource"] or "")["parameters"]["jql"]
+            except (ValueError, KeyError, TypeError):
+                return
+            if isinstance(jql, str):
+                self.queries.append(Query("jql", jql))
 
     def handle_endtag(self, tag: str) -> None:
         """Close a macro, or keep a parameter that holds a query."""

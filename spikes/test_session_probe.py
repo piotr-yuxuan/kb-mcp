@@ -107,6 +107,19 @@ def test_compare_page_finds_a_macro_rendered_inline_without_a_wrapper() -> None:
     )
 
 
+def test_storage_scanner_reads_the_jql_of_a_smart_link_table() -> None:
+    """The /jira command inserts a Smart Link table, whose JSON parameters hold its JQL."""
+    storage = (
+        '<a href="https://example.invalid/issues/" data-card-appearance="block" data-datasource='
+        '"{&quot;id&quot;:&quot;d8&quot;,&quot;parameters&quot;:{&quot;jql&quot;:'
+        '&quot;project = PRB ORDER BY key&quot;},&quot;views&quot;:[]}">x</a>'
+        '<a data-datasource="not json">y</a>'
+    )
+    scanned = StorageScanner.parse(storage)
+    assert scanned.macros == Counter({"jira-datasource": 2})
+    assert scanned.queries == [Query("jql", "project = PRB ORDER BY key")]
+
+
 def test_view_scanner_reads_text_tables_images_and_macro_output() -> None:
     """Script text is not visible; emoticons are not images; an empty macro has no output."""
     scanned = ViewScanner.parse(VIEW)
