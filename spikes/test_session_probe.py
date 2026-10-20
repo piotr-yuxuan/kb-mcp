@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import stat
 from collections import Counter
@@ -15,6 +16,7 @@ from playwright.sync_api import Error as PlaywrightError
 
 from spikes.session_probe import (
     JSON,
+    SCROLL_JS,
     VECTOR,
     Check,
     ImageRef,
@@ -28,16 +30,22 @@ from spikes.session_probe import (
     compare_page,
     coverage,
     disable_password_saving,
+    first_image,
     image_size,
     macro_labels,
+    main,
     media_type,
     probe_carrier,
     probe_issue,
     read_check,
     refuse_plain_http,
+    render_page,
     render_report,
     run_query,
+    run_with_saved_cookies,
     save_cookies,
+    session_client,
+    shown,
     words,
 )
 
@@ -45,6 +53,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 OWNER_ONLY = 0o600
+# Two unsettled polls (no area, an empty shell), the first sight of the text, then the
+# three unchanged polls that settle it.
+SCROLL_AFTER_POLLS = 6
 
 STORAGE = """<p>Intro</p>
 <ac:structured-macro ac:name="expand" ac:macro-id="1"><ac:rich-text-body>
@@ -138,7 +149,7 @@ def test_storage_scanner_reads_the_jql_of_a_smart_link_table() -> None:
         '<a data-datasource="not json">y</a>'
     )
     scanned = StorageScanner.parse(storage)
-    assert scanned.macros == Counter({"jira-datasource": 2})
+    assert scanned.macros == Counter({"jira-datasource": 1, "smart-link-list": 1})
     assert scanned.queries == [Query("jql", "project = PRB ORDER BY key", "jira-datasource")]
 
 
@@ -319,18 +330,29 @@ def test_compare_page_flags_query_results_the_browser_does_not_show() -> None:
     )
 
 
-def test_words_allow_a_few_interface_labels_whatever_the_page_length() -> None:
-    """Up to five words beyond REST pass; a sixth fails a short page below 98%."""
-    view = "<p>" + " ".join(f"word{index}" for index in range(20)) + "</p>"
-    five = Rendered(f"{view[3:-4]} untitled excerpt probe innermost header", tables=0, images=())
-    six = Rendered(f"{view[3:-4]} untitled excerpt probe innermost header extra", 0, ())
-    passes = compare_page("page-1", evidence("", view, five))
-    fails = compare_page("page-1", evidence("", view, six))
-    assert Check("page-1: words", passed=True, detail="80.0% of 25 in view, 5 missing") in passes
-    assert Check("page-1: words", passed=False, detail="76.9% of 26 in view, 6 missing") in fails
+def test_words_fail_below_98_percent_whatever_the_page_length() -> None:
+    """No fixed allowance: one missing word fails a short page, 15 of 1,000 pass."""
+    short = "<p>" + " ".join(f"word{index}" for index in range(20)) + "</p>"
+    one_more = Rendered(f"{short[3:-4]} extra", tables=0, images=())
+    long = "<p>" + " ".join(f"word{index}" for index in range(985)) + "</p>"
+    fifteen = Rendered(long[3:-4] + "".join(f" new{index}" for index in range(15)), 0, ())
+    twenty_five = Rendered(long[3:-4] + "".join(f" new{index}" for index in range(25)), 0, ())
+    words_check = "page-1: words"
+    checks = {
+        name: {check.name: check for check in compare_page("page-1", page)}[words_check]
+        for name, page in {
+            "short": evidence("", short, one_more),
+            "fifteen": evidence("", long, fifteen),
+            "twenty-five": evidence("", long, twenty_five),
+        }.items()
+    }
+    assert not checks["short"].passed
+    assert checks["fifteen"].passed
+    assert checks["fifteen"].detail == "98.5% of 1000 in view, 15 missing"
+    assert not checks["twenty-five"].passed
 
 
-def test_query_results_count_in_view_only_inside_their_macro() -> None:
+def test_a_report_drawn_empty_fails_even_when_its_titles_appear_elsewhere() -> None:
     """Titles listed by another macro, such as children display, are not the report's."""
     storage = (
         '<ac:structured-macro ac:name="detailssummary"><ac:parameter ac:name="cql">'
@@ -340,17 +362,23 @@ def test_query_results_count_in_view_only_inside_their_macro() -> None:
         '<div data-macro-name="children"><a>Properties 1</a> <a>Properties 2</a></div>'
         '<div data-macro-name="detailssummary"><p>Generating the report</p></div>'
     )
-    rendered = Rendered("Properties 1 Properties 2 Generating the report", tables=0, images=())
-    page = evidence(
-        storage,
-        view,
-        rendered,
-        results=(
-            (Query("cql", 'label = "x"', "detailssummary"), ("Properties 1", "Properties 2")),
-        ),
+    results = ((Query("cql", 'label = "x"', "detailssummary"), ("Properties 1", "Properties 2")),)
+    empty = Rendered("Properties 1 Properties 2", tables=0, images=())
+    drawn = Rendered("Properties 1 Properties 2", 1, (), dynamic_text="Properties 1 Properties 2")
+    reports = [
+        next(
+            check
+            for check in compare_page("page-1", evidence(storage, view, rendered, results=results))
+            if check.name == "page-1: cql 1"
+        )
+        for rendered in (empty, drawn)
+    ]
+    assert reports[0] == Check(
+        "page-1: cql 1",
+        passed=False,
+        detail="2 over REST; of the first 2, 0 shown in the browser, 0 in view",
     )
-    report = next(check for check in compare_page("page-1", page) if check.name == "page-1: cql 1")
-    assert report.detail == "2 over REST; of the first 2, 2 shown in the browser, 0 in view"
+    assert reports[1].passed
 
 
 def test_compare_page_leaves_external_images_out_of_the_image_check() -> None:
@@ -571,3 +599,195 @@ def test_plain_http_requests_are_refused() -> None:
     with pytest.raises(httpx.UnsupportedProtocol):
         refuse_plain_http(httpx.Request("GET", "http://example.invalid/x"))
     refuse_plain_http(httpx.Request("GET", "https://example.invalid/x"))
+
+
+def test_titles_match_as_whole_words() -> None:
+    """A title is shown only as itself: "Plan 1" is not in "Plan 10", "Home" not in "Homepage"."""
+    assert shown("cql", ["Plan 1"], "Plan 10 Plan 11") == 0
+    assert shown("cql", ["Home"], "Welcome to the Homepage") == 0
+    assert shown("cql", ["Plan 1"], "See Plan 1.") == 1
+
+
+def test_a_classic_jira_macro_is_compared_word_for_word() -> None:
+    """With no browser selector for it, a classic macro's text counts as the page's own."""
+    storage = (
+        '<ac:structured-macro ac:name="jira"><ac:parameter ac:name="key">ABC-7</ac:parameter>'
+        "</ac:structured-macro>"
+    )
+    view = (
+        "<p>Release notes for the quarter.</p><span data-macro-name='jira'><a>ABC-7</a>"
+        " <span>Fix the login timeout</span> <span>In Progress</span></span>"
+    )
+    text = "Release notes for the quarter. ABC-7 Fix the login timeout In Progress"
+    checks = {
+        check.name: check
+        for check in compare_page("page-1", evidence(storage, view, Rendered(text, 0, ())))
+    }
+    assert checks["page-1: words"].passed
+    assert checks["page-1: macro jira"].passed
+
+
+def test_an_include_nested_from_another_page_is_not_counted_twice() -> None:
+    """The page's one include has output; the include inside it belongs to the included page."""
+    storage = '<ac:structured-macro ac:name="include"></ac:structured-macro>'
+    view = '<div data-macro-name="include"><div data-macro-name="include"><p>Deep</p></div></div>'
+    checks = compare_page("page-1", evidence(storage, view, None))
+    assert (
+        Check("page-1: macro include", passed=True, detail="1 of 1 with output in view") in checks
+    )
+
+
+def test_images_inside_dynamic_tables_belong_to_the_tables() -> None:
+    """Avatars and issue-type icons in a Smart Link table are not the page's images."""
+    view = (
+        '<table class="jiraWorkItemMacroListViewTable"><tr><td><img src="/avatar.png"'
+        ' width="48" height="48"></td></tr></table>'
+    )
+    assert ViewScanner.parse(view).images == []
+
+
+def test_a_small_attachment_still_counts_and_odd_sizes_do_not_crash() -> None:
+    """An attachment is downloaded at full size whatever its declared size."""
+    view = (
+        '<img data-linked-resource-type="attachment" data-linked-resource-id="5"'
+        ' data-linked-resource-container-id="2" width="30" height="30">'
+        '<img src="/x.png" width="²" height="1">'
+    )
+    assert ViewScanner.parse(view).images == [
+        ImageRef("attachment", "2", "5"),
+        ImageRef("unmapped"),
+    ]
+
+
+def test_a_dynamic_table_without_a_query_of_its_own_fails() -> None:
+    """A table from an included page has no query here, so nothing else compares it."""
+    storage = (
+        '<ac:structured-macro ac:name="detailssummary"><ac:parameter ac:name="cql">'
+        'label = "x"</ac:parameter></ac:structured-macro>'
+    )
+    rendered = Rendered("Text", tables=2, images=(), dynamic_text="A B", regions=2)
+    checks = compare_page("page-1", evidence(storage, "<p>Text</p>", rendered))
+    expected = Check(
+        "page-1: dynamic tables", passed=False, detail="2 in the browser, 1 with a query read"
+    )
+    assert expected in checks
+
+
+def snapshot(
+    text: str, dynamic: str = "", images: tuple[tuple[int, int], ...] = ()
+) -> dict[str, object]:
+    """Return a result of CONTENT_JS, as the browser gives it."""
+    return {
+        "text": text,
+        "dynamic": dynamic,
+        "regions": 1 if dynamic else 0,
+        "tables": 0,
+        "images": [list(size) for size in images],
+        "external": 0,
+    }
+
+
+class ScriptedPage:
+    """A browser page that returns scripted snapshots, the last one for ever."""
+
+    def __init__(self, snapshots: list[dict[str, object] | None]) -> None:
+        """Keep the snapshots to return, in order."""
+        self.snapshots = snapshots
+        self.calls: list[str] = []
+
+    def goto(self, url: str, timeout: float) -> None:
+        """Open nothing."""
+
+    def wait_for_timeout(self, timeout: float) -> None:
+        """Wait for nothing."""
+
+    def evaluate(self, script: str, argument: object) -> object:
+        """Record a scroll, or return the next content snapshot."""
+        del argument
+        if script == SCROLL_JS:
+            self.calls.append("scroll")
+            return 0
+        self.calls.append("content")
+        return self.snapshots.pop(0) if len(self.snapshots) > 1 else self.snapshots[0]
+
+
+def test_render_page_scrolls_once_settled_then_waits_for_the_images() -> None:
+    """An empty shell is not settled; the scroll follows a first settle, then images load."""
+    settled = snapshot("Page text")
+    loaded = snapshot("Page text", images=((640, 400),))
+    page = ScriptedPage([None, snapshot("  "), *[settled] * 4, *[loaded] * 4])
+    rendered, render_ms = render_page(page, "https://example.invalid", "1")  # type: ignore[arg-type]
+    assert rendered is not None
+    assert rendered.images == ((640, 400),)
+    assert page.calls.index("scroll") == SCROLL_AFTER_POLLS
+    assert page.calls.count("scroll") == 1
+    assert render_ms >= 0
+
+
+def test_render_page_waits_for_a_dynamic_table_to_fill() -> None:
+    """Rows arriving in a dynamic table after the text has settled reset the wait."""
+    page = ScriptedPage(
+        [
+            *[snapshot("Text")] * 4,
+            snapshot("Text", "Key Summary"),
+            *[snapshot("Text", "Key Summary A-1 A-2")] * 4,
+        ]
+    )
+    rendered, _ = render_page(page, "https://example.invalid", "1")  # type: ignore[arg-type]
+    assert rendered is not None
+    assert rendered.dynamic_text == "Key Summary A-1 A-2"
+
+
+def test_the_session_client_refuses_plain_http_before_any_connection() -> None:
+    """The refusal is wired into the client, so a redirect to plain HTTP never leaves."""
+    with (
+        session_client("https://example.invalid", []) as client,
+        pytest.raises(httpx.UnsupportedProtocol),
+    ):
+        client.get("http://example.invalid/x")
+
+
+def test_main_refuses_arguments_that_could_not_stay_out_of_the_report() -> None:
+    """A user name, plain HTTP or an odd page id stops the probe before any request."""
+    for arguments in (
+        ["--site", "http://example.atlassian.net", "--page", "1"],
+        ["--site", "https://user@example.atlassian.net", "--page", "1"],
+        ["--site", "https://example.atlassian.net", "--page", "²"],
+        ["--site", "https://example.atlassian.net", "--page", "1", "--issue", "ABC-²"],
+    ):
+        with pytest.raises(SystemExit):
+            main(arguments)
+
+
+def test_a_missing_saved_session_fails_without_a_request(tmp_path: Path) -> None:
+    """With no cookie file from an earlier sign-in, the next-day check reports it at once."""
+    arguments = argparse.Namespace(profile=tmp_path, site="https://example.invalid", page=["1"])
+    checks = run_with_saved_cookies(arguments, "project = ABC")
+    assert checks == [Check("saved session", passed=False, detail="error FileNotFoundError")]
+
+
+def test_ids_that_are_not_numbers_never_reach_a_path() -> None:
+    """A listing's odd attachment id, or a page's odd container id, is not used."""
+    assert first_image([{"id": "../x", "mediaType": "image/png"}], "mediaType") is None
+    good = {"id": "att5", "mediaType": "image/png"}
+    assert first_image([good], "mediaType") == good
+    view = (
+        '<img data-linked-resource-type="attachment" data-linked-resource-id="5"'
+        ' data-linked-resource-container-id="2/../x">'
+    )
+    assert ViewScanner.parse(view).images == [ImageRef("unmapped")]
+
+
+def test_a_failed_query_reports_no_query_text() -> None:
+    """The failure branch, too, holds no part of the query."""
+    storage = (
+        '<ac:structured-macro ac:name="jira"><ac:parameter ac:name="jqlQuery">'
+        "project = SECRETPROJ</ac:parameter></ac:structured-macro>"
+    )
+    page = evidence(
+        storage,
+        "<p>x</p>",
+        Rendered("x", 0, ()),
+        results=((Query("jql", "project = SECRETPROJ", "jira"), None),),
+    )
+    assert "secretproj" not in render_report(compare_page("page-1", page)).casefold()

@@ -65,9 +65,6 @@ MAX_IMAGES_PER_PAGE = 10
 MAX_QUERY_RESULTS = 50
 COMPARED_RESULTS = 20
 WORD_COVERAGE = 0.98
-# Words the browser may show beyond REST, whatever the page's length: fixed labels such
-# as an excerpt include's header ("Untitled excerpt" and the source page's title).
-MISSING_WORDS_ALLOWED = 5
 MIN_IMAGE_SIDE = 32
 # The pixel size given to an SVG, which scales to any size and has no pixels to compare.
 VECTOR = (0, 0)
@@ -92,8 +89,8 @@ BUILT_IN_MACROS = frozenset(
         "profile", "recently-updated", "roadmap", "section", "status",
         "tasks-report-macro", "tip", "toc", "toc-zone", "view-file", "viewpdf",
         "warning", "widget",
-        # Not a macro: a Smart Link table of Jira issues, which /jira now inserts.
-        "jira-datasource",
+        # Not macros: Smart Link lists, of Jira issues (which /jira now inserts) or other.
+        "jira-datasource", "smart-link-list",
     }
 )  # fmt: skip
 # (macro, parameter) pairs whose text is a query that a dynamic macro runs.
@@ -102,16 +99,27 @@ QUERY_PARAMETERS = {
     ("jira", "key"): "key",
     ("detailssummary", "cql"): "cql",
 }
-# A Smart Link table of Jira issues, which /jira inserts since April 2026. It is no
-# macro, but the report names it as one.
+# A Smart Link table of Jira issues, which /jira inserts since April 2026, and a Smart
+# Link list of anything else. They are no macros, but the report names them as such.
 DATASOURCE = "jira-datasource"
-# Macros that draw a table from a query: their text is compared by query, not by word.
-DYNAMIC_MACROS = frozenset({macro for macro, _ in QUERY_PARAMETERS} | {DATASOURCE})
-# Where the browser draws those tables: the Smart Link table, and the page properties
-# report's table.
-DYNAMIC_SELECTORS = (
-    "[data-testid='renderer-datasource-table']",
-    "table:has([data-testid='page-properties-report-table-head'])",
+OTHER_DATASOURCE = "smart-link-list"
+# Tables drawn from a query, compared by query and not word by word, each with where the
+# browser draws it. A macro joins only once its browser selector has been observed. The
+# classic jira macro is compared word by word: since April 2026 it renders an error
+# unless it points at a Data Center site, and its browser rendering is unobserved.
+DYNAMIC_TABLES = {
+    DATASOURCE: "[data-testid='renderer-datasource-table']",
+    "detailssummary": "table:has([data-testid='page-properties-report-table-head'])",
+}
+# Hosts that serve a page's attachments to the browser, besides the site itself.
+MEDIA_HOSTS = ("media.atlassian.com", "media-cdn.atlassian.com")
+# An excerpt include: its header (the source's title, "Untitled excerpt") is interface,
+# and its body is the included page's own renderer document.
+EXCERPT_INCLUDE = "[data-testid='excerpt-include-component']"
+# The toggle of a collapsed expand, whose body is hidden until opened.
+EXPAND_TOGGLES = (
+    "[data-node-type='expand'] > button[aria-expanded='false'],"
+    " [data-node-type='nestedExpand'] > button[aria-expanded='false']"
 )
 VOID_ELEMENTS = frozenset(
     {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
@@ -145,17 +153,20 @@ CONTENT_SELECTORS = (
     "main",
 )
 
-# Reads the content area. Its text is that of visible text nodes outside controls: an
-# image's "Open" button or a table's sort button is interface, not content. An image
-# served from a host other than the site's or Atlassian's is external: the mirror links
-# to it and never downloads it.
-CONTENT_JS = """([selectors, dynamicSelectors, minimum]) => {
+# Reads the content area. Its text is that of visible text nodes outside controls (an
+# image's "Open" button, a table's sort button) and outside excerpt include headers.
+# Text and images inside dynamic tables are set apart: avatars and issue-type icons are
+# the tables' own. An image served by a host other than the site's or Atlassian's media
+# hosts is external: the mirror links to it and never downloads it.
+CONTENT_JS = """([selectors, dynamicSelectors, mediaHosts, excerptInclude, minimum]) => {
   const controls = "button, [role='button'], [role='toolbar'], [aria-hidden='true']";
   const dynamic = dynamicSelectors.join(", ");
-  const external = (image) => {
+  const header = (element) => element.closest(excerptInclude)
+    && !element.closest(`${excerptInclude} .ak-renderer-document`);
+  const local = (image) => {
     const url = new URL(image.currentSrc || image.src, location.href);
-    return url.protocol.startsWith("http") && url.host !== location.host
-      && !url.host.endsWith(".atlassian.com") && !url.host.endsWith(".atl-paas.net");
+    return !url.protocol.startsWith("http") || url.host === location.host
+      || mediaHosts.some((host) => url.host === host || url.host.endsWith(`.${host}`));
   };
   for (const selector of selectors) {
     const area = document.querySelector(selector);
@@ -165,27 +176,31 @@ CONTENT_JS = """([selectors, dynamicSelectors, minimum]) => {
       const dynamicParts = [];
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const parent = node.parentElement;
-        if (parent && parent.checkVisibility() && !parent.closest(controls)) {
+        if (parent && parent.checkVisibility() && !parent.closest(controls) && !header(parent)) {
           (parent.closest(dynamic) ? dynamicParts : parts).push(node.textContent);
         }
       }
       const shown = [...area.querySelectorAll("img")]
+        .filter((image) => !image.closest(dynamic))
         .filter((image) => image.naturalWidth > minimum && image.naturalHeight > minimum);
-      const local = shown.filter((image) => !external(image));
+      const kept = shown.filter(local);
       return {text: parts.join(" "), dynamic: dynamicParts.join(" "),
+              regions: area.querySelectorAll(dynamic).length,
               tables: area.querySelectorAll("table").length,
-              images: local.map((image) => [image.naturalWidth, image.naturalHeight]),
-              external: shown.length - local.length};
+              images: kept.map((image) => [image.naturalWidth, image.naturalHeight]),
+              external: shown.length - kept.length};
     }
   }
   return null;
 }"""
 
-# Scrolls through the content area half a screen at a time, then back to the top: the
-# renderer fetches an image only once it nears the viewport.
-SCROLL_JS = """async ([selectors, pause, steps]) => {
+# Opens the collapsed expands, a toggle in the browser alone, then scrolls through the
+# content area half a screen at a time and back to the top: the renderer fetches an
+# image only once it nears the viewport, and never inside a collapsed expand.
+SCROLL_JS = """async ([selectors, toggles, pause, steps]) => {
   const area = selectors.map((selector) => document.querySelector(selector)).find(Boolean);
   if (!area) return 0;
+  for (const toggle of area.querySelectorAll(toggles)) toggle.click();
   let box = area;
   while (box && box !== document.body && !(box.scrollHeight > box.clientHeight
          && /(auto|scroll)/.test(getComputedStyle(box).overflowY))) {
@@ -240,8 +255,9 @@ class Rendered:
     tables: int
     images: tuple[tuple[int, int], ...]
     external_images: int = 0
-    # The text of the dynamic tables, apart from the rest.
+    # The text of the dynamic tables, apart from the rest, and how many tables there are.
     dynamic_text: str = ""
+    regions: int = 0
 
 
 @dataclass(frozen=True)
@@ -308,14 +324,16 @@ class StorageScanner(HTMLParser):
             self._parameter = attributes.get("ac:name")
             self._parameter_text = []
         elif tag == "a" and attributes.get("data-datasource"):
-            # A Smart Link table: its JSON parameters hold the JQL it shows.
-            self.uses.append(MacroUse(DATASOURCE, ""))
+            # A Smart Link list: a table of Jira issues when its JSON parameters hold JQL.
             try:
                 jql = json.loads(attributes["data-datasource"] or "")["parameters"]["jql"]
             except (ValueError, KeyError, TypeError):
-                return
+                jql = None
             if isinstance(jql, str):
+                self.uses.append(MacroUse(DATASOURCE, ""))
                 self.queries.append(Query("jql", jql, DATASOURCE))
+            else:
+                self.uses.append(MacroUse(OTHER_DATASOURCE, ""))
 
     def handle_endtag(self, tag: str) -> None:
         """Close a macro, or keep a parameter that holds a query."""
@@ -382,24 +400,22 @@ class ViewScanner(HTMLParser):
         """Count tables and images, and open elements and macro wrappers."""
         attributes = dict(attrs)
         classes = attributes.get("class") or ""
-        # An icon declares its small size, as the browser's count leaves icons out.
-        icon = all(
-            (attributes.get(side) or "x").isdigit()
+        linked = attributes.get("data-linked-resource-type") == "attachment"
+        # An icon declares a small size, as the browser's count leaves icons out; an
+        # attachment is downloaded at full size, so it is never taken for one.
+        icon = not linked and all(
+            PAGE_ID.fullmatch(attributes.get(side) or "")
             and int(attributes.get(side) or 0) <= MIN_IMAGE_SIDE
             for side in ("width", "height")
         )
         if tag == "table":
             self.tables += 1
-        elif tag == "img" and "emoticon" not in classes and not icon:
+        elif tag == "img" and "emoticon" not in classes and not icon and not self._dynamic():
             self._mark_output()
             container = attributes.get("data-linked-resource-container-id") or ""
             attachment = attributes.get("data-linked-resource-id") or ""
             # Ids go into request paths, so only well-formed ones are used.
-            if (
-                attributes.get("data-linked-resource-type") == "attachment"
-                and PAGE_ID.fullmatch(container)
-                and ATTACHMENT_ID.fullmatch(attachment)
-            ):
+            if linked and PAGE_ID.fullmatch(container) and ATTACHMENT_ID.fullmatch(attachment):
                 self.images.append(ImageRef("attachment", container, attachment))
             elif "confluence-external-resource" in classes:
                 self.images.append(ImageRef("external"))
@@ -428,7 +444,7 @@ class ViewScanner(HTMLParser):
         if self._skipped or not data.strip():
             return
         self.text_parts.append(data)
-        if not any(macro and macro.name in DYNAMIC_MACROS for _, macro in self._open):
+        if not self._dynamic():
             self.static_parts.append(data)
         self._mark_output(data)
 
@@ -437,6 +453,9 @@ class ViewScanner(HTMLParser):
         super().close()
         while self._open:
             self._close_innermost()
+
+    def _dynamic(self) -> bool:
+        return any(macro and macro.name in DYNAMIC_TABLES for _, macro in self._open)
 
     def _mark_output(self, text: str = "") -> None:
         for _, macro in self._open:
@@ -447,8 +466,10 @@ class ViewScanner(HTMLParser):
     def _close_innermost(self) -> str:
         tag, macro = self._open.pop()
         if macro is not None and macro.seen:
-            self.macros_with_output[macro.name] += 1
             self.macro_text[macro.name].extend(macro.text)
+            # A wrapper inside one of the same name comes from an included page.
+            if all(outer is None or outer.name != macro.name for _, outer in self._open):
+                self.macros_with_output[macro.name] += 1
         return tag
 
 
@@ -484,9 +505,11 @@ def macro_labels(names: Iterable[str]) -> dict[str, str]:
 
 
 def shown(kind: str, found: Iterable[str], text: str) -> int:
-    """Count the query results that a text shows: issue keys as words, titles as text."""
+    """Count the query results that a text shows: issue keys and titles as whole words."""
     if kind == "cql":
-        return sum(1 for title in found if title and title in text)
+        return sum(
+            1 for title in found if title and re.search(rf"(?<!\w){re.escape(title)}(?!\w)", text)
+        )
     return sum(1 for key in found if re.search(rf"\b{re.escape(key)}\b", text))
 
 
@@ -531,11 +554,19 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
     missing = sum(1 for rest in evidence.rest_images if rest is None)
     external = len(view.images) - len(local)
     missing_words = total - sum((rendered_words & static_words).values())
+    read = sum(1 for query in evidence.storage.queries if query.macro in DYNAMIC_TABLES)
     checks += [
         Check(
             f"{label}: words",
-            share >= WORD_COVERAGE or missing_words <= MISSING_WORDS_ALLOWED,
+            share >= WORD_COVERAGE,
             f"{share:.1%} of {total} in view, {missing_words} missing",
+        ),
+        # A dynamic table without a query of its own, from an included page for one, is
+        # compared by nothing else.
+        Check(
+            f"{label}: dynamic tables",
+            rendered.regions <= read,
+            f"{rendered.regions} in the browser, {read} with a query read",
         ),
         Check(
             f"{label}: tables",
@@ -564,7 +595,12 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
             nothing = Check(f"{label}: {query.kind} {index}", passed=False, detail="0 over REST")
             checks.append(nothing)
             continue
-        in_browser = shown(query.kind, first, f"{rendered.text} {rendered.dynamic_text}")
+        # A table with a browser selector is looked for in that table alone, so that an
+        # empty table fails even when its results appear elsewhere on the page.
+        if query.macro in DYNAMIC_TABLES:
+            in_browser = shown(query.kind, first, rendered.dynamic_text)
+        else:
+            in_browser = shown(query.kind, first, f"{rendered.text} {rendered.dynamic_text}")
         in_view = shown(query.kind, first, " ".join(view.macro_text[query.macro]))
         detail = f"{len(found)} over REST; of the first {len(first)}, "
         detail += f"{in_browser} shown in the browser, {in_view} in view"
@@ -753,29 +789,46 @@ def run_query(get: Get, query: Query, cql_context: str) -> tuple[str, ...] | Non
 
 
 def render_page(page: Page, site: str, page_id: str) -> tuple[Rendered | None, int]:
-    """Open a page in the browser and wait until its content area stops changing."""
+    """Open a page, let it settle, open its expands and scroll it, and let it settle again.
+
+    The time returned is that of the first render, before the probe's own scrolling.
+    """
     started = time.monotonic()
     page.goto(
         urljoin(site, f"/wiki/pages/viewpage.action?pageId={page_id}"),
         timeout=SETTLE_TIMEOUT_S * 1000,
     )
-    snapshot, previous, stable, settled_at, scrolled = None, None, 0, started, False
-    while stable < STABLE_POLLS and time.monotonic() - started < SETTLE_TIMEOUT_S:
+    content = [
+        CONTENT_SELECTORS,
+        list(DYNAMIC_TABLES.values()),
+        MEDIA_HOSTS,
+        EXCERPT_INCLUDE,
+        MIN_IMAGE_SIDE,
+    ]
+    snapshot, previous, stable, changed_at, render_ms = None, None, 0, started, None
+    while time.monotonic() - started < SETTLE_TIMEOUT_S:
         page.wait_for_timeout(SETTLE_POLL_MS)
-        snapshot = page.evaluate(CONTENT_JS, [CONTENT_SELECTORS, DYNAMIC_SELECTORS, MIN_IMAGE_SIDE])
-        if snapshot and not scrolled:
-            page.evaluate(SCROLL_JS, [CONTENT_SELECTORS, SCROLL_PAUSE_MS, MAX_SCROLL_STEPS])
-            scrolled = True
-            continue
-        # Settled once the text and the loaded images stop changing.
-        current = (len(snapshot["text"]), len(snapshot["images"])) if snapshot else None
-        if current is None or current != previous or current[0] == 0:
-            stable, previous, settled_at = 0, current, time.monotonic()
-        else:
-            stable += 1
-    render_ms = elapsed_ms(started) - elapsed_ms(settled_at)
-    if stable < STABLE_POLLS or snapshot is None:
-        return None, render_ms
+        snapshot = page.evaluate(CONTENT_JS, content)
+        # Settled once text, dynamic tables and loaded images stop changing; an empty
+        # area, the application's shell, never counts as settled.
+        shows = snapshot and (snapshot["text"].strip() or snapshot["dynamic"].strip())
+        current = (
+            (len(snapshot["text"]), len(snapshot["dynamic"]), snapshot["tables"],
+             len(snapshot["images"]))
+            if shows
+            else None
+        )  # fmt: skip
+        if current is None or current != previous:
+            stable, previous, changed_at = 0, current, time.monotonic()
+        elif (stable := stable + 1) >= STABLE_POLLS:
+            if render_ms is not None:
+                break
+            render_ms = round((changed_at - started) * 1000)
+            scroll = [CONTENT_SELECTORS, EXPAND_TOGGLES, SCROLL_PAUSE_MS, MAX_SCROLL_STEPS]
+            page.evaluate(SCROLL_JS, scroll)
+            stable = 0
+    else:
+        return None, elapsed_ms(started) if render_ms is None else render_ms
     images = tuple((int(width), int(height)) for width, height in snapshot["images"])
     rendered = Rendered(
         snapshot["text"],
@@ -783,6 +836,7 @@ def render_page(page: Page, site: str, page_id: str) -> tuple[Rendered | None, i
         images,
         int(snapshot["external"]),
         snapshot["dynamic"],
+        int(snapshot["regions"]),
     )
     return rendered, render_ms
 
@@ -986,13 +1040,28 @@ def run_with_saved_cookies(arguments: argparse.Namespace, jql: str) -> list[Chec
 
 
 def tls_check(site: str) -> Check:
-    """Show whether the public CA bundle verifies the site: a failure means TLS inspection."""
+    """Show whether the public CA bundle verifies the site.
+
+    Only a certificate that it cannot verify, the mark of TLS inspection, fails; no
+    connection is inconclusive.
+    """
     public = ssl.create_default_context(cafile=certifi.where())
-    with httpx.Client(timeout=HTTP_TIMEOUT_S, verify=public, trust_env=False) as client:
-        reply = attempt(httpx_get(client), urljoin(site, "/wiki/api/v2/spaces?limit=1"))
-    return Check(
-        "tls: public CA bundle", reply.status != 0, f"{reply.status} {reply.media_type or '-'}"
-    )
+    with httpx.Client(timeout=HTTP_TIMEOUT_S, verify=public) as client:
+        try:
+            response = client.get(urljoin(site, "/wiki/api/v2/spaces?limit=1"))
+        except httpx.HTTPError as error:
+            cause: BaseException | None = error
+            for _ in range(10):
+                if cause is None or isinstance(cause, ssl.SSLCertVerificationError):
+                    break
+                cause = cause.__cause__ or cause.__context__
+            if isinstance(cause, ssl.SSLCertVerificationError):
+                return Check(
+                    "tls: public CA bundle", passed=False, detail="certificate not verified"
+                )
+            detail = f"inconclusive, error {type(error).__name__}"
+            return Check("tls: public CA bundle", passed=True, detail=detail)
+    return Check("tls: public CA bundle", passed=True, detail=f"verified, {response.status_code}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1019,7 +1088,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     site = urlsplit(arguments.site)
     # Only a host: no user name, password or port, which the report could not hide.
-    if site.scheme != "https" or not site.hostname or site.netloc != site.hostname:
+    if site.scheme != "https" or not site.hostname or site.netloc.lower() != site.hostname:
         parser.error("--site takes an https URL with a host name alone")
     pages = arguments.page
     if len(pages) > MAX_PAGES or not all(PAGE_ID.fullmatch(page) for page in pages):
