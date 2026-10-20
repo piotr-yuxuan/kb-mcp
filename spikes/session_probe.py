@@ -100,9 +100,11 @@ VOID_ELEMENTS = frozenset(
 WORD = re.compile(r"\w+")
 ISSUE_KEY = re.compile(r"[A-Z][A-Z0-9_]+-\d+")
 
-# Fetches a URL from inside the page, so the browser itself carries the session.
-FETCH_JS = """async (url) => {
-  const response = await fetch(url, {credentials: "include"});
+# Fetches a URL from inside the page, so the browser itself carries the session. The
+# default credentials mode, same-origin, sends the cookies to the site, and none on the
+# redirect of a download to Atlassian's media host, which takes its token in the URL.
+FETCH_JS = """async ([url, timeout]) => {
+  const response = await fetch(url, {signal: AbortSignal.timeout(timeout)});
   const bytes = new Uint8Array(await response.arrayBuffer());
   let binary = "";
   for (let start = 0; start < bytes.length; start += 32768) {
@@ -499,7 +501,7 @@ def in_page_get(page: Page, site: str) -> Get:
 
     def get(path: str) -> Reply:
         started = time.monotonic()
-        result = page.evaluate(FETCH_JS, urljoin(site, path))
+        result = page.evaluate(FETCH_JS, [urljoin(site, path), HTTP_TIMEOUT_S * 1000])
         body = base64.b64decode(result["body"])
         return Reply(result["status"], media_type(result["type"]), body, elapsed_ms(started))
 
@@ -752,9 +754,11 @@ def sign_in(page: Page, site: str, in_page: Get) -> Check:
     started = time.monotonic()
     page.goto(urljoin(site, "/wiki/home"))
     while time.monotonic() - started < SIGN_IN_TIMEOUT_S:
-        reply = attempt(in_page, "/wiki/api/v2/spaces?limit=1")
-        if reply.status == HTTP_OK and reply.media_type == JSON:
-            return Check("sign-in", passed=True, detail=f"{elapsed_ms(started) // 1000} s")
+        # No script runs in the identity provider's pages: only once back on the site.
+        if urlsplit(page.url).netloc == urlsplit(site).netloc:
+            reply = attempt(in_page, "/wiki/api/v2/spaces?limit=1")
+            if reply.status == HTTP_OK and reply.media_type == JSON:
+                return Check("sign-in", passed=True, detail=f"{elapsed_ms(started) // 1000} s")
         page.wait_for_timeout(SIGN_IN_POLL_MS)
     return Check("sign-in", passed=False, detail=f"no REST answer within {SIGN_IN_TIMEOUT_S} s")
 
@@ -782,15 +786,15 @@ def run_with_browser(arguments: argparse.Namespace, jql: str) -> list[Check]:
                     "request context": request_context_get(context, arguments.site),
                     "in-page fetch": in_page,
                 }
-                for name, get in carriers.items():
-                    checks += probe_carrier(name, get, arguments.page[0], jql)
+                results = {
+                    name: probe_carrier(name, get, arguments.page[0], jql)
+                    for name, get in carriers.items()
+                }
+                for carrier_checks in results.values():
+                    checks += carrier_checks
                 # The pages are read through the carrier with the most passing reads,
                 # the first in this order on a tie: a site without Jira fails some for all.
-                passes = {
-                    name: sum(check.passed for check in checks if check.name.startswith(f"{name}:"))
-                    for name in carriers
-                }
-                best = carriers[max(carriers, key=passes.__getitem__)]
+                best = carriers[max(results, key=lambda name: sum(c.passed for c in results[name]))]
                 for index, page_id in enumerate(arguments.page, start=1):
                     evidence = gather_page(best, page, arguments.site, page_id)
                     if isinstance(evidence, Check):
