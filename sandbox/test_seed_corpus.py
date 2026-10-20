@@ -1,0 +1,214 @@
+"""Tests of the seeding script's pure parts: reading, conversion and decisions."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
+from defusedxml import ElementTree
+
+from sandbox.seed_corpus import (
+    NAMESPACES,
+    LinkTargets,
+    LivePage,
+    Page,
+    decide,
+    match,
+    read_corpus,
+    to_storage,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
+    from xml.etree.ElementTree import Element
+
+TITLES = {"index": "Handbook", "people/index": "People", "people/onboarding": "Onboarding & you"}
+AC = "{http://atlassian.com/content}"
+RI = "{http://atlassian.com/resource}"
+
+
+def storage(markdown: str, key: str = "payments/runbook") -> tuple[str, frozenset[str]]:
+    """Convert a Markdown body as the page with that key, beside the pages of TITLES."""
+    return to_storage(Page(key, "Runbook", "en", markdown), TITLES)
+
+
+def parse(body: str) -> Element:
+    """Parse a storage body as XML, which Confluence requires it to be."""
+    return ElementTree.fromstring(f"<root {NAMESPACES}>{body}</root>")
+
+
+def live(**changes: object) -> LivePage:
+    """Describe a site page as the last seeding left it, with some fields changed."""
+    fields = {
+        "id": "10",
+        "title": "Runbook",
+        "parent_id": "2",
+        "version": 3,
+        "source": {"key": "payments/runbook", "sha256": "abc", "version": 3},
+        "property_id": "7",
+        "property_version": 1,
+    }
+    return LivePage(**{**fields, **changes})
+
+
+def test_reading_keys_pages_by_path_and_finds_parents(tmp_path: Path) -> None:
+    """A page's key is its path; a section page hangs from the home page, others from it."""
+    (tmp_path / "people").mkdir()
+    (tmp_path / "index.md").write_text('---\ntitle: "Handbook"\n---\nHome.\n')
+    (tmp_path / "people" / "index.md").write_text('---\ntitle: "People"\n---\nPeople.\n')
+    (tmp_path / "people" / "conges.md").write_text('---\ntitle: "Congés"\nlang: fr\n---\nTexte.\n')
+    pages = read_corpus(tmp_path)
+    assert sorted(pages) == ["index", "people/conges", "people/index"]
+    assert pages["people/conges"].lang == "fr"
+    assert pages["people/conges"].markdown == "Texte.\n"
+    assert [pages[key].parent for key in sorted(pages)] == [None, "people/index", "index"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "No front matter.\n",
+        "---\nlang: fr\n---\nNo title.\n",
+        '---\ntitle: "Page"\nlang: de\n---\nUnknown language.\n',
+        '---\ntitle: "Page"\nowner: me\n---\nUnknown field.\n',
+    ],
+)
+def test_reading_refuses_bad_front_matter(tmp_path: Path, text: str) -> None:
+    """Front matter holds a title, and lang: fr on French pages, nothing else."""
+    (tmp_path / "page.md").write_text(text)
+    with pytest.raises(ValueError, match="page"):
+        read_corpus(tmp_path)
+
+
+def test_code_blocks_become_code_macros_with_their_language() -> None:
+    """A fenced block is a code macro; text has no language; ]]> survives the CDATA."""
+    body, _ = storage('```python\nprint("]]>")\n```\n\n```text\nplain\n```\n')
+    macros = parse(body).findall(f"{AC}structured-macro")
+    assert [macro.get(f"{AC}name") for macro in macros] == ["code", "code"]
+    first, second = (macro.findall(f"{AC}parameter") for macro in macros)
+    assert [parameter.text for parameter in first] == ["python"]
+    assert second == []
+    assert macros[0].findtext(f"{AC}plain-text-body") == 'print("]]>")'
+
+
+def test_code_blocks_in_other_languages_are_refused() -> None:
+    """Only the bible's languages are allowed, so the code macro always knows them."""
+    with pytest.raises(ValueError, match="cobol"):
+        storage("```cobol\nDISPLAY 'HELLO'.\n```\n")
+
+
+@pytest.mark.parametrize(
+    ("alert", "panel"),
+    [("NOTE", "info"), ("TIP", "tip"), ("IMPORTANT", "note"), ("WARNING", "warning")],
+)
+def test_alerts_become_panels_without_their_label(alert: str, panel: str) -> None:
+    """A GitHub alert is the matching panel macro, holding the alert's text only."""
+    body, _ = storage(f"> [!{alert}]\n> Superseded by **the new policy**.\n")
+    macro = parse(body).find(f"{AC}structured-macro")
+    assert macro is not None
+    assert macro.get(f"{AC}name") == panel
+    text = "".join(macro.itertext())
+    assert "Superseded by the new policy." in text
+    assert alert.title() not in text
+
+
+def test_links_to_corpus_pages_become_page_links_by_title() -> None:
+    """A link to a corpus file names the page by space and title, and keeps its text."""
+    body, linked = storage("Read [the *guide*](../people/onboarding.md) first.\n")
+    link = parse(body).find(f".//{AC}link")
+    assert link is not None
+    page = link.find(f"{RI}page")
+    assert page is not None
+    assert page.get(f"{RI}space-key") == "QM"
+    assert page.get(f"{RI}content-title") == "Onboarding & you"
+    assert "".join(link.itertext()) == "the guide"
+    assert linked == {"people/onboarding"}
+
+
+def test_web_links_stay_links() -> None:
+    """A web address is an ordinary link, and links no corpus page."""
+    body, linked = storage("See [Lantern](https://lantern.quillmoor.example/d/1).\n")
+    anchor = parse(body).find(".//a")
+    assert anchor is not None
+    assert anchor.get("href") == "https://lantern.quillmoor.example/d/1"
+    assert linked == frozenset()
+
+
+@pytest.mark.parametrize(
+    "markdown",
+    [
+        "[missing](../people/nobody.md)\n",
+        "[anchored](../people/onboarding.md#day-one)\n",
+        "[relative](other.html)\n",
+        "Raw <span>HTML</span>.\n",
+    ],
+)
+def test_links_outside_the_corpus_and_raw_html_are_refused(markdown: str) -> None:
+    """A link must name a corpus page without an anchor; raw HTML could break the XHTML."""
+    with pytest.raises(ValueError, match="payments/runbook"):
+        storage(markdown)
+
+
+def test_task_lists_stay_text() -> None:
+    """A task list item stays text: Confluence would drop a form input."""
+    body, _ = storage("- [ ] Collect the laptop\n")
+    assert "input" not in body
+    assert "[ ] Collect the laptop" in "".join(parse(body).itertext())
+
+
+def test_a_new_page_is_created() -> None:
+    """A corpus page the site lacks is created."""
+    assert decide("Runbook", "2", "abc", None) == "create"
+
+
+def test_a_page_as_last_written_is_left() -> None:
+    """A page whose title, parent, body and version are as last written is left alone."""
+    assert decide("Runbook", "2", "abc", live()) == "leave"
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"title": "Old runbook"},
+        {"parent_id": "5"},
+        {"source": {"key": "payments/runbook", "sha256": "old", "version": 3}},
+        # Edited by hand since the last seeding.
+        {"version": 4},
+        # The page write succeeded, the property write after it did not.
+        {"version": 4, "source": {"key": "payments/runbook", "sha256": "old", "version": 3}},
+        # A page of the same title that no seeding wrote.
+        {"source": None, "property_id": None, "property_version": None},
+    ],
+)
+def test_a_page_that_differs_is_updated(changes: dict[str, object]) -> None:
+    """Any difference from what the corpus would write updates the page."""
+    assert decide("Runbook", "2", "abc", live(**changes)) == "update"
+
+
+def test_pages_match_by_key_then_title_and_home_by_id() -> None:
+    """A renamed page is found by its key, an unseeded one by title, the home by id."""
+    pages = {
+        key: Page(key, title, "en", "")
+        for key, title in [("index", "Handbook"), ("a/one", "One"), ("a/two", "Two")]
+    }
+    renamed = live(id="11", title="Former one", source={"key": "a/one"})
+    same_title = live(id="12", title="Two", source=None)
+    home = live(id="1", title="Quillmoor handbook Home", source=None)
+    matched = match(pages, [renamed, same_title, home], home_id="1")
+    assert {key: page.id for key, page in matched.items()} == {
+        "index": "1",
+        "a/one": "11",
+        "a/two": "12",
+    }
+
+
+def test_rendered_links_and_errors_are_found() -> None:
+    """The check reads page links by their target id, and spots an error element."""
+    parser = LinkTargets()
+    parser.feed(
+        '<p><a href="/wiki/x" data-linked-resource-id="42" data-linked-resource-type="page">x</a>'
+        '<a href="https://example.com">web</a></p>'
+        '<div class="error"><span class="error">Unknown macro</span></div>'
+    )
+    assert parser.ids == {"42"}
+    assert parser.error
