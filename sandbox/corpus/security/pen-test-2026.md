@@ -43,7 +43,7 @@ from the day Security triaged each finding.
 | PT26-01 | High | A Merchant Hub user with the viewer role could download payout reports for every account in the merchant's group, not only their own | Merchant Experience | Fixed on 2026-03-18, six days after the testers reported it |
 | PT26-02 | Medium | `merchant-api` returned internal host names in the error body when the `Quillmoor-Version` header was malformed | Merchant Experience | Fixed on 2026-04-21 |
 | PT26-03 | Medium | Merchant Hub sessions stayed valid for 12 hours of inactivity | Merchant Experience | Fixed on 2026-05-06; idle sessions now end after 30 minutes |
-| PT26-04 | Medium | Three production administrators could still sign in with push approvals instead of hardware security keys | Security | Closed on 2026-08-14, when enrolment under ENG-16 finished; covered by a risk acceptance from 2026-06-26 |
+| PT26-04 | Medium | Three production administrators could still sign in with push approvals instead of hardware security keys | Security | Closed on 2026-08-12, the day after enrolment under ENG-16 finished; covered by a risk acceptance from 2026-06-26 |
 | PT26-05 | Medium | No rate limit on the endpoint that creates new API keys | Merchant Experience | Fixed on 2026-04-28 |
 | PT26-06 to PT26-10 | Low | Missing security headers on two static pages, verbose server banners, an outdated TLS cipher offered on one internal endpoint, two cosmetic issues | Various | Four fixed; one accepted, as the page is being retired |
 | PT26-11 to PT26-13 | Informational | Observations on logging coverage and on password-reset wording | Security | Noted |
