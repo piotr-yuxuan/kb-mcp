@@ -40,19 +40,28 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
 SPACE_KEY = "QM"
+SPACE_NAME = "Quillmoor handbook"
+IDEAS_PROJECT = "PRB"
+# The content and issue property that records what the seeding wrote.
+PROPERTY_KEY = "corpus-source"
+SANDBOX = Path(__file__).parent
+CORPUS = SANDBOX / "corpus"
+IDEAS = SANDBOX / "jira" / "ideas"
 # Storage-format XHTML uses these namespaces; parsing it needs them declared.
 NAMESPACES = 'xmlns:ac="http://atlassian.com/content" xmlns:ri="http://atlassian.com/resource"'
-SPACE_NAME = "Quillmoor handbook"
-PROPERTY_KEY = "corpus-source"
-CORPUS = Path(__file__).parent / "corpus"
 HTTP_TIMEOUT_S = 30
 # A bound on cursor-paged listings: 20 pages of 250 results.
 MAX_LISTING_PAGES = 20
 # Languages of fenced code blocks; "text" becomes a code macro without a language.
 CODE_LANGUAGES = frozenset({"bash", "python", "sql", "yaml", "json", "go", "typescript", "text"})
 # GitHub alerts, as pandoc reads them, to the Confluence panel macros that show them.
-PANELS = {"note": "info", "tip": "tip", "important": "note", "warning": "warning"}
-PANELS["caution"] = "warning"
+PANELS = {
+    "note": "info",
+    "tip": "tip",
+    "important": "note",
+    "warning": "warning",
+    "caution": "warning",
+}
 
 Action = Literal["create", "update", "leave"]
 
@@ -73,6 +82,16 @@ class Page:
             return None
         section, _, name = self.key.partition("/")
         return "index" if name == "index" else f"{section}/index"
+
+
+@dataclass(frozen=True)
+class Idea:
+    """A Jira Product Discovery idea; its source is its path under the sandbox folder."""
+
+    key: str
+    summary: str
+    markdown: str
+    source: str
 
 
 @dataclass(frozen=True)
@@ -116,6 +135,19 @@ def read_corpus(root: Path = CORPUS) -> dict[str, Page]:
     return pages
 
 
+def read_ideas(root: Path = IDEAS) -> dict[str, Idea]:
+    """Read every idea, keyed ``jira/<name>``."""
+    ideas: dict[str, Idea] = {}
+    for path in sorted(root.glob("*.md")):
+        meta, body = read_markdown(path)
+        if not isinstance(meta.get("summary"), str) or set(meta) != {"summary"}:
+            message = f"{path}: front matter holds a summary only"
+            raise ValueError(message)
+        source = path.relative_to(root.parent.parent).as_posix()
+        ideas[f"jira/{path.stem}"] = Idea(f"jira/{path.stem}", str(meta["summary"]), body, source)
+    return ideas
+
+
 def walk(value: object, rewrite: Callable[[dict], list[dict]]) -> object:
     """Rewrite every node of a pandoc AST bottom-up; a node may become several, or none."""
     if isinstance(value, dict):
@@ -134,9 +166,9 @@ def cdata(text: str) -> str:
     return "<![CDATA[" + text.replace("]]>", "]]]]><![CDATA[>") + "]]>"
 
 
-def raw(kind: str, markup: str) -> dict:
-    """Make a pandoc node of raw HTML, of kind RawBlock or RawInline."""
-    return {"t": kind, "c": ["html", markup]}
+def raw(kind: str, markup: str, markup_format: str = "html") -> dict:
+    """Make a pandoc node of raw markup, of kind RawBlock or RawInline."""
+    return {"t": kind, "c": [markup_format, markup]}
 
 
 def storage_node(node: dict, key: str, titles: Mapping[str, str], linked: set[str]) -> list[dict]:
@@ -202,6 +234,33 @@ def to_storage(page: Page, titles: Mapping[str, str]) -> tuple[str, frozenset[st
         message = f"{page.key}: the storage format is not well-formed: {error}"
         raise ValueError(message) from error
     return storage, frozenset(linked)
+
+
+def jira_node(node: dict, source: str, urls: Mapping[str, str]) -> list[dict]:
+    """Rewrite one node for Jira: a link to a corpus page points at the page on the site."""
+    kind, content = node["t"], node.get("c")
+    if kind in {"RawBlock", "RawInline"}:
+        message = f"{source}: raw HTML is not allowed"
+        raise ValueError(message)
+    if kind == "Header":
+        # pandoc's jira writer puts an {anchor} before every heading, even without an id.
+        return [{"t": "Para", "c": [raw("RawInline", f"h{content[0]}. ", "jira"), *content[2]]}]
+    if kind != "Link" or urlsplit(content[2][0]).scheme in {"https", "mailto"}:
+        return [node]
+    target = content[2][0]
+    path = posixpath.normpath(posixpath.join(posixpath.dirname(source), target))
+    page = path.removeprefix("corpus/").removesuffix(".md")
+    if not (path.startswith("corpus/") and target.endswith(".md")) or page not in urls:
+        message = f"{source}: {target!r} is not a link to a page on the site"
+        raise ValueError(message)
+    return [{"t": "Link", "c": [content[0], content[1], [urls[page], ""]]}]
+
+
+def to_jira(markdown: str, source: str, urls: Mapping[str, str]) -> str:
+    """Convert Markdown to Jira wiki markup, with corpus links pointing at the site's pages."""
+    document = json.loads(pypandoc.convert_text(markdown, "json", format="gfm-task_lists"))
+    rewritten = walk(document, partial(jira_node, source=source, urls=urls))
+    return pypandoc.convert_text(json.dumps(rewritten), "jira", format="json")
 
 
 def decide(title: str, parent_id: str | None, digest: str, live: LivePage | None) -> Action:
@@ -356,16 +415,21 @@ class LinkTargets(HTMLParser):
             self.error = True
 
 
-def seed_pages(client: httpx.Client, pages: Mapping[str, Page], *, check: bool) -> list[str]:
-    """Bring the space in line with the corpus, or only compare them; return the problems."""
-    found = space(client, create=not check)
-    if found is None:
-        return [f"space {SPACE_KEY} is absent"]
-    space_id = str(found["id"])
+def seed_pages(
+    client: httpx.Client, pages: Mapping[str, Page], *, check: bool
+) -> tuple[list[str], dict[str, str]]:
+    """Bring the space in line with the corpus, or only compare them.
+
+    Return the problems found, and the id of each corpus page on the site.
+    """
+    corpus_space = space(client, create=not check)
+    if corpus_space is None:
+        return [f"space {SPACE_KEY} is absent"], {}
+    space_id = str(corpus_space["id"])
     live = read_live(client, space_id)
-    matched = match(pages, live, str(found["homepageId"]))
+    matched = match(pages, live, str(corpus_space["homepageId"]))
     titles = {key: page.title for key, page in pages.items()}
-    ids = {key: found.id for key, found in matched.items()}
+    ids = {key: page.id for key, page in matched.items()}
     problems, counts, links = [], dict.fromkeys(("create", "update", "leave"), 0), {}
     # Parents come before their children: the home page, then section pages, then the rest.
     for key in sorted(pages, key=lambda key: (key != "index", not key.endswith("index"), key)):
@@ -391,7 +455,7 @@ def seed_pages(client: httpx.Client, pages: Mapping[str, Page], *, check: bool) 
     sys.stdout.write(
         f"pages: {counts['create']} {done.format(counts['update'])}, {counts['leave']} unchanged\n"
     )
-    return problems
+    return problems, ids
 
 
 def check_links(
@@ -414,6 +478,57 @@ def check_links(
     return problems
 
 
+def seed_ideas(
+    client: httpx.Client, ideas: Mapping[str, Idea], urls: Mapping[str, str], *, check: bool
+) -> list[str]:
+    """Create or update the ideas, found by summary, or only compare them; return problems."""
+    project = call(
+        client, "GET", f"/rest/api/3/project/{IDEAS_PROJECT}", params={"expand": "issueTypes"}
+    )
+    if project.get("projectTypeKey") != "product_discovery":
+        return [f"{IDEAS_PROJECT} is not a Jira Product Discovery project"]
+    type_id = next(kind["id"] for kind in project["issueTypes"] if kind["name"] == "Idea")
+    listed = call(
+        client,
+        "GET",
+        "/rest/api/3/search/jql",
+        params={
+            "jql": f"project = {IDEAS_PROJECT} AND issuetype = {type_id}",
+            "fields": "summary,updated",
+            "properties": PROPERTY_KEY,
+            "maxResults": 100,
+        },
+    )
+    if listed.get("nextPageToken"):
+        message = f"more than 100 ideas in {IDEAS_PROJECT}"
+        raise RuntimeError(message)
+    issues = {issue["fields"]["summary"]: issue for issue in listed["issues"]}
+    problems = []
+    for idea in ideas.values():
+        description = to_jira(idea.markdown, idea.source, urls)
+        value = {"key": idea.key, "sha256": hashlib.sha256(description.encode()).hexdigest()}
+        issue = issues.get(idea.summary)
+        if issue is not None and issue.get("properties", {}).get(PROPERTY_KEY) == value:
+            continue
+        if check:
+            problems.append(f"idea {idea.key}: would {'update' if issue else 'create'}")
+            continue
+        fields = {"summary": idea.summary, "description": description}
+        if issue is None:
+            fields |= {"project": {"key": IDEAS_PROJECT}, "issuetype": {"id": type_id}}
+            key = call(client, "POST", "/rest/api/2/issue", json={"fields": fields})["key"]
+        else:
+            key = issue["key"]
+            call(client, "PUT", f"/rest/api/2/issue/{key}", json={"fields": fields})
+        call(client, "PUT", f"/rest/api/3/issue/{key}/properties/{PROPERTY_KEY}", json=value)
+    if check:
+        sys.stdout.writelines(
+            f"idea\t{issue['key']}\t{issue['fields']['updated']}\t{summary}\n"
+            for summary, issue in sorted(issues.items(), key=lambda item: item[1]["id"])
+        )
+    return problems
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Seed the sandbox, or check it with --check; exit 1 if a check fails."""
     parser = argparse.ArgumentParser(description="Seed the sandbox with the corpus, or check it.")
@@ -423,11 +538,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     if site.scheme != "https" or not site.netloc.endswith(".atlassian.net"):
         parser.error("ATLASSIAN_SITE must be an https://<name>.atlassian.net address")
     auth = (os.environ["ATLASSIAN_EMAIL"], os.environ["ATLASSIAN_API_TOKEN"])
-    pages = read_corpus()
+    pages, ideas = read_corpus(), read_ideas()
     with httpx.Client(
         base_url=f"https://{site.netloc}", auth=auth, timeout=HTTP_TIMEOUT_S
     ) as client:
-        problems = seed_pages(client, pages, check=arguments.check)
+        problems, ids = seed_pages(client, pages, check=arguments.check)
+        urls = {
+            key: f"https://{site.netloc}/wiki/spaces/{SPACE_KEY}/pages/{page_id}"
+            for key, page_id in ids.items()
+        }
+        if set(pages) - set(ids):
+            problems.append("ideas not checked: some pages are not on the site")
+        else:
+            problems += seed_ideas(client, ideas, urls, check=arguments.check)
     for problem in problems:
         sys.stdout.write(f"PROBLEM {problem}\n")
     return 1 if arguments.check and problems else 0

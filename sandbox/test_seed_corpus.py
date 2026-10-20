@@ -15,6 +15,8 @@ from sandbox.seed_corpus import (
     decide,
     match,
     read_corpus,
+    read_ideas,
+    to_jira,
     to_storage,
 )
 
@@ -212,3 +214,39 @@ def test_rendered_links_and_errors_are_found() -> None:
     )
     assert parser.ids == {"42"}
     assert parser.error
+
+
+def test_ideas_are_keyed_by_name_and_hold_a_summary_only(tmp_path: Path) -> None:
+    """An idea's front matter is its summary; its source is its path under the sandbox."""
+    ideas = tmp_path / "jira" / "ideas"
+    ideas.mkdir(parents=True)
+    (ideas / "dark-mode.md").write_text('---\nsummary: "Dark mode"\n---\nBody.\n')
+    read = read_ideas(ideas)
+    assert list(read) == ["jira/dark-mode"]
+    assert read["jira/dark-mode"].summary == "Dark mode"
+    assert read["jira/dark-mode"].source == "jira/ideas/dark-mode.md"
+    (ideas / "bad.md").write_text('---\ntitle: "Bad"\n---\nBody.\n')
+    with pytest.raises(ValueError, match="summary"):
+        read_ideas(ideas)
+
+
+def test_jira_markup_links_corpus_pages_to_the_site_without_anchors() -> None:
+    """A corpus link points at the page's address; headings carry no anchor macro."""
+    markup = to_jira(
+        "## Problem\n\nSee [the runbook](../../corpus/payments/runbook.md).\n",
+        "jira/ideas/rollback.md",
+        {"payments/runbook": "https://site.example.com/wiki/spaces/QM/pages/42"},
+    )
+    assert "[the runbook|https://site.example.com/wiki/spaces/QM/pages/42]" in markup
+    assert "h2. Problem" in markup
+    assert "anchor" not in markup
+
+
+@pytest.mark.parametrize(
+    "markdown",
+    ["[gone](../../corpus/payments/gone.md)\n", "[outside](../ideas/other.md)\n", "<b>x</b>\n"],
+)
+def test_jira_markup_refuses_unknown_pages_and_raw_html(markdown: str) -> None:
+    """Every corpus link must name a page on the site, and raw HTML is refused."""
+    with pytest.raises(ValueError, match=r"jira/ideas/rollback\.md"):
+        to_jira(markdown, "jira/ideas/rollback.md", {"payments/runbook": "https://x.example.com"})
