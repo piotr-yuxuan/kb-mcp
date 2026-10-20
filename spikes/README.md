@@ -103,7 +103,7 @@ counts both.
 | `page-N: macro <name>` | How many of the page's macros of that kind have output in the REST `view` body; a third-party macro shows as `custom-N` |
 | `page-N: words` | The share of the words shown in the browser that the `view` body holds; the target is 98% |
 | `page-N: tables`, `page-N: images` | Tables and images in each; attachment images are compared at full size, external images are counted apart |
-| `page-N: jql N`, `cql N`, `key N` | A dynamic macro's query, run over REST: how many results the browser shows, and how many the `view` body already holds |
+| `page-N: jql N`, `cql N`, `key N` | A dynamic table's query run over REST (a JQL search, a CQL search, or the one issue read): how many of its results the browser shows, and how many the macro's own output in the `view` body holds. No result over REST is a FAIL, since nothing is compared |
 | `page-N: timing` | REST reads against a full render in the browser |
 | `issue: …` | The issue over REST, the images of its rendered description, and its first image downloaded |
 | `tls: public CA bundle` | A FAIL means TLS inspection; the probe verifies with your system's certificates anyway |

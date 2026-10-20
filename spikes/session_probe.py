@@ -36,7 +36,7 @@ from html.parser import HTMLParser
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib.parse import urlencode, urljoin, urlsplit
+from urllib.parse import quote, urlencode, urljoin, urlsplit
 
 import httpx
 import truststore
@@ -468,6 +468,12 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
             )
             continue
         first = found[:COMPARED_RESULTS]
+        if not first:
+            # Nothing over REST leaves nothing to compare: a JQL with currentUser(), or
+            # one aimed at another site, may still show rows in the browser.
+            nothing = Check(f"{label}: {query.kind} {index}", passed=False, detail="0 over REST")
+            checks.append(nothing)
+            continue
         in_browser = shown(query.kind, first, rendered.text)
         in_view = shown(query.kind, first, " ".join(view.macro_text[QUERY_MACROS[query.kind]]))
         detail = f"{len(found)} over REST; of the first {len(first)}, "
@@ -629,7 +635,9 @@ def probe_carrier(name: str, get: Get, page_id: str, jql: str) -> list[Check]:
 def run_query(get: Get, query: Query, cql_context: str) -> tuple[str, ...] | None:
     """Run a dynamic macro's query over REST; return its issue keys or page titles."""
     if query.kind == "key":
-        return (query.text,)
+        issue = attempt(get, f"/rest/api/3/issue/{quote(query.text, safe='')}?fields=summary")
+        key = json_value(issue, "key")
+        return (key,) if isinstance(key, str) else None
     if query.kind == "jql":
         fields = {"jql": query.text, "fields": "summary", "maxResults": MAX_QUERY_RESULTS}
         issues = json_value(attempt(get, "/rest/api/3/search/jql?" + urlencode(fields)), "issues")

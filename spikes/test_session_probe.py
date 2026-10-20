@@ -21,6 +21,7 @@ from spikes.session_probe import (
     image_size,
     macro_labels,
     render_report,
+    run_query,
     words,
 )
 
@@ -299,6 +300,37 @@ def test_compare_page_leaves_external_images_out_of_the_image_check() -> None:
         detail="1 in view, 1 rendered, 1 of 1 compared at full size or larger, 0 not downloaded;"
         " external: 1 in view, 1 rendered",
     )
+
+
+def test_a_query_with_no_results_over_rest_fails() -> None:
+    """With nothing over REST, there is nothing to compare with the browser."""
+    storage = (
+        '<ac:structured-macro ac:name="jira"><ac:parameter ac:name="jqlQuery">'
+        "assignee = currentUser()</ac:parameter></ac:structured-macro>"
+    )
+    page = evidence(
+        storage,
+        "<p>x</p>",
+        Rendered("ABC-1 ABC-2", tables=0, images=()),
+        results=((Query("jql", "assignee = currentUser()"), ()),),
+    )
+    checks = compare_page("page-1", page)
+    assert Check("page-1: jql 1", passed=False, detail="0 over REST") in checks
+
+
+def test_a_single_issue_query_reads_the_issue_over_rest() -> None:
+    """A single-issue macro's key is read over REST, and a missing issue fails."""
+    issue = Reply(200, "application/json", b'{"key": "ABC-7"}', 1)
+    gone = Reply(404, "application/json", b"{}", 1)
+    asked: list[str] = []
+
+    def found(path: str) -> Reply:
+        asked.append(path)
+        return issue
+
+    assert run_query(found, Query("key", "ABC-7"), "") == ("ABC-7",)
+    assert asked == ["/rest/api/3/issue/ABC-7?fields=summary"]
+    assert run_query(lambda _: gone, Query("key", "ABC-7"), "") is None
 
 
 def test_compare_page_reports_a_page_that_never_rendered() -> None:
