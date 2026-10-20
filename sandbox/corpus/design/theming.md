@@ -194,11 +194,11 @@ What is live in Merchant Hub, behind the Switchboard flag `sb.merchant-hub.dark-
 | Refunds | Yes | |
 | Settings | Yes | Hosts the appearance setting |
 | Developers (API keys, webhooks) | Yes | Code samples use the sunken surface |
-| Reports | In progress | Chart migration under way in sprint 40 |
-| Disputes | Not started | Evidence uploads show merchant documents |
+| Reports | In progress | Settlement reports are converted; charts move to the 3.4 palette in sprint 40 |
+| Disputes | Yes | Evidence uploads keep the merchant's own document colours |
 | Onboarding | Not started | Shares components with the public sign-up flow |
 
-The flag has been on for all Quillmoor staff since 17 August 2026 and for a pilot of 120 merchants since 21 September 2026. Pages not yet converted pass `forceTheme="light"` to the page layout, which pins the attribute to light while they are open and restores the user's choice on the way out. It is not elegant, but it is better than a half-dark page.
+The flag has been on for all Quillmoor staff since 17 August 2026. Since 15 September 2026 it has been on, as a preview, for every merchant who opts in from the profile menu: on six pages at first, and on fourteen since October. Pages not yet converted pass `forceTheme="light"` to the page layout, which pins the attribute to light while they are open and restores the user's choice on the way out. It is not elegant, but it is better than a half-dark page.
 
 Bringing dark mode to every Merchant Hub page, including onboarding, is an idea on the Product Discovery board in `PRB`. It is not committed for this epic.
 

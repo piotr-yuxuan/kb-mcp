@@ -15,7 +15,7 @@ ENG Sprint 38 ran from 2026-09-14 to 2026-09-27. We held the retrospective on Fr
 | Epic | Owner team | State at the end of the sprint |
 |---|---|---|
 | ENG-20 Conveyor backfill tooling | Data Platform | Dry runs in use; concurrency story carried over |
-| ENG-26 Dark mode for Merchant Hub | Merchant Experience | Settings and payouts pages done in staging |
+| ENG-26 Dark mode for Merchant Hub | Merchant Experience | Preview live for opted-in merchants on 15 September, on six pages |
 | ENG-30 Date-based API versioning (ADR-023) | Merchant Experience | Version handling in staging behind a flag |
 
 Format this time: each person wrote cards under "went well", "went badly" and "puzzles" for five minutes, then we grouped them and voted with three dots each.

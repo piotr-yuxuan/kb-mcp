@@ -63,7 +63,7 @@ git config --global commit.gpgsign true
 
 ## Tags and releases
 
-Shipwright creates release tags when it builds a release, in the form `service/version`, for example `payout-gateway/4.13.0`. Do not create or move release tags by hand; Shipwright treats a moved tag as a different release. To undo a release that has already gone out, follow [reverting a bad release](../release/reverting-a-release.md).
+Shipwright creates release tags when it builds a release, in the form `<service>-<version>`, for example `payout-gateway-4.13.0`. Do not create or move release tags by hand; Shipwright treats a moved tag as a different release. To undo a release that has already gone out, follow [reverting a bad release](../release/reverting-a-release.md).
 
 ## What never goes in a repository
 

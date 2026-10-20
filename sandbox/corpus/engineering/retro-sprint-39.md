@@ -25,7 +25,7 @@ The epics in progress were the same three as in [sprint 38](retro-sprint-38.md):
 ## What the sprint delivered
 
 - **ENG-30:** the changelog for merchants is now generated from the version registry, and the first dated version after the baseline is in staging with its transformer. The public reference pages for the header are drafted. See [ADR-023](../architecture/adr-023-api-versioning.md) for the decision itself.
-- **ENG-26:** the payments pages joined settings and payouts in the dark theme in staging. Reports are blocked on Inkwell's chart palettes, which Priya expects in the first week of sprint 40.
+- **ENG-26:** refunds, disputes and the developer pages joined the preview. The reports pages wait for Merchant Hub's charts to move to the Inkwell 3.4 palettes, which Priya expects in the first week of sprint 40.
 - **ENG-20:** progress reporting for long backfills is in Conveyor, and Tomasz's team ran a real backfill for the finance marts with it, following [backfilling historical partitions](../data/backfills.md).
 
 ## Start, stop, continue
