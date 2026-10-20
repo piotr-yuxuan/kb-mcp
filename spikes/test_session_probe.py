@@ -91,6 +91,22 @@ def test_storage_scanner_counts_nested_macros_and_reads_their_queries() -> None:
     ]
 
 
+def test_compare_page_finds_a_macro_rendered_inline_without_a_wrapper() -> None:
+    """An excerpt renders its body inline: view holding its words is its output."""
+    storage = (
+        '<ac:structured-macro ac:name="excerpt"><ac:rich-text-body>'
+        "<p>The innermost sentence.</p></ac:rich-text-body></ac:structured-macro>"
+    )
+    present = compare_page("page-1", evidence(storage, "<p>The innermost sentence.</p>", None))
+    absent = compare_page("page-1", evidence(storage, "<p>Another sentence.</p>", None))
+    assert (
+        Check("page-1: macro excerpt", passed=True, detail="1 of 1 with output in view") in present
+    )
+    assert (
+        Check("page-1: macro excerpt", passed=False, detail="0 of 1 with output in view") in absent
+    )
+
+
 def test_view_scanner_reads_text_tables_images_and_macro_output() -> None:
     """Script text is not visible; emoticons are not images; an empty macro has no output."""
     scanned = ViewScanner.parse(VIEW)

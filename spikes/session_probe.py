@@ -177,6 +177,14 @@ class ImageRef:
     attachment: str = ""
 
 
+@dataclass(frozen=True)
+class MacroUse:
+    """One macro of a storage-format body, with the text of its body."""
+
+    name: str
+    text: str
+
+
 type Get = Callable[[str], Reply]
 
 
@@ -186,9 +194,10 @@ class StorageScanner(HTMLParser):
     def __init__(self) -> None:
         """Start with no macro seen."""
         super().__init__(convert_charrefs=True)
-        self.macros: Counter[str] = Counter()
+        self.uses: list[MacroUse] = []
         self.queries: list[Query] = []
-        self._open_macros: list[str] = []
+        # Each open macro: its name and the text of its body so far.
+        self._open_macros: list[tuple[str, list[str]]] = []
         self._parameter: str | None = None
         self._parameter_text: list[str] = []
 
@@ -200,13 +209,16 @@ class StorageScanner(HTMLParser):
         scanner.close()
         return scanner
 
+    @property
+    def macros(self) -> Counter[str]:
+        """How many macros of each name the body holds, nested ones included."""
+        return Counter(use.name for use in self.uses)
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        """Count a macro, or start reading one of its parameters."""
+        """Open a macro, or start reading one of its parameters."""
         attributes = dict(attrs)
         if tag == "ac:structured-macro":
-            name = attributes.get("ac:name") or ""
-            self.macros[name] += 1
-            self._open_macros.append(name)
+            self._open_macros.append((attributes.get("ac:name") or "", []))
         elif tag == "ac:parameter" and self._open_macros:
             self._parameter = attributes.get("ac:name")
             self._parameter_text = []
@@ -214,17 +226,21 @@ class StorageScanner(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         """Close a macro, or keep a parameter that holds a query."""
         if tag == "ac:structured-macro" and self._open_macros:
-            self._open_macros.pop()
+            name, text = self._open_macros.pop()
+            self.uses.append(MacroUse(name, " ".join(text)))
         elif tag == "ac:parameter" and self._parameter is not None and self._open_macros:
-            kind = QUERY_PARAMETERS.get((self._open_macros[-1], self._parameter))
+            kind = QUERY_PARAMETERS.get((self._open_macros[-1][0], self._parameter))
             if kind is not None:
                 self.queries.append(Query(kind, "".join(self._parameter_text).strip()))
             self._parameter = None
 
     def handle_data(self, data: str) -> None:
-        """Collect the text of the parameter being read."""
+        """Collect a parameter's text, or the body text of every open macro."""
         if self._parameter is not None:
             self._parameter_text.append(data)
+            return
+        for _, text in self._open_macros:
+            text.append(data)
 
 
 class ViewScanner(HTMLParser):
@@ -356,15 +372,21 @@ def shown(kind: str, found: Iterable[str], text: str) -> int:
 def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
     """Compare what REST returned for a page with what the browser rendered."""
     view = evidence.view
+    view_words = words(view.text)
     labels = macro_labels(evidence.storage.macros)
-    checks = [
-        Check(
-            f"{label}: macro {labels[name]}",
-            view.macros_with_output[name] >= count,
-            f"{view.macros_with_output[name]} of {count} with output in view",
+    checks = []
+    # A macro has output in view when view wraps it with output, or, for a macro that
+    # renders its body inline without a wrapper, such as an excerpt, when view holds
+    # every word of its body.
+    for name, count in sorted(evidence.storage.macros.items(), key=lambda item: labels[item[0]]):
+        inline = sum(
+            1
+            for use in evidence.storage.uses
+            if use.name == name and words(use.text) and not words(use.text) - view_words
         )
-        for name, count in sorted(evidence.storage.macros.items(), key=lambda item: labels[item[0]])
-    ]
+        present = max(view.macros_with_output[name], inline)
+        detail = f"{present} of {count} with output in view"
+        checks.append(Check(f"{label}: macro {labels[name]}", present >= count, detail))
     timing = f"REST {evidence.rest_ms} ms, browser {evidence.render_ms} ms"
     checks.append(Check(f"{label}: timing", passed=True, detail=timing))
     rendered = evidence.rendered
@@ -372,7 +394,7 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
         failure = Check(f"{label}: rendered", passed=False, detail="content area never settled")
         return [failure, *checks]
     rendered_words = words(rendered.text)
-    share = coverage(rendered_words, words(view.text))
+    share = coverage(rendered_words, view_words)
     total = sum(rendered_words.values())
     local = view.local_images
     pairs = list(zip(evidence.rest_images, rendered.images, strict=False))
