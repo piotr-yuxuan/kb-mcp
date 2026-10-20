@@ -60,6 +60,21 @@ CLOSED = frozenset({"Done", "Won't Do"})
 STATUSES = CLOSED | {"In Progress", "To Do"}
 TICKET_TYPES = frozenset({"Story", "Task", "Bug"})
 PRIORITIES = frozenset({"Highest", "High", "Medium", "Low", "Lowest"})
+GOLDEN = SANDBOX / "golden.yaml"
+OVERLAPS = frozenset({"identifier", "keyword", "paraphrase"})
+# A golden question expects one document, or two when it needs a second hop.
+MAX_HOPS = 2
+TRAPS = frozenset(
+    {
+        "synonym",
+        "acronym",
+        "identifier",
+        "near-duplicate",
+        "outdated",
+        "cross-link",
+        "cross-lingual",
+    }
+)
 # Storage-format XHTML uses these namespaces; parsing it needs them declared.
 NAMESPACES = 'xmlns:ac="http://atlassian.com/content" xmlns:ri="http://atlassian.com/resource"'
 HTTP_TIMEOUT_S = 30
@@ -77,6 +92,27 @@ PANELS = {
 }
 
 Action = Literal["create", "update", "leave"]
+
+
+@dataclass(frozen=True)
+class Question:
+    """A golden question: the documents that answer it, and the traps it sets."""
+
+    id: str
+    question: str
+    overlap: str
+    lang: str
+    expected: tuple[str, ...]
+    partial: tuple[str, ...]
+    evidence: Mapping[str, str]
+    outdated: tuple[str, ...]
+    traps: tuple[str, ...]
+    distractors: tuple[str, ...]
+
+    @property
+    def documents(self) -> frozenset[str]:
+        """Every document the question names."""
+        return frozenset((*self.expected, *self.partial, *self.outdated, *self.distractors))
 
 
 @dataclass(frozen=True)
@@ -229,6 +265,33 @@ def read_tickets(root: Path = TICKETS) -> list[Ticket]:
                 )
             )
     return tickets
+
+
+def read_golden(path: Path = GOLDEN) -> list[Question]:
+    """Read the golden questions, refusing any that breaks the set's schema."""
+    lists = ("expected", "partial", "outdated", "traps", "distractors")
+    questions = []
+    for item in yaml.safe_load(path.read_text(encoding="utf-8")):
+        fields = {"id", "question", "overlap", "lang", "evidence", *lists}
+        valid = (
+            set(item) == fields
+            and item["overlap"] in OVERLAPS
+            and item["lang"] in {"en", "fr"}
+            and 1 <= len(item["expected"]) <= MAX_HOPS
+            and set(item["evidence"]) == set(item["expected"])
+            and set(item["traps"]) <= TRAPS
+        )
+        if not valid:
+            message = f"{path}: question {item.get('id')} breaks the golden set's schema"
+            raise ValueError(message)
+        questions.append(
+            Question(
+                **{name: item[name] for name in ("id", "question", "overlap", "lang")},
+                **{name: tuple(item[name]) for name in lists},
+                evidence=dict(item["evidence"]),
+            )
+        )
+    return questions
 
 
 def sprint_start(number: int) -> datetime:

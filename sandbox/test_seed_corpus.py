@@ -19,6 +19,7 @@ from sandbox.seed_corpus import (
     decide,
     match,
     read_corpus,
+    read_golden,
     read_ideas,
     read_tickets,
     sprint_start,
@@ -350,3 +351,48 @@ def test_derived_dates_are_the_same_on_every_run(tmp_path: Path) -> None:
     once = [timeline(ticket) for ticket in epic_file(tmp_path / "a", [5, 14], statuses)]
     again = [timeline(ticket) for ticket in epic_file(tmp_path / "b", [5, 14], statuses)]
     assert once == again
+
+
+GOOD_QUESTION = {
+    "id": "q001",
+    "question": "How do I get the old payouts release back?",
+    "overlap": "paraphrase",
+    "lang": "en",
+    "expected": ["payments/payout-gateway-rollback"],
+    "partial": [],
+    "evidence": {"payments/payout-gateway-rollback": "drain the payout queue"},
+    "outdated": [],
+    "traps": ["synonym"],
+    "distractors": ["ml/model-rollback"],
+}
+
+
+def test_a_golden_question_reads_with_every_document_it_names(tmp_path: Path) -> None:
+    """A question keeps its fields, and names its expected and look-alike documents."""
+    path = tmp_path / "golden.yaml"
+    path.write_text(yaml.safe_dump([GOOD_QUESTION]))
+    (question,) = read_golden(path)
+    assert question.expected == ("payments/payout-gateway-rollback",)
+    assert question.documents == {"payments/payout-gateway-rollback", "ml/model-rollback"}
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"overlap": "fuzzy"},
+        {"lang": "de"},
+        {"expected": []},
+        {"expected": ["a/one", "a/two", "a/three"]},
+        {"evidence": {"a/other": "phrase"}},
+        {"traps": ["typo"]},
+        {"answer": "an extra field"},
+    ],
+)
+def test_golden_questions_that_break_the_schema_are_refused(
+    tmp_path: Path, changes: dict[str, object]
+) -> None:
+    """Kinds, languages and traps come from closed lists; one or two documents, each evidenced."""
+    path = tmp_path / "golden.yaml"
+    path.write_text(yaml.safe_dump([GOOD_QUESTION | changes]))
+    with pytest.raises(ValueError, match="q001"):
+        read_golden(path)
