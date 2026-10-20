@@ -1,0 +1,750 @@
+epic:
+  key: ENG-29
+  summary: Event log migration (ADR-019)
+  sprints: [14, 26]
+  labels: [architecture]
+  description: |
+    ## Goal
+
+    Move every producer and every consumer of domain events from RabbitMQ to Apache
+    Kafka, as ADR-019 decided, without losing an event or stopping a service. Events are
+    kept 7 days whether or not anyone has read them, and consumers track their own
+    offsets, so replay becomes an ordinary operation for the consuming team.
+
+    ## Scope
+
+    1. Kafka clusters in staging and production, run by Platform, with the topic
+       tooling and the dashboards.
+    2. Dual-publish: every outbox relay writes each event to both the RabbitMQ exchange
+       and the Kafka topic, with the same `event_id`.
+    3. Consumers moved one by one, in the planned order: data platform ingestion,
+       `notify`, `merchant-api` status copies, `risk-scorer` features, `ledger`, then
+       `settlement-batcher` with Payouts and Ledger together.
+    4. Producers stop publishing to RabbitMQ once their last RabbitMQ consumer has moved.
+    5. The broker is retired.
+
+    ## Out of scope
+
+    - Changes to the envelope or to what events contain. Only the relay's destination
+      changes.
+    - Merchant webhooks: identifiers, payloads and delivery stay exactly as they are.
+    - Compacted topics, and a hosted streaming service.
+
+    ## Outcome
+
+    The last consumer, `settlement-batcher`, moved in March 2026. Producers stopped
+    publishing to RabbitMQ at the end of March, and the broker was shut down on
+    2026-04-06.
+
+    ## Pages
+
+    - [ADR-019: Move domain events to a replicated log](../../corpus/architecture/adr-019-replicated-event-log.md)
+    - [ADR-007: Publish domain events through a message broker](../../corpus/architecture/adr-007-message-broker.md)
+  comments:
+    - "Bram: Platform has the extra engineer ADR-019 asked for to run Kafka. Building the staging cluster is the first job."
+    - "Lukas: Every producer now dual-publishes. No consumer moves during the change freezes, 24 November to 2 December and 18 December to 5 January."
+    - "Kwabena: ledger.payout-postings has read from the log since last week without a gap. settlement-batcher is the only consumer left."
+tickets:
+  - key: ENG-1123
+    type: Task
+    summary: Size the Kafka clusters for 9 million events a day
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      We publish about 9 million events on an ordinary day, with peaks of around 900 a
+      second during marketplace sales. ADR-019 asks for ten times today's peak without a
+      redesign, and keeps 7 days of every event on disk, three times over.
+
+      Work out, for staging and production: the number of brokers, disk per broker,
+      memory, and what twelve partitions per topic by default means for the largest
+      producers. Note what we would add first if a topic needed more partitions, and how
+      long adding a broker takes.
+    comments:
+      - "Hamza: Disk drives the sizing, not throughput: 7 days at three replicas. Sized for ten times peak with room to add brokers without moving topics."
+  - key: ENG-1124
+    type: Story
+    summary: Build the staging Kafka cluster on Kubernetes
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      As a team preparing to move, I need a Kafka cluster in staging to publish and
+      consume against before anything changes in production.
+
+      Acceptance criteria:
+
+      - Brokers run on the staging Kubernetes cluster with persistent volumes.
+      - Topics have three replicas, and at least two must be in sync before a write is
+        acknowledged.
+      - Brokers can be restarted one at a time without producers seeing errors.
+      - Platform's toolbox pod has the Kafka command-line tools.
+  - key: ENG-1125
+    type: Story
+    summary: Define Kafka topics as reviewed files in the platform repository
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Topics must not be created by hand. Each one is a file in the `platform`
+      repository, reviewed like code and applied by Platform's tooling.
+
+      ```yaml
+      # topics/payout-gateway.payout.v1.yaml
+      name: payout-gateway.payout.v1
+      owner: payouts
+      partitions: 12
+      replication_factor: 3
+      config:
+        retention.ms: 604800000      # 7 days
+        min.insync.replicas: 2
+        cleanup.policy: delete
+      schema: schemas/payout-gateway/payout.v1.json
+      ```
+
+      Acceptance criteria: names follow `<service>.<family>.v<major>`; the tooling
+      refuses anything but `cleanup.policy: delete`; brokers refuse automatic topic
+      creation.
+  - key: ENG-1126
+    type: Story
+    summary: Build the production Kafka cluster with three replicas per topic
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      Acceptance criteria:
+
+      - Brokers run on the production Kubernetes cluster with persistent volumes, spread
+        across zones.
+      - Every topic has three replicas, with at least two in sync before a write is
+        acknowledged.
+      - The shared producer library writes with `acks=all` and idempotence switched on.
+      - Events are kept 7 days and then deleted.
+      - Clients connect to `events.internal.quillmoor.example:9092`.
+      - The Platform rota is paged for broker alerts, and the escalation contacts list
+        Apache Kafka under Platform.
+    comments:
+      - "Lukas: Added to the platform-primary rota's runbooks before anything depends on it."
+  - key: ENG-1127
+    type: Story
+    summary: Lantern dashboards for Kafka brokers, topics and consumer lag
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      As a team moving a consumer, I want to see my consumer groups' lag next to my
+      service's other graphs, without asking Platform.
+
+      Acceptance criteria:
+
+      - A "Kafka brokers" dashboard in Lantern: broker health, under-replicated
+        partitions, disk use and request rates.
+      - Per topic: write rate and size on disk.
+      - A consumer lag panel for every group, which teams can add to their own dashboards.
+      - Alerts on a group's lag are each owning team's to set, as ADR-019 says.
+  - key: ENG-1128
+    type: Story
+    summary: Mirror Kafka topics and consumer offsets to the standby region
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Under [ADR-021](../../corpus/architecture/adr-021-active-passive-regions.md), every
+      topic is mirrored to the standby region with its consumer offsets, so that consumers
+      there resume where they left off after a failover.
+
+      Acceptance criteria:
+
+      - Every topic created by the tooling is mirrored to the standby region.
+      - Consumer group offsets are mirrored too, and translated to the standby copy.
+      - Mirroring lag appears on the brokers dashboard.
+      - Nothing in the standby region consumes while the primary is healthy.
+  - key: ENG-1129
+    type: Task
+    summary: Dual-publish events during the migration
+    status: Done
+    priority: Highest
+    labels: [architecture]
+    description: |
+      Change each producer's outbox relay to publish every event to both its RabbitMQ
+      exchange and its Kafka topic, with the same `event_id`. Nothing reads from Kafka yet,
+      but its contents can be compared with the broker's.
+
+      - The outbox stays: events are still written in the same transaction as the change
+        they describe. Only the relay's destination changes.
+      - The envelope stays: `event_id`, `type`, `occurred_at`, `producer`,
+        `schema_version` and `data`.
+      - The relay sets `published_at` only once the event is published.
+      - Dual-publish stays on for each producer until its last RabbitMQ consumer has
+        moved.
+
+      Plan: [ADR-019](../../corpus/architecture/adr-019-replicated-event-log.md).
+    comments:
+      - "Yusuf: payout-gateway goes first, since its events have the most consumers."
+      - "Lukas: All producers dual-publishing before the freeze starts on 24 November, please."
+  - key: ENG-1130
+    type: Story
+    summary: Check event schema changes for compatibility in CI
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Each topic's schema is a JSON Schema file in the owning team's repository. A change
+      that breaks consumers must never reach a topic they read.
+
+      Acceptance criteria:
+
+      - CI checks every change to a schema file against the previous version.
+      - Within a major version, only optional fields may be added; anything else fails
+        the check.
+      - The failure says what to do instead: publish a breaking change on a new topic,
+        `v2`, alongside `v1`, until every consumer has moved.
+  - key: ENG-1131
+    type: Story
+    summary: Compare RabbitMQ and Kafka contents by event_id during dual-publish
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Before any consumer moves, we want evidence that Kafka holds every event the broker
+      delivers, and nothing else.
+
+      Acceptance criteria:
+
+      - A job reads each producer's events from a dedicated RabbitMQ queue and from its
+        Kafka topic for the same hour.
+      - It reports `event_id` values seen on one side only, per producer, in
+        `#team-platform`.
+      - It runs hourly while any producer dual-publishes, and is deleted when dual-publish
+        ends.
+  - key: ENG-1132
+    type: Bug
+    summary: Outbox relay marks an event published before Kafka confirms it
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      **Steps to reproduce:** in staging, kill a relay pod after RabbitMQ has confirmed an
+      event but before Kafka has.
+
+      **Expected:** on restart, the relay publishes the event to Kafka. A second copy in
+      RabbitMQ is fine, since consumers deduplicate by `event_id`.
+
+      **Actual:** the relay had already set `published_at` after the RabbitMQ confirm, so
+      the event never reached Kafka. The comparison job reported the gaps.
+
+      **Fix:** the relay sets `published_at` only once both destinations have confirmed.
+    comments:
+      - "Léa: Exactly what the comparison job was for. Seven gaps in a week of staging traffic."
+  - key: ENG-1133
+    type: Story
+    summary: Run Kafka in qm dev up and in CI integration tests
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      As an engineer moving a consumer, I need Kafka on my laptop and in CI, not only in
+      staging.
+
+      Acceptance criteria:
+
+      - `qm dev up` starts a single Kafka broker on port 9092 and creates the topics in
+        each repository's topic list.
+      - The CI templates start Kafka in a container for the `integration` check, next to
+        PostgreSQL.
+      - Integration tests use the same Kafka version as production.
+
+      See [Local development environment](../../corpus/engineering/local-development.md).
+  - key: ENG-1134
+    type: Task
+    summary: Write the runbook for moving a consumer from its queue to the log
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Every consumer moves the same way. Write it down once, in `#team-platform`'s
+      runbooks:
+
+      1. Create the consumer group, named `<service>.<purpose>`.
+      2. Start the group from a point a few minutes before the moment the consumer stops
+         reading its RabbitMQ queue. The overlap is harmless, because consumers
+         deduplicate by `event_id`.
+      3. Commit an offset only after the consumer's own database transaction.
+      4. Watch lag, then delete the old queue.
+
+      Moves happen in deploy windows and never during a change freeze; see the
+      [change freeze calendar 2025](../../corpus/release/change-freeze-2025.md).
+  - key: ENG-1135
+    type: Story
+    summary: Carry trace context in Kafka record headers
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Under ADR-011, trace context travels in message headers on every domain event. On
+      Kafka it goes in record headers.
+
+      Acceptance criteria:
+
+      - The relay copies `traceparent` and `tracestate` from the outbox row into the
+        record headers.
+      - The shared consumer library starts a span that joins the producer's trace, even
+        when the event is consumed hours later.
+      - Nothing about tracing goes into the event body.
+
+      See [Logging and tracing](../../corpus/engineering/logging-and-tracing.md).
+  - key: ENG-1136
+    type: Story
+    summary: Move warehouse ingestion to the dw-ingest consumer group
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      First in the planned order: the data platform's queue, bound to every exchange, is
+      the one that endangers the broker. When ingestion paused for maintenance, it grew to
+      30 million messages and slowed every producer.
+
+      Acceptance criteria:
+
+      - The `dw-ingest` consumer group reads every topic.
+      - It commits offsets only after events are written to an Iceberg snapshot, so a
+        crash produces a duplicate at worst, never a gap.
+      - Staging models deduplicate on the event identifier.
+
+      How ingestion fits in: [Data platform overview](../../corpus/data/platform-overview.md).
+    comments:
+      - "Tomasz: The overlap produced duplicates only, and the staging models dropped them as expected."
+  - key: ENG-1137
+    type: Task
+    summary: Keep the old warehouse queue drained while producers dual-publish
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      `dw-ingest` now loads the warehouse from Kafka, but the data platform's RabbitMQ
+      queue, bound to every exchange, still receives every event until producers stop
+      publishing to RabbitMQ. Left unread, it would fill the broker within hours, exactly
+      as it did during the warehouse maintenance that started this work.
+
+      Switch the old ingestion consumer to acknowledge and discard, without writing to the
+      warehouse, so the queue stays near empty until dual-publish ends. Data Platform keeps
+      it as a fallback until then.
+    comments:
+      - "Tomasz: Agreed. The old consumer runs in discard mode until dual-publish ends, then we stop it."
+  - key: ENG-1138
+    type: Task
+    summary: Rehearse the notify move in staging-eu
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      No production moves happen during the freeze from 18 December to 5 January, so use
+      the time to rehearse `notify`'s move in `staging-eu`, the second in the planned
+      order:
+
+      - start its consumer groups a few minutes before stopping its queues;
+      - replay a day of payout events through them;
+      - check that no webhook and no email is sent twice, and none is missed.
+
+      The rehearsal must pass twice in a row before the production move is scheduled.
+    comments:
+      - "Felix: The first run sent duplicate emails; see ENG-1139. We run it again once the fix is merged."
+  - key: ENG-1139
+    type: Bug
+    summary: notify deduplicates events on the payload instead of event_id
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      **Steps to reproduce:** in the `staging-eu` rehearsal, start `notify`'s Kafka
+      group a few minutes before stopping its RabbitMQ queue.
+
+      **Expected:** events in the overlap are read twice and processed once.
+
+      **Actual:** some payout emails went out twice. `notify` deduplicated on a hash of
+      the JSON payload, and the relay serialises the payload for Kafka with its keys in a
+      different order, so the hashes differ.
+
+      **Fix:** `notify` deduplicates on `event_id`, as ADR-008 requires of every consumer.
+      The same check was run on the other consumers still to move.
+  - key: ENG-1140
+    type: Story
+    summary: Rewind a consumer group to a point in time from the toolbox pod
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      As a consuming team, I want to reprocess the last few days of events myself,
+      without asking the producer to republish.
+
+      Acceptance criteria:
+
+      - Platform's toolbox pod can reset a group's offsets to a time within the last 7
+        days, after the consumer is stopped:
+
+      ```bash
+      kafka-consumer-groups.sh \
+        --bootstrap-server events.internal.quillmoor.example:9092 \
+        --group <group> --topic <topic> \
+        --reset-offsets --to-datetime <timestamp> --execute
+      ```
+
+      - The procedure says a team never rewinds a group it does not own.
+      - Anything older than 7 days is rebuilt from the data platform.
+  - key: ENG-1141
+    type: Story
+    summary: Use compacted topics for merchant settings events
+    status: Won't Do
+    priority: Low
+    labels: [architecture]
+    description: |
+      `notify` and other services keep local copies of merchant contacts and settings,
+      fed by `merchant.updated`. A compacted topic would keep the latest event per
+      merchant for ever, so a new consumer could rebuild its copy from the topic alone
+      instead of calling `merchant-api`.
+
+      Proposal: make the merchant events topic compacted instead of deleting events
+      after 7 days.
+    comments:
+      - "Bram: Won't Do. ADR-019 keeps every domain event topic on 7 days' retention with deletion, never compaction. A new copy is rebuilt from the owner's API, as ADR-012 says, and history comes from the data platform."
+  - key: ENG-1142
+    type: Story
+    summary: Move notify's consumers to the event log
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      Second in the planned order: `notify` gains replay where it hurt most. Before
+      ADR-019, it once missed `payout.failed` events for six hours, and sellers were not
+      told that their payouts had been returned.
+
+      Acceptance criteria:
+
+      - `notify`'s consumer groups replace its RabbitMQ queues, following the runbook.
+      - Merchant webhooks keep the same event identifiers, payloads and delivery
+        behaviour; merchants see no change.
+      - Emails and webhooks are neither duplicated nor missed across the overlap.
+      - The old queues are deleted once lag has stayed near zero for a day.
+    comments:
+      - "Noor: Scheduled for the first deploy days after the freeze, early in the morning, with Platform watching."
+  - key: ENG-1143
+    type: Story
+    summary: Move merchant-api payout status copies to the event log
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Third in the planned order: many topics, simple processing. `merchant-api` keeps
+      its own copy of payout statuses for the payout list in Merchant Hub, fed by events.
+
+      Acceptance criteria:
+
+      - A consumer group replaces the `merchant-api.payout-status` queue and its siblings.
+      - Statuses in the copy match `payout-gateway`'s for a sample of payouts after the
+        move.
+      - Status lag stays within a few seconds, as before.
+  - key: ENG-1144
+    type: Bug
+    summary: Payout events split across partitions show payouts out of order
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      **Steps to reproduce:** a payout is paid in a batch, then returned by the bank.
+
+      **Expected:** every event about one payout lands in the same partition of
+      `payout-gateway.payout.v1` and is read in order, so `merchant-api` shows the payout
+      as failed.
+
+      **Actual:** the relay keyed batch events by the batch and single-payout events by
+      the payout, so the two landed in different partitions. Some payouts showed as paid
+      after they had failed.
+
+      **Fix:** every payout event is keyed by the payout's identifier, as ADR-019 says.
+    comments:
+      - "Léa: Fixed in the relay. merchant-api rebuilt its copy for the affected payouts from payout-gateway's API."
+  - key: ENG-1145
+    type: Story
+    summary: Move risk-scorer features to the event log, starting 7 days back
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Fourth in the planned order. `risk-scorer` wants history, and for the first time a
+      new consumer group can start in the past instead of waiting for an export.
+
+      Acceptance criteria:
+
+      - The group reading `card-auth.authorisation.v1` starts 7 days back, the oldest the
+        log keeps.
+      - Features built from the log match those built from the queue for the overlap.
+      - The old queue is deleted after a day.
+  - key: ENG-1146
+    type: Story
+    summary: Rebuild risk-scorer history older than 7 days from the warehouse
+    status: Done
+    priority: Low
+    labels: [architecture]
+    description: |
+      `risk-scorer` keeps features over a longer window than the 7 days the log holds.
+      Anything older comes from the data platform, which keeps events far longer.
+
+      Acceptance criteria:
+
+      - A one-off job, written with Data Platform, rebuilds the older part of the
+        feature history from the warehouse tables.
+      - It hands over to the consumer group at a known point, with the overlap
+        deduplicated by event identifier.
+
+      See [Data platform overview](../../corpus/data/platform-overview.md).
+    comments:
+      - "Sunniva: The warehouse already holds the authorisation outcomes, so this is hours of work, not the weeks the last export took to agree."
+  - key: ENG-1147
+    type: Story
+    summary: Move ledger.payout-postings to the event log
+    status: Done
+    priority: Highest
+    labels: [architecture]
+    description: |
+      Fifth in the planned order: `ledger` is the most critical consumer and moves once
+      the pattern is proven.
+
+      Acceptance criteria:
+
+      - The group `ledger.payout-postings` reads `payout-gateway.payout.v1`.
+      - It commits an offset only after it has posted the journal and committed its own
+        database transaction, never before.
+      - It deduplicates by `event_id`, in the same transaction as the posting.
+      - Journal totals match between the old queue and the new group for the whole
+        overlap.
+      - A Ledger engineer watches the move with Platform.
+    comments:
+      - "Amara: Ledger will have an engineer on the move with Platform, and we will compare journal totals for the whole overlap."
+      - "Kwabena: Agreed. We move only after the load test in ENG-1149."
+  - key: ENG-1148
+    type: Bug
+    summary: payout-gateway's outbox relay publishes to Kafka with acks=1
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      **Steps to reproduce:** check the Kafka client settings of `payout-gateway`'s relay
+      in production.
+
+      **Expected:** `acks=all` with idempotence switched on, as ADR-019 requires, so that
+      an acknowledged write is on at least two replicas.
+
+      **Actual:** `acks=1` without idempotence. An override left from early staging tests
+      was copied into the production configuration.
+
+      **Fix:** the shared producer library sets both and refuses to start with anything
+      weaker. Found while reviewing producers before the `ledger` move.
+  - key: ENG-1149
+    type: Task
+    summary: Load-test ledger's consumer at ten times today's peak
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Before `ledger` moves, replay payout events in staging at about 9,000 a second, ten
+      times today's peak of around 900, and watch `ledger.payout-postings`.
+
+      Check that:
+
+      - lag recovers once the burst ends;
+      - every journal is posted exactly once;
+      - the consumer's database transactions stay within their usual time.
+
+      Share the results with Ledger before the move is scheduled.
+    comments:
+      - "Kwabena: Lag peaked at a few minutes and cleared. Good enough for us to move."
+  - key: ENG-1150
+    type: Story
+    summary: Keep ledger topics for 30 days instead of 7
+    status: Won't Do
+    priority: Low
+    labels: [architecture]
+    description: |
+      Ledger asked to keep `ledger.journal.v1` for 30 days, so that a consumer broken over
+      a long period could still recover from the log.
+
+      Proposal: set `retention.ms` on the ledger's topics to 30 days, with the extra disk
+      on the production cluster.
+    comments:
+      - "Kwabena: Withdrawn, so Won't Do. Seven days covers a long weekend plus the days it takes to notice, and anything older is rebuilt from the data platform, which is the record of history anyway."
+  - key: ENG-1151
+    type: Bug
+    summary: Comparison job reports false gaps for events near the hour boundary
+    status: Done
+    priority: Low
+    labels: [architecture]
+    description: |
+      **Steps to reproduce:** let the comparison job run over an hour in which events
+      are published a few seconds before the hour.
+
+      **Expected:** no gaps; both sides hold the same events.
+
+      **Actual:** some events are reported as missing, because the job picked each side's
+      hour by arrival time, and the broker and Kafka see the same event a few
+      milliseconds apart.
+
+      **Fix:** the job selects events by `occurred_at` and compares with a margin of a
+      minute on each side.
+  - key: ENG-1152
+    type: Task
+    summary: Plan the settlement-batcher move with Payouts and Ledger
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      `settlement-batcher` moves last, with Payouts and Ledger together: it reads
+      `journal.posted` from the ledger and builds the files for our settlement bank.
+
+      Agree with both teams:
+
+      - a date that does not clash with the expand step of `CHG-2291` on 10 March, when
+        the ledger starts writing journal lines to two tables;
+      - a week in `staging-eu` reading from the log first;
+      - who watches the first settlement files after the move.
+    comments:
+      - "Yusuf: Not in the same week as Ledger's journal lines change. One change on the ledger side at a time."
+  - key: ENG-1153
+    type: Bug
+    summary: A new consumer group without committed offsets starts at the latest event
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      **Steps to reproduce:** start `settlement-batcher`'s new group in `staging-eu`
+      without a start time, while preparing the rehearsal.
+
+      **Expected:** the group starts from a point a few minutes before the queue stops
+      being read, as the runbook says.
+
+      **Actual:** with no committed offsets, the client's default started it at the
+      latest event. Journals posted in between were missing from the staging file.
+
+      **Fix:** the shared consumer library refuses to start a group that has no committed
+      offsets unless it is given a start time.
+  - key: ENG-1154
+    type: Task
+    summary: Rehearse the settlement-batcher move in staging-eu
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Run `settlement-batcher` in `staging-eu` from its Kafka group for a week, alongside
+      the copy reading the RabbitMQ queue, and compare the settlement files the two
+      produce for each cycle. Start the group with an explicit start time; see ENG-1153.
+
+      Any difference is a blocker for the production move. Payouts and Ledger review the
+      comparison together at the end of the week.
+    comments:
+      - "Léa: Identical files for every cycle of the week. Payouts is happy to move."
+  - key: ENG-1155
+    type: Story
+    summary: Drop consumers' own version checks where partitions now keep order
+    status: Done
+    priority: Lowest
+    labels: [architecture, tech-debt]
+    description: |
+      Under RabbitMQ, every consuming team wrote its own version checks to cope with
+      events about the same payout arriving in any order. On the log, events keyed by the
+      thing they describe are read in the order they were written.
+
+      Acceptance criteria:
+
+      - Each moved consumer removes its version checks for events keyed by the thing they
+        describe.
+      - Checks stay wherever a consumer combines events from different partitions, since
+        those have no order between them.
+  - key: ENG-1156
+    type: Story
+    summary: Move settlement-batcher's journal feed to the event log
+    status: Done
+    priority: Highest
+    labels: [architecture]
+    description: |
+      Last in the planned order, with Payouts and Ledger together.
+
+      Acceptance criteria:
+
+      - `settlement-batcher` reads `journal.posted` events from `ledger.journal.v1`
+        through its own consumer group, replacing the `settlement.journal-feed` queue.
+      - The group starts from a point a few minutes before the queue stops being read.
+      - The move happens early on a deploy day, well before the EUR and GBP cut-offs.
+      - No settlement file is late or different because of the move.
+    comments:
+      - "Yusuf: Moved this morning. First files accepted by the bank on time."
+      - "Kwabena: Ledger side is clean. That is the last consumer."
+  - key: ENG-1157
+    type: Task
+    summary: Agree the RabbitMQ stop date with every producing team
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Once `settlement-batcher` has moved, no consumer reads from RabbitMQ. Agree with
+      Payments Core, Payouts, Ledger and Merchant Experience one date at the end of March
+      to stop dual-publishing, with each team's relay change in a normal release inside the
+      deploy windows.
+
+      Record who watches each producer on the day, and what we do if a forgotten consumer
+      turns up.
+  - key: ENG-1158
+    type: Task
+    summary: Confirm settlement files match across the settlement-batcher move
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      For the first days after the move, compare the settlement files built from the log
+      with the journals Ledger posted for the same cycles, and confirm with Payouts that
+      the bank accepted every file.
+
+      Close this only when Payouts and Ledger both agree that settlement behaved exactly
+      as before.
+    comments:
+      - "Yusuf: First day's files all accepted, and totals match the journals. Leaving this open for the rest of the week."
+  - key: ENG-1159
+    type: Task
+    summary: Stop publishing events to RabbitMQ from every outbox relay
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      No consumer reads from RabbitMQ any more. Remove the RabbitMQ destination from every
+      outbox relay, so that producers publish to Kafka only.
+
+      - One release per producing team, inside the deploy windows, on the agreed date at
+        the end of March.
+      - Remove the comparison job once the last relay stops dual-publishing.
+      - Check the broker's exchanges receive nothing for a full day afterwards.
+    comments:
+      - "Lukas: Relays switch over the last days of March, one team per day, Payments Core first."
+  - key: ENG-1160
+    type: Task
+    summary: Shut down the RabbitMQ cluster
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      With no producer publishing and no consumer reading, retire the broker:
+
+      - export the definitions of exchanges and queues for the record;
+      - stop the three RabbitMQ nodes and delete their virtual machines;
+      - remove the broker nodes' own alerts from the Platform rota;
+      - add to ADR-007's warning that the broker was retired at the end of ENG-29.
+  - key: ENG-1161
+    type: Task
+    summary: Remove the RabbitMQ client from the shared libraries
+    status: Done
+    priority: Low
+    labels: [architecture, tech-debt]
+    description: |
+      The Go and Python shared libraries still carry the RabbitMQ client, the
+      dead-letter handling for `events.dead-letter` and the publisher confirm code. Remove
+      them, release new versions, and ask each team to upgrade at its next release.
+
+      Delete the RabbitMQ container from `qm dev up` and the CI templates at the same
+      time.
