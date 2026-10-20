@@ -77,3 +77,21 @@ def test_a_file_is_stored_once_under_its_digest(tmp_path: Path) -> None:
 def test_an_empty_store_has_no_snapshots(tmp_path: Path) -> None:
     """A store that was never written has nothing to read."""
     assert list(RawStore(tmp_path).latest("jira", "issues")) == []
+
+
+def test_a_listing_is_replaced_whole(tmp_path: Path) -> None:
+    """The newest listing replaces the last; one never stored reads as None."""
+    store = RawStore(tmp_path)
+    assert store.listing("confluence", "pages-196613") is None
+    store.put_listing("confluence", "pages-196613", [{"id": "1"}, {"id": "2"}])
+    store.put_listing("confluence", "pages-196613", [{"id": "1"}])
+    assert store.listing("confluence", "pages-196613") == [{"id": "1"}]
+    assert [path.name for path in (tmp_path / "confluence" / "listings").iterdir()] == [
+        "pages-196613.json"
+    ]
+
+
+def test_a_listing_name_that_is_a_path_is_refused(tmp_path: Path) -> None:
+    """A listing's name cannot place it outside the listings."""
+    with pytest.raises(ValueError, match="not a listing name"):
+        RawStore(tmp_path).put_listing("confluence", "../pages", [])

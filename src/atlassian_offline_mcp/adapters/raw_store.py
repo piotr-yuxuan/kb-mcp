@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -15,8 +16,11 @@ if TYPE_CHECKING:
 
     from atlassian_offline_mcp.domain.content import Document
 
-# The store's own file in a snapshot: the digest of each downloaded attachment, by id.
-BLOBS = "blobs.json"
+# The store's own file in a snapshot: {"fetched_at": <ISO 8601 time in UTC>,
+# "blobs": {<attachment id>: <SHA-256 of its downloaded file>}}.
+STORE = "store.json"
+# A listing's name is one safe path part.
+LISTING_NAME = re.compile(r"[A-Za-z0-9_-]+")
 
 
 def _write_synced(path: Path, data: bytes) -> None:
@@ -26,12 +30,24 @@ def _write_synced(path: Path, data: bytes) -> None:
         os.fsync(file.fileno())
 
 
+def _replace_synced(path: Path, data: bytes) -> None:
+    """Write a file whole, through a hidden file renamed over it."""
+    handle, partial = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    os.close(handle)
+    try:
+        _write_synced(Path(partial), data)
+        Path(partial).replace(path)
+    finally:
+        Path(partial).unlink(missing_ok=True)
+
+
 class RawStore:
     """Responses kept as received, by document and revision, and files by SHA-256.
 
     A snapshot is the folder ``<root>/<source>/<kind>/<id>/<revision>/``, one JSON file
     per response. It is written whole into a hidden folder and renamed into place, so
-    it is either complete or absent. A file is ``<root>/blobs/<digest[:2]>/<digest>``.
+    it is either complete or absent. A listing is ``<root>/<source>/listings/<name>.json``,
+    replaced whole. A file is ``<root>/blobs/<digest[:2]>/<digest>``.
     """
 
     def __init__(self, root: Path) -> None:
@@ -78,6 +94,23 @@ class RawStore:
             for path in sorted(snapshot.glob("*.json"))
         }
 
+    def put_listing(self, source: str, name: str, results: list[object]) -> Path:
+        """Replace a listing: every result of a paged list, as one JSON list."""
+        if not LISTING_NAME.fullmatch(name):
+            message = f"not a listing name: {name!r}"
+            raise ValueError(message)
+        path = self.root / source / "listings" / f"{name}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _replace_synced(path, json.dumps(results, ensure_ascii=False).encode())
+        return path
+
+    def listing(self, source: str, name: str) -> list[object] | None:
+        """Read a listing, or None when it was never stored."""
+        path = self.root / source / "listings" / f"{name}.json"
+        if not path.exists():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+
     def blob(self, digest: str) -> Path:
         """Return where the file with this SHA-256 is, or would be."""
         return self.root / "blobs" / digest[:2] / digest
@@ -89,11 +122,5 @@ class RawStore:
         if path.exists():
             return digest
         path.parent.mkdir(parents=True, exist_ok=True)
-        handle, partial = tempfile.mkstemp(prefix=f".{digest}.", dir=path.parent)
-        os.close(handle)
-        try:
-            _write_synced(Path(partial), data)
-            Path(partial).replace(path)
-        finally:
-            Path(partial).unlink(missing_ok=True)
+        _replace_synced(path, data)
         return digest
