@@ -40,7 +40,7 @@ Lukas asked whether a missed 13:30 internal close should page anyone. Agreed not
 
 ## 2. Closed epics
 
-ENG-28 (chargeback evidence) and ENG-13 (Beacon automation) both closed on 30 August. The `card-auth` evidence endpoint and the payout delay template shipped before the close.
+ENG-28 (chargeback evidence) and ENG-13 (Beacon automation) both closed on 29 August. The `card-auth` evidence endpoint and the payout delay template shipped before the close.
 
 ## 3. Date-based API versioning (ENG-30)
 

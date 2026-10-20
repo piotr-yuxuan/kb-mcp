@@ -67,7 +67,7 @@ was superseded when the `FXQ-2002` alert was made to page.
 
 | Closed | Incident | Action |
 |---|---|---|
-| 2026-08-28 | 2025-09-17 | First SEV1 Beacon update drafted from a template, delivered by ENG-13 in ENG Sprint 36 |
+| 2026-08-26 | 2025-09-17 | First SEV1 Beacon update drafted from a template, delivered by ENG-13 in ENG Sprint 36 |
 | 2026-08-21 | 2026-08-08 | Page when `FXQ-2002` exceeds 1% of quotes for 2 minutes |
 | 2026-08-14 | 2026-08-08 | Read deadline and heartbeat on the rate feed connection |
 | 2026-07-09 | 2026-05-20 | Remove the ingestion alerts left over from the RabbitMQ era |
