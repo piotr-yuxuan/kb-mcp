@@ -26,8 +26,8 @@ a shared fact changes.
   or `refunds.md` within a section), with no `#anchor`. Other addresses use only
   `quillmoor.example` (and its subdomains) or `example.com`.
 - No Unicode dashes (U+2013, U+2014): write "to" in ranges and a hyphen in compounds.
-- No real organisation, commercial product or person. Open-source technologies and
-  public standards may be named (PostgreSQL, Apache Kafka, RabbitMQ, Kubernetes,
+- No real organisation, commercial product or person, but Jira and Confluence, which
+  host the corpus. Open-source technologies and public standards may be named (PostgreSQL, Apache Kafka, RabbitMQ, Kubernetes,
   Python, Go, React, OpenTelemetry, Trino, Apache Iceberg, WCAG, GDPR, SEPA, PCI DSS).
   Card networks are "the card schemes"; banks are "the issuer", "the acquiring bank",
   "our settlement bank". Chat is "chat" with channels such as `#inc-payments`; email
