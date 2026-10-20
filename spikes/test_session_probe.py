@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import ssl
 import stat
 from collections import Counter
 from io import BytesIO
@@ -14,6 +15,7 @@ import pytest
 from PIL import Image
 from playwright.sync_api import Error as PlaywrightError
 
+from spikes import session_probe
 from spikes.session_probe import (
     JSON,
     SCROLL_JS,
@@ -46,13 +48,21 @@ from spikes.session_probe import (
     save_cookies,
     session_client,
     shown,
+    tls_check,
     words,
 )
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from _pytest.monkeypatch import MonkeyPatch
+
 OWNER_ONLY = 0o600
+# The first poll comes one second after the page opens.
+FIRST_POLL_MS = 1_000
+# A page properties report's rows by default, and the page size of a smaller one.
+REPORT_PAGE = 30
+TEN_ROWS = 10
 # Two unsettled polls (no area, an empty shell), the first sight of the text, then the
 # three unchanged polls that settle it.
 SCROLL_AFTER_POLLS = 6
@@ -118,9 +128,9 @@ def test_storage_scanner_counts_nested_macros_and_reads_their_queries() -> None:
     scanned = StorageScanner.parse(STORAGE)
     assert scanned.macros == Counter({"jira": 2, "expand": 1, "detailssummary": 1, "code": 1})
     assert scanned.queries == [
-        Query("jql", "project = ABC ORDER BY key", "jira"),
-        Query("key", "ABC-7", "jira"),
-        Query("cql", 'label = "x"', "detailssummary"),
+        Query("jql", "project = ABC ORDER BY key", "jira", rows=20, ordinal=0),
+        Query("key", "ABC-7", "jira", rows=20, ordinal=1),
+        Query("cql", 'label = "x"', "detailssummary", rows=30, ordinal=0),
     ]
 
 
@@ -163,7 +173,7 @@ def test_view_scanner_reads_a_smart_link_table_as_its_output_apart_from_the_text
     )
     scanned = ViewScanner.parse(view)
     assert scanned.macros_with_output == Counter({"jira-datasource": 1})
-    assert "PRB-1" in " ".join(scanned.macro_text["jira-datasource"])
+    assert "PRB-1" in scanned.macro_outputs["jira-datasource"][0]
     assert scanned.static_text == "Before the table."
     assert scanned.images == []
 
@@ -183,6 +193,8 @@ def test_words_compare_static_text_and_queries_read_the_dynamic_tables() -> None
         tables=1,
         images=(),
         dynamic_text="PRB-1 Unassigned Synced just now 1 item",
+        regions=1,
+        dynamic_tables={"jira-datasource": ("PRB-1 Unassigned Synced just now 1 item",)},
     )
     page = evidence(
         storage,
@@ -326,7 +338,7 @@ def test_compare_page_flags_query_results_the_browser_does_not_show() -> None:
     assert jql == Check(
         "page-1: jql 1",
         passed=False,
-        detail="2 over REST; of the first 2, 1 shown in the browser, 1 in view",
+        detail="2 over REST, 20 shown at most; 1 shown in the browser, 1 in view",
     )
 
 
@@ -364,7 +376,13 @@ def test_a_report_drawn_empty_fails_even_when_its_titles_appear_elsewhere() -> N
     )
     results = ((Query("cql", 'label = "x"', "detailssummary"), ("Properties 1", "Properties 2")),)
     empty = Rendered("Properties 1 Properties 2", tables=0, images=())
-    drawn = Rendered("Properties 1 Properties 2", 1, (), dynamic_text="Properties 1 Properties 2")
+    drawn = Rendered(
+        "Properties 1 Properties 2",
+        1,
+        (),
+        dynamic_text="Properties 1 Properties 2",
+        dynamic_tables={"detailssummary": ("Properties 1 Properties 2",)},
+    )
     reports = [
         next(
             check
@@ -376,7 +394,7 @@ def test_a_report_drawn_empty_fails_even_when_its_titles_appear_elsewhere() -> N
     assert reports[0] == Check(
         "page-1: cql 1",
         passed=False,
-        detail="2 over REST; of the first 2, 0 shown in the browser, 0 in view",
+        detail="2 over REST, 20 shown at most; 0 shown in the browser, 0 in view",
     )
     assert reports[1].passed
 
@@ -668,7 +686,9 @@ def test_a_dynamic_table_without_a_query_of_its_own_fails() -> None:
     rendered = Rendered("Text", tables=2, images=(), dynamic_text="A B", regions=2)
     checks = compare_page("page-1", evidence(storage, "<p>Text</p>", rendered))
     expected = Check(
-        "page-1: dynamic tables", passed=False, detail="2 in the browser, 1 with a query read"
+        "page-1: dynamic tables",
+        passed=False,
+        detail="2 in the browser, 1 with a query read, 0 other lists",
     )
     assert expected in checks
 
@@ -680,32 +700,53 @@ def snapshot(
     return {
         "text": text,
         "dynamic": dynamic,
+        "regionTexts": [[dynamic] if dynamic else [], []],
         "regions": 1 if dynamic else 0,
+        "collapsed": 0,
         "tables": 0,
         "images": [list(size) for size in images],
         "external": 0,
     }
 
 
+class Clock:
+    """A monotonic clock that only the scripted page moves."""
+
+    def __init__(self) -> None:
+        """Start at zero."""
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        """Read the time."""
+        return self.now
+
+
 class ScriptedPage:
     """A browser page that returns scripted snapshots, the last one for ever."""
 
-    def __init__(self, snapshots: list[dict[str, object] | None]) -> None:
-        """Keep the snapshots to return, in order."""
+    def __init__(
+        self, snapshots: list[dict[str, object] | None], clock: Clock | None = None
+    ) -> None:
+        """Keep the snapshots to return, in order, and the clock that waits move."""
         self.snapshots = snapshots
+        self.clock = clock
         self.calls: list[str] = []
 
     def goto(self, url: str, timeout: float) -> None:
         """Open nothing."""
 
     def wait_for_timeout(self, timeout: float) -> None:
-        """Wait for nothing."""
+        """Move the clock, if there is one, by the time waited."""
+        if self.clock is not None:
+            self.clock.now += timeout / 1000
 
     def evaluate(self, script: str, argument: object) -> object:
-        """Record a scroll, or return the next content snapshot."""
+        """Record a scroll, which takes five seconds, or return the next snapshot."""
         del argument
         if script == SCROLL_JS:
             self.calls.append("scroll")
+            if self.clock is not None:
+                self.clock.now += 5
             return 0
         self.calls.append("content")
         return self.snapshots.pop(0) if len(self.snapshots) > 1 else self.snapshots[0]
@@ -725,17 +766,19 @@ def test_render_page_scrolls_once_settled_then_waits_for_the_images() -> None:
 
 
 def test_render_page_waits_for_a_dynamic_table_to_fill() -> None:
-    """Rows arriving in a dynamic table after the text has settled reset the wait."""
+    """Rows still arriving in a dynamic table keep the page from settling."""
+    rows = ["K", "K A-1", "K A-1 A-2", "K A-1 A-2 A-3"]
+    full = "K A-1 A-2 A-3 A-4"
     page = ScriptedPage(
         [
             *[snapshot("Text")] * 4,
-            snapshot("Text", "Key Summary"),
-            *[snapshot("Text", "Key Summary A-1 A-2")] * 4,
+            *[snapshot("Text", row) for row in rows],
+            *[snapshot("Text", full)] * 4,
         ]
     )
     rendered, _ = render_page(page, "https://example.invalid", "1")  # type: ignore[arg-type]
     assert rendered is not None
-    assert rendered.dynamic_text == "Key Summary A-1 A-2"
+    assert rendered.dynamic_text == full
 
 
 def test_the_session_client_refuses_plain_http_before_any_connection() -> None:
@@ -791,3 +834,140 @@ def test_a_failed_query_reports_no_query_text() -> None:
         results=((Query("jql", "project = SECRETPROJ", "jira"), None),),
     )
     assert "secretproj" not in render_report(compare_page("page-1", page)).casefold()
+
+
+def test_the_render_time_stops_at_the_first_settle(monkeypatch: MonkeyPatch) -> None:
+    """The probe's own scrolling, five seconds here, is not part of the render time."""
+    clock = Clock()
+    monkeypatch.setattr(session_probe.time, "monotonic", clock)
+    page = ScriptedPage([snapshot("Text")] * 8, clock)
+    rendered, render_ms = render_page(page, "https://example.invalid", "1")  # type: ignore[arg-type]
+    assert rendered is not None
+    # The text is first seen at the first poll, one second in; three more polls settle it.
+    assert render_ms == FIRST_POLL_MS
+
+
+def test_a_page_that_never_settles_renders_nothing(monkeypatch: MonkeyPatch) -> None:
+    """Text that changes at every poll until the deadline gives no rendering to compare."""
+    clock = Clock()
+    monkeypatch.setattr(session_probe.time, "monotonic", clock)
+    page = ScriptedPage([snapshot(f"Text {index}") for index in range(100)], clock)
+    rendered, _ = render_page(page, "https://example.invalid", "1")  # type: ignore[arg-type]
+    assert rendered is None
+
+
+def test_each_query_is_looked_for_in_its_own_table() -> None:
+    """Two tables with overlapping results: the second, drawn empty, fails."""
+    storage = "".join(
+        '<a data-datasource="{&quot;parameters&quot;:{&quot;jql&quot;:&quot;'
+        + jql
+        + '&quot;}}">x</a>'
+        for jql in ("project = A", "project = B")
+    )
+    rendered = Rendered(
+        "Two tables.",
+        tables=2,
+        images=(),
+        dynamic_text="A-1 A-2",
+        regions=2,
+        dynamic_tables={"jira-datasource": ("A-1 A-2", "")},
+    )
+    found = ("A-1", "A-2")
+    queries = StorageScanner.parse(storage).queries
+    page = evidence(
+        storage, "<p>Two tables.</p>", rendered, results=tuple((q, found) for q in queries)
+    )
+    checks = {check.name: check for check in compare_page("page-1", page)}
+    assert checks["page-1: jql 1"].passed
+    assert not checks["page-1: jql 2"].passed
+
+
+def test_a_report_is_compared_with_the_rows_it_shows() -> None:
+    """A report shows 30 rows unless it says otherwise; any 30 of its results may be them."""
+    default = StorageScanner.parse(
+        '<ac:structured-macro ac:name="detailssummary"><ac:parameter ac:name="cql">x'
+        "</ac:parameter></ac:structured-macro>"
+    ).queries[0]
+    ten = StorageScanner.parse(
+        '<ac:structured-macro ac:name="detailssummary"><ac:parameter ac:name="cql">x'
+        '</ac:parameter><ac:parameter ac:name="pageSize">10</ac:parameter></ac:structured-macro>'
+    ).queries[0]
+    assert (default.rows, ten.rows) == (REPORT_PAGE, TEN_ROWS)
+    titles = tuple(f"Decision {index}" for index in range(45))
+    for shown_rows, passes in ((REPORT_PAGE, True), (5, False)):
+        table = " ".join(titles[-shown_rows:])
+        rendered = Rendered(
+            "", 1, (), dynamic_text=table, dynamic_tables={"detailssummary": (table,)}
+        )
+        page = evidence("", "<p>x</p>", rendered, results=((default, titles),))
+        report = next(c for c in compare_page("page-1", page) if c.name == "page-1: cql 1")
+        assert report.passed is passes
+
+
+def test_other_smart_link_lists_are_not_compared() -> None:
+    """A list that is not a Jira table has no macro line, and counts among dynamic tables."""
+    storage = '<a data-datasource="{&quot;parameters&quot;:{&quot;aql&quot;:&quot;x&quot;}}">x</a>'
+    rendered = Rendered("Text", 1, (), dynamic_text="Rows", regions=1)
+    checks = {
+        check.name: check for check in compare_page("page-1", evidence(storage, "", rendered))
+    }
+    assert "page-1: macro smart-link-list" not in checks
+    assert checks["page-1: smart-link-list"].detail == "1 not compared"
+    assert checks["page-1: dynamic tables"].passed
+
+
+def test_macros_inside_an_include_belong_to_the_included_page() -> None:
+    """A page's own expand inside its own expand counts; an included page's code does not."""
+    nested = (
+        '<ac:structured-macro ac:name="expand"><ac:rich-text-body><ac:structured-macro'
+        ' ac:name="expand"></ac:structured-macro></ac:rich-text-body></ac:structured-macro>'
+    )
+    view = '<div data-macro-name="expand"><div data-macro-name="expand"><p>Body</p></div></div>'
+    checks = compare_page("page-1", evidence(nested, view, None))
+    assert Check("page-1: macro expand", passed=True, detail="2 of 2 with output in view") in checks
+    storage = (
+        '<ac:structured-macro ac:name="code"></ac:structured-macro>'
+        '<ac:structured-macro ac:name="include"></ac:structured-macro>'
+    )
+    view = (
+        '<div data-macro-name="code"></div><div data-macro-name="include">'
+        '<div data-macro-name="code"><p>Their code</p></div></div>'
+    )
+    checks = compare_page("page-1", evidence(storage, view, None))
+    assert Check("page-1: macro code", passed=False, detail="0 of 1 with output in view") in checks
+
+
+def test_an_expand_left_collapsed_fails() -> None:
+    """An expand still collapsed hides its images and tables from the comparison."""
+    rendered = Rendered("Text", 0, (), opened=2, collapsed=1)
+    checks = compare_page("page-1", evidence("", "<p>Text</p>", rendered))
+    assert (
+        Check("page-1: expands", passed=False, detail="2 toggles clicked, 1 still collapsed")
+        in checks
+    )
+
+
+def test_the_tls_check_fails_only_on_an_unverified_certificate(monkeypatch: MonkeyPatch) -> None:
+    """A certificate the public bundle cannot verify fails; no connection is inconclusive."""
+
+    def failing(cause: BaseException) -> object:
+        def get(self: httpx.Client, url: str) -> httpx.Response:
+            del self, url
+            message = "connection failed"
+            raise httpx.ConnectError(message) from cause
+
+        return get
+
+    def answering(self: httpx.Client, url: str) -> httpx.Response:
+        del self, url
+        return httpx.Response(404)
+
+    outcomes = []
+    for get in (failing(ssl.SSLCertVerificationError()), failing(OSError()), answering):
+        monkeypatch.setattr(httpx.Client, "get", get)
+        outcomes.append(tls_check("https://example.invalid"))
+    assert outcomes == [
+        Check("tls: public CA bundle", passed=False, detail="certificate not verified"),
+        Check("tls: public CA bundle", passed=True, detail="inconclusive, error ConnectError"),
+        Check("tls: public CA bundle", passed=True, detail="verified, 404"),
+    ]

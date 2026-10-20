@@ -64,6 +64,9 @@ MAX_PAGES = 3
 MAX_IMAGES_PER_PAGE = 10
 MAX_QUERY_RESULTS = 50
 COMPARED_RESULTS = 20
+# The page properties report's "Number of items to display", when the macro sets none.
+REPORT_ROWS = 30
+MAX_OPEN_PASSES = 5
 WORD_COVERAGE = 0.98
 MIN_IMAGE_SIDE = 32
 # The pixel size given to an SVG, which scales to any size and has no pixels to compare.
@@ -109,13 +112,19 @@ OTHER_DATASOURCE = "smart-link-list"
 # unless it points at a Data Center site, and its browser rendering is unobserved.
 DYNAMIC_TABLES = {
     DATASOURCE: "[data-testid='renderer-datasource-table']",
-    "detailssummary": "table:has([data-testid='page-properties-report-table-head'])",
+    # The innermost such table: a layout table around the report is not the report.
+    "detailssummary": (
+        "table:has([data-testid='page-properties-report-table-head'])"
+        ":not(:has(table [data-testid='page-properties-report-table-head']))"
+    ),
 }
 # Hosts that serve a page's attachments to the browser, besides the site itself.
 MEDIA_HOSTS = ("media.atlassian.com", "media-cdn.atlassian.com")
 # An excerpt include: its header (the source's title, "Untitled excerpt") is interface,
 # and its body is the included page's own renderer document.
 EXCERPT_INCLUDE = "[data-testid='excerpt-include-component']"
+# Macros that show another page's content: the macros inside them are that page's own.
+INCLUDING = frozenset({"include", "excerpt-include"})
 # The toggle of a collapsed expand, whose body is hidden until opened.
 EXPAND_TOGGLES = (
     "[data-node-type='expand'] > button[aria-expanded='false'],"
@@ -155,37 +164,51 @@ CONTENT_SELECTORS = (
 
 # Reads the content area. Its text is that of visible text nodes outside controls (an
 # image's "Open" button, a table's sort button) and outside excerpt include headers.
-# Text and images inside dynamic tables are set apart: avatars and issue-type icons are
-# the tables' own. An image served by a host other than the site's or Atlassian's media
-# hosts is external: the mirror links to it and never downloads it.
-CONTENT_JS = """([selectors, dynamicSelectors, mediaHosts, excerptInclude, minimum]) => {
+# Each dynamic table's text is kept apart, in document order, and its images are its
+# own (avatars, issue-type icons), as emoji are not the page's. An image served by a host
+# other than the site's or Atlassian's media hosts, or inline as data, is external: the
+# mirror links to it and never downloads it.
+CONTENT_JS = """([selectors, dynamicSelectors, mediaHosts, excerptInclude, toggles, minimum]) => {
   const controls = "button, [role='button'], [role='toolbar'], [aria-hidden='true']";
   const dynamic = dynamicSelectors.join(", ");
-  const header = (element) => element.closest(excerptInclude)
-    && !element.closest(`${excerptInclude} .ak-renderer-document`);
+  const header = (element) => {
+    const include = element.closest(excerptInclude);
+    return include !== null && !include.contains(element.closest(".ak-renderer-document"));
+  };
   const local = (image) => {
     const url = new URL(image.currentSrc || image.src, location.href);
-    return !url.protocol.startsWith("http") || url.host === location.host
-      || mediaHosts.some((host) => url.host === host || url.host.endsWith(`.${host}`));
+    if (url.protocol === "blob:") return true;
+    return url.protocol.startsWith("http") && (url.host === location.host
+      || mediaHosts.some((host) => url.host === host || url.host.endsWith(`.${host}`)));
   };
   for (const selector of selectors) {
     const area = document.querySelector(selector);
     if (area) {
       const walker = document.createTreeWalker(area, NodeFilter.SHOW_TEXT);
       const parts = [];
-      const dynamicParts = [];
+      const regionParts = new Map();
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const parent = node.parentElement;
-        if (parent && parent.checkVisibility() && !parent.closest(controls) && !header(parent)) {
-          (parent.closest(dynamic) ? dynamicParts : parts).push(node.textContent);
+        if (!parent || !parent.checkVisibility() || parent.closest(controls) || header(parent)) {
+          continue;
+        }
+        const region = parent.closest(dynamic);
+        if (region) {
+          regionParts.set(region, [...(regionParts.get(region) || []), node.textContent]);
+        } else {
+          parts.push(node.textContent);
         }
       }
+      const regionTexts = dynamicSelectors.map((tableSelector) =>
+        [...area.querySelectorAll(tableSelector)]
+          .map((region) => (regionParts.get(region) || []).join(" ")));
       const shown = [...area.querySelectorAll("img")]
-        .filter((image) => !image.closest(dynamic))
+        .filter((image) => !image.closest(dynamic) && !image.closest("[data-emoji-id]"))
         .filter((image) => image.naturalWidth > minimum && image.naturalHeight > minimum);
       const kept = shown.filter(local);
-      return {text: parts.join(" "), dynamic: dynamicParts.join(" "),
+      return {text: parts.join(" "), dynamic: regionTexts.flat().join(" "), regionTexts,
               regions: area.querySelectorAll(dynamic).length,
+              collapsed: area.querySelectorAll(toggles).length,
               tables: area.querySelectorAll("table").length,
               images: kept.map((image) => [image.naturalWidth, image.naturalHeight]),
               external: shown.length - kept.length};
@@ -194,13 +217,23 @@ CONTENT_JS = """([selectors, dynamicSelectors, mediaHosts, excerptInclude, minim
   return null;
 }"""
 
-# Opens the collapsed expands, a toggle in the browser alone, then scrolls through the
-# content area half a screen at a time and back to the top: the renderer fetches an
-# image only once it nears the viewport, and never inside a collapsed expand.
-SCROLL_JS = """async ([selectors, toggles, pause, steps]) => {
+# Opens the collapsed expands, a toggle in the browser alone, in passes until none is
+# left: a nested expand is rebuilt, collapsed, when its parent opens. Then scrolls
+# through the content area half a screen at a time and back to the top: the renderer
+# fetches an image only once it nears the viewport. Returns the toggles it clicked.
+SCROLL_JS = """async ([selectors, toggles, pause, steps, passes]) => {
   const area = selectors.map((selector) => document.querySelector(selector)).find(Boolean);
   if (!area) return 0;
-  for (const toggle of area.querySelectorAll(toggles)) toggle.click();
+  const wait = () => new Promise((resolve) => setTimeout(resolve, pause));
+  let clicked = 0;
+  for (let pass = 0; pass < passes; pass += 1) {
+    const closed = [...area.querySelectorAll(toggles)];
+    if (closed.length === 0) break;
+    for (const toggle of closed) toggle.click();
+    clicked += closed.length;
+    await wait();
+    await wait();
+  }
   let box = area;
   while (box && box !== document.body && !(box.scrollHeight > box.clientHeight
          && /(auto|scroll)/.test(getComputedStyle(box).overflowY))) {
@@ -212,10 +245,10 @@ SCROLL_JS = """async ([selectors, toggles, pause, steps]) => {
   for (let top = 0; top < scroller.scrollHeight && taken < steps; top += step) {
     scroller.scrollTo(0, top);
     taken += 1;
-    await new Promise((resolve) => setTimeout(resolve, pause));
+    await wait();
   }
   scroller.scrollTo(0, 0);
-  return taken;
+  return clicked;
 }"""
 
 
@@ -245,6 +278,9 @@ class Query:
     kind: str
     text: str
     macro: str
+    # How many results its table shows at once, and its place among its macro's tables.
+    rows: int = COMPARED_RESULTS
+    ordinal: int = 0
 
 
 @dataclass(frozen=True)
@@ -258,6 +294,11 @@ class Rendered:
     # The text of the dynamic tables, apart from the rest, and how many tables there are.
     dynamic_text: str = ""
     regions: int = 0
+    # Each dynamic table's text, by macro, in document order.
+    dynamic_tables: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    # Expand toggles the probe clicked, and expands still collapsed at the end.
+    opened: int = 0
+    collapsed: int = 0
 
 
 @dataclass(frozen=True)
@@ -271,9 +312,15 @@ class ImageRef:
 
 @dataclass
 class MacroOutput:
-    """What a macro wrapper of a rendered body has held so far."""
+    """What a macro wrapper of a rendered body has held so far.
+
+    A wrapper inside an include is the included page's, so it is not counted, and has
+    no place among the page's own wrappers of its name.
+    """
 
     name: str
+    counted: bool
+    position: int
     text: list[str] = field(default_factory=list)
     seen: bool = False
 
@@ -297,8 +344,8 @@ class StorageScanner(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.uses: list[MacroUse] = []
         self.queries: list[Query] = []
-        # Each open macro: its name and the text of its body so far.
-        self._open_macros: list[tuple[str, list[str]]] = []
+        # Each open macro: its name, the text of its body so far, and its parameters.
+        self._open_macros: list[tuple[str, list[str], dict[str, str]]] = []
         self._parameter: str | None = None
         self._parameter_text: list[str] = []
 
@@ -319,7 +366,7 @@ class StorageScanner(HTMLParser):
         """Open a macro, start reading one of its parameters, or read a Jira table's JQL."""
         attributes = dict(attrs)
         if tag == "ac:structured-macro":
-            self._open_macros.append((attributes.get("ac:name") or "", []))
+            self._open_macros.append((attributes.get("ac:name") or "", [], {}))
         elif tag == "ac:parameter" and self._open_macros:
             self._parameter = attributes.get("ac:name")
             self._parameter_text = []
@@ -331,20 +378,23 @@ class StorageScanner(HTMLParser):
                 jql = None
             if isinstance(jql, str):
                 self.uses.append(MacroUse(DATASOURCE, ""))
-                self.queries.append(Query("jql", jql, DATASOURCE))
+                self._add_query("jql", jql, DATASOURCE, COMPARED_RESULTS)
             else:
                 self.uses.append(MacroUse(OTHER_DATASOURCE, ""))
 
     def handle_endtag(self, tag: str) -> None:
-        """Close a macro, or keep a parameter that holds a query."""
+        """Close a macro and keep its queries, or keep a parameter's text."""
         if tag == "ac:structured-macro" and self._open_macros:
-            name, text = self._open_macros.pop()
+            name, text, parameters = self._open_macros.pop()
             self.uses.append(MacroUse(name, " ".join(text)))
+            size = parameters.get("pageSize", "")
+            rows = int(size) if PAGE_ID.fullmatch(size) else REPORT_ROWS
+            for (macro, parameter), kind in QUERY_PARAMETERS.items():
+                if macro == name and parameter in parameters:
+                    shows = rows if name == "detailssummary" else COMPARED_RESULTS
+                    self._add_query(kind, parameters[parameter], name, shows)
         elif tag == "ac:parameter" and self._parameter is not None and self._open_macros:
-            macro = self._open_macros[-1][0]
-            kind = QUERY_PARAMETERS.get((macro, self._parameter))
-            if kind is not None:
-                self.queries.append(Query(kind, "".join(self._parameter_text).strip(), macro))
+            self._open_macros[-1][2][self._parameter] = "".join(self._parameter_text).strip()
             self._parameter = None
 
     def handle_data(self, data: str) -> None:
@@ -352,8 +402,12 @@ class StorageScanner(HTMLParser):
         if self._parameter is not None:
             self._parameter_text.append(data)
             return
-        for _, text in self._open_macros:
+        for _, text, _ in self._open_macros:
             text.append(data)
+
+    def _add_query(self, kind: str, text: str, macro: str, rows: int) -> None:
+        ordinal = sum(1 for query in self.queries if query.macro == macro)
+        self.queries.append(Query(kind, text, macro, rows, ordinal))
 
 
 class ViewScanner(HTMLParser):
@@ -368,7 +422,8 @@ class ViewScanner(HTMLParser):
         self.tables = 0
         self.images: list[ImageRef] = []
         self.macros_with_output: Counter[str] = Counter()
-        self.macro_text: defaultdict[str, list[str]] = defaultdict(list)
+        # The text of each of the page's own wrappers, by macro name, in document order.
+        self.macro_outputs: defaultdict[str, list[str]] = defaultdict(list)
         # Each open element: its tag, and for a macro wrapper what it holds so far.
         self._open: list[tuple[str, MacroOutput | None]] = []
         self._skipped = 0
@@ -427,7 +482,12 @@ class ViewScanner(HTMLParser):
             # A Smart Link table is rendered as a plain table, without a macro wrapper.
             datasource = tag == "table" and "jiraWorkItemMacroListViewTable" in classes
             name = DATASOURCE if datasource else attributes.get("data-macro-name")
-            self._open.append((tag, MacroOutput(name) if name else None))
+            included = any(outer and outer.name in INCLUDING for _, outer in self._open)
+            if name and not included:
+                self.macro_outputs[name].append("")
+            position = len(self.macro_outputs[name]) - 1 if name else -1
+            macro = MacroOutput(name, not included, position) if name else None
+            self._open.append((tag, macro))
 
     def handle_endtag(self, tag: str) -> None:
         """Close the matching element, and any left open inside it."""
@@ -465,11 +525,9 @@ class ViewScanner(HTMLParser):
 
     def _close_innermost(self) -> str:
         tag, macro = self._open.pop()
-        if macro is not None and macro.seen:
-            self.macro_text[macro.name].extend(macro.text)
-            # A wrapper inside one of the same name comes from an included page.
-            if all(outer is None or outer.name != macro.name for _, outer in self._open):
-                self.macros_with_output[macro.name] += 1
+        if macro is not None and macro.seen and macro.counted:
+            self.macros_with_output[macro.name] += 1
+            self.macro_outputs[macro.name][macro.position] = " ".join(macro.text)
         return tag
 
 
@@ -522,8 +580,10 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
     checks = []
     # A macro has output in view when view wraps it with output, or, for a macro that
     # renders its body inline without a wrapper, such as an excerpt, when view holds
-    # every word of its body.
+    # every word of its body. A Smart Link list of another kind is not compared.
     for name, count in sorted(evidence.storage.macros.items(), key=lambda item: labels[item[0]]):
+        if name == OTHER_DATASOURCE:
+            continue
         inline = sum(
             1
             for use in evidence.storage.uses
@@ -554,19 +614,16 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
     missing = sum(1 for rest in evidence.rest_images if rest is None)
     external = len(view.images) - len(local)
     missing_words = total - sum((rendered_words & static_words).values())
-    read = sum(1 for query in evidence.storage.queries if query.macro in DYNAMIC_TABLES)
     checks += [
         Check(
             f"{label}: words",
             share >= WORD_COVERAGE,
             f"{share:.1%} of {total} in view, {missing_words} missing",
         ),
-        # A dynamic table without a query of its own, from an included page for one, is
-        # compared by nothing else.
         Check(
-            f"{label}: dynamic tables",
-            rendered.regions <= read,
-            f"{rendered.regions} in the browser, {read} with a query read",
+            f"{label}: expands",
+            rendered.collapsed == 0,
+            f"{rendered.opened} toggles clicked, {rendered.collapsed} still collapsed",
         ),
         Check(
             f"{label}: tables",
@@ -582,29 +639,50 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
             f" {rendered.external_images} rendered",
         ),
     ]
+    return checks + compare_tables(label, evidence, rendered)
+
+
+def compare_tables(label: str, evidence: PageEvidence, rendered: Rendered) -> list[Check]:
+    """Compare each dynamic table's query results with what its own table shows."""
+    others = evidence.storage.macros[OTHER_DATASOURCE]
+    read = sum(1 for query in evidence.storage.queries if query.macro in DYNAMIC_TABLES)
+    # Every table the browser draws under a dynamic selector needs a query read on this
+    # page, or nothing compares it: a table from an included page, for one. Smart Link
+    # lists of other kinds are drawn there too, and are not compared.
+    checks = [
+        Check(
+            f"{label}: dynamic tables",
+            rendered.regions <= read + others,
+            f"{rendered.regions} in the browser, {read} with a query read, {others} other lists",
+        )
+    ]
+    if others:
+        checks.append(
+            Check(f"{label}: smart-link-list", passed=True, detail=f"{others} not compared")
+        )
     for index, (query, found) in enumerate(evidence.results, start=1):
-        if found is None:
-            checks.append(
-                Check(f"{label}: {query.kind} {index}", passed=False, detail="query failed")
-            )
-            continue
-        first = found[:COMPARED_RESULTS]
-        if not first:
+        name = f"{label}: {query.kind} {index}"
+        if not found:
             # Nothing over REST leaves nothing to compare: a JQL with currentUser(), or
             # one aimed at another site, may still show rows in the browser.
-            nothing = Check(f"{label}: {query.kind} {index}", passed=False, detail="0 over REST")
-            checks.append(nothing)
+            detail = "query failed" if found is None else "0 over REST"
+            checks.append(Check(name, passed=False, detail=detail))
             continue
-        # A table with a browser selector is looked for in that table alone, so that an
-        # empty table fails even when its results appear elsewhere on the page.
-        if query.macro in DYNAMIC_TABLES:
-            in_browser = shown(query.kind, first, rendered.dynamic_text)
+        tables = rendered.dynamic_tables.get(query.macro, ())
+        if query.macro not in DYNAMIC_TABLES:
+            browser = f"{rendered.text} {rendered.dynamic_text}"
+        elif query.macro == DATASOURCE and others:
+            # Lists of other kinds share the selector, so order cannot pair a table.
+            browser = " ".join(tables)
         else:
-            in_browser = shown(query.kind, first, f"{rendered.text} {rendered.dynamic_text}")
-        in_view = shown(query.kind, first, " ".join(view.macro_text[query.macro]))
-        detail = f"{len(found)} over REST; of the first {len(first)}, "
+            browser = tables[query.ordinal] if query.ordinal < len(tables) else ""
+        outputs = evidence.view.macro_outputs.get(query.macro, [])
+        own = outputs[query.ordinal] if query.ordinal < len(outputs) else ""
+        in_browser, in_view = shown(query.kind, found, browser), shown(query.kind, found, own)
+        # A table shows only its first rows: any of the results may be among them.
+        detail = f"{len(found)} over REST, {query.rows} shown at most; "
         detail += f"{in_browser} shown in the browser, {in_view} in view"
-        checks.append(Check(f"{label}: {query.kind} {index}", in_browser >= len(first), detail))
+        checks.append(Check(name, in_browser >= min(len(found), query.rows), detail))
     return checks
 
 
@@ -803,9 +881,10 @@ def render_page(page: Page, site: str, page_id: str) -> tuple[Rendered | None, i
         list(DYNAMIC_TABLES.values()),
         MEDIA_HOSTS,
         EXCERPT_INCLUDE,
+        EXPAND_TOGGLES,
         MIN_IMAGE_SIDE,
     ]
-    snapshot, previous, stable, changed_at, render_ms = None, None, 0, started, None
+    snapshot, previous, stable, changed_at, render_ms, clicked = None, None, 0, started, None, 0
     while time.monotonic() - started < SETTLE_TIMEOUT_S:
         page.wait_for_timeout(SETTLE_POLL_MS)
         snapshot = page.evaluate(CONTENT_JS, content)
@@ -813,8 +892,8 @@ def render_page(page: Page, site: str, page_id: str) -> tuple[Rendered | None, i
         # area, the application's shell, never counts as settled.
         shows = snapshot and (snapshot["text"].strip() or snapshot["dynamic"].strip())
         current = (
-            (len(snapshot["text"]), len(snapshot["dynamic"]), snapshot["tables"],
-             len(snapshot["images"]))
+            (snapshot["text"], snapshot["dynamic"], snapshot["tables"],
+             len(snapshot["images"]), snapshot["collapsed"])
             if shows
             else None
         )  # fmt: skip
@@ -824,8 +903,14 @@ def render_page(page: Page, site: str, page_id: str) -> tuple[Rendered | None, i
             if render_ms is not None:
                 break
             render_ms = round((changed_at - started) * 1000)
-            scroll = [CONTENT_SELECTORS, EXPAND_TOGGLES, SCROLL_PAUSE_MS, MAX_SCROLL_STEPS]
-            page.evaluate(SCROLL_JS, scroll)
+            scroll = [
+                CONTENT_SELECTORS,
+                EXPAND_TOGGLES,
+                SCROLL_PAUSE_MS,
+                MAX_SCROLL_STEPS,
+                MAX_OPEN_PASSES,
+            ]
+            clicked = int(page.evaluate(SCROLL_JS, scroll))
             stable = 0
     else:
         return None, elapsed_ms(started) if render_ms is None else render_ms
@@ -837,6 +922,9 @@ def render_page(page: Page, site: str, page_id: str) -> tuple[Rendered | None, i
         int(snapshot["external"]),
         snapshot["dynamic"],
         int(snapshot["regions"]),
+        dict(zip(DYNAMIC_TABLES, map(tuple, snapshot["regionTexts"]), strict=True)),
+        clicked,
+        int(snapshot["collapsed"]),
     )
     return rendered, render_ms
 
