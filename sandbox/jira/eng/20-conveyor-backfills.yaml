@@ -1,0 +1,753 @@
+epic:
+  key: ENG-20
+  summary: Conveyor backfill tooling
+  sprints: [33, 40]
+  labels: [data]
+  description: |
+    ## Goal
+
+    Make backfills safe enough to be routine, so that Data Platform can repair a month
+    of a merchant report within one working day without putting the nightly pipelines at
+    risk.
+
+    Today `conveyor backfill` runs any range at any time. One backfill over two years of
+    `fraud_features_daily` held most of the Trino cluster for nine hours, wrote one
+    enormous Iceberg commit and left nothing to restore to halfway through.
+
+    ## Scope
+
+    - Two hard limits enforced by Conveyor: at most 31 partitions per run, and no
+      backfill between 00:00 and 06:00 UTC.
+    - Dry runs, status, logs and progress reporting.
+    - Limits on concurrent backfills across the cluster.
+    - Automatic splitting of ranges longer than 31 partitions.
+
+    ## Out of scope
+
+    - When a backfill is needed, and agreeing it with stewards and Finance: that stays a
+      process, described on
+      [Backfilling historical partitions](../../corpus/data/backfills.md).
+    - Backfills from exports or files outside the warehouse, which stay forbidden because
+      they would undo erasures.
+    - Changes to the pipelines themselves.
+
+    Background: [Data platform overview](../../corpus/data/platform-overview.md).
+  comments:
+    - "Tomasz: Hana Ostrowska leads the tooling. The cap and the nightly window come first; everything else builds on them."
+    - "Hana: The month-by-month script promised at the July office hours will ship with the cap, so that nobody is left without a way to fill long ranges."
+tickets:
+  - key: ENG-772
+    type: Task
+    summary: "Measure past backfills to size a limit on partitions per run"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Before choosing limits, look at what backfills have cost so far. From
+      `ops.conveyor_runs`, list every backfill of the past year with its pipeline, the
+      number of partitions, the runtime, its peak share of Trino workers and the size of
+      its Iceberg commit.
+
+      We already know the worst case: one backfill over two years of
+      `fraud_features_daily` held most of the Trino cluster for nine hours, wrote one
+      enormous commit and left nothing to restore to halfway through. The question is
+      where to draw the line so that ordinary repairs still fit in one run.
+    comments:
+      - "Hana: Nearly every ordinary repair last year was a month or less. The long ones were all new pipelines filling their history in one go."
+  - key: ENG-773
+    type: Task
+    summary: "Write the design note for backfill limits and the nightly window"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Write up the limits we want Conveyor to enforce, and why, for review in
+      `#team-data`:
+
+      1. A cap on partitions per run, so that commits stay small, the scheduler can
+         interleave other work and a mistake costs at most a month to put right.
+      2. No backfill between 00:00 and 06:00 UTC. That window belongs to the nightly
+         pipelines and their deadlines, such as `merchant_orders_daily` by 06:00 UTC.
+      3. Neither limit can be waived for one run.
+
+      The note also says what happens to a backfill still running at midnight.
+  - key: ENG-774
+    type: Task
+    summary: "Give every backfill its own identifier"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      A backfill today is only visible as a series of ordinary runs, so nobody can say
+      which runs belong together or who started them.
+
+      Give each backfill an identifier when it is created, such as `bf-20260701-1415`,
+      and attach it to every partition run it creates in `ops.conveyor_runs`. Every later
+      command about a backfill (status, logs, pause) takes the identifier, and the
+      announcement in `#team-data` quotes it.
+  - key: ENG-775
+    type: Story
+    summary: "Allow only one backfill at a time per pipeline"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As a pipeline owner, I need to know that nobody else is rewriting the same
+      partitions while my backfill runs.
+
+      Acceptance criteria:
+
+      - Conveyor refuses to start a backfill of a pipeline that already has one running,
+        and names the one that is.
+      - `conveyor backfill list --pipeline PIPELINE` shows them:
+
+      ```bash
+      conveyor backfill list --pipeline merchant_orders_daily
+      ```
+
+      - Different pipelines can still be backfilled at the same time.
+  - key: ENG-776
+    type: Bug
+    summary: "Two backfills of one pipeline could both start within the same second"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce:** start two backfills of `payouts_hourly` from two terminals
+      at the same moment.
+
+      **Expected:** the second is refused, as ENG-775 requires.
+
+      **Actual:** both passed the check, because each read the list of running backfills
+      before either had registered. They wrote the same partitions in turn, and the
+      second overwrote the first.
+
+      **Fix:** the check and the registration happen in one transaction in the
+      scheduler's database. A test starts twenty backfills of one pipeline at once and
+      expects exactly one to run.
+  - key: ENG-777
+    type: Story
+    summary: "Refuse to start a backfill between 00:00 and 06:00 UTC"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As the data on-call, I need the nightly pipelines to have the whole of Trino's batch
+      capacity, because their deadlines fall at the end of the window:
+      `merchant_orders_daily` must be ready by 06:00 UTC for Finance.
+
+      Acceptance criteria:
+
+      - `conveyor backfill` refuses to start between 00:00 and 06:00 UTC, with a message
+        saying when it can start.
+      - The rule applies to everyone, Data Platform included, and cannot be waived.
+      - Single-partition reruns with `conveyor run` are not affected.
+    comments:
+      - "Rafael: Finance asked whether this applies at weekends. It does: the window protects the nightly pipelines, and they run every night."
+  - key: ENG-778
+    type: Story
+    summary: "Suspend running backfills at 00:00 UTC and resume them at 06:00 UTC"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      A backfill started in the evening can still be running at midnight, and it must not
+      compete with the nightly pipelines.
+
+      Acceptance criteria:
+
+      - A backfill still running at 00:00 UTC is suspended after the partition it is
+        building, never in the middle of one.
+      - It resumes by itself at 06:00 UTC, with nobody doing anything.
+      - Its status shows it as suspended, with the time it will resume.
+  - key: ENG-779
+    type: Bug
+    summary: "Suspended backfills resumed at 05:00 UTC while the UK was on summer time"
+    status: Done
+    priority: Highest
+    labels: [data]
+    description: |
+      **Steps to reproduce:** start a long backfill on a summer evening and let it be
+      suspended at midnight.
+
+      **Expected:** suspension at 00:00 UTC and resumption at 06:00 UTC.
+
+      **Actual:** it was suspended at 23:00 UTC and resumed at 05:00 UTC, inside the
+      nightly window, because both times were computed in UK local time, an hour ahead of
+      UTC in summer.
+
+      **Fix:** every boundary of the window is computed in UTC. A test runs the window
+      across both clock changes of the year.
+    comments:
+      - "Rafael: This matters most on nights when ingestion is late and merchant_orders_daily is still running at 05:00 UTC."
+  - key: ENG-780
+    type: Story
+    summary: "Add --wait so that a script can run backfills one after another"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Splitting a long range into months needs each backfill to finish before the next
+      one starts, since a pipeline can only have one backfill at a time.
+
+      Acceptance criteria:
+
+      - With `--wait`, `conveyor backfill` returns only when that backfill has finished.
+      - Its exit status says whether every partition succeeded.
+      - Without `--wait`, the command returns at once with the backfill identifier, as
+        it does today.
+  - key: ENG-781
+    type: Story
+    summary: "Build several partitions at once with --max-parallel"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As a pipeline owner, I want a month to backfill in an afternoon, not a whole day,
+      without taking the cluster from everyone else.
+
+      Acceptance criteria:
+
+      - `--max-parallel N` builds up to N partitions at once.
+      - The default is 2 and the ceiling is 4; higher values are refused.
+      - Above 2, the command reminds the user to ask in `#team-data` first, since it
+        competes with everyone's queries.
+  - key: ENG-782
+    type: Story
+    summary: "Cap a backfill at 31 partitions per run"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As Data Platform, we want every backfill small enough that a mistake costs at most a
+      month to put right.
+
+      Acceptance criteria:
+
+      - `conveyor backfill` refuses a range of more than 31 partitions before starting
+        anything.
+      - The cap counts partitions, not days: 31 partitions cover any calendar month of a
+        daily pipeline, and 31 hours of an hourly one.
+      - The cap is not a setting and cannot be raised for one run.
+
+      ```bash
+      conveyor backfill merchant_orders_daily --from 2026-01-01 --to 2026-01-31
+      ```
+
+      See [Backfilling historical partitions](../../corpus/data/backfills.md).
+    comments:
+      - "Hana: The refusal message is drafted; it points to the month-by-month script that follows in ENG-784."
+  - key: ENG-783
+    type: Bug
+    summary: "Partition cap counted days, letting hourly backfills of 72 partitions through"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      **Steps to reproduce:**
+
+      ```bash
+      conveyor backfill payouts_hourly --from 2026-07-06T00 --to 2026-07-08T23
+      ```
+
+      **Expected:** refused, since three days of an hourly pipeline are 72 partitions.
+
+      **Actual:** accepted, because the cap compared the number of days in the range with
+      31.
+
+      **Fix:** the cap counts partition keys, whatever the grain. For `payouts_hourly`,
+      31 partitions are 31 hours, a little over a day.
+    comments:
+      - "Yusuf: Thanks. Payouts mostly backfill a day at a time anyway, 24 partitions."
+  - key: ENG-784
+    type: Task
+    summary: "Publish a script that splits long backfills into calendar months"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Until Conveyor splits long ranges itself, give people a loop that runs one month per
+      backfill, oldest first, and stops cleanly before the nightly window, as promised at
+      the [July office hours](../../corpus/data/office-hours-2026-07.md).
+
+      ```bash
+      for month in 2025-10 2025-11 2025-12 2026-01 2026-02 2026-03; do
+        first="${month}-01"
+        last="$(date -u -d "${first} +1 month -1 day" +%F)"
+        if (( 10#$(date -u +%H) >= 21 )); then
+          echo "Too close to the nightly window; resume from ${month}." >&2
+          exit 1
+        fi
+        conveyor backfill merchant_orders_daily --from "${first}" --to "${last}" --wait
+      done
+      ```
+
+      For hourly pipelines, split by day instead: 24 partitions per run.
+    comments:
+      - "Hana: Tested on 2025-10 to 2026-03 of merchant_orders_daily with a scratch target; it stops cleanly at 21:00 UTC."
+  - key: ENG-785
+    type: Story
+    summary: "Let Data Platform raise the partition cap for a single run"
+    status: Won't Do
+    priority: Low
+    labels: [data]
+    description: |
+      A Risk Operations analyst asked whether a new table could still be filled with two
+      years of history in one go once the cap lands, and whether Data Platform could at
+      least lift the cap for its own runs.
+
+      Proposal: an override flag on `conveyor backfill`, limited to members of Data
+      Platform.
+    comments:
+      - "Tomasz: Won't do. The reasons for the cap (commit size, cluster share, how much a mistake costs) do not depend on who runs the command. Long ranges are split into monthly backfills."
+  - key: ENG-786
+    type: Task
+    summary: "Update the backfilling page for the cap and the nightly window"
+    status: Done
+    priority: Low
+    labels: [data]
+    description: |
+      Rewrite the backfilling page for the new rules: the two limits at the top, why they
+      exist, how to count a range and split it into months, and what happens to a backfill
+      still running at midnight.
+
+      Add a checklist that people can copy into their announcement thread, and a
+      question-and-answer entry for "Can I raise the cap for one run?", answered with a
+      plain no.
+  - key: ENG-787
+    type: Story
+    summary: "Show a backfill's partitions, estimated scan and runtime in a dry run"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As anyone planning a backfill, I want to see what it will do before it does it.
+
+      Acceptance criteria: `--dry-run` builds nothing and prints the plan, which can be
+      saved and attached to the announcement.
+
+      ```text
+      backfill plan: merchant_orders_daily
+        partitions:        31 (2026-01-01 .. 2026-01-31)
+        estimated scan:    412 GiB
+        estimated runtime: 2 h 40 min at max-parallel 2
+        downstream:        none scheduled; ad hoc readers: finance revenue report
+      ```
+
+      - The plan lists the partitions, an estimate of the data they would scan, and the
+        pipelines and readers downstream.
+    comments:
+      - "Rafael: Tried it on January of merchant_orders_daily; the scan estimate was within a few per cent of the real run."
+  - key: ENG-788
+    type: Story
+    summary: "Show in the dry run which partitions the current code would change"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Many requests for a backfill turn out not to need one: the fix does not change past
+      partitions at all.
+
+      Acceptance criteria:
+
+      - For each partition, the dry run compares what the deployed code would write with
+        what the table holds, and reports how many partitions would change:
+
+      ```text
+        partitions changed by current code: 31 of 31
+      ```
+
+      - When no partition would change, it says plainly that no backfill is needed.
+  - key: ENG-789
+    type: Story
+    summary: "Warn in the dry run when a backfill would reach the nightly window"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As someone starting a backfill in the afternoon, I want to know whether it can
+      finish before midnight, rather than find it suspended overnight.
+
+      Acceptance criteria:
+
+      - From the estimated runtime, the dry run gives the latest start time that finishes
+        before 00:00 UTC:
+
+      ```text
+        nightly window:    clear (start before 21:20 UTC to finish before 00:00 UTC)
+      ```
+
+      - When the estimate already runs past midnight, it says how many partitions would
+        be left for the morning.
+    comments:
+      - "Hana: The latest start time assumes the max-parallel given on the command line, so lowering it moves the time earlier."
+  - key: ENG-790
+    type: Story
+    summary: "Warn in the dry run when a backfill would scan more than 5 TiB"
+    status: To Do
+    priority: Low
+    labels: [data]
+    description: |
+      A month of `merchant_orders_daily` scans about 400 GiB, and backfills are charged to
+      the owning team's cost centre like any other query. When a dry run estimates more
+      than 5 TiB in total, people should talk to Data Platform first: there is usually a
+      cheaper way, such as building only the new column.
+
+      Acceptance criteria:
+
+      - The dry run prints a warning above 5 TiB and points to
+        [Keeping warehouse queries cheap](../../corpus/data/query-costs.md).
+      - Nothing is refused; the warning is advice.
+  - key: ENG-791
+    type: Story
+    summary: "Record the table snapshot taken just before each backfill starts"
+    status: To Do
+    priority: Lowest
+    labels: [data]
+    description: |
+      To put a table back after a bad backfill, people look up the snapshot from just
+      before the start in the table's `$snapshots`, then restore it:
+
+      ```sql
+      alter table iceberg.marts.merchant_orders_daily
+          execute rollback_to_snapshot(7841230095512647721);
+      ```
+
+      Finding the right snapshot by hand is easy to get wrong when a nightly run committed
+      in between.
+
+      Acceptance criteria: Conveyor records the snapshot identifier of each target table
+      when a backfill starts, and `conveyor backfill status` shows it.
+  - key: ENG-792
+    type: Task
+    summary: "Add backfill status and per-partition logs to the conveyor CLI"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Give backfills commands of their own, keyed by the backfill identifier:
+
+      ```bash
+      conveyor backfill status bf-20260828-1030
+      conveyor backfill logs bf-20260828-1030 --partition 2026-01-17
+      ```
+
+      `status` shows each partition's state (pending, running, succeeded or failed) and
+      whether the backfill is suspended. `logs` shows the task logs of one partition, so
+      that nobody has to dig through the scheduler's list of runs.
+  - key: ENG-793
+    type: Story
+    summary: "Keep building the other partitions when one partition of a backfill fails"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As a pipeline owner, I do not want one bad day to stop the other thirty.
+
+      Acceptance criteria:
+
+      - A failed partition does not stop the others.
+      - When the backfill ends, `conveyor backfill status` lists the failed partitions.
+      - The owner fixes the cause and starts a new backfill for those partitions only,
+        which the cap and the one-at-a-time rule treat like any other.
+  - key: ENG-794
+    type: Bug
+    summary: "Backfilled partitions raised freshness and row count alerts against this week's data"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce:** backfill `merchant_orders_daily` from 2026-06-01 to
+      2026-06-30.
+
+      **Expected:** quality checks on historical partitions that mean something.
+
+      **Actual:** every partition raised `DQ-017`, since its freshness deadline had passed
+      long ago, and several raised `DQ-031`, because their row counts were compared with
+      this week's median rather than with the days before them.
+
+      **Fix:** for backfilled partitions, `DQ-017` is not evaluated, `DQ-031` compares
+      each partition with the days before it in the backfilled history, and `DQ-044`
+      still blocks. See [Data quality alerts](../../corpus/data/quality-alerts.md).
+    comments:
+      - "Tomasz: Agreed on keeping DQ-044 blocking. A schema alert during a backfill is always real."
+  - key: ENG-795
+    type: Story
+    summary: "Queue downstream backfills with --include-downstream"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the owner of a table that others are derived from, I want their partitions
+      rebuilt after mine, in order, without starting each backfill by hand.
+
+      Acceptance criteria:
+
+      - `--include-downstream` queues backfills of the downstream pipelines for the same
+        range once this one succeeds.
+      - Each downstream backfill runs its own checks.
+      - Without the flag, nothing downstream is touched, and owners of tables that are not
+        derived purely from this one backfill them themselves.
+  - key: ENG-796
+    type: Story
+    summary: "Let the data on-call list and pause running backfills"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the data on-call, when a late tier 1 run competes for capacity with a long
+      evening backfill, I need to see what is running and pause it.
+
+      Acceptance criteria:
+
+      - `conveyor backfill list --running` shows every running backfill, across
+        pipelines, with its owner.
+      - `conveyor backfill pause` stops a backfill after its current partition.
+
+      ```bash
+      conveyor backfill list --running
+      conveyor backfill pause bf-20260821-1600
+      ```
+    comments:
+      - "Signe: Both commands are on the data on-call page now, and running backfills are an item of the Monday hand-over."
+  - key: ENG-797
+    type: Story
+    summary: "Show backfill history in the Conveyor web interface"
+    status: To Do
+    priority: Low
+    labels: [data]
+    description: |
+      Backfill history lives in the CLI and in `ops.conveyor_runs`. Stewards and Finance
+      would like to see the past backfills of a table next to its catalogue entry, under
+      **Tables** in the Conveyor web interface: who ran them, over which range, why, and
+      with what result.
+
+      Acceptance criteria:
+
+      - A history per table, with the backfill identifier, range, owner, start and end,
+        and any failed partitions.
+      - A link from each entry to the backfill's status.
+  - key: ENG-798
+    type: Story
+    summary: "Ask source table owners to confirm before a large backfill of their events"
+    status: In Progress
+    priority: Medium
+    labels: [data]
+    description: |
+      A large backfill of tables built from another team's events reads, and can change,
+      a lot of history that team cares about. Its owners should agree first.
+
+      Acceptance criteria:
+
+      - When a backfill would rebuild a large range from another team's events, Conveyor
+        asks the owners of the source tables to confirm in their team channel before it
+        starts.
+      - The backfill waits until an owner confirms, or until its own owner cancels it.
+      - The backfilling page explains the step.
+    comments:
+      - "Sunniva: Gave notice at the September backend guild. Owners will be asked in their team channel, as promised there."
+  - key: ENG-799
+    type: Bug
+    summary: "Backfill status shows failed partitions as pending after a scheduler restart"
+    status: In Progress
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce:** start a backfill, let one partition fail, then restart the
+      Conveyor scheduler pod.
+
+      **Expected:** `conveyor backfill status` still lists the partition as failed.
+
+      **Actual:** it shows as pending, so its owner believes it will still run, and the
+      backfill never reports itself finished.
+
+      **Fix, in progress:** rebuild the state of each partition from `ops.conveyor_runs`
+      on start-up, rather than from the scheduler's memory.
+    comments:
+      - "Hana: Seen twice, both times after Platform upgraded the node pool. Fix in review."
+  - key: ENG-800
+    type: Task
+    summary: "Report backfill scan volumes per team for the monthly cost review"
+    status: To Do
+    priority: Low
+    labels: [data]
+    description: |
+      Backfills are charged to the owning team's cost centre like any other query, but
+      nobody can tell how much of a team's warehouse spend comes from backfills. As they
+      become routine, the monthly cost review will want to know.
+
+      Give each team a monthly total of what its backfills scanned, by `cost-centre` tag,
+      from the actual runs rather than the dry-run estimates. Background:
+      [Cloud cost allocation and tagging](../../corpus/finance/cloud-cost-allocation.md).
+    comments:
+      - "Tomasz: Data Platform's cloud costs went up once backfills became routine. This would show the review exactly where."
+  - key: ENG-801
+    type: Task
+    summary: "Backfill the 30-day refund ratio feature of fraud_features_daily"
+    status: In Progress
+    priority: Medium
+    labels: [data]
+    description: |
+      Risk ML wants a 30-day refund ratio per merchant in `marts.fraud_features_daily`,
+      with history, for the next training cycle, as agreed at the
+      [September office hours](../../corpus/data/office-hours-2026-09.md).
+
+      - The feature is a new column, never a change to an existing one, because training
+        sets are pinned to snapshots.
+      - Backfill only once the feature has passed review, and agree each run with Risk ML
+        in `#team-risk-ml`.
+      - Several months of partitions, so several runs of at most 31, one month at a time,
+        outside the nightly window, from the week of 5 October.
+    comments:
+      - "Mireille: Thanks. Please post each month's distribution of the new column in #team-risk-ml as it lands."
+  - key: ENG-802
+    type: Story
+    summary: "Report progress and expected end time for long backfills"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As the owner of a long backfill, and as the data on-call deciding whether it will
+      run into the nightly window, I want to see how far it has got.
+
+      Acceptance criteria:
+
+      - `conveyor backfill status` shows how many partitions are done, running, failed
+        and left, and an expected end time based on the partitions built so far.
+      - A backfill started with `--wait` prints its progress as partitions finish.
+  - key: ENG-803
+    type: Story
+    summary: "Keep the total --max-parallel of running backfills at 4 or less"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As the data on-call, I want backfills of different pipelines to run side by side
+      without taking more of Trino than one heavy backfill would.
+
+      Acceptance criteria:
+
+      - The sum of `--max-parallel` across all running backfills never exceeds 4.
+      - Backfills of pipelines that depend on each other do not run at the same time.
+      - `conveyor backfill list --running` shows each backfill's share.
+  - key: ENG-804
+    type: Story
+    summary: "Split ranges longer than 31 partitions into monthly backfills automatically"
+    status: In Progress
+    priority: High
+    labels: [data]
+    description: |
+      As anyone backfilling more than a month, I want Conveyor to split the range for me,
+      so that nobody needs the month-by-month script.
+
+      Acceptance criteria:
+
+      - A range longer than 31 partitions is split into calendar months for daily
+        pipelines and into days for hourly ones, and run oldest first, one after another.
+      - The cap still applies to each run; it is not raised.
+      - The parts share one parent identifier, and `conveyor backfill status` shows them
+        together.
+      - Parts that cannot finish before 00:00 UTC wait for 06:00 UTC.
+    comments:
+      - "Hana: Starting this in sprint 40 as planned. Daily pipelines split by calendar month, so January and February are two runs."
+  - key: ENG-805
+    type: Story
+    summary: "Limit how many backfills run at once across the cluster"
+    status: Won't Do
+    priority: Medium
+    labels: [data]
+    description: |
+      Several teams now backfill at once, and their `--max-parallel` settings add up
+      against everyone's queries, including the dashboards that read the warehouse during
+      the working day.
+
+      Proposal: a cluster-wide limit on concurrent backfill work, enforced by the
+      scheduler, with backfills over the limit refused.
+    comments:
+      - "Sunniva: Estimated as small, and it is not; this will carry over again. Proposal for the retrospective: split it into a cluster-wide cap and queueing instead of refusing, and close this one."
+  - key: ENG-806
+    type: Story
+    summary: "Queue backfills that would exceed the cluster limit instead of refusing them"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As someone starting a backfill on a busy afternoon, I want it to wait its turn
+      rather than be refused and forgotten.
+
+      Acceptance criteria:
+
+      - A backfill that would take the total `--max-parallel` above 4 is queued, and
+        starts when capacity frees up.
+      - Queued backfills start in the order they were requested.
+      - A queued backfill that would start inside the nightly window waits for 06:00 UTC.
+      - `conveyor backfill status` shows its place in the queue.
+  - key: ENG-807
+    type: Task
+    summary: "Validate the backfill tooling on every tier 1 pipeline"
+    status: In Progress
+    priority: Medium
+    labels: [data]
+    description: |
+      Before the epic closes, run a real backfill with the new tooling on each tier 1
+      pipeline and check the result against the earlier snapshot, following
+      [Backfilling historical partitions](../../corpus/data/backfills.md):
+
+      - `merchant_orders_daily` and the finance marts, agreed with Finance;
+      - `payouts_hourly`, a day at a time;
+      - `fraud_features_daily`, agreed with Risk ML.
+
+      Record for each the dry-run estimate against the real scan and runtime, and anything
+      the status or progress output got wrong.
+    comments:
+      - "Tomasz: Order agreed: the finance marts first, with Finance agreeing the range in #team-data, then payouts_hourly, then fraud_features_daily with Risk ML."
+  - key: ENG-808
+    type: Task
+    summary: "Write the operator guide for Conveyor backfills"
+    status: In Progress
+    priority: Medium
+    labels: [data]
+    description: |
+      The backfilling page explains when and how to backfill. The data on-call and Data
+      Platform also need an operator guide for the tooling itself: how the scheduler
+      enforces the cap, the nightly window and the cluster limit, how to read the queue,
+      what to do when a backfill is stuck, suspended or paused, and how to recover after a
+      scheduler restart.
+
+      Publish it in the data section and link it from the data on-call page.
+    comments:
+      - "Tomasz: Use our real backfill of the finance marts in sprint 39 as the worked example: it ran with progress reporting and matched the earlier snapshot."
+      - "Sunniva: First draft shared in #team-data; the section on stuck backfills waits for the fix in ENG-799."
+  - key: ENG-809
+    type: Bug
+    summary: "Expected end time ignores the overnight suspension of a backfill"
+    status: To Do
+    priority: Medium
+    labels: [data, follow-up]
+    description: |
+      **Steps to reproduce:** start a backfill at 20:00 UTC whose estimated runtime is six
+      hours, and run `conveyor backfill status` on it.
+
+      **Expected:** an end time after 06:00 UTC the next morning, since the backfill will
+      be suspended from 00:00 to 06:00 UTC.
+
+      **Actual:** the status promises an end at about 02:00 UTC, as though the nightly
+      window did not exist.
+
+      **Fix:** add the suspension to the estimate whenever the remaining partitions run
+      past midnight.
+  - key: ENG-810
+    type: Task
+    summary: "Retire the month-splitting script once Conveyor splits ranges itself"
+    status: To Do
+    priority: Low
+    labels: [data, tech-debt]
+    description: |
+      When automatic splitting ships (ENG-804), the loop on the backfilling page becomes
+      something people copy out of habit, and the habit hides the parent identifier that
+      groups the parts.
+
+      - Replace the script on the backfilling page with the single command.
+      - Unpin the script in `#team-data`.
+      - Keep the advice on splitting hourly pipelines by day only if Conveyor does not
+        already do it.

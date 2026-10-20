@@ -1,0 +1,798 @@
+epic:
+  key: ENG-19
+  summary: Warehouse erasure automation
+  sprints: [24, 32]
+  labels: [data]
+  description: |
+    ## Goal
+
+    Apply every approved erasure request across the data warehouse within 30 days of
+    the privacy team receiving it, without a data engineer running SQL by hand, and keep
+    the evidence in `privacy.erasure_log`.
+
+    Today erasure in the warehouse is a manual SQL procedure run by whichever data
+    engineer is free. It takes up to three weeks and is tracked in a spreadsheet, and an
+    erasure that stops at the production database leaves the person in a dozen Iceberg
+    tables and their snapshots.
+
+    ## Scope
+
+    - A request queue in the `privacy` schema that only the privacy team can write to.
+    - Column tags and erasure policies that let a job find every row about a person in
+      `raw`, `staging`, `marts` and `scratch`, and decide what to do with it.
+    - The `privacy_erasure` Conveyor pipeline: resolve keys, plan, erase or pseudonymise,
+      rewrite and expire snapshots, log.
+    - Staging filters, so that an erased person never comes back.
+
+    ## Out of scope
+
+    - Whether a request is valid, identity checks and replies to requesters: the privacy
+      team handles them under the [DPA playbook](../../corpus/legal/dpa-playbook.md).
+    - Intake through Merchant Support, described in
+      [Forwarding data subject requests](../../corpus/support/data-subject-requests.md).
+    - Erasure in production service databases, which each team handles under its own
+      procedures.
+
+    The warehouse side is documented in
+    [Erasure requests in the warehouse](../../corpus/data/erasure-requests.md).
+  comments:
+    - "Tomasz: Signe Abernethy owns the job and the process now that it is live; Hana reviews anything that touches Iceberg maintenance."
+    - "Beatrix: From the privacy side the measure is simple: no approved request older than 30 days without a row in the log."
+tickets:
+  - key: ENG-733
+    type: Task
+    summary: "Document the manual erasure procedure before automating it"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Before automating anything, write down how erasure in the warehouse works today. It
+      is a manual SQL procedure run by whichever data engineer is free, it takes up to
+      three weeks per request, and progress is tracked in a spreadsheet.
+
+      For last quarter's requests, record:
+
+      - which tables each engineer touched, and which they missed;
+      - how long each request waited between approval and completion;
+      - where the spreadsheet and the SQL disagree.
+
+      The result is the baseline for the epic's 30-day goal and tells us which tables the
+      new job must cover first.
+    comments:
+      - "Signe: Done. Most of the elapsed time was waiting for someone free to run the SQL, not the SQL itself."
+  - key: ENG-734
+    type: Task
+    summary: "Create the privacy schema and its erasure request queue"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Create a service schema `privacy` in the warehouse, beside `ops` and `scratch`. It is
+      not a layer, and most people will never query it.
+
+      - `privacy.erasure_requests`: one row per request, with the identifier the privacy
+        team gives it (such as `ER-2026-0042`), the subject type, `received_at`,
+        `approved_at` and a `state` of `approved`, `on_hold` or `applied`.
+      - `privacy.erasure_keys`: one row per key, so that the job can join on them.
+
+      ```sql
+      select request_id, key_type, subject_key
+      from iceberg.privacy.erasure_keys
+      where request_id = 'ER-2026-0042';
+      ```
+  - key: ENG-735
+    type: Story
+    summary: "Let only the privacy team queue erasure requests"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As the DPO, I need to know that nobody erases data on the strength of a chat
+      message, so only the privacy team can add requests to the queue.
+
+      Acceptance criteria:
+
+      - A Trino role `privacy_officer` can write to `privacy.erasure_requests` and
+        `privacy.erasure_keys`. The DPO approves who holds it.
+      - Data engineers can read the queue but cannot add to it.
+      - No other role can read the `privacy` schema.
+      - The role is certified in the quarterly access reviews, like every warehouse role.
+    comments:
+      - "Beatrix: Agreed. I approve every grant of the role myself."
+  - key: ENG-736
+    type: Task
+    summary: "Define the subject types and the keys an erasure request carries"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Agree with the privacy team which people the warehouse can erase and how a request
+      names them.
+
+      | Subject type | Who | Keys |
+      |---|---|---|
+      | `merchant_user` | A person with a Merchant Hub login | `user_id`, email address |
+      | `seller` | A marketplace seller paid by Quillmoor Payouts, when an individual or sole trader | `seller_id`, email address |
+      | `cardholder` | A customer who paid a merchant through Quillmoor Pay | Email address, tokenised card reference, `customer_ref` |
+
+      Card numbers are not in the warehouse at all, because `card-auth` replicates only
+      tokenised references, so a card number is never a key.
+  - key: ENG-737
+    type: Story
+    summary: "Tag subject key columns with personal.subject_key and a subject type"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the erasure job, I need to know which columns identify a person, so that I can
+      find every row about them.
+
+      Acceptance criteria:
+
+      - The column file next to each model can tag a column `personal.subject_key`, with
+        `subject_type` set to `merchant_user`, `seller` or `cardholder`.
+      - A table with personal data and no subject key column fails review.
+
+      ```yaml
+      columns:
+        - name: seller_id
+          tags: [personal.subject_key]
+          subject_type: seller
+      ```
+
+      The rules are on
+      [Tagging personal data columns](../../corpus/data/personal-data-columns.md).
+  - key: ENG-738
+    type: Story
+    summary: "Add tags for contact details, names, financial data, online identifiers and free text"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Masking and erasure both need to know what kind of personal data a column holds,
+      not only whose it is.
+
+      Acceptance criteria:
+
+      - Tags `personal.contact`, `personal.name`, `personal.financial`, `personal.online`
+        and `personal.free_text` exist beside `personal.subject_key`.
+      - Trino masks tagged columns for every role not entitled to them, so that
+        `analyst_internal` sees `***` where an email address would be.
+      - Tags flow downstream when a mart selects a tagged column under the same name; a
+        renamed or derived column must be tagged again.
+      - A table with any `personal.*` column is classed Confidential at least.
+  - key: ENG-739
+    type: Story
+    summary: "Refuse to promote columns that look personal and carry no tag"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      An untagged column holding an email address is a column the erasure job will never
+      clean. The build should catch it before it reaches `marts`.
+
+      Acceptance criteria:
+
+      - When a model is built in review, a detector looks at column names (`email`,
+        `phone`, `first_name`, `address`, `ip_address` and similar) and at a sample of
+        values that look like email addresses or phone numbers.
+      - A flagged column without a `personal.*` tag fails the build.
+      - The build refuses to promote the model until the column is tagged.
+    comments:
+      - "Rafael: Ran the detector over the existing marts in report-only mode first. Most flags were real; a few were shared mailboxes."
+  - key: ENG-740
+    type: Task
+    summary: "Tag personal data columns in the existing raw and staging tables"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      The detector only guards models built from now on. Go through the tables already in
+      `raw` and `staging` for every service we replicate and tag each column that holds
+      personal data, with at least one `personal.subject_key` per table.
+
+      - `seller_id` in payout tables is a subject key; `merchant_id` is not, because most
+        merchants are companies.
+      - `card-auth` replicates only tokenised references and the last four digits, so its
+        tables need a `cardholder` key on the token and nothing more.
+      - Free-text columns, such as dispute descriptions, get `personal.free_text`.
+
+      The layers are described in the
+      [Data platform overview](../../corpus/data/platform-overview.md).
+    comments:
+      - "Signe: All replicated sources tagged. The notify tables took longest: a lot of free text."
+  - key: ENG-741
+    type: Bug
+    summary: "Detector blocks shared support mailboxes as if they were personal data"
+    status: Done
+    priority: Low
+    labels: [data]
+    description: |
+      **Steps to reproduce:** add a column `support_email` holding a merchant's shared
+      mailbox, such as `support@example.com`, to a staging model and open a pull request.
+
+      **Expected:** a way to say that the column is not personal.
+
+      **Actual:** the detector flags the column from its name and values, and the build
+      refuses it. The only way out was to tag it `personal.contact`, which masks it for
+      everyone and drags it into erasure plans.
+
+      **Fix:** a flagged column may be marked `tags: []` with a comment saying why:
+
+      ```yaml
+        - name: support_email
+          tags: []   # the merchant's shared support mailbox, not a person
+      ```
+    comments:
+      - "Rafael: Note for reviewers: first.last@example.com is personal, support@example.com is not. When in doubt, tag."
+  - key: ENG-742
+    type: Story
+    summary: "Declare an erasure policy on every table that holds personal data"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the erasure job, I need to know what to do with a subject's rows in each table,
+      because some records must be kept by law.
+
+      Acceptance criteria:
+
+      - Every table with personal data declares `erasure_policy` in its table properties,
+        through its column file: `erase`, `pseudonymise` or `aggregate_only`.
+      - `erase` for raw copies of user and seller profiles, notification logs and scratch
+        tables.
+      - `pseudonymise` for payment, refund and payout records.
+      - `aggregate_only` for tables that hold no row about an individual, such as most
+        marts, including `marts.merchant_orders_daily`.
+  - key: ENG-743
+    type: Story
+    summary: "Resolve an erasure request's keys to every identifier the warehouse holds"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      A request names a person by one or two keys, but the warehouse knows them by
+      several. An email address on a seller's request leads to a `seller_id`, and from
+      there to payout account references.
+
+      Acceptance criteria:
+
+      - For each approved request, the job expands the keys into every identifier the
+        warehouse uses for that person and writes them to `privacy.erasure_keys` with
+        their `key_type`.
+      - Cardholder requests resolve through the email address, the tokenised card
+        reference and the merchant's `customer_ref`.
+      - The expansion follows only columns tagged `personal.subject_key`.
+    comments:
+      - "Signe: Tested on twenty sample requests from the spreadsheet; every seller expanded to the payout account references we expected."
+  - key: ENG-744
+    type: Story
+    summary: "Plan each erasure across raw, staging and marts before touching data"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Given the resolved keys, the job first lists every table with a matching subject key
+      column in `raw`, `staging` and `marts`, with the action that the table's erasure
+      policy asks for. Only then does it change anything.
+
+      Acceptance criteria:
+
+      - The plan names each table, its policy and the number of matching rows.
+      - Tables whose policy is `aggregate_only` appear with no action, so that a reviewer
+        can see they were considered.
+      - The plan is kept with the run, so that a failed run can be compared with it.
+  - key: ENG-745
+    type: Bug
+    summary: "Hashed email columns left out of erasure plans"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce:** plan an erasure for a merchant user whose email address also
+      appears, hashed, in a raw notification table.
+
+      **Expected:** the plan includes every table that holds the address, hashed or not.
+
+      **Actual:** the hashed column carried no tag, so the plan skipped the table. Anyone
+      with the address can compute the hash and find the row, so the data was still
+      personal.
+
+      **Fix:** hashed columns now carry the same tags as the original value, and the
+      tagging page says so. Three tables were tagged again.
+    comments:
+      - "Hana: Checked the other sources for hashed contact details; nothing else turned up."
+  - key: ENG-746
+    type: Story
+    summary: "Erase matching rows with Iceberg row-level deletes, one commit per table"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As the privacy team, we need a subject's rows removed from every table whose policy
+      is `erase`, without anyone rewriting tables by hand.
+
+      Acceptance criteria:
+
+      - The job deletes matching rows with Iceberg row-level operations, table by table,
+        each table in its own commit.
+      - It reads the keys from `privacy.erasure_keys`:
+
+      ```sql
+      delete from iceberg.raw.payout_gateway__sellers
+      where seller_id in (
+          select subject_key
+          from iceberg.privacy.erasure_keys
+          where request_id = 'ER-2026-0137'
+            and key_type = 'seller_id'
+      );
+      ```
+  - key: ENG-747
+    type: Story
+    summary: "Pseudonymise payment, refund and payout records instead of erasing them"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      Payment, refund and payout records must be kept for 7 years, even when a person asks
+      for erasure. For tables whose policy is `pseudonymise`, the job keeps the row and
+      replaces only what identifies the person.
+
+      Acceptance criteria:
+
+      - Personal columns are replaced with a stable token such as `erased_7f3a9c21`; the
+        rest of the row stays.
+      - Amounts, dates and merchant identifiers are untouched, so that financial reporting
+        still adds up.
+      - The same request gives the same token in every table, so that rows still join.
+  - key: ENG-748
+    type: Task
+    summary: "Agree with the DPO which records are pseudonymised rather than erased"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Before the job touches payment data, agree with Beatrix Sallow, as DPO, the list of
+      tables whose records we must keep, and therefore pseudonymise rather than erase.
+
+      The basis is legal: payment records are kept for 7 years from the payment or payout,
+      and the right to erasure under GDPR Article 17 is not absolute where we are obliged
+      to keep data.
+
+      Deliverable: the `erasure_policy` of every table holding personal data, reviewed by
+      the DPO, consistent with the
+      [Data retention schedule](../../corpus/data/retention-schedule.md).
+    comments:
+      - "Beatrix: Reviewed. Notification history is erased, not pseudonymised: we have no duty to keep it."
+  - key: ENG-749
+    type: Bug
+    summary: "Pseudonymisation tokens could be recomputed from an email address"
+    status: Done
+    priority: Highest
+    labels: [data, vuln]
+    description: |
+      **Steps to reproduce:** pseudonymise a test seller, then compute the token for the
+      seller's email address with the job's token function.
+
+      **Expected:** no way back from a token to the person.
+
+      **Actual:** the first version derived the token from a hash of the subject's email
+      address. Anyone who knew the address could compute the token and find every
+      pseudonymised row about that person, so the rows were still personal data.
+
+      **Fix:** the token is derived from the request identifier, not from the person's
+      data, so it cannot be reversed. The test requests pseudonymised with the old
+      function were applied again.
+    comments:
+      - "Callum: Thanks for raising it. Only test subjects were ever pseudonymised with the old function, so there is nothing to report."
+  - key: ENG-750
+    type: Story
+    summary: "Include personal and team scratch tables in erasure plans"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Scratch tables are dropped 21 days after their last write, but a table written
+      yesterday can hold a subject's rows for three more weeks. That is too long to leave
+      out.
+
+      Acceptance criteria:
+
+      - `scratch` is in scope like every other schema: personal and team scratch tables
+        with a matching subject key column appear in the plan.
+      - Their policy is `erase`.
+
+      Scratch tables built without tags cannot be found, which is one more reason the
+      warehouse access rules forbid copying personal data around.
+  - key: ENG-751
+    type: Story
+    summary: "Compact touched tables and expire old snapshots after each erasure"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      Row-level deletes leave the old values in earlier data files and snapshots, where
+      time travel can still read them.
+
+      Acceptance criteria:
+
+      - After applying a request, the job compacts each touched table, expires every
+        snapshot older than the erasure commit and removes orphaned files.
+      - The old values are physically gone from the live warehouse when the run ends.
+
+      ```sql
+      alter table iceberg.raw.payout_gateway__sellers execute optimize;
+      alter table iceberg.raw.payout_gateway__sellers
+          execute expire_snapshots(retention_threshold => '1d');
+      alter table iceberg.raw.payout_gateway__sellers
+          execute remove_orphan_files(retention_threshold => '1d');
+      ```
+  - key: ENG-752
+    type: Bug
+    summary: "Snapshot expiry with a one-day threshold refused by the iceberg catalogue"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce:** run the erasure job's expiry step on any touched table
+      through the `iceberg` catalogue.
+
+      **Expected:** snapshots older than the erasure commit are expired.
+
+      **Actual:** the catalogue refuses `retention_threshold => '1d'`, because its minimum
+      snapshot retention is longer, so the old values stayed readable through time
+      travel.
+
+      **Fix:** do not lower the minimum on the shared catalogue, where anyone could expire
+      history by accident. The job gets a catalogue of its own in ENG-753.
+  - key: ENG-753
+    type: Task
+    summary: "Run the erasure job through a dedicated iceberg_erasure catalogue"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Create a Trino catalogue `iceberg_erasure` over the same tables, with its minimum
+      snapshot retention lowered to one day, and point the `privacy_erasure` job at it.
+
+      - Only the job's service account uses the catalogue; its credentials live in
+        Strongroom.
+      - The ordinary `iceberg` catalogue keeps refusing thresholds that short, so nobody
+        can expire history by accident.
+      - Document the catalogue on the erasure page, with why it exists.
+    comments:
+      - "Hana: Catalogue live. The expiry step now passes on every touched table."
+  - key: ENG-754
+    type: Story
+    summary: "Record every applied erasure request in privacy.erasure_log"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the privacy team, we need evidence that a request was carried out, without asking
+      a data engineer, and without the evidence itself holding personal data.
+
+      Acceptance criteria: one row per request, written when the job has applied it, and
+      the request marked `applied`.
+
+      | Column | Meaning |
+      |---|---|
+      | `request_id` | Identifier from the privacy team |
+      | `subject_type` | `merchant_user`, `seller` or `cardholder` |
+      | `received_at`, `approved_at`, `applied_at` | When it was received, approved and applied |
+      | `tables_erased`, `tables_pseudonymised` | Tables changed, by action |
+      | `rows_affected` | Total rows changed |
+      | `job_version` | Version of `privacy_erasure` that applied it |
+      | `notes` | Anything unusual |
+  - key: ENG-755
+    type: Story
+    summary: "Schedule privacy_erasure daily at 07:00 UTC, after the nightly pipelines"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the privacy team, we want an approved request applied on the next cycle, and the
+      job must never race a scheduled run for the same table.
+
+      Acceptance criteria:
+
+      - `privacy_erasure` is an ordinary Conveyor pipeline, scheduled daily at 07:00 UTC,
+        after the nightly pipelines have published.
+      - Each run picks up every request in state `approved`.
+      - Most requests are applied within two days of approval.
+  - key: ENG-756
+    type: Story
+    summary: "Filter erased subjects out of every staging model"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      The job cleans `raw`, but anything rebuilt later must not bring an erased person
+      back.
+
+      Acceptance criteria:
+
+      - Every staging model excludes every subject in `privacy.erasure_log`.
+      - A backfill built from the warehouse therefore cannot restore an erased person.
+      - New tables built from staging start clean, even if they are added after a request
+        was applied.
+      - The filter is part of the staging template, not something each author adds.
+
+      See [Backfilling historical partitions](../../corpus/data/backfills.md) for the
+      one case it cannot cover: backfilling from an export.
+    comments:
+      - "Hana: Worth repeating wherever backfills are explained: a file outside the warehouse is the one way to undo an erasure."
+  - key: ENG-757
+    type: Bug
+    summary: "Erasure job stops on commit conflicts with other writers"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce:** let `privacy_erasure` apply a request to a raw table while
+      ingestion commits to the same table.
+
+      **Expected:** the job finishes, or can simply be started again.
+
+      **Actual:** the Iceberg commit fails with a conflict, the run stops, and starting it
+      again planned the request from scratch instead of carrying on.
+
+      **Fix:** each table's step is idempotent, so the job is safe to start again for the
+      same day:
+
+      ```bash
+      conveyor run privacy_erasure --partition 2026-05-07
+      ```
+    comments:
+      - "Signe: Most failures in testing so far are exactly this. A rerun clears them."
+  - key: ENG-758
+    type: Story
+    summary: "Log erasure requests whose keys match nothing as completed"
+    status: Done
+    priority: Low
+    labels: [data]
+    description: |
+      Some requests find no data at all: a cardholder who paid once, years ago, through a
+      merchant that has since left. That is still a completed request, and the privacy
+      team needs to be able to say so to the requester.
+
+      Acceptance criteria:
+
+      - The job logs the request with `rows_affected = 0` and a note naming the keys that
+        matched nothing.
+      - The request is marked `applied`.
+  - key: ENG-759
+    type: Story
+    summary: "Skip erasure requests placed on legal hold"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      When Legal or Risk Operations need data for a claim or a fraud investigation,
+      erasure has to wait until they no longer do.
+
+      Acceptance criteria:
+
+      - The privacy team can set a request to `on_hold`.
+      - The job skips requests on hold, and logs nothing for them until the hold is
+        lifted.
+      - Data engineers cannot place or lift a hold; they never decide this themselves.
+    comments:
+      - "Saoirse: Good. Legal will always go through the privacy team for holds, never straight to Data Platform."
+  - key: ENG-760
+    type: Story
+    summary: "Replace a subject's email address and names in tagged free-text columns"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      A few raw tables hold free text, such as merchants' descriptions of disputes, which
+      can mention anyone.
+
+      Acceptance criteria:
+
+      - Columns tagged `personal.free_text` are scanned for the subject's email address
+        and names.
+      - Matching values are replaced in place; the rest of the text stays.
+
+      The scan is good, not perfect. The lasting answer is to ingest as little free text
+      as we can.
+  - key: ENG-761
+    type: Task
+    summary: "Replay the erasure log when a warehouse backup is restored"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      Warehouse backups are taken nightly, are immutable and expire after 35 days, so
+      erased data stays in them until then. A restore must not bring an erased person
+      back.
+
+      Add a mandatory step to the restore checklist: before restored tables are opened to
+      anyone, apply every entry in `privacy.erasure_log` whose `applied_at` is later than
+      the backup's date. The two Data Platform engineers who can restore run it, and it
+      cannot be skipped.
+
+      Ask the privacy team to include the 35-day backup window in their reply to
+      requesters.
+  - key: ENG-762
+    type: Story
+    summary: "Keep applying the other tables when one table of an erasure fails"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      One broken table should not hold up a whole request, nor every request queued
+      behind it.
+
+      Acceptance criteria:
+
+      - If a single table keeps failing, the job carries on with the others and lists the
+        failing table in the request's `notes`.
+      - The request is not complete, and not marked `applied`, until every table in its
+        plan has been applied.
+      - The failing table is fixed within the week.
+  - key: ENG-763
+    type: Story
+    summary: "Remove erased subjects from warehouse backups"
+    status: Won't Do
+    priority: Low
+    labels: [data]
+    description: |
+      The privacy team asked whether erased data could also be removed from the nightly
+      warehouse backups, which are copies of the Iceberg data files and metadata in a
+      separate storage account, rather than waiting for them to expire.
+
+      Proposal: after each erasure is applied, rewrite every backup that holds the
+      subject's rows.
+    comments:
+      - "Tomasz: Won't do. Backups are immutable by design, which is what makes them worth having, and they expire after 35 days. The restore checklist replays the erasure log instead (ENG-761)."
+      - "Beatrix: Agreed. We will tell requesters about the 35-day window in our reply."
+  - key: ENG-764
+    type: Story
+    summary: "List approved erasure requests not yet applied, oldest first"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the privacy team and the data on-call, we want to see which requests are at risk
+      of missing the 30 days before they do.
+
+      Acceptance criteria: a query that the `privacy_officer` role can run:
+
+      ```sql
+      select
+          r.request_id,
+          r.received_at,
+          date_diff('day', r.received_at, current_timestamp) as days_open
+      from iceberg.privacy.erasure_requests as r
+      left join iceberg.privacy.erasure_log as l
+          on l.request_id = r.request_id
+      where r.state = 'approved'
+        and l.request_id is null
+      order by r.received_at;
+      ```
+
+      Anything open for more than 20 days is raised with Signe Abernethy and the privacy
+      team the same day.
+    comments:
+      - "Signe: Saved in the privacy team's workspace; it will go on the erasure page too."
+  - key: ENG-765
+    type: Bug
+    summary: "Pseudonymisation blanked merchant_id on seller payout rows"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce:** apply a test seller's request to
+      `raw.payout_gateway__payouts`.
+
+      **Expected:** personal columns replaced by the token; amounts, dates and merchant
+      identifiers kept.
+
+      **Actual:** `merchant_id` was replaced too, because the job pseudonymised every
+      column of a matching row except amounts and dates. Payouts per merchant no longer
+      added up for that seller's marketplace.
+
+      **Fix:** the job replaces only columns tagged `personal.*`. `merchant_id` is not
+      tagged, so it stays.
+  - key: ENG-766
+    type: Story
+    summary: "Apply every approved erasure request in the warehouse within 30 days"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As the DPO, I need every approved erasure request applied across the warehouse
+      within 30 days of the privacy team receiving it, with evidence, so that we meet GDPR
+      Article 17 without a data engineer running SQL by hand.
+
+      Acceptance criteria:
+
+      - The job applies an approved request on the first nightly cycle after approval; the
+        30 days are the outer limit, not the target.
+      - Every applied request has a row in `privacy.erasure_log`.
+      - The data on-call treats a failing job as urgent, even though it does not page.
+      - No approved request is older than 30 days without a log row.
+
+      How it works: [Erasure requests in the warehouse](../../corpus/data/erasure-requests.md).
+    comments:
+      - "Beatrix: Checked the last month of requests against the log: all applied, most within two days of approval."
+  - key: ENG-767
+    type: Task
+    summary: "Post erasure job failures to #data-alerts and #team-data"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      A failing `privacy_erasure` run should be seen the same day, not discovered a week
+      later.
+
+      - Route failures to `#data-alerts` and `#team-data`.
+      - They do not page. The data on-call looks after the job in working hours, and a
+        failure is their first job the next working morning.
+      - Most failures are commit conflicts, which a rerun clears; put the rerun command in
+        the alert.
+      - Add the job to the data on-call page.
+  - key: ENG-768
+    type: Task
+    summary: "Move open requests off the spreadsheet and retire the manual SQL procedure"
+    status: Done
+    priority: Medium
+    labels: [data, tech-debt]
+    description: |
+      Now that the job applies requests end to end, stop the old way of working.
+
+      - Ask the privacy team to queue every request still open in the spreadsheet in
+        `privacy.erasure_requests`, with its original `received_at`, so that the 30 days
+        run from the right date.
+      - Delete the spreadsheet once the privacy team confirms every row is queued: it
+        holds the very data we are erasing.
+      - Remove the manual SQL procedure from the team's runbook, so that nobody falls back
+        to it.
+    comments:
+      - "Signe: All open rows queued and applied by the next morning's run. The spreadsheet is gone."
+  - key: ENG-769
+    type: Task
+    summary: "Add the oldest unapplied erasure request to the data on-call hand-over"
+    status: Done
+    priority: Low
+    labels: [data, follow-up]
+    description: |
+      The data on-call looks after `privacy_erasure` in working hours. Make the age of the
+      oldest unapplied erasure request one of the data-specific items of the Monday
+      hand-over in `#team-data`, alongside unexplained `DQ-031` warnings and the week's
+      backfills, so that a slow request is seen by two people every week.
+
+      Update [Data platform on-call](../../corpus/data/data-on-call.md).
+  - key: ENG-770
+    type: Story
+    summary: "Page the data on-call at night when the erasure job fails"
+    status: Won't Do
+    priority: Lowest
+    labels: [data]
+    description: |
+      Proposal: page the data on-call through Klaxon whenever `privacy_erasure` fails, at
+      any hour, as for a tier 1 pipeline.
+
+      For: a failed run delays every request queued behind it. Against: requests are
+      usually applied within two days of approval against a limit of 30 days, so a night's
+      delay costs nothing, and night pages are for problems that hurt merchants or Finance
+      by morning.
+    comments:
+      - "Tomasz: Won't do. Failures post to the channels and are the on-call's first job the next working morning (ENG-767). That is enough for a 30-day limit."
+  - key: ENG-771
+    type: Task
+    summary: "Write the warehouse erasure page for data engineers and the privacy team"
+    status: Done
+    priority: Low
+    labels: [data]
+    description: |
+      Document the warehouse side of erasure on the wiki: what is in scope, the job's
+      steps, the erasure policies, backups and their 35 days, the log and its queries, the
+      edge cases, and what to do when the job fails.
+
+      Leave out whether a request is valid, identity checks and replies: those belong to
+      the privacy team. Link the DPA playbook for them.
+
+      Result: [Erasure requests in the warehouse](../../corpus/data/erasure-requests.md).

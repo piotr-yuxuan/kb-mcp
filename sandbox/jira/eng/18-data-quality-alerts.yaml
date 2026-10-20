@@ -1,0 +1,791 @@
+epic:
+  key: ENG-18
+  summary: "Data quality alert framework"
+  sprints: [9, 17]
+  labels: [data]
+  description: |
+    ## Goal
+
+    One framework that checks every table in `marts`, and the staging models that feed
+    them, after each Conveyor run, and raises alerts with stable codes so that everyone,
+    from the data on-call to Finance, talks about the same thing. Today each pipeline has
+    its own hand-written checks and its own idea of "late".
+
+    ## Scope
+
+    - Three alert codes: `DQ-017 FRESHNESS_BREACH`, `DQ-031 ROW_COUNT_DRIFT` and
+      `DQ-044 SCHEMA_DRIFT`.
+    - Check files: one YAML file per table in `checks/`, from which Conveyor adds the
+      `quality_checks` and `publish` tasks.
+    - Routing by table tier: chat in `#data-alerts`, pages through Klaxon for tier 1.
+    - Annotations in Lantern, and expected-variance annotations for `DQ-031`.
+    - How serious each alert is, including the rule that a late finance mart is a SEV3.
+
+    ## Out of scope
+
+    - Backfill tooling and its limits.
+    - Erasure of personal data in the warehouse.
+
+    See [Data quality alerts](../../corpus/data/quality-alerts.md) and
+    [Data platform on-call](../../corpus/data/data-on-call.md).
+  comments:
+    - "Tomasz: Closing. Every mart has a check file, the hand-written checks are gone, and the three codes are documented on the Data quality alerts page."
+tickets:
+  - key: ENG-694
+    type: Task
+    summary: "Inventory every pipeline's hand-written checks and its own idea of late"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Each pipeline has its own hand-written checks and its own definition of "late":
+      `merchant_orders_daily` warns at 05:30 UTC (ENG-689), others count rows in an ad hoc
+      SQL test, and some have nothing at all.
+
+      Before designing the framework, list for every table in `marts` its checks, what
+      each one tests, where it alerts and who reads the alert. Group them by kind: time
+      (late tables), volume (row counts), shape (upstream schema changes), and tests on
+      individual rows.
+    comments:
+      - "Tomasz: Most of the noise comes from volume checks with thresholds nobody remembers choosing. Shape problems have no check anywhere; they surface as wrong numbers."
+  - key: ENG-695
+    type: Story
+    summary: "Give time, volume and shape problems stable codes: DQ-017, DQ-031 and DQ-044"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As anyone who receives a data alert, from the data on-call to Finance, I want one
+      name for each kind of problem, so that we all talk about the same thing.
+
+      Acceptance criteria:
+
+      - `DQ-017 FRESHNESS_BREACH`: a table missed its freshness deadline;
+      - `DQ-031 ROW_COUNT_DRIFT`: a partition's row count is far from its recent median;
+      - `DQ-044 SCHEMA_DRIFT`: an upstream column changed type or vanished;
+      - tests on individual rows, such as a duplicate key or a negative amount, stay task
+        failures without a code;
+      - a code is never renumbered or reused.
+  - key: ENG-696
+    type: Task
+    summary: "Define the check file format: one YAML file per table under checks/"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Design the declarative format that replaces hand-written checks: one file per table,
+      next to the model, in `checks/` of `data-pipelines`.
+
+      ```yaml
+      table: marts.example_daily
+      tier: 2
+      freshness:
+        partition: yesterday        # or previous_hour
+        deadline_utc: "09:00"
+      row_count:
+        partition: yesterday
+        mode: warn
+      schema:
+        upstream:
+          - staging.stg_example__rows
+      tests:
+        - unique: [example_date, merchant_id]
+      ```
+
+      Review the format with every pipeline author before the parser is written.
+    comments:
+      - "Hana: Added `tier` to the file, so that routing can come from the same place as the checks."
+  - key: ENG-697
+    type: Task
+    summary: "Write every check result, passed or failed, to ops.dq_results"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Create `ops.dq_results` and have every check write one row per evaluation, passed
+      or failed, so that past alerts can be found with SQL instead of by scrolling chat.
+
+      Columns: `evaluated_at`, `table_name`, `partition_key`, `code` (null for plain
+      tests), `passed` and `detail`.
+
+      ```sql
+      select evaluated_at, table_name, partition_key, code, detail
+      from iceberg.ops.dq_results
+      where code in ('DQ-017', 'DQ-031', 'DQ-044')
+      order by evaluated_at desc;
+      ```
+  - key: ENG-698
+    type: Task
+    summary: "Record each partition's row count in ops.dq_partition_stats"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      The row-count check needs history. After every publish, write the partition's row
+      count to `ops.dq_partition_stats`, keyed by `table_name` and `partition_key`.
+
+      Fill the last six months from table snapshots, so that candidate thresholds can be
+      tested against real history before any alert is switched on.
+
+      Acceptance: every mart has up to six months of stats, and each new partition adds
+      its row within a minute of publishing.
+    comments:
+      - "Signe: Six months loaded for every mart except two that are younger than that; they have their whole history."
+  - key: ENG-699
+    type: Story
+    summary: "Generate the quality_checks and publish tasks from a table's check file"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As a pipeline author, I want to declare checks once, without wiring tasks by hand.
+
+      Acceptance criteria:
+
+      - for every pipeline whose table has a check file, Conveyor adds the
+        `quality_checks` and `publish` tasks itself, after the last build task;
+      - a failing blocking check stops `publish`;
+      - a DAG that declares its own `quality_checks` task fails review;
+      - `merchant_orders_daily` keeps its task names, so its run history stays readable.
+  - key: ENG-700
+    type: Task
+    summary: "Port the common row tests to the declarative tests list"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Most hand-written checks are the same few tests written in different SQL. Port them
+      as declarative entries under `tests:`, each failing the task when it fails:
+
+      - `unique: [columns]`
+      - `not_null: [columns]`
+      - `non_negative: [columns]`
+      - `accepted_values: {column, ref}`
+
+      Each test compiles to one Trino query against the new snapshot. Tests specific to one
+      pipeline, such as agreement with the ledger, stay as named custom tests.
+  - key: ENG-701
+    type: Task
+    summary: "Move merchant_orders_daily's tests into checks/marts/merchant_orders_daily.yaml"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      The rebuilt pipeline (ENG-17) has hand-written tests for unique keys, non-negative
+      amounts, known currencies and agreement with the ledger. Move them to the framework
+      without changing what they test; see
+      [Pipeline: merchant_orders_daily](../../corpus/data/merchant-orders-daily.md).
+
+      ```yaml
+      table: marts.merchant_orders_daily
+      tier: 1
+      tests:
+        - unique: [order_date, merchant_id, currency]
+        - non_negative: [authorised_amount_minor, captured_amount_minor, refunded_amount_minor]
+        - accepted_values: {column: currency, ref: staging.stg_fx_quote__currencies}
+        - ledger_agreement: {currency: GBP, tolerance_ratio: 0.001}
+      ```
+
+      Freshness, row count and schema are added as each code ships.
+    comments:
+      - "Rafael: Ran both versions side by side for a week; identical results every night."
+  - key: ENG-702
+    type: Bug
+    summary: "The accepted_values test lets a null currency through"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce.** Add a fixture row with a null `currency` to
+      `merchant_orders_daily` and run `quality_checks`.
+
+      **Expected.** The `accepted_values` test fails: null is not in
+      `staging.stg_fx_quote__currencies`.
+
+      **Actual.** The test passes. It compiled to `currency not in (select ...)`, and a
+      null makes that predicate unknown, so the row was never counted.
+
+      **Fix.** The compiled query counts rows whose value is null or not in the list:
+
+      ```sql
+      count_if(currency is null or currency not in (
+          select code from staging.stg_fx_quote__currencies
+      ))
+      ```
+  - key: ENG-703
+    type: Story
+    summary: "Declare each table's freshness deadline in UTC and the partition it covers"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As a table owner, I want to state when my table must be ready in one place, instead
+      of each pipeline guessing.
+
+      Acceptance criteria:
+
+      - `freshness.deadline_utc` holds a time in UTC;
+      - `freshness.partition` is `yesterday` for daily tables or `previous_hour` for
+        hourly ones;
+      - the reference for check files gives the rule of thumb: at least twice the typical
+        runtime between the scheduled start and the deadline, and ask consumers when they
+        need the data;
+      - `merchant_orders_daily` declares `yesterday` and `"06:00"`.
+  - key: ENG-704
+    type: Story
+    summary: "Evaluate every freshness deadline in Lantern every 5 minutes"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As the data on-call, I want a late table detected at its deadline, wherever its
+      pipeline is stuck.
+
+      Lantern evaluates each table's deadline every 5 minutes against Conveyor's publish
+      events. If the partition has not been published when the deadline passes, it raises
+      `DQ-017 FRESHNESS_BREACH`.
+
+      Acceptance criteria:
+
+      - a stuck task, a failed run and a run that never started all raise `DQ-017`;
+      - the rule reads publish events only, not run states;
+      - an alert is raised at most 5 minutes after the deadline.
+    comments:
+      - "Lukas: Lantern evaluates rules at that interval without trouble. Use the publish events as the metric source rather than polling Conveyor."
+  - key: ENG-705
+    type: Story
+    summary: "Fire DQ-017 once per late partition and keep it open until publication"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the data on-call, I want one alert per late partition, not a new one every
+      5 minutes.
+
+      Acceptance criteria:
+
+      - `DQ-017` fires once, when the deadline passes;
+      - it stays open, without firing again, until the partition is published;
+      - publication closes it and posts the publish time in the alert's thread;
+      - a later partition that is also late raises its own alert.
+  - key: ENG-706
+    type: Bug
+    summary: "DQ-017 reads deadlines in UK time and fires an hour early in summer"
+    status: Done
+    priority: Highest
+    labels: [data]
+    description: |
+      **Steps to reproduce.** During British Summer Time, let `fraud_features_daily`,
+      whose deadline is 05:00 UTC, publish at 04:30 UTC.
+
+      **Expected.** No alert: the partition was published 30 minutes before the deadline.
+
+      **Actual.** `DQ-017` fired at 04:00 UTC and paged the data on-call, because the
+      evaluator read `deadline_utc` in the Lantern server's local time zone, London.
+
+      **Fix.** Deadlines are parsed as UTC explicitly, and tests cover a deadline on each
+      side of the clock change.
+    comments:
+      - "Hana: Paged twice in one week for a table that was on time. Glad this is fixed before the clocks go back and hide it until spring."
+  - key: ENG-707
+    type: Task
+    summary: "Replay six months of row counts against candidate drift thresholds"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Before choosing the `DQ-031` threshold, replay the last six months of
+      `ops.dq_partition_stats` against thresholds of 15%, 25% and 40% of the 7-day
+      median. For each, count the alerts it would have raised, and which of the period's
+      real incidents it would have caught.
+
+      ```sql
+      select
+          table_name,
+          partition_key,
+          row_count,
+          median_7d,
+          abs(row_count - median_7d) / cast(median_7d as double) as drift
+      from scratch.hana_ostrowska__drift_replay
+      order by drift desc;
+      ```
+    comments:
+      - "Hana: At 15% it fires on most Mondays. At 40% it misses both of the real incidents in the period. 25% catches both and stays quiet on ordinary weeks."
+  - key: ENG-708
+    type: Story
+    summary: "Set the DQ-031 threshold to 25% of the 7-day median"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As the data on-call, I want row-count alerts that fire on real problems and stay
+      quiet on ordinary Mondays.
+
+      `DQ-031 ROW_COUNT_DRIFT` fires when the row count of the partition just written is
+      more than 25% above or below the median of the 7 partitions before it. The replay of
+      six months of history decided the number: at 15% the alert fired on most Mondays;
+      at 40% it missed both of the real incidents in that period.
+
+      ```text
+      alert when abs(today - median_7d) > 0.25 * median_7d
+      ```
+
+      Acceptance criteria: one threshold for every table, and the reasoning recorded on
+      [Data quality alerts](../../corpus/data/quality-alerts.md).
+    comments:
+      - "Rafael: Live on all marts. Two warnings in the first week, both explained by a large merchant going live."
+  - key: ENG-709
+    type: Story
+    summary: "Compare hourly partitions with the same hour on the 7 previous days"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the steward of an hourly table, I want a quiet 03:00 compared with other nights'
+      03:00, not with a busy 15:00.
+
+      Acceptance criteria:
+
+      - for tables whose `row_count.partition` is `previous_hour`, the 7-day median is
+        taken over the same hour on each of the 7 previous days;
+      - daily tables keep the median of the 7 partitions before;
+      - a fixture with a quiet night and a busy afternoon raises nothing.
+  - key: ENG-710
+    type: Story
+    summary: "Make DQ-031 warn by default and let a table opt in to blocking"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As a consumer, I want data published during a real surge in volume, not withheld
+      because a count moved.
+
+      Acceptance criteria:
+
+      - `row_count.mode: warn` is the default: `DQ-031` posts an alert and `publish` goes
+        ahead;
+      - `row_count.mode: block` makes `DQ-031` stop `publish` until someone has
+        investigated;
+      - each table's mode is visible in the data catalogue.
+  - key: ENG-711
+    type: Bug
+    summary: "An empty partition passes the row-count check after a run of empty days"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce.** Disconnect a tier 2 mart's source for eight days, so that
+      each run writes an empty partition, and run the checks on the eighth.
+
+      **Expected.** An empty partition fails.
+
+      **Actual.** The median of the 7 partitions before was 0, so an empty partition was
+      within 25% of it and passed. The mart published empty partitions all week.
+
+      **Fix.** A `row_count.min_rows` setting, 1 in the template, so that an empty
+      partition always fails whatever the median:
+
+      ```yaml
+      row_count:
+        partition: yesterday
+        mode: warn
+        min_rows: 1
+      ```
+  - key: ENG-712
+    type: Story
+    summary: "Raise DQ-044 when a declared upstream column changes type or vanishes"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As a pipeline author, I want a staging model stopped when its source changes shape,
+      rather than reading a vanished column as null and building a table that looks fine
+      and is wrong.
+
+      Before each staging model runs, the framework compares the upstream columns the
+      model declares with the columns present in `raw`, and their types.
+
+      Acceptance criteria:
+
+      - a renamed, dropped or retyped declared column raises `DQ-044 SCHEMA_DRIFT` and
+        stops that model;
+      - a widened type, such as `integer` to `bigint`, counts as a change;
+      - the alert names the source table and the column.
+    comments:
+      - "Signe: Declared columns come from each model's column file, so authors do not list them twice."
+  - key: ENG-713
+    type: Story
+    summary: "Hold every model downstream of a DQ-044 until the schema matches again"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As a consumer of a mart, I want nothing built on a staging model whose source no
+      longer matches.
+
+      Acceptance criteria:
+
+      - every model downstream of a stopped staging model waits;
+      - once the schema matches again, because the model was updated or the column
+        restored, the run resumes on its own;
+      - there is no option to skip or suppress `DQ-044`;
+      - a `DQ-044` holding a tier 1 table pages the data on-call.
+  - key: ENG-714
+    type: Bug
+    summary: "DQ-044 fires when an upstream table gains a column nobody reads"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce.** Add a nullable column to a replicated table, as
+      `payout-gateway` did with `batch_region` on its batches table, then run
+      `stg_payout_gateway__batches`.
+
+      **Expected.** Nothing: new columns, and changes to columns we do not read, do not
+      raise `DQ-044`.
+
+      **Actual.** `DQ-044` fired and held `payouts_hourly` for 40 minutes, because the
+      check compared the whole upstream table with its previous shape instead of the
+      columns the model declares.
+
+      **Fix.** Only declared columns are compared. Tests cover an added column and a
+      changed column that the model does not read.
+    comments:
+      - "Yusuf: Thanks. We will keep announcing schema changes in #team-data a sprint ahead all the same."
+  - key: ENG-715
+    type: Story
+    summary: "Let payouts_hourly block on DQ-031 instead of warning"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the Payouts team, we prefer a late `payouts_hourly` to a wrong one. A sudden drop
+      in payout rows has twice meant that ingestion from `payout-gateway` was silently
+      stalled.
+
+      Acceptance criteria:
+
+      - `checks/marts/payouts_hourly.yaml` sets `row_count.mode: block`;
+      - a blocked hour raises `DQ-031` and holds `publish` until the data on-call has
+        compared it with `payout-gateway` metrics in Lantern;
+      - `payouts_hourly` is the only table that blocks, and the quality alerts page says
+        so.
+    comments:
+      - "Yusuf: Agreed for Payouts. A late hour on the dashboard is fine; a hole in it that nobody notices is not."
+  - key: ENG-716
+    type: Story
+    summary: "Route data quality alerts by tier: page for tier 1, chat only for tier 2"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As the data on-call, I want to be woken only for tables that matter at night.
+
+      | Table tier | Chat | Paging |
+      |---|---|---|
+      | Tier 1 | `#data-alerts` | The data on-call, through Klaxon, at any hour |
+      | Tier 2 | `#data-alerts` | None; handled in business hours |
+      | Staging models | `#data-alerts` | Only when a tier 1 mart depends on them |
+
+      Acceptance criteria: routing comes from `tier` in the check file, and a `DQ-031`
+      warning never pages.
+  - key: ENG-717
+    type: Task
+    summary: "Recognise finance marts in alert routing by their finance_ prefix"
+    status: Done
+    priority: Low
+    labels: [data]
+    description: |
+      Late finance marts need special handling, so routing must recognise them without a
+      list to maintain. Use the name: every finance mart starts with `finance_`, as
+      [Warehouse naming conventions](../../corpus/data/naming-conventions.md) requires.
+      Add `marts.merchant_orders_daily` explicitly, because Finance's daily revenue report
+      is built on it.
+
+      Check that every table Finance reads matches one of the two rules, and raise any
+      exception in `#team-data`.
+  - key: ENG-718
+    type: Story
+    summary: "Annotate the warehouse freshness dashboard in Lantern for every alert"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As anyone looking at a chart in Lantern, I want to see why a line has a gap.
+
+      Acceptance criteria:
+
+      - every `DQ-017`, `DQ-031` and `DQ-044` creates an annotation on the table's panel
+        in the Lantern dashboard "warehouse freshness";
+      - the annotation carries the code, the partition and a link to the alert's thread in
+        `#data-alerts`;
+      - it closes when the alert closes.
+    comments:
+      - "Lukas: Use the same annotation API as the SLO dashboards work in ENG-12, so both behave alike."
+  - key: ENG-719
+    type: Bug
+    summary: "Klaxon pages twice for one late partition after a Lantern restart"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      **Steps to reproduce.** Let a tier 1 partition miss its deadline, then restart the
+      Lantern rule evaluator while the alert is open.
+
+      **Expected.** One page: `DQ-017` fires once and stays open until publication.
+
+      **Actual.** The evaluator lost its open alerts on restart, fired `DQ-017` again and
+      paged the data on-call a second time for the same partition.
+
+      **Fix.** Open alerts are keyed by table, partition and code, and the evaluator
+      reloads them from `ops.dq_results` at start-up, so a restart never fires an open
+      alert again.
+    comments:
+      - "Rafael: Paged at 05:05 and again at 05:20 for the same partition. Glad to see this one go."
+  - key: ENG-720
+    type: Story
+    summary: "Give every data quality alert the same five-line message"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the person reading an alert at night, I want everything I need in the message
+      itself.
+
+      ```text
+      DQ-017 FRESHNESS_BREACH  marts.finance_settlements_daily
+      partition 2025-09-30 not published by deadline 05:30 UTC
+      pipeline settlements_daily: task wait_for_ingestion running since 01:10 UTC
+      owner Data Platform, steward Rafael Quist
+      page: data/quality-alerts
+      ```
+
+      Acceptance criteria: the first line holds the code, its name and the table; then
+      come the partition and deadline, the pipeline's current task, the owner and steward,
+      and the page that explains the code.
+  - key: ENG-721
+    type: Story
+    summary: "Handle a late finance mart as a SEV3 incident led by the data on-call"
+    status: Done
+    priority: Highest
+    labels: [data]
+    description: |
+      As Finance, I want a late revenue report handled as an incident, with a channel and
+      someone in charge, not as a chat thread.
+
+      When `DQ-017` fires on a table under `marts.finance_*` or on
+      `marts.merchant_orders_daily`, the data on-call declares an incident with
+      `/klaxon declare`, selects SEV3 and works it in its own channel, for example
+      `#inc-orders-late`. Finance is told there and in `#team-data`.
+
+      Acceptance criteria:
+
+      - the `DQ-017` message for these tables says to declare;
+      - the quality alerts page states the rule and links
+        [Production incident management](../../corpus/incidents/incident-management.md);
+      - escalation above SEV3 only when wrong figures have reached merchants or a payout
+        decision.
+    comments:
+      - "Tomasz: Agreed with Arjun and Lukas. A late report is a minor degradation with a workaround, which is what SEV3 means."
+  - key: ENG-722
+    type: Story
+    summary: "Suppress DQ-031 for named partitions with expected-variance annotations"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As a table owner, I want to say before a peak or a bank holiday that volume will
+      move, so that nobody is alerted for it.
+
+      ```yaml
+      # checks/annotations/2025-11-peak.yaml
+      reason: Peak trading weekend; volumes expected well above median
+      tables:
+        - marts.merchant_orders_daily
+        - marts.payouts_hourly
+      partitions:
+        from: "2025-11-28"
+        to: "2025-12-01"
+      expires: "2025-12-08"
+      author: rafael.quist
+      ```
+
+      Acceptance criteria: an annotation suppresses `DQ-031` for the named partitions of
+      the named tables only, and shows in Lantern.
+    comments:
+      - "Rafael: The first real one is written, for the November peak weekend."
+  - key: ENG-723
+    type: Story
+    summary: "Let annotations silence DQ-017 and DQ-044 as well as DQ-031"
+    status: Won't Do
+    priority: Lowest
+    labels: [data]
+    description: |
+      As a table owner planning maintenance, I want to annotate away freshness and schema
+      alerts for a known window, as I can for row counts.
+
+      Acceptance criteria:
+
+      - a `codes:` list in an annotation file names the codes it suppresses;
+      - annotated `DQ-017` and `DQ-044` alerts are recorded in `ops.dq_results` but
+        neither post nor page.
+    comments:
+      - "Tomasz: Won't do, by design. A late table is late whatever we expected, and a model reading a vanished column builds a table that looks fine and is wrong. Annotations stay for DQ-031 only."
+  - key: ENG-724
+    type: Bug
+    summary: "A malformed annotation file fails the quality checks of every table"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce.** Merge an annotation whose `tables` is a single string instead
+      of a list, then let the night's runs start.
+
+      **Expected.** The file is refused in review, with a message naming the field.
+
+      **Actual.** It merged, and at night the annotation loader raised an error inside
+      `quality_checks`, failing that task for every table and paging the data on-call.
+
+      **Fix.** Annotation files are validated against their schema in the build of
+      `data-pipelines`, so a malformed file fails the pull request. A loader error now
+      skips the file and posts to `#data-alerts` instead of failing checks.
+    comments:
+      - "Signe: Three tier 1 pipelines held for half an hour by one YAML typo. The build check would have caught it."
+  - key: ENG-725
+    type: Task
+    summary: "Finish the check files of payouts_hourly and fraud_features_daily"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Complete the move of the two other tier 1 pipelines to the framework:
+
+      - `payouts_hourly`: `partition: previous_hour`, deadline 50 minutes past the hour,
+        and its upstream columns; see
+        [Pipeline: payouts_hourly](../../corpus/data/pipeline-payouts-hourly.md);
+      - `fraud_features_daily`: `partition: yesterday`, deadline 05:00 UTC, with Risk ML
+        agreeing the upstream columns declared.
+
+      Keep the existing hand-written tests, such as `payouts_sent` never exceeding
+      `payouts_created`, as declarative or custom tests.
+    comments:
+      - "Mireille: Agreed for fraud_features_daily. A late partition pages you, but tell #team-risk-ml as well; the models keep serving yesterday's slow features meanwhile."
+  - key: ENG-726
+    type: Story
+    summary: "Refuse to promote a table to marts without a check file"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the data platform lead, I want every mart to have declared checks, so that
+      "nobody set up alerts" stops appearing as a cause in post-incident reviews.
+
+      Acceptance criteria:
+
+      - the build of `data-pipelines` refuses a model in `marts` with no file in
+        `checks/`;
+      - the file declares at least `tier`, `freshness` and `row_count`;
+      - existing marts without a file are listed and get one before the rule is switched
+        on.
+    comments:
+      - "Hana: Switched on once the last marts on the list had their files."
+  - key: ENG-727
+    type: Story
+    summary: "Check backfilled partitions without raising freshness alerts"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As someone running a backfill, I want checks on historical partitions that make sense
+      for history. See [Backfilling historical partitions](../../corpus/data/backfills.md).
+
+      Acceptance criteria:
+
+      - `DQ-017` is not evaluated for historical partitions;
+      - `DQ-031` compares each partition with the days before it in the backfilled
+        history, not with this week;
+      - `DQ-044` still blocks the partition, since a schema change during a backfill is
+        always real;
+      - tests run on every partition, as in a scheduled run.
+  - key: ENG-728
+    type: Story
+    summary: "Allow a per-table DQ-031 threshold in the check file"
+    status: Won't Do
+    priority: Lowest
+    labels: [data]
+    description: |
+      As the steward of a small tier 2 mart, I want to set my own row-count threshold,
+      because 25% is too tight for a table with a few dozen rows a day.
+
+      Acceptance criteria:
+
+      - `row_count.threshold_ratio` overrides 0.25 for one table;
+      - the override is shown in the data catalogue next to the table's tier.
+    comments:
+      - "Tomasz: Won't do. Not per table: if 25% does not suit a table, its grain is too coarse or too fine for a row count to mean much. Set mode: warn and talk to us."
+  - key: ENG-729
+    type: Task
+    summary: "Give every tier 2 mart a check file and delete its hand-written checks"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      With the framework complete, move the remaining tier 2 marts to check files and
+      delete their hand-written checks, so that no table has two definitions of late.
+
+      For each mart: write the file from the template, run it in warn mode for a week,
+      compare with the old checks, then remove the old ones in the same pull request as
+      the switch.
+
+      Acceptance: `checks/` covers every table in `marts`, and the inventory from ENG-694
+      has no open line.
+  - key: ENG-730
+    type: Task
+    summary: "Write the Data quality alerts page: codes, routing, severity, annotations"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Document the framework on one page owned by Tomasz Wilde,
+      [Data quality alerts](../../corpus/data/quality-alerts.md):
+
+      - the three codes: what each means, how it is computed and what to do;
+      - where alerts go, by tier;
+      - the SEV3 rule for late finance marts;
+      - how to declare checks and annotate expected variance;
+      - how to find past alerts in `ops.dq_results`.
+    comments:
+      - "Tomasz: Reviewed. Pipeline pages link here for the codes rather than repeating them."
+  - key: ENG-731
+    type: Task
+    summary: "List which data quality alerts page the data on-call out of hours"
+    status: Done
+    priority: Low
+    labels: [data]
+    description: |
+      Update [Data platform on-call](../../corpus/data/data-on-call.md) so that the
+      on-call knows what can wait:
+
+      | Event | Pages out of hours? |
+      |---|---|
+      | `DQ-017` on a tier 1 table | Yes |
+      | `DQ-044` holding a tier 1 pipeline | Yes |
+      | `DQ-031` warning on any table | No: next working day |
+      | Anything on a tier 2 table | No: owning team, working hours |
+
+      Add "open `DQ-031` warnings nobody has explained" to the data-specific hand-over
+      items.
+  - key: ENG-732
+    type: Task
+    summary: "Remove the interim 05:30 UTC lateness warning from merchant_orders_daily"
+    status: Done
+    priority: Low
+    labels: [data]
+    description: |
+      ENG-689 added a hand-written warning for when the orders partition was not published
+      by 05:30 UTC, until the framework covered freshness. `DQ-017` now covers it, against
+      the 06:00 UTC deadline, so remove the old check and its routing.
+
+      Acceptance: a forced late run in staging raises `DQ-017` once, and nothing else.
+    comments:
+      - "Rafael: Removed. One alert, one code."

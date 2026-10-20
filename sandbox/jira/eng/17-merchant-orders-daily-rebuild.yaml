@@ -1,0 +1,831 @@
+epic:
+  key: ENG-17
+  summary: "merchant_orders_daily rebuild"
+  sprints: [1, 9]
+  labels: [data]
+  description: |
+    ## Goal
+
+    Rebuild the `merchant_orders_daily` pipeline so that `marts.merchant_orders_daily` is
+    ready well before its 06:00 UTC deadline, every night. Finance's daily revenue report
+    is built on it.
+
+    Today the pipeline is a single 900-line query that starts at 04:00 UTC, takes up to an
+    hour and three quarters on busy days and misses the deadline about twice a month,
+    usually after a slow night in ingestion.
+
+    ## Scope
+
+    - Split the query into Conveyor tasks that each write or check one partition, so that
+      any task can be retried without side effects.
+    - Rebuild the target day and the six days before it on each run, for late captures.
+    - Convert captured amounts to GBP from the stored `fx-quote` quote, or the daily
+      closing rate.
+    - Tests on the new table, including agreement with the ledger.
+    - Move the run to 01:30 UTC, as soon as the night's ingestion is reliably committed.
+
+    ## Out of scope
+
+    - A generic data quality framework with alert codes: that is ENG-18.
+    - An order-level mart, and a EUR converted total.
+
+    See [Pipeline: merchant_orders_daily](../../corpus/data/merchant-orders-daily.md) and
+    the [Data platform overview](../../corpus/data/platform-overview.md).
+  comments:
+    - "Arjun: From Finance's side, success is simple: the table complete by 06:00 UTC every morning, so the revenue report goes out at 08:00 UK time without a phone call."
+    - "Tomasz: Closing the epic. The run starts at 01:30 UTC and takes 50 to 60 minutes, so a normal night has the table ready by about 02:30 UTC."
+tickets:
+  - key: ENG-655
+    type: Task
+    summary: "Profile the 900-line merchant_orders_daily query and find where the time goes"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      `merchant_orders_daily` is a single 900-line query that starts at 04:00 UTC and
+      takes up to an hour and three quarters on busy days. It misses the 06:00 UTC
+      deadline about twice a month, usually after a slow night in ingestion.
+
+      Before we split it, profile the last month of runs and record, for each stage of the
+      query, its scan size and wall time, and which sources it depends on. Stages with no
+      dependency on each other are candidates to run in parallel.
+
+      ```sql
+      select
+          partition_key,
+          started_at,
+          finished_at,
+          date_diff('minute', started_at, finished_at) as minutes
+      from iceberg.ops.conveyor_runs
+      where pipeline = 'merchant_orders_daily'
+      order by started_at desc
+      limit 30;
+      ```
+    comments:
+      - "Hana: Three stages take most of the time: the capture join, the currency conversion and the refund subquery. None of them depends on another."
+  - key: ENG-656
+    type: Task
+    summary: "Ask each consumer of marts.merchant_orders_daily when they actually need it"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Before choosing a new schedule, confirm who reads the table and by when, rather than
+      keeping a round number. Known readers:
+
+      - Finance: the daily revenue report, sent by email at 08:00 UK time, and the
+        month-end revenue figures;
+      - Product: the merchant health dashboard in Lantern;
+      - Merchant Support: the "top merchants by volume" view used to spot unusual drops;
+      - Risk Operations: merchant volume trends, ad hoc.
+
+      Record each consumer, what they use and when they need it on
+      [Pipeline: merchant_orders_daily](../../corpus/data/merchant-orders-daily.md).
+      Done when Finance has confirmed its deadline in writing.
+    comments:
+      - "Arjun: We start checking the report at 07:00 UK time. Complete by 06:00 UTC works for us all year round."
+  - key: ENG-657
+    type: Story
+    summary: "Keep the rebuilt mart at one row per merchant, order_date and currency"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As an analyst, I want the rebuilt `marts.merchant_orders_daily` to keep a single
+      grain, so that sums over it never double count.
+
+      The grain is one row per merchant, per `order_date`, per currency. `order_date` is
+      the UTC calendar date on which the payment was authorised, and `merchant_id` is
+      `mer_` followed by 20 characters.
+
+      Acceptance criteria:
+
+      - the model groups by `order_date`, `merchant_id`, `marketplace_id` and `currency`;
+      - no two rows share `order_date`, `merchant_id` and `currency`;
+      - the grain is stated in the table's description, and the name keeps its `_daily`
+        grain word.
+  - key: ENG-658
+    type: Task
+    summary: "Design the new orders DAG as tasks that each write a single partition"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      Write the design for splitting the 900-line query into Conveyor tasks in
+      `data-pipelines`. Each task writes or checks exactly one partition, so any task can
+      be retried without side effects. Proposed shape, eight tasks:
+
+      ```text
+      wait_for_ingestion
+            |
+            +--> stg_orders ------+
+            +--> stg_captures ----+--> build_mart --> quality_checks --> publish
+            +--> stg_refunds -----+
+            +--> fx_to_gbp -------+
+      ```
+
+      The four middle tasks do not depend on each other and run in parallel. Review the
+      design with Tomasz before any model is written.
+    comments:
+      - "Tomasz: Approved. Keep the intermediate tables private to this pipeline; nobody outside it should read them."
+  - key: ENG-659
+    type: Bug
+    summary: "Rerunning the old orders query for a past day rebuilds yesterday instead"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce.** Start the old query by hand for an older partition, as we do
+      after a failed night.
+
+      **Expected.** The partition asked for is rebuilt.
+
+      **Actual.** The query filters on `current_date - interval '1' day`: it reads the
+      clock and rebuilds yesterday, whatever partition Conveyor passed. A manual rerun
+      rewrote yesterday with the same data and left the broken day as it was.
+
+      **Fix.** The old query now takes its date from Conveyor:
+
+      ```sql
+      where o.order_date = date '{{ partition }}'
+      ```
+
+      The rebuild follows the same rule: no `current_date` in a model's logic. Only the
+      audit column `built_at` reads the clock.
+    comments:
+      - "Rafael: Verified by rerunning a day from last month into scratch; only that day changed."
+  - key: ENG-660
+    type: Story
+    summary: "Wait for card-auth, merchant-api and ledger raw loads before building orders"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As the data on-call, I want the pipeline to build only once the night's ingestion
+      has committed, so that it never builds on incomplete data.
+
+      Add a `wait_for_ingestion` sensor as the first task.
+
+      Acceptance criteria:
+
+      - it waits until the `raw` loads of `card-auth`, `merchant-api` and `ledger` have
+        committed a watermark past 00:45 UTC;
+      - on a normal night it finishes within 0 to 10 minutes;
+      - it gives up at 04:30 UTC, fails the run and pages the data on-call, since the
+        problem is then upstream of this pipeline.
+  - key: ENG-661
+    type: Story
+    summary: "Build stg_merchant_api__orders over a seven-day window of order dates"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As a pipeline author, I want orders in their own staging model, so that the mart
+      reads typed, deduplicated rows instead of `raw`.
+
+      An order is a payment authorised by `card-auth` that carries an order reference
+      from `merchant-api`.
+
+      Acceptance criteria:
+
+      - `staging.stg_merchant_api__orders` holds one row per order with `order_date`,
+        `merchant_id`, `marketplace_id`, `currency`, the authorised amount in minor units
+        and a `declined` flag;
+      - the `stg_orders` task refreshes the seven days ending on the partition;
+      - it runs in about 6 minutes on a busy day.
+  - key: ENG-662
+    type: Story
+    summary: "Exclude merchants flagged is_test_merchant from the orders staging model"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As Finance, I want test traffic kept out of revenue figures.
+
+      The old query excluded the sandbox accounts described in
+      [Test merchants and test cards](../../corpus/payments/test-merchants.md) through a
+      hard-coded list of merchant identifiers that nobody maintained.
+
+      Acceptance criteria:
+
+      - `stg_orders` joins `staging.stg_merchant_api__merchants` and drops every merchant
+        with `is_test_merchant`;
+      - the hard-coded list is deleted;
+      - a fixture row for a test merchant shows that it never reaches the mart.
+  - key: ENG-663
+    type: Task
+    summary: "Replicate the ledger's capture and refund tables to the dw-ingest slot"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      `stg_captures` and `stg_refunds` need the ledger's capture and refund rows in `raw`,
+      and today only journals are replicated. Ask the Ledger team to add the two tables to
+      the publication read by the `dw-ingest` replication slot, then check that their
+      loads commit a watermark like the other sources.
+
+      ```sql
+      alter publication dw_ingest add table ledger.captures, ledger.refunds;
+      ```
+
+      We only read: the Ledger team owns the schema and its migrations.
+    comments:
+      - "Kwabena: Added in this week's release. Tell us before you rely on a column we have not documented, so that a migration does not surprise you."
+  - key: ENG-664
+    type: Story
+    summary: "Build stg_ledger__captures so the mart counts what the ledger captured"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As Finance, I want captured amounts taken from the ledger, which is the source of
+      truth for money, rather than from `merchant-api`'s view of an order.
+
+      Acceptance criteria:
+
+      - `staging.stg_ledger__captures` holds one row per capture with `order_id`, the
+        captured amount in integer minor units and its currency;
+      - partial captures appear as separate rows and sum to the order's captured total;
+      - the `stg_captures` task refreshes the seven-day window in about 9 minutes.
+  - key: ENG-665
+    type: Story
+    summary: "Count refunds on the day they are processed, not on the order's day"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As an analyst, I want old partitions of `marts.merchant_orders_daily` to stay stable
+      once built. A refund against an older order would otherwise rewrite that order's
+      partition every time one arrives.
+
+      Decision: `refunded_amount_minor` holds the refunds processed on that date, whatever
+      the order's date.
+
+      Acceptance criteria:
+
+      - `stg_refunds` refreshes `staging.stg_ledger__refunds`;
+      - `staging.int_merchant_orders_daily__refunds_by_day` sums refunds per merchant,
+        currency and `refund_date`;
+      - the column's description warns that `captured_amount_minor -
+        refunded_amount_minor` for one day is not net sales of that day's orders.
+    comments:
+      - "Rafael: Agreed with Finance in the design review. Both numbers are right; they answer different questions."
+  - key: ENG-666
+    type: Bug
+    summary: "Orders authorised at exactly 00:00:00 UTC are counted on two order dates"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce.** Build `stg_orders` into scratch and count orders whose
+      `authorised_at` is exactly midnight UTC, grouped by `order_date`.
+
+      **Expected.** Each order belongs to one `order_date`.
+
+      **Actual.** Day boundaries used `between` on timestamps, which is inclusive at both
+      ends, so an order authorised at 00:00:00 UTC belonged to two days.
+
+      **Fix.** Half-open ranges:
+
+      ```sql
+      where o.authorised_at >= timestamp '{{ partition }} 00:00:00 UTC'
+        and o.authorised_at <  timestamp '{{ partition }} 00:00:00 UTC' + interval '1' day
+      ```
+
+      A fixture row at midnight guards against a regression.
+  - key: ENG-667
+    type: Story
+    summary: "Rebuild the target day and the six days before it on every orders run"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As Finance, I want late captures reflected without asking for a backfill every week.
+
+      Most captures arrive within minutes of authorisation, but some merchants capture on
+      dispatch, days later. Each run therefore rebuilds the target day and the six days
+      before it.
+
+      Acceptance criteria:
+
+      - the staging tasks and `build_mart` work on the seven days ending on the partition;
+      - a capture arriving more than seven days after authorisation reaches the table only
+        through a backfill, and the pipeline page says so;
+      - the extra cost is measured and fits the runtime budget.
+  - key: ENG-668
+    type: Story
+    summary: "Convert captured amounts to GBP from the fx-quote quote stored at authorisation"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As Finance, I want one GBP total per day that matches the rate the merchant was
+      quoted.
+
+      Add the `fx_to_gbp` task. It joins each captured payment to the `fx-quote` quote
+      stored against it at authorisation, converts the captured amount to pence and writes
+      `staging.int_merchant_orders_daily__fx_to_gbp`.
+
+      Acceptance criteria:
+
+      - `gross_amount_gbp_minor` is an integer number of pence, following ADR-017;
+      - payments already in GBP pass through unchanged;
+      - the task runs in about 7 minutes.
+  - key: ENG-669
+    type: Story
+    summary: "Fall back to the daily closing rate and say so in fx_rate_source"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As Finance, I want to see how much of a day's GBP total depends on an estimated
+      rate.
+
+      A small share of payments, mostly from merchants on older integrations, were
+      authorised without an `fx-quote` quote stored against them. For those, `fx_to_gbp`
+      uses the day's closing rate.
+
+      Acceptance criteria:
+
+      - `fx_rate_source` is `fx-quote` when the stored quote was used, and `daily-close`
+        otherwise;
+      - the pipeline page has a query for the `daily-close` share of each day;
+      - on a normal day that share is well under 1%.
+    comments:
+      - "Arjun: Useful. We will mention the share in the month-end pack whenever it goes above 1%."
+  - key: ENG-670
+    type: Bug
+    summary: "fx_to_gbp doubles the GBP amount of a payment whose quote was reissued"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      **Steps to reproduce.** Take a cross-currency payment whose first quote expired
+      after its 30 seconds, so that `fx-quote` issued a second one before the customer
+      confirmed, and run `fx_to_gbp` for its day.
+
+      **Expected.** One row, converted at the quote stored with the authorisation.
+
+      **Actual.** The task joined on `order_id` to every quote issued for the order. Both
+      quotes matched, and `gross_amount_gbp_minor` was doubled for that payment.
+
+      **Fix.** Join on the `quote_id` stored with the authorisation, not on the order. A
+      unique test on `order_id` in the intermediate table now catches any repeat.
+  - key: ENG-671
+    type: Story
+    summary: "Replace the seven partitions of the orders mart in a single Iceberg commit"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As a reader of `marts.merchant_orders_daily`, I want to see either the old seven
+      days or the new seven days, never a mixture.
+
+      `build_mart` runs `models/marts/merchant_orders_daily.sql`, and Conveyor replaces
+      the seven partitions with its result in one Iceberg commit.
+
+      Acceptance criteria:
+
+      - a query running during the build sees only the previous snapshot;
+      - `built_at` records when each partition was last written;
+      - writing the same partitions twice leaves the same table as writing them once;
+      - the task runs in about 15 minutes.
+  - key: ENG-672
+    type: Task
+    summary: "Check the rebuilt mart's column names against the warehouse naming rules"
+    status: Done
+    priority: Low
+    labels: [data]
+    description: |
+      Before the columns become a contract, review them against
+      [Warehouse naming conventions](../../corpus/data/naming-conventions.md): money ends
+      in `_amount_minor` with a `currency` column in the same row, converted figures in
+      `_amount_gbp_minor`, counts in `_count`, timestamps in `_at`, all in British
+      spelling.
+
+      The old query's `authorized_amt` and `orders` become `authorised_amount_minor` and
+      `orders_count`. List every rename in the cutover notice to consumers.
+    comments:
+      - "Rafael: Two more renames found, `refund_amt` and `decl`; both are in the notice draft."
+  - key: ENG-673
+    type: Story
+    summary: "Fail the orders run on duplicate keys, negative amounts or unknown currencies"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the steward, I want the run to fail rather than publish a table with broken
+      rows.
+
+      Add three tests to the `quality_checks` task; each fails the task and blocks
+      `publish`:
+
+      - no two rows share `order_date`, `merchant_id` and `currency`;
+      - `authorised_amount_minor`, `captured_amount_minor` and `refunded_amount_minor`
+        are never below zero;
+      - `currency` is in the reference list `staging.stg_fx_quote__currencies`.
+
+      Acceptance: each test has a fixture that makes it fail, and the task takes about
+      3 minutes.
+  - key: ENG-674
+    type: Story
+    summary: "Fail the orders run when GBP captures differ from the ledger by over 0.1%"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As Finance, I want the warehouse's captured total to agree with the ledger, which
+      wins any disagreement.
+
+      Add a ledger agreement test: for each day, GBP `captured_amount_minor` is compared
+      with the ledger's captured total for the same day. A difference of more than 0.1%
+      fails the task and blocks `publish`.
+
+      ```sql
+      select abs(w.captured_minor - l.captured_minor) / cast(l.captured_minor as double)
+          as difference_ratio
+      from warehouse_total as w
+      cross join ledger_total as l;
+      -- fails when difference_ratio > 0.001
+      ```
+
+      When it fails, nobody loosens the tolerance: Finance is told the report will be late
+      and the cause is found.
+    comments:
+      - "Kwabena: Use the ledger's daily captured total from the journal summary rather than summing journals yourselves."
+      - "Tomasz: Agreed on 0.1%. Anything looser would hide a duplicated capture."
+  - key: ENG-675
+    type: Bug
+    summary: "Merchants that only refunded on a day have no row in the rebuilt mart"
+    status: Done
+    priority: Highest
+    labels: [data]
+    description: |
+      **Steps to reproduce.** Build a day into scratch for a merchant with refunds that day
+      and no new orders, then look for the merchant's row.
+
+      **Expected.** A row with `orders_count` 0 and the day's `refunded_amount_minor`.
+
+      **Actual.** No row. The model starts from orders and joins refunds by day, so refunds
+      on a day without orders were dropped and the daily refund total was understated.
+
+      **Fix.** A second union branch builds rows for each merchant, currency and
+      `refund_date` with refunds and no orders. A fixture covers a refund-only day.
+    comments:
+      - "Rafael: Found while comparing refund totals with the old query, which had a subquery for this that we missed in the split."
+  - key: ENG-676
+    type: Task
+    summary: "Add a publish task that marks the orders partition ready in Conveyor"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Pipelines and dashboards that read the mart should depend on a publish event, not on
+      a time. Add `publish` as the last task: it marks the partition ready in Conveyor and
+      posts a short message to `#data-alerts`.
+
+      ```text
+      merchant_orders_daily YYYY-MM-DD published at HH:MM UTC (7 partitions rebuilt)
+      ```
+
+      Downstream pipelines then replace their fixed start times with a `Sensor` on this
+      pipeline, so that a late night delays them instead of feeding them yesterday's data.
+  - key: ENG-677
+    type: Task
+    summary: "Run the new orders pipeline in parallel with the old query, into scratch"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Before any consumer moves, run the new DAG every night next to the old query,
+      writing to `scratch` instead of `marts`. Keep it running for four weeks, so that it
+      sees a month end and several busy Mondays.
+
+      Record each night's start and end time for every task. The parallel run's numbers
+      decide the new start time and show whether the four staging tasks really run in
+      parallel on the shared Trino capacity.
+    comments:
+      - "Hana: Running from tonight. Scratch tables drop 21 days after their last write, which does not matter while the run writes nightly."
+  - key: ENG-678
+    type: Story
+    summary: "Publish an order-level table from the merchant_orders_daily pipeline"
+    status: Won't Do
+    priority: Lowest
+    labels: [data]
+    description: |
+      As a Product analyst, I want order-level rows next to the daily summary, so that I
+      can look inside a merchant's day without staging access.
+
+      Proposal: have `build_mart` also write a per-order table from the same staging
+      models.
+
+      Acceptance criteria:
+
+      - one row per order, with its captured and refunded amounts;
+      - refreshed over the same seven-day window as the daily table.
+    comments:
+      - "Tomasz: Won't do in this epic. One grain per mart, and this pipeline has a deadline to keep. For order-level questions, ask for staging_reader and use stg_merchant_api__orders; if enough people need it, it becomes a mart of its own."
+  - key: ENG-679
+    type: Story
+    summary: "Explain every daily difference between the parallel run and the old table"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the steward, I want to sign off the rebuild only when every difference with the
+      old table is understood.
+
+      For each day of the parallel run, compare orders, authorised, captured and refunded
+      totals per currency between the scratch table and `marts.merchant_orders_daily`.
+
+      Acceptance criteria:
+
+      - a list of differences by day and currency, each with its cause: late captures,
+        refund-only days, test merchants removed, quotes joined twice;
+      - no difference left unexplained;
+      - the list attached to the cutover notice for Finance.
+    comments:
+      - "Rafael: All explained. The largest is late captures, which the old query never picked up after the first night."
+  - key: ENG-680
+    type: Task
+    summary: "Cut build_mart's scan by filtering staging tables on their partition column"
+    status: Done
+    priority: Low
+    labels: [data]
+    description: |
+      In the parallel run `build_mart` took 30 to 40 minutes against the 15 planned.
+      `explain (type io)` shows the captures join reading the whole of
+      `staging.stg_ledger__captures`, because the filter is on a derived date rather than
+      on the partition column.
+
+      Push the seven-day window filter onto each staging table's partition column before
+      the joins, and check the plan again.
+
+      Acceptance: the plan shows a constraint on the partition column for every staging
+      scan, and `build_mart` runs in about 15 minutes.
+  - key: ENG-681
+    type: Story
+    summary: "Retry a failed orders task twice before failing the whole run"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As the data on-call, I want transient failures, such as a Trino worker restarting or
+      a lock on a staging table, to clear without a page.
+
+      Every task writes or checks exactly one partition and overwrites it, so a retry has
+      no side effects. Set `retries=2` and `retry_delay_minutes=10` on the pipeline, as in
+      [Writing a Conveyor DAG](../../corpus/data/writing-a-dag.md).
+
+      Acceptance criteria:
+
+      - a task killed mid-write and retried leaves the same table as a clean run;
+      - retries appear in the run history;
+      - a third failure fails the run.
+  - key: ENG-682
+    type: Task
+    summary: "Register merchant_orders_daily in owners.yaml with Rafael Quist as steward"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Declare ownership of the rebuilt table in `catalogue/owners.yaml`, so that alerts
+      route to Data Platform and the catalogue shows who answers questions. See
+      [Data catalogue and table ownership](../../corpus/data/table-ownership.md).
+
+      ```yaml
+      - table: marts.merchant_orders_daily
+        owning_team: data-platform
+        steward: rafael.quist
+        deputy: hana.ostrowska
+        tier: 1
+        classification: Confidential
+        consumers: [finance, product, merchant-support, risk-operations]
+      ```
+
+      Arjun Pelletier, finance director, is the business owner, for the daily revenue
+      report; record him on the pipeline page.
+  - key: ENG-683
+    type: Story
+    summary: "Page the Data Platform rota in Klaxon when the orders run fails at night"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As Finance, I want someone woken when the run fails, rather than finding out at
+      07:00 UK time.
+
+      `marts.merchant_orders_daily` is tier 1. A task that fails after its retries, or
+      `wait_for_ingestion` giving up at 04:30 UTC, pages the "Data Platform" rota in
+      Klaxon; the alert also goes to `#team-data`.
+
+      Acceptance criteria:
+
+      - a forced failure in staging pages the on-call;
+      - the page names the pipeline, the partition and the failed task;
+      - the rota hands over on Mondays at 10:00, like every other rota.
+    comments:
+      - "Lukas: The rota moved to Klaxon in the paging migration, so you only need the routing rule."
+  - key: ENG-684
+    type: Bug
+    summary: "wait_for_ingestion accepts the previous night's ledger watermark as fresh"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      **Steps to reproduce.** Stop the ledger load after one night's commit, so that no
+      new watermark arrives, then start the pipeline for the next partition.
+
+      **Expected.** The sensor waits, gives up at 04:30 UTC and pages.
+
+      **Actual.** The sensor compared the watermark's date with the partition's date, so
+      the previous night's watermark passed and the mart was built without a day of
+      captures. The ledger agreement test failed and held `publish`, which is why nothing
+      wrong was published.
+
+      **Fix.** The sensor requires a watermark past 00:45 UTC on the day after the
+      partition:
+
+      ```python
+      ready = watermark >= partition_end + timedelta(minutes=45)
+      ```
+    comments:
+      - "Signe: Found in the parallel run after a ledger replication restart. The scratch table was held back, as it should be."
+  - key: ENG-685
+    type: Task
+    summary: "Time the new orders pipeline on the busiest nights of the parallel run"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      The old query took up to an hour and three quarters on busy days. Check the new one
+      on the busiest partitions of the parallel run, including a month end and a Monday
+      after a bank holiday weekend, while the other nightly pipelines compete for Trino.
+
+      Record the duration of each task. Acceptance: 50 to 60 minutes in total on a typical
+      night, and enough margin on the busiest one to retry the whole run once before
+      06:00 UTC.
+    comments:
+      - "Hana: Typical nights take 50 to 60 minutes. The busiest one still left time for a full retry."
+  - key: ENG-686
+    type: Story
+    summary: "Give consumers of the orders mart a sprint's notice of the cutover"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As a consumer of `marts.merchant_orders_daily`, I want to know before its figures
+      and columns change.
+
+      Post the cutover notice in `#team-data` and email it to `finance@quillmoor.example`
+      at least one sprint ahead. It lists:
+
+      - the new start time, and the 06:00 UTC deadline, unchanged;
+      - renamed columns and the new `fx_rate_source`;
+      - refunds counted on the day they are processed;
+      - why recent days can move overnight: the seven-day rebuild.
+
+      Acceptance: Finance, Product, Merchant Support and Risk Operations have
+      acknowledged it.
+    comments:
+      - "Arjun: Acknowledged for Finance. Please avoid the first working days of the month for the switch; that is when we pull month-end figures."
+  - key: ENG-687
+    type: Bug
+    summary: "A duplicated capture event pushes the ledger agreement check over 0.1%"
+    status: Done
+    priority: Highest
+    labels: [data]
+    description: |
+      **Steps to reproduce.** Rebuild, in the parallel run, the day on which the ledger
+      load restarted mid-batch.
+
+      **Expected.** GBP captures agree with the ledger within 0.1%.
+
+      **Actual.** The ledger agreement test failed: one capture event had reached `raw`
+      twice when the loader resent a batch, and `stg_ledger__captures` kept both copies.
+
+      **Fix.** `stg_ledger__captures` deduplicates on the capture's event identifier,
+      keeping the earliest load. The check did its job: the table was held back and no
+      wrong figure reached Finance.
+    comments:
+      - "Kwabena: Confirmed on our side; the ledger has a single journal for that capture."
+      - "Signe: The loader is at-least-once by design, so staging is the right place to deduplicate."
+  - key: ENG-688
+    type: Task
+    summary: "Backfill the rebuilt orders mart's history one month per run, oldest first"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      The rebuilt pipeline needs history before consumers move to it. Fill it with
+      backfills in monthly ranges, oldest first, during the working day so that they never
+      compete with the nightly runs. See
+      [Backfilling historical partitions](../../corpus/data/backfills.md).
+
+      ```bash
+      conveyor backfill merchant_orders_daily --from 2025-01-01 --to 2025-01-31 --dry-run
+      conveyor backfill merchant_orders_daily --from 2025-01-01 --to 2025-01-31
+      ```
+
+      Compare each month's totals with the old table before starting the next, and agree
+      with Finance which closed months may change.
+    comments:
+      - "Rafael: History filled. Finance agreed that closed months may move by the late captures the old query missed."
+  - key: ENG-689
+    type: Story
+    summary: "Warn #team-data when the orders partition is not published by 05:30 UTC"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      As Finance, I want to hear that the revenue report will be late before we start
+      checking it.
+
+      Until the data quality alert framework (ENG-18) gives every table a freshness
+      deadline, add a simple check to this pipeline: if yesterday's partition has not been
+      published by 05:30 UTC, post a warning in `#team-data` and page the on-call.
+
+      Acceptance criteria:
+
+      - the warning names the partition and the task still running;
+      - it fires once per night;
+      - it is removed once ENG-18 covers freshness.
+  - key: ENG-690
+    type: Story
+    summary: "Move the merchant_orders_daily run to 01:30 UTC"
+    status: Done
+    priority: High
+    labels: [data]
+    description: |
+      As Finance, I want the table ready hours before the 06:00 UTC deadline, with time to
+      retry a failed run.
+
+      The old query started at 04:00 UTC. The parallel run showed that the night's
+      ingestion is reliably committed by 01:30 UTC and that the new pipeline takes 50 to
+      60 minutes.
+
+      ```python
+      schedule=daily(at="01:30")  # UTC
+      ```
+
+      Acceptance criteria:
+
+      - the rebuilt pipeline writes `marts.merchant_orders_daily` from 01:30 UTC;
+      - a normal night has the table ready by about 02:30 UTC, three and a half hours
+        before the deadline;
+      - the freshness deadline stays at 06:00 UTC.
+
+      See [Pipeline: merchant_orders_daily](../../corpus/data/merchant-orders-daily.md).
+    comments:
+      - "Tomasz: Approved. The deadline and the tier are unchanged."
+      - "Rafael: The first nights at 01:30 UTC all published before 02:45 UTC."
+  - key: ENG-691
+    type: Task
+    summary: "Retire the 900-line orders query and its 04:00 UTC schedule"
+    status: Done
+    priority: Medium
+    labels: [data]
+    description: |
+      Once the rebuilt pipeline has published a full week on its own, remove the old query
+      from `data-pipelines`, delete its 04:00 UTC schedule in Conveyor and drop the scratch
+      tables of the parallel run.
+
+      Check first that no dashboard or pipeline still reads the old query's intermediate
+      tables, and tell their readers if any does.
+
+      Acceptance: the old DAG is gone, no orphaned tables remain, and the data on-call's
+      hand-over notes mention the change.
+  - key: ENG-692
+    type: Task
+    summary: "Rewrite the merchant_orders_daily wiki page for the rebuilt pipeline"
+    status: Done
+    priority: Low
+    labels: [data]
+    description: |
+      Update [Pipeline: merchant_orders_daily](../../corpus/data/merchant-orders-daily.md)
+      and the data platform overview to match the rebuilt pipeline:
+
+      - the schedule at 01:30 UTC, ready by 06:00 UTC, tier 1;
+      - the eight tasks and their typical durations;
+      - the grain, the columns and the things that surprise people, such as refunds
+        counted on the day they are processed;
+      - what to do when the run fails, or will miss 06:00 UTC.
+    comments:
+      - "Rafael: Page rewritten and reviewed by Tomasz."
+  - key: ENG-693
+    type: Story
+    summary: "Add a EUR converted total to merchant_orders_daily for Paris reporting"
+    status: Won't Do
+    priority: Lowest
+    labels: [data]
+    description: |
+      As the Paris office's finance contact, I want a converted total in EUR next to the
+      GBP one, so that French reporting does not convert figures again in spreadsheets.
+
+      Acceptance criteria:
+
+      - a new column `gross_amount_eur_minor`, added at the end of the table;
+      - history populated by backfill;
+      - the same rate rules as `gross_amount_gbp_minor`, including `fx_rate_source`.
+    comments:
+      - "Tomasz: Won't do in this epic: Quillmoor reports in GBP, and the rebuild is closing. It stays on the wish list, not scheduled."
