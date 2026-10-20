@@ -736,13 +736,16 @@ def check_links(
 
 def seed_ideas(
     client: httpx.Client, ideas: Mapping[str, Idea], urls: Mapping[str, str], *, check: bool
-) -> list[str]:
-    """Create or update the ideas, found by summary, or only compare them; return problems."""
+) -> tuple[list[str], set[str]]:
+    """Create or update the ideas, found by summary, or only compare them.
+
+    Return the problems found, and the keys of the ideas that were on the site.
+    """
     project = call(
         client, "GET", f"/rest/api/3/project/{IDEAS_PROJECT}", params={"expand": "issueTypes"}
     )
     if project.get("projectTypeKey") != "product_discovery":
-        return [f"{IDEAS_PROJECT} is not a Jira Product Discovery project"]
+        return [f"{IDEAS_PROJECT} is not a Jira Product Discovery project"], set()
     type_id = next(kind["id"] for kind in project["issueTypes"] if kind["name"] == "Idea")
     listed = call(
         client,
@@ -759,6 +762,7 @@ def seed_ideas(
         message = f"more than 100 ideas in {IDEAS_PROJECT}"
         raise RuntimeError(message)
     issues = {issue["fields"]["summary"]: issue for issue in listed["issues"]}
+    present = {idea.key for idea in ideas.values() if idea.summary in issues}
     problems = []
     for idea in ideas.values():
         description = to_jira(idea.markdown, idea.source, urls)
@@ -782,7 +786,7 @@ def seed_ideas(
             f"idea\t{issue['key']}\t{issue['fields']['updated']}\t{summary}\n"
             for summary, issue in sorted(issues.items(), key=lambda item: item[1]["id"])
         )
-    return problems
+    return problems, present
 
 
 def jira_time(moment: datetime) -> str:
@@ -904,32 +908,35 @@ def seed_tickets(
     import_file: Path | None,
     *,
     check: bool,
-) -> list[str]:
+) -> tuple[list[str], set[str]]:
     """Prepare the project, write the import file of absent tickets, then run the sprints.
 
-    With check, write nothing and compare the project with the ticket data.
+    With check, write nothing and compare the project with the ticket data. Return the
+    problems found, and the keys of the tickets that were on the site.
     """
     problems, sprints = prepare_jira(client, check=check)
     if problems or len(sprints) < SPRINTS:
-        return problems
+        return problems, set()
     issues, sprint_field = read_issues(client)
     absent = [ticket for ticket in tickets if ticket.key not in issues]
     if check:
         sys.stdout.writelines(
             f"ticket\t{key}\t{issue['fields']['updated']}\n" for key, issue in issues.items()
         )
-        return compare_tickets(tickets, issues, sprint_field, sprints)
+        return compare_tickets(tickets, issues, sprint_field, sprints), set(issues)
     if not absent:
         advance_sprints(client, sprints)
-        return []
+        return [], set(issues)
     if import_file is None:
-        return [f"{len(absent)} tickets are absent: pass --import-file to write them for import"]
+        note = f"{len(absent)} tickets are absent: pass --import-file to write them for import"
+        return [note], set(issues)
     myself = call(client, "GET", "/rest/api/3/myself")
     account = (myself["accountId"], ZoneInfo(myself["timeZone"]))
     sprint_ids = {number: str(sprint["id"]) for number, sprint in sprints.items()}
     with import_file.open("w", newline="", encoding="utf-8") as file:
         csv.writer(file).writerows(ticket_rows(absent, sprint_ids, account, urls))
-    return [f"{len(absent)} tickets written to {import_file}: import them, then run again"]
+    note = f"{len(absent)} tickets written to {import_file}: import them, then run again"
+    return [note], set(issues)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -956,10 +963,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         if set(pages) - set(ids):
             problems.append("ideas and tickets not checked: some pages are not on the site")
         else:
-            problems += seed_ideas(client, ideas, urls, check=arguments.check)
-            problems += seed_tickets(
+            idea_problems, idea_keys = seed_ideas(client, ideas, urls, check=arguments.check)
+            ticket_problems, ticket_keys = seed_tickets(
                 client, tickets, urls, arguments.import_file, check=arguments.check
             )
+            problems += idea_problems + ticket_problems
+            on_site = set(ids) | idea_keys | ticket_keys
+            problems += [
+                f"golden question {question.id} names {key}, which is not on the site"
+                for question in (read_golden() if arguments.check else [])
+                for key in sorted(question.documents - on_site)
+            ]
     label = "PROBLEM" if arguments.check else "NOTE"
     sys.stdout.writelines(f"{label} {problem}\n" for problem in problems)
     return 1 if arguments.check and problems else 0
