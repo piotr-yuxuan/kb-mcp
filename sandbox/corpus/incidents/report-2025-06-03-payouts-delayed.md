@@ -9,7 +9,7 @@ title: "Incident report 2025-06-03: payouts delayed"
 | Severity | SEV2 |
 | Identifiers | `PGW-5021 PAYOUT_BATCH_STUCK`, `PayoutQueueBacklog` |
 | Channel | `#inc-payouts-delayed` |
-| IC | Sunniva Okafor |
+| IC | Saskia Okafor |
 | Operations lead | Jonah Treadwell (payments on-call), then Yusuf Achterberg |
 | Author | Yusuf Achterberg |
 | Review held | 2025-06-06 |
@@ -52,7 +52,7 @@ until we paused them ourselves, and the pause was a mitigation rather than an ou
 | 08:46 | `PayoutQueueBacklog` fires; Klaxon pages `payments-primary` as SEV2 |
 | 08:49 | Jonah Treadwell acknowledges |
 | 08:55 | SEV2 declared |
-| 08:58 | Sunniva Okafor joins from the IC rota and takes IC |
+| 08:58 | Saskia Okafor joins from the IC rota and takes IC |
 | 09:06 | DECISION: pause the scheduler with `ks.payout-gateway.batch-scheduler`. No deploy in the last 24 hours, so no rollback |
 | 09:09 | Yusuf Achterberg joins; the `payouts` rota is paged |
 | 09:15 | Beacon: Payouts "Degraded performance" |
