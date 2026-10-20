@@ -12,7 +12,15 @@ sandbox first, then on a real site.
 create a project with the key `PRB` and three issues. In the first issue, paste an
 image into the description.
 
-**Confluence.** Create these pages in any space:
+**Confluence.** `spikes/seed_sandbox.py` creates these pages through the REST API,
+all but the Jira issues macro, which needs Jira on the site first. Run it through sops,
+so the token reaches that one process:
+
+```bash
+sops exec-env <credentials file> 'uv run spikes/seed_sandbox.py --space MFS'
+```
+
+The pages, to create by hand otherwise, in any space:
 1. **Probe innermost**: an Excerpt macro around one sentence, then an uploaded image
    wider than 200 pixels.
 2. **Probe middle**: an Include page macro showing *Probe innermost*, then a sentence of
