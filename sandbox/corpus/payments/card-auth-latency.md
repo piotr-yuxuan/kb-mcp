@@ -71,7 +71,7 @@ For the last branch, see [Reverting a bad release](../release/reverting-a-releas
 
 ## Lever A: scale the pods
 
-`card-auth` runs between 12 and 40 pods. A HorizontalPodAutoscaler keeps it inside that range on CPU, and the range is the contract: never fewer than 12, so a single node failure does not hurt; never more than 40, because each pod holds sessions to the hardware security modules, and beyond 40 the modules spend more time switching between sessions than doing work, which makes `CAU-1301` worse, not better.
+`card-auth` runs between 12 and 40 pods. A HorizontalPodAutoscaler keeps it inside that range on in-flight requests per pod as well as CPU (since the September 2025 incident, when waiting workers used no CPU), and the range is the contract: never fewer than 12, so a single node failure does not hurt; never more than 40, because each pod holds sessions to the hardware security modules, and beyond 40 the modules spend more time switching between sessions than doing work, which makes `CAU-1301` worse, not better.
 
 If the autoscaler is lagging behind a spike, raise the floor:
 

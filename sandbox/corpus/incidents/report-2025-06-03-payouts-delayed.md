@@ -20,7 +20,7 @@ title: "Incident report 2025-06-03: payouts delayed"
 On the morning of Tuesday 3 June 2025, payouts to sellers were delayed by up to 4 hours
 45 minutes. A 42-minute slowdown at our settlement bank left a few payout batches
 unacknowledged. `payout-gateway` 4.12, deployed six days earlier, reacted to each stuck
-batch by polling the bank for every payout in it, every 30 seconds, without backing off.
+batch by polling the bank for every payout in it, again at once, without backing off.
 The bank throttled our connection, after which even healthy batches went
 unacknowledged. We paused the scheduler, resolved the stuck batches by hand with the
 bank's operations desk, and resumed once the bank lifted the throttle. Every delayed

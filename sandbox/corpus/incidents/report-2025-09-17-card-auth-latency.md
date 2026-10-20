@@ -110,7 +110,7 @@ it taking our capacity except by scaling, and 40 pods was the ceiling.
 | # | Action | Type | Owner | Ticket | Status |
 |---|---|---|---|---|---|
 | 1 | Per-issuer concurrency limits in `card-auth`, so that one issuer can hold at most a fixed share of workers | Prevent | Corinne Aske | `pir-action` under ENG-3 | Done |
-| 2 | Autoscale `card-auth` on in-flight requests rather than CPU | Mitigate | Corinne Aske | `pir-action` under ENG-3 | Done |
+| 2 | Autoscale `card-auth` on in-flight requests as well as CPU | Mitigate | Corinne Aske | `pir-action` under ENG-3 | Done |
 | 3 | Draft the first SEV1 Beacon update from a template when the incident is declared | Process | Lukas Brennand | `pir-action` under ENG-13 | Done (2026) |
 | 4 | Add executive notification within 30 minutes of a SEV1 to the incident policy | Process | Lukas Brennand | `pir-action` | Done |
 | 5 | Add step-up sampling and a per-issuer latency panel to the runbook and dashboard | Mitigate | Nadia Ferreira | `pir-action` under ENG-3 | Done |
