@@ -1,0 +1,752 @@
+epic:
+  key: ENG-8
+  summary: Switchboard kill switches
+  sprints: [8, 15]
+  labels: [platform]
+  description: |
+    ## Goal
+
+    Make kill switches a first-class part of Switchboard, so that an existing feature
+    can be turned off in seconds, without a deploy, by the right people, with a record
+    of who did it and why.
+
+    ## Background
+
+    ADR-014 built Switchboard for feature flags; kill switches were not part of that
+    decision. Most teams still stop a feature in an emergency by editing configuration
+    and deploying. The few switches already in Switchboard are ordinary flags with a
+    `ks.` name, and the console keeps only their current state: twice during incidents
+    we could not tell who had engaged a switch, or why.
+
+    ## Scope
+
+    - Kill switches as their own kind, named `ks.<service>.<feature>`, engaged or
+      released.
+    - An append-only audit log of every flip, with a mandatory reason.
+    - Who may flip: the owning team, the service's on-call, Site Reliability and the IC
+      of an open incident.
+    - Flips at any hour, during change freezes too, and a quarterly exercise of every
+      switch in `staging-eu`.
+    - Migrating every emergency switch kept in configuration.
+
+    ## Out of scope
+
+    Feature flag rollouts and the 90-day removal rule for flags.
+
+    ## Pages
+
+    - [Feature flags and kill switches](../../corpus/release/feature-flags.md)
+    - [ADR-014: Build Switchboard for feature flags](../../corpus/architecture/adr-014-build-switchboard.md)
+  comments:
+    - "Callum: Security now relies on this log as incident evidence. Thank you for making it append-only from the start."
+    - "Bram: Closing. Every emergency switch from the inventory lives in Switchboard, and each one has been exercised in staging-eu."
+tickets:
+  - key: ENG-304
+    type: Task
+    summary: "Inventory the emergency switches kept in hand-edited configuration"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Before designing kill switches, list every way teams turn a feature off in an
+      emergency today: configuration values edited by hand and deployed, and the few
+      ordinary flags given a `ks.` name, such as `ks.payout-gateway.batch-scheduler`
+      from payout-gateway 4.11.
+
+      For each one, record the service, the feature it stops, who has used it in the
+      last year, and how long a flip takes to reach every pod. The list becomes the
+      migration backlog of this epic, and the slowest entries show what we must beat.
+    comments:
+      - "Lukas: 23 emergency switches across 9 services. Only 4 live in Switchboard; the rest need a deploy to flip."
+      - "Bram: The slowest took 40 minutes from decision to effect. That is the number to beat."
+  - key: ENG-305
+    type: Story
+    summary: "Make kill switches a kind of their own in Switchboard"
+    status: Done
+    priority: Highest
+    labels: [platform]
+    description: |
+      As an on-call engineer, I want kill switches to be distinct from feature flags in
+      Switchboard, so that nobody confuses turning a feature off in an emergency with a
+      gradual rollout.
+
+      Acceptance criteria:
+
+      - a kill switch has two states, engaged or released; the default in code is
+        released, which means the feature runs;
+      - a kill switch has no percentage or merchant targeting;
+      - the console lists kill switches apart from flags, with their state in each
+        environment;
+      - kill switches are permanent, for as long as the feature exists, and never fall
+        under the removal rules for flags.
+  - key: ENG-306
+    type: Story
+    summary: "Check kill switch names when Switchboard reads switchboard.yaml"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As a reviewer, I want every kill switch name to say which service and which
+      feature it stops.
+
+      Acceptance criteria:
+
+      - kill switches are named `ks.<service>.<feature>`: the Shipwright service name
+        exactly, then lower-case words joined by hyphens that name the feature;
+      - `ks.card-auth` is rejected, because a kill switch must name the feature it stops;
+      - Switchboard checks names when it reads `switchboard.yaml` and refuses the deploy
+        if any name breaks the rules;
+      - the error names the offending entry and the rule it breaks.
+  - key: ENG-307
+    type: Story
+    summary: "Declare kill switches under kill_switches in switchboard.yaml"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As a service owner, I want to declare a kill switch next to the code that reads
+      it, reviewed in the same pull request.
+
+      Acceptance criteria:
+
+      - `switchboard.yaml` accepts a `kill_switches` list with `name`, `owner` and
+        `description`;
+      - a switch read in code but not declared returns the code default, released, and
+        logs a warning;
+      - states are not in the file; they live in Switchboard, per environment.
+
+      ```yaml
+      kill_switches:
+        - name: ks.notify.webhook-retries
+          owner: merchant-experience
+          description: Stop retrying failed webhook deliveries; deliver once and record failures.
+      ```
+  - key: ENG-308
+    type: Task
+    summary: "Design the record each kill switch flip writes"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Agree the record that every flip will write before the audit log is built
+      (ENG-309): the switch, the environment, who flipped it, when, the old and the new
+      state, the reason, and the incident channel if there is one.
+
+      Review the draft with Security, who will use the log as evidence during
+      incidents, and with Data Platform, who will copy it to the warehouse.
+
+      ```json
+      {"switch": "ks.notify.webhook-retries", "env": "production", "from": "released", "to": "engaged", "reason": "retry storm against one merchant endpoint", "incident": "inc-notify-retries"}
+      ```
+    comments:
+      - "Callum: Add whether the flip came from the console or the API. Otherwise it covers what we need."
+      - "Tomasz: Flat fields suit us. Please keep every timestamp in UTC."
+  - key: ENG-309
+    type: Story
+    summary: "Audit log of every kill switch flip"
+    status: Done
+    priority: Highest
+    labels: [platform]
+    description: |
+      As an IC, I want to know who engaged a kill switch, when and why, without asking
+      around in the incident channel. Twice this year we could not tell.
+
+      Acceptance criteria:
+
+      - every flip of every kill switch, from the console or the API, writes an entry:
+        who, when, the old and the new state, the reason, and the incident channel if
+        there is one;
+      - the log is append-only: nobody can edit or delete an entry;
+      - the log is shown in the Switchboard console;
+      - a flip that cannot be logged does not happen.
+    comments:
+      - "Lukas: Tried it during a staging drill: the log answered who and why in seconds."
+      - "Callum: Confirmed append-only at the storage layer, not only in the API."
+  - key: ENG-310
+    type: Story
+    summary: "Make a reason mandatory on every kill switch flip"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As someone reading the audit log weeks later, I want every entry to say why the
+      switch moved.
+
+      Acceptance criteria:
+
+      - the console's **Engage** and **Release** actions require a reason before they
+        can be confirmed;
+      - the API rejects a flip without a `reason`, with a clear message;
+      - the reason is stored verbatim in the audit entry and shown next to the switch's
+        current state;
+      - the incident channel field is optional, but offered first while an incident is
+        open.
+  - key: ENG-311
+    type: Story
+    summary: "Read kill switches through the Go and Python Switchboard clients"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As a service developer, I want to read a kill switch with one call, evaluated in
+      process like any flag.
+
+      Acceptance criteria:
+
+      - Python offers `switchboard.engaged(name)`, and Go an equivalent;
+      - evaluation is local, with no network call, as ADR-014 requires for `card-auth`;
+      - if Switchboard is unreachable, the client keeps the last state it received; a
+        process that never loaded any uses released;
+      - the fake clients used in tests can engage a switch.
+
+      ```python
+      if switchboard.engaged("ks.notify.webhook-retries"):
+          return deliver_once(event)
+      ```
+  - key: ENG-312
+    type: Bug
+    summary: "Python client read an undeclared kill switch as engaged"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** In a service whose `switchboard.yaml` does not declare a
+      given `ks.` name, call `switchboard.engaged()` on that name in `staging-eu`.
+
+      **Expected.** The code default, released, and a warning in the log.
+
+      **Actual.** `True`. The Python client treated a missing switch as engaged, which
+      would silently turn the feature off in production.
+
+      **Fix.** A missing switch now returns released and logs a warning, as the Go
+      client already did. A contract test shared by both clients covers it.
+    comments:
+      - "Bram: Glad this was caught in staging. A typo in a name would have stopped a feature for everyone."
+  - key: ENG-313
+    type: Story
+    summary: "Engage and release kill switches from the Switchboard console"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As an on-call engineer, I want to flip a switch from the console in a few clicks
+      during an incident.
+
+      Acceptance criteria:
+
+      - open the switch, press **Engage** or **Release**, fill in the reason and the
+        incident channel, and confirm;
+      - the confirmation names the environment in large type, so that nobody engages a
+        switch in production believing it is staging;
+      - the console then shows when every pod has applied the new state.
+  - key: ENG-314
+    type: Story
+    summary: "Kill switch API for scripts and automation"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As the author of a runbook script, I want to flip a kill switch through an API,
+      under the same rules as the console.
+
+      Acceptance criteria:
+
+      - `engage` and `release` endpoints under `/api/v1/kill-switches/<name>/`, with a
+        JSON body holding the reason and, optionally, the incident channel;
+      - the bearer token is read from Strongroom, never stored in a script;
+      - flips through the API are logged exactly like console flips.
+
+      ```bash
+      curl -sS -X POST \
+        "https://switchboard.quillmoor.example/api/v1/kill-switches/ks.notify.webhook-retries/engage" \
+        -H "Authorization: Bearer ${SWITCHBOARD_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d '{"reason": "retry storm against one merchant endpoint", "incident": "inc-notify-retries"}'
+      ```
+  - key: ENG-315
+    type: Story
+    summary: "Restrict kill switch flips to owners, on-call, SRE and the IC"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As the head of platform engineering, I want only the people who answer for a
+      service in an emergency to be able to flip its switches.
+
+      Acceptance criteria:
+
+      - may flip: the owning team, whoever is on call for the service, Site Reliability,
+        and the IC of an open incident;
+      - everyone else sees the switch read-only;
+      - the right to flip in production is a Switchboard permission that the quarterly
+        access reviews can list;
+      - a refused attempt is logged too.
+    comments:
+      - "Callum: Logging refusals as well is right. It is the first thing we would ask for after a suspicious flip."
+  - key: ENG-316
+    type: Task
+    summary: "Grant flip rights to whoever is on call according to Klaxon"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Whoever is on call for a service may flip its switches, but the rotas change every
+      week. Read the rotas from Klaxon every few minutes and grant flip rights on a
+      service's switches to the people currently on its rota, and to the IC of any open
+      incident declared with `/klaxon declare`.
+
+      Map rotas to services in Switchboard's configuration, reviewed by each team.
+      Rights granted this way end when the shift or the incident ends.
+    comments:
+      - "Lukas: Mapping reviewed with every team lead. Two rotas cover several services and are mapped to each of them."
+  - key: ENG-317
+    type: Bug
+    summary: "Kill switch flip took over a minute to reach pods after a stream drop"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** In `staging-eu`, cut the stream between Switchboard and a
+      few `notify` pods for 30 seconds, then engage `ks.notify.webhook-retries`.
+
+      **Expected.** Every pod applies the new state within about 15 seconds.
+
+      **Actual.** Pods whose stream had dropped kept the old state for up to 70 seconds,
+      until the stream reconnected.
+
+      **Fix.** Clients now resynchronise with Switchboard every 10 seconds as well as
+      listening to the stream, so a flip reaches every pod within about 15 seconds even
+      after a drop.
+  - key: ENG-318
+    type: Story
+    summary: "Post every kill switch flip to #deploys and the owning team's channel"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As a member of the owning team, I want to hear about a flip of my service's
+      switches when it happens, not at the next stand-up.
+
+      Acceptance criteria:
+
+      - each production flip posts the switch, who, the old and the new state, the
+        reason and the incident channel to `#deploys` and to the owning team's channel;
+      - flips in `staging-eu` go to the team's channel only;
+      - every message links to the switch's audit entries in the console.
+  - key: ENG-319
+    type: Story
+    summary: "Browse and export kill switch audit entries in the console"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As an IC, I want the history of a switch where I flip it.
+
+      Acceptance criteria:
+
+      - each switch's page shows its audit entries, newest first, with the reason and
+        the incident channel;
+      - a global view lists every flip across services, filtered by service, person or
+        incident channel;
+      - entries for a time window can be exported as JSON, to attach to an incident
+        record.
+  - key: ENG-320
+    type: Story
+    summary: "Copy the kill switch audit log to the warehouse as raw.switchboard_audit"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As anyone writing a PIR or investigating for Security, I want to query flips
+      alongside other data.
+
+      Acceptance criteria:
+
+      - a Conveyor pipeline copies the audit log to `raw.switchboard_audit` each night;
+      - the table is append-only, like the log itself;
+      - each run compares its row count with the log's, and a mismatch alerts Data
+        Platform;
+      - Data Platform owns the pipeline; Platform owns the source.
+    comments:
+      - "Tomasz: Pipeline live. The first nightly run loaded every entry since the log started."
+  - key: ENG-321
+    type: Bug
+    summary: "API flips logged a shared token's name instead of the person behind it"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** In `staging-eu`, engage a kill switch through the API with
+      a team's shared automation token.
+
+      **Expected.** The audit entry names the person or the job that made the call.
+
+      **Actual.** It named only the token, which half the team could read in Strongroom.
+
+      **Fix.** Tokens that can flip switches are now issued per person or per job in
+      Strongroom, and the audit entry records the token and its owner. Shared tokens are
+      refused for flips, and the existing ones were revoked.
+    comments:
+      - "Callum: Good catch before production. An audit log that names a shared token is not an audit log."
+  - key: ENG-322
+    type: Task
+    summary: "Move ks.payout-gateway.batch-scheduler to the kill switch kind"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      `ks.payout-gateway.batch-scheduler`, added in payout-gateway 4.11, is an ordinary
+      flag with a kill switch's name. Move it to the kill switch kind without changing
+      its name or what it does, so that
+      [Runbook: rolling back payout-gateway](../../corpus/payments/payout-gateway-rollback.md)
+      keeps working unchanged.
+
+      Agree a time with Payouts: nobody may flip the switch during the move. Engage and
+      release it in `staging-eu` afterwards, and check that the audit log records both.
+    comments:
+      - "Yusuf: Moved on a quiet afternoon, between two batches. Engaged and released in staging-eu straight after; both flips are in the log."
+  - key: ENG-323
+    type: Task
+    summary: "Migrate Merchant Experience's emergency switches for notify and merchant-api"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Merchant Experience keeps several emergency switches for `notify` and
+      `merchant-api` in hand-edited configuration. For each one: declare a kill switch
+      in `switchboard.yaml`, read it through the Switchboard client, and remove the
+      configuration value in the same release, so that there is never a way to flip the
+      feature twice.
+
+      Start with `ks.notify.webhook-retries`, which stops retrying failed webhook
+      deliveries: it is the one the team reaches for most often.
+    comments:
+      - "Ama: Merchant Experience has put this in its sprint. The webhook retries switch goes first."
+  - key: ENG-324
+    type: Task
+    summary: "Replace card-auth's emergency configuration toggles with kill switches"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      `card-auth` still turns features off in an emergency by changing configuration
+      and deploying. Replace those toggles with kill switches.
+
+      Evaluation must stay in process, with no network call on the authorisation path,
+      as [ADR-014](../../corpus/architecture/adr-014-build-switchboard.md) requires inside
+      the card data environment. Work through the list with Payments Core; give each
+      switch a description that says exactly what stops. Exercise each in `staging-eu`
+      before the configuration toggle is removed.
+    comments:
+      - "Nadia: Five toggles became three kill switches. The other two were dead code and are gone."
+  - key: ENG-325
+    type: Task
+    summary: "Migrate the remaining Ledger and Payouts emergency switches"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      The inventory (ENG-304) lists emergency switches for `ledger` and
+      `settlement-batcher` that still live in configuration. Move each to a kill switch,
+      with Ledger and Payouts reviewing the descriptions: for anything that touches
+      money, the description must say what happens to work already in flight when the
+      switch is engaged.
+
+      Remove the configuration values in the same releases, and update the teams'
+      runbooks to name the switches.
+    comments:
+      - "Kwabena: Ledger's switch pauses journal imports only. Postings already started finish, and the description says so."
+  - key: ENG-326
+    type: Bug
+    summary: "Kill switch flip refused outside the deploy windows"
+    status: Done
+    priority: Highest
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** On a Friday, engage a kill switch in production through
+      the API.
+
+      **Expected.** The flip goes through. Kill switches need no deploy and are allowed
+      at any hour, inside or outside the deploy windows, and during change freezes.
+
+      **Actual.** Refused with `production stages are closed`: the new kill switch
+      endpoint had copied a window check from Shipwright's client library.
+
+      **Fix.** Kill switch flips no longer pass through any window or freeze check. Tests
+      cover a Friday, a weekend and a freeze day. Found by Site Reliability's tests before
+      any production runbook depended on the API.
+    comments:
+      - "Lukas: The one rule kill switches exist to keep. Thanks for the quick fix."
+  - key: ENG-327
+    type: Task
+    summary: "Write the kill switch sections of the feature flags page"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      Add kill switches to
+      [Feature flags and kill switches](../../corpus/release/feature-flags.md): the
+      comparison with flags, naming, who may flip, the audit log, flipping from the
+      console and through the API, and when a feature should have a switch at all.
+
+      Keep the flag removal rules where they are, and say plainly that kill switches are
+      permanent and not subject to removal. Add the payout-gateway runbook as the example
+      of a runbook that names its switch.
+  - key: ENG-328
+    type: Story
+    summary: "Annotate Lantern graphs with kill switch flips"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      As someone reading a graph during an incident, I want to see when a switch
+      changed state, the way deploys already appear.
+
+      Acceptance criteria:
+
+      - each production flip appears as an annotation on every Lantern graph of the
+        switch's service;
+      - the annotation shows the switch, the new state, who flipped it and the reason;
+      - flips in `staging-eu` annotate the staging graphs only.
+  - key: ENG-329
+    type: Story
+    summary: "Exercise every kill switch in staging-eu once a quarter"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As Site Reliability, we want confidence that each switch works before we need it.
+      A switch that has never been flipped is a switch that may not work.
+
+      Acceptance criteria:
+
+      - each kill switch is engaged and released in `staging-eu` at least once a
+        quarter;
+      - the console shows the date each switch was last exercised;
+      - switches not yet exercised in the quarter are listed in the owning team's
+        channel during its last month;
+      - an exercise is logged like any other flip.
+  - key: ENG-330
+    type: Story
+    summary: "Let a kill switch target a percentage of merchants"
+    status: Won't Do
+    priority: Low
+    labels: [platform]
+    description: |
+      Requested by a team that wanted to stop a feature for some merchants first, then
+      for all of them.
+
+      Acceptance criteria as requested:
+
+      - a kill switch accepts a percentage of merchants or a list of merchant IDs;
+      - engaging it at 100% behaves as it does today.
+
+      The team's use case was a webhook feature misbehaving for a subset of merchants.
+    comments:
+      - "Bram: Won't Do. A kill switch engaged for a percentage of merchants is a feature flag by another name. Use a release flag for anything gradual; a kill switch stays engaged or released."
+  - key: ENG-331
+    type: Task
+    summary: "Add kill switch flip rights to the October access review"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Access reviews run in January, April, July and October. Add Switchboard's right to
+      flip kill switches in production to the October review, with Platform as the
+      system owner, so that managers certify it with everything else.
+
+      Export, per person, the services whose switches they may flip outside on-call. Leave
+      out the temporary rights granted from Klaxon rotas, which end with each shift. See
+      [Quarterly access reviews](../../corpus/security/access-reviews.md).
+    comments:
+      - "Callum: Included in the October review. Seven people lost flip rights they no longer needed."
+  - key: ENG-332
+    type: Task
+    summary: "List the Switchboard audit log among security incident evidence"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      The [Security incident response plan](../../corpus/security/incident-response-plan.md)
+      lists the evidence the SIRT collects and who owns each source. Add the Switchboard
+      audit log, owned by Platform, with every kill switch flip.
+
+      Document how to export the entries for a time window from the console, and how to
+      query `raw.switchboard_audit`, so that the evidence can be hashed and kept with the
+      incident record like the rest.
+    comments:
+      - "Callum: Added to the plan's evidence table."
+  - key: ENG-333
+    type: Task
+    summary: "Run the first quarterly exercise of every kill switch"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Run the first round of exercises under ENG-329. Each owning team engages and
+      releases each of its switches in `staging-eu`, checks that the feature really
+      stops and then resumes, and records the result in this ticket.
+
+      A switch that does not stop its feature is a bug for the owning team, raised in
+      its own backlog and fixed before the next round. Site Reliability chases any team
+      that has not finished by the end of the sprint.
+    comments:
+      - "Lukas: Every switch exercised. Two did nothing in staging because their feature was off there anyway; both teams fixed their staging setup."
+  - key: ENG-334
+    type: Story
+    summary: "Replicate kill switch state and audit log to the standby region"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As the IC of a region failover, I want kill switches to work in the standby region
+      with the states they had in the primary.
+      [ADR-021](../../corpus/architecture/adr-021-active-passive-regions.md) replicates
+      Switchboard to the standby region, so that services there can read their flags
+      without the primary.
+
+      Acceptance criteria:
+
+      - kill switch states are replicated; a flip reaches every pod in both regions
+        within about 15 seconds;
+      - the audit log is replicated and stays append-only in both regions;
+      - with the primary unreachable, flips in the standby region are allowed and logged
+        there.
+    comments:
+      - "Lukas: Tested in the standby region with its link to the primary cut. Flips worked there, and the two logs merged cleanly once the link was back."
+  - key: ENG-335
+    type: Bug
+    summary: "Console showed a kill switch as applied before every pod had it"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** Engage a kill switch in `staging-eu` while some of the
+      service's pods are restarting.
+
+      **Expected.** The console says the flip is applied once every running pod reports
+      the new state.
+
+      **Actual.** It said "applied" as soon as Switchboard had stored the change, before
+      any pod had it.
+
+      **Fix.** Clients now acknowledge each change. The console shows, per region, the
+      share of pods that have applied it, and says "applied" only at 100%. Pods that
+      start later read the current state as they start.
+  - key: ENG-336
+    type: Story
+    summary: "Fail the build of a service whose scheduled jobs have no kill switch"
+    status: Won't Do
+    priority: Lowest
+    labels: [platform]
+    description: |
+      Proposal: refuse to build a service that runs a scheduled job without declaring a
+      kill switch, since anything that runs on a schedule should be able to stop without
+      a deploy.
+
+      Acceptance criteria as proposed:
+
+      - the build stage detects scheduled jobs in the service;
+      - it fails when none of the service's kill switches is linked to them.
+    comments:
+      - "Bram: Won't Do. We cannot detect scheduled jobs reliably, and a rule that fires on the wrong things gets suppressed. The guidance goes on the feature flags page instead: a feature that calls an outside party, moves money, messages merchants, runs on a schedule or could flood a downstream service should have a kill switch."
+  - key: ENG-337
+    type: Story
+    summary: "Report engaged kill switches in each service's health endpoint"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As an on-call engineer, I want to see from the service itself which switches it
+      believes are engaged, without opening the console.
+
+      Acceptance criteria:
+
+      - the health endpoint lists the service's engaged kill switches, as the client
+        sees them;
+      - it says whether the client has loaded states from Switchboard or is running on
+        code defaults, as ADR-014 requires for flags;
+      - `shipwright exec <service> --pod canary` can show it for a single pod group.
+  - key: ENG-338
+    type: Task
+    summary: "Delete the emergency configuration left behind by the migration"
+    status: Done
+    priority: Medium
+    labels: [platform, tech-debt]
+    description: |
+      With every switch from the inventory (ENG-304) migrated, delete the old
+      configuration values and the code that read them from each service repository.
+
+      Then go through the runbooks: remove the steps that told on-call engineers to edit
+      configuration and deploy, and name the kill switch to use instead, explicitly, as
+      the payout-gateway runbook already does. Nothing should be left that can be flipped
+      two ways.
+    comments:
+      - "Bram: The last ones are gone from merchant-api and notify. Runbooks updated by each team."
+  - key: ENG-339
+    type: Bug
+    summary: "Each kill switch flip posted twice to #deploys after standby replication"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** Engage any kill switch in production after ENG-334 went
+      live.
+
+      **Expected.** One message in `#deploys` and one in the owning team's channel.
+
+      **Actual.** Two of each: the notifier ran in both regions, and both posted the
+      replicated audit entry.
+
+      **Fix.** Only the region where the flip was made posts it. The standby region
+      posts only for flips made there, which happens only when the primary cannot be
+      reached.
+  - key: ENG-340
+    type: Task
+    summary: "Remove the legacy endpoint that set switch states without a reason"
+    status: Done
+    priority: Medium
+    labels: [platform, tech-debt]
+    description: |
+      The old endpoint that sets a flag's value directly, with no reason and no audit
+      entry, still accepts writes to anything named `ks.`. Refuse writes to kill
+      switches through it first, then watch its traffic for two weeks to find the last
+      callers, and delete it.
+
+      Tell `#team-platform` a week before the deletion, and list the callers found in
+      this ticket so that each owner can confirm the move.
+    comments:
+      - "Lukas: One caller left, an old Site Reliability script. Moved to the new API before the deletion."
+  - key: ENG-341
+    type: Task
+    summary: "Walk the on-call rotas through kill switches before the peak trading freeze"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      The peak trading freeze runs from 24 November to 2 December. Kill switches stay
+      allowed throughout, which makes them the main lever on-call engineers have during
+      it; see [Change freeze calendar 2025](../../corpus/release/change-freeze-2025.md).
+
+      Before the freeze, walk every rota through its services' switches: where to find
+      them, who may flip, the mandatory reason, and how to check the audit log. Record
+      in this ticket which rotas have been briefed.
+    comments:
+      - "Lukas: All rotas briefed, the payments ones twice."
+  - key: ENG-342
+    type: Task
+    summary: "Review the first months of kill switch audit entries"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      Before closing the epic, read every production audit entry since the log started.
+      Are the reasons useful to someone reading them later? Is the incident channel
+      filled in for flips made during incidents? Did any flip come from someone outside
+      the allowed groups?
+
+      Change the console's wording or the rules where entries are poor, and post a
+      summary in `#team-platform`.
+    comments:
+      - "Lukas: Reasons are good. The incident channel was missing on a third of incident-time flips, so the console now fills it in from the open incident."
+      - "Bram: Thanks. Closing ENG-8."

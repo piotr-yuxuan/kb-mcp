@@ -1,0 +1,797 @@
+epic:
+  key: ENG-10
+  summary: Zero-downtime database migrations
+  sprints: [22, 30]
+  labels: [platform]
+  description: |
+    ## Goal
+
+    Make every schema change safe to ship inside a normal deploy window, while the
+    previous release is still serving traffic. In one quarter, three incidents came from
+    the same mistake: a release dropped a column that the previous release still read.
+    Several teams also still keep risky schema changes for evening maintenance windows,
+    because they do not trust them under load.
+
+    ## Scope
+
+    - `migrations-lint`: a required CI check on every pull request that touches
+      `migrations/`, run again by Shipwright at the build stage, with seven rules:
+      `drop-column-same-release`, `rename-column`, `index-not-concurrent`,
+      `not-null-without-default`, `missing-lock-timeout`, `type-change` and
+      `mixed-schema-and-data`.
+    - `shipwright migrate`: lock timeout retries, concurrent index builds outside a
+      transaction, batched data migrations, a pause on replication lag, and a plan that
+      shows lint results and whether a `CHG-` ticket is needed.
+    - The compatibility suite in the test stage, and the rewritten migrations page.
+
+    ## Out of scope
+
+    - Moving services to `shipwright migrate`, finished in 2024.
+    - The ledger's journal lines partitioning, which Ledger runs under `CHG-2291`. We
+      check its files against the new rules, nothing more.
+    - The Change Register itself.
+
+    ## Pages
+
+    - [Database migrations](../../corpus/release/database-migrations.md)
+    - [Continuous integration](../../corpus/engineering/continuous-integration.md)
+    - [How code reaches production](../../corpus/release/deployment-pipeline.md)
+  comments:
+    - "Kwabena: CHG-2291's expand step went out on 10 March and passed every rule shipped so far. Ledger will keep using it as the worked example."
+    - "Hamza: All seven rules now run in report-only mode in every repository. Enforcement waits until each team has seen its own findings."
+    - "Bram: migrations-lint is a required check in every repository from this week. Thanks to everyone who cleared their findings early."
+tickets:
+  - key: ENG-382
+    type: Task
+    summary: Write up the three dropped-column incidents of the last quarter
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Three incidents in one quarter came from the same mistake: a release dropped a
+      column that the previous release still read. During a deploy, old and new pods run
+      side by side against one database for most of an hour, so the old pods failed the
+      moment the migration ran.
+
+      For each incident, write down the service, the migration, how long the old release
+      kept serving, and what check could have caught it before merge. The write-up sets
+      the order in which ENG-10 builds its lint rules.
+    comments:
+      - "Hamza: All three would have been caught by comparing what the previous release reads with what the migration drops. That comparison is the rule to design first, even if it ships later."
+  - key: ENG-383
+    type: Task
+    summary: List the schema changes that still need an evening maintenance window
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Some teams still run schema changes in the evening, outside the deploy windows,
+      because they do not trust them under traffic. Ask every team for the schema changes
+      of the last six months that went out that way, and why: a long lock, a large data
+      copy, a rename, or habit.
+
+      The answers tell us which Shipwright features ENG-10 must deliver before the
+      evening window can be retired, and which teams to help first.
+    comments:
+      - "Kwabena: Ledger's list is short but heavy: index builds and one large copy, all on the journal tables."
+      - "Noor: Merchant Experience does almost every merchant-api schema change in the evening. We would love to stop."
+  - key: ENG-384
+    type: Story
+    summary: Add a migrations-lint check to the CI templates
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As a reviewer, I want unsafe migrations flagged on the pull request, not discovered
+      during the canary.
+
+      Acceptance criteria:
+
+      - Every pull request that touches `migrations/` runs a `migrations-lint` check from
+        the shared CI templates, in parallel with the other required checks.
+      - The check finishes in under a minute.
+      - It starts in report-only mode: it lists its findings but does not block the merge.
+      - This ticket ships the runner with no rule enabled. Each rule is its own ticket
+        under ENG-10.
+
+      The list of required checks is on
+      [Continuous integration](../../corpus/engineering/continuous-integration.md).
+  - key: ENG-385
+    type: Story
+    summary: Block schema statements that run without a lock_timeout
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      A one-millisecond `ALTER TABLE` can still take a service down: it waits behind a
+      long-running query for its `ACCESS EXCLUSIVE` lock, and every query that arrives
+      meanwhile waits behind it.
+
+      Acceptance criteria:
+
+      - The rule `missing-lock-timeout` flags any schema statement in a migration file
+        that is not preceded by `SET lock_timeout`.
+      - The value we document is two seconds:
+
+      ```sql
+      SET lock_timeout = '2s';
+      ALTER TABLE merchants ADD COLUMN registered_name text;
+      ```
+
+      - Files that only change data are not checked by this rule.
+  - key: ENG-386
+    type: Task
+    summary: Rewrite the database migrations page around expand then contract
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      The current page explains how to run `shipwright migrate`, but not how to write a
+      migration that stays safe while the previous release serves traffic. Rewrite it as
+      a rulebook:
+
+      - expand, then contract, each step in its own release;
+      - never drop a column in the release that stops using it;
+      - migrations run only through `shipwright migrate`, never by hand;
+      - down migrations exist, but they are a last resort.
+
+      The lint rules enforce what it says, and reviewers will send people to it when a
+      rule fires. The page lives at
+      [Database migrations](../../corpus/release/database-migrations.md).
+    comments:
+      - "Bram: Short on theory, long on the mistakes that taught us each rule, please."
+  - key: ENG-387
+    type: Story
+    summary: Retry lock timeouts in shipwright migrate with a growing pause
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      With `lock_timeout` set, a migration that meets a long query now fails instead of
+      blocking the table. Today that failure fails the whole release, which teaches people
+      to leave the timeout out.
+
+      Acceptance criteria:
+
+      - `shipwright migrate` retries a statement that hit a lock timeout up to five
+        times, with a growing pause between attempts.
+      - If it still cannot take the lock, the migration fails cleanly and nothing has
+        changed.
+      - The error names the table and suggests finding the long query on the service's
+        Lantern database dashboard before trying again.
+  - key: ENG-388
+    type: Story
+    summary: Block CREATE INDEX without CONCURRENTLY on existing tables
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      A plain `CREATE INDEX` blocks writes to its table for as long as the build takes,
+      which on a large table is minutes.
+
+      Acceptance criteria:
+
+      - The rule `index-not-concurrent` flags `CREATE INDEX` without `CONCURRENTLY` on a
+        table that already exists.
+      - An index on a table created earlier in the same file is allowed: the table is new
+        and empty.
+      - The finding suggests the concurrent form:
+
+      ```sql
+      CREATE INDEX CONCURRENTLY payouts_seller_id_idx ON payouts (seller_id);
+      ```
+    comments:
+      - "Amara: Ledger has been building indexes concurrently by hand for years. Glad it becomes the rule."
+  - key: ENG-389
+    type: Story
+    summary: Run the migration linter again at Shipwright's build stage
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      A pull request check can be overridden, and a release can bundle several pull
+      requests whose migrations were each fine alone. Shipwright should check the release
+      as a whole.
+
+      Acceptance criteria:
+
+      - At the build stage, Shipwright runs `migrations-lint` on every pending migration
+        of the release.
+      - A blocking finding fails the build once its rule is enforced; report-only rules
+        print warnings in the build log.
+      - CI and Shipwright use the same linter package and version, so the two never
+        disagree about a file.
+  - key: ENG-390
+    type: Bug
+    summary: CREATE INDEX CONCURRENTLY migrations fail inside Shipwright's transaction
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      **Steps to reproduce**
+
+      1. Write a migration with `CREATE INDEX CONCURRENTLY`, as `index-not-concurrent`
+         now asks.
+      2. Run `shipwright migrate merchant-api --env staging --apply`.
+
+      **Expected:** the index is built without blocking writes.
+
+      **Actual:** the migration fails, because Shipwright wraps every file in a
+      transaction:
+
+      ```text
+      ERROR:  CREATE INDEX CONCURRENTLY cannot run inside a transaction block
+      ```
+
+      **Fix:** Shipwright detects files that build an index concurrently and runs them
+      outside a transaction. A failed concurrent build leaves an invalid index behind;
+      the migrations page now says to remove it with `DROP INDEX CONCURRENTLY` in a new
+      migration and try again.
+    comments:
+      - "Hamza: Found by the first team to follow the new rule, the day after it shipped. Fair."
+  - key: ENG-391
+    type: Story
+    summary: Lint migrations that drop a column in the same release
+    status: Done
+    priority: Highest
+    labels: [platform]
+    description: |
+      As a team shipping a contract migration, I want Shipwright to stop me dropping a
+      column that the previous release still reads, the mistake behind three incidents in
+      one quarter.
+
+      Acceptance criteria:
+
+      - The rule `drop-column-same-release` blocks dropping a column that code in the
+        same release stopped using, found by comparing the release with the one before it.
+      - The finding names the column and the release that last used it, and says to move
+        the drop to a later release.
+      - It runs in `migrations-lint` on the pull request and again at the build stage.
+      - Suppressions are a separate ticket.
+
+      The rule enforces "never drop a column in the release that stops using it" from
+      [Database migrations](../../corpus/release/database-migrations.md).
+    comments:
+      - "Hamza: Comparing releases needs the previous release's source, so the rule asks Shipwright which release was recorded before this one."
+      - "Bram: This is the rule ENG-10 exists for. It stays report-only until every team has seen it fire on their own code."
+  - key: ENG-392
+    type: Story
+    summary: Block RENAME COLUMN and RENAME TO on tables in use
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      A rename in one statement breaks every pod of the old release at the moment it
+      runs: the old code asks for a column or table that no longer exists.
+
+      Acceptance criteria:
+
+      - The rule `rename-column` flags `RENAME COLUMN` and `RENAME TO` on tables in use.
+      - Tables created in the same release are exempt.
+      - The finding spells out the safe route instead: add the new column, copy, switch
+        reads, stop using the old column, then drop it in a later release.
+  - key: ENG-393
+    type: Story
+    summary: Repeat batched data migrations until they update no rows
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Filling a new column on a large table in one `UPDATE` holds locks and bloats the
+      table. Data changes must run in batches, and Shipwright should do the repeating.
+
+      Acceptance criteria:
+
+      - A header comment marks a file as batched:
+
+      ```sql
+      -- shipwright: batched, repeat-until-zero, pause_ms=200
+      UPDATE merchants
+      SET registered_name = legal_name
+      WHERE id IN (
+          SELECT id FROM merchants
+          WHERE registered_name IS NULL
+          ORDER BY id LIMIT 10000
+      );
+      ```
+
+      - Shipwright repeats the statement until it updates no rows, pausing `pause_ms`
+        between batches, and commits each batch on its own.
+      - Progress appears in the deploy log.
+  - key: ENG-394
+    type: Task
+    summary: Check the CHG-2291 migrations against the new lint rules
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Ledger's `CHG-2291`, approved on 4 March, partitions the journal lines table by
+      month. Its expand step on 10 March creates the partitioned table, starts writing to
+      both tables behind `sb.ledger.dual-write-journal-lines`, and copies history across
+      in batches.
+
+      Before the expand step, run every rule shipped so far against its migration files
+      and tell Ledger about anything that would block once the rules are enforced. This is
+      a check, not a review of the plan: the ticket's approvers own that. See
+      [Raising a change ticket](../../corpus/release/change-tickets.md).
+    comments:
+      - "Hamza: No blocking findings. The history copy is batched, as the large tables section asks."
+      - "Kwabena: Thanks. We will point people at CHG-2291 as the example once it closes."
+  - key: ENG-395
+    type: Story
+    summary: Block NOT NULL columns added without a default
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Adding a `NOT NULL` column with no default fails on any table with rows, and, if it
+      somehow passes, breaks the previous release, which does not write the column.
+
+      Acceptance criteria:
+
+      - The rule `not-null-without-default` flags `ADD COLUMN ... NOT NULL` without a
+        `DEFAULT` on an existing table.
+      - The finding suggests the expand-then-contract route: add the column as nullable,
+        fill it in batches, then add the constraint as `NOT VALID` and validate it in a
+        later migration.
+  - key: ENG-396
+    type: Story
+    summary: Block in-place column type changes
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      `ALTER COLUMN ... TYPE` usually rewrites the whole table under an `ACCESS EXCLUSIVE`
+      lock, and the previous release may not cope with the new type.
+
+      Acceptance criteria:
+
+      - The rule `type-change` flags any change of a column's type in place.
+      - The finding says to add a new column of the new type and treat the change as a
+        rename, in separate releases.
+      - No allow-list of "safe" type changes for now; a suppression covers the rare
+        exception.
+  - key: ENG-397
+    type: Story
+    summary: Keep schema and data changes in separate migration files
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      A file that both alters a table and updates its rows mixes a quick statement that
+      needs a lock with a slow one that needs batching, and it cannot be retried safely.
+
+      Acceptance criteria:
+
+      - The rule `mixed-schema-and-data` flags a file that holds both schema statements
+        and data statements.
+      - `SET` statements, such as `SET lock_timeout`, count as neither.
+      - The finding suggests splitting the file in two, in the order expand, then copy.
+  - key: ENG-398
+    type: Story
+    summary: Pause batched migrations when replication lag passes 30 seconds
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      A large batched copy writes faster than the replica in the passive region can apply
+      it. If the primary region is lost during the copy, the standby is further behind
+      than the 5 minutes of writes we are prepared to lose.
+
+      Acceptance criteria:
+
+      - While a batched migration runs, Shipwright watches replication lag to the passive
+        region and pauses between batches when it exceeds 30 seconds.
+      - It resumes once lag is back under the threshold, and logs each pause.
+      - The pause applies to every service's database, not only the payments ones.
+
+      Background: [ADR-021](../../corpus/architecture/adr-021-active-passive-regions.md).
+  - key: ENG-399
+    type: Bug
+    summary: drop-column-same-release compares with the wrong release after a hotfix
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      **Steps to reproduce**
+
+      1. Release `merchant-api` 12.6.0 from main.
+      2. Ship 12.6.1 from a hotfix branch; it still reads `merchants.legal_name`.
+      3. Release 12.7.0 from main with a migration that drops `legal_name`.
+
+      **Expected:** `drop-column-same-release` compares 12.7.0 with 12.6.1, the release
+      recorded before it, and blocks the drop.
+
+      **Actual:** it compared 12.7.0 with 12.6.0, the previous release on main, and let
+      the drop through.
+
+      **Fix:** the rule asks Shipwright for the latest release recorded for the service,
+      whichever branch it came from.
+    comments:
+      - "Hamza: Found while trying the rule against Merchant Experience's recent releases, so nothing reached production."
+  - key: ENG-400
+    type: Story
+    summary: Require a reason and a platform approval to suppress a lint rule
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Every rule will occasionally be wrong. A suppression must cost a sentence and a
+      second pair of eyes, not a quiet comment.
+
+      Acceptance criteria:
+
+      - A finding is suppressed with a comment on the statement that names the rule and
+        gives the reason:
+
+      ```sql
+      -- migrations-lint: allow drop-column-same-release: column never read by a release
+      ALTER TABLE payouts DROP COLUMN draft_ref;
+      ```
+
+      - `migrations-lint` stays red until a platform reviewer approves the pull request.
+      - A suppression without a reason is itself a finding.
+  - key: ENG-401
+    type: Story
+    summary: Show lint results and change ticket needs in shipwright migrate --plan
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As an engineer preparing a deploy, I want one command that tells me what will run,
+      what it locks, whether it passes the rules and whether I need a change ticket.
+
+      Acceptance criteria:
+
+      - `shipwright migrate <service> --env <env> --plan` prints, for each pending
+        migration, the statement kind, the lock it takes and an estimate.
+      - It then prints the lint result and whether a `CHG-` ticket is required:
+
+      ```text
+      pending:
+        0150_add_registered_name   ADD COLUMN   lock: ACCESS EXCLUSIVE (brief)   estimate: under 1s
+      lint: ok (7 rules checked)
+      change ticket: not required
+      ```
+  - key: ENG-402
+    type: Bug
+    summary: migrate --plan says no change ticket is needed for ledger migrations
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      **Steps to reproduce:** with a pending schema migration on `ledger`, run
+      `shipwright migrate ledger --env production --plan`.
+
+      **Expected:** `change ticket: required`. Schema changes on the databases of
+      `card-auth`, `ledger`, `payout-gateway` and `settlement-batcher` always need a
+      `CHG-` ticket.
+
+      **Actual:** `change ticket: not required`. The plan only checked the table size
+      rule, not the list of payments databases.
+
+      **Fix:** the plan uses the same rules as the deploy check that refuses to start the
+      canary without an approved ticket, so the two cannot disagree.
+    comments:
+      - "Amara: Spotted while trying the new plan output on a Ledger change. The deploy would have stopped us anyway, but the plan should not say otherwise."
+  - key: ENG-403
+    type: Story
+    summary: Check that every up migration has a matching down migration
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      Down migrations are a last resort in production, but they are routine in local
+      development and `staging-eu`, where resetting a schema is normal.
+
+      Acceptance criteria:
+
+      - `migrations-lint` fails when `NNNN_description.up.sql` has no matching
+        `NNNN_description.down.sql`.
+      - The finding names the missing file.
+      - The check does not run the down file; running it in `staging-eu` stays on the
+        reviewer's checklist.
+  - key: ENG-404
+    type: Story
+    summary: Test the previous release against the new schema in the test stage
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Every migration must be safe while the previous release serves traffic. Today we
+      only test the new release against the new schema.
+
+      Acceptance criteria:
+
+      - A compatibility suite in Shipwright's test stage applies the release's pending
+        migrations, then runs the previous release's integration tests against the result.
+      - Services enable it in `shipwright.yaml`; it is off by default while teams try it.
+      - A failure blocks the release like any required suite.
+
+      How the suites fit together is in the
+      [testing strategy](../../corpus/engineering/testing-strategy.md).
+    comments:
+      - "Noor: merchant-api will turn it on as soon as it ships."
+  - key: ENG-405
+    type: Story
+    summary: Warn on untagged columns whose names look personal
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      New columns holding personal data must be tagged, or the warehouse cannot apply
+      erasure requests to them.
+
+      Acceptance criteria:
+
+      - `migrations-lint` warns, without blocking, when a new column's name contains
+        `email`, `name`, `phone`, `address` or `date_of_birth` and it carries no tag.
+      - The warning appears in the pull request check and in `--plan`.
+
+      How to tag a column is on
+      [Tagging personal data columns](../../corpus/data/personal-data-columns.md).
+  - key: ENG-406
+    type: Task
+    summary: Review report-only lint findings with each team before enforcement
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Every rule has run in report-only mode for some weeks. Before the check becomes
+      required, go through each team's findings with them and sort each one into: a real
+      problem to fix, a false positive to report as a bug, or a case for a suppression.
+
+      Agree with each team lead that nothing blocking is left in their open pull
+      requests, so that enforcement day breaks nobody's work in progress.
+    comments:
+      - "Hamza: Most findings are a missing lock_timeout. Payments Core and Ledger are clear; Merchant Experience has two to fix."
+  - key: ENG-407
+    type: Bug
+    summary: drop-column-same-release fires on a column no released code ever read
+    status: Won't Do
+    priority: Low
+    labels: [platform]
+    description: |
+      **Steps to reproduce:** add a column in one release, decide against it before any
+      code reads it, and drop it in the next release.
+
+      **Expected (reporter):** no finding, since no running release can read the column.
+
+      **Actual:** `drop-column-same-release` blocks the drop, because the column appears
+      in the previous release's schema.
+
+      Proposed fix: teach the rule to tell columns that no release ever read from the
+      others.
+    comments:
+      - "Bram: Won't Do. This case is rare and a suppression with its reason is the right answer. Teaching the rule an exception would make its findings harder to trust."
+  - key: ENG-408
+    type: Story
+    summary: Refuse a manual migrate --apply outside the deploy windows
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Running a long expand migration by hand, early on a deploy day, is useful. Running
+      one on a Friday evening is how the evening windows started.
+
+      Acceptance criteria:
+
+      - In production, `shipwright migrate <service> --apply` run by hand works only
+        inside the deploy windows, Monday to Thursday 09:00 to 16:00 UK time.
+      - It applies only migrations that belong to a release already in staging, and
+        records that release.
+      - Migrations applied by the pipeline are unaffected.
+  - key: ENG-409
+    type: Story
+    summary: Copy production-size tables to staging-eu for every large migration
+    status: Won't Do
+    priority: Lowest
+    labels: [platform]
+    description: |
+      Before a migration on a table of more than 50 million rows, restore a copy of the
+      table at production size into `staging-eu` automatically, so that every large
+      migration is timed against realistic data.
+
+      The seed data in `staging-eu` is too small to show how long a batched copy or an
+      index build will take on the largest tables.
+    comments:
+      - "Bram: Won't Do. Far too costly for the handful of large migrations we run each year. The large tables section asks for a production-size copy by hand when the seed data is too small, and that is enough."
+  - key: ENG-410
+    type: Task
+    summary: Add the four-release column rename to the migrations page
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      People keep asking how to rename a column now that `rename-column` blocks it. Add
+      a worked example to [Database migrations](../../corpus/release/database-migrations.md):
+      `merchants.legal_name` to `merchants.registered_name` in `merchant-api`, in four
+      releases.
+
+      1. Expand: add `registered_name`; write both columns.
+      2. Copy in batches, then switch reads.
+      3. Stop using `legal_name`, with no migration in this release.
+      4. Contract: drop `legal_name` once release 3 has been at 100% for a full working
+         day.
+
+      Say that Data Platform must hear about the drop first.
+  - key: ENG-411
+    type: Task
+    summary: Help Merchant Experience move schema changes into normal deploy windows
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Merchant Experience still runs most `merchant-api` and `notify` schema changes in
+      the evening. With the lint rules, lock timeout retries and batched migrations in
+      place, there is no longer a reason to.
+
+      Pair with the team on their next three schema changes, inside the deploy windows,
+      through the normal pipeline. Note anything that made them reach for the evening, and
+      raise tickets under ENG-10 for anything Shipwright still lacks.
+    comments:
+      - "Noor: Three expand migrations went out mid-morning without anyone noticing. That is the result we wanted."
+  - key: ENG-412
+    type: Bug
+    summary: Lint misses DROP COLUMN inside a multi-action ALTER TABLE
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      **Steps to reproduce:** in a release that stops reading `payouts.legacy_ref`, add:
+
+      ```sql
+      SET lock_timeout = '2s';
+      ALTER TABLE payouts ADD COLUMN bank_ref text, DROP COLUMN legacy_ref;
+      ```
+
+      **Expected:** `drop-column-same-release` blocks the drop.
+
+      **Actual:** no finding. The parser only looked at the first action of each
+      `ALTER TABLE`.
+
+      **Fix:** the linter checks every action of a multi-action `ALTER TABLE`. We also
+      checked the other rules for the same mistake; `type-change` had it too.
+  - key: ENG-413
+    type: Task
+    summary: Make migrations-lint a required check in every repository
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      Switch `migrations-lint` from report-only to required in the CI templates, so that
+      a blocking finding stops the merge in every repository, and turn on blocking at
+      Shipwright's build stage at the same time.
+
+      Announce it in `#team-platform` a week ahead, with the date, the list of rules and
+      how to ask for a suppression. Watch the first week's findings closely and answer
+      questions in the channel the same day.
+    comments:
+      - "Bram: Required from Monday 18 May in every repository."
+  - key: ENG-414
+    type: Story
+    summary: Require a change ticket for production down migrations
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      A down migration that drops a column destroys everything written to it since the up
+      migration, runs against a schema that may have moved on, and is the least tested
+      code in the repository.
+
+      Acceptance criteria:
+
+      - In production, `--down` is refused unless `--change` names an approved `CHG-`
+        ticket for that service:
+
+      ```bash
+      shipwright migrate ledger --env production --down 0098 --change CHG-NNNN
+      ```
+
+      - The ticket must be approved by the head of platform engineering.
+      - In local development and `staging-eu`, `--down` needs no ticket.
+  - key: ENG-415
+    type: Story
+    summary: Ask for a CHG- ticket when a migration locks a table over 50 million rows
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      A migration that rewrites or locks a table of more than 50 million rows is
+      high-risk whatever the service, but today only the payments databases ask for a
+      change ticket.
+
+      Acceptance criteria:
+
+      - `shipwright migrate --plan` estimates each table's size and reports when a
+        pending migration rewrites or locks a table above 50 million rows.
+      - For such a release, the production deploy asks for a `CHG-` ticket, as it does for
+        `ledger`.
+      - Concurrent index builds and batched data changes do not count as locking.
+    comments:
+      - "Bram: This brings the pipeline in line with the high-risk list on How code reaches production."
+  - key: ENG-416
+    type: Bug
+    summary: index-not-concurrent flags tables created earlier in the same release
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      **Steps to reproduce:** in one release, add `0201_create_payout_holds.up.sql`,
+      which creates a table, and `0202_index_payout_holds.up.sql`, which indexes it
+      without `CONCURRENTLY`.
+
+      **Expected:** no finding; the table is new and empty when the index is built.
+
+      **Actual:** `index-not-concurrent` reports a blocking finding, since it treats any
+      table outside the current file as existing.
+
+      **Fix:** a table counts as existing only if it is in the previous release's schema.
+    comments:
+      - "Léa: Seen in report-only mode on our next payout-gateway release. It would block us once the check is required."
+  - key: ENG-417
+    type: Bug
+    summary: migrations-lint misreads a settlement-batcher view as a dropped column
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Since the check became required, it has produced two false positives, both in
+      `settlement-batcher`.
+
+      **Steps to reproduce:** redefine a view with `CREATE OR REPLACE VIEW` so that it
+      lists fewer columns than before.
+
+      **Expected:** no finding; a view holds no data, and nothing is dropped.
+
+      **Actual:** `drop-column-same-release` reports the missing view columns as dropped
+      columns and blocks the release.
+
+      **Fix:** the rule only considers tables. Views are left to code review.
+    comments:
+      - "Yusuf: Both were ours. Thanks for fixing the rule rather than asking us to work around it."
+  - key: ENG-418
+    type: Task
+    summary: Retire the evening maintenance window for schema changes
+    status: Done
+    priority: Medium
+    labels: [platform, tech-debt]
+    description: |
+      With the rules enforced and every team shipping schema changes through the
+      pipeline, the evening maintenance window has no remaining users.
+
+      - Remove it from the platform calendar.
+      - Say on the migrations page that schema changes go out in the normal deploy
+        windows, and that a migration too risky for the day needs a `CHG-` ticket, not an
+        evening.
+      - Tell the team leads in `#team-platform`.
+    comments:
+      - "Kwabena: Ledger has no objection. The last two journal table changes went out at lunchtime."
+  - key: ENG-419
+    type: Task
+    summary: Remove the report-only switch from migrations-lint
+    status: Done
+    priority: Low
+    labels: [platform, tech-debt]
+    description: |
+      Every rule is now enforced, and the report-only mode has no remaining users. Remove
+      the switch, its configuration key in the CI templates and the code paths behind it,
+      so that nobody can quietly turn a rule back into a warning.
+
+      The warning about personal data columns stays a warning: it is a separate level, not
+      report-only mode.
+  - key: ENG-420
+    type: Task
+    summary: Describe the migration linter on How code reaches production
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      Update [How code reaches production](../../corpus/release/deployment-pipeline.md):
+
+      - in the pipeline file section, say that a release with migrations runs
+        `shipwright migrate` before the canary and that the linter ran at the build
+        stage;
+      - add a line to the history: ENG-10 adds the migration linter to the pipeline,
+        ENG Sprints 22 to 30, February to June 2026;
+      - link the migrations page instead of repeating its rules.

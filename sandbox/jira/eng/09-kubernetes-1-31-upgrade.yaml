@@ -1,0 +1,747 @@
+epic:
+  key: ENG-9
+  summary: Kubernetes 1.31 upgrade
+  sprints: [16, 20]
+  labels: [platform]
+  description: |
+    ## Goal
+
+    Bring every cluster from Kubernetes 1.30 to 1.31 while 1.30 is still supported by
+    our managed control plane, with no merchant impact. Staying on a supported version
+    is the yearly cost that ADR-010 warned of.
+
+    ## Scope
+
+    - `staging-eu` first, then the standby region, then the primary, as ADR-021 now
+      requires: control planes, then node pools, drained and upgraded one region at a
+      time.
+    - The delicate pools: the card data environment, `gpu-pool` under Kiln, the nodes
+      of the Kafka brokers, and the Trino and Conveyor workers.
+    - A `CHG-` ticket for each production step, and no production step during the 2025
+      change freezes.
+
+    ## Out of scope
+
+    New node pools, which are held until the upgrade ends, and any change to how teams
+    declare their workloads.
+
+    ## Pages
+
+    - [ADR-010: Run services on Kubernetes](../../corpus/architecture/adr-010-kubernetes.md)
+    - [ADR-021: Active-passive multi-region](../../corpus/architecture/adr-021-active-passive-regions.md)
+    - [Dependency update policy](../../corpus/release/dependency-updates.md)
+    - [Change freeze calendar 2025](../../corpus/release/change-freeze-2025.md)
+  comments:
+    - "Lukas: The first infrastructure change made under the standby-first rule. It worked as intended: every surprise showed up in a region with no merchant traffic."
+    - "Bram: Closing. Every cluster runs 1.31, and the hold on new node pools is lifted, which unblocks Merchant Hub."
+tickets:
+  - key: ENG-343
+    type: Task
+    summary: "Inventory every cluster and node pool with its Kubernetes version"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Before planning, list what we run: the `staging-eu` cluster, the production
+      clusters in the primary and standby regions, and the card data environment in
+      each region. For every node pool, including `gpu-pool` under Kiln, the Trino and
+      Conveyor workers and the nodes that host the Kafka brokers, record:
+
+      - the Kubernetes version and the node count;
+      - the teams whose workloads run there;
+      - anything that makes draining delicate, such as local data, a hard minimum of
+        pods, or work that must not be interrupted.
+    comments:
+      - "Bram: Every cluster and pool is on 1.30. The inventory lives in this ticket and is updated after each step."
+  - key: ENG-344
+    type: Task
+    summary: "Find workloads using APIs removed or deprecated by Kubernetes 1.31"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Scan the manifests that Shipwright generates, the shared add-ons and each cluster
+      for API versions and fields that 1.31 removes or deprecates, and for anything due
+      to go in 1.32, so that we do not repeat the work next year. Examples to check: the
+      AppArmor annotations, replaced by the `appArmorProfile` field, and
+      `flowcontrol.apiserver.k8s.io/v1beta3`.
+
+      ```bash
+      kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis
+      ```
+
+      Each finding becomes a change to Shipwright's templates or a ticket for the owning
+      team.
+    comments:
+      - "Bram: Every finding was in Shipwright's templates or in two add-ons. No team has to change its own repository."
+  - key: ENG-345
+    type: Story
+    summary: "Require a PodDisruptionBudget for every production workload"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As the platform team, we want to drain nodes without taking any service below the
+      capacity it needs.
+
+      Acceptance criteria:
+
+      - Shipwright generates a PodDisruptionBudget for every production workload, with
+        `maxUnavailable: 1` by default;
+      - a service may set a stricter floor in `shipwright.yaml`, reviewed by Platform;
+      - the linter rejects a budget that would allow no disruption at all, since it
+        blocks every drain;
+      - `staging-eu` gets the same budgets, so that drains there behave as they will in
+        production.
+  - key: ENG-346
+    type: Task
+    summary: "Check the shared cluster add-ons against Kubernetes 1.31"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Platform runs the shared add-ons once per cluster for everyone: the ingress
+      controller, the OpenTelemetry collector, the Strongroom agent that alone creates
+      Kubernetes secret objects, log shipping, the metrics agents that feed Lantern, and
+      the cluster autoscaler.
+
+      For each, find the first version that supports 1.31, upgrade to it while the
+      clusters are still on 1.30 wherever both are supported, and note any add-on that
+      must change at the same moment as the control plane.
+    comments:
+      - "Callum: Please give the Strongroom agent upgrade its own change ticket. It decides which secrets each service can read."
+      - "Bram: Done that way. All add-ons were upgraded ahead of the control planes; none had to move in the same step."
+  - key: ENG-347
+    type: Task
+    summary: "Upgrade Shipwright's Kubernetes client for 1.31"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Shipwright talks to every cluster to run deploys, canaries, migrations and
+      `shipwright exec`. Its Kubernetes client must support 1.31 before any cluster is
+      upgraded, and keep supporting 1.30 while the clusters are mixed, which will last
+      until January.
+
+      Upgrade the client, run Shipwright's integration suite against a 1.31 test cluster
+      and a 1.30 one, and release the new Shipwright before the `staging-eu` upgrade
+      begins.
+  - key: ENG-348
+    type: Task
+    summary: "Plan the upgrade as one change ticket per production step"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Write the plan, then raise a `CHG-` ticket for each production step: each control
+      plane and each node pool, per region. Each names the services affected, the
+      window, who runs it and who watches, and the back-out plan; for a control plane,
+      which cannot be downgraded, that is to stop and run on mixed versions.
+
+      Order: `staging-eu`, the standby region, then the primary. No new node pool is
+      created anywhere until the last step, so that none starts life on 1.30. See
+      [Raising a change ticket](../../corpus/release/change-tickets.md).
+    comments:
+      - "Bram: Plan approved. Production steps avoid both freezes: nothing from 24 November to 2 December, nor from 18 December to 5 January."
+  - key: ENG-349
+    type: Story
+    summary: "Upgrade the staging-eu cluster to Kubernetes 1.31"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As every team that deploys, we want the upgrade proven in `staging-eu` before any
+      production cluster is touched.
+
+      Acceptance criteria:
+
+      - the `staging-eu` control plane runs 1.31, then every node pool, drained a few
+        nodes at a time;
+      - every service's smoke tests pass after each pool;
+      - no step runs on a Sunday evening, when the weekly refresh resets staging;
+      - findings become tickets in this epic before the first production step.
+    comments:
+      - "Lukas: Control plane and all pools done in four days. Two findings so far, both in this epic."
+  - key: ENG-350
+    type: Bug
+    summary: "Drain of staging-eu nodes stopped on pods with local scratch volumes"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** Drain a `staging-eu` node that runs pods with an `emptyDir`
+      volume.
+
+      **Expected.** The node drains, and the pods start again elsewhere.
+
+      **Actual.** The drain stopped: pods with local data are refused unless the drain
+      is told it may delete that data.
+
+      **Fix.** Workloads now declare in `shipwright.yaml` whether their scratch volume is
+      disposable. The drain script checks that every pod with local data on the node is
+      declared so, then drains with the flag below; an undeclared pod stops it, by name.
+      Two services kept data there that was not disposable, and now write it elsewhere.
+
+      ```bash
+      kubectl drain "$NODE" --ignore-daemonsets --delete-emptydir-data --timeout=10m
+      ```
+  - key: ENG-351
+    type: Task
+    summary: "Drain and upgrade node pools one region at a time"
+    status: Done
+    priority: Highest
+    labels: [platform]
+    description: |
+      The procedure for every production node pool: the standby region first, then the
+      primary, as [ADR-021](../../corpus/architecture/adr-021-active-passive-regions.md)
+      requires. For each pool:
+
+      1. Check that its `CHG-` ticket is Approved or Scheduled, that we are inside the
+         deploy windows, and that no freeze is on.
+      2. Add a few 1.31 nodes, then cordon every node still on 1.30.
+      3. Drain a few nodes at a time, waiting for replacements to be ready and for the
+         service alerts to stay quiet.
+      4. Remove the drained nodes, and move on.
+
+      The primary is not touched until the standby has run a full working day on 1.31.
+    comments:
+      - "Bram: Procedure reviewed with Site Reliability. Every production pool follows it, region by region."
+  - key: ENG-352
+    type: Story
+    summary: "Keep card-auth at 12 pods or more while its nodes drain"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As Payments Core, we want `card-auth` never to run fewer than 12 pods, drains
+      included; the [card authorisation latency runbook](../../corpus/payments/card-auth-latency.md)
+      calls that floor the contract.
+
+      Acceptance criteria:
+
+      - `card-auth`'s PodDisruptionBudget keeps at least 12 pods available;
+      - before its nodes drain, the autoscaler floor is raised so that the budget allows
+        evictions, then put back to 12;
+      - `maxReplicas` stays at 40 throughout.
+
+      ```bash
+      kubectl --context prod-primary -n card-auth patch hpa card-auth \
+        --type merge -p '{"spec":{"minReplicas":16}}'
+      ```
+    comments:
+      - "Nadia: Agreed: 16 during drains, 12 straight after, and Payments Core on the channel for every step."
+  - key: ENG-353
+    type: Task
+    summary: "Soak staging-eu on 1.31 through the peak trading freeze"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Production is frozen from 24 November to 2 December, but
+      [staging](../../corpus/release/staging-environments.md) is not. Use the week:
+      leave `staging-eu` on 1.31, watch every service's staging stage, and collect
+      anything odd from teams in `#team-platform`.
+
+      Drain one pool again mid-week to repeat the exercise on a busy staging. Anything
+      found is fixed before the standby region is touched on the first deploy days after
+      the freeze.
+    comments:
+      - "Lukas: Quiet week. Nothing found that blocks the standby region."
+  - key: ENG-354
+    type: Task
+    summary: "Rehearse a node pool drain in staging-eu under load"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      A drain in a quiet staging is not a drain under production traffic. Book a load
+      test slot in `#team-platform`, run the usual staging load for `card-auth`,
+      `merchant-api` and `payout-gateway`, and drain a pool while it runs.
+
+      Measure errors and latency during evictions, check that each PodDisruptionBudget
+      holds, and note the drain pace that kept errors flat. That pace is the one used in
+      production.
+    comments:
+      - "Yusuf: payout-gateway stayed clean here, but in production a restarted pod resubmits in-flight batches. Pause the scheduler and drain the queue before its nodes go."
+      - "Bram: Noted, and added to the primary region's ticket."
+  - key: ENG-355
+    type: Story
+    summary: "Drain the whole gpu-pool over a single weekend"
+    status: Won't Do
+    priority: Low
+    labels: [platform]
+    description: |
+      Proposed to get the GPU outage over with in one go: drain all 12 `gpu-pool` nodes
+      at once over a weekend, when fewer training jobs run.
+
+      Acceptance criteria as proposed:
+
+      - every `gpu-pool` node drained and upgraded between Friday evening and Monday
+        morning;
+      - Kiln paused for the weekend, with jobs resubmitted on Monday.
+    comments:
+      - "Bram: Won't Do. Production infrastructure changes stay inside the deploy windows, and nobody from Platform would be watching on a Sunday. We drain a few nodes at a time over a week instead (ENG-362)."
+      - "Mireille: Understood. A week of reduced capacity is fine as long as it is announced early."
+  - key: ENG-356
+    type: Story
+    summary: "Upgrade the standby region's control plane to Kubernetes 1.31"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As the platform team, we want the standby region upgraded first, so that any
+      surprise lands in a region that serves no merchant traffic.
+
+      Acceptance criteria:
+
+      - the standby region's production control plane runs 1.31, under its own `CHG-`
+        ticket, on a deploy day after the peak trading freeze;
+      - Shipwright deploys, and the Switchboard and Strongroom replicas, work against it;
+      - every standby service starts and passes its health checks at minimum size.
+
+      The card data environment is out of this step; it follows in January.
+    comments:
+      - "Lukas: Upgraded on 3 December, the first deploy day after the freeze."
+  - key: ENG-357
+    type: Story
+    summary: "Drain and upgrade the standby region's node pools"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As the platform team, we want the standby region's node pools on 1.31, following
+      the procedure in ENG-351.
+
+      Acceptance criteria:
+
+      - every general node pool in the standby region runs 1.31;
+      - every standby service still starts and passes its health checks at minimum size;
+      - the Kafka mirrors keep up throughout;
+      - the region runs a full working day on 1.31 before the primary is touched.
+    comments:
+      - "Lukas: Done on 4 December. The primary waits for the following week."
+  - key: ENG-358
+    type: Bug
+    summary: "Standby drain stalled on disruption budgets that allowed no evictions"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** In the standby region, drain a node that runs a service at
+      its minimum size of one pod, when the service's PodDisruptionBudget sets a floor of
+      one.
+
+      **Expected.** The drain proceeds, since the standby serves no merchant traffic.
+
+      **Actual.** The eviction waited until the drain timed out: one pod and a floor of
+      one allow no disruption at all.
+
+      **Fix.** The linter from ENG-345 compared floors only with production's pod
+      counts. It now checks them against each region's minimum size too, and standby
+      budgets allow one pod down.
+  - key: ENG-359
+    type: Story
+    summary: "Upgrade the primary region's control plane to Kubernetes 1.31"
+    status: Done
+    priority: Highest
+    labels: [platform]
+    description: |
+      As the platform team, we want the primary control plane upgraded with no
+      interruption to running workloads and only a short pause in deploys.
+
+      Acceptance criteria:
+
+      - the control plane runs 1.31, under its own `CHG-` ticket, inside the deploy
+        windows;
+      - Shipwright holds production deploys during the upgrade and resumes them after;
+      - no pod restarts because of the upgrade;
+      - the standby region has run on 1.31 for at least one working day beforehand.
+    comments:
+      - "Bram: Upgraded on 9 December. Shipwright held deploys for 40 minutes; nothing restarted."
+  - key: ENG-360
+    type: Story
+    summary: "Drain and upgrade the primary region's general node pools"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As the platform team, we want the primary region's general node pools on 1.31,
+      with no merchant impact.
+
+      Acceptance criteria:
+
+      - each pool follows ENG-351, a few nodes at a time, inside the deploy windows;
+      - `card-auth` stays at 12 pods or more (ENG-352);
+      - before nodes that host `payout-gateway` drain, its scheduler is paused with
+        `ks.payout-gateway.batch-scheduler` and in-flight batches are drained, since a
+        restarted pod would resubmit them; Payouts watches;
+      - every pool is done before the year-end freeze starts on 18 December.
+    comments:
+      - "Yusuf: Scheduler paused for 20 minutes on 10 December. One batch cycle skipped, nothing resubmitted."
+  - key: ENG-361
+    type: Task
+    summary: "Drain the Kafka broker nodes one broker at a time"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      Platform runs the Kafka brokers on Kubernetes with persistent volumes, and the
+      event log migration (ENG-29) is publishing events to them. Drain their nodes one
+      broker at a time: move a broker, wait until no partition is under-replicated, then
+      take the next. Never two brokers at once.
+
+      ```bash
+      kafka-topics.sh --bootstrap-server localhost:9092 --describe --under-replicated-partitions
+      ```
+
+      Watch consumer lag in Lantern throughout, and tell the ENG-29 owners in
+      `#team-platform` the day before.
+    comments:
+      - "Bram: Done over two afternoons. Under-replication cleared within minutes of each move."
+  - key: ENG-362
+    type: Story
+    summary: "Drain the gpu-pool a few nodes at a time over a week"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As Risk ML, we want the GPU nodes upgraded without killing long training runs.
+
+      Acceptance criteria:
+
+      - announced in `#team-risk-ml` and `#team-data` at least five working days ahead;
+      - Kiln holds new `train-long` jobs from the first drain until the last node is
+        back;
+      - nodes are drained a few at a time, each once its jobs have ended or
+        checkpointed, over about a week;
+      - other jobs keep running on the remaining nodes.
+
+      See [GPU cluster quotas and scheduling](../../corpus/ml/gpu-cluster.md).
+    comments:
+      - "Mireille: Announced on 1 December for the week of 8 December. Two long runs were started early to finish before it."
+      - "Bram: Last gpu-pool node back on the Thursday. Kiln released the held train-long jobs."
+  - key: ENG-363
+    type: Story
+    summary: "Drain and upgrade the Trino and Conveyor worker node pool"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As Data Platform, we want our pipelines to finish on time while their node pool
+      is upgraded; see [Data platform overview](../../corpus/data/platform-overview.md).
+
+      Acceptance criteria:
+
+      - the pool is drained inside the deploy windows only, never while the overnight
+        pipelines run, so that `merchant_orders_daily` is still ready by 06:00 UTC;
+      - Conveyor retries tasks evicted by the drain;
+      - `#team-data` is told the day before, since runs slow down while workers move.
+    comments:
+      - "Tomasz: Done in one afternoon. A few dashboard queries failed and reran; no pipeline missed its deadline."
+  - key: ENG-364
+    type: Bug
+    summary: "Evicted pods rescheduled onto nodes still on 1.30 and evicted again"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** In the primary region, start draining a general pool when
+      the script has cordoned only the nodes of the first batch.
+
+      **Expected.** Evicted pods land on 1.31 nodes.
+
+      **Actual.** They landed on 1.30 nodes of the same pool and were evicted again when
+      those drained. Some pods restarted three times in an afternoon.
+
+      **Fix.** The drain script now cordons every 1.30 node of the pool before the first
+      eviction, as ENG-351 says, and refuses to start if any is left schedulable.
+    comments:
+      - "Lukas: No merchant impact, only churn. Glad it showed up on a general pool and not under card-auth."
+  - key: ENG-365
+    type: Bug
+    summary: "shipwright status listed pods on draining nodes as running"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** While a node drains, run `shipwright status merchant-api`.
+
+      **Expected.** Pods being evicted appear as terminating, and their replacements as
+      starting.
+
+      **Actual.** Evicted pods stayed listed as running until they were gone, so the pod
+      groups looked larger than they were.
+
+      **Fix.** Shipwright now reads each pod's deletion timestamp and readiness, and lists
+      terminating pods separately. The same view is used during canaries, which makes
+      them easier to read as well.
+  - key: ENG-366
+    type: Task
+    summary: "Park the upgrade in a known state before the year-end freeze"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      The year-end freeze runs from 18 December to 5 January and covers Kubernetes
+      changes; see [Change freeze calendar 2025](../../corpus/release/change-freeze-2025.md).
+      By the last deploy day before it:
+
+      - finish any step in progress, so that no pool is left half-drained;
+      - record each cluster's state here: `staging-eu`, the standby and the primary on
+        1.31, the card data environment on 1.30 in both regions;
+      - move the remaining change tickets to January.
+    comments:
+      - "Bram: Parked cleanly on 17 December. Both card data environment steps are scheduled for January."
+  - key: ENG-367
+    type: Story
+    summary: "Upgrade the card data environment under a year-end freeze exception"
+    status: Won't Do
+    priority: Low
+    labels: [platform]
+    description: |
+      Request: finish the card data environment during the year-end freeze, under a
+      freeze exception, so that the epic can close in December.
+
+      Acceptance criteria as requested:
+
+      - a `CHG-` ticket of the type "Freeze exception" for each region;
+      - both regions upgraded between Christmas and the new year, with Payments Core on
+        call.
+    comments:
+      - "Lukas: Won't Do. Nothing breaks if the card data environment stays on 1.30 for three more weeks, and an exception needs a reason that cannot wait. It goes first in January."
+  - key: ENG-368
+    type: Task
+    summary: "Rehearse the card data environment upgrade in staging-eu"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      The freeze covers production, not staging. Use it to rehearse the January steps
+      end to end in `staging-eu`: the card data environment's control plane and node
+      pool, `card-auth`'s floor raised before the drain and lowered after, its network
+      policies checked unchanged afterwards, and `card-auth`'s smoke tests against the
+      issuer simulator.
+
+      Time each step, so that the January change tickets ask for windows of the right
+      size.
+    comments:
+      - "Nadia: Two hours and ten minutes end to end. We will book one morning per region."
+  - key: ENG-369
+    type: Task
+    summary: "Raise the change tickets for the card data environment upgrade"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Raise one `CHG-` ticket per region for January: the standby region on the first
+      deploy days after the freeze, the primary the week after.
+
+      Each ticket names `card-auth`, the steps rehearsed in ENG-368, the floor of 16 pods
+      during the drain, who runs and who watches, and the back-out plan. As standard
+      tickets they need the owning team's lead and one platform reviewer; only people on
+      the card data environment's access list run the steps.
+    comments:
+      - "Nadia: Both approved for Payments Core."
+  - key: ENG-370
+    type: Story
+    summary: "Show the Kubernetes version of each cluster and node pool in Lantern"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      As anyone asking where the upgrade stands, I want the answer on a dashboard rather
+      than in a ticket.
+
+      Acceptance criteria:
+
+      - the cluster panel in Lantern shows, per cluster and per node pool, the control
+        plane version, the node versions and the node count;
+      - nodes on a version older than their control plane are highlighted;
+      - the panel covers `staging-eu` and both production regions, the card data
+        environment included.
+  - key: ENG-371
+    type: Bug
+    summary: "Lantern cluster panel double-counted nodes replaced during the upgrade"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** Open the cluster panel in Lantern for a node pool upgraded
+      the same day.
+
+      **Expected.** The pool's current node count.
+
+      **Actual.** Up to twice the count: nodes removed during the upgrade kept appearing
+      for the whole retention window of the metric, under their old version.
+
+      **Fix.** The panel now counts only nodes that reported in the last 5 minutes, and
+      shows removed nodes in a separate, collapsed list.
+  - key: ENG-372
+    type: Story
+    summary: "Check a node pool for drain blockers before the first eviction"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As the person draining a pool, I want to know before I start what will stop me or
+      hurt a service.
+
+      Acceptance criteria:
+
+      - the check lists, for a node pool, pods with no PodDisruptionBudget, budgets that
+        allow no evictions, pods with undeclared local data, and services that need a
+        step of their own first, such as `payout-gateway` and `card-auth`;
+      - the drain script runs it first and refuses to continue on any finding, unless
+        overridden with a written reason;
+      - its findings are posted with the step's `CHG-` ticket.
+  - key: ENG-373
+    type: Task
+    summary: "Write the node pool upgrade runbook for next year"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Turn what we learnt into a runbook in Platform's repository, so that next year's
+      upgrade is routine: the inventory, deprecated APIs, add-ons first, one change
+      ticket per step, `staging-eu` first and then the standby region and the primary,
+      the pre-drain check, `card-auth`'s floor, the `payout-gateway` pause, Kafka brokers
+      one at a time and the `gpu-pool` over a week.
+
+      It complements the platform-wide upgrades section of the
+      [Dependency update policy](../../corpus/release/dependency-updates.md).
+  - key: ENG-374
+    type: Story
+    summary: "Alert when a cluster nears the end of support for its Kubernetes version"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As the platform team, we want the next upgrade to start because a date is coming,
+      not because someone remembered.
+
+      Acceptance criteria:
+
+      - a Lantern alert fires 180 days before the managed control plane ends support for
+        any cluster's version;
+      - it posts to `#team-platform` and does not page anyone;
+      - the end-of-support dates are kept in Platform's repository and reviewed when the
+        provider publishes new ones.
+  - key: ENG-375
+    type: Story
+    summary: "Upgrade the card data environment in the standby region"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As Payments Core, we want the card data environment on 1.31 with its separation
+      intact, starting with the standby region.
+
+      Acceptance criteria:
+
+      - the standby card data environment's control plane and node pool run 1.31, under
+        their `CHG-` ticket, on the first deploy days of January;
+      - its network policies are checked unchanged after the upgrade;
+      - `card-auth` passes its health checks at minimum size in the standby;
+      - only people on the card data environment's access list run the steps.
+    comments:
+      - "Nadia: Done on 7 January. Network policy check clean."
+  - key: ENG-376
+    type: Story
+    summary: "Upgrade the card data environment in the primary region"
+    status: Done
+    priority: Highest
+    labels: [platform]
+    description: |
+      As the team behind every card authorisation, we want `card-auth` to carry on
+      untouched while the nodes under it are replaced.
+
+      Acceptance criteria:
+
+      - the primary card data environment's control plane and node pool run 1.31, a few
+        nodes at a time, inside the deploy windows;
+      - `card-auth` stays at 12 pods or more, with the floor at 16 during the drain and
+        back to 12 after;
+      - `CardAuthP99High` does not fire, and p99 stays within its 800 ms budget;
+      - Payments Core watches every step in `#team-payments-core`.
+    comments:
+      - "Nadia: Done on 13 January. p99 never left its usual range."
+      - "Bram: That was the last production step of the upgrade."
+  - key: ENG-377
+    type: Bug
+    summary: "Standby node pool scaled up with a 1.30 node after the upgrade"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** Raise the node count of a standby general pool that was
+      upgraded in December.
+
+      **Expected.** The new node joins on 1.31.
+
+      **Actual.** It joined on 1.30. The pool's node template still named the old image;
+      only the existing nodes had been replaced.
+
+      **Fix.** Templates updated for every pool in both regions. The procedure in
+      ENG-351 now ends by checking the template, and the Lantern panel from ENG-370
+      highlights such a node at once, which is how this one was found.
+  - key: ENG-378
+    type: Task
+    summary: "Lift the hold on new node pools, unblocking Merchant Hub"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Since the plan (ENG-348), no new node pool has been created, so that none would
+      start life on 1.30. With every cluster on 1.31, lift the hold and tell the teams
+      who were waiting.
+
+      Merchant Experience has waited since November for a node pool of its own for
+      Merchant Hub. It can now go ahead, under its own change ticket and with Platform's
+      review of its sizing.
+    comments:
+      - "Ama: Thank you. That was the blocker on the Merchant Hub work planned for this quarter."
+  - key: ENG-379
+    type: Task
+    summary: "Remove the 1.30 node images and templates from every cluster"
+    status: Done
+    priority: Low
+    labels: [platform, tech-debt]
+    description: |
+      Delete the 1.30 node images and templates in `staging-eu` and in both production
+      regions, so that nothing can bring an old node back, as happened in the standby
+      region (ENG-377).
+
+      Remove too the branches that the drain script and Shipwright's templates kept for
+      mixed versions while the upgrade ran. They are dead code now, and next year's
+      upgrade should start from a clean script.
+  - key: ENG-380
+    type: Task
+    summary: "Bring kubectl in the development container to 1.31"
+    status: Done
+    priority: Lowest
+    labels: [platform]
+    description: |
+      Some runbooks call `kubectl` directly, for example to raise `card-auth`'s
+      autoscaler floor during a latency incident. Bring the `kubectl` shipped in the
+      development container to 1.31, within the supported version skew of every cluster,
+      and announce it in `#team-platform`.
+
+      Check that the runbook commands still work unchanged with the new version, and
+      say so in the announcement.
+  - key: ENG-381
+    type: Task
+    summary: "Close the 1.31 upgrade and open planning for the next one"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      Close-out for ENG-9:
+
+      - confirm on the Lantern panel that every cluster and pool runs 1.31;
+      - close every change ticket with a sentence on how its step went;
+      - note what took longer than planned, chiefly the freezes and the card data
+        environment;
+      - open the planning ticket for next year's upgrade, the recurring cost that
+        [ADR-010](../../corpus/architecture/adr-010-kubernetes.md) names.
+    comments:
+      - "Bram: All change tickets closed. Closing ENG-9."
