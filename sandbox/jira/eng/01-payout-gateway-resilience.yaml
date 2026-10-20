@@ -1,0 +1,759 @@
+epic:
+  key: ENG-1
+  summary: Payout-gateway resilience
+  sprints: [1, 8]
+  labels: [payments]
+  description: |
+    ## Goal
+
+    Make `payout-gateway` safe to stop, pause and roll back without leaving batches
+    half-recorded and without paying any seller twice. Today the only way to stop
+    payouts quickly is to scale the service to zero, and a rollback is a plain
+    redeploy that resubmits whatever was in flight.
+
+    ## Scope
+
+    - A `stuck` batch state after 10 minutes without the bank's acknowledgement, raising
+      `PGW-5021 PAYOUT_BATCH_STUCK`.
+    - `pgw-admin drain --wait` and `pgw-admin status`.
+    - The kill switch `ks.payout-gateway.batch-scheduler`.
+    - Batches capped at 500 payouts.
+    - Following up stuck batches with the bank without flooding it.
+    - A runbook for pause, drain, then roll back.
+
+    ## Out of scope
+
+    File formats and cut-off calendars in `settlement-batcher`, EUR payouts over SEPA
+    (ENG-4), and payout holds.
+
+    ## Pages
+
+    - [Runbook: rolling back payout-gateway](../../corpus/payments/payout-gateway-rollback.md)
+    - [payout-gateway 4.10 release notes](../../corpus/payments/release-notes-payout-gateway-4-10.md)
+      and its successors to 4.13
+  comments:
+    - "Yusuf: Plan agreed with the team: the stuck state and the drain first, then the kill switch, then the batch cap."
+    - "Nadia: After the payout delays of 3 June, the retry storm fix goes ahead of everything else in this epic."
+tickets:
+  - key: ENG-31
+    type: Task
+    summary: Audit how payout-gateway records batches and bank acknowledgements
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Before changing anything, write down how a batch moves through `payout-gateway`
+      today: when it is cut, when it is handed to `settlement-batcher`, what the batch
+      table records, and what happens when no acknowledgement comes back.
+
+      Questions to answer:
+
+      - What does start-up recovery resubmit, and how does it decide?
+      - What state does a batch hold when the bank never answers?
+      - What happens to in-flight batches when we scale the service to zero?
+
+      The output is a short write-up in `#team-payouts` that the rest of ENG-1 can
+      plan from.
+    comments:
+      - "Yusuf: Main finding: an unacknowledged batch stays in flight for ever, and the only signal is a timeout line in the logs. Recovery resubmits every in-flight batch on start."
+      - "Léa: Scaling to zero mid-cycle left two batches half-recorded in the last test. That settles the need for a drain."
+  - key: ENG-32
+    type: Story
+    summary: Mark a payout batch as stuck after 10 minutes without acknowledgement
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      As the payments on-call, I need to know when a batch has not been acknowledged by
+      our settlement bank, instead of finding a timeout line in the logs.
+
+      Acceptance criteria:
+
+      - A batch with no acknowledgement 10 minutes after submission moves to the state
+        `stuck` and raises `PGW-5021 PAYOUT_BATCH_STUCK`.
+      - The state is stored as a value of the existing state column, so no migration is
+        needed.
+      - A stuck batch is never resubmitted by the service; a person resolves it with the
+        bank.
+      - The stuck state does not page anyone yet. We collect a few weeks of data before
+        choosing a threshold.
+  - key: ENG-33
+    type: Story
+    summary: Export metrics for in-flight batches, stuck batches and queue depth
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      We cannot see what `payout-gateway` is doing without reading logs. Export three
+      metrics to Lantern:
+
+      | Metric | Meaning |
+      |---|---|
+      | `pgw_batches_in_flight` | Batches submitted and not yet acknowledged or stuck |
+      | `pgw_batches_stuck_total` | Batches that have raised `PGW-5021` |
+      | `pgw_queue_depth` | Payouts waiting for a batch |
+
+      Acceptance: the three series appear in Lantern for every pod, with the marketplace
+      and currency as labels where they apply.
+  - key: ENG-34
+    type: Task
+    summary: Add the batch identifier to every payout-gateway log line about a batch
+    status: Done
+    priority: Medium
+    labels: [payments, tech-debt]
+    description: |
+      Following one batch through the logs means matching timestamps by eye. Add
+      `batch_id` as a structured field to every log line that concerns a batch:
+      cutting, submission, acknowledgement, timeout and recovery.
+
+      ```json
+      {"level": "info", "msg": "batch acknowledged", "batch_id": "b_9f2c41", "payouts": 412}
+      ```
+
+      This is groundwork for the drain command and for any post-incident timeline that
+      involves payouts.
+  - key: ENG-35
+    type: Bug
+    summary: Acknowledgement arriving during pod shutdown records the batch twice
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In staging, submit a batch and stop the pod in the same
+      second as the simulated bank sends its acknowledgement.
+
+      **Expected.** One row for the batch in the batch table, marked acknowledged.
+
+      **Actual.** Two rows for the same batch. No duplicate payment results, because the
+      bank only received one file, but the next morning's reconciliation reports a break.
+
+      **Fix.** Record the acknowledgement and the batch's final state in one
+      transaction, and make shutdown wait for it. Shipped in 4.10.
+    comments:
+      - "Kwabena: This explains the odd reconciliation break we saw earlier this month. Thanks for chasing it."
+  - key: ENG-36
+    type: Story
+    summary: Add pgw-admin drain to wait for in-flight batches before a release change
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Replacing the pods while batches are in flight makes start-up recovery resubmit
+      them, and the bank may pay them twice. We need a way to empty the service first.
+
+      ```bash
+      shipwright exec payout-gateway -- pgw-admin drain --wait
+      ```
+
+      Acceptance criteria:
+
+      - The service stops taking batches from the queue.
+      - The command blocks until every in-flight batch is acknowledged or marked stuck.
+      - It gives up after 20 minutes and prints what is left.
+
+      Part of 4.10, released on 29 April 2025; see the
+      [4.10 release notes](../../corpus/payments/release-notes-payout-gateway-4-10.md).
+    comments:
+      - "Léa: Drain on staging with 40 in-flight batches took just under 11 minutes."
+  - key: ENG-37
+    type: Story
+    summary: Make start-up recovery leave batches in the stuck state alone
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      On start, `payout-gateway` resubmits every batch that has no recorded
+      acknowledgement. Once batches can be `stuck`, recovery must not touch them: a
+      stuck batch may already be with the bank, and only a person talking to the bank
+      can say.
+
+      Acceptance criteria:
+
+      - Recovery still resubmits unacknowledged batches that are not stuck.
+      - Batches in the `stuck` state are skipped and logged with their `batch_id`.
+      - A test covers a restart with one in-flight and one stuck batch.
+  - key: ENG-38
+    type: Task
+    summary: Raise graceful shutdown for in-flight batches from 30 to 120 seconds
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      A pod being replaced gets 30 seconds to finish its in-flight batches, and most
+      acknowledgements take longer than that at busy times. Raise the wait to 120
+      seconds, and the pod's termination grace period with it, so that ordinary deploys
+      leave less for recovery to resubmit.
+
+      ```yaml
+      shutdown:
+        in_flight_wait: 120s
+      ```
+
+      Check that a full rollout of `payout-gateway` still completes in a reasonable time.
+  - key: ENG-39
+    type: Story
+    summary: Stuck batch ratio panel on the payout-gateway overview dashboard
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      The on-call needs one number that says whether batches are getting stuck. Add a
+      **Stuck batch ratio** panel to the Lantern dashboard "payout-gateway overview".
+
+      The ratio divides the batches in `PGW-5021` by the batches submitted over the last
+      two 15-minute cycles. A single stuck batch out of 40 should be visible, but not
+      alarming.
+
+      Acceptance: the panel shows the ratio over time, with the raw counts on hover, and
+      is linked from the service's alert descriptions.
+  - key: ENG-40
+    type: Story
+    summary: Page the payments on-call when more than 2,000 payouts are queued
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      A growing queue is the first sign that batches are not leaving: the scheduler has
+      stopped, the bank is not acknowledging, or a release has slowed the batch builder.
+
+      Add the alert `PayoutQueueBacklog` on `pgw_queue_depth`:
+
+      - fires when more than 2,000 payouts are queued;
+      - pages `payments-primary` in Klaxon;
+      - links to "payout-gateway overview".
+
+      Acceptance: the alert fires in staging when the scheduler is stopped long enough
+      for the queue to pass 2,000, and resolves once it drops back below.
+    comments:
+      - "Yusuf: Kept at 2,000. At that depth the first sellers in the queue are already a cycle late."
+  - key: ENG-41
+    type: Story
+    summary: Pause the batch scheduler with the kill switch ks.payout-gateway.batch-scheduler
+    status: Done
+    priority: Highest
+    labels: [payments]
+    description: |
+      Today the only way to stop batches is to scale the service to zero. The on-call
+      needs to pause batching from Switchboard, with no deploy.
+
+      Acceptance criteria:
+
+      - When `ks.payout-gateway.batch-scheduler` is flipped, the scheduler cuts no new
+        batches. Payouts keep arriving and queueing; batches in flight carry on.
+      - A cycle already running completes; the next one does not start.
+      - Flipping it back resumes batching at the next 15-minute cycle.
+      - The time of the last flip is stored in a new column `scheduler_paused_at` on
+        `scheduler_state`, an expand-only migration on our own database.
+
+      Shipped in 4.11 on 14 May 2025; see the
+      [4.11 release notes](../../corpus/payments/release-notes-payout-gateway-4-11.md).
+    comments:
+      - "Lukas: Tried it on staging during a cycle. Clean pause, clean resume."
+      - "Yusuf: Until the runbook exists, ask in #team-payouts before flipping it outside an incident."
+  - key: ENG-42
+    type: Story
+    summary: Show release, scheduler state and queue depth with pgw-admin status
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      During an incident, the on-call should see at a glance what the service is doing.
+      Add a status command:
+
+      ```bash
+      shipwright exec payout-gateway -- pgw-admin status
+      ```
+
+      It prints the running release, the scheduler's state (and the kill switch if it is
+      the reason), the number of queued payouts, the number of in-flight and stuck
+      batches, and the age of the oldest in-flight batch.
+
+      Acceptance: the output fits on one screen and is stable enough to paste into an
+      incident channel.
+    comments:
+      - "Léa: While here, fixed drain --wait printing its summary twice when it gave up after 20 minutes. Both changes are in 4.11."
+  - key: ENG-43
+    type: Story
+    summary: Idempotency keys on every payout journal written to the ledger
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      A retried write from `payout-gateway` to the ledger can post a payout twice in our
+      books. [ADR-008](../../corpus/architecture/adr-008-idempotency-keys.md) requires an
+      idempotency key on every write.
+
+      Acceptance criteria:
+
+      - Every payout journal carries an idempotency key derived from the payout
+        identifier.
+      - Retrying the same write returns the original journal and posts nothing new.
+      - The Ledger team reviews the change, as for any change that posts journals.
+  - key: ENG-44
+    type: Bug
+    summary: pgw_queue_depth counts held payouts as if they were waiting for a batch
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Create payouts for a seller under a new-seller hold, then
+      read `pgw_queue_depth`.
+
+      **Expected.** Held payouts are not waiting for a batch and are not counted.
+
+      **Actual.** They are counted, so the queue never drains to zero and
+      `PayoutQueueBacklog` can fire on payouts that cannot move.
+
+      **Fix.** Count held payouts separately as `pgw_payouts_held` and keep them out of
+      `pgw_queue_depth`. Shipped in 4.11.
+    comments:
+      - "Oskar: That explains why the overnight queue graph never reached zero."
+  - key: ENG-45
+    type: Task
+    summary: Trace batch submission and acknowledgement with OpenTelemetry
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Follow a batch from the scheduler to `settlement-batcher` and back in one trace,
+      following ADR-011.
+
+      - One span for cutting the batch, one for the call to `settlement-batcher`, one
+        for the bank's acknowledgement.
+      - `batch_id` as a span attribute.
+      - Propagate the context to `settlement-batcher`, which already emits spans.
+
+      This lets a post-incident timeline show where a slow batch spent its time.
+  - key: ENG-46
+    type: Story
+    summary: Cap batches at 500 payouts
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      At end-of-day peaks a single batch can hold several thousand payouts. The bank
+      takes longer to acknowledge large files, and when one becomes stuck every payout
+      in it waits.
+
+      Acceptance criteria:
+
+      - When more than 500 payouts are waiting for one marketplace and currency, the
+        scheduler cuts several batches of at most 500, in order of payout creation.
+      - The cap is a configuration key; raising it needs the Payouts lead's agreement.
+
+      ```yaml
+      scheduler:
+        interval: 15m
+        max_batch_size: 500
+      ```
+
+      Shipped in 4.12 on 28 May 2025; see the
+      [4.12 release notes](../../corpus/payments/release-notes-payout-gateway-4-12.md).
+    comments:
+      - "Yusuf: Expect around 60 batches per cycle at the evening peak, where we used to send a dozen."
+  - key: ENG-47
+    type: Task
+    summary: Mark payout-gateway 4.12 as a release never to deploy again
+    status: Done
+    priority: Highest
+    labels: [payments, follow-up]
+    description: |
+      After the payout delays of 3 June, 4.12 must not be deployed again, including by a
+      rollback.
+
+      - Add a warning at the top of the
+        [4.12 release notes](../../corpus/payments/release-notes-payout-gateway-4-12.md):
+        it can start a retry storm after `PGW-5021`.
+      - Add a "Known issues" section describing the storm.
+      - Say in the `#team-payouts` deploy thread that 4.12 is blocked until the fix ships.
+    comments:
+      - "Yusuf: Warning and known issue are on the 4.12 release notes, and the deploy thread says 4.12 is blocked."
+  - key: ENG-48
+    type: Bug
+    summary: Scheduler skips a cycle when it starts within a second of a quarter hour
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Start a `payout-gateway` pod so that the scheduler
+      initialises at 14:59:59.6.
+
+      **Expected.** The 15:00 cycle runs.
+
+      **Actual.** The scheduler computes the next boundary as 15:15 and the 15:00 cycle
+      is skipped, delaying that cycle's payouts by 15 minutes.
+
+      **Fix.** Compute the next boundary from the wall clock rounded down to the
+      second, with a test at each side of the boundary. Shipped in 4.12.
+  - key: ENG-49
+    type: Task
+    summary: Check that settlement-batcher handles several files per currency in one cycle
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      With batches capped at 500 payouts, a busy cycle sends several files for the same
+      marketplace and currency. Confirm that `settlement-batcher` builds them with
+      distinct file references and that our settlement bank accepts them in any order.
+
+      - Replay a peak cycle from last month through staging with the cap on.
+      - Compare the files with the bank's format checker.
+
+      If a change is needed in `settlement-batcher`, it must ship before 4.12.
+    comments:
+      - "Léa: No change needed. settlement-batcher already handled several files per cycle for the same currency."
+  - key: ENG-50
+    type: Story
+    summary: Ask the bank's status interface automatically about stuck batches
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Many stuck batches are in fact accepted by the bank and only the acknowledgement
+      is lost. When a batch raises `PGW-5021`, `payout-gateway` should ask the bank's
+      status interface what happened, so that such batches resolve without a person.
+
+      Acceptance criteria:
+
+      - A stuck batch triggers status queries to the bank.
+      - A batch the bank confirms is marked acknowledged.
+      - A batch the bank does not know stays stuck for a person.
+
+      Shipped in 4.12.
+    comments:
+      - "Léa: Tested against the bank simulator in staging: stuck batches resolved themselves within a cycle."
+  - key: ENG-51
+    type: Story
+    summary: Roll back when PGW-5021 exceeds 2% of batches for 5 minutes after a deploy
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Six weeks of `PGW-5021` data since 4.10 tell us what normal looks like. Turn it
+      into a rule the on-call can apply without judgement.
+
+      Acceptance criteria:
+
+      - Roll back when the **Stuck batch ratio** stays above 2% for 5 consecutive
+        minutes after a deploy, or when `PayoutQueueBacklog` fires.
+      - The rule applies only when something was deployed in the last 24 hours;
+        otherwise a rollback has nothing to go back to.
+      - The panel shows the 2% line.
+    comments:
+      - "Lukas: Note that the first signal arrives at least 10 minutes after the first post-deploy batch. The runbook should say a quiet quarter of an hour proves nothing."
+      - "Yusuf: The payout delays of 3 June fit the rule: nothing deployed in the previous 24 hours, so no rollback, only the pause."
+  - key: ENG-52
+    type: Story
+    summary: Report status checks and throttling for stuck batches
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      After the retry storm, the on-call must see how hard we are asking the bank about
+      stuck batches.
+
+      Acceptance criteria:
+
+      - New metrics `pgw_status_checks_total` and `pgw_status_checks_throttled_total`,
+        shown on "payout-gateway overview" under the stuck batch panels.
+      - `pgw-admin status` shows how many stuck batches are still being checked
+        automatically and how many are waiting for a person.
+      - A steady rise in throttled checks means the bank, or our link to it, is in
+        trouble: the panel's description says to page the `payouts` rota rather than
+        raise the limit.
+  - key: ENG-53
+    type: Task
+    summary: Release payout-gateway 4.13 as the oldest allowed rollback target
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Ship 4.13 with the retry storm fix and record it as the floor for any rollback.
+
+      - Write the [4.13 release notes](../../corpus/payments/release-notes-payout-gateway-4-13.md),
+        with a "Rolling back" section that forbids going below 4.13.
+      - Deploy on a business day morning, watching the first two cycles on "payout-gateway
+        overview".
+      - After the upgrade, expect stuck batches to stay stuck for up to about 15 minutes
+        while the backoff runs its course.
+    comments:
+      - "Yusuf: Target is Tuesday 10 June, once the fix in ENG-54 is reviewed."
+  - key: ENG-54
+    type: Bug
+    summary: Retry storm after PGW-5021 in 4.12
+    status: Done
+    priority: Highest
+    labels: [payments, pir-action]
+    description: |
+      **What happens.** Since ENG-50 shipped in 4.12, a stuck batch makes
+      `payout-gateway` query the bank's status interface for every payout in it, with
+      no backoff and no limit across batches. On 3 June, 23 stuck batches produced about
+      18,000 requests a minute, against about 150 on a normal morning. The bank
+      throttled us, healthy batches went unacknowledged, and more batches became stuck.
+
+      **Expected.** A slow bank produces a few stuck batches, not a loop.
+
+      **Fix in 4.13.** One status check per batch; exponential backoff with jitter from
+      30 seconds, at most 5 attempts; a global limit of 20 checks per second.
+
+      ```yaml
+      stuck_batch_checks:
+        per: batch
+        initial_backoff: 30s
+        max_attempts: 5
+        global_rate_limit_per_second: 20
+      ```
+
+      See the [incident report](../../corpus/incidents/report-2025-06-03-payouts-delayed.md).
+    comments:
+      - "Yusuf: Fixed in 4.13, released on 10 June 2025. Jonah reproduced the storm on staging with the bank simulator slowed down: five stuck batches started the loop before the fix, and nothing happened after it."
+  - key: ENG-55
+    type: Story
+    summary: Write the pause, drain and roll back runbook for payout-gateway
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      With 4.13 the sequence is complete. Write it up for the payments on-call at three
+      in the morning: [Runbook: rolling back payout-gateway](../../corpus/payments/payout-gateway-rollback.md).
+
+      It must say:
+
+      - pause with `ks.payout-gateway.batch-scheduler`, then drain, then
+        `shipwright rollback payout-gateway --to <release>`;
+      - why the drain matters: in-flight batches would be resubmitted and paid twice;
+      - never roll back across a ledger schema migration without the Ledger team;
+      - never roll back below 4.13;
+      - do not restart pods to unstick batches.
+    comments:
+      - "Kwabena: Added the check with shipwright migrate ledger --status before the rollback step."
+      - "Femi: Support will answer sellers from the payout delays FAQ; please keep the link in the afterwards section."
+  - key: ENG-56
+    type: Task
+    summary: Slow and throttling mode for the settlement bank simulator in staging
+    status: Done
+    priority: High
+    labels: [payments, pir-action]
+    description: |
+      PIR action from the payout delays of 3 June. Staging load tests used a bank
+      simulator that always answered quickly, so the 4.12 follow-up path never ran
+      against a slow bank.
+
+      - Add a mode to the settlement bank simulator in `staging-eu` that delays
+        acknowledgements and throttles status queries above a set rate.
+      - Use it in every payout load test from now on.
+      - Book load tests through `#team-platform`, as for any staging load test.
+    comments:
+      - "Jonah: Done. The 4.12 storm reproduces in eight minutes with the throttling mode on."
+  - key: ENG-57
+    type: Story
+    summary: Alert on the outbound request rate from payout-gateway to the settlement bank
+    status: Done
+    priority: High
+    labels: [payments, pir-action]
+    description: |
+      PIR action from 3 June: we learnt about our own request volume from the bank.
+
+      Acceptance criteria:
+
+      - Lantern alerts when requests from `payout-gateway` to the settlement bank stay
+        above 1,000 a minute for 5 minutes. A normal morning is about 150.
+      - The alert pages the `payouts` rota and links to the status check panels.
+      - The threshold sits below the global limit of 20 status checks per second, so
+        the alert fires before the limit starts throttling.
+    comments:
+      - "Jonah: Tested with the throttling simulator. Fires after five minutes, as intended."
+  - key: ENG-58
+    type: Story
+    summary: Resubmit stuck batches automatically when the bank says it never received them
+    status: Won't Do
+    priority: Medium
+    labels: [payments]
+    description: |
+      Proposal: when the bank's status interface reports that it never received a stuck
+      batch, resubmit the batch automatically instead of waiting for a person.
+
+      This would shorten incidents like the one on 3 June, where resolving 23 stuck
+      batches by hand took 72 minutes.
+    comments:
+      - "Yusuf: Won't Do. No release resubmits a stuck batch on its own, and that stays deliberate: a status answer can be wrong, and a wrong resubmission pays thousands of sellers twice. A person resolves each one with the bank's operations desk."
+  - key: ENG-59
+    type: Bug
+    summary: Stuck batch ratio panel flattens out after the 500-payout cap
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Open "payout-gateway overview" on a day with a few stuck
+      batches since 4.12.
+
+      **Expected.** One or two stuck batches show as a visible bump.
+
+      **Actual.** The panel keeps its old fixed axis, built for a dozen batches per
+      cycle. With around 60 batches per cycle the ratio is much smaller and the line
+      looks flat.
+
+      **Fix.** Let the axis scale to the data, draw the 2% rollback line, and show the
+      stuck and submitted counts on hover.
+  - key: ENG-60
+    type: Task
+    summary: Load test 4.13 against the throttling bank simulator
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Check that 4.13 holds under the conditions that broke 4.12.
+
+      - Run an evening peak in `staging-eu` with the bank simulator's slow and
+        throttling mode on, and 20 batches forced into `PGW-5021`.
+      - Confirm that status checks stay at or below 20 per second across all pods.
+      - Confirm that `pgw_status_checks_throttled_total` rises and that the new
+        outbound request alert fires.
+
+      Record the results in `#team-payouts`.
+  - key: ENG-61
+    type: Story
+    summary: Confirm a stuck batch or release it back to the queue after talking to the bank
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Resolving a stuck batch with the bank's operations desk is a manual job, and today
+      the result lives only in chat.
+
+      Acceptance criteria:
+
+      - A Payouts engineer marks a stuck batch either **confirmed** (the bank has it) or
+        **released** (the bank does not, and its payouts go back to the queue).
+      - The command requires a note and records who resolved the batch.
+      - A released batch's payouts are cut into a new batch with a new file reference.
+
+      ```bash
+      shipwright exec payout-gateway -- pgw-admin batches resolve \
+        --batch-id b_9f2c58 --outcome confirmed --note "Bank ops confirmed receipt"
+      ```
+  - key: ENG-62
+    type: Task
+    summary: Rehearse the payout-gateway rollback runbook on staging with the on-call
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Walk two engineers from the `payments-primary` rota through the runbook on
+      `staging-eu`, end to end, with a deliberately bad release.
+
+      - Pause, drain with seven batches in flight, roll back, resume.
+      - Time each step; the runbook should give a realistic total.
+      - Note every place where the output did not match the page.
+
+      Paging and hand-over rules stay in
+      [On-call rota and paging policy](../../corpus/incidents/on-call.md).
+    comments:
+      - "Jonah: 34 minutes in all, most of it the drain. The runbook now says 20 to 40 minutes."
+      - "Léa: Two wording fixes made to the runbook from the rehearsal."
+  - key: ENG-63
+    type: Story
+    summary: Silence PayoutQueueBacklog while the batch scheduler is paused
+    status: Won't Do
+    priority: Low
+    labels: [payments]
+    description: |
+      Proposal: while `ks.payout-gateway.batch-scheduler` is flipped, suppress
+      `PayoutQueueBacklog`, since the queue can only grow and the alert keeps firing.
+
+      During the rehearsal under ENG-62 the alert fired throughout the pause and had to
+      be acknowledged in Klaxon by hand. The question is whether a deliberate pause
+      should page at all, or whether the kill switch's state is signal enough.
+    comments:
+      - "Yusuf: Won't Do. A paused scheduler is exactly when the queue size matters, and a silenced alert is easy to forget when the switch goes back to live. The runbook says to acknowledge it in Klaxon and leave the threshold alone."
+  - key: ENG-64
+    type: Bug
+    summary: pgw_batches_stuck_total counts a batch again after it is resolved by hand
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Let a batch raise `PGW-5021`, then release it back to the
+      queue with `pgw-admin batches resolve`.
+
+      **Expected.** The stuck counter rises once, when the batch becomes stuck.
+
+      **Actual.** It rises again when the batch is resolved, so the **Stuck batch
+      ratio** briefly doubles after every manual resolution.
+
+      **Fix.** Increment the counter only on the transition into `stuck`, with a test
+      for each resolution outcome.
+  - key: ENG-65
+    type: Story
+    summary: List each release with its predecessor in payout-gateway deploy notifications
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      The first question in a rollback is "what was running before?". Answer it in the
+      deploy notification itself.
+
+      Acceptance criteria:
+
+      - Each deploy notification in `#team-payouts` names the new release and the one it
+        replaces.
+      - It includes the release's "Migrations" line, so the on-call sees at once whether
+        a rollback would cross a migration.
+  - key: ENG-66
+    type: Task
+    summary: Add a Migrations line to the payout-gateway release notes template
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      The rollback runbook asks the on-call to check for migrations between the target
+      release and the current one. Make that a fixed part of every release note.
+
+      - Add a "Migrations" row to the template's header table: none, or the database and
+        the kind of change (expand or contract).
+      - Fill it in for 4.10 to 4.13.
+      - Link the database migrations page from the template.
+  - key: ENG-67
+    type: Task
+    summary: Remove the batch timeout log line that PGW-5021 replaced
+    status: Done
+    priority: Lowest
+    labels: [payments, tech-debt]
+    description: |
+      Before 4.10, an unacknowledged batch produced a timeout line in the logs and
+      nothing else. Since the stuck state, the same event raises `PGW-5021` and the old
+      line is noise that two saved log searches still match.
+
+      - Remove the line and the code path behind it.
+      - Point the saved searches at `PGW-5021` instead.
+  - key: ENG-68
+    type: Story
+    summary: Add the payout-gateway rollback runbook to the payments on-call training
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Engineers joining `payments-primary` shadow the rota for two weeks. Make sure they
+      meet the rollback runbook before they need it.
+
+      Acceptance criteria:
+
+      - The shadowing checklist includes reading the runbook and running
+        `pgw-admin status` on staging.
+      - The checklist explains the kill switch and why a pod restart is never a fix.
+  - key: ENG-69
+    type: Task
+    summary: Close the payout-gateway resilience epic with a summary of 4.10 to 4.13
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Write the closing note for ENG-1 in `#team-payouts` and on the epic:
+
+      - what shipped in each release, 4.10 to 4.13;
+      - the payout delays of 3 June and what changed because of them;
+      - what is left for later: nothing blocking, two ideas parked in the backlog.
+
+      Ask Nadia to close the epic at the end of ENG Sprint 8.
+    comments:
+      - "Yusuf: Summary posted. The payout flow on the architecture page will be redrawn next."

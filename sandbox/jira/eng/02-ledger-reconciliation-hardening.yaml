@@ -1,0 +1,716 @@
+epic:
+  key: ENG-2
+  summary: Ledger reconciliation hardening
+  sprints: [5, 14]
+  labels: [payments]
+  description: |
+    ## Goal
+
+    Turn the nightly reconciliation of the ledger against our settlement bank's
+    statement from a morning of manual matching into a short list of real breaks, each
+    with an owner, a state and a deadline.
+
+    ## Scope
+
+    - Break codes `LDG-4091 UNBALANCED_JOURNAL` and `LDG-4102 MISSING_SETTLEMENT_LINE`,
+      and results stored in the `recon` schema.
+    - Better matching: refunds across midnight, timing differences, weekends.
+    - Breaks under £5 in total cleared automatically.
+    - Claiming, correcting and suspending breaks to `9999-SUSPENSE` with `ledger-admin`.
+    - Escalation to the finance controller after 3 business days.
+    - The alert `LedgerReconBreak` paging at a sensible hour.
+
+    ## Out of scope
+
+    The ledger's posting API, the month-end close itself, and payout-gateway's own
+    resilience work (ENG-1).
+
+    ## Pages
+
+    - [Runbook: ledger reconciliation breaks](../../corpus/payments/ledger-reconciliation.md)
+  comments:
+    - "Kwabena: Two sprints left, all clean-up. The rota's mornings on reconciliation are down from most of the morning to about half an hour."
+tickets:
+  - key: ENG-70
+    type: Task
+    summary: Measure how the Ledger rota spends its mornings on reconciliation breaks
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Before designing anything, find out where the time goes. For two weeks, the
+      engineer on the Ledger rota records each break they work: amount, cause, how long
+      it took and whether it needed a correction.
+
+      Questions to answer:
+
+      - What share of breaks are rounding differences of a few pence?
+      - Which causes come back every night?
+      - How many breaks are matched by the next run without anyone touching them?
+
+      Share the results in `#team-ledger` and use them to order the epic.
+    comments:
+      - "Rafe: Most mornings went on rounding differences of a few pence. Second place: refund lines that the next run matched on its own."
+      - "Kwabena: Clear enough. Auto-clearing and the refund matching go first."
+  - key: ENG-71
+    type: Story
+    summary: Store reconciliation runs, breaks and notes in a recon schema
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Results of `recon-daily` live in a CSV attached to an email. Store them in the
+      ledger database instead, on the read replica, so that tools and dashboards can use
+      them.
+
+      | Table | Holds |
+      |---|---|
+      | `recon.runs` | One row per run: start, end, entry date, counts, total break amount |
+      | `recon.breaks` | One row per break: code, amount, currency, account, bank reference, state, owner |
+      | `recon.break_notes` | Notes and the journal references that resolved each break |
+
+      Acceptance: one run writes all three tables, and a second run for the same date
+      does not duplicate breaks.
+  - key: ENG-72
+    type: Story
+    summary: Classify every break as LDG-4091 or LDG-4102
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Breaks are free text today, so nobody can count them by kind. Give each one a code.
+
+      Acceptance criteria:
+
+      - **`LDG-4091 UNBALANCED_JOURNAL`**: a journal posted on the entry date whose
+        debits and credits differ.
+      - **`LDG-4102 MISSING_SETTLEMENT_LINE`**: a line on our settlement bank's statement
+        with no matching ledger entry.
+      - The code is stored on `recon.breaks.code`.
+      - An `LDG-4091` is always treated as a bug: the ledger's write path rejects
+        unbalanced journals, so one reaching reconciliation came through a path that
+        bypasses that check.
+    comments:
+      - "Amara: Backfilled codes for the last three months of breaks for comparison."
+  - key: ENG-73
+    type: Task
+    summary: Ledger reconciliation panel in Lantern by code, account and age
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Build the Lantern panel "ledger reconciliation" from the `recon` tables.
+
+      - Open breaks by code, account and age in business days.
+      - Total break amount per run, in GBP.
+      - Run duration, so that a slow run is visible.
+
+      The panel will be linked from the description of `LedgerReconBreak` once that
+      alert is reworked.
+  - key: ENG-74
+    type: Bug
+    summary: LDG-4102 raised for refunds settled after midnight
+    status: Done
+    priority: Highest
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Request a refund at 23:40 UTC that the bank settles at
+      00:20 UTC, then run `recon-daily` for both entry dates.
+
+      **Expected.** The refund's statement line matches its ledger entry.
+
+      **Actual.** The bank dates the line the next day, the ledger dates the entry the
+      day the refund was requested, and the line raises `LDG-4102 MISSING_SETTLEMENT_LINE`.
+      The next run quietly matches it, so every such refund is a break for one day.
+
+      **Fix.** Match refund lines across the date boundary: a refund line may match a
+      ledger entry from the previous entry date.
+    comments:
+      - "Rafe: On a busy Monday this was over a hundred breaks on its own."
+      - "Kwabena: Deployed. The refund noise has gone from this morning's run."
+  - key: ENG-75
+    type: Story
+    summary: Match statement lines by bank reference, amount and value date
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      `recon-daily` matches statement lines to ledger entries on the amount alone, which
+      produces false matches on busy days when two payouts share an amount.
+
+      Acceptance criteria:
+
+      - A statement line matches a ledger entry only when the bank reference, the amount
+        and the value date all agree.
+      - Each matched pair is recorded, so a break can show what it nearly matched.
+      - A test covers two payouts with the same amount on the same day.
+  - key: ENG-76
+    type: Story
+    summary: Match timing differences within one business day either side
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      A payout that misses a cut-off appears on the bank statement one business day
+      later than the ledger expected, and becomes a break although nothing is wrong. See
+      [Settlement windows and cut-off times](../../corpus/payments/settlement-cutoffs.md).
+
+      Acceptance criteria:
+
+      - When the reference and amount agree but the value date differs by one business
+        day either way, the line matches and no break is raised.
+      - Business days follow each currency's calendar.
+      - A difference of two business days or more is still a break.
+  - key: ENG-77
+    type: Story
+    summary: Check journals on weekends and match the next statement against every date since
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      The bank produces no statement on weekends and UK bank holidays, and today the run
+      simply fails on those days.
+
+      Acceptance criteria:
+
+      - On weekends and bank holidays the run still checks journals for `LDG-4091`.
+      - On the next business day, statement lines are matched against all the entry
+        dates since the last statement.
+      - The run is a Kubernetes CronJob in the `ledger` namespace at 02:00 UTC every day,
+        weekends included.
+  - key: ENG-78
+    type: Story
+    summary: Auto-clear breaks under £5
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Most mornings the Ledger rota matches rounding differences of a few pence by hand.
+
+      Acceptance criteria:
+
+      - After matching, `recon-daily` adds up the absolute value of all open breaks from
+        the run, in GBP.
+      - If the total is under £5, every break of the run is cleared automatically and
+        moves to the state `auto_cleared`.
+      - Otherwise all breaks stay open; nothing is cleared partially.
+      - A run whose breaks were all auto-cleared counts as clean.
+
+      The threshold is reviewed by Arjun Pelletier for Finance before it goes live.
+    comments:
+      - "Arjun: Agreed for Finance. £5 in total per run, not per break."
+      - "Amara: Live since Monday's run. Two of the three mornings since were clean."
+  - key: ENG-79
+    type: Story
+    summary: Post auto-cleared breaks as one write-off journal tagged auto_clear
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Clearing a break must leave a trace in the books, not just a state change.
+
+      Acceptance criteria:
+
+      - An auto-clearing run posts a single write-off journal tagged `auto_clear`.
+      - The journal references every break it clears.
+      - The journal goes through the ordinary posting API, so it is balanced and carries
+        an idempotency key; a rerun of the same date posts nothing new.
+  - key: ENG-80
+    type: Task
+    summary: Apply the £5 auto-clear threshold to EUR breaks at that day's rate
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      The £5 threshold applies to the run's total in GBP. EUR breaks must be converted
+      before they are added up.
+
+      - Convert each EUR break at that day's rate, using the rate the ledger already
+        stores for the entry date.
+      - Document that the effective threshold in euros moves a little from day to day.
+      - Add a test with a run of EUR breaks only.
+    comments:
+      - "Amara: Using the ledger's stored daily rate rather than calling fx-quote. A quote expires after 30 seconds and is not meant for this."
+  - key: ENG-81
+    type: Story
+    summary: Open a Ledger ticket for every auto-cleared LDG-4091
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      An unbalanced journal is a bug in whatever wrote it, even when it is a penny and
+      the run cleared it automatically.
+
+      Acceptance criteria:
+
+      - When an auto-clearing run includes an `LDG-4091`, it opens an ENG ticket for the
+        Ledger team with the journal identifier and its `source_service`.
+      - `LDG-4102` breaks that are auto-cleared open no ticket.
+  - key: ENG-82
+    type: Task
+    summary: Define break states from open to resolved
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Give every break an explicit state, stored on `recon.breaks.state`, so that the
+      rota, Finance and the dashboard agree on what is still to do.
+
+      ```text
+      open --> claimed --> resolved
+        |         |
+        |         +--> suspended --> resolved
+        |                   |
+        +--> auto_cleared   +--> escalated --> resolved
+      ```
+
+      Only `ledger-admin` and `recon-daily` change states; nobody edits the table by hand.
+  - key: ENG-83
+    type: Story
+    summary: Claim a break with ledger-admin so two people do not chase the same line
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      On busy mornings two engineers sometimes work the same break.
+
+      ```bash
+      shipwright exec ledger -- ledger-admin breaks claim --break-id brk_7d21e0
+      ```
+
+      Acceptance criteria:
+
+      - Claiming sets the owner and moves the break from `open` to `claimed`.
+      - Claiming a break already claimed by someone else fails and names the owner.
+      - The owner shows on the "ledger reconciliation" panel.
+  - key: ENG-84
+    type: Story
+    summary: Post a correcting journal against a break with ledger-admin
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Corrections are posted today with ad hoc scripts. The ledger is append-only: a
+      correction is a new journal, never an edit.
+
+      ```bash
+      shipwright exec ledger -- ledger-admin post-correction \
+        --break-id brk_7d21e0 --from-account 1100-BANK-GBP \
+        --to-account 2310-SELLER-RETURNS --amount-minor 48250 --currency GBP \
+        --note "Payout returned by seller's bank"
+      ```
+
+      Acceptance: the journal references the break, the note is stored in
+      `recon.break_notes`, and the break moves to `resolved`. Amounts are integer minor
+      units, as [ADR-017](../../corpus/architecture/adr-017-money-minor-units.md) requires.
+    comments:
+      - "Rafe: The tool refuses an amount with a decimal point, so nobody can type pounds by mistake."
+  - key: ENG-85
+    type: Story
+    summary: Require a second Ledger engineer to approve corrections over £1,000
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      A correction moves real money between accounts in our books. Large ones need four
+      eyes.
+
+      Acceptance criteria:
+
+      - A correction over £1,000, or its equivalent in EUR, waits in `ledger-admin` for
+        approval by a second Ledger engineer before it posts.
+      - The approver cannot be the person who requested it.
+      - Both names are stored with the journal.
+    comments:
+      - "Arjun: Fine for Finance. We would like the approvals listed in the month-end pack."
+  - key: ENG-86
+    type: Story
+    summary: Suspend unexplained breaks to 9999-SUSPENSE with a note
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Some breaks cannot be explained in a morning. They must not be left open, nor
+      written off.
+
+      ```bash
+      shipwright exec ledger -- ledger-admin suspend --break-id brk_7d21e9 \
+        --note "Credit from acquiring bank, reference format unknown"
+      ```
+
+      Acceptance criteria:
+
+      - The amount moves to the suspense account `9999-SUSPENSE` by a journal, so the
+        books balance while the investigation continues.
+      - Every amount in suspense has a break reference and an owner.
+      - When explained, a correcting journal moves it out and the break becomes
+        `resolved`.
+  - key: ENG-87
+    type: Story
+    summary: Escalate breaks older than 3 business days to the finance controller
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Finance learns about old breaks at month-end, too late to judge their impact.
+
+      Acceptance criteria:
+
+      - On the fourth business day, `recon-daily` sets a break that is still open or
+        suspended to `escalated`.
+      - It emails a summary of escalated breaks to `finance@quillmoor.example`, addressed
+        to the finance controller.
+      - The Ledger team stays the owner and keeps working the break; Finance may decide
+        on a write-off that engineering cannot make.
+
+      See [Runbook: ledger reconciliation breaks](../../corpus/payments/ledger-reconciliation.md).
+    comments:
+      - "Arjun: Agreed with the finance controller. One email per run, not one per break."
+  - key: ENG-88
+    type: Bug
+    summary: Break age counted in calendar days escalates breaks after a weekend
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Leave a break found by Friday's run open over the weekend
+      and look at Tuesday's run.
+
+      **Expected.** The break is 2 business days old and stays with the Ledger rota.
+
+      **Actual.** Age is counted in calendar days, so the break is escalated to the
+      finance controller on Tuesday.
+
+      **Fix.** Count age from the business date of the run that found the break, in UK
+      business days, skipping weekends and bank holidays in England and Wales.
+    comments:
+      - "Amara: Caught in staging before escalation goes live: a break from Friday's run was escalated on the Tuesday."
+  - key: ENG-89
+    type: Task
+    summary: Review the suspense account every Monday
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      `9999-SUSPENSE` is a holding account, not a resolution. Set up a weekly review so
+      that nothing settles there.
+
+      - Every Monday, the Ledger team goes through each amount in suspense with its
+        owner.
+      - Each item gets a next step and a date in its break notes.
+      - Items that cannot move go to the finance controller through the usual escalation.
+
+      Add the review to the Ledger team's calendar and to the runbook.
+  - key: ENG-90
+    type: Story
+    summary: Page LedgerReconBreak at 07:30 UK time on business days instead of at night
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      `LedgerReconBreak` pages the Ledger rota as soon as the run ends, around 02:30. A
+      break is a bookkeeping problem, not an outage, and nobody needs to fix it at night.
+
+      Acceptance criteria:
+
+      - The alert fires when the nightly reconciliation leaves at least one break open.
+      - It pages the Ledger rota in Klaxon at 07:30 UK time on business days.
+      - Its description links the "ledger reconciliation" panel.
+
+      How the Ledger rota is organised stays in
+      [On-call rota and paging policy](../../corpus/incidents/on-call.md).
+    comments:
+      - "Kwabena: The rota will not miss the 02:30 pages."
+  - key: ENG-91
+    type: Task
+    summary: Open a ticket for Monday instead of paging for weekend reconciliation breaks
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      On weekends nobody needs to act on a reconciliation break before Monday, but the
+      break must not be forgotten.
+
+      - On Saturdays and Sundays, `LedgerReconBreak` opens a ticket for the Ledger team
+        instead of paging.
+      - The ticket lists the run, the number of breaks and the total amount.
+      - Monday's rota picks up weekend tickets first.
+  - key: ENG-92
+    type: Bug
+    summary: LedgerReconBreak fires when every break of the run was auto-cleared
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Let a run find two breaks totalling £1.40, which are
+      auto-cleared.
+
+      **Expected.** The run counts as clean and the alert stays quiet.
+
+      **Actual.** `LedgerReconBreak` fires, because it counts breaks found rather than
+      breaks still open.
+
+      **Fix.** Fire on the number of breaks in the `open` state after the run's clearing
+      step, not on the number found.
+  - key: ENG-93
+    type: Story
+    summary: Retry the statement match hourly until 08:00 UTC when the statement is late
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Sometimes our settlement bank's statement has not arrived by 02:00 UTC, and the
+      run reports every ledger entry as unmatched.
+
+      Acceptance criteria:
+
+      - If the statement is missing at 02:00 UTC, the run checks journals only.
+      - It retries the statement match every hour until 08:00 UTC.
+      - A late statement produces one set of breaks, not one per attempt.
+  - key: ENG-94
+    type: Task
+    summary: Raise a ticket for Payouts when the bank statement is still missing at 08:00 UTC
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Payouts hold the relationship with our settlement bank, so a statement that has
+      not arrived by the last retry is their question to the bank.
+
+      - After the last hourly retry, at 08:00 UTC, `recon-daily` opens a ticket for
+        Payouts with the account, currency and entry date of the missing statement.
+      - The run is marked incomplete in `recon.runs`.
+    comments:
+      - "Yusuf: Fine by us. Please copy #team-payouts as well; tickets alone get missed in the morning."
+  - key: ENG-95
+    type: Story
+    summary: Flag two debit lines for one payout batch as a possible double payment
+    status: Done
+    priority: Highest
+    labels: [payments]
+    description: |
+      Two debit lines for the same payout batch on the same day mean the batch may have
+      been paid twice. That is not a break to match by hand: Payouts must know at once.
+      [Runbook: rolling back payout-gateway](../../corpus/payments/payout-gateway-rollback.md)
+      explains how it happens.
+
+      Acceptance criteria:
+
+      - `recon-daily` recognises a second debit line carrying the reference of a batch
+        already debited that day.
+      - The break's note says "possible double payment: page Payouts".
+      - The "ledger reconciliation" panel lists such breaks first.
+    comments:
+      - "Yusuf: Thanks. With ENG-1's drain in place this should never fire, which is exactly why we want to hear about it if it does."
+  - key: ENG-96
+    type: Bug
+    summary: Returned payouts raise LDG-4102 when payout-gateway skips the return journal
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Return a payout from the simulated seller's bank in
+      staging with the reason "account closed".
+
+      **Expected.** `payout-gateway` posts a return journal and the credit line matches.
+
+      **Actual.** For returns whose reason code is not in `payout-gateway`'s list, no
+      journal is posted and the line raises `LDG-4102`.
+
+      **Fix.** `payout-gateway` posts a return journal for any return reason code, and
+      logs unknown codes for Payouts to review.
+    comments:
+      - "Léa: Fixed on the Payouts side; the list of reason codes is now read from the bank's file rather than hard-coded."
+  - key: ENG-97
+    type: Task
+    summary: Rewrite the ledger reconciliation breaks runbook
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      The runbook still describes the old CSV report. Rewrite
+      [Runbook: ledger reconciliation breaks](../../corpus/payments/ledger-reconciliation.md)
+      around what ENG-2 built:
+
+      - what `recon-daily` does, and when;
+      - the two break codes and their usual causes;
+      - claim, explain, correct or suspend;
+      - the suspense account and escalation to Finance;
+      - a worked example.
+
+      Finance relies on the runbook for month-end, so Arjun Pelletier reviews it too.
+    comments:
+      - "Arjun: Reviewed. The worked example is exactly what Finance needed."
+  - key: ENG-98
+    type: Bug
+    summary: recon-daily takes over an hour on runs with hundreds of breaks
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Run `recon-daily` for an entry date with several hundred
+      timing breaks, such as the day after a payout incident.
+
+      **Expected.** The run finishes within its usual 12 to 18 minutes, or close to it.
+
+      **Actual.** It takes over an hour, because matching looks up open breaks from
+      earlier runs in `recon.breaks` by bank reference, with no index on it.
+
+      **Fix.** Index `recon.breaks` on bank reference and entry date, and load the day's
+      ledger entries once instead of once per statement line.
+
+      ```sql
+      CREATE INDEX CONCURRENTLY breaks_reference_date
+        ON recon.breaks (bank_reference, entry_date);
+      ```
+  - key: ENG-99
+    type: Story
+    summary: Widen the value-date matching window to two business days
+    status: Won't Do
+    priority: Low
+    labels: [payments]
+    description: |
+      Proposal: accept a match when the value date differs by up to two business days,
+      instead of one, to absorb the rare statement line that arrives later still.
+
+      A handful of references flipped between open and matched on consecutive runs
+      last month. Widening the window would hide those flips.
+    comments:
+      - "Kwabena: Won't Do. One business day either side catches every timing difference we have seen since ENG-76. A two-day window would also hide real breaks; references that flip should be raised with the Ledger team and looked at one by one."
+  - key: ENG-100
+    type: Task
+    summary: Suggest a fee journal for bank charges and interest lines
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Small debit lines carrying the bank's fee narrative are a known cause of
+      `LDG-4102`, and every one is resolved the same way.
+
+      - Recognise lines whose narrative matches the bank's fee or interest wording.
+      - Add a note to the break suggesting a fee journal to the bank charges account.
+      - Do not post it automatically; the engineer confirms with `ledger-admin
+        post-correction`.
+  - key: ENG-101
+    type: Task
+    summary: Send Finance the suspense balance before each month-end close
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      At month-end Finance expects `9999-SUSPENSE` to be as close to zero as possible.
+
+      - Two business days before the close, email `finance@quillmoor.example` the
+        suspense balance, with each item's break reference, owner and age.
+      - Use the dates in the [Month-end close calendar](../../corpus/finance/month-end-close.md).
+  - key: ENG-102
+    type: Story
+    summary: Match acquiring bank credits by amount when their reference format is unknown
+    status: Won't Do
+    priority: Medium
+    labels: [payments]
+    description: |
+      Proposal: when a large credit from the acquiring bank carries a reference in an
+      unexpected format, match it by amount and value date alone instead of raising
+      `LDG-4102`.
+
+      This happens when the acquiring bank changes its reference format, and each time
+      the rota matches the lines by hand.
+    comments:
+      - "Kwabena: Won't Do. Matching by amount alone is how false matches happen, and a format change is something we want to notice. Match by hand and raise a ticket, as the runbook says."
+  - key: ENG-103
+    type: Task
+    summary: Train the Ledger rota on claiming, correcting and suspending breaks
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Everyone on the Ledger rota should work a break with the new tools before their
+      next week on call.
+
+      - A one-hour session on staging: claim, explain, post a correction, suspend.
+      - Each engineer posts one correction over £1,000 and approves someone else's.
+      - Walk through the escalation email and the Monday suspense review.
+    comments:
+      - "Rafe: Six of us done. The last two catch up next week."
+  - key: ENG-104
+    type: Story
+    summary: Show each break's notes and resolving journals in ledger-admin
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      When a break is escalated or questioned at month-end, Finance asks what was done
+      and when.
+
+      ```bash
+      shipwright exec ledger -- ledger-admin breaks show --break-id brk_7d21e9
+      ```
+
+      Acceptance criteria:
+
+      - The command prints the break, its state history, every note from
+        `recon.break_notes`, and the journals that moved or resolved it.
+      - The same history is visible from the "ledger reconciliation" panel.
+  - key: ENG-105
+    type: Bug
+    summary: EUR break total converted at the previous day's rate
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Run `recon-daily` for a Monday with only EUR breaks.
+
+      **Expected.** EUR breaks are converted to GBP at that day's rate before the
+      total is compared with £5.
+
+      **Actual.** The run uses the most recent stored rate before the entry date, which
+      on a Monday is Friday's.
+
+      **Fix.** Look up the rate for the entry date itself, and fail the run loudly if
+      it is missing rather than falling back.
+  - key: ENG-106
+    type: Task
+    summary: Retire the emailed CSV reconciliation report
+    status: Done
+    priority: Low
+    labels: [payments, tech-debt]
+    description: |
+      Since the `recon` schema and the Lantern panel, nobody needs the CSV report that
+      `recon-daily` still emails to the Ledger team and Finance every morning.
+
+      - Ask Finance whether anything still reads it.
+      - Remove the report and the code that builds it.
+      - Point anyone who asks to the panel and to `ledger-admin breaks show`.
+    comments:
+      - "Arjun: Nobody in Finance has opened it since August. Remove it."
+  - key: ENG-107
+    type: Task
+    summary: Drop the free-text break reason column replaced by recon.break_notes
+    status: Done
+    priority: Lowest
+    labels: [payments, tech-debt]
+    description: |
+      The old `reason` column on the break table has not been written since notes
+      moved to `recon.break_notes`. No release reads it any more.
+
+      Drop it with `shipwright migrate`, in a release after the one that stopped using
+      it, as the expand then contract rule in
+      [Database migrations](../../corpus/release/database-migrations.md) requires.
+  - key: ENG-108
+    type: Task
+    summary: Close the reconciliation epic with before and after figures for the rota
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Write the closing note for ENG-2:
+
+      - time the Ledger rota spends on reconciliation each morning, before and after;
+      - breaks auto-cleared per week;
+      - breaks escalated to the finance controller since escalation went live;
+      - what remains for later.
+
+      Post it in `#team-ledger` and on the epic, and close it at the end of ENG Sprint 14.
+    comments:
+      - "Nadia: Please include the escalation numbers; Finance will ask."
