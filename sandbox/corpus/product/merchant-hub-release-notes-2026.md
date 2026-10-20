@@ -48,7 +48,7 @@ Two of the year's merchant-facing epics are still open: ENG-26 and ENG-30. Every
 
 **Dated API versions for new keys.** Since 21 September every new Merchant API key is pinned to a dated version when it is created, and the developer page shows that version. Existing keys are unchanged for now. Generally available for new keys; ENG-30.
 
-**Refund approval queue.** Refunds waiting for a second approver now have their own filter on the refunds list, and approvers get a notification in Hub as well as the email from `notify`.
+**Refund approval status.** Refunds waiting for approval by our support team now have their own filter on the refunds list, and the requester gets a notification in Hub as well as the email from `notify` once a refund is approved.
 
 **Fixed**
 
@@ -74,7 +74,7 @@ Two of the year's merchant-facing epics are still open: ENG-26 and ENG-30. Every
 
 **Refund webhooks.** Three new webhook events (`refund.requested`, `refund.succeeded`, `refund.failed`) let a marketplace update its own order pages. Generally available; ENG-6.
 
-**Team roles: approver permission.** A new permission lets an owner choose who may approve large refunds, separate from who may request them.
+**Team roles: refund permission.** A new permission lets an owner choose who may request refunds, separate from who may see payments.
 
 **Fixed**
 

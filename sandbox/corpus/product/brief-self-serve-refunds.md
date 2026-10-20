@@ -37,7 +37,7 @@ Marketplaces worked around us. Several told us they refunded buyers from their o
 - A "Refund" button on the payment page in Merchant Hub, with an amount field that defaults to the remaining refundable amount.
 - Refund states: requested, pending approval, submitted, succeeded, failed.
 - A second-approver step for large refunds (one of the epic's stories). The threshold matches the one support already applied, so merchants see the same rule whichever way they refund; it is documented on the support page linked above, not here.
-- An approver permission in team roles, so a merchant can choose who may approve.
+- A refund permission in team roles, so a merchant can choose who may request refunds.
 - Webhooks for refund events, sent by `notify`.
 
 ### Decisions worth recording
