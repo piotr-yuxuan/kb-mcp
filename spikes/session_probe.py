@@ -54,6 +54,8 @@ SIGN_IN_POLL_MS = 2_000
 SETTLE_TIMEOUT_S = 60
 SETTLE_POLL_MS = 1_000
 STABLE_POLLS = 3
+SCROLL_PAUSE_MS = 150
+MAX_SCROLL_STEPS = 200
 HTTP_TIMEOUT_S = 30
 MAX_BODY_BYTES = 25 * 1024 * 1024
 MAX_PAGES = 3
@@ -65,6 +67,8 @@ WORD_COVERAGE = 0.98
 # as an excerpt include's header ("Untitled excerpt" and the source page's title).
 MISSING_WORDS_ALLOWED = 5
 MIN_IMAGE_SIDE = 32
+# The pixel size given to an SVG, which scales to any size and has no pixels to compare.
+VECTOR = (0, 0)
 HTTP_OK = 200
 JSON = "application/json"
 COOKIES_FILE = "probe-cookies.json"
@@ -114,13 +118,19 @@ FETCH_JS = """async ([url, timeout]) => {
           body: btoa(binary)};
 }"""
 
-# Reads the page's content area: the first selector found, in order of preference.
-# Its text is that of visible text nodes outside controls: an image's "Open" button or
-# a table's sort button is interface, not content. An image served from a host other
-# than the site's or Atlassian's is external: the mirror links to it, never downloads it.
-CONTENT_JS = """(minimum) => {
-  const selectors = [".ak-renderer-document", "#main-content",
-                     "[data-testid='page-content-only']", "main"];
+# A page's content area: the first of these selectors found, in order of preference.
+CONTENT_SELECTORS = (
+    ".ak-renderer-document",
+    "#main-content",
+    "[data-testid='page-content-only']",
+    "main",
+)
+
+# Reads the content area. Its text is that of visible text nodes outside controls: an
+# image's "Open" button or a table's sort button is interface, not content. An image
+# served from a host other than the site's or Atlassian's is external: the mirror links
+# to it and never downloads it.
+CONTENT_JS = """([selectors, minimum]) => {
   const controls = "button, [role='button'], [role='toolbar'], [aria-hidden='true']";
   const external = (image) => {
     const url = new URL(image.currentSrc || image.src, location.href);
@@ -147,6 +157,28 @@ CONTENT_JS = """(minimum) => {
     }
   }
   return null;
+}"""
+
+# Scrolls through the content area half a screen at a time, then back to the top: the
+# renderer fetches an image only once it nears the viewport.
+SCROLL_JS = """async ([selectors, pause, steps]) => {
+  const area = selectors.map((selector) => document.querySelector(selector)).find(Boolean);
+  if (!area) return 0;
+  let box = area;
+  while (box && box !== document.body && !(box.scrollHeight > box.clientHeight
+         && /(auto|scroll)/.test(getComputedStyle(box).overflowY))) {
+    box = box.parentElement;
+  }
+  const scroller = box && box !== document.body ? box : document.scrollingElement;
+  let taken = 0;
+  const step = scroller.clientHeight / 2;
+  for (let top = 0; top < scroller.scrollHeight && taken < steps; top += step) {
+    scroller.scrollTo(0, top);
+    taken += 1;
+    await new Promise((resolve) => setTimeout(resolve, pause));
+  }
+  scroller.scrollTo(0, 0);
+  return taken;
 }"""
 
 
@@ -438,7 +470,13 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
     total = sum(rendered_words.values())
     local = view.local_images
     pairs = list(zip(evidence.rest_images, rendered.images, strict=False))
-    full = sum(1 for rest, seen in pairs if rest and rest[0] >= seen[0] and rest[1] >= seen[1])
+    full = sum(
+        1
+        for rest, seen in pairs
+        if rest and (rest == VECTOR or (rest[0] >= seen[0] and rest[1] >= seen[1]))
+    )
+    widest_rest = max((rest[0] for rest in evidence.rest_images if rest), default=0)
+    widest_seen = max((seen[0] for seen in rendered.images), default=0)
     missing = sum(1 for rest in evidence.rest_images if rest is None)
     external = len(view.images) - len(local)
     missing_words = total - sum((rendered_words & view_words).values())
@@ -457,8 +495,9 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
             f"{label}: images",
             len(local) == len(rendered.images) and full == len(pairs) and not missing,
             f"{len(local)} in view, {len(rendered.images)} rendered, {full} of {len(pairs)}"
-            f" compared at full size or larger, {missing} not downloaded; external:"
-            f" {external} in view, {rendered.external_images} rendered",
+            f" compared at full size or larger, {missing} not downloaded; widest {widest_rest}"
+            f" px over REST, {widest_seen} px in the browser; external: {external} in view,"
+            f" {rendered.external_images} rendered",
         ),
     ]
     for index, (query, found) in enumerate(evidence.results, start=1):
@@ -590,9 +629,11 @@ def attachment_path(container: str, attachment: str) -> str:
 
 
 def image_size(reply: Reply) -> tuple[int, int] | None:
-    """Return the pixel size of a downloaded image, or None when it is not one."""
+    """Return the pixel size of a downloaded image, VECTOR for an SVG, or None."""
     if reply.status != HTTP_OK or not reply.media_type.startswith("image/"):
         return None
+    if reply.media_type == "image/svg+xml":
+        return VECTOR
     try:
         with Image.open(BytesIO(reply.body)) as image:
             return image.size
@@ -659,13 +700,18 @@ def render_page(page: Page, site: str, page_id: str) -> tuple[Rendered | None, i
         urljoin(site, f"/wiki/pages/viewpage.action?pageId={page_id}"),
         timeout=SETTLE_TIMEOUT_S * 1000,
     )
-    snapshot, previous, stable, settled_at = None, -1, 0, started
+    snapshot, previous, stable, settled_at, scrolled = None, None, 0, started, False
     while stable < STABLE_POLLS and time.monotonic() - started < SETTLE_TIMEOUT_S:
         page.wait_for_timeout(SETTLE_POLL_MS)
-        snapshot = page.evaluate(CONTENT_JS, MIN_IMAGE_SIDE)
-        length = len(snapshot["text"]) if snapshot else -1
-        if length != previous or length <= 0:
-            stable, previous, settled_at = 0, length, time.monotonic()
+        snapshot = page.evaluate(CONTENT_JS, [CONTENT_SELECTORS, MIN_IMAGE_SIDE])
+        if snapshot and not scrolled:
+            page.evaluate(SCROLL_JS, [CONTENT_SELECTORS, SCROLL_PAUSE_MS, MAX_SCROLL_STEPS])
+            scrolled = True
+            continue
+        # Settled once the text and the loaded images stop changing.
+        current = (len(snapshot["text"]), len(snapshot["images"])) if snapshot else None
+        if current is None or current != previous or current[0] == 0:
+            stable, previous, settled_at = 0, current, time.monotonic()
         else:
             stable += 1
     render_ms = elapsed_ms(started) - elapsed_ms(settled_at)
@@ -726,7 +772,7 @@ def probe_issue(get: Get, key: str) -> list[Check]:
         return checks
     download = attempt(get, f"/rest/api/3/attachment/content/{image.get('id', '')}")
     size = image_size(download)
-    pixels = f"{size[0]}x{size[1]} px" if size else "not an image"
+    pixels = "vector" if size == VECTOR else f"{size[0]}x{size[1]} px" if size else "not an image"
     detail = f"{download.status} {download.media_type} {len(download.body)} B, {pixels}"
     checks.append(Check("issue: image download", size is not None, detail))
     return checks

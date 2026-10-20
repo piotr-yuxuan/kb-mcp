@@ -8,6 +8,7 @@ from io import BytesIO
 from PIL import Image
 
 from spikes.session_probe import (
+    VECTOR,
     Check,
     ImageRef,
     PageEvidence,
@@ -298,7 +299,7 @@ def test_compare_page_leaves_external_images_out_of_the_image_check() -> None:
         "page-1: images",
         passed=True,
         detail="1 in view, 1 rendered, 1 of 1 compared at full size or larger, 0 not downloaded;"
-        " external: 1 in view, 1 rendered",
+        " widest 800 px over REST, 800 px in the browser; external: 1 in view, 1 rendered",
     )
 
 
@@ -385,6 +386,20 @@ def test_image_size_reads_pixels_only_from_images() -> None:
     assert image_size(Reply(200, "text/html", png(40, 20), 1)) is None
     assert image_size(Reply(200, "image/png", b"not an image", 1)) is None
     assert image_size(Reply(401, "image/png", png(40, 20), 1)) is None
+
+
+def test_an_svg_counts_as_downloaded_at_any_size() -> None:
+    """An SVG has no pixels to compare; downloaded, it scales to what the browser shows."""
+    svg = Reply(200, "image/svg+xml", b"<svg/>", 1)
+    assert image_size(svg) == VECTOR
+    view = (
+        '<img data-linked-resource-type="attachment" data-linked-resource-id="1"'
+        ' data-linked-resource-container-id="2">'
+    )
+    rendered = Rendered("", tables=0, images=((760, 400),))
+    checks = compare_page("page-1", evidence("", view, rendered, rest_images=(VECTOR,)))
+    images = next(check for check in checks if check.name == "page-1: images")
+    assert images.passed
 
 
 def test_report_lists_each_check_then_a_summary() -> None:
