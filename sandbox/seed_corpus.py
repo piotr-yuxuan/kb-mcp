@@ -60,6 +60,8 @@ CLOSED = frozenset({"Done", "Won't Do"})
 STATUSES = CLOSED | {"In Progress", "To Do"}
 TICKET_TYPES = frozenset({"Story", "Task", "Bug"})
 PRIORITIES = frozenset({"Highest", "High", "Medium", "Low", "Lowest"})
+# The date format to choose in the CSV importer's wizard: yyyy-MM-dd HH:mm, in UTC.
+CSV_DATE = "%Y-%m-%d %H:%M"
 GOLDEN = SANDBOX / "golden.yaml"
 OVERLAPS = frozenset({"identifier", "keyword", "paraphrase"})
 # A golden question expects one document, or two when it needs a second hop.
@@ -451,6 +453,54 @@ def to_jira(markdown: str, source: str, urls: Mapping[str, str]) -> str:
     document = json.loads(pypandoc.convert_text(markdown, "json", format="gfm-task_lists"))
     rewritten = walk(document, partial(jira_node, source=source, urls=urls))
     return pypandoc.convert_text(json.dumps(rewritten), "jira", format="json")
+
+
+def ticket_rows(
+    tickets: Sequence[Ticket], sprint_ids: Mapping[int, str], account: str, urls: Mapping[str, str]
+) -> list[list[str]]:
+    """Lay out tickets as rows of Jira's CSV importer, after a header row.
+
+    Keys and parents go by number; labels and comments take one column each, under
+    repeated headers, and a comment reads ``date;account id;text``.
+    """
+    labels = max((len(ticket.labels) for ticket in tickets), default=0)
+    comments = max((len(ticket.comments) for ticket in tickets), default=0)
+    rows = [
+        [
+            *("Work Item Key", "Work item ID", "Parent", "Summary", "Work Type", "Status"),
+            *("Resolution", "Priority", "Date Created", "Date Resolved", "Sprint", "Description"),
+            *["Labels"] * labels,
+            *["Comment"] * comments,
+        ]
+    ]
+    for ticket in tickets:
+        line = timeline(ticket)
+        closed = ticket.status in CLOSED
+        notes = [
+            f"{date.strftime(CSV_DATE)};{account};{text}"
+            for date, text in zip(line.comments, ticket.comments, strict=True)
+        ]
+        rows.append(
+            [
+                ticket.key,
+                ticket.key.removeprefix(f"{TICKET_PROJECT}-"),
+                (ticket.parent or "").removeprefix(f"{TICKET_PROJECT}-"),
+                ticket.summary,
+                ticket.type,
+                "Done" if closed else ticket.status,
+                ticket.status if closed else "",
+                ticket.priority,
+                line.created.strftime(CSV_DATE),
+                line.resolved.strftime(CSV_DATE) if line.resolved else "",
+                sprint_ids[line.sprint] if line.sprint else "",
+                to_jira(ticket.markdown, ticket.source, urls),
+                *ticket.labels,
+                *[""] * (labels - len(ticket.labels)),
+                *notes,
+                *[""] * (comments - len(notes)),
+            ]
+        )
+    return rows
 
 
 def decide(title: str, parent_id: str | None, digest: str, live: LivePage | None) -> Action:

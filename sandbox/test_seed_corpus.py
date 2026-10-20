@@ -23,6 +23,7 @@ from sandbox.seed_corpus import (
     read_ideas,
     read_tickets,
     sprint_start,
+    ticket_rows,
     timeline,
     to_jira,
     to_storage,
@@ -396,3 +397,37 @@ def test_golden_questions_that_break_the_schema_are_refused(
     path.write_text(yaml.safe_dump([GOOD_QUESTION | changes]))
     with pytest.raises(ValueError, match="q001"):
         read_golden(path)
+
+
+def test_tickets_lay_out_as_csv_rows_of_the_importer(tmp_path: Path) -> None:
+    """Keys, parents by number, Jira statuses and resolutions, sprints, dates and comments."""
+    tickets = epic_file(tmp_path, [33, SPRINTS], ["Won't Do", "In Progress", "To Do"])
+    sprint_ids = {number: str(100 + number) for number in range(1, SPRINTS + 1)}
+    header, epic, abandoned, running, waiting = ticket_rows(tickets, sprint_ids, "acc-1", {})
+    columns = [
+        *("Work Item Key", "Work item ID", "Parent", "Summary", "Work Type", "Status"),
+        *("Resolution", "Priority", "Date Created", "Date Resolved", "Sprint", "Description"),
+        *("Labels", "Comment", "Comment"),
+    ]
+    assert header == columns
+    row = [
+        dict(zip(header[:12], line, strict=False)) for line in (epic, abandoned, running, waiting)
+    ]
+    assert [(line["Work Item Key"], line["Work item ID"], line["Parent"]) for line in row] == [
+        ("ENG-1", "1", ""),
+        ("ENG-31", "31", "1"),
+        ("ENG-32", "32", "1"),
+        ("ENG-33", "33", "1"),
+    ]
+    assert [(line["Status"], line["Resolution"]) for line in row] == [
+        ("In Progress", ""),
+        ("Done", "Won't Do"),
+        ("In Progress", ""),
+        ("To Do", ""),
+    ]
+    assert [line["Sprint"] for line in row[2:]] == [str(100 + SPRINTS), ""]
+    created = timeline(tickets[1]).created
+    assert abandoned[8] == created.strftime("%Y-%m-%d %H:%M")
+    first, second = abandoned[-2:]
+    assert first.split(";", 2)[1:] == ["acc-1", "First."]
+    assert second.endswith(";acc-1;Second.")
