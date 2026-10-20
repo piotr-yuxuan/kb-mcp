@@ -52,9 +52,11 @@ In your usual Chrome, signed in, open these addresses on the site, with `<id>` t
 of the most complex page:
 1. `/wiki/api/v2/spaces?limit=1` and `/rest/api/3/myself` show JSON.
 2. `/wiki/api/v2/pages/<id>?body-format=view`: in `body.view.value`, Cmd-F finds a
-   sentence from the innermost include and a cell of the Jira table.
-3. `/wiki/api/v2/pages/<id>?body-format=storage` contains the Jira macro's
-   `jqlQuery` parameter.
+   sentence from the innermost include. A Jira table is not there: the browser draws
+   it, and steps 3 and 4 read it instead.
+3. `/wiki/api/v2/pages/<id>?body-format=storage` holds the Jira table's JQL: in the
+   `jql` of a `data-datasource` attribute for a table inserted with `/jira`, or in the
+   `jqlQuery` parameter of an older Jira issues macro.
 4. `/rest/api/3/search/jql?jql=<that JQL, URL-encoded>&fields=summary` lists the
    issues that the page's table shows.
 5. `/wiki/api/v2/pages/<id>/attachments` lists an image. Then
