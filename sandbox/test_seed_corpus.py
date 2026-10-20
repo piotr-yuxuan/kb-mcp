@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 import pytest
 import yaml
@@ -16,6 +17,7 @@ from sandbox.seed_corpus import (
     LinkTargets,
     LivePage,
     Page,
+    compare_tickets,
     decide,
     match,
     read_corpus,
@@ -403,7 +405,10 @@ def test_tickets_lay_out_as_csv_rows_of_the_importer(tmp_path: Path) -> None:
     """Keys, parents by number, Jira statuses and resolutions, sprints, dates and comments."""
     tickets = epic_file(tmp_path, [33, SPRINTS], ["Won't Do", "In Progress", "To Do"])
     sprint_ids = {number: str(100 + number) for number in range(1, SPRINTS + 1)}
-    header, epic, abandoned, running, waiting = ticket_rows(tickets, sprint_ids, "acc-1", {})
+    zone = ZoneInfo("Europe/Paris")
+    header, epic, abandoned, running, waiting = ticket_rows(
+        tickets, sprint_ids, ("acc-1", zone), {}
+    )
     columns = [
         *("Work Item Key", "Work item ID", "Parent", "Summary", "Work Type", "Status"),
         *("Resolution", "Priority", "Date Created", "Date Resolved", "Sprint", "Description"),
@@ -427,7 +432,38 @@ def test_tickets_lay_out_as_csv_rows_of_the_importer(tmp_path: Path) -> None:
     ]
     assert [line["Sprint"] for line in row[2:]] == [str(100 + SPRINTS), ""]
     created = timeline(tickets[1]).created
-    assert abandoned[8] == created.strftime("%Y-%m-%d %H:%M")
+    assert abandoned[8] == created.astimezone(zone).strftime("%Y-%m-%d %H:%M")
     first, second = abandoned[-2:]
     assert first.split(";", 2)[1:] == ["acc-1", "First."]
     assert second.endswith(";acc-1;Second.")
+
+
+def test_tickets_compare_with_their_issues_by_key(tmp_path: Path) -> None:
+    """An issue matches when its summary, status, resolution, creation and sprint do."""
+    epic, abandoned, running = epic_file(tmp_path, [33, SPRINTS], ["Won't Do", "In Progress"])
+    sprints = {number: {"id": 100 + number} for number in range(1, SPRINTS + 1)}
+
+    def issue(summary: str, status: str, resolution: str | None, created: str, sprint: int) -> dict:
+        """Build an issue as Jira's search returns it."""
+        fields = {"summary": summary, "status": {"name": status}, "created": created}
+        fields |= {"resolution": {"name": resolution} if resolution else None}
+        return {"fields": fields | {"sprints": [{"id": 100 + sprint}] if sprint else []}}
+
+    def at(ticket: Ticket) -> str:
+        """Write a ticket's creation as Jira does, in another time zone."""
+        created = timeline(ticket).created.astimezone(ZoneInfo("Europe/London"))
+        return created.strftime("%Y-%m-%dT%H:%M:%S.000%z")
+
+    sprint = timeline(abandoned).sprint or 0
+    issues = {
+        "ENG-1": issue("Epic", "In Progress", None, at(epic), 0),
+        "ENG-31": issue("Ticket 0", "Done", "Won't Do", at(abandoned), sprint),
+        "ENG-32": issue("Ticket 1", "In Progress", None, at(running), SPRINTS - 1),
+    }
+    tickets = [epic, abandoned, running]
+    assert compare_tickets(tickets, issues, "sprints", sprints) == [
+        "ticket ENG-32 differs from its data"
+    ]
+    assert compare_tickets(tickets, {}, "sprints", sprints) == [
+        f"ticket {ticket.key} is absent" for ticket in tickets
+    ]

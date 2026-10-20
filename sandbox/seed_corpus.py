@@ -2,6 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #     "defusedxml>=0.7,<1", "httpx>=0.28,<1", "pypandoc>=1.13,<2", "pyyaml>=6,<7",
+#     "tzdata>=2025.2",
 # ]
 # ///
 """Seed the sandbox site with the corpus, or check the site against the repository.
@@ -18,6 +19,7 @@ sandbox/README.md describes the corpus; plan 002 describes the design.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import html
 import json
@@ -31,6 +33,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 import httpx
 import pypandoc
@@ -50,6 +53,11 @@ CORPUS = SANDBOX / "corpus"
 IDEAS = SANDBOX / "jira" / "ideas"
 TICKETS = SANDBOX / "jira" / "eng"
 TICKET_PROJECT = "ENG"
+TICKET_PROJECT_NAME = "Quillmoor Engineering"
+SCRUM_TEMPLATE = "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic"
+SPRINT_FIELD = "com.pyxis.greenhopper.jira:gh-sprint"
+# A bound on the ticket listing: 30 pages of 100 tickets.
+MAX_TICKET_PAGES = 30
 # The sprint calendar of sandbox/README.md: sprint n starts SPRINT_DAYS * (n - 1) days
 # after sprint 1, and SPRINTS is the active one. Nothing is dated after TODAY.
 SPRINT_ONE = datetime(2025, 4, 14, tzinfo=UTC)
@@ -60,7 +68,8 @@ CLOSED = frozenset({"Done", "Won't Do"})
 STATUSES = CLOSED | {"In Progress", "To Do"}
 TICKET_TYPES = frozenset({"Story", "Task", "Bug"})
 PRIORITIES = frozenset({"Highest", "High", "Medium", "Low", "Lowest"})
-# The date format to choose in the CSV importer's wizard: yyyy-MM-dd HH:mm, in UTC.
+# The date format to choose in the CSV importer's wizard: yyyy-MM-dd HH:mm. The importer
+# reads dates in the importing account's time zone, so they are written in it.
 CSV_DATE = "%Y-%m-%d %H:%M"
 GOLDEN = SANDBOX / "golden.yaml"
 OVERLAPS = frozenset({"identifier", "keyword", "paraphrase"})
@@ -456,13 +465,18 @@ def to_jira(markdown: str, source: str, urls: Mapping[str, str]) -> str:
 
 
 def ticket_rows(
-    tickets: Sequence[Ticket], sprint_ids: Mapping[int, str], account: str, urls: Mapping[str, str]
+    tickets: Sequence[Ticket],
+    sprint_ids: Mapping[int, str],
+    account: tuple[str, ZoneInfo],
+    urls: Mapping[str, str],
 ) -> list[list[str]]:
     """Lay out tickets as rows of Jira's CSV importer, after a header row.
 
     Keys and parents go by number; labels and comments take one column each, under
-    repeated headers, and a comment reads ``date;account id;text``.
+    repeated headers, and a comment reads ``date;account id;text``. Dates are written in
+    the importing account's time zone.
     """
+    account_id, zone = account
     labels = max((len(ticket.labels) for ticket in tickets), default=0)
     comments = max((len(ticket.comments) for ticket in tickets), default=0)
     rows = [
@@ -477,7 +491,7 @@ def ticket_rows(
         line = timeline(ticket)
         closed = ticket.status in CLOSED
         notes = [
-            f"{date.strftime(CSV_DATE)};{account};{text}"
+            f"{date.astimezone(zone).strftime(CSV_DATE)};{account_id};{text}"
             for date, text in zip(line.comments, ticket.comments, strict=True)
         ]
         rows.append(
@@ -490,8 +504,8 @@ def ticket_rows(
                 "Done" if closed else ticket.status,
                 ticket.status if closed else "",
                 ticket.priority,
-                line.created.strftime(CSV_DATE),
-                line.resolved.strftime(CSV_DATE) if line.resolved else "",
+                line.created.astimezone(zone).strftime(CSV_DATE),
+                line.resolved.astimezone(zone).strftime(CSV_DATE) if line.resolved else "",
                 sprint_ids[line.sprint] if line.sprint else "",
                 to_jira(ticket.markdown, ticket.source, urls),
                 *ticket.labels,
@@ -771,16 +785,166 @@ def seed_ideas(
     return problems
 
 
+def jira_time(moment: datetime) -> str:
+    """Write a moment as Jira's Agile API reads dates."""
+    return moment.strftime("%Y-%m-%dT%H:%M:%S.000+0000")
+
+
+def prepare_jira(client: httpx.Client, *, check: bool) -> tuple[list[str], dict[int, dict]]:
+    """Create the project, its Kanban board and its sprints if absent, or only look for them.
+
+    Return the problems found, and the sprints of the Scrum board by number.
+    """
+    account = call(client, "GET", "/rest/api/3/myself")["accountId"]
+    if client.get(f"/rest/api/3/project/{TICKET_PROJECT}").status_code == httpx.codes.NOT_FOUND:
+        if check:
+            return [f"project {TICKET_PROJECT} is absent"], {}
+        project = {"key": TICKET_PROJECT, "name": TICKET_PROJECT_NAME, "leadAccountId": account}
+        project |= {"projectTypeKey": "software", "projectTemplateKey": SCRUM_TEMPLATE}
+        call(client, "POST", "/rest/api/3/project", json=project)
+    listed = call(client, "GET", "/rest/agile/1.0/board", params={"projectKeyOrId": TICKET_PROJECT})
+    boards = {board["type"]: board["id"] for board in listed["values"]}
+    problems = [] if "kanban" in boards or not check else ["the Kanban board is absent"]
+    if "kanban" not in boards and not check:
+        jql = f"project = {TICKET_PROJECT} ORDER BY Rank ASC"
+        board_filter = {"name": f"{TICKET_PROJECT} Kanban board", "jql": jql}
+        filter_id = call(client, "POST", "/rest/api/3/filter", json=board_filter)["id"]
+        location = {"type": "project", "projectKeyOrId": TICKET_PROJECT}
+        board = {"name": f"{TICKET_PROJECT} Kanban", "type": "kanban", "filterId": int(filter_id)}
+        call(client, "POST", "/rest/agile/1.0/board", json=board | {"location": location})
+    sprints: dict[int, dict] = {}
+    for start in range(0, SPRINTS * 2, 50):
+        page = call(
+            client,
+            "GET",
+            f"/rest/agile/1.0/board/{boards['scrum']}/sprint",
+            params={"startAt": start},
+        )
+        sprints |= {int(sprint["name"].rpartition(" ")[2]): sprint for sprint in page["values"]}
+    for number in sorted(set(range(1, SPRINTS + 1)) - set(sprints)):
+        if check:
+            problems.append(f"sprint {number} is absent")
+            continue
+        planned = {"name": f"{TICKET_PROJECT} Sprint {number}", "originBoardId": boards["scrum"]}
+        planned |= {"startDate": jira_time(sprint_start(number))}
+        planned |= {"endDate": jira_time(sprint_start(number + 1))}
+        sprints[number] = call(client, "POST", "/rest/agile/1.0/sprint", json=planned)
+    return problems, sprints
+
+
+def read_issues(client: httpx.Client) -> tuple[dict[str, dict], str]:
+    """List the project's tickets by key, with the id of the Sprint field they carry."""
+    fields = call(client, "GET", "/rest/api/3/field")
+    sprint_field = next(
+        field["id"] for field in fields if field.get("schema", {}).get("custom") == SPRINT_FIELD
+    )
+    issues: dict[str, dict] = {}
+    params = {
+        "jql": f"project = {TICKET_PROJECT} ORDER BY key ASC",
+        "fields": f"summary,status,resolution,created,updated,{sprint_field}",
+        "maxResults": 100,
+    }
+    for _ in range(MAX_TICKET_PAGES):
+        listed = call(client, "GET", "/rest/api/3/search/jql", params=params)
+        issues |= {issue["key"]: issue for issue in listed["issues"]}
+        if not listed.get("nextPageToken"):
+            return issues, sprint_field
+        params["nextPageToken"] = listed["nextPageToken"]
+    message = f"more than {MAX_TICKET_PAGES} pages of tickets in {TICKET_PROJECT}"
+    raise RuntimeError(message)
+
+
+def compare_tickets(
+    tickets: Sequence[Ticket],
+    issues: Mapping[str, dict],
+    sprint_field: str,
+    sprints: Mapping[int, dict],
+) -> list[str]:
+    """Compare each ticket with the issue of its key: summary, status, creation and sprint."""
+    problems = []
+    for ticket in tickets:
+        issue = issues.get(ticket.key)
+        if issue is None:
+            problems.append(f"ticket {ticket.key} is absent")
+            continue
+        fields, line = issue["fields"], timeline(ticket)
+        closed = ticket.status in CLOSED
+        resolution = (fields.get("resolution") or {}).get("name")
+        created = datetime.strptime(fields["created"], "%Y-%m-%dT%H:%M:%S.%f%z")
+        sprint_ids = {sprint["id"] for sprint in fields.get(sprint_field) or []}
+        wanted = {sprints[line.sprint]["id"]} if line.sprint else set()
+        found = (fields["summary"], fields["status"]["name"], resolution, created.astimezone(UTC))
+        expected = (
+            ticket.summary,
+            "Done" if closed else ticket.status,
+            ticket.status if closed else None,
+        )
+        if found[:3] != expected or found[3] != line.created or sprint_ids != wanted:
+            problems.append(f"ticket {ticket.key} differs from its data")
+    return problems
+
+
+def advance_sprints(client: httpx.Client, sprints: Mapping[int, dict]) -> None:
+    """Start and close each sprint in order, so that only the last one stays active."""
+    for number in range(1, SPRINTS + 1):
+        state = sprints[number]["state"]
+        path = f"/rest/agile/1.0/sprint/{sprints[number]['id']}"
+        if state == "future":
+            dates = {"startDate": jira_time(sprint_start(number))}
+            dates |= {"endDate": jira_time(sprint_start(number + 1))}
+            call(client, "POST", path, json={"state": "active", **dates})
+        if state != "closed" and number < SPRINTS:
+            call(client, "POST", path, json={"state": "closed"})
+
+
+def seed_tickets(
+    client: httpx.Client,
+    tickets: Sequence[Ticket],
+    urls: Mapping[str, str],
+    import_file: Path | None,
+    *,
+    check: bool,
+) -> list[str]:
+    """Prepare the project, write the import file of absent tickets, then run the sprints.
+
+    With check, write nothing and compare the project with the ticket data.
+    """
+    problems, sprints = prepare_jira(client, check=check)
+    if problems or len(sprints) < SPRINTS:
+        return problems
+    issues, sprint_field = read_issues(client)
+    absent = [ticket for ticket in tickets if ticket.key not in issues]
+    if check:
+        sys.stdout.writelines(
+            f"ticket\t{key}\t{issue['fields']['updated']}\n" for key, issue in issues.items()
+        )
+        return compare_tickets(tickets, issues, sprint_field, sprints)
+    if not absent:
+        advance_sprints(client, sprints)
+        return []
+    if import_file is None:
+        return [f"{len(absent)} tickets are absent: pass --import-file to write them for import"]
+    myself = call(client, "GET", "/rest/api/3/myself")
+    account = (myself["accountId"], ZoneInfo(myself["timeZone"]))
+    sprint_ids = {number: str(sprint["id"]) for number, sprint in sprints.items()}
+    with import_file.open("w", newline="", encoding="utf-8") as file:
+        csv.writer(file).writerows(ticket_rows(absent, sprint_ids, account, urls))
+    return [f"{len(absent)} tickets written to {import_file}: import them, then run again"]
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Seed the sandbox, or check it with --check; exit 1 if a check fails."""
     parser = argparse.ArgumentParser(description="Seed the sandbox with the corpus, or check it.")
     parser.add_argument("--check", action="store_true", help="write nothing; compare the site")
+    parser.add_argument(
+        "--import-file", type=Path, help="where to write the CSV of tickets absent from Jira"
+    )
     arguments = parser.parse_args(argv)
     site = urlsplit(os.environ["ATLASSIAN_SITE"])
     if site.scheme != "https" or not site.netloc.endswith(".atlassian.net"):
         parser.error("ATLASSIAN_SITE must be an https://<name>.atlassian.net address")
     auth = (os.environ["ATLASSIAN_EMAIL"], os.environ["ATLASSIAN_API_TOKEN"])
-    pages, ideas = read_corpus(), read_ideas()
+    pages, ideas, tickets = read_corpus(), read_ideas(), read_tickets()
     with httpx.Client(
         base_url=f"https://{site.netloc}", auth=auth, timeout=HTTP_TIMEOUT_S
     ) as client:
@@ -790,11 +954,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             for key, page_id in ids.items()
         }
         if set(pages) - set(ids):
-            problems.append("ideas not checked: some pages are not on the site")
+            problems.append("ideas and tickets not checked: some pages are not on the site")
         else:
             problems += seed_ideas(client, ideas, urls, check=arguments.check)
-    for problem in problems:
-        sys.stdout.write(f"PROBLEM {problem}\n")
+            problems += seed_tickets(
+                client, tickets, urls, arguments.import_file, check=arguments.check
+            )
+    label = "PROBLEM" if arguments.check else "NOTE"
+    sys.stdout.writelines(f"{label} {problem}\n" for problem in problems)
     return 1 if arguments.check and problems else 0
 
 
