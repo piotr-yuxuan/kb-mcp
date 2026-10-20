@@ -238,6 +238,38 @@ def test_compare_page_flags_query_results_the_browser_does_not_show() -> None:
     )
 
 
+def test_words_allow_a_few_interface_labels_whatever_the_page_length() -> None:
+    """Up to five words beyond REST pass; a sixth fails a short page below 98%."""
+    view = "<p>" + " ".join(f"word{index}" for index in range(20)) + "</p>"
+    five = Rendered(f"{view[3:-4]} untitled excerpt probe innermost header", tables=0, images=())
+    six = Rendered(f"{view[3:-4]} untitled excerpt probe innermost header extra", 0, ())
+    passes = compare_page("page-1", evidence("", view, five))
+    fails = compare_page("page-1", evidence("", view, six))
+    assert Check("page-1: words", passed=True, detail="80.0% of 25 in view, 5 missing") in passes
+    assert Check("page-1: words", passed=False, detail="76.9% of 26 in view, 6 missing") in fails
+
+
+def test_query_results_count_in_view_only_inside_their_macro() -> None:
+    """Titles listed by another macro, such as children display, are not the report's."""
+    storage = (
+        '<ac:structured-macro ac:name="detailssummary"><ac:parameter ac:name="cql">'
+        'label = "x"</ac:parameter></ac:structured-macro>'
+    )
+    view = (
+        '<div data-macro-name="children"><a>Properties 1</a> <a>Properties 2</a></div>'
+        '<div data-macro-name="detailssummary"><p>Generating the report</p></div>'
+    )
+    rendered = Rendered("Properties 1 Properties 2 Generating the report", tables=0, images=())
+    page = evidence(
+        storage,
+        view,
+        rendered,
+        results=((Query("cql", 'label = "x"'), ("Properties 1", "Properties 2")),),
+    )
+    report = next(check for check in compare_page("page-1", page) if check.name == "page-1: cql 1")
+    assert report.detail == "2 over REST; of the first 2, 2 shown in the browser, 0 in view"
+
+
 def test_compare_page_leaves_external_images_out_of_the_image_check() -> None:
     """External images are linked, never downloaded, so they cannot fail the check."""
     view = (

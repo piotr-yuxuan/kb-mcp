@@ -30,8 +30,8 @@ import re
 import ssl
 import sys
 import time
-from collections import Counter
-from dataclasses import dataclass
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from io import BytesIO
 from pathlib import Path
@@ -61,6 +61,9 @@ MAX_IMAGES_PER_PAGE = 10
 MAX_QUERY_RESULTS = 50
 COMPARED_RESULTS = 20
 WORD_COVERAGE = 0.98
+# Words the browser may show beyond REST, whatever the page's length: fixed labels such
+# as an excerpt include's header ("Untitled excerpt" and the source page's title).
+MISSING_WORDS_ALLOWED = 5
 MIN_IMAGE_SIDE = 32
 HTTP_OK = 200
 JSON = "application/json"
@@ -86,6 +89,8 @@ QUERY_PARAMETERS = {
     ("jira", "key"): "key",
     ("detailssummary", "cql"): "cql",
 }
+# The macro whose output shows a query's results, by kind of query.
+QUERY_MACROS = {kind: macro for (macro, _), kind in QUERY_PARAMETERS.items()}
 VOID_ELEMENTS = frozenset(
     {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
      "source", "track", "wbr"}
@@ -106,23 +111,33 @@ FETCH_JS = """async (url) => {
 }"""
 
 # Reads the page's content area: the first selector found, in order of preference.
-# An image served from another host than the site or Atlassian's media service is
-# external: the mirror links to it and never downloads it.
+# Its text is that of visible text nodes outside controls: an image's "Open" button or
+# a table's sort button is interface, not content. An image served from a host other
+# than the site's or Atlassian's is external: the mirror links to it, never downloads it.
 CONTENT_JS = """(minimum) => {
   const selectors = [".ak-renderer-document", "#main-content",
                      "[data-testid='page-content-only']", "main"];
+  const controls = "button, [role='button'], [role='toolbar'], [aria-hidden='true']";
   const external = (image) => {
     const url = new URL(image.currentSrc || image.src, location.href);
     return url.protocol.startsWith("http") && url.host !== location.host
-      && !url.host.endsWith("media.atlassian.com");
+      && !url.host.endsWith(".atlassian.com") && !url.host.endsWith(".atl-paas.net");
   };
   for (const selector of selectors) {
     const area = document.querySelector(selector);
     if (area) {
+      const walker = document.createTreeWalker(area, NodeFilter.SHOW_TEXT);
+      const parts = [];
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const parent = node.parentElement;
+        if (parent && parent.checkVisibility() && !parent.closest(controls)) {
+          parts.push(node.textContent);
+        }
+      }
       const shown = [...area.querySelectorAll("img")]
         .filter((image) => image.naturalWidth > minimum && image.naturalHeight > minimum);
       const local = shown.filter((image) => !external(image));
-      return {text: area.innerText, tables: area.querySelectorAll("table").length,
+      return {text: parts.join(" "), tables: area.querySelectorAll("table").length,
               images: local.map((image) => [image.naturalWidth, image.naturalHeight]),
               external: shown.length - local.length};
     }
@@ -175,6 +190,15 @@ class ImageRef:
     kind: str
     container: str = ""
     attachment: str = ""
+
+
+@dataclass
+class MacroOutput:
+    """What a macro wrapper of a rendered body has held so far."""
+
+    name: str
+    text: list[str] = field(default_factory=list)
+    seen: bool = False
 
 
 @dataclass(frozen=True)
@@ -253,8 +277,9 @@ class ViewScanner(HTMLParser):
         self.tables = 0
         self.images: list[ImageRef] = []
         self.macros_with_output: Counter[str] = Counter()
-        # Each open element: its tag, and for a macro wrapper [name, output seen].
-        self._open: list[tuple[str, list[str | bool] | None]] = []
+        self.macro_text: defaultdict[str, list[str]] = defaultdict(list)
+        # Each open element: its tag, and for a macro wrapper what it holds so far.
+        self._open: list[tuple[str, MacroOutput | None]] = []
         self._skipped = 0
 
     @classmethod
@@ -294,7 +319,7 @@ class ViewScanner(HTMLParser):
             self._skipped += 1
         if tag not in VOID_ELEMENTS:
             name = attributes.get("data-macro-name")
-            self._open.append((tag, [name, False] if name else None))
+            self._open.append((tag, MacroOutput(name) if name else None))
 
     def handle_endtag(self, tag: str) -> None:
         """Close the matching element, and any left open inside it."""
@@ -311,7 +336,7 @@ class ViewScanner(HTMLParser):
         if self._skipped or not data.strip():
             return
         self.text_parts.append(data)
-        self._mark_output()
+        self._mark_output(data)
 
     def close(self) -> None:
         """Finish the body, closing the elements it left open."""
@@ -319,15 +344,17 @@ class ViewScanner(HTMLParser):
         while self._open:
             self._close_innermost()
 
-    def _mark_output(self) -> None:
+    def _mark_output(self, text: str = "") -> None:
         for _, macro in self._open:
             if macro is not None:
-                macro[1] = True
+                macro.seen = True
+                macro.text.append(text)
 
     def _close_innermost(self) -> str:
         tag, macro = self._open.pop()
-        if macro is not None and macro[1]:
-            self.macros_with_output[str(macro[0])] += 1
+        if macro is not None and macro.seen:
+            self.macros_with_output[macro.name] += 1
+            self.macro_text[macro.name].extend(macro.text)
         return tag
 
 
@@ -401,8 +428,13 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
     full = sum(1 for rest, seen in pairs if rest and rest[0] >= seen[0] and rest[1] >= seen[1])
     missing = sum(1 for rest in evidence.rest_images if rest is None)
     external = len(view.images) - len(local)
+    missing_words = total - sum((rendered_words & view_words).values())
     checks += [
-        Check(f"{label}: words", share >= WORD_COVERAGE, f"{share:.1%} of {total} in view"),
+        Check(
+            f"{label}: words",
+            share >= WORD_COVERAGE or missing_words <= MISSING_WORDS_ALLOWED,
+            f"{share:.1%} of {total} in view, {missing_words} missing",
+        ),
         Check(
             f"{label}: tables",
             rendered.tables == view.tables,
@@ -424,7 +456,7 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
             continue
         first = found[:COMPARED_RESULTS]
         in_browser = shown(query.kind, first, rendered.text)
-        in_view = shown(query.kind, first, view.text)
+        in_view = shown(query.kind, first, " ".join(view.macro_text[QUERY_MACROS[query.kind]]))
         detail = f"{len(found)} over REST; of the first {len(first)}, "
         detail += f"{in_browser} shown in the browser, {in_view} in view"
         checks.append(Check(f"{label}: {query.kind} {index}", in_browser >= len(first), detail))
@@ -741,12 +773,13 @@ def run_with_browser(arguments: argparse.Namespace, jql: str) -> list[Check]:
                 }
                 for name, get in carriers.items():
                     checks += probe_carrier(name, get, arguments.page[0], jql)
-                working = [
-                    get
-                    for name, get in carriers.items()
-                    if all(check.passed for check in checks if check.name.startswith(f"{name}:"))
-                ]
-                best = working[0] if working else in_page
+                # The pages are read through the carrier with the most passing reads,
+                # the first in this order on a tie: a site without Jira fails some for all.
+                passes = {
+                    name: sum(check.passed for check in checks if check.name.startswith(f"{name}:"))
+                    for name in carriers
+                }
+                best = carriers[max(carriers, key=passes.__getitem__)]
                 for index, page_id in enumerate(arguments.page, start=1):
                     evidence = gather_page(best, page, arguments.site, page_id)
                     if isinstance(evidence, Check):
