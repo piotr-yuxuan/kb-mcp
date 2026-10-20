@@ -1,0 +1,728 @@
+epic:
+  key: ENG-23
+  summary: Kiln GPU quotas
+  sprints: [25, 31]
+  labels: [risk-ml]
+  description: |
+    Turn Kiln, the GPU cluster's scheduler, from first come, first served into a shared
+    cluster with quotas and preemption rules, so that one team, or one forgotten
+    notebook, cannot hold the GPUs that others need.
+
+    ## Why
+
+    A single forgotten notebook could hold four GPUs over a bank holiday weekend. Most
+    recently, a notebook left open over the weekend of 2026-03-14 held 2 GPUs for two
+    days during the sequence features experiment. GPU costs also sat with Risk ML,
+    whoever ran the jobs.
+
+    ## Scope
+
+    - A default quota of 8 GPUs per team, counted across `train-long` and `train-short`.
+    - A cap of 2 GPUs per person on `interactive`, outside team quotas.
+    - Idle interactive jobs preempted after 4 hours; idle GPUs borrowed on
+      `train-short`.
+    - GPU hours charged to the submitting team's cost centre.
+    - A request process for higher quotas.
+
+    ## Out of scope
+
+    - Adding nodes to `gpu-pool`, which Platform runs.
+    - Changing what each queue is for.
+
+    ## Pages
+
+    - [GPU cluster quotas and scheduling](../../corpus/ml/gpu-cluster.md)
+    - [Notebook environment](../../corpus/ml/notebooks.md)
+    - [Cloud cost allocation and tagging](../../corpus/finance/cloud-cost-allocation.md)
+  comments:
+    - "Mireille: Enforcement starts on Monday 2026-06-22 for every team. Thanks, all."
+    - "Tomasz: Data Platform is on board. Our embedding jobs move to our own cost centre."
+tickets:
+  - key: ENG-889
+    type: Task
+    summary: "Audit Kiln GPU usage by team and queue since January"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Before setting quotas, find out who uses Kiln and how. From Kiln's job history
+      since January, tabulate GPU hours by team, queue and job type, and the hours that
+      interactive jobs held GPUs while idle.
+
+      Questions to answer: how many teams use Kiln in a typical week; how often a
+      `train-long` run waited behind notebooks; and how much of the GPU cost charged to
+      Risk ML came from other teams' jobs.
+    comments:
+      - "Matteo: Most teams use nothing in a typical week. Data Platform's embedding jobs and other teams' notebooks are all charged to Risk ML today."
+  - key: ENG-890
+    type: Task
+    summary: "Agree Kiln quota rules with Platform and the teams that use Kiln"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Write a one-page proposal for quotas and preemption on Kiln and agree it with
+      Platform, who run the `gpu-pool` node pool underneath, and with Data Platform, the
+      other regular user.
+
+      It should settle: a default quota per team, which queues count against it, how
+      notebooks are capped, when idle jobs are preempted, whether teams may borrow idle
+      GPUs, and who approves a larger quota. Decisions go into the stories of this epic.
+    comments:
+      - "Bram: Fine with quotas that add up to more than the cluster on paper, as long as Kiln only guarantees what is free."
+  - key: ENG-891
+    type: Story
+    summary: "Give every team a default Kiln quota of 8 GPUs"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      As a team using Kiln, I want a guaranteed share of the cluster, so that my
+      training runs do not wait behind whoever submitted first.
+
+      Acceptance criteria:
+
+      - Each team has a quota of 8 GPUs by default.
+      - The quota is a ceiling on the GPUs a team holds at the same moment, not a
+        monthly allowance.
+      - Quotas may add up to more than the cluster's 96 GPUs; Kiln guarantees only what
+        is actually free.
+      - A higher quota is set per team in Kiln's configuration.
+  - key: ENG-892
+    type: Story
+    summary: "Count train-long and train-short GPUs together against the team quota"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As the Kiln maintainer, I want one number per team, not one per queue.
+
+      Acceptance criteria:
+
+      - A team's usage is every GPU it holds at the same moment on `train-long` and
+        `train-short` together.
+      - A job that would take the team over its quota waits, unless it can borrow idle
+        GPUs (ENG-900).
+      - GPUs on `interactive` do not count against the team quota (ENG-893).
+  - key: ENG-893
+    type: Story
+    summary: "Cap interactive jobs at 2 GPUs per person outside the team quota"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I do not want an analyst's notebook to stop a training run
+      from starting.
+
+      Acceptance criteria:
+
+      - Each person may hold at most 2 GPUs on the `interactive` queue at a time.
+      - Interactive GPUs are capped per person and are not counted against the team
+        quota.
+      - `kiln notebook start` beyond the cap fails with a message listing the person's
+        running notebooks.
+      - Notebooks started with `--gpus 0` do not count.
+    comments:
+      - "Matteo: Until now one notebook could hold four GPUs. Two is plenty for exploration."
+  - key: ENG-894
+    type: Story
+    summary: "Start a train-long job only when its whole quota is free"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      `train-long` jobs are never preempted, so Kiln must know before it starts one that
+      the team can afford it until the end.
+
+      Acceptance criteria:
+
+      - Kiln starts a `train-long` job only if the team has enough quota free for the
+        job's whole duration.
+      - Otherwise the job stays `PENDING` and appears in the team's waiting count.
+      - `train-long` never borrows GPUs beyond the quota.
+  - key: ENG-895
+    type: Task
+    summary: "Write up the notebook that held 2 GPUs over the weekend of 2026-03-14"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      During the sequence features experiment, a notebook left open over the weekend of
+      2026-03-14 held 2 GPUs for two days with nobody at the keyboard. Write it up,
+      without blame, as the worked example for this epic: when the notebook was last
+      used, what queued behind it, and which rule would have freed the GPUs.
+
+      Link the write-up from the epic. The experiment is on
+      [Experiment notes: sequence features (March 2026)](../../corpus/ml/experiment-2026-03-sequence-features.md).
+    comments:
+      - "Linnea: Happy for this to be the example. The experiment notes mention it too."
+  - key: ENG-896
+    type: Task
+    summary: "Run Kiln quotas in dry-run mode before enforcing them"
+    status: Done
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      Before any job waits because of a quota, run Kiln's quota logic in dry-run mode:
+      for every submission, compute whether the job would have started or waited, and
+      log it without changing scheduling.
+
+      Review a fortnight of the log with the teams that use Kiln, to check that 8 GPUs
+      per team would not have blocked normal work, and to find bugs in the accounting
+      before they block anyone.
+    comments:
+      - "Matteo: Dry run is on. I will post a weekly summary in #team-risk-ml."
+  - key: ENG-897
+    type: Story
+    summary: "Show quota, use, borrowing and waiting jobs with kiln quota"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a team member, I want to see where my team stands before I submit.
+
+      ```bash
+      kiln quota --team risk-ml
+      ```
+
+      ```text
+      team        quota  in use  borrowed  waiting
+      risk-ml     8      8       0         1 job (train-long, 8 GPUs)
+      ```
+
+      Acceptance criteria:
+
+      - `in use` counts the `train-long` and `train-short` GPUs held now.
+      - `borrowed` counts GPUs held beyond the quota on `train-short`.
+      - `waiting` lists pending jobs with their queue and size.
+  - key: ENG-898
+    type: Bug
+    summary: "Interactive GPUs were counted against the team quota"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** With the quota dry run of ENG-896 on, start a 2-GPU
+      notebook as a Risk ML engineer, then run `kiln quota --team risk-ml`.
+
+      **Expected.** `in use` unchanged; the notebook counts only against the person's
+      cap.
+
+      **Actual.** `in use` rose by 2, and the next `train-short` job was logged as one
+      that would have waited.
+
+      **Fix.** Usage is computed from `train-long` and `train-short` jobs only.
+      Interactive jobs are checked against the per-person cap of ENG-893.
+  - key: ENG-899
+    type: Task
+    summary: "Keep jobs larger than one node on the train-long queue"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      A multi-node job interrupted halfway wastes every node's work, and only
+      `train-long` is never preempted. Make `kiln submit` reject a job that asks for more
+      than 8 GPUs, which means more than one node, unless its queue is `train-long`,
+      where a job may ask for up to 16.
+
+      The rejection message should say why and point to the queue table on the wiki.
+  - key: ENG-900
+    type: Story
+    summary: "Let train-short jobs borrow idle GPUs beyond the team quota"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a team running sweeps, I want to use idle GPUs when nobody else needs them.
+
+      Acceptance criteria:
+
+      - When the cluster has idle GPUs, a `train-short` job may run on more GPUs than
+        its team's quota leaves free.
+      - Only `train-short` borrows; `train-long` and `interactive` never do.
+      - Borrowed GPUs are shown in `kiln quota`.
+      - A job on borrowed GPUs can be preempted when their owners need them back
+        (ENG-901).
+  - key: ENG-901
+    type: Story
+    summary: "Give a borrowing job 10 minutes' notice before reclaiming its GPUs"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Borrowed GPUs go back as soon as their owners need them, but the borrowing job
+      deserves the chance to save its work.
+
+      Acceptance criteria:
+
+      - Kiln sends the job a termination signal, waits 10 minutes, then stops it.
+      - The job's logs show when the signal arrived and why.
+      - The wiki says to borrow only for work that checkpoints, never for a run you
+        cannot restart.
+  - key: ENG-902
+    type: Story
+    summary: "Preempt idle interactive jobs after 4 hours"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      As a team waiting for GPUs, I want forgotten notebooks to give their GPUs back.
+
+      Acceptance criteria:
+
+      - An `interactive` job is idle when its GPUs have stayed under 5% utilisation and
+        its notebook kernel has had no activity for 4 hours in a row.
+      - Kiln preempts idle interactive jobs after 4 hours; running any cell resets the
+        clock.
+      - Preemption ends the session: files in `/kiln/home/$USER` survive, kernel memory
+        does not.
+      - No exemptions; long work is submitted as a job.
+
+      The weekend of 2026-03-14 (ENG-895) is the case this would have caught. See
+      [GPU cluster quotas and scheduling](../../corpus/ml/gpu-cluster.md).
+    comments:
+      - "Mireille: Agreed. Four hours, and no exemptions."
+  - key: ENG-903
+    type: Story
+    summary: "Warn notebook owners in chat 30 minutes before idle preemption"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a notebook user, I want a warning before my session is stopped.
+
+      Acceptance criteria:
+
+      - Thirty minutes before an interactive job reaches 4 idle hours, Kiln sends its
+        owner a chat message naming the notebook and the time at which it will stop.
+      - The message says that running any cell resets the clock.
+      - No message is sent for jobs whose GPUs are busy.
+  - key: ENG-904
+    type: Bug
+    summary: "Notebooks running long computations were flagged idle"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Start a notebook, run one cell that trains for five hours
+      on its GPU, and leave it.
+
+      **Expected.** Not idle: the GPU is busy.
+
+      **Actual.** The owner was warned at three and a half hours, and the notebook was
+      stopped mid-computation at 4 hours. The idle check counted only new cell runs, and
+      a single long cell looks like no activity.
+
+      **Fix.** A job is idle only when both conditions hold for 4 hours in a row: GPUs
+      under 5% utilisation and no kernel activity.
+  - key: ENG-905
+    type: Story
+    summary: "Mark preempted jobs PREEMPTED rather than FAILED"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a job owner, I want to tell a preempted job from a broken one at a glance.
+
+      Acceptance criteria:
+
+      - A job stopped by preemption shows `PREEMPTED` in `kiln status`, never `FAILED`.
+      - `kiln logs <job-id>` states which rule preempted it, and when.
+      - Alerts that teams have set on `FAILED` do not fire for preemptions.
+  - key: ENG-906
+    type: Story
+    summary: "Requeue a preempted train-short job once with retry_on_preemption"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a team running sweeps on borrowed GPUs, I want preempted work to resume without
+      me.
+
+      Acceptance criteria:
+
+      - A `train-short` job submitted with `retry_on_preemption: true` is requeued
+        automatically once after preemption.
+      - A second preemption leaves it `PREEMPTED`.
+      - The job file example on the wiki sets the option together with a
+        `checkpoint_dir`:
+
+      ```yaml
+      queue: train-short
+      retry_on_preemption: true
+      checkpoint_dir: /kiln/scratch/risk-ml/encoder-sweep-heads
+      ```
+  - key: ENG-907
+    type: Story
+    summary: "Preempt idle notebooks first, then borrowed train-short jobs"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a team entitled to GPUs, I want Kiln to free them in a predictable order and to
+      stop as soon as it has enough.
+
+      Acceptance criteria:
+
+      1. Interactive jobs idle for 4 hours or more go first.
+      2. Then `train-short` jobs running on borrowed GPUs, newest first.
+      3. Nothing else: `train-long` jobs, and `train-short` jobs within their team's
+         quota, are never preempted to make room.
+
+      The order is documented on the wiki next to the queue table.
+  - key: ENG-908
+    type: Bug
+    summary: "A train-long job was preempted during a borrowing test"
+    status: Done
+    priority: Highest
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** On two `gpu-pool` nodes set aside for testing, fill the
+      GPUs with a `train-long` job and borrowed `train-short` jobs, then submit a job
+      from a team with free quota.
+
+      **Expected.** Kiln reclaims the borrowed GPUs, newest first.
+
+      **Actual.** Kiln stopped the `train-long` job, because it sorted candidates for
+      preemption by start time without checking their queue.
+
+      **Fix.** Preemption selects only from idle interactive jobs and borrowed
+      `train-short` jobs; every other job is excluded before sorting. A test asserts
+      that a `train-long` job is never chosen.
+    comments:
+      - "Matteo: Caught before enforcement, which is what the test nodes were for."
+      - "Mireille: Glad it was not a 9-hour encoder run."
+  - key: ENG-909
+    type: Task
+    summary: "Add SIGTERM checkpointing to the encoder sweep training loop"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Kiln now sends a termination signal and waits 10 minutes before stopping a job.
+      Make the encoder sweeps on `train-short` use it: save a checkpoint every 500 steps
+      and on the signal, and resume from `latest.pt` at `step + 1` on restart.
+
+      ```python
+      signal.signal(signal.SIGTERM, request_stop)
+      if step % 500 == 0 or stop_requested:
+          torch.save({"step": step, "model": model.state_dict()}, f"{checkpoint_dir}/latest.pt")
+      ```
+
+      Copy the pattern into the job guidance on the wiki.
+  - key: ENG-910
+    type: Bug
+    summary: "Jobs at the train-short 6-hour limit were killed without warning"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Submit a `train-short` job that runs past 6 hours.
+
+      **Expected.** At 6 hours, Kiln sends the termination signal and waits 10 minutes
+      before stopping the job, as it does for preemption.
+
+      **Actual.** The job was stopped at once, losing everything since its last
+      scheduled checkpoint.
+
+      **Fix.** The time limit goes through the same stop path as preemption. The 6-hour
+      limit stays hard; a job that needs longer is split or checkpointed.
+  - key: ENG-911
+    type: Task
+    summary: "Move the 24-configuration tree sweep to train-short with checkpoints"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      The tree sweep of 24 configurations, 1 GPU and about 40 minutes each, ran as one
+      long job. Split it into restartable jobs on `train-short`, submitted with
+      `retry_on_preemption: true`, so that it can borrow idle GPUs without putting the
+      whole sweep at risk.
+
+      Use the job file on the wiki as the template, and record the sweep's GPU hours
+      before and after.
+    comments:
+      - "Linnea: Split and running. Most weeks it now fits on borrowed GPUs alone."
+  - key: ENG-912
+    type: Bug
+    summary: "The scratch sweep deleted checkpoints that running jobs still used"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Run a `train-short` job with `retry_on_preemption: true`
+      whose `checkpoint_dir` was created more than 14 days earlier.
+
+      **Expected.** The checkpoint survives while the job is running or queued for a
+      retry.
+
+      **Actual.** The nightly sweep of `/kiln/scratch` removed it by creation date, and
+      the requeued job started again from step 0.
+
+      **Fix.** The sweep removes files not modified for 14 days, and skips any directory
+      named as `checkpoint_dir` by a running or queued job.
+  - key: ENG-913
+    type: Story
+    summary: "Charge GPU hours to the submitting team's cost centre"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      Until now, every GPU cost sat with Risk ML, whoever ran the jobs.
+
+      As the finance director, I want GPU costs to land where they are incurred.
+
+      Acceptance criteria:
+
+      - Each month, GPU hours are charged to the submitting team's cost centre at the
+        internal rate per GPU hour that Finance sets.
+      - Every queue counts.
+      - The figures feed the Kiln step of the monthly cloud cost allocation; see
+        [Cloud cost allocation and tagging](../../corpus/finance/cloud-cost-allocation.md).
+    comments:
+      - "Arjun: Thank you. The first month with per-team GPU hours goes into the next monthly review."
+  - key: ENG-914
+    type: Story
+    summary: "Tag every Kiln job with cost-centre, service and env"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a job submitter, I do not want to think about cost tags.
+
+      Acceptance criteria:
+
+      - Kiln adds the `cost-centre`, `service` and `env` tags to every job, from the
+        submitting team's settings.
+      - Users cannot override them in the job file.
+      - A job from a team with no cost centre is rejected rather than landing in
+        `CC-9000 Unallocated`.
+
+      Team cost centres come from the [Cost centre list](../../corpus/finance/cost-centres.md).
+  - key: ENG-915
+    type: Story
+    summary: "Report a team's monthly GPU hours with kiln usage"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a team lead, I want to see my team's GPU hours before Finance does.
+
+      ```bash
+      kiln usage --team data --month 2026-04
+      ```
+
+      Acceptance criteria:
+
+      - The command prints GPU hours by queue and by person for the month.
+      - Totals match what is charged to the team's cost centre.
+      - Idle interactive hours are shown on their own line, so that they can be chased.
+  - key: ENG-916
+    type: Bug
+    summary: "Data Platform's embedding jobs were charged to Risk ML"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Run `kiln usage` for April with per-team charging on, and
+      compare it with the jobs that each team submitted.
+
+      **Expected.** Data Platform's embedding jobs on Data Platform's cost centre.
+
+      **Actual.** They appeared under Risk ML, because Data Platform submitted them with
+      a service account that still belonged to the `risk-ml` team in Kiln.
+
+      **Fix.** The service account moved to the `data` team, April was recomputed, and
+      Kiln now rejects a service account whose team does not match its cost centre.
+    comments:
+      - "Tomasz: Confirmed, those were ours. Fine to see them on CC-3700 from now on."
+  - key: ENG-917
+    type: Task
+    summary: "Count idle interactive time in each team's GPU hours"
+    status: Done
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      An idle interactive job still holds a GPU that nobody else can use, so it costs
+      the same as a busy one. Include idle time in each team's monthly GPU hours,
+      charged to the notebook owner's team, and say so on the wiki next to the advice
+      not to leave notebooks running.
+
+      The 4-hour preemption caps how much idle time any one session can run up.
+  - key: ENG-918
+    type: Story
+    summary: "Publish a template for Kiln quota requests"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a team that needs more GPUs for a while, I want to know how to ask and who
+      decides.
+
+      Acceptance criteria:
+
+      - Requests are posted in `#team-risk-ml` with "Kiln" in the first line, in this
+        shape:
+
+      ```text
+      Kiln quota request
+      Team: <team>
+      Asking for: <GPUs> (<n> above default)
+      Period: <start> to <end>
+      Why: <what you will run>
+      Cost centre: <cost centre>
+      ```
+
+      - The head of risk ML approves up to 16 GPUs for a team; above that, the head of
+        platform engineering must also agree.
+      - The template is published on
+        [GPU cluster quotas and scheduling](../../corpus/ml/gpu-cluster.md).
+    comments:
+      - "Bram: Agreed. Above 16 usually means more nodes, so I want to see those."
+  - key: ENG-919
+    type: Story
+    summary: "End temporary quota increases on their stated date"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As the Kiln maintainer, I do not want to have to remember to take quotas back.
+
+      Acceptance criteria:
+
+      - A temporary increase is stored with its end date, taken from the request's
+        period.
+      - On that date, the team's quota returns to its standing value automatically.
+      - Running jobs are not stopped by the change; new jobs see the lower quota.
+      - The team is told in chat the day before.
+  - key: ENG-920
+    type: Task
+    summary: "Raise Risk ML's standing Kiln quota to 32 GPUs"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      Risk ML needs more than the default: an encoder run takes 8 GPUs per seed on
+      `train-long`, three seeds run side by side, and experiments run beside them.
+
+      Agree a standing quota of 32 GPUs for Risk ML with the head of platform
+      engineering, since it is above 16, and set it in Kiln from 2026-06-22, when
+      enforcement starts for every team. Data Platform and every other team keep the
+      default of 8.
+    comments:
+      - "Bram: Agreed for 32. We revisit if the waiting line on train-long grows."
+      - "Mireille: Thanks, Bram."
+  - key: ENG-921
+    type: Story
+    summary: "Reject job images older than three months at kiln submit"
+    status: Done
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      Old images accumulate unpatched libraries and drift away from what other jobs use.
+
+      Acceptance criteria:
+
+      - `kiln submit` rejects a job whose image was built more than three months ago,
+        naming the image and its build date.
+      - The message points to the current `risk-ml-train` and `risk-ml-notebook`
+        images, which are rebuilt monthly.
+      - The fix for a rejected job is a rebuild from the current base image.
+    comments:
+      - "Callum: Good. Please keep it without an override flag."
+  - key: ENG-922
+    type: Task
+    summary: "Check that Data Platform's embedding refresh fits its 8-GPU quota"
+    status: Done
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      Data Platform runs an embedding refresh of about 30 hours on `train-long`, longer
+      than any other queue allows. Under quotas, a `train-long` job starts only when the
+      team has the quota free for its whole duration.
+
+      Run the next refresh under the dry run, and confirm with Data Platform that 8 GPUs
+      is enough, or that they will ask for a temporary increase when they need more.
+    comments:
+      - "Hana: 8 is enough for the regular refresh. We will ask when a larger one comes up."
+  - key: ENG-923
+    type: Story
+    summary: "Exempt named notebooks from the 4-hour idle rule"
+    status: Won't Do
+    priority: Lowest
+    labels: [risk-ml]
+    description: |
+      As an analyst, I would like to mark a notebook as exempt from idle preemption, so
+      that a session with data loaded in memory survives lunch and a meeting.
+
+      Acceptance criteria:
+
+      - An `--exempt` flag on `kiln notebook start`.
+      - Exempt notebooks listed in `kiln status`.
+    comments:
+      - "Mireille: Won't do. A notebook doing real work is not idle, because its GPUs are busy. One waiting for someone to come back from lunch is. Submit long work as a job."
+  - key: ENG-924
+    type: Task
+    summary: "Write the GPU cluster quotas and scheduling page"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Write the wiki page for everyone who uses Kiln, not only Risk ML: the cluster at a
+      glance, the three queues and which one to choose, quotas and borrowing, how to ask
+      for more, preemption in order, submitting and checkpointing a job, costs,
+      etiquette and troubleshooting.
+
+      Maintainer: Matteo Quaye. Page:
+      [GPU cluster quotas and scheduling](../../corpus/ml/gpu-cluster.md).
+    comments:
+      - "Matteo: Published. Questions go to #team-risk-ml with Kiln in the first line."
+  - key: ENG-925
+    type: Task
+    summary: "Add the idle limit and GPU cap to the notebook environment page"
+    status: Done
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      The notebook page still describes Kiln as it was before quotas. Update it:
+      notebooks run on the `interactive` queue, which has a per-person GPU cap and an
+      idle limit, and when the limit is reached the notebook is stopped and the kernel's
+      memory goes with it.
+
+      Point to the GPU cluster page for the numbers rather than repeating them, and
+      suggest `--gpus 0` for work that only queries the warehouse. Page:
+      [Notebook environment](../../corpus/ml/notebooks.md).
+  - key: ENG-926
+    type: Task
+    summary: "Announce Kiln quota enforcement from 2026-06-22 to every team"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      Quotas and preemption go live on Monday 2026-06-22. Announce it in `#team-risk-ml`
+      and `#team-data` at least five working days ahead, with:
+
+      - the default of 8 GPUs per team, and Risk ML's 32;
+      - the cap of 2 GPUs per person on `interactive`;
+      - idle notebooks stopped after 4 hours;
+      - borrowing on `train-short`, with 10 minutes' notice;
+      - how to check with `kiln quota`, and how to ask for more.
+    comments:
+      - "Tomasz: Shared with Data Platform. Nobody has raised a blocker."
+  - key: ENG-927
+    type: Story
+    summary: "Turn team quotas into monthly GPU-hour allowances"
+    status: Won't Do
+    priority: Lowest
+    labels: [risk-ml]
+    description: |
+      As a team lead, I would like a monthly allowance of GPU hours instead of a ceiling
+      on GPUs held at once, so that a team can burst above its quota early in the month
+      and stay quiet later.
+
+      Acceptance criteria:
+
+      - An allowance per team per month in Kiln's configuration.
+      - Jobs refused once the allowance is used up.
+    comments:
+      - "Matteo: Won't do. A quota is a ceiling on what a team holds at once. Monthly limits are a budget question, and each cost centre now sees its own GPU hours for that."
