@@ -25,6 +25,7 @@ import os
 import posixpath
 import sys
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from html.parser import HTMLParser
 from pathlib import Path
@@ -47,6 +48,18 @@ PROPERTY_KEY = "corpus-source"
 SANDBOX = Path(__file__).parent
 CORPUS = SANDBOX / "corpus"
 IDEAS = SANDBOX / "jira" / "ideas"
+TICKETS = SANDBOX / "jira" / "eng"
+TICKET_PROJECT = "ENG"
+# The sprint calendar of sandbox/README.md: sprint n starts SPRINT_DAYS * (n - 1) days
+# after sprint 1, and SPRINTS is the active one. Nothing is dated after TODAY.
+SPRINT_ONE = datetime(2025, 4, 14, tzinfo=UTC)
+SPRINT_DAYS = 14
+SPRINTS = 40
+TODAY = datetime(2026, 10, 20, 23, 59, tzinfo=UTC)
+CLOSED = frozenset({"Done", "Won't Do"})
+STATUSES = CLOSED | {"In Progress", "To Do"}
+TICKET_TYPES = frozenset({"Story", "Task", "Bug"})
+PRIORITIES = frozenset({"Highest", "High", "Medium", "Low", "Lowest"})
 # Storage-format XHTML uses these namespaces; parsing it needs them declared.
 NAMESPACES = 'xmlns:ac="http://atlassian.com/content" xmlns:ri="http://atlassian.com/resource"'
 HTTP_TIMEOUT_S = 30
@@ -92,6 +105,35 @@ class Idea:
     summary: str
     markdown: str
     source: str
+
+
+@dataclass(frozen=True)
+class Ticket:
+    """A ticket of the Jira project; an epic has no parent, and its type is Epic."""
+
+    key: str
+    type: str
+    summary: str
+    status: str
+    priority: str
+    labels: tuple[str, ...]
+    markdown: str
+    comments: tuple[str, ...]
+    parent: str | None
+    # The epic's first and last sprints, and the ticket's place among the epic's tickets.
+    span: tuple[int, int]
+    place: tuple[int, int]
+    source: str
+
+
+@dataclass(frozen=True)
+class Timeline:
+    """When a ticket was created, resolved and commented on, and its sprint if any."""
+
+    created: datetime
+    resolved: datetime | None
+    sprint: int | None
+    comments: tuple[datetime, ...]
 
 
 @dataclass(frozen=True)
@@ -146,6 +188,91 @@ def read_ideas(root: Path = IDEAS) -> dict[str, Idea]:
         source = path.relative_to(root.parent.parent).as_posix()
         ideas[f"jira/{path.stem}"] = Idea(f"jira/{path.stem}", str(meta["summary"]), body, source)
     return ideas
+
+
+def read_tickets(root: Path = TICKETS) -> list[Ticket]:
+    """Read every epic file, in order: each epic, then its tickets."""
+    tickets: list[Ticket] = []
+    for path in sorted(root.glob("*.yaml")):
+        source = path.relative_to(root.parent.parent).as_posix()
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        epic, children = data["epic"], data["tickets"]
+        first, last = (int(number) for number in epic["sprints"])
+        if not 1 <= first <= last <= SPRINTS or set(data) != {"epic", "tickets"}:
+            message = f"{source}: an epic file holds an epic and its tickets, within the sprints"
+            raise ValueError(message)
+        status = "Done" if last < SPRINTS else "In Progress"
+        items = [{"type": "Epic", "status": status, "priority": "Medium", **epic}, *children]
+        for place, item in enumerate(items):
+            known = {"key", "type", "summary", "status", "priority", "labels", "description"}
+            extra = set(item) - known - {"comments", "sprints"}
+            if extra or not known <= set(item) or item["status"] not in STATUSES:
+                message = f"{source}: {item.get('key')} has a missing, unknown or invalid field"
+                raise ValueError(message)
+            if place and (item["type"] not in TICKET_TYPES or item["priority"] not in PRIORITIES):
+                message = f"{source}: {item['key']} has an invalid type or priority"
+                raise ValueError(message)
+            tickets.append(
+                Ticket(
+                    key=item["key"],
+                    type=item["type"],
+                    summary=item["summary"],
+                    status=item["status"],
+                    priority=item["priority"],
+                    labels=tuple(item["labels"]),
+                    markdown=item["description"],
+                    comments=tuple(item.get("comments", ())),
+                    parent=epic["key"] if place else None,
+                    span=(first, last),
+                    place=(place - 1, len(children)) if place else (0, 1),
+                    source=source,
+                )
+            )
+    return tickets
+
+
+def sprint_start(number: int) -> datetime:
+    """Return the start of sprint n, at midnight UTC."""
+    return SPRINT_ONE + timedelta(days=SPRINT_DAYS * (number - 1))
+
+
+def draw(key: str, label: str, low: int, high: int) -> int:
+    """Draw a whole number from low to high, the same every time for a key and a label."""
+    digest = hashlib.sha256(f"{key}:{label}".encode()).digest()
+    return low + int.from_bytes(digest[:8]) % (high - low + 1)
+
+
+def timeline(ticket: Ticket) -> Timeline:
+    """Derive a ticket's dates and sprint from its key, its epic's sprints and its place.
+
+    An epic is created three weeks before its first sprint and, once done, resolved near
+    the end of its last. A ticket's planned sprint follows its place in the epic; it is
+    created up to 20 days before that sprint starts and, once closed, resolved inside it.
+    A ticket in progress is in the active sprint; one to do is in the backlog.
+    """
+    first, last = ticket.span
+    if ticket.parent is None:
+        created = sprint_start(first) - timedelta(days=21) + timedelta(hours=10)
+        done = ticket.status == "Done"
+        resolved = sprint_start(last) + timedelta(days=12, hours=17) if done else None
+        sprint = None
+    else:
+        index, count = ticket.place
+        planned = first + index * (last - first + 1) // count
+        sprint = {"In Progress": SPRINTS, "To Do": None}.get(ticket.status, planned)
+        start = sprint_start(sprint or planned)
+        age = timedelta(days=draw(ticket.key, "age", 1, 20), hours=draw(ticket.key, "at", 0, 8))
+        created = start - age
+        resolved = None
+        if ticket.status in CLOSED:
+            days = draw(ticket.key, "days", 0, 3 if sprint == SPRINTS else 10)
+            resolved = start + timedelta(days=days, hours=draw(ticket.key, "hour", 9, 17))
+    end = resolved or TODAY - timedelta(days=1)
+    comments = sorted(
+        created + (end - created) * draw(ticket.key, f"comment {number}", 1, 999) / 1000
+        for number in range(len(ticket.comments))
+    )
+    return Timeline(created, resolved, sprint, tuple(comments))
 
 
 def walk(value: object, rewrite: Callable[[dict], list[dict]]) -> object:

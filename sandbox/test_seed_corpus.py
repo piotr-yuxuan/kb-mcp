@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pytest
+import yaml
 from defusedxml import ElementTree
 
 from sandbox.seed_corpus import (
     NAMESPACES,
+    SPRINTS,
+    TODAY,
     LinkTargets,
     LivePage,
     Page,
@@ -16,6 +20,9 @@ from sandbox.seed_corpus import (
     match,
     read_corpus,
     read_ideas,
+    read_tickets,
+    sprint_start,
+    timeline,
     to_jira,
     to_storage,
 )
@@ -23,6 +30,8 @@ from sandbox.seed_corpus import (
 if TYPE_CHECKING:
     from pathlib import Path
     from xml.etree.ElementTree import Element
+
+    from sandbox.seed_corpus import Ticket
 
 TITLES = {"index": "Handbook", "people/index": "People", "people/onboarding": "Onboarding & you"}
 AC = "{http://atlassian.com/content}"
@@ -250,3 +259,94 @@ def test_jira_markup_refuses_unknown_pages_and_raw_html(markdown: str) -> None:
     """Every corpus link must name a page on the site, and raw HTML is refused."""
     with pytest.raises(ValueError, match=r"jira/ideas/rollback\.md"):
         to_jira(markdown, "jira/ideas/rollback.md", {"payments/runbook": "https://x.example.com"})
+
+
+def epic_file(tmp_path: Path, sprints: list[int], statuses: list[str]) -> list[Ticket]:
+    """Write one epic file with a ticket per status, and read it back."""
+    folder = tmp_path / "jira" / "eng"
+    folder.mkdir(parents=True, exist_ok=True)
+    base = {"type": "Story", "priority": "Medium", "labels": ["payments"], "description": "D"}
+    tickets = [
+        {**base, "key": f"ENG-{31 + number}", "summary": f"Ticket {number}", "status": status}
+        | {"comments": ["First.", "Second."]}
+        for number, status in enumerate(statuses)
+    ]
+    epic = {"key": "ENG-1", "summary": "Epic", "sprints": sprints, "labels": ["payments"]}
+    data = {"epic": epic | {"description": "Epic."}, "tickets": tickets}
+    (folder / "01-epic.yaml").write_text(yaml.safe_dump(data))
+    return read_tickets(folder)
+
+
+def test_an_epic_file_reads_as_the_epic_then_its_tickets(tmp_path: Path) -> None:
+    """The epic comes first, without a parent; its tickets name it as their parent."""
+    tickets = epic_file(tmp_path, [1, 8], ["Done", "Won't Do"])
+    assert [(ticket.key, ticket.type, ticket.parent) for ticket in tickets] == [
+        ("ENG-1", "Epic", None),
+        ("ENG-31", "Story", "ENG-1"),
+        ("ENG-32", "Story", "ENG-1"),
+    ]
+    assert tickets[0].status == "Done"
+    assert tickets[1].source == "jira/eng/01-epic.yaml"
+
+
+def test_an_epic_reaching_the_active_sprint_is_in_progress(tmp_path: Path) -> None:
+    """An epic whose sprints run into the active one is not done."""
+    assert epic_file(tmp_path, [33, SPRINTS], ["Done"])[0].status == "In Progress"
+
+
+@pytest.mark.parametrize(
+    ("sprints", "statuses"),
+    [([1, 8], ["Closed"]), ([0, 8], ["Done"]), ([8, 1], ["Done"]), ([1, 41], ["Done"])],
+)
+def test_epic_files_with_bad_values_are_refused(
+    tmp_path: Path, sprints: list[int], statuses: list[str]
+) -> None:
+    """A status outside the workflow, or sprints outside the calendar, are refused."""
+    with pytest.raises(ValueError, match="01-epic"):
+        epic_file(tmp_path, sprints, statuses)
+
+
+def test_derived_dates_hold_their_invariants(tmp_path: Path) -> None:
+    """Closed tickets resolve inside a sprint of their epic; nothing is dated after today."""
+    statuses = ["Done", "Won't Do", "In Progress", "To Do"] * 10
+    first = 30
+    epic, *tickets = epic_file(tmp_path, [first, SPRINTS], statuses)
+    epic_line = timeline(epic)
+    assert epic_line.resolved is None
+    for ticket in tickets:
+        line = timeline(ticket)
+        assert epic_line.created < line.created < TODAY
+        assert all(line.created <= comment < TODAY for comment in line.comments)
+        if ticket.status == "In Progress":
+            assert (line.sprint, line.resolved) == (SPRINTS, None)
+        elif ticket.status == "To Do":
+            assert (line.sprint, line.resolved) == (None, None)
+        else:
+            assert line.sprint is not None
+            assert first <= line.sprint <= SPRINTS
+            start = sprint_start(line.sprint)
+            assert line.resolved is not None
+            assert start <= line.resolved < min(start + timedelta(days=14), TODAY)
+            assert all(comment <= line.resolved for comment in line.comments)
+
+
+def test_a_done_epic_resolves_after_its_tickets(tmp_path: Path) -> None:
+    """A done epic is resolved after the last of its tickets, in its last sprint."""
+    epic, *tickets = epic_file(tmp_path, [1, 8], ["Done"] * 39)
+    resolved = [timeline(ticket).resolved for ticket in tickets]
+    assert all(date is not None for date in resolved)
+    epic_resolved = timeline(epic).resolved
+    assert epic_resolved is not None
+    assert max(date for date in resolved if date) < epic_resolved < sprint_start(9)
+    assert [timeline(ticket).sprint for ticket in tickets] == sorted(
+        timeline(ticket).sprint or 0 for ticket in tickets
+    )
+    assert {timeline(ticket).sprint for ticket in tickets} == set(range(1, 9))
+
+
+def test_derived_dates_are_the_same_on_every_run(tmp_path: Path) -> None:
+    """The derivation depends only on the data, never on the clock or on a process."""
+    statuses = ["Done", "To Do", "In Progress"]
+    once = [timeline(ticket) for ticket in epic_file(tmp_path / "a", [5, 14], statuses)]
+    again = [timeline(ticket) for ticket in epic_file(tmp_path / "b", [5, 14], statuses)]
+    assert once == again
