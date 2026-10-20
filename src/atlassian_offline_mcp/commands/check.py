@@ -6,8 +6,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.settings_file import SETTINGS_PATH
-from atlassian_offline_mcp.app.settings import data_dir_problem, load_settings
+from atlassian_offline_mcp.app.settings import SETTINGS_PATH, UnsafeDataDirError, load_settings
 from atlassian_offline_mcp.domain.settings import SettingsError
 
 if TYPE_CHECKING:
@@ -26,13 +25,12 @@ def run(arguments: argparse.Namespace) -> int:
     """Print the effective settings; exit 2 for bad settings, 1 for a refused directory."""
     try:
         settings = load_settings(arguments.config, {"data_dir": arguments.data_dir})
+    except UnsafeDataDirError as error:
+        sys.stderr.write(f"data directory refused: {error}\n")
+        return 1
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")
         return 2
-    problem = data_dir_problem(settings)
-    if problem is not None:
-        sys.stderr.write(f"data directory refused: {problem}\n")
-        return 1
     sys.stdout.write(
         f"site: {settings.site or '(not set)'}\n"
         f"data directory: {settings.data_dir}\n"

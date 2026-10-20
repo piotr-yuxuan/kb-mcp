@@ -69,7 +69,10 @@ def parse_settings(values: Mapping[str, object], home: Path) -> Settings:
         message = f"unknown setting: {', '.join(unknown)}"
         raise SettingsError(message)
     site = values.get("site")
-    parts = urlsplit(site) if isinstance(site, str) else None
+    try:
+        parts = urlsplit(site) if isinstance(site, str) else None
+    except ValueError:  # such as an unclosed [ in the host
+        parts = None
     if site is not None and (
         parts is None
         or parts.scheme != "https"
@@ -105,18 +108,21 @@ def parse_settings(values: Mapping[str, object], home: Path) -> Settings:
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:
     """Return why company data must not live at this path, or None when it may.
 
-    ``git_root`` is the working tree that holds the path, if any: data there could be
-    committed. A synchronised folder would copy the data off the machine.
+    ``path`` and ``home`` must be resolved, without links or ``..``; names compare
+    without regard to case, as on the default file system of macOS. ``git_root`` is the
+    working tree that holds the path, if any: data there could be committed. A
+    synchronised folder would copy the data off the machine.
     """
     if git_root is not None:
         return f"inside the git working tree {git_root}"
-    if path.is_relative_to(home):
-        relative = path.relative_to(home)
+    parts = [part.casefold() for part in path.parts]
+    home_parts = [part.casefold() for part in home.parts]
+    if parts[: len(home_parts)] == home_parts:
+        relative = parts[len(home_parts) :]
         for folder in SYNCED_UNDER_HOME:
-            if relative.is_relative_to(folder):
+            if relative[: len(folder.parts)] == [part.casefold() for part in folder.parts]:
                 return f"under ~/{folder}, which may be synchronised"
-    for part in path.parts:
-        for name in SYNCED_NAMES:
-            if part.startswith(name):
-                return f"under a {name} folder"
+    for name in SYNCED_NAMES:
+        if any(part.startswith(name.casefold()) for part in parts):
+            return f"under a {name} folder"
     return None

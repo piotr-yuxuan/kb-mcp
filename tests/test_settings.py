@@ -44,6 +44,7 @@ def test_the_default_data_directory_is_under_the_home() -> None:
         ({"site": "http://x.atlassian.net"}, "site:"),
         ({"site": "https://user@x.atlassian.net"}, "site:"),
         ({"site": "https://x.atlassian.net/wiki"}, "site:"),
+        ({"site": "https://["}, "site:"),
         ({"data_dir": 3}, "data_dir:"),
         ({"data_dir": "relative/path"}, "data_dir:"),
         ({"spaces": "ENG"}, "spaces:"),
@@ -67,10 +68,16 @@ def test_unusable_settings_are_refused_by_name(values: dict[str, object], named:
         Path("/home/someone/Dropbox (Maestral)/mirror"),
         Path("/Volumes/data/OneDrive/mirror"),
         Path("/data/Google Drive/mirror"),
+        HOME / "documents/mirror",
+        HOME / "library/cloudstorage/mirror",
+        Path("/home/someone/dropbox/mirror"),
     ],
 )
 def test_synchronised_folders_are_refused(path: Path) -> None:
-    """A folder that may be copied to a cloud is no place for company data."""
+    """A folder that may be copied to a cloud is no place for company data, in any case.
+
+    The default file system of macOS ignores case, so ~/documents is ~/Documents.
+    """
     assert unsafe_location(path, HOME, git_root=None) is not None
 
 

@@ -42,19 +42,32 @@ def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture
     assert main(["check", "--config", str(config)]) == 0
     out = capsys.readouterr().out
     assert "site: https://example.atlassian.net" in out
-    assert f"data directory: {home / 'atlassian-offline-mcp'}" in out
+    assert f"data directory: {(home / 'atlassian-offline-mcp').resolve()}" in out
 
 
 @pytest.mark.parametrize(
-    "data_dir", ["~/Library/CloudStorage/Box/mirror", "~/Dropbox/mirror", "~/project/data"]
+    ("data_dir", "reason"),
+    [
+        ("~/Library/CloudStorage/Box/mirror", "under ~/Library/CloudStorage"),
+        ("~/Dropbox/mirror", "under a Dropbox folder"),
+        ("~/project/data", "inside the git working tree"),
+        ("~/elsewhere/../Documents/mirror", "under ~/Documents"),
+        ("~/linked/data", "inside the git working tree"),
+    ],
 )
 def test_check_refuses_a_data_directory_that_could_leave_the_machine(
-    home: Path, data_dir: str, capsys: CaptureFixture[str]
+    home: Path, data_dir: str, reason: str, capsys: CaptureFixture[str]
 ) -> None:
-    """A synchronised folder or a git working tree exits 1 with the reason."""
+    """A synchronised folder or a git working tree exits 1, naming the reason.
+
+    The path is judged once resolved, so neither ``..`` nor a link hides where it leads.
+    """
     (home / "project" / ".git").mkdir(parents=True)
+    (home / "linked").symlink_to(home / "project")
     assert main(["check", "--config", str(home / "none.toml"), "--data-dir", data_dir]) == 1
-    assert "data directory refused" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert error.startswith("data directory refused: data_dir: ")
+    assert reason in error
 
 
 def test_check_refuses_bad_settings_by_name(home: Path, capsys: CaptureFixture[str]) -> None:
