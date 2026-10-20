@@ -1,0 +1,48 @@
+[project]
+name = "atlassian-offline-mcp"
+version = "0.1.0"
+description = "An offline mirror of Confluence and Jira Cloud, served to coding agents over MCP."
+readme = "README.md"
+requires-python = ">=3.12"
+# Declared together for plans 004 to 006, so that their parallel branches never
+# conflict over this file or the lock.
+dependencies = [
+  "certifi>=2024.2",
+  "httpx>=0.28,<1",
+  "mcp>=2.3,<3",
+  "pillow>=13,<14",
+  "playwright>=1.64,<2",
+  "pyyaml>=6,<7",
+  "truststore>=0.10,<1",
+]
+
+[project.scripts]
+atlassian-offline-mcp = "atlassian_offline_mcp.cli:main"
+
+[dependency-groups]
+dev = [
+  "import-linter>=2,<3",
+  "pytest>=9,<10",
+  "ruff>=0.16,<0.17",
+]
+
+[build-system]
+requires = ["uv_build>=0.13,<0.14"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "spikes"]
+
+[tool.importlinter]
+root_package = "atlassian_offline_mcp"
+
+[[tool.importlinter.contracts]]
+name = "Layers: commands use cases, which use adapters, which use pure rules"
+type = "layers"
+layers = [
+  "atlassian_offline_mcp.cli",
+  "atlassian_offline_mcp.commands",
+  "atlassian_offline_mcp.app",
+  "atlassian_offline_mcp.adapters",
+  "atlassian_offline_mcp.domain",
+]
