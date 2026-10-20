@@ -109,14 +109,24 @@ counts both.
 |---|---|
 | `sign-in` | Seconds until REST answered from inside the signed-in page |
 | `<carrier>: <read>` | Status, media type, bytes and milliseconds of one read through one carrier: `httpx` (no browser), `request context` (Playwright) or `in-page fetch` |
-| `page-N: macro <name>` | How many of the page's own macros of that kind have output in the REST `view` body (one nested from an included page is not counted again); a third-party macro shows as `custom-N`, a Smart Link list as `jira-datasource` or `smart-link-list` |
-| `page-N: words` | The share of the words shown in the browser that the `view` body holds, outside dynamic tables (the Smart Link table of Jira issues, the page properties report) and excerpt include headers; it passes at 98% |
-| `page-N: tables`, `page-N: images` | Tables and images in each. Attachment images outside dynamic tables are compared at full size; external images are counted apart, and images inside collapsed expands are loaded by opening them |
-| `page-N: dynamic tables` | Dynamic tables in the browser against those with a query read on this page: more in the browser means a table from an included page, which nothing compares |
-| `page-N: jql N`, `cql N`, `key N` | A query run over REST (a JQL search, a CQL search, or the one issue read): how many of its results the browser shows in that table, and how many the macro's own output in the `view` body holds. No result over REST is a FAIL, since nothing is compared |
+| `page-N: macro <name>` | How many of the page's own macros of that kind have output in the REST `view` body; a macro inside an include is the included page's and is not counted. A third-party macro shows as `custom-N`, a Smart Link table of Jira issues as `jira-datasource` |
+| `page-N: smart-link-list` | Smart Link lists of other kinds (Confluence pages, assets): counted, not compared |
+| `page-N: words` | The share of the words shown in the browser that the `view` body holds, outside dynamic tables (the Smart Link table of Jira issues, the page properties report) and excerpt include headers; it passes at 98%. A FAIL says that REST lacks words, not which macro lacks them |
+| `page-N: expands` | Expand toggles the probe clicked, and expands still collapsed: an expand left collapsed hides its images and tables |
+| `page-N: tables`, `page-N: images` | Tables and images in each. Attachment images outside dynamic tables are compared at full size; external images, inline data and emoji are counted apart or left out |
+| `page-N: dynamic tables` | Dynamic tables in the browser against the queries read on this page and the other Smart Link lists. More in the browser means a table that nothing compares: one from an included page, or a list drawn under another selector |
+| `page-N: jql N`, `cql N`, `key N` | A query run over REST (a JQL search, a CQL search, or the one issue read), set against its own table: how many results it has, how many its table shows at most (a report's page size, 30 by default), how many the browser shows in that table, and how many the macro's own output in the `view` body holds. No result over REST is a FAIL, since nothing is compared |
 | `page-N: timing` | REST reads against the browser's first render, before the probe opens expands and scrolls |
 | `issue: …` | The issue over REST, the images of its rendered description, and its first image downloaded |
 | `tls: public CA bundle` | A FAIL means a certificate that the public bundle cannot verify, the mark of TLS inspection; no connection is inconclusive. The probe's reads verify with your system's certificates anyway |
+
+A read with status 0 shows an exception class, such as `error ConnectError`, where a
+media type would be. It never reached the site, so it says nothing about the session:
+only reads that got an HTTP status count for the carrier rows and the next-day row of
+plan 001's outcome table. Chrome follows a proxy auto-configuration (PAC) file; httpx
+and the request context do not, and an `inconclusive` TLS line is the same signal. If
+httpx shows status 0 while the in-page fetch passes, look up Chrome's proxy at
+`chrome://net-internals/#proxy`, and run the probe again with `HTTPS_PROXY` set to it.
 
 The report holds no title, text, address, id or cookie, so it can leave the machine.
 Read it before copying it anyway. Plan 001's outcome table says what each result
