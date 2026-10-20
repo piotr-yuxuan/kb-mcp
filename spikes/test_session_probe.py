@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import json
+import stat
 from collections import Counter
 from io import BytesIO
+from typing import TYPE_CHECKING
 
+import httpx
+import pytest
 from PIL import Image
+from playwright.sync_api import Error as PlaywrightError
 
 from spikes.session_probe import (
+    JSON,
     VECTOR,
     Check,
     ImageRef,
@@ -17,14 +24,27 @@ from spikes.session_probe import (
     Reply,
     StorageScanner,
     ViewScanner,
+    attempt,
     compare_page,
     coverage,
+    disable_password_saving,
     image_size,
     macro_labels,
+    media_type,
+    probe_carrier,
+    probe_issue,
+    read_check,
+    refuse_plain_http,
     render_report,
     run_query,
+    save_cookies,
     words,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+OWNER_ONLY = 0o600
 
 STORAGE = """<p>Intro</p>
 <ac:structured-macro ac:name="expand" ac:macro-id="1"><ac:rich-text-body>
@@ -407,3 +427,96 @@ def test_report_lists_each_check_then_a_summary() -> None:
     checks = [Check("a", passed=True, detail="1"), Check("b", passed=False, detail="2")]
     report = render_report(checks)
     assert report == "PASS  a  1\nFAIL  b  2\n1 passed, 1 failed\n"
+
+
+def test_failed_reads_report_no_url_id_or_exception_message() -> None:
+    """A failed read names its exception class only; no read reports a path or an id."""
+    seeds = ["secret-corp.atlassian.net", "998877", "SECRETPROJ", "/wiki/"]
+    listing = json.dumps({"results": [{"id": "att998877", "mediaType": "image/png"}]}).encode()
+
+    def get(path: str) -> Reply:
+        if path.endswith("/attachments?limit=25"):
+            return Reply(200, JSON, listing, 1)
+        if "/rest/api/3/" in path:
+            message = f"https://secret-corp.atlassian.net{path} failed"
+            raise PlaywrightError(message)
+        message = f"cannot reach https://secret-corp.atlassian.net{path}"
+        raise httpx.ConnectError(message)
+
+    checks = [
+        *probe_carrier("httpx", get, "998877", "project = SECRETPROJ"),
+        *probe_issue(get, "SECRETPROJ-42"),
+    ]
+    report = render_report(checks)
+    assert [seed for seed in seeds if seed.casefold() in report.casefold()] == []
+    assert attempt(get, "/wiki/x").media_type == "error ConnectError"
+    assert run_query(get, Query("jql", "project = SECRETPROJ"), "") is None
+
+
+def test_the_image_download_reads_the_original_through_the_v1_path() -> None:
+    """The listing's image is downloaded through the v1 endpoint, which serves the original."""
+    listing = json.dumps({"results": [{"id": "att5", "mediaType": "image/png"}]}).encode()
+    asked: list[str] = []
+
+    def get(path: str) -> Reply:
+        asked.append(path)
+        body = listing if path.endswith("/attachments?limit=25") else b"{}"
+        return Reply(200, JSON, body, 1)
+
+    probe_carrier("httpx", get, "12", "project = ABC")
+    assert asked[-1] == "/wiki/rest/api/content/12/child/attachment/att5/download"
+
+
+def test_a_read_passes_only_with_status_200_and_the_expected_media_type() -> None:
+    """A sign-in page served with 200 is not a JSON answer."""
+    assert not read_check("x", Reply(200, "text/html", b"<html>", 1), JSON).passed
+    assert not read_check("x", Reply(404, JSON, b"{}", 1), JSON).passed
+    assert read_check("x", Reply(200, JSON, b"{}", 1), JSON).passed
+
+
+def test_unknown_media_types_never_reach_the_report() -> None:
+    """A server chooses its Content-Type freely; only known media types are named."""
+    assert media_type("application/json; charset=UTF-8") == "application/json"
+    assert media_type("image/x-secretcorp-roadmap") == "image/other"
+    assert media_type("text/x-internal") == "text/other"
+    assert media_type("secretcorp/falcon") == "other"
+
+
+def test_view_scanner_maps_only_well_formed_attachment_ids() -> None:
+    """An id that is not a number never goes into a request path."""
+    view = (
+        '<img data-linked-resource-type="attachment" data-linked-resource-id="../../x"'
+        ' data-linked-resource-container-id="2">'
+    )
+    assert ViewScanner.parse(view).images == [ImageRef("unmapped")]
+
+
+def test_saved_cookies_are_readable_by_the_user_alone(tmp_path: Path) -> None:
+    """The session's cookies are a secret: mode 0600, even over an existing file."""
+    path = tmp_path / "cookies.json"
+    path.write_text("[]", encoding="utf-8")
+    path.chmod(0o644)
+    cookie = {"name": "a", "value": "b", "domain": "example.invalid"}
+    save_cookies(path, [cookie])
+    assert stat.S_IMODE(path.stat().st_mode) == OWNER_ONLY
+    assert json.loads(path.read_text(encoding="utf-8")) == [cookie]
+
+
+def test_password_saving_is_disabled_and_other_preferences_kept(tmp_path: Path) -> None:
+    """Chrome must not offer to save the sign-in password; the rest of its settings stay."""
+    preferences = tmp_path / "Default" / "Preferences"
+    preferences.parent.mkdir()
+    preferences.write_text(json.dumps({"profile": {"name": "Probe"}, "other": 1}), "utf-8")
+    disable_password_saving(tmp_path)
+    settings = json.loads(preferences.read_text(encoding="utf-8"))
+    assert settings["credentials_enable_service"] is False
+    assert settings["profile"] == {"name": "Probe", "password_manager_enabled": False}
+    assert settings["autofill"] == {"profile_enabled": False}
+    assert settings["other"] == 1
+
+
+def test_plain_http_requests_are_refused() -> None:
+    """Cookies never travel in clear, even after a redirect to plain HTTP."""
+    with pytest.raises(httpx.UnsupportedProtocol):
+        refuse_plain_http(httpx.Request("GET", "http://example.invalid/x"))
+    refuse_plain_http(httpx.Request("GET", "https://example.invalid/x"))

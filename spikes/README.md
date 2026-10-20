@@ -86,10 +86,16 @@ The next day, check that the saved session still works without a browser:
 uv run spikes/session_probe.py --site https://<site>.atlassian.net --page <complex id> --no-sign-in
 ```
 
-The profile, with your session's cookies, lives in
-`~/Library/Application Support/atlassian-offline-mcp/probe-browser` on macOS and in
-`~/.local/state/atlassian-offline-mcp/probe-browser` on Linux. Delete it when you are
-done.
+The profile lives in `~/Library/Application Support/atlassian-offline-mcp/probe-browser`
+on macOS and in `~/.local/state/atlassian-offline-mcp/probe-browser` on Linux. It holds
+your session's cookies, and also the titles and addresses of the pages the probe opened
+and cached copies of what they loaded, protected by no secret key. The probe turns off
+Chrome's offer to save passwords in this profile; if Chrome asks anyway, decline.
+Delete the profile when you are done.
+
+The probe's own REST reads are GET requests only. Opening a page in its Chrome window,
+though, is an ordinary visit: Confluence records your view, and the app makes its own
+requests.
 
 ## 4. Reading the report
 

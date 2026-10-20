@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
+#     "certifi>=2024.2",
 #     "httpx>=0.28,<1",
 #     "pillow>=13,<14",
 #     "playwright>=1.64,<2",
@@ -38,6 +39,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import quote, urlencode, urljoin, urlsplit
 
+import certifi
 import httpx
 import truststore
 from PIL import Image, UnidentifiedImageError
@@ -71,6 +73,11 @@ MIN_IMAGE_SIDE = 32
 VECTOR = (0, 0)
 HTTP_OK = 200
 JSON = "application/json"
+# Media types the report may name; a server could put any text in a Content-Type.
+KNOWN_MEDIA_TYPES = frozenset(
+    {JSON, "text/html", "text/plain", "application/octet-stream", "image/png", "image/jpeg",
+     "image/gif", "image/webp", "image/svg+xml", "image/bmp", "image/tiff"}
+)  # fmt: skip
 COOKIES_FILE = "probe-cookies.json"
 
 # Confluence Cloud's own macros. Any other name, a third-party app's for example, is
@@ -102,7 +109,10 @@ VOID_ELEMENTS = frozenset(
      "source", "track", "wbr"}
 )  # fmt: skip
 WORD = re.compile(r"\w+")
-ISSUE_KEY = re.compile(r"[A-Z][A-Z0-9_]+-\d+")
+ISSUE_KEY = re.compile(r"[A-Z][A-Z0-9_]+-[0-9]+")
+PAGE_ID = re.compile(r"[0-9]+")
+# A Confluence attachment id, with or without its prefix, or a Jira attachment id.
+ATTACHMENT_ID = re.compile(r"(att)?[0-9]+")
 
 # Fetches a URL from inside the page, so the browser itself carries the session. The
 # default credentials mode, same-origin, sends the cookies to the site, and none on the
@@ -352,9 +362,14 @@ class ViewScanner(HTMLParser):
             self.tables += 1
         elif tag == "img" and "emoticon" not in (attributes.get("class") or ""):
             self._mark_output()
-            if attributes.get("data-linked-resource-type") == "attachment":
-                container = attributes.get("data-linked-resource-container-id") or ""
-                attachment = attributes.get("data-linked-resource-id") or ""
+            container = attributes.get("data-linked-resource-container-id") or ""
+            attachment = attributes.get("data-linked-resource-id") or ""
+            # Ids go into request paths, so only well-formed ones are used.
+            if (
+                attributes.get("data-linked-resource-type") == "attachment"
+                and PAGE_ID.fullmatch(container)
+                and ATTACHMENT_ID.fullmatch(attachment)
+            ):
                 self.images.append(ImageRef("attachment", container, attachment))
             elif "confluence-external-resource" in (attributes.get("class") or ""):
                 self.images.append(ImageRef("external"))
@@ -532,8 +547,12 @@ def render_report(checks: Sequence[Check]) -> str:
 
 
 def media_type(content_type: str) -> str:
-    """Return the media type of a Content-Type header, without its parameters."""
-    return content_type.split(";", 1)[0].strip().lower()
+    """Return a Content-Type's media type if known, else its top-level type and other."""
+    value = content_type.split(";", 1)[0].strip().lower()
+    if value in KNOWN_MEDIA_TYPES:
+        return value
+    top = value.split("/", 1)[0]
+    return f"{top}/other" if top in {"application", "image", "text"} else "other"
 
 
 def elapsed_ms(started: float) -> int:
@@ -613,11 +632,15 @@ def json_value(reply: Reply, *keys: str) -> object:
 
 
 def first_image(items: object, media_field: str) -> Mapping[str, object] | None:
-    """Return the first attachment in a JSON list whose media type is an image."""
+    """Return the first attachment in a JSON list that is an image with a well-formed id."""
     if not isinstance(items, list):
         return None
     for item in items:
-        if isinstance(item, dict) and str(item.get(media_field, "")).startswith("image/"):
+        if (
+            isinstance(item, dict)
+            and str(item.get(media_field, "")).startswith("image/")
+            and ATTACHMENT_ID.fullmatch(str(item.get("id", "")))
+        ):
             return item
     return None
 
@@ -781,8 +804,36 @@ def probe_issue(get: Get, key: str) -> list[Check]:
 def save_cookies(path: Path, cookies: Iterable[Mapping[str, object]]) -> None:
     """Save the session's cookies, readable by the user alone."""
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(descriptor, 0o600)  # also when the file already existed
     with os.fdopen(descriptor, "w", encoding="utf-8") as file:
         json.dump([dict(cookie) for cookie in cookies], file)
+
+
+def refuse_plain_http(request: httpx.Request) -> None:
+    """Refuse a request over plain HTTP, which would carry the session's cookies in clear."""
+    if request.url.scheme != "https":
+        message = "plain HTTP refused"
+        raise httpx.UnsupportedProtocol(message, request=request)
+
+
+def disable_password_saving(profile: Path) -> None:
+    """Stop Chrome offering to save the password typed at sign-in, in this profile.
+
+    Playwright starts Chrome with a mock keychain, so the profile's key is a fixed,
+    public one: a saved password would be readable by anyone who reads the profile.
+    """
+    preferences = profile / "Default" / "Preferences"
+    preferences.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        settings = json.loads(preferences.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        settings = {}
+    if not isinstance(settings, dict):
+        settings = {}
+    settings["credentials_enable_service"] = False
+    settings["profile"] = {**(settings.get("profile") or {}), "password_manager_enabled": False}
+    settings["autofill"] = {**(settings.get("autofill") or {}), "profile_enabled": False}
+    preferences.write_text(json.dumps(settings), encoding="utf-8")
 
 
 def session_client(site: str, cookies: Iterable[object]) -> httpx.Client:
@@ -800,6 +851,7 @@ def session_client(site: str, cookies: Iterable[object]) -> httpx.Client:
         follow_redirects=True,
         timeout=HTTP_TIMEOUT_S,
         verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT),
+        event_hooks={"request": [refuse_plain_http]},
     )
 
 
@@ -820,6 +872,7 @@ def sign_in(page: Page, site: str, in_page: Get) -> Check:
 def run_with_browser(arguments: argparse.Namespace, jql: str) -> list[Check]:
     """Sign in, probe the three carriers, then compare each page and the issue."""
     arguments.profile.mkdir(parents=True, exist_ok=True, mode=0o700)
+    disable_password_saving(arguments.profile)
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
             arguments.profile,
@@ -834,7 +887,8 @@ def run_with_browser(arguments: argparse.Namespace, jql: str) -> list[Check]:
             checks = [sign_in(page, arguments.site, in_page)]
             if not checks[0].passed:
                 return checks
-            with session_client(arguments.site, context.cookies()) as client:
+            # Only the site's own cookies: the identity provider's stay in the browser.
+            with session_client(arguments.site, context.cookies([arguments.site])) as client:
                 carriers = {
                     "httpx": httpx_get(client),
                     "request context": request_context_get(context, arguments.site),
@@ -863,7 +917,7 @@ def run_with_browser(arguments: argparse.Namespace, jql: str) -> list[Check]:
                         checks += compare_page(f"page-{index}", evidence)
                 if arguments.issue:
                     checks += probe_issue(best, arguments.issue)
-            save_cookies(arguments.profile / COOKIES_FILE, context.cookies())
+            save_cookies(arguments.profile / COOKIES_FILE, context.cookies([arguments.site]))
             return checks
         finally:
             context.close()
@@ -893,7 +947,8 @@ def run_with_saved_cookies(arguments: argparse.Namespace, jql: str) -> list[Chec
 
 def tls_check(site: str) -> Check:
     """Show whether the public CA bundle verifies the site: a failure means TLS inspection."""
-    with httpx.Client(timeout=HTTP_TIMEOUT_S) as client:
+    public = ssl.create_default_context(cafile=certifi.where())
+    with httpx.Client(timeout=HTTP_TIMEOUT_S, verify=public, trust_env=False) as client:
         reply = attempt(httpx_get(client), urljoin(site, "/wiki/api/v2/spaces?limit=1"))
     return Check(
         "tls: public CA bundle", reply.status != 0, f"{reply.status} {reply.media_type or '-'}"
@@ -923,19 +978,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--no-sign-in", action="store_true", help="reuse saved cookies, no browser")
     arguments = parser.parse_args(argv)
     site = urlsplit(arguments.site)
-    if site.scheme != "https" or not site.netloc:
-        parser.error("--site takes an https URL")
-    if len(arguments.page) > MAX_PAGES or not all(page.isdigit() for page in arguments.page):
+    # Only a host: no user name, password or port, which the report could not hide.
+    if site.scheme != "https" or not site.hostname or site.netloc != site.hostname:
+        parser.error("--site takes an https URL with a host name alone")
+    pages = arguments.page
+    if len(pages) > MAX_PAGES or not all(PAGE_ID.fullmatch(page) for page in pages):
         parser.error("--page takes up to three numeric page ids")
     if arguments.issue and not ISSUE_KEY.fullmatch(arguments.issue):
         parser.error("--issue takes an issue key such as ABC-123")
-    arguments.site = f"https://{site.netloc}"
+    arguments.site = f"https://{site.hostname}"
     jql = f"key = {arguments.issue}" if arguments.issue else "updated >= -30d ORDER BY updated DESC"
     run = run_with_saved_cookies if arguments.no_sign_in else run_with_browser
     try:
         checks = run(arguments, jql)
-    except PlaywrightError as error:
-        checks = [Check("browser", passed=False, detail=f"error {type(error).__name__}")]
+    except (PlaywrightError, OSError) as error:
+        checks = [Check("run", passed=False, detail=f"error {type(error).__name__}")]
     checks.append(tls_check(arguments.site))
     sys.stdout.write(render_report(checks))
     return 0 if all(check.passed for check in checks) else 1
