@@ -102,8 +102,17 @@ QUERY_PARAMETERS = {
     ("jira", "key"): "key",
     ("detailssummary", "cql"): "cql",
 }
-# The macro whose output shows a query's results, by kind of query.
-QUERY_MACROS = {kind: macro for (macro, _), kind in QUERY_PARAMETERS.items()}
+# A Smart Link table of Jira issues, which /jira inserts since April 2026. It is no
+# macro, but the report names it as one.
+DATASOURCE = "jira-datasource"
+# Macros that draw a table from a query: their text is compared by query, not by word.
+DYNAMIC_MACROS = frozenset({macro for macro, _ in QUERY_PARAMETERS} | {DATASOURCE})
+# Where the browser draws those tables: the Smart Link table, and the page properties
+# report's table.
+DYNAMIC_SELECTORS = (
+    "[data-testid='renderer-datasource-table']",
+    "table:has([data-testid='page-properties-report-table-head'])",
+)
 VOID_ELEMENTS = frozenset(
     {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
      "source", "track", "wbr"}
@@ -140,8 +149,9 @@ CONTENT_SELECTORS = (
 # image's "Open" button or a table's sort button is interface, not content. An image
 # served from a host other than the site's or Atlassian's is external: the mirror links
 # to it and never downloads it.
-CONTENT_JS = """([selectors, minimum]) => {
+CONTENT_JS = """([selectors, dynamicSelectors, minimum]) => {
   const controls = "button, [role='button'], [role='toolbar'], [aria-hidden='true']";
+  const dynamic = dynamicSelectors.join(", ");
   const external = (image) => {
     const url = new URL(image.currentSrc || image.src, location.href);
     return url.protocol.startsWith("http") && url.host !== location.host
@@ -152,16 +162,18 @@ CONTENT_JS = """([selectors, minimum]) => {
     if (area) {
       const walker = document.createTreeWalker(area, NodeFilter.SHOW_TEXT);
       const parts = [];
+      const dynamicParts = [];
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const parent = node.parentElement;
         if (parent && parent.checkVisibility() && !parent.closest(controls)) {
-          parts.push(node.textContent);
+          (parent.closest(dynamic) ? dynamicParts : parts).push(node.textContent);
         }
       }
       const shown = [...area.querySelectorAll("img")]
         .filter((image) => image.naturalWidth > minimum && image.naturalHeight > minimum);
       const local = shown.filter((image) => !external(image));
-      return {text: parts.join(" "), tables: area.querySelectorAll("table").length,
+      return {text: parts.join(" "), dynamic: dynamicParts.join(" "),
+              tables: area.querySelectorAll("table").length,
               images: local.map((image) => [image.naturalWidth, image.naturalHeight]),
               external: shown.length - local.length};
     }
@@ -213,10 +225,11 @@ class Check:
 
 @dataclass(frozen=True)
 class Query:
-    """A dynamic macro's query, read from the storage format: jql, key or cql."""
+    """A dynamic table's query, read from the storage format: jql, key or cql."""
 
     kind: str
     text: str
+    macro: str
 
 
 @dataclass(frozen=True)
@@ -227,6 +240,8 @@ class Rendered:
     tables: int
     images: tuple[tuple[int, int], ...]
     external_images: int = 0
+    # The text of the dynamic tables, apart from the rest.
+    dynamic_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -294,13 +309,13 @@ class StorageScanner(HTMLParser):
             self._parameter_text = []
         elif tag == "a" and attributes.get("data-datasource"):
             # A Smart Link table: its JSON parameters hold the JQL it shows.
-            self.uses.append(MacroUse("jira-datasource", ""))
+            self.uses.append(MacroUse(DATASOURCE, ""))
             try:
                 jql = json.loads(attributes["data-datasource"] or "")["parameters"]["jql"]
             except (ValueError, KeyError, TypeError):
                 return
             if isinstance(jql, str):
-                self.queries.append(Query("jql", jql))
+                self.queries.append(Query("jql", jql, DATASOURCE))
 
     def handle_endtag(self, tag: str) -> None:
         """Close a macro, or keep a parameter that holds a query."""
@@ -308,9 +323,10 @@ class StorageScanner(HTMLParser):
             name, text = self._open_macros.pop()
             self.uses.append(MacroUse(name, " ".join(text)))
         elif tag == "ac:parameter" and self._parameter is not None and self._open_macros:
-            kind = QUERY_PARAMETERS.get((self._open_macros[-1][0], self._parameter))
+            macro = self._open_macros[-1][0]
+            kind = QUERY_PARAMETERS.get((macro, self._parameter))
             if kind is not None:
-                self.queries.append(Query(kind, "".join(self._parameter_text).strip()))
+                self.queries.append(Query(kind, "".join(self._parameter_text).strip(), macro))
             self._parameter = None
 
     def handle_data(self, data: str) -> None:
@@ -329,6 +345,8 @@ class ViewScanner(HTMLParser):
         """Start with an empty body."""
         super().__init__(convert_charrefs=True)
         self.text_parts: list[str] = []
+        # The text outside dynamic tables, which are compared by query instead.
+        self.static_parts: list[str] = []
         self.tables = 0
         self.images: list[ImageRef] = []
         self.macros_with_output: Counter[str] = Counter()
@@ -351,6 +369,11 @@ class ViewScanner(HTMLParser):
         return " ".join(self.text_parts)
 
     @property
+    def static_text(self) -> str:
+        """The visible text outside dynamic tables."""
+        return " ".join(self.static_parts)
+
+    @property
     def local_images(self) -> list[ImageRef]:
         """The images that REST should serve: attachments, and those it cannot map."""
         return [image for image in self.images if image.kind != "external"]
@@ -358,9 +381,16 @@ class ViewScanner(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         """Count tables and images, and open elements and macro wrappers."""
         attributes = dict(attrs)
+        classes = attributes.get("class") or ""
+        # An icon declares its small size, as the browser's count leaves icons out.
+        icon = all(
+            (attributes.get(side) or "x").isdigit()
+            and int(attributes.get(side) or 0) <= MIN_IMAGE_SIDE
+            for side in ("width", "height")
+        )
         if tag == "table":
             self.tables += 1
-        elif tag == "img" and "emoticon" not in (attributes.get("class") or ""):
+        elif tag == "img" and "emoticon" not in classes and not icon:
             self._mark_output()
             container = attributes.get("data-linked-resource-container-id") or ""
             attachment = attributes.get("data-linked-resource-id") or ""
@@ -371,14 +401,16 @@ class ViewScanner(HTMLParser):
                 and ATTACHMENT_ID.fullmatch(attachment)
             ):
                 self.images.append(ImageRef("attachment", container, attachment))
-            elif "confluence-external-resource" in (attributes.get("class") or ""):
+            elif "confluence-external-resource" in classes:
                 self.images.append(ImageRef("external"))
             else:
                 self.images.append(ImageRef("unmapped"))
         elif tag in {"script", "style"}:
             self._skipped += 1
         if tag not in VOID_ELEMENTS:
-            name = attributes.get("data-macro-name")
+            # A Smart Link table is rendered as a plain table, without a macro wrapper.
+            datasource = tag == "table" and "jiraWorkItemMacroListViewTable" in classes
+            name = DATASOURCE if datasource else attributes.get("data-macro-name")
             self._open.append((tag, MacroOutput(name) if name else None))
 
     def handle_endtag(self, tag: str) -> None:
@@ -396,6 +428,8 @@ class ViewScanner(HTMLParser):
         if self._skipped or not data.strip():
             return
         self.text_parts.append(data)
+        if not any(macro and macro.name in DYNAMIC_MACROS for _, macro in self._open):
+            self.static_parts.append(data)
         self._mark_output(data)
 
     def close(self) -> None:
@@ -460,6 +494,7 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
     """Compare what REST returned for a page with what the browser rendered."""
     view = evidence.view
     view_words = words(view.text)
+    static_words = words(view.static_text)
     labels = macro_labels(evidence.storage.macros)
     checks = []
     # A macro has output in view when view wraps it with output, or, for a macro that
@@ -480,8 +515,9 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
     if rendered is None:
         failure = Check(f"{label}: rendered", passed=False, detail="content area never settled")
         return [failure, *checks]
+    # Text outside dynamic tables, word for word; the tables are compared by query.
     rendered_words = words(rendered.text)
-    share = coverage(rendered_words, view_words)
+    share = coverage(rendered_words, static_words)
     total = sum(rendered_words.values())
     local = view.local_images
     pairs = list(zip(evidence.rest_images, rendered.images, strict=False))
@@ -494,7 +530,7 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
     widest_seen = max((seen[0] for seen in rendered.images), default=0)
     missing = sum(1 for rest in evidence.rest_images if rest is None)
     external = len(view.images) - len(local)
-    missing_words = total - sum((rendered_words & view_words).values())
+    missing_words = total - sum((rendered_words & static_words).values())
     checks += [
         Check(
             f"{label}: words",
@@ -528,8 +564,8 @@ def compare_page(label: str, evidence: PageEvidence) -> list[Check]:
             nothing = Check(f"{label}: {query.kind} {index}", passed=False, detail="0 over REST")
             checks.append(nothing)
             continue
-        in_browser = shown(query.kind, first, rendered.text)
-        in_view = shown(query.kind, first, " ".join(view.macro_text[QUERY_MACROS[query.kind]]))
+        in_browser = shown(query.kind, first, f"{rendered.text} {rendered.dynamic_text}")
+        in_view = shown(query.kind, first, " ".join(view.macro_text[query.macro]))
         detail = f"{len(found)} over REST; of the first {len(first)}, "
         detail += f"{in_browser} shown in the browser, {in_view} in view"
         checks.append(Check(f"{label}: {query.kind} {index}", in_browser >= len(first), detail))
@@ -726,7 +762,7 @@ def render_page(page: Page, site: str, page_id: str) -> tuple[Rendered | None, i
     snapshot, previous, stable, settled_at, scrolled = None, None, 0, started, False
     while stable < STABLE_POLLS and time.monotonic() - started < SETTLE_TIMEOUT_S:
         page.wait_for_timeout(SETTLE_POLL_MS)
-        snapshot = page.evaluate(CONTENT_JS, [CONTENT_SELECTORS, MIN_IMAGE_SIDE])
+        snapshot = page.evaluate(CONTENT_JS, [CONTENT_SELECTORS, DYNAMIC_SELECTORS, MIN_IMAGE_SIDE])
         if snapshot and not scrolled:
             page.evaluate(SCROLL_JS, [CONTENT_SELECTORS, SCROLL_PAUSE_MS, MAX_SCROLL_STEPS])
             scrolled = True
@@ -742,7 +778,11 @@ def render_page(page: Page, site: str, page_id: str) -> tuple[Rendered | None, i
         return None, render_ms
     images = tuple((int(width), int(height)) for width, height in snapshot["images"])
     rendered = Rendered(
-        snapshot["text"], int(snapshot["tables"]), images, int(snapshot["external"])
+        snapshot["text"],
+        int(snapshot["tables"]),
+        images,
+        int(snapshot["external"]),
+        snapshot["dynamic"],
     )
     return rendered, render_ms
 

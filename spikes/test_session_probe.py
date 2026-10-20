@@ -107,9 +107,9 @@ def test_storage_scanner_counts_nested_macros_and_reads_their_queries() -> None:
     scanned = StorageScanner.parse(STORAGE)
     assert scanned.macros == Counter({"jira": 2, "expand": 1, "detailssummary": 1, "code": 1})
     assert scanned.queries == [
-        Query("jql", "project = ABC ORDER BY key"),
-        Query("key", "ABC-7"),
-        Query("cql", 'label = "x"'),
+        Query("jql", "project = ABC ORDER BY key", "jira"),
+        Query("key", "ABC-7", "jira"),
+        Query("cql", 'label = "x"', "detailssummary"),
     ]
 
 
@@ -139,7 +139,51 @@ def test_storage_scanner_reads_the_jql_of_a_smart_link_table() -> None:
     )
     scanned = StorageScanner.parse(storage)
     assert scanned.macros == Counter({"jira-datasource": 2})
-    assert scanned.queries == [Query("jql", "project = PRB ORDER BY key")]
+    assert scanned.queries == [Query("jql", "project = PRB ORDER BY key", "jira-datasource")]
+
+
+def test_view_scanner_reads_a_smart_link_table_as_its_output_apart_from_the_text() -> None:
+    """REST renders a Smart Link table as a plain table: its rows are the table's output."""
+    view = (
+        "<p>Before the table.</p>"
+        '<table class="jiraWorkItemMacroListViewTable"><tr><td>'
+        '<img src="/avatar" alt="Idea" width="16" height="16"></td>'
+        '<td><a href="/browse/PRB-1">PRB-1</a></td><td>An idea</td></tr></table>'
+    )
+    scanned = ViewScanner.parse(view)
+    assert scanned.macros_with_output == Counter({"jira-datasource": 1})
+    assert "PRB-1" in " ".join(scanned.macro_text["jira-datasource"])
+    assert scanned.static_text == "Before the table."
+    assert scanned.images == []
+
+
+def test_words_compare_static_text_and_queries_read_the_dynamic_tables() -> None:
+    """A table drawn by the browser is compared by its query, not word by word."""
+    storage = (
+        '<a data-datasource="{&quot;parameters&quot;:{&quot;jql&quot;:'
+        '&quot;project = PRB&quot;}}">x</a>'
+    )
+    view = (
+        "<p>Static text of the page.</p>"
+        '<table class="jiraWorkItemMacroListViewTable"><tr><td>PRB-1</td></tr></table>'
+    )
+    rendered = Rendered(
+        "Static text of the page.",
+        tables=1,
+        images=(),
+        dynamic_text="PRB-1 Unassigned Synced just now 1 item",
+    )
+    page = evidence(
+        storage,
+        view,
+        rendered,
+        results=((Query("jql", "project = PRB", "jira-datasource"), ("PRB-1",)),),
+    )
+    checks = {check.name: check for check in compare_page("page-1", page)}
+    assert checks["page-1: words"].detail == "100.0% of 5 in view, 0 missing"
+    assert checks["page-1: jql 1"].passed
+    assert checks["page-1: jql 1"].detail.endswith("1 shown in the browser, 1 in view")
+    assert checks["page-1: macro jira-datasource"].passed
 
 
 def test_view_scanner_reads_text_tables_images_and_macro_output() -> None:
@@ -207,7 +251,9 @@ def test_compare_page_passes_when_rest_holds_what_the_browser_shows() -> None:
         '<table><tr><td>cell</td></tr></table><img data-linked-resource-type="attachment"'
         ' data-linked-resource-id="1" data-linked-resource-container-id="2">'
     )
-    rendered = Rendered("Runbook ABC-1 ABC-2 cell", tables=1, images=((800, 600),))
+    rendered = Rendered(
+        "Runbook cell", tables=1, images=((800, 600),), dynamic_text="ABC-1 Summary ABC-2"
+    )
     checks = compare_page(
         "page-1",
         evidence(
@@ -215,7 +261,7 @@ def test_compare_page_passes_when_rest_holds_what_the_browser_shows() -> None:
             view,
             rendered,
             rest_images=((1600, 1200),),
-            results=((Query("jql", "project = ABC"), ("ABC-1", "ABC-2")),),
+            results=((Query("jql", "project = ABC", "jira"), ("ABC-1", "ABC-2")),),
         ),
     )
     assert [check.name for check in checks if not check.passed] == []
@@ -242,7 +288,7 @@ def test_compare_page_flags_what_rest_misses() -> None:
             view,
             rendered,
             rest_images=((100, 100),),
-            results=((Query("jql", "project = ABC"), ("ABC-1", "ABC-2", "ABC-3")),),
+            results=((Query("jql", "project = ABC", "jira"), ("ABC-1", "ABC-2", "ABC-3")),),
         ),
     )
     failed = {check.name for check in checks if not check.passed}
@@ -262,7 +308,7 @@ def test_compare_page_flags_query_results_the_browser_does_not_show() -> None:
             storage,
             view,
             Rendered("ABC-1", tables=0, images=()),
-            results=((Query("jql", "project = ABC"), ("ABC-1", "ABC-9")),),
+            results=((Query("jql", "project = ABC", "jira"), ("ABC-1", "ABC-9")),),
         ),
     )
     jql = next(check for check in checks if check.name == "page-1: jql 1")
@@ -299,7 +345,9 @@ def test_query_results_count_in_view_only_inside_their_macro() -> None:
         storage,
         view,
         rendered,
-        results=((Query("cql", 'label = "x"'), ("Properties 1", "Properties 2")),),
+        results=(
+            (Query("cql", 'label = "x"', "detailssummary"), ("Properties 1", "Properties 2")),
+        ),
     )
     report = next(check for check in compare_page("page-1", page) if check.name == "page-1: cql 1")
     assert report.detail == "2 over REST; of the first 2, 2 shown in the browser, 0 in view"
@@ -333,7 +381,7 @@ def test_a_query_with_no_results_over_rest_fails() -> None:
         storage,
         "<p>x</p>",
         Rendered("ABC-1 ABC-2", tables=0, images=()),
-        results=((Query("jql", "assignee = currentUser()"), ()),),
+        results=((Query("jql", "assignee = currentUser()", "jira"), ()),),
     )
     checks = compare_page("page-1", page)
     assert Check("page-1: jql 1", passed=False, detail="0 over REST") in checks
@@ -349,9 +397,9 @@ def test_a_single_issue_query_reads_the_issue_over_rest() -> None:
         asked.append(path)
         return issue
 
-    assert run_query(found, Query("key", "ABC-7"), "") == ("ABC-7",)
+    assert run_query(found, Query("key", "ABC-7", "jira"), "") == ("ABC-7",)
     assert asked == ["/rest/api/3/issue/ABC-7?fields=summary"]
-    assert run_query(lambda _: gone, Query("key", "ABC-7"), "") is None
+    assert run_query(lambda _: gone, Query("key", "ABC-7", "jira"), "") is None
 
 
 def test_compare_page_reports_a_page_that_never_rendered() -> None:
@@ -391,8 +439,11 @@ def test_report_holds_none_of_the_page_identifiers_or_content() -> None:
         Rendered(text, tables=0, images=((640, 480),)),
         rest_images=((640, 480),),
         results=(
-            (Query("jql", "project = SECRETPROJ"), ("SECRETPROJ-42",)),
-            (Query("cql", 'label = "confidential-roadmap"'), ("Confidential roadmap 2027",)),
+            (Query("jql", "project = SECRETPROJ", "jira"), ("SECRETPROJ-42",)),
+            (
+                Query("cql", 'label = "confidential-roadmap"', "detailssummary"),
+                ("Confidential roadmap 2027",),
+            ),
         ),
     )
     report = render_report(compare_page("page-1", page))
@@ -450,7 +501,7 @@ def test_failed_reads_report_no_url_id_or_exception_message() -> None:
     report = render_report(checks)
     assert [seed for seed in seeds if seed.casefold() in report.casefold()] == []
     assert attempt(get, "/wiki/x").media_type == "error ConnectError"
-    assert run_query(get, Query("jql", "project = SECRETPROJ"), "") is None
+    assert run_query(get, Query("jql", "project = SECRETPROJ", "jira"), "") is None
 
 
 def test_the_image_download_reads_the_original_through_the_v1_path() -> None:
