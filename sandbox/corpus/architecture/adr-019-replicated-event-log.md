@@ -285,4 +285,4 @@ database, which [ADR-012](adr-012-database-per-service.md) forbids for good reas
 
 ENG-29 is done. The last consumer, `settlement-batcher`, moved in March, the
 producers stopped publishing to RabbitMQ at the end of that month, and the broker was
-shut down on 2026-04-09.
+shut down on 2026-04-06.
