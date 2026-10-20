@@ -31,7 +31,7 @@ Attendees: Femi Haldane, Inès Moreau, Dorian Pask, Ewan Mabry. Joss Fairweather
 
 **Paris at the start of November.** Several Paris agents have booked annual leave for the first days of November. Inès confirmed that `fr-marchands` keeps two agents each business day; French-speaking London colleagues will cover the gaps in the late afternoon.
 
-**Dark mode.** Merchant Experience expects to open a dark mode trial for some merchants once ENG-26 is complete. They will brief support before any merchant is invited. Until then, the September agreement holds: no dates to merchants.
+**Dark mode.** The preview has been open since 15 September to merchants who opt in from their profile menu, and covers fourteen pages since early October. Merchant Experience briefed support before it opened. The September agreement holds: no dates to merchants for the remaining pages.
 
 **Instant payouts.** Oskar Ngata's draft FAQ arrived. Dorian and Inès will comment by 16 October.
 

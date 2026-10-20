@@ -53,7 +53,7 @@ Sprint 40 starts on Monday 2026-10-12. Bram joined for this part. What the teams
 | Epic | Likely to ship in sprint 40 | Likely to move to the backlog |
 |---|---|---|
 | ENG-20 | Remaining validation and the operator guide | A web view of backfill history |
-| ENG-26 | Reports, once the palettes land; the switch in user settings | The email previews |
+| ENG-26 | Reports, once the palettes land; general availability on the twenty most visited pages | The email previews |
 | ENG-30 | The public reference pages, and switching the flag on for merchants | A report in Merchant Hub of the version each integration uses |
 
 Bram reminded everyone that the change freeze is not far behind, and that anything needing a risky production change should be planned against the [change freeze calendar 2026](../release/change-freeze-2026.md) now rather than discovered in November.

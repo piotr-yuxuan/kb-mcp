@@ -35,9 +35,9 @@ Discussion:
 
 **Decided:** both. The automated check is advisory for a sprint, then required.
 
-## Token aliases left over from ENG-24
+## Hard-coded colours left over from before ENG-24
 
-Wren counted three deprecated token aliases from ENG-24 still in use in Merchant Hub, all in reports. Inkwell will remove the aliases in its next major version. Noor agreed that Merchant Experience removes them before dark mode work reaches reports, since the dark theme does not define the old names. The current names are in [Inkwell design tokens and principles](../design/tokens.md).
+Wren counted three hard-coded colour values still in Merchant Hub, all in reports: the ENG-24 codemod rewrote token names, not raw values. Noor agreed that Merchant Experience replaces them with tokens before dark mode work reaches reports, since a raw value cannot follow the theme. The current names are in [Inkwell design tokens and principles](../design/tokens.md).
 
 ## Bundle size
 
@@ -53,7 +53,7 @@ Joss showed that Merchant Hub's main bundle grew by about a fifth since January,
 | Chart palettes for both themes in Inkwell | Priya | Sprint 35 |
 | Automated a11y check in CI, advisory then required | Hamza | Sprint 34, required from sprint 35 |
 | Keyboard-only pass added to the design review agenda | Wren | Next design review |
-| Remove the three deprecated token aliases from reports | Noor | Before ENG-26 reaches reports |
+| Replace the three hard-coded colours in reports with tokens | Noor | Before ENG-26 reaches reports |
 | Bundle size budget check | Joss | Sprint 34 |
 
 Next meeting: Wednesday 2026-08-19. Chair: Noor.

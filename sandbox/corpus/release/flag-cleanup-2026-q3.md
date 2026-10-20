@@ -44,7 +44,7 @@ Ledger cleared everything, including the two flags left over from the 2026 ledge
 
 Flags that have not reached full rollout are not on the clock, however old they are:
 
-- `sb.merchant-hub.dark-mode` is at 25% of merchants while epic ENG-26 continues.
+- `sb.merchant-hub.dark-mode` is on for staff, and for merchants who opt in to the preview, while epic ENG-26 continues.
 - `sb.merchant-api.date-versioning` is on for an allow-list of merchants while epic ENG-30 continues.
 
 Both will start counting on the day they reach 100% with no allow-list.
