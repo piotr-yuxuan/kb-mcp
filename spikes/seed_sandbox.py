@@ -9,8 +9,9 @@ environment, so run it through sops, which gives the token to this process alone
 
     sops exec-env <credentials file> 'uv run spikes/seed_sandbox.py --space MFS'
 
-A page that already exists, by title, is left as it is. The Jira issues macro is not
-created here: it needs Jira on the site first.
+A page that already exists, by title, is left as it is. The Jira issues table is not
+created here: insert it with /jira in the editor. ``--issue KEY`` gives that issue an
+image attachment and a description that shows it.
 """
 
 from __future__ import annotations
@@ -109,10 +110,31 @@ def attach(client: httpx.Client, page_id: str, filename: str, data: bytes) -> No
     response.raise_for_status()
 
 
+def seed_issue(client: httpx.Client, key: str) -> None:
+    """Attach an image to an issue, unless it has one, and show it in the description."""
+    issue = client.get(f"/rest/api/3/issue/{key}", params={"fields": "attachment"})
+    issue.raise_for_status()
+    names = {attachment["filename"] for attachment in issue.json()["fields"]["attachment"]}
+    if "probe-issue.png" not in names:
+        uploaded = client.post(
+            f"/rest/api/3/issue/{key}/attachments",
+            files={"file": ("probe-issue.png", png("issue", 1400, 700), "image/png")},
+            headers={"X-Atlassian-Token": "no-check"},
+        )
+        uploaded.raise_for_status()
+    # Version 2 of the API takes wiki markup, in which !name! shows an attachment.
+    described = client.put(
+        f"/rest/api/2/issue/{key}",
+        json={"fields": {"description": "An image for the probe.\n\n!probe-issue.png!"}},
+    )
+    described.raise_for_status()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Create the pages under the space's home page, then print their titles and ids."""
     parser = argparse.ArgumentParser(description="Create the probe's pages in the sandbox.")
     parser.add_argument("--space", required=True, help="the key of the space to create them in")
+    parser.add_argument("--issue", help="a Jira issue key to give an image in its description")
     arguments = parser.parse_args(argv)
     site = urlsplit(os.environ["ATLASSIAN_SITE"])
     if site.scheme != "https" or not site.netloc.endswith(".atlassian.net"):
@@ -182,6 +204,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         ids["Probe long"], _ = ensure_page(client, space_id, home_id, "Probe long", LONG_PAGE)
         attach(client, ids["Probe innermost"], "probe-innermost.png", png("innermost", 1200, 800))
         attach(client, ids["Probe complex"], "probe-complex.png", png("complex", 1600, 900))
+        if arguments.issue:
+            seed_issue(client, arguments.issue)
     for title, page_id in ids.items():
         sys.stdout.write(f"{page_id}  {title}\n")
     return 0

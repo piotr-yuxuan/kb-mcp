@@ -17,8 +17,12 @@ all but the Jira issues macro, which needs Jira on the site first. Run it throug
 so the token reaches that one process:
 
 ```bash
-sops exec-env <credentials file> 'uv run spikes/seed_sandbox.py --space MFS'
+sops exec-env <credentials file> 'uv run spikes/seed_sandbox.py --space MFS --issue PRB-1'
 ```
+
+`--issue` gives that issue an image in its description. Insert the Jira issues table by
+hand: `/jira` in the editor now adds a Smart Link table, which the probe reads as well
+as the classic Jira issues macro. Publish the page afterwards.
 
 The pages, to create by hand otherwise, in any space:
 1. **Probe innermost**: an Excerpt macro around one sentence, then an uploaded image
