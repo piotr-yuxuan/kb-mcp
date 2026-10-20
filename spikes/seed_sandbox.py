@@ -77,15 +77,13 @@ def image(filename: str) -> str:
     return f'<ac:image ac:width="400"><ri:attachment ri:filename="{filename}"/></ac:image>'
 
 
-def ensure_page(
-    client: httpx.Client, space_id: str, parent_id: str, title: str, body: str
-) -> tuple[str, bool]:
-    """Return the id of the page with this title, creating it if needed, and whether it is new."""
+def ensure_page(client: httpx.Client, space_id: str, parent_id: str, title: str, body: str) -> str:
+    """Return the id of the page with this title, creating it if needed."""
     found = client.get("/wiki/api/v2/pages", params={"space-id": space_id, "title": title})
     found.raise_for_status()
     results = found.json().get("results", [])
     if results:
-        return str(results[0]["id"]), False
+        return str(results[0]["id"])
     created = client.post(
         "/wiki/api/v2/pages",
         json={
@@ -97,7 +95,7 @@ def ensure_page(
         },
     )
     created.raise_for_status()
-    return str(created.json()["id"]), True
+    return str(created.json()["id"])
 
 
 def attach(client: httpx.Client, page_id: str, filename: str, data: bytes) -> None:
@@ -176,7 +174,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         ids: dict[str, str] = {}
         for title, (parent, body) in pages.items():
-            ids[title], _ = ensure_page(client, space_id, parent, title, body)
+            ids[title] = ensure_page(client, space_id, parent, title, body)
         complex_body = (
             macro("include", **{"": page_link("Probe middle")})
             + macro("excerpt-include", **{"": page_link("Probe innermost")})
@@ -190,18 +188,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             + f"<table><tbody>{table}</tbody></table>"
             + image("probe-complex.png")
         )
-        ids["Probe complex"], _ = ensure_page(
-            client, space_id, home_id, "Probe complex", complex_body
-        )
+        ids["Probe complex"] = ensure_page(client, space_id, home_id, "Probe complex", complex_body)
         for number in (1, 2):
             title = f"Probe properties {number}"
             properties = (
                 f"<table><tbody><tr><th>Owner</th><td>Team {number}</td></tr>"
                 f"<tr><th>State</th><td>Draft {number}</td></tr></tbody></table>"
             )
-            ids[title], _ = ensure_page(
-                client, space_id, home_id, title, macro("details", properties)
-            )
+            ids[title] = ensure_page(client, space_id, home_id, title, macro("details", properties))
             # Labelled on every run: a label already there is left as it is.
             labelled = client.post(
                 f"/wiki/rest/api/content/{ids[title]}/label",
@@ -209,10 +203,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             labelled.raise_for_status()
         # Children display lists this page alone, apart from the report's pages.
-        ids["Probe child"], _ = ensure_page(
+        ids["Probe child"] = ensure_page(
             client, space_id, ids["Probe complex"], "Probe child", "<p>A child page.</p>"
         )
-        ids["Probe long"], _ = ensure_page(client, space_id, home_id, "Probe long", LONG_PAGE)
+        ids["Probe long"] = ensure_page(client, space_id, home_id, "Probe long", LONG_PAGE)
         attach(client, ids["Probe innermost"], "probe-innermost.png", png("innermost", 1200, 800))
         attach(client, ids["Probe complex"], "probe-complex.png", png("complex", 1600, 900))
         if arguments.issue:
