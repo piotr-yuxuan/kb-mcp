@@ -13,7 +13,9 @@ Follow the `workflow:plans` skill with these parameters:
 - Checks, run in full before each review and each merge:
   - `uv run ruff check` and `uv run ruff format --check`;
   - `uv run lint-imports`;
-  - `uv run pytest`.
+  - `uv run pytest`;
+  - `uv run --with-requirements sandbox/seed_corpus.py --with pytest pytest sandbox`,
+    which needs pandoc on `PATH`.
 - The design and the shared contracts are in `docs/work/README.md` and
   `docs/reference/data-layout.md`. Only the adapter of a representation reads its JSON,
   and only one module knows the site's HTML.
