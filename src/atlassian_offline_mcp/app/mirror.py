@@ -153,18 +153,18 @@ def place(
 
     A page or a blog post goes to the space whose freshest listing names it, before the
     one its snapshot names, everywhere the mirror uses its space; one whose space is not
-    listed has no folder, and is reported. A document confirmed gone, and listed by no
-    space, is left out. Also return the files that must go even when the run reports
-    problems: those of documents gone (to None), and the old file of a document that moved
-    (to its new file).
+    listed has no folder, and is reported. A document confirmed gone is left out, unless
+    a listing taken after it answered gone names it again. Also return the files that
+    must go even when the run reports problems: those of documents gone (to None), and
+    the old file of a document that moved (to its new file).
     """
     placed: list[Placed] = []
     retired: dict[PurePosixPath, PurePosixPath | None] = {}
     try:
-        gone = {key for key, stone in store.tombstones().items() if stone.confirmed}
+        gone = {key: stone for key, stone in store.tombstones().items() if stone.confirmed}
     except UNREADABLE as error:
         problems.append(Problem("tombstones.json", reason(error)))
-        gone = set()
+        gone = {}
     for found in (item for kind in KINDS for item in readable(store.latest(kind), problems)):
         stored, document = found, found.snapshot.document
         if isinstance(document, Issue):
@@ -174,7 +174,10 @@ def place(
             continue
         before = catalogue.spaces.get(document.space_id)
         listed = catalogue.listed.get(document.id)
-        is_gone = listed is None and (document.kind, document.id) in gone
+        stone = gone.get((document.kind, document.id))
+        # Gone, unless a listing taken after its first answer of gone names it again.
+        named = listed_at(store, listed.space_id, problems) if listed is not None else None
+        is_gone = stone is not None and (named is None or named <= stone.first_gone)
         moves = listed is not None and listed.space_id != document.space_id
         old = confluence_path(document, before.key) if before is not None else None
         if is_gone:

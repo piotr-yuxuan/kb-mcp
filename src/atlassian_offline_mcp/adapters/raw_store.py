@@ -136,6 +136,15 @@ def _decode(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _record_json(path: Path) -> object:
+    # A record the store wrote and cannot read back is a changed shape, named by its file.
+    try:
+        return _decode(path)
+    except ValueError:
+        message = f"{path.name}: not JSON"
+        raise RepresentationError(message) from None
+
+
 def reason(error: Exception) -> str:
     """Say why a read failed: a refused field's path, or the error's class alone.
 
@@ -376,6 +385,26 @@ class RawStore:
         path = self._space(space_id) / f"{kind.kind}.json"
         return self._entries(path, partial(confluence_v2.document, kind=kind))
 
+    def listed_ids(self, space_id: str, kind: type[Page | BlogPost]) -> set[str]:
+        """Return the ids that a space's last listing names, read by id alone.
+
+        An entry whose other fields the adapter would refuse still names its document,
+        so that deletions follow every document a download fetched. A listing that
+        cannot be read at all names none.
+        """
+        path = self._space(space_id) / f"{kind.kind}.json"
+        try:
+            entries = Fields.each(_decode(path), path.name) if path.exists() else []
+        except UNREADABLE:
+            return set()
+        ids: set[str] = set()
+        for entry in entries:
+            try:
+                ids.add(confluence_v2.entry_id(entry))
+            except RepresentationError:
+                continue
+        return ids
+
     def folders(self, space_id: str) -> list[Folder | Unreadable]:
         """Read the folders last listed in a space."""
         return self._entries(self._space(space_id) / "folders.json", confluence_v2.folder)
@@ -425,7 +454,7 @@ class RawStore:
         if not path.exists():
             return Coverage()
         periods: dict[Target, Period] = {}
-        for item in Fields.each(_decode(path), COVERAGE):
+        for item in Fields.each(_record_json(path), COVERAGE):
             with item.refusals():
                 target = Target(item.text("source"), item.text("key"))
             try:
@@ -455,7 +484,7 @@ class RawStore:
         if not path.exists():
             return {}
         stones: dict[tuple[str, str], Tombstone] = {}
-        for item in Fields.each(_decode(path), TOMBSTONES):
+        for item in Fields.each(_record_json(path), TOMBSTONES):
             with item.refusals():
                 kind, identifier = item.text("kind"), _identifier(item.text("id"), "id")
                 if kind not in {Page.kind, BlogPost.kind}:

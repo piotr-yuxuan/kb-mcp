@@ -84,6 +84,7 @@ def window(
     if start is None:
         message = f"{target}: nothing covered yet; give --since for its first run"
         raise PeriodError(message)
+    start = max(start, EPOCH)  # nothing on the site is older, and dates stay in range
     if back == "all":
         start = EPOCH
     elif back is not None:

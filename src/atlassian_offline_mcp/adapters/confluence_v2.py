@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
 from atlassian_offline_mcp.adapters.http import ReadPage, Request
 from atlassian_offline_mcp.domain.content import (
+    IDENTIFIER,
     SITE_PATH,
     Attachment,
     BlogPost,
@@ -188,6 +189,14 @@ def snapshot_requests(document: Listed) -> dict[str, tuple[Request, ReadPage | N
         VIEW: (document_request(document, "view"), None),
         ATTACHMENTS: (attachments_request(document), listing_page),
     }
+
+
+def entry_id(fields: Fields) -> str:
+    """Read only the id of a listing's entry, whatever else the entry holds."""
+    with fields.refusals():
+        identifier = fields.text("id")
+        require(IDENTIFIER, identifier, "id")
+        return identifier
 
 
 def probe_request(kind: str, document_id: str) -> Request:

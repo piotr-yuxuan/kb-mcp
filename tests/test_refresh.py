@@ -18,7 +18,7 @@ from atlassian_offline_mcp.app.mirror import mirror
 from atlassian_offline_mcp.cli import main
 from atlassian_offline_mcp.domain.content import Page
 from atlassian_offline_mcp.domain.coverage import Coverage, Target
-from atlassian_offline_mcp.domain.period import Period, PeriodError
+from atlassian_offline_mcp.domain.period import EPOCH, Period, PeriodError
 from atlassian_offline_mcp.domain.settings import Settings
 from tests.samples import v2_page, v2_space
 from tests.test_download import CAP, PAGES, SITE, SPACE, FakeSite, stamp
@@ -51,6 +51,7 @@ class RefreshSite(FakeSite):
     listing: dict[str, dict[str, object]] = field(default_factory=lambda: dict(PAGES))
     gone: set[str] = field(default_factory=set)
     moved: dict[str, str] = field(default_factory=dict)
+    others: dict[str, list[dict[str, object]]] = field(default_factory=dict)
     anonymous_after: int | None = None
     user_asks: int = 0
 
@@ -61,6 +62,20 @@ class RefreshSite(FakeSite):
             200, json={"results": list(self.listing.values()), "_links": {}}
         )
         routes["/wiki/rest/api/user/current"] = self.user
+        # Other spaces, each with its key and its listing of pages; MFS answers as before.
+        spaces = {"MFS": v2_space()} | {
+            key: v2_space(id=OTHER_SPACE, key=key, name=key) for key in self.others
+        }
+        routes["/wiki/api/v2/spaces"] = lambda request: httpx.Response(
+            200, json={"results": [spaces[request.url.params["keys"]]]}
+        )
+        for pages in self.others.values():
+            routes[f"/wiki/api/v2/spaces/{OTHER_SPACE}/pages"] = lambda _, p=pages: httpx.Response(
+                200, json={"results": p, "_links": {}}
+            )
+            routes[f"/wiki/api/v2/spaces/{OTHER_SPACE}/blogposts"] = lambda _: httpx.Response(
+                200, json={"results": [], "_links": {}}
+            )
         for page_id in {*self.listing, *self.gone, *self.moved}:
             page = self.listing.get(page_id) or PAGES.get(page_id) or v2_page(id=page_id)
             routes[f"/wiki/api/v2/pages/{page_id}"] = lambda request, p=page: self.page(request, p)
@@ -230,10 +245,24 @@ def test_a_page_gone_on_two_runs_is_confirmed_and_one_back_loses_it(
     assert RawStore(chosen.raw).tombstones() == {}
 
 
-def test_a_page_moved_to_another_kept_space_is_not_gone(
+def test_a_page_moved_to_another_space_listed_in_the_run_is_not_gone(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Absent from its space, but answering from another space the store keeps."""
+    """Absent from its space, but answering from another space that this run lists."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    moved_page = {**PAGES["1001"], "spaceId": OTHER_SPACE}
+    moved = RefreshSite(
+        listing=without("1001"), moved={"1001": OTHER_SPACE}, others={"OPS": [moved_page]}
+    )
+    run(chosen, monkeypatch, moved, first_week(["MFS", "OPS"], []), SECOND)
+    assert RawStore(chosen.raw).tombstones() == {}
+
+
+def test_a_page_moved_to_a_space_no_run_lists_is_gone(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A space the store kept once, but that this run does not list, is out of reach."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
     store = RawStore(chosen.raw)
@@ -241,7 +270,8 @@ def test_a_page_moved_to_another_kept_space_is_not_gone(
         store.put_space(v2_space(id=OTHER_SPACE, key="OPS", name="Ops"), [], [], [])
     moved = RefreshSite(listing=without("1001"), moved={"1001": OTHER_SPACE})
     run(chosen, monkeypatch, moved, catch_up(["MFS"], []), SECOND)
-    assert store.tombstones() == {}
+    [stone] = store.tombstones().values()
+    assert (stone.key, stone.first_gone) == (("pages", "1001"), SECOND)
 
 
 def test_a_page_moved_out_of_the_kept_spaces_is_gone(
@@ -264,7 +294,9 @@ def test_many_gone_with_a_lost_session_write_no_tombstone(
     run(chosen, monkeypatch, RefreshSite(listing=many), first_week(["MFS"], []), FIRST)
     lost = RefreshSite(listing={}, gone=set(many), anonymous_after=1)
     assert run(chosen, monkeypatch, lost, catch_up(["MFS"], []), SECOND) == SIGN_IN_NEEDED
-    assert RawStore(chosen.raw).tombstones() == {}
+    stones = RawStore(chosen.raw).tombstones().values()
+    assert len(stones) == MANY  # each absent page waits for a probe
+    assert [stone for stone in stones if stone.first_gone is not None] == []
 
 
 def identity(html: str) -> str:
@@ -441,3 +473,45 @@ def test_a_window_never_ends_past_the_run() -> None:
     """An --until in the future stops at now: coverage never claims time not yet seen."""
     later = Targets(["MFS"], [], CAP, since=FIRST - WEEK, until=FIRST + WEEK)
     assert later.windows(Coverage(), FIRST)[Target("confluence", "MFS")].end == FIRST
+
+
+def test_a_deleted_page_whose_listing_entry_changed_is_still_tracked(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The last listing is read by id alone: an entry without its title still counts."""
+    chosen = settings(tmp_path)
+    titleless = {
+        key: {k: v for k, v in page.items() if k != "title"} for key, page in PAGES.items()
+    }
+    run(chosen, monkeypatch, RefreshSite(listing=titleless), first_week(["MFS"], []), FIRST)
+    assert "1002" in RawStore(chosen.raw).stored_ids(Page)
+    rest = {key: page for key, page in titleless.items() if key != "1002"}
+    for day in (1, 2):
+        gone = RefreshSite(listing=rest, gone={"1002"})
+        run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
+    [stone] = RawStore(chosen.raw).tombstones().values()
+    assert (stone.key, stone.confirmed) == (("pages", "1002"), True)
+
+
+def test_a_stale_listing_never_brings_back_a_page_confirmed_gone(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A space listed long before the page answered gone cannot revive it."""
+    chosen = settings(tmp_path)
+    store = RawStore(chosen.raw)
+    with store.writing():
+        stale = v2_space(id=OTHER_SPACE, key="OPS", name="Ops")
+        entry = {**PAGES["1002"], "spaceId": OTHER_SPACE}
+        store.put_space(stale, [entry], [], [], listed_at=FIRST - timedelta(days=30))
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    for day in (1, 2):
+        gone = RefreshSite(listing=without("1002"), gone={"1002"})
+        run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
+    mirror(store, chosen.docs, SITE, identity)
+    assert list(chosen.docs.rglob("1002-*.md")) == []
+
+
+def test_a_since_before_the_epoch_starts_at_the_epoch() -> None:
+    """Nothing on the site is older; the dates searched stay within the calendar."""
+    early = Targets(["MFS"], [], CAP, since=datetime(1, 1, 2, tzinfo=UTC))
+    assert early.windows(Coverage(), FIRST)[Target("confluence", "MFS")].start == EPOCH

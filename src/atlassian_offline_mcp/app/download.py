@@ -19,7 +19,7 @@ from atlassian_offline_mcp.adapters.http import (
     SiteError,
     TooManyFailuresError,
 )
-from atlassian_offline_mcp.adapters.raw_store import REPRESENTATIONS, RawStore, Unreadable
+from atlassian_offline_mcp.adapters.raw_store import REPRESENTATIONS, RawStore
 from atlassian_offline_mcp.adapters.session_file import (
     COOKIES,
     for_site,
@@ -131,6 +131,8 @@ class Download:
     plan: bool = False
     covered: list[Target] = field(default_factory=list)
     tombstones: dict[tuple[str, str], Tombstone] = field(default_factory=dict)
+    absent: dict[str, tuple[dict[tuple[str, str], str], int]] = field(default_factory=dict)
+    listed_spaces: set[str] = field(default_factory=set)
 
     def run(self, spaces: Sequence[str], projects: Sequence[str]) -> None:
         """Download every space and project named, after checking that the session holds.
@@ -149,6 +151,8 @@ class Download:
             target = Target("confluence", key)
             if self.space(key, self.windows.get(target, self.period)):
                 self.covered.append(target)
+        if not self.plan:
+            self.probe_absent()
         for key in projects if jira else ():
             target = Target("jira", key)
             if self.project(key, self.windows.get(target, self.period)):
@@ -214,55 +218,63 @@ class Download:
             self.report.failed("confluence spaces", error)
             return False
         documents = [*self.documents(Page, pages), *self.documents(BlogPost, posts)]
+        self.listed_spaces.add(space.id)
         if not self.plan:
             listed = {kind: {each.id for each in documents if each.type is kind} for kind in KINDS}
-            self.deletions(space.id, listed)
+            self.track(space.id, listed)
             folders = self.folders(pages)
             self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
         for document in documents:
             self.consider(document, period)
         return True
 
-    def deletions(self, space_id: str, listed: Mapping[type[Document], set[str]]) -> None:
-        """Probe what the space's listing no longer names, and record what is gone.
+    def track(self, space_id: str, listed: Mapping[type[Document], set[str]]) -> None:
+        """Record, as pending, what the space's last listing named and the new one does not.
 
-        The absent are those the last listing named and the store holds, and those
-        already tombstoned in the space; those not confirmed are probed, at most
-        ``MAX_PROBES`` a space and a run, and the rest stay pending for a later run. The
-        record is written before the listing is replaced, so that no absent document is
-        lost to a run stopped after. Raises SignInNeededError when too many answer gone
-        and the session no longer holds; when the site does not answer, nothing is
-        believed, and every absent document stays pending.
+        The absent are the documents the last listing named, read by id alone, and the
+        store holds, and those already tombstoned in the space. The record is written
+        before the listing is replaced, so that no absent document is lost to a run that
+        stops; they are probed once every space of the run is listed.
         """
         known = {key: stone for key, stone in self.tombstones.items() if stone.space_id == space_id}
         absent: dict[tuple[str, str], str] = {}
         stored = 0
         for kind in KINDS:
-            held = self.store.stored_ids(kind)
-            before = {
-                each.id
-                for each in self.store.listed(space_id, kind)
-                if not isinstance(each, Unreadable)
-            }
-            stored += len(before & held)
+            before = self.store.listed_ids(space_id, kind) & self.store.stored_ids(kind)
+            stored += len(before)
             again = {key[1] for key in known if key[0] == kind.kind}
-            absent |= {
-                (kind.kind, each): space_id for each in ((before & held) | again) - listed[kind]
-            }
-        kept = {each.id for each in self.store.spaces() if not isinstance(each, Unreadable)}
-        order = probing_order(absent, known)[:MAX_PROBES]
-        answers = {key: answer for key in order if (answer := self.probe(key, space_id, kept))}
-        canary = (confluence_v2.current_user_request(), confluence_v2.signed_in)
-        if too_many_gone(answers, stored) and not self.reachable("confluence", *canary):
-            answers = {}  # the site stopped answering: believe none of these answers
+            absent |= {(kind.kind, each): space_id for each in (before | again) - listed[kind]}
+        self.absent[space_id] = (absent, stored)
         others = {
             key: stone for key, stone in self.tombstones.items() if stone.space_id != space_id
         }
-        self.tombstones = {**others, **after_probes(known, absent, answers, self.now())}
+        self.tombstones = {**others, **after_probes(known, absent, {}, self.now())}
         self.store.put_tombstones(self.tombstones.values())
-        self.report.add("confluence documents: probed, absent from their listing", len(answers))
-        waiting = sum(1 for stone in self.tombstones.values() if stone.first_gone is None)
-        self.report.add("confluence documents: absent, waiting for a probe", waiting)
+
+    def probe_absent(self) -> None:
+        """Probe what each space no longer lists, and record what is gone.
+
+        Those not confirmed are probed, at most ``MAX_PROBES`` a space and a run, those
+        on their way first; the rest stay pending. A document answering from a space
+        that this run did not list has left the mirror's reach: gone. Raises
+        SignInNeededError when too many answer gone and the session no longer holds;
+        when the site does not answer, nothing is believed.
+        """
+        canary = (confluence_v2.current_user_request(), confluence_v2.signed_in)
+        for space_id, (absent, stored) in self.absent.items():
+            known = {k: s for k, s in self.tombstones.items() if s.space_id == space_id}
+            order = probing_order(absent, known)[:MAX_PROBES]
+            kept = self.listed_spaces
+            answers = {k: a for k in order if (a := self.probe(k, space_id, kept))}
+            if too_many_gone(answers, stored) and not self.reachable("confluence", *canary):
+                answers = {}  # the site stopped answering: believe none of these answers
+            now = after_probes(known, absent, answers, self.now())
+            others = {k: s for k, s in self.tombstones.items() if s.space_id != space_id}
+            self.tombstones = {**others, **now}
+            self.store.put_tombstones(self.tombstones.values())
+            self.report.add("confluence documents: probed, absent from their listing", len(answers))
+            waiting = sum(1 for stone in now.values() if stone.first_gone is None)
+            self.report.add("confluence documents: absent, waiting for a probe", waiting)
 
     def probe(self, key: tuple[str, str], space_id: str, kept: set[str]) -> Answer | None:
         """GET a document absent from its listing, and say what became of it."""
@@ -277,7 +289,7 @@ class Download:
         except RepresentationError as error:
             self.report.failed("confluence probes", error)
             return None
-        return answer_of(found_space, status, space_id, kept | {space_id})
+        return answer_of(found_space, status, space_id, kept)
 
     def folders(self, pages: Iterable[object]) -> list[object]:
         """GET every folder above the listed pages, following folders' own parents.
