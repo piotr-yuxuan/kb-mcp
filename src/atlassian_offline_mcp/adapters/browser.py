@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 SIGN_IN_TIMEOUT_S = 300
-POLL_S = 2.0
+POLL_MS = 2_000
 # Signed in once one of the given paths answers with an account, from inside the page.
 SIGNED_IN_JS = """async (paths) => {
   for (const path of paths) {
@@ -84,15 +84,18 @@ def sign_in(
             with contextlib.suppress(Error):
                 page.goto(f"{site}/wiki/home", timeout=SIGN_IN_TIMEOUT_S * 1000)
             while time.monotonic() < deadline:
-                # The page may navigate while the check runs, or the window close.
+                # The page may navigate while the check runs, or the window close. The
+                # wait is Playwright's own: only its calls bring the page's address and
+                # state up to date, so a plain sleep would never see the sign-in end.
                 with contextlib.suppress(Error):
                     on_site = urlsplit(page.url).hostname == urlsplit(site).hostname
                     if on_site and page.evaluate(SIGNED_IN_JS, paths):
                         return [dict(cookie) for cookie in context.cookies()]
+                with contextlib.suppress(Error):
+                    page.wait_for_timeout(POLL_MS)
                 if page.is_closed():
                     message = "the sign-in window was closed"
                     raise SignInFailedError(message)
-                time.sleep(POLL_S)
         finally:
             context.close()
     message = f"no sign-in within {SIGN_IN_TIMEOUT_S} s"
