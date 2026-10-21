@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from lxml.etree import ErrorTypes, LxmlError
 from lxml.html import Element, HtmlElement, HTMLParser, document_fromstring, tostring
 
-from atlassian_offline_mcp.domain.mirror_layout import visible
+from atlassian_offline_mcp.domain.mirror_layout import one_line, visible
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -313,7 +313,9 @@ class Panel(Construct):
             UNSUPPORTED.rewrite(element, context)
             return
         header = part(element, self.header)
-        title = "" if header is None else header.text_content().strip()
+        # A title is the panel's own, never one within its content.
+        own = header is not None and body not in header.iterancestors()
+        title = header.text_content().strip() if own else ""
         label = new("strong", ": ".join(filter(None, (self.kind, title))) or "Panel")
         replace(element, new("blockquote", None, new("p", None, label), body))
 
@@ -433,22 +435,31 @@ class Image(Construct):
     def rewrite(self, element: HtmlElement, context: Context) -> None:
         """Show the image's asset, or link it with its alt text.
 
-        An attachment is found by its page and id, else by its page and file name, as
-        its data attributes or its address give them; one without a file says so.
+        An attachment is named by its data attributes (its page and id, else its page
+        and file name) or by its address (an id, or a page and a file name); one without
+        a file says so. Any other image is a link alone.
         """
         source = element.get("src", "")
         path = (context.on_site(source) or "").partition("?")[0]
         confluence = CONFLUENCE_FILE.fullmatch(path)
         jira = JIRA_FILE.match(path)
         linked = element.get(LINKED_ID) if element.get(LINKED_TYPE) == LINKED_ATTACHMENT else None
-        owner = element.get(LINKED_CONTAINER) or (
-            confluence["owner"] if confluence else context.owner
-        )
-        name = element.get(LINKED_NAME) or (unquote(confluence["name"]) if confluence else "")
-        identifier = ATTACHMENT_PREFIX + linked if linked else jira["id"] if jira else ""
+        by_id: tuple[str, str] | None = None
+        by_name: tuple[str, str] | None = None
+        if linked:
+            owner = element.get(LINKED_CONTAINER) or context.owner
+            by_id = (owner, ATTACHMENT_PREFIX + linked)
+            by_name = (owner, element.get(LINKED_NAME, ""))
+        elif confluence:
+            by_name = (confluence["owner"], unquote(confluence["name"]))
+        elif jira:
+            by_id = (context.owner, jira["id"])
         files, names = context.mirrored.files, context.mirrored.names
-        asset = files.get((owner, identifier)) or names.get((owner, name))
-        alt = element.get("alt") or name or "image"
+        asset = (files.get(by_id) if by_id else None) or (
+            names.get(by_name) if by_name and by_name[1] else None
+        )
+        # A name decoded from an address was not in the tree when it was cleaned.
+        alt = one_line(element.get("alt") or (by_name[1] if by_name else None) or "image")
         if asset is not None:
             image = new("img")
             image.set("src", context.relative(asset))
@@ -457,9 +468,9 @@ class Image(Construct):
             return
         address = context.absolute(source) or ""
         link = new("a", alt)
-        if address.startswith(WEB_PREFIXES):
+        if address.lower().startswith(WEB_PREFIXES):
             link.set("href", address)
-        link.tail = " (image not downloaded)" if linked or confluence or jira else None
+        link.tail = " (image not downloaded)" if by_id or by_name else None
         replace(element, new("span", None, link))
 
 

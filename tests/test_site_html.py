@@ -365,3 +365,45 @@ def test_deep_markup_is_read_whole_up_to_the_parsers_limit() -> None:
     deeper = "<div>" * 3000 + "DEEP" + "</div>" * 3000 + "<p>AFTER</p>"
     with pytest.raises(MarkupError):
         normalise(deeper, Context("196845", HERE, MIRRORED))
+
+
+def test_a_name_decoded_from_an_address_is_cleaned_too() -> None:
+    """Escaped hidden characters, line breaks and NULs in a file name never come through."""
+    html = '<p><img src="/wiki/download/attachments/1/a%E2%80%8Bb%E2%80%AEc%0Ad%00e.png"></p>'
+    page = markdown(html)
+    assert "(image not downloaded)" in page
+    assert "[ab" in page
+    hidden = [char for char in page if char != "\n" and not char.isprintable()]
+    assert hidden == []
+
+
+def test_a_title_within_a_panels_content_is_not_its_title() -> None:
+    """An untitled panel whose content has an element of class title has no title."""
+    html = (
+        '<div data-macro-name="info"><div class="confluence-information-macro-body">'
+        '<table><tr><td class="title">Cell</td></tr></table></div></div>'
+    )
+    assert markdown(html).splitlines()[0] == "> **Info**"
+
+
+def test_an_attachments_page_comes_from_its_data_attributes_before_its_address() -> None:
+    """The container names the page of an attachment; without the type, the address does."""
+    mirrored = Mirrored(
+        SITE,
+        documents={},
+        files={("2", "att5"): INCLUDED},
+        names={("3", "a.png"): OWN, ("2", "a.png"): INCLUDED},
+    )
+    context = Context("1", HERE, mirrored)
+    attributes = 'data-linked-resource-container-id="2" src="/wiki/download/attachments/3/a.png"'
+    typed = f'<img data-linked-resource-id="5" data-linked-resource-type="attachment" {attributes}>'
+    untyped = f'<img data-linked-resource-id="5" {attributes}>'
+    pandoc = Pandoc.find()
+    assert f"../../{INCLUDED}" in pandoc.markdown(normalise(typed, context))
+    assert f"../../{OWN}" in pandoc.markdown(normalise(untyped, context))
+
+
+def test_an_image_elsewhere_keeps_its_link_whatever_the_schemes_case() -> None:
+    """HTTPS in capitals is still a web address."""
+    page = markdown('<p><img src="HTTPS://other.example.invalid/x.png" alt="far"></p>')
+    assert page.strip() == "[far](HTTPS://other.example.invalid/x.png)"
