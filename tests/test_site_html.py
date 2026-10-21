@@ -267,3 +267,19 @@ def test_a_malformed_address_keeps_its_text_alone() -> None:
     """An address that cannot be parsed is neither followed nor an error."""
     page = markdown('<p><a href="http://[broken/x">broken</a> <img src="http://[x" alt="shot"></p>')
     assert page == "broken shot\n"
+
+
+@pytest.mark.parametrize(
+    ("html", "kept"),
+    [
+        # A body that begins with a control character, given as an entity.
+        ("&#7;Begins oddly<p>then text</p>", "Begins oddly"),
+        # A wrapper whose own class names the part it should hold.
+        ('<div class="panelContent" data-macro-name="panel"><p>Inside</p></div>', "Inside"),
+        # A macro inside a status, which keeps only the status's text.
+        ('<span data-macro-name="status"><span data-macro-name="status">A</span></span>', "A"),
+    ],
+)
+def test_odd_markup_is_converted_without_error(html: str, kept: str) -> None:
+    """Markup found by fuzzing that once raised: its text comes through instead."""
+    assert kept in markdown(html)

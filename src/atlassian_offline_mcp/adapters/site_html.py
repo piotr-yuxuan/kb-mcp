@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, override
 from urllib.parse import parse_qs, urlsplit
 
-from lxml.html import Element, HtmlElement, fragment_fromstring, tostring
+from lxml.html import Element, HtmlElement, document_fromstring, tostring
 
 from atlassian_offline_mcp.domain.mirror_layout import visible
 
@@ -105,6 +105,8 @@ BLOCKS = frozenset(
 # The only class kept: a code block's language, as pandoc reads it.
 LANGUAGE = re.compile(r"language-[A-Za-z0-9_+#.-]+")
 HEADING = re.compile(r"h([1-6])")
+# An XPath test that an element has the class $name, given with a space on each side.
+HAS_CLASS = "contains(concat(' ', normalize-space(@class), ' '), $name)"
 DEEPEST = 6
 
 
@@ -188,9 +190,11 @@ def replace(element: HtmlElement, new: HtmlElement) -> None:
 def part(element: HtmlElement, name: str) -> HtmlElement | None:
     """Return the first element within, in document order, that has this class.
 
-    An element's own parts come before those of the constructs it holds.
+    An element's own parts come before those of the constructs it holds; the element
+    itself is never its own part.
     """
-    return next(iter(element.find_class(name)), None)
+    found = element.xpath(f"descendant::*[{HAS_CLASS}][1]", name=f" {name} ")
+    return found[0] if found else None
 
 
 def new(tag: str, text: str | None = None, *children: HtmlElement | None) -> HtmlElement:
@@ -557,10 +561,15 @@ def normalise(html: str, context: Context) -> str:
     """Return the site's HTML of one body as plain HTML for pandoc.
 
     Characters that no file could hold, such as lone surrogates, go before parsing; the
-    rest of the invisible ones go once parsed, entities included.
+    rest of the invisible ones go once parsed, entities included. The body is parsed as a
+    document's, so that lxml never sets a text it has not cleaned.
     """
-    root = fragment_fromstring(visible(html), create_parent="div")
+    root = document_fromstring(f"<html><body>{visible(html)}</body></html>").body
+    root.tag = "div"
     for path, construct in PASSES:
         for element in root.xpath(path):
-            construct.rewrite(element, context)
+            # An element that an outer construct dropped, such as a macro in a status,
+            # is no longer in the body.
+            if element is root or root in element.iterancestors():
+                construct.rewrite(element, context)
     return tostring(root, encoding="unicode")
