@@ -175,3 +175,14 @@ def test_requests_are_paced() -> None:
     reader.json(Request("/a"))
     reader.json(Request("/b"))
     assert clock.sleeps == [INTERVAL_S]
+
+
+def test_a_path_keeps_its_own_query_beside_the_parameters() -> None:
+    """A next link carries its cursor in its query, which parameters must not replace."""
+    reader, asked = site(httpx.Response(200, json={}), httpx.Response(200, json={}))
+    reader.json(Request("/wiki/api/v2/spaces/1/pages?limit=250&cursor=c2"))
+    reader.json(Request("/wiki/rest/api/user/bulk?limit=50", {"accountId": ["a", "b"]}))
+    assert asked == [
+        f"{SITE}/wiki/api/v2/spaces/1/pages?limit=250&cursor=c2",
+        f"{SITE}/wiki/rest/api/user/bulk?limit=50&accountId=a&accountId=b",
+    ]

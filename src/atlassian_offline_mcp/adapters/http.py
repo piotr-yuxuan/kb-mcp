@@ -91,8 +91,16 @@ class Site:
         return json.loads(self.get(request, MAX_JSON_BYTES))
 
     def file(self, path: str, max_bytes: int) -> bytes:
-        """GET an attached file, through its redirect to Atlassian's media hosts."""
-        return self.get(Request(path), max_bytes)
+        """GET an attached file, through its redirect to Atlassian's media hosts.
+
+        A refusal on the way (a 401 from the media host, a redirect to a host that is not
+        known) fails this file alone: the session was checked when the run began.
+        """
+        try:
+            return self.get(Request(path), max_bytes)
+        except SignInNeededError:
+            message = "refused, or sent to an unknown host"
+            raise SiteError(message) from None
 
     def get(self, request: Request, max_bytes: int) -> bytes:
         """GET a body, retrying throttling, gateway and transport failures four times."""
@@ -119,7 +127,11 @@ class Site:
         if not SITE_PATH.fullmatch(request.path):
             message = "not a site-relative path"
             raise SiteError(message)
-        outgoing = self._http.build_request("GET", request.path, params=request.params)
+        # httpx would drop the path's own query (a next link's cursor) given parameters.
+        url = httpx.URL(request.path)
+        if request.params:
+            url = url.copy_merge_params(request.params)
+        outgoing = self._http.build_request("GET", url)
         for _ in range(MAX_REDIRECTS + 1):
             self._sleep(max(0.0, self._last + INTERVAL_S - self._clock()))
             self._last = self._clock()
