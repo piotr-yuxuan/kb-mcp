@@ -407,3 +407,25 @@ def test_an_image_elsewhere_keeps_its_link_whatever_the_schemes_case() -> None:
     """HTTPS in capitals is still a web address."""
     page = markdown('<p><img src="HTTPS://other.example.invalid/x.png" alt="far"></p>')
     assert page.strip() == "[far](HTTPS://other.example.invalid/x.png)"
+
+
+def test_an_attachment_without_its_page_attribute_takes_the_page_of_its_address() -> None:
+    """An included page's image that names no container is that page's, not the includer's."""
+    mirrored = Mirrored(
+        SITE,
+        documents={},
+        files={},
+        names={("1", "a.png"): OWN, ("2", "a.png"): INCLUDED},
+    )
+    html = (
+        '<img data-linked-resource-id="5" data-linked-resource-type="attachment"'
+        ' src="/wiki/download/attachments/2/a.png">'
+    )
+    page = Pandoc.find().markdown(normalise(html, Context("1", HERE, mirrored)))
+    assert page.strip() == f"![a.png](../../{INCLUDED})"
+
+
+def test_an_alt_text_of_hidden_characters_alone_reads_image() -> None:
+    """A link never has an empty text."""
+    page = markdown('<p><img src="/wiki/download/attachments/9/%E2%80%8B"></p>')
+    assert page.startswith("[image](")

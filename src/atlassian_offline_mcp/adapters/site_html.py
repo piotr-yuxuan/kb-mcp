@@ -447,9 +447,12 @@ class Image(Construct):
         by_id: tuple[str, str] | None = None
         by_name: tuple[str, str] | None = None
         if linked:
-            owner = element.get(LINKED_CONTAINER) or context.owner
+            # What the attributes leave out, the address may give.
+            address_owner = confluence["owner"] if confluence else context.owner
+            owner = element.get(LINKED_CONTAINER) or address_owner
+            address_name = unquote(confluence["name"]) if confluence else ""
             by_id = (owner, ATTACHMENT_PREFIX + linked)
-            by_name = (owner, element.get(LINKED_NAME, ""))
+            by_name = (owner, element.get(LINKED_NAME) or address_name)
         elif confluence:
             by_name = (confluence["owner"], unquote(confluence["name"]))
         elif jira:
@@ -459,7 +462,7 @@ class Image(Construct):
             names.get(by_name) if by_name and by_name[1] else None
         )
         # A name decoded from an address was not in the tree when it was cleaned.
-        alt = one_line(element.get("alt") or (by_name[1] if by_name else None) or "image")
+        alt = one_line(element.get("alt") or (by_name[1] if by_name else "")) or "image"
         if asset is not None:
             image = new("img")
             image.set("src", context.relative(asset))
