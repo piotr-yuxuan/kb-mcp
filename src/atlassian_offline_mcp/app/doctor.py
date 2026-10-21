@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 
 # How many causes to follow to find a certificate error within a connection error.
 CAUSE_DEPTH = 10
+# What a verdict says when the user must sign in again, for the command's exit status.
+SIGN_IN_AGAIN = "sign in again"
 
 
 def pandoc() -> str:
@@ -55,7 +57,7 @@ def session(settings: Settings, site: str) -> list[tuple[str, str]]:
     try:
         cookies = read_cookies(settings.session / COOKIES)
     except OSError, ValueError:
-        return [("session", "none saved: run atlassian-offline-mcp login")]
+        return [("session", f"none saved: {SIGN_IN_AGAIN} with atlassian-offline-mcp login")]
     verdicts = [("session", f"{len(cookies)} cookies saved")]
     with http.client(site, cookies) as client:
         reader = Site(client)
@@ -65,9 +67,9 @@ def session(settings: Settings, site: str) -> list[tuple[str, str]]:
         ):
             try:
                 user = Fields(reader.json(request), "user")
-                verdict = "signed in" if signed_in(user) else "anonymous: sign in again"
+                verdict = "signed in" if signed_in(user) else f"anonymous: {SIGN_IN_AGAIN}"
             except SignInNeededError:
-                verdict = "refused: sign in again"
+                verdict = f"refused: {SIGN_IN_AGAIN}"
             except (RepresentationError, SiteError) as error:
                 verdict = f"no answer ({error})"
             verdicts.append((name, verdict))

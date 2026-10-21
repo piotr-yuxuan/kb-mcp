@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.app.doctor import doctor
+from atlassian_offline_mcp.app.doctor import SIGN_IN_AGAIN, doctor
 from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
 from atlassian_offline_mcp.domain.settings import SettingsError
 
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     import argparse
 
 BAD_SETTINGS = 2
+NOT_SIGNED_IN = 3
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -23,12 +24,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def run(arguments: argparse.Namespace) -> int:
-    """Print each check and its verdict; exit 2 when the settings are refused."""
+    """Print each check and its verdict; exit 2 for refused settings, 3 to sign in again."""
     try:
         settings = settings_of(arguments)
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")
         return BAD_SETTINGS
-    for name, verdict in doctor(settings):
+    verdicts = doctor(settings)
+    for name, verdict in verdicts:
         sys.stdout.write(f"{name}: {verdict}\n")
-    return 0
+    return NOT_SIGNED_IN if any(SIGN_IN_AGAIN in verdict for _, verdict in verdicts) else 0
