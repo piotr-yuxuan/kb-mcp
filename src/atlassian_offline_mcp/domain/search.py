@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from atlassian_offline_mcp.domain.content import ISSUE_KEY
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
     from datetime import datetime
 
     from atlassian_offline_mcp.domain.mirror import FrontMatter
@@ -176,6 +176,13 @@ ID_IN_ADDRESS = re.compile(r"(?:/pages/|[?&]pageId=|/blog/[0-9]{4}/[0-9]{2}/[0-9
 HEADING = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*")
 FENCE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
 NUMBER = re.compile(r"([0-9]+)")
+# The characters of a piece of a section that one vector stands for, at most: under the
+# 512 tokens of the smaller models' window, with the title, in English and French.
+PIECE = 1200
+BLANK_LINE = re.compile(r"\n[ \t]*\n")
+NOT_SPACE = re.compile(r"\S")
+# Reciprocal rank fusion's constant: a document's share of a list is 1 / (FUSION + rank).
+FUSION = 60
 
 
 @dataclass(frozen=True)
@@ -397,3 +404,38 @@ def rank(
         key=lambda path: (0.0 if by_update else -total[path], -updated[path].timestamp(), path),
     )
     return [*first, *rest]
+
+
+def pieces(text: str, limit: int = PIECE) -> list[tuple[int, int]]:
+    """Cut a section's text into pieces of at most ``limit`` characters, as spans.
+
+    A piece ends at the last blank line that fits; a paragraph longer than the limit is
+    cut at its last line break that fits, else its last space, else at the limit. A
+    piece starts at its first character that is not white space, so none is blank.
+    """
+    breaks = [found.end() for found in BLANK_LINE.finditer(text)]
+    spans: list[tuple[int, int]] = []
+    start = 0
+    while found := NOT_SPACE.search(text, start):
+        start = found.start()
+        end = min(start + limit, len(text))
+        if end < len(text):
+            fitting = [cut for cut in breaks if start < cut <= end]
+            # A line break or space just past the limit ends a piece that fits it exactly.
+            line, space = (text.rfind(each, start + 1, end + 1) for each in ("\n", " "))
+            end = fitting[-1] if fitting else next((cut for cut in (line, space) if cut > 0), end)
+        spans.append((start, end))
+        start = end
+    return spans
+
+
+def fuse(rankings: Iterable[Sequence[str]], updated: Mapping[str, datetime]) -> list[str]:
+    """Merge rankings by reciprocal rank fusion: each list gives 1 / (FUSION + rank).
+
+    Ties go to the newest update, then the path; ``updated`` holds every document.
+    """
+    score: dict[str, float] = {}
+    for ranking in rankings:
+        for rank, path in enumerate(ranking, 1):
+            score[path] = score.get(path, 0.0) + 1 / (FUSION + rank)
+    return sorted(score, key=lambda path: (-score[path], -updated[path].timestamp(), path))

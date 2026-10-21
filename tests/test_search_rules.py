@@ -9,7 +9,9 @@ import pytest
 from atlassian_offline_mcp.domain.search import (
     MAX_WORDS,
     Score,
+    fuse,
     identifiers,
+    pieces,
     plan,
     quote,
     rank,
@@ -18,6 +20,8 @@ from atlassian_offline_mcp.domain.search import (
     tree_paths,
 )
 from tests.mirrors import MOMENT, issue, page
+
+LIMIT = 26
 
 
 def test_each_word_is_quoted_and_stop_words_go() -> None:
@@ -182,3 +186,42 @@ def test_ranking_sums_each_expression_once_per_document() -> None:
         "c.md",
     ]
     assert rank(by_word, [], by_update=True)[:1] == ["c.md"]
+
+
+def test_pieces_end_at_the_last_blank_line_that_fits() -> None:
+    """Paragraphs are packed while they fit; white space never starts a piece."""
+    text = "\n\nfirst para\n\nsecond para\n\nthird paragraph here\n"
+    spans = pieces(text, limit=LIMIT)
+    assert [text[start:end].strip() for start, end in spans] == [
+        "first para\n\nsecond para",
+        "third paragraph here",
+    ]
+    assert all(end - start <= LIMIT and not text[start].isspace() for start, end in spans)
+
+
+def test_a_long_paragraph_is_cut_at_a_line_break_then_a_space_then_anywhere() -> None:
+    """Each piece fits the limit, and together they hold every word in order."""
+    lines = "one two\nthree four"
+    assert [lines[a:b] for a, b in pieces(lines, limit=12)] == ["one two", "three four"]
+    words = "alpha beta gamma delta"
+    assert [words[a:b] for a, b in pieces(words, limit=10)] == ["alpha beta", "gamma", "delta"]
+    solid = "x" * 25
+    assert [b - a for a, b in pieces(solid, limit=10)] == [10, 10, 5]
+
+
+def test_a_blank_text_has_no_piece() -> None:
+    """Nothing to embed in white space alone."""
+    assert pieces("") == []
+    assert pieces("  \n\n\t") == []
+
+
+def test_fusion_favours_a_document_that_both_rankings_hold() -> None:
+    """Second in both beats first in one: 2 / 62 is more than 1 / 61."""
+    updated = dict.fromkeys(("a", "b", "c"), MOMENT)
+    assert fuse([["a", "b"], ["c", "b"]], updated)[0] == "b"
+
+
+def test_fusion_ties_go_to_the_newest_then_the_path() -> None:
+    """Equal shares: the document updated last comes first, then by path."""
+    updated = {"a": MOMENT, "b": MOMENT + timedelta(days=1), "c": MOMENT}
+    assert fuse([["a"], ["b"], ["c"]], updated) == ["b", "a", "c"]
