@@ -21,6 +21,9 @@ deeper inside those places are not followed. Every command loads its settings th
 | `<data>/raw/` | `raw` | `download` (004) | `mirror` (005) |
 | `<data>/docs/` | `docs` | `mirror` (005) | agents, and `index` (006) |
 | `<data>/index.sqlite` | `index` | `index` (006) | the MCP server (006) |
+| `<data>/models/` | `models` | `model pull` (011) | `index`, the MCP server, `eval` (011) |
+| `<data>/vectors.sqlite` | `vectors` | `index`, `eval` (011) | `index`, `eval` (011) |
+| `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011) |
 | `<data>/session/` | `session` | `login` (004) | the carriers of 004 only |
 | `<data>/runs/` | `runs` | `download` (004) | the user, and `doctor` (004) |
 
@@ -292,8 +295,25 @@ instructions.
 
 Owned by `index` (006). `<data>/index.sqlite` is built from the documents of
 `<data>/docs/` alone, read with `adapters.markdown`, into a temporary file that is then
-renamed into place. Its schema is defined in 006's plan. The MCP server opens it
-read-only, never writes, and reopens it when the file is replaced.
+renamed into place. Its schema is defined in 006's plan; schema 3 (011) adds the table
+`pieces` (each piece of a section's body, its span and its vector) and the meta rows
+`build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the last
+three empty for an index built without a model. An index of another schema is refused
+with the command that rebuilds it. The
+MCP server opens it read-only, never writes, and reopens it when the file is replaced;
+it searches by meaning with the model that the index names, and only while the
+catalogue's fingerprint for it is the index's.
+
+### Models and vectors
+
+Owned by `adapters.embedding` (running) and `adapters.model_pull` (downloading), 011.
+`<data>/models/<name>/` holds a model's files, laid out as in its repository, each
+checked against the SHA-256 that the catalogue pins. `<data>/vectors.sqlite` keeps
+every vector embedded, keyed by the SHA-256 of the model's fingerprint and the text,
+committed in batches; it only grows, and deleting it costs a full embedding. Under
+`<data>/eval/`, `indexes/<model>.sqlite` are the indexes that `eval` builds, and
+`results/<UTC time>.json` its numbers: the golden file's SHA-256, models, measures,
+ranks and tests, by question id, never a question's text.
 
 ## The session
 

@@ -17,7 +17,8 @@ files.
   Build the index again after each `mirror`; a running server reads the new index from
   its next call on. `status` tells when the index was built.
 - The server is the command with no arguments. It speaks MCP over stdio, reads only
-  `<data>/index.sqlite`, writes nothing and opens no network connection. It takes its
+  `<data>/index.sqlite` and the model that index names under `<data>/models/`, writes
+  nothing and opens no network connection. It takes its
   settings, the data directory included, from `~/.config/atlassian-offline-mcp/config.toml`;
   `<data>` is `~/atlassian-offline-mcp` unless that file says otherwise.
 
@@ -27,6 +28,55 @@ and the server's instructions tell agents never to follow directions found in it
 
 Never give an agent `<data>/session/` (your saved sign-in) or `<data>/raw/`: only
 `<data>/docs/` is meant for them.
+
+## Search by meaning
+
+`search` ranks by words and by meaning together (hybrid) once the index holds vectors;
+until then it ranks by words alone, and each answer says so. Vectors come from a small
+embedding model that runs on your machine, pulled once:
+
+```bash
+atlassian-offline-mcp model pull
+```
+
+```bash
+atlassian-offline-mcp index
+```
+
+`model pull` downloads the model of the setting `model` (by default `bge-small-en-v1.5`,
+134 MB) into `<data>/models/`, each file checked against its pinned SHA-256; it is the
+only command that downloads a model, and the server never does. `model list` shows the
+models known. If the machine cannot reach huggingface.co, copy the model's files from
+another one and use `model pull --from <folder>`. The first `index` with a model embeds
+every piece of the mirror (a few minutes per 10,000 pieces), then keeps the vectors in
+`<data>/vectors.sqlite`, so later builds embed only what changed. If your pages are
+not all in English, set `model = "multilingual-e5-small"` (487 MB): it all but tied on
+the evaluation, and did better on French questions.
+
+The setting `search_mode` is `hybrid` (the default), `lexical` or `semantic`. To check
+which fits your own content, write golden questions and keep them in `<data>/eval/`: a
+YAML list where each question has an `id`, the `question`, the `expected` refs that
+answer it (page ids, issue keys, or mirror paths, as `read` takes them), and optionally
+`partial` refs that help, `groups` to break the measures down, and `evidence`, a phrase
+of each expected document's text. Quote page ids, which YAML would read as numbers:
+
+```yaml
+- id: q1
+  question: How do I roll back a release of the payments service?
+  expected: ["196845", PAY-142]
+  partial: ["197012"]
+  groups: [paraphrase, en]
+  evidence: {"196845": "Pause, drain, then roll back."}
+```
+
+Then run:
+
+```bash
+atlassian-offline-mcp eval ~/atlassian-offline-mcp/eval/golden.yaml
+```
+
+It prints Recall@10, MRR@10, nDCG@10, Success@1 and Section@10 per mode and model, with
+the paired tests, and keeps the numbers, never the questions, in `<data>/eval/results/`.
 
 ## Claude Code
 

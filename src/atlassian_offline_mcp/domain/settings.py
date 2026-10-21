@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
 
 from atlassian_offline_mcp.domain.content import PROJECT_KEY, SPACE_KEY
@@ -13,7 +14,17 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 DEFAULT_DATA_DIR = "~/atlassian-offline-mcp"
-KNOWN_KEYS = frozenset({"site", "data_dir", "spaces", "projects"})
+# The embedding model that indexes by meaning; the catalogue of adapters.embedding names
+# the others. Chosen by plan 011's evaluation, which multilingual-e5-small all but tied,
+# and won on French questions.
+DEFAULT_MODEL = "bge-small-en-v1.5"
+MODEL_NAME = re.compile(r"[a-z0-9][a-z0-9.-]{0,63}")
+# How search ranks: by words, by meaning, or by both fused.
+type SearchMode = Literal["lexical", "semantic", "hybrid"]
+SEARCH_MODES: tuple[SearchMode, ...] = ("lexical", "semantic", "hybrid")
+# Plan 011's evaluation found hybrid better than lexical, and no worse on identifiers.
+DEFAULT_SEARCH_MODE: SearchMode = "hybrid"
+KNOWN_KEYS = frozenset({"site", "data_dir", "spaces", "projects", "model", "search_mode"})
 # Folders that may be synchronised to a cloud, under the home directory or by name.
 SYNCED_UNDER_HOME = (
     Path("Library/Mobile Documents"),
@@ -36,6 +47,8 @@ class Settings:
     data_dir: Path
     spaces: tuple[str, ...] = ()
     projects: tuple[str, ...] = ()
+    model: str = DEFAULT_MODEL
+    search_mode: SearchMode = DEFAULT_SEARCH_MODE
 
     @property
     def raw(self) -> Path:
@@ -53,6 +66,21 @@ class Settings:
         return self.data_dir / "index.sqlite"
 
     @property
+    def models(self) -> Path:
+        """The embedding models pulled, one folder each."""
+        return self.data_dir / "models"
+
+    @property
+    def vectors(self) -> Path:
+        """The vectors embedded so far, kept across index builds."""
+        return self.data_dir / "vectors.sqlite"
+
+    @property
+    def evaluations(self) -> Path:
+        """Golden questions, the indexes of models under evaluation, and their results."""
+        return self.data_dir / "eval"
+
+    @property
     def session(self) -> Path:
         """The browser profile and the saved session, never read by agents."""
         return self.data_dir / "session"
@@ -65,7 +93,16 @@ class Settings:
     @property
     def parts(self) -> tuple[Path, ...]:
         """Every place under the data directory where data is written."""
-        return (self.raw, self.docs, self.index, self.session, self.runs)
+        return (
+            self.raw,
+            self.docs,
+            self.index,
+            self.models,
+            self.vectors,
+            self.evaluations,
+            self.session,
+            self.runs,
+        )
 
 
 def parse_settings(values: Mapping[str, object], home: Path) -> Settings:
@@ -111,8 +148,17 @@ def parse_settings(values: Mapping[str, object], home: Path) -> Settings:
     ):
         message = "projects: a list of project keys"
         raise SettingsError(message)
+    model = values.get("model", DEFAULT_MODEL)
+    if not isinstance(model, str) or not MODEL_NAME.fullmatch(model):
+        message = "model: the name of an embedding model, such as multilingual-e5-small"
+        raise SettingsError(message)
+    given = values.get("search_mode", DEFAULT_SEARCH_MODE)
+    mode = next((each for each in SEARCH_MODES if each == given), None)
+    if mode is None:
+        message = f"search_mode: one of {', '.join(SEARCH_MODES)}"
+        raise SettingsError(message)
     host = f"https://{parts.hostname}" if parts is not None else None
-    return Settings(host, path, tuple(spaces), tuple(projects))
+    return Settings(host, path, tuple(spaces), tuple(projects), model, mode)
 
 
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:

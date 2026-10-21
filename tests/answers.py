@@ -11,7 +11,9 @@ import math
 import re
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.app.indexing import build_index
+from atlassian_offline_mcp.adapters.embedding import load
+from atlassian_offline_mcp.app.indexing import Embedding, build_index
+from atlassian_offline_mcp.app.meaning import Meaning
 from atlassian_offline_mcp.app.tools import Library
 from tests.mirrors import MOMENT, fillers, write
 
@@ -19,6 +21,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from atlassian_offline_mcp.domain.mirror import FrontMatter
+    from atlassian_offline_mcp.domain.settings import SearchMode
 
 OPENING = re.compile(r'<untrusted-reference-data boundary="([0-9a-f]{16})">\n')
 BUDGET = 4_000
@@ -76,11 +79,22 @@ def follow(library: Library, answer: str) -> str | None:
     return getattr(library, name)(**arguments)
 
 
-def built(root: Path, documents: list[tuple[FrontMatter, str | None]]) -> Library:
-    """Write a mirror of lorem fillers and these documents, index it, and serve it."""
+def built(
+    root: Path,
+    documents: list[tuple[FrontMatter, str | None]],
+    model: str | None = None,
+    mode: SearchMode = "lexical",
+) -> Library:
+    """Write a mirror of lorem fillers and these documents, index it, and serve it.
+
+    With ``model``, pulled under ``root / "models"``, the index has vectors, and search
+    ranks in ``mode``.
+    """
     docs = root / "docs"
     fillers(docs)
     for front, body in documents:
         write(docs, front, body)
-    build_index(docs, root / "index.sqlite", MOMENT)
-    return Library(root / "index.sqlite", docs)
+    models = root / "models"
+    embedding = Embedding(load(model, models), root / "vectors.sqlite") if model else None
+    build_index(docs, root / "index.sqlite", MOMENT, embedding)
+    return Library(root / "index.sqlite", docs, Meaning(models), mode)

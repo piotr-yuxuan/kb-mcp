@@ -9,16 +9,20 @@ answered as asked raises ``UnanswerableError``, whose message says what would do
 from __future__ import annotations
 
 import json
+import math
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, TypedDict
 
 from atlassian_offline_mcp.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.app import responses
+from atlassian_offline_mcp.app.meaning import Nearest
 from atlassian_offline_mcp.domain.search import (
     MAX_WORDS,
     Filters,
     Passage,
+    fuse,
     identifiers,
     plan,
     rank,
@@ -31,7 +35,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from atlassian_offline_mcp.adapters.sqlite_index import Reader
-    from atlassian_offline_mcp.domain.search import Entry
+    from atlassian_offline_mcp.app.meaning import Meaning
+    from atlassian_offline_mcp.domain.search import Entry, Plan
+    from atlassian_offline_mcp.domain.settings import SearchMode as Mode
 
 SEARCH_LIMIT = 8
 SEARCH_LIMITS = (1, 50)
@@ -68,8 +74,86 @@ class SearchFilters(TypedDict, total=False):
 SearchFilters.__pydantic_config__ = {"extra": "forbid"}
 
 
+NOT_SET_UP = "this server searches by words alone"
+
+
 class UnanswerableError(Exception):
     """A call that cannot be answered as asked; the message says what would do."""
+
+
+@dataclass(frozen=True)
+class Ranking:
+    """The documents ranked for a query, best first, and how they were ranked."""
+
+    paths: list[str]
+    whole: bool  # every document matching the words is counted
+    meaning: dict[str, tuple[int, int, int]]  # for each document shown by meaning, the
+    # section number of its best piece, and the piece's start and end in the body
+    counted: str = "found"  # what the count line calls the documents counted
+    note: str = ""  # the sentence saying why meaning, though asked for, was not used
+
+
+@dataclass(frozen=True)
+class Asked:
+    """A search as asked: its query and plan, its filters, its order and its mode."""
+
+    query: str
+    planned: Plan
+    filters: Filters
+    by_update: bool
+    mode: Mode
+
+
+def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
+    """Rank the documents for a query in a mode; documents it names by identifier first.
+
+    Lexical: by words, as 006 ranks. Semantic: the nearest by meaning. Hybrid: both,
+    fused by reciprocal rank. Sorted by update, or with no meaning to search, by words,
+    with a note saying why. A document is shown by meaning when that ranks it higher.
+    """
+    planned, filters, by_update = asked.planned, asked.filters, asked.by_update
+    found = [reader.scores(each, filters, every=by_update) for each in planned.expressions]
+    named = [*planned.identifiers.keys, *planned.identifiers.ids]
+    keys, ids = planned.identifiers.keys, planned.identifiers.ids
+    pinned = reader.entries(keys=keys, ids=ids, filters=filters)
+    first = [e.path for e in sorted(pinned, key=lambda e: named.index(e.front.key or e.front.id))]
+    words = rank((one for one, _ in found), first, by_update=by_update)
+    whole = all(every for _, every in found)
+    if asked.mode == "lexical" or by_update:
+        return Ranking(words, whole, {})
+    near = meaning.nearest(reader, asked.query, filters) if meaning else Nearest({}, NOT_SET_UP)
+    if near.reason:
+        note = f" Ranked by words alone: {near.reason}."
+        return Ranking(words, whole, {}, note=note)
+    scores = {path: score for path, (score, *_) in near.found.items()}
+    by_meaning = rank([scores], first, by_update=False)
+    shown = {path: tuple(where) for path, (_, *where) in near.found.items()}
+    if asked.mode == "semantic":
+        return Ranking(by_meaning, whole=True, meaning=shown, counted="nearest in meaning")
+    updated = {path: s.updated for one, _ in found for path, s in one.items()}
+    updated |= {path: score.updated for path, score in scores.items()}
+    # Both lists begin with the documents named; the rest is fused.
+    fused = fuse([words[len(first) :], by_meaning[len(first) :]], updated)
+    # A document that words do not find is ranked by meaning alone: shown by meaning.
+    places = {path: at for at, path in enumerate(words)}
+    higher = [path for at, path in enumerate(by_meaning) if at < places.get(path, math.inf)]
+    by_higher = {path: shown[path] for path in higher if path in shown}
+    return Ranking([*first, *fused], whole, by_higher, counted="found by words or meaning")
+
+
+def passage_of(reader: Reader, entry: Entry, ranked: Ranking, planned: Plan) -> Passage:
+    """Find the section to show for a document: by meaning or by words, as it was ranked.
+
+    A document shown by words opens at its best section for the query's words; one
+    without them, at its start, with a lead that leaves out the title's heading.
+    """
+    if entry.path in ranked.meaning:
+        number, start, end = ranked.meaning[entry.path]
+        lead = reader.text(entry.path, start, min(end, start + 2 * responses.SNIPPET))
+        return Passage(number, reader.heading(entry.path, number), lead)
+    passage = reader.passage(entry.path, planned.match) if planned.words else None
+    lead = "" if passage else reader.text(entry.path, 0, 2 * responses.SNIPPET)
+    return passage or Passage(1, "", lead.partition("\n")[2])
 
 
 def bounded(**values: tuple[str | None, int]) -> None:
@@ -132,13 +216,29 @@ def clamp(value: int, limits: tuple[int, int]) -> int:
     return max(limits[0], min(value, limits[1]))
 
 
+@dataclass(frozen=True)
+class Shown:
+    """A document ranked for a query, with the section a search shows for it."""
+
+    path: str
+    section: int
+    text: str  # the section's text, as the body holds it
+
+
 class Library:
     """The four tools, over the index at one path."""
 
-    def __init__(self, index: Path, docs: Path) -> None:
-        """Answer from the index at ``index``, built from the mirror at ``docs``."""
+    def __init__(
+        self, index: Path, docs: Path, meaning: Meaning | None = None, mode: Mode = "lexical"
+    ) -> None:
+        """Answer from the index at ``index``, built from the mirror at ``docs``.
+
+        Search ranks in ``mode``; by meaning, through ``meaning``, when it is given.
+        """
         self._index = index
         self._docs = docs
+        self._meaning = meaning
+        self._mode = mode
 
     @contextmanager
     def _reading(self) -> Iterator[Reader]:
@@ -188,26 +288,18 @@ class Library:
             )
             if not planned.words and not by_update:
                 return responses.answer(NO_WORDS)
+            ranked = Ranking([], whole=True, meaning={})
             if planned.words:
-                found = [reader.scores(e, narrowed, every=by_update) for e in planned.expressions]
-                named = [*planned.identifiers.keys, *planned.identifiers.ids]
-                keys, ids = planned.identifiers.keys, planned.identifiers.ids
-                pinned = reader.entries(keys=keys, ids=ids, filters=narrowed)
-                pinned.sort(key=lambda entry: named.index(entry.front.key or entry.front.id))
-                order = rank(
-                    (one for one, _ in found), [e.path for e in pinned], by_update=by_update
-                )
-                total, whole = len(order), all(every for _, every in found)
-                paths = order[offset : offset + size]
+                asked = Asked(query, planned, narrowed, by_update, self._mode)
+                ranked = ranking(reader, self._meaning, asked)
+                total, whole = len(ranked.paths), ranked.whole
+                paths = ranked.paths[offset : offset + size]
                 shown = sorted(reader.entries(paths=paths), key=lambda e: paths.index(e.path))
             else:
                 (total, shown), whole = reader.recent(narrowed, offset, size), True
             items = []
             for number, entry in enumerate(shown, offset + 1):
-                passage = reader.passage(entry.path, planned.match) if planned.words else None
-                # A body starts with its title's heading, which the lead leaves out.
-                lead = "" if passage else reader.text(entry.path, 0, 2 * responses.SNIPPET)
-                passage = passage or Passage(1, "", lead.partition("\n")[2])
+                passage = passage_of(reader, entry, ranked, planned)
                 ref = entry.front.key or entry.front.id
                 opening = responses.call(self.read, ref=ref, section=passage.number)
                 items.append(responses.hit(number, entry, passage, opening))
@@ -218,13 +310,38 @@ class Library:
                 self.search, query=query, filters=filters, sort=sort, limit=limit, cursor=after
             )
 
-        allowed = responses.budget(limit, SEARCH_LIMIT)
+        # A note on falling back to words lengthens the header: the hits make room for it.
+        allowed = responses.budget(limit, SEARCH_LIMIT) - responses.tokens(ranked.note)
         count, footer = responses.page(items, total - offset, allowed, more)
-        counted = f"Documents found: {total if whole else f'at least {total}'}"
-        header = f"{counted}; {responses.span(offset, count, built_at)}"
+        counted = f"Documents {ranked.counted}: {total if whole else f'at least {total}'}"
+        header = f"{counted}; {responses.span(offset, count, built_at)}{ranked.note}"
         if planned.dropped:
             header += f" Only the first {MAX_WORDS} words of the query were searched."
         return responses.answer(header, "\n".join(items[:count]), footer)
+
+    def resolve(self, ref: str) -> str | None:
+        """Find a document's path by its id, key, address or path, as read does."""
+        with self._reading() as reader:
+            found = self._find(reader, ref)
+        return None if found is None else found.path
+
+    def ranked(self, query: str, mode: Mode, limit: int = SEARCH_LIMIT) -> tuple[list[Shown], str]:
+        """Rank documents for a query as search does, in a mode, for an evaluation.
+
+        Give the first ``limit``, each with the section that search shows for it, and
+        the note saying why meaning was not used, if it was asked for and was not.
+        """
+        planned = plan(query)
+        with self._reading() as reader:
+            asked = Asked(query, planned, Filters(), by_update=False, mode=mode)
+            ranked = ranking(reader, self._meaning, asked)
+            entries = {entry.path: entry for entry in reader.entries(paths=ranked.paths[:limit])}
+            shown = []
+            for path in ranked.paths[:limit]:
+                number = passage_of(reader, entries[path], ranked, planned).number
+                start, end = reader.bounds(path)[number - 1]
+                shown.append(Shown(path, number, reader.text(path, start, end)))
+        return shown, ranked.note
 
     def read(
         self,

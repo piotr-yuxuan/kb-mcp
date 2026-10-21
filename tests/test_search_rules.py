@@ -9,7 +9,10 @@ import pytest
 from atlassian_offline_mcp.domain.search import (
     MAX_WORDS,
     Score,
+    fuse,
     identifiers,
+    passages,
+    pieces,
     plan,
     quote,
     rank,
@@ -18,6 +21,10 @@ from atlassian_offline_mcp.domain.search import (
     tree_paths,
 )
 from tests.mirrors import MOMENT, issue, page
+
+LIMIT = 26
+# The plan's length of a piece, in characters.
+LONGEST = 1200
 
 
 def test_each_word_is_quoted_and_stop_words_go() -> None:
@@ -182,3 +189,95 @@ def test_ranking_sums_each_expression_once_per_document() -> None:
         "c.md",
     ]
     assert rank(by_word, [], by_update=True)[:1] == ["c.md"]
+
+
+def test_pieces_end_at_the_last_blank_line_that_fits() -> None:
+    """Paragraphs are packed while they fit; white space never starts a piece."""
+    text = "\n\nfirst para\n\nsecond para\n\nthird paragraph here\n"
+    spans = pieces(text, limit=LIMIT)
+    assert [text[start:end].strip() for start, end in spans] == [
+        "first para\n\nsecond para",
+        "third paragraph here",
+    ]
+    assert all(end - start <= LIMIT and not text[start].isspace() for start, end in spans)
+
+
+def test_a_long_paragraph_is_cut_at_a_line_break_then_a_space_then_anywhere() -> None:
+    """Each piece fits the limit, and together they hold every word in order."""
+    lines = "one two\nthree four"
+    assert [lines[a:b] for a, b in pieces(lines, limit=12)] == ["one two", "three four"]
+    words = "alpha beta gamma delta"
+    assert [words[a:b] for a, b in pieces(words, limit=10)] == ["alpha beta", "gamma", "delta"]
+    solid = "x" * 25
+    assert [b - a for a, b in pieces(solid, limit=10)] == [10, 10, 5]
+
+
+def test_a_blank_line_beyond_the_limit_ends_no_piece_before_it() -> None:
+    """Only a blank line within the limit can end a piece; a later one waits its turn."""
+    text = "one two three four five six\n\nseven"
+    spans = pieces(text, limit=10)
+    assert [text[a:b].strip() for a, b in spans] == ["one two", "three four", "five six", "seven"]
+
+
+def test_a_piece_holds_at_most_1200_characters_by_default() -> None:
+    """The plan's limit, below 512 tokens of the smaller models with the title."""
+    text = "word " * 600
+    first_start, first_end = pieces(text)[0]
+    assert LONGEST - 10 < first_end - first_start <= LONGEST
+
+
+def test_a_blank_text_has_no_piece() -> None:
+    """Nothing to embed in white space alone."""
+    assert pieces("") == []
+    assert pieces("  \n\n\t") == []
+
+
+def both_at(rank: int) -> list[str]:
+    """Fuse two lists that each hold "both" at ``rank``, after a document of their own."""
+    others = [f"x{n}" for n in range(2 * rank)]
+    one = ["a", *others[: rank - 2], "both"]
+    two = ["b", *others[rank - 2 : 2 * rank - 4], "both"]
+    return fuse([one, two], dict.fromkeys(["a", "b", "both", *others], MOMENT))
+
+
+def test_fusion_takes_k_at_60() -> None:
+    """2 / (60 + r) against 1 / 61: rank 61 in both lists beats first in one, 62 ties.
+
+    A tie goes to the path, "a" before "both". So k is 60: with k = 59 rank 61 would
+    tie and lose, with k = 61 rank 62 would win.
+    """
+    assert both_at(61)[0] == "both"
+    assert both_at(62)[0] == "a"
+
+
+def test_fusion_ties_go_to_the_newest_then_the_path() -> None:
+    """Equal shares: the document updated last comes first, then by path."""
+    updated = {"a": MOMENT, "b": MOMENT + timedelta(days=1), "c": MOMENT}
+    assert fuse([["a"], ["b"], ["c"]], updated) == ["b", "a", "c"]
+
+
+def test_each_piece_is_embedded_with_its_title_and_heading() -> None:
+    """The title, cut, then the heading unless it is the title, then the piece's text."""
+    title = "T" * 250
+    cut = sections(f"# {title}\n\nFirst.\n\n## Second\n\nMore.\n\n## Empty\n")
+    found = passages(title, cut)
+    assert [(index, text) for index, _, _, text in found] == [
+        (0, f"{'T' * 200}\nFirst."),
+        (1, f"{'T' * 200}\nSecond\nMore."),
+    ]
+    index, start, end, _ = found[1]
+    assert cut[index].body[start:end].strip() == "More."
+
+
+def test_a_blank_line_ending_right_at_the_limit_ends_the_piece() -> None:
+    """The limit counts the blank line in: a piece ends after it, exactly at the limit."""
+    assert pieces("aaaa\n\nbbb\n\ncc", limit=11) == [(0, 11), (11, 13)]
+
+
+def test_a_paragraph_is_kept_whole_rather_than_cut_at_a_line_break() -> None:
+    """The blank line that fits ends the piece; the next paragraph's line break does not."""
+    text = "First paragraph.\n\nSecond paragraph, line one\nline two continues"
+    assert [text[a:b].strip() for a, b in pieces(text, limit=50)] == [
+        "First paragraph.",
+        "Second paragraph, line one\nline two continues",
+    ]

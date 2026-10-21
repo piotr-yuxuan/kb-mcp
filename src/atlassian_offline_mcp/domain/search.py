@@ -7,17 +7,22 @@ which order a space or a project is browsed. Nothing here reads a file or the in
 
 from __future__ import annotations
 
+import bisect
 import re
 import string
 import unicodedata
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from atlassian_offline_mcp.domain.content import ISSUE_KEY
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Collection, Iterable, Mapping, Sequence
     from datetime import datetime
+
+    from numpy.typing import NDArray
 
     from atlassian_offline_mcp.domain.mirror import FrontMatter
 
@@ -176,6 +181,15 @@ ID_IN_ADDRESS = re.compile(r"(?:/pages/|[?&]pageId=|/blog/[0-9]{4}/[0-9]{2}/[0-9
 HEADING = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*")
 FENCE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
 NUMBER = re.compile(r"([0-9]+)")
+# The characters of a piece of a section that one vector stands for, at most: under the
+# 512 tokens of the smaller models' window, with the title, in English and French.
+PIECE = 1200
+BLANK_LINE = re.compile(r"\n[ \t]*\n")
+NOT_SPACE = re.compile(r"\S")
+# Reciprocal rank fusion's constant: a document's share of a list is 1 / (FUSION + rank).
+FUSION = 60
+# Characters of a document's title that each embedded piece begins with.
+EMBEDDED_TITLE = 200
 
 
 @dataclass(frozen=True)
@@ -270,6 +284,54 @@ class Summary:
     projects: dict[str, int]
     sections: int
     newest_fetch: datetime | None
+    model: str | None = None  # the model of the vectors, if any
+    pieces: int = 0
+
+
+@dataclass(frozen=True)
+class Embedded:
+    """The model that embedded an index's pieces, as the index records it."""
+
+    model: str
+    fingerprint: str
+    dimensions: int
+
+
+@dataclass(frozen=True, eq=False)
+class Pieces:
+    """Every piece of an index with its unit vector: what a search by meaning looks through."""
+
+    documents: tuple[int, ...]  # each piece's document, by rowid
+    paths: Mapping[int, str]  # each document's path, by rowid
+    updated: Mapping[str, datetime]  # each document's update, by path
+    sections: tuple[int, ...]  # each piece's section number
+    offsets: tuple[int, ...]  # where each piece starts in its document's body
+    ends: tuple[int, ...]  # where each piece ends in its document's body
+    matrix: NDArray[np.float32]  # one row per piece
+
+    def nearest(
+        self, query: NDArray[np.float32], kept: Collection[int] | None, limit: int
+    ) -> dict[str, tuple[Score, int]]:
+        """Score the documents nearest a query by their best piece, at most ``limit``.
+
+        Only the documents in ``kept`` count, when it is given. Each path comes with its
+        score, the cosine of its best piece, and that piece's index. Ties, as between
+        documents of one text, go to the newest update, then the path, before the cut.
+        """
+        best: dict[str, int] = {}  # each document's best piece
+        similarity = self.matrix @ query.reshape(-1) if self.documents else np.empty(0)
+        for index in np.argsort(-similarity, kind="stable"):
+            document = self.documents[index]
+            if kept is None or document in kept:
+                best.setdefault(self.paths[document], int(index))
+        chosen = sorted(
+            best.items(),
+            key=lambda item: (-similarity[item[1]], -self.updated[item[0]].timestamp(), item[0]),
+        )[:limit]
+        return {
+            path: (Score(float(similarity[index]), self.updated[path]), index)
+            for path, index in chosen
+        }
 
 
 def quote(text: str) -> str:
@@ -397,3 +459,60 @@ def rank(
         key=lambda path: (0.0 if by_update else -total[path], -updated[path].timestamp(), path),
     )
     return [*first, *rest]
+
+
+def pieces(text: str, limit: int = PIECE) -> list[tuple[int, int]]:
+    """Cut a section's text into pieces of at most ``limit`` characters, as spans.
+
+    A piece ends at the last blank line that fits; a paragraph longer than the limit is
+    cut at its last line break that fits, else its last space, else at the limit. A
+    piece starts at its first character that is not white space, so none is blank.
+    """
+    breaks = [found.end() for found in BLANK_LINE.finditer(text)]
+    spans: list[tuple[int, int]] = []
+    start = 0
+    while found := NOT_SPACE.search(text, start):
+        start = found.start()
+        end = min(start + limit, len(text))
+        if end < len(text):
+            # The last blank line that fits, found by halves: a long section stays linear.
+            at = bisect.bisect_right(breaks, end) - 1
+            fitting = breaks[at] if at >= 0 else 0
+            # A line break or space just past the limit ends a piece that fits it exactly.
+            line, space = (text.rfind(each, start + 1, end + 1) for each in ("\n", " "))
+            cuts = (fitting, line, space) if fitting > start else (line, space)
+            end = next((cut for cut in cuts if cut > start), end)
+        spans.append((start, end))
+        start = end
+    return spans
+
+
+def passages(title: str, cut: Sequence[Section]) -> list[tuple[int, int, int, str]]:
+    """Give the text to embed for each piece of a document's sections.
+
+    Each is the section's index in ``cut``, the piece's span in the section's body (its
+    heading line aside), and the text: the title (cut to EMBEDDED_TITLE characters), the
+    section's heading when it is not the title, and the piece, one per line. A section
+    without a body has no piece.
+    """
+    found: list[tuple[int, int, int, str]] = []
+    for index, section in enumerate(cut):
+        heading = section.heading if section.heading != title else ""
+        found += [
+            (index, start, end, "\n".join(line for line in lines if line))
+            for start, end in pieces(section.body)
+            for lines in [(title[:EMBEDDED_TITLE], heading, section.body[start:end].strip())]
+        ]
+    return found
+
+
+def fuse(rankings: Iterable[Sequence[str]], updated: Mapping[str, datetime]) -> list[str]:
+    """Merge rankings by reciprocal rank fusion: each list gives 1 / (FUSION + rank).
+
+    Ties go to the newest update, then the path; ``updated`` holds every document.
+    """
+    score: dict[str, float] = {}
+    for ranking in rankings:
+        for rank, path in enumerate(ranking, 1):
+            score[path] = score.get(path, 0.0) + 1 / (FUSION + rank)
+    return sorted(score, key=lambda path: (-score[path], -updated[path].timestamp(), path))

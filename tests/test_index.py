@@ -49,7 +49,9 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
     path = write(data / "docs", front, BODY)
     write(data / "docs", issue("PROJ-1", "An issue"))
     status, out, err = index(data, capsys)
-    assert (status, err) == (0, "")
+    assert status == 0
+    off = "search by meaning off: bge-small-en-v1.5: not pulled; atlassian-offline-mcp model"
+    assert err.startswith(off)
     assert "indexed 2 documents (issue: 1, page: 1)" in out
     with reading(data / "index.sqlite") as reader:
         (entry,) = reader.entries(paths=[path])
@@ -186,3 +188,21 @@ def test_a_new_index_is_read_from_the_next_reading(data: Path) -> None:
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with reading(data / "index.sqlite") as reader:
         assert reader.summary().spaces == {"ENG": 1, "OPS": 1}
+
+
+@pytest.mark.parametrize("schema", ["1", "2"])
+def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
+    data: Path, schema: str
+) -> None:
+    """Plan 006's index, or one built before the build id: never half read."""
+    write(data / "docs", page("196845", "Kafka"), BODY)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    with sqlite3.connect(data / "index.sqlite") as connection:
+        connection.execute("UPDATE meta SET value = ? WHERE name = 'schema'", (schema,))
+        connection.execute("DELETE FROM meta WHERE name = 'build'")
+    connection.close()
+    refused = pytest.raises(
+        UnavailableIndexError, match="build it with `atlassian-offline-mcp index`"
+    )
+    with refused, reading(data / "index.sqlite"):
+        pass

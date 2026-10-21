@@ -216,6 +216,11 @@ def status(summary: Summary, docs: Path) -> str:
     lines = [
         f"built: {stamp(summary.built_at)}",
         f"documents: {counts(summary.types)}; sections: {summary.sections}",
+        (
+            f"search by meaning: {summary.model}, {summary.pieces} pieces"
+            if summary.model
+            else "search by meaning: off, the index holds no vectors"
+        ),
         f"spaces: {counts(summary.spaces)}",
         f"projects: {counts(summary.projects)}",
         f"files skipped at build: {summary.skipped}",
