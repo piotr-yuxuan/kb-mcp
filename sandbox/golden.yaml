@@ -829,13 +829,13 @@
   distractors: []
 
 - id: q067
-  question: "Is there a product brief explaining the dark theme for Merchant Hub?"
+  question: "How many Merchant Hub pages should the dark theme cover by the end of 2026?"
   overlap: keyword
   lang: en
   expected: [product/brief-dark-mode]
-  partial: [jira/dark-mode-dashboard, ENG-26, design/theming]
+  partial: [product/okrs-2026-q4, jira/dark-mode-dashboard, ENG-26, design/theming]
   evidence:
-    product/brief-dark-mode: "One-page brief. Product: Linnea Ashdown."
+    product/brief-dark-mode: "The twenty most visited Hub pages, in order of traffic."
   outdated: []
   traps: []
   distractors: []
@@ -961,7 +961,7 @@
   distractors: [data/backfills]
 
 - id: q078
-  question: "Who leads the ENG-20 backfill tooling, and which limits come first?"
+  question: "Who leads the ENG-20 backfill tooling?"
   overlap: identifier
   lang: en
   expected: [ENG-20]
