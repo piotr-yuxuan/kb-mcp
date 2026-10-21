@@ -7,8 +7,13 @@ models run only in the opt-in test at the end.
 from __future__ import annotations
 
 import hashlib
+import multiprocessing
 import os
+import socket
+import ssl
+import threading
 import time
+from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -16,6 +21,7 @@ from typing import TYPE_CHECKING, Literal
 import httpx
 import numpy as np
 import pytest
+import truststore
 
 from atlassian_offline_mcp.adapters import embedding, model_pull
 from atlassian_offline_mcp.adapters.embedding import (
@@ -37,7 +43,7 @@ from atlassian_offline_mcp.adapters.model_pull import (
     pull,
 )
 from atlassian_offline_mcp.cli import main
-from tests.tiny_model import DECODER, DIMENSIONS, ENCODER, registered
+from tests.tiny_model import DECODER, DIMENSIONS, ENCODER, entry, registered, tiny
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -55,6 +61,12 @@ REQUESTS = 6
 READS = 2
 # Seconds within which a file past its deadline of half a second is given up.
 GIVEN_UP_S = 3
+# A port of this machine that nothing listens on, standing for the hub; how long the
+# stand-in proxy waits for the client.
+CLOSED = "127.0.0.2:9"
+LISTENED_S = 10
+# Seconds to watch for onnxruntime's telemetry: it first sends about nine after import.
+TELEMETRY_S = 12
 # Real models, pulled beforehand, for the opt-in test: a folder of model folders.
 MODELS = os.environ.get("ATLASSIAN_OFFLINE_MCP_MODELS")
 
@@ -366,7 +378,11 @@ def test_a_pulled_model_embeds_by_meaning(name: str) -> None:
 def test_pull_gives_up_a_file_trickled_in_past_its_deadline(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A byte at a time, as a scanning proxy sends it: each read is checked, not each MiB."""
+    """A byte at a time, as a scanning proxy sends it: each read is checked, not each MiB.
+
+    The file is pinned far larger than the trickle can reach, so that only the deadline
+    can end it.
+    """
     monkeypatch.setattr(model_pull, "FILE_DEADLINE_S", 0.5)
     began = time.monotonic()
 
@@ -379,6 +395,81 @@ def test_pull_gives_up_a_file_trickled_in_past_its_deadline(
     def slow(_: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=trickle())
 
+    large = replace(MODEL, graph=replace(MODEL.graph, size=10**9))
     with pytest.raises(ModelError, match="larger or slower than pinned"):
-        pull(MODEL, tmp_path, download_client(httpx.MockTransport(slow)))
+        pull(large, tmp_path, download_client(httpx.MockTransport(slow)))
     assert time.monotonic() - began < GIVEN_UP_S
+
+
+def test_the_client_goes_through_the_proxy_and_the_os_trust_store(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """On a managed network, TLS is inspected and a proxy set: the client asks the proxy, trusting the OS.
+
+    A listener on this machine stands for the proxy, and the hub is a closed port of this
+    machine: a client that ignored the proxy would fail here at once, never reaching out.
+    """
+    asked: list[bytes] = []
+    monkeypatch.setattr(model_pull, "HUB", f"https://{CLOSED}")
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    with socket.create_server(("127.0.0.1", 0)) as server:
+        server.settimeout(LISTENED_S)
+
+        def listen() -> None:
+            with suppress(TimeoutError), server.accept()[0] as connection:
+                asked.append(connection.recv(1024))
+
+        thread = threading.Thread(target=listen, daemon=True)
+        thread.start()
+        monkeypatch.setenv("HTTPS_PROXY", f"http://127.0.0.1:{server.getsockname()[1]}")
+        contexts: list[object] = []
+
+        class Recorded(truststore.SSLContext):
+            def __init__(self, protocol: int) -> None:
+                contexts.append(protocol)
+                super().__init__(protocol)
+
+        monkeypatch.setattr(model_pull.truststore, "SSLContext", Recorded)
+        with pytest.raises(ModelError), download_client() as client:
+            pull(MODEL, tmp_path, client)
+        thread.join(timeout=LISTENED_S)
+    assert asked
+    assert asked[0].startswith(f"CONNECT {CLOSED}".encode())
+    assert contexts == [ssl.PROTOCOL_TLS_CLIENT]
+
+
+def run_tiny_and_wait(models: str) -> None:
+    """In a child process: load the tiny model, embed a text, and stay as telemetry would."""
+    CATALOGUE["tiny"] = entry(Path(models))
+    load("tiny", Path(models)).documents(["undo the payout"])
+    time.sleep(TELEMETRY_S)
+
+
+def test_running_a_model_sends_no_telemetry(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """The onnxruntime library sends telemetry some seconds after its import, unless told not.
+
+    A fresh process, whose every proxy is a listener on this machine, loads and runs the
+    tiny model, with the switch set the other way in its environment: nothing comes to
+    the listener in the seconds that onnxruntime takes to send. Were it to send, it would
+    reach the listener, never the network.
+    """
+    tiny(tmp_path)
+    with socket.create_server(("127.0.0.1", 0)) as server:
+        server.settimeout(TELEMETRY_S)
+        proxy = f"http://127.0.0.1:{server.getsockname()[1]}"
+        for name in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy"):
+            monkeypatch.setenv(name, proxy)
+        for name in ("NO_PROXY", "no_proxy"):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("ORT_DISABLE_TELEMETRY", "0")
+        child = multiprocessing.get_context("spawn").Process(
+            target=run_tiny_and_wait, args=(str(tmp_path),)
+        )
+        child.start()
+        try:
+            with pytest.raises(TimeoutError):
+                server.accept()
+        finally:
+            child.kill()
+            child.join()
