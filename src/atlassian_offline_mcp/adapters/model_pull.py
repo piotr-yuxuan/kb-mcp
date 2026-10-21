@@ -32,11 +32,11 @@ READ_TIMEOUT_S = 60
 MAX_REDIRECTS = 5
 
 
-def download_client() -> httpx.Client:
+def download_client(transport: httpx.BaseTransport | None = None) -> httpx.Client:
     """Return a client for the hub: the OS trust store, https only, few redirects.
 
     The hub sends files from a content network, hence redirects; the proxy, if any,
-    comes from the environment.
+    comes from the environment. ``transport`` replaces the network, for tests.
     """
     return httpx.Client(
         verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT),
@@ -44,6 +44,7 @@ def download_client() -> httpx.Client:
         follow_redirects=True,
         max_redirects=MAX_REDIRECTS,
         event_hooks={"request": [refuse_plain_http]},
+        transport=transport,
     )
 
 

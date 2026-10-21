@@ -16,8 +16,10 @@ import httpx
 import numpy as np
 import pytest
 
+from atlassian_offline_mcp.adapters import model_pull
 from atlassian_offline_mcp.adapters.embedding import (
     CATALOGUE,
+    CHUNK_BYTES,
     MAX_TOKENS,
     File,
     Model,
@@ -26,12 +28,19 @@ from atlassian_offline_mcp.adapters.embedding import (
     load,
     pulled,
 )
-from atlassian_offline_mcp.adapters.http import refuse_plain_http
-from atlassian_offline_mcp.adapters.model_pull import HUB, copy_from, pull
+from atlassian_offline_mcp.adapters.model_pull import (
+    HUB,
+    MAX_REDIRECTS,
+    copy_from,
+    download_client,
+    pull,
+)
 from atlassian_offline_mcp.cli import main
 from tests.tiny_model import DECODER, DIMENSIONS, ENCODER, registered
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
@@ -39,6 +48,10 @@ GRAPH = b"a graph, as bytes"
 TOKENIZER = b'{"a": "tokeniser"}'
 REFUSED = 2
 SAME = 0.9999
+# Requests that a hub redirecting for ever gets: the first, then MAX_REDIRECTS.
+REQUESTS = 6
+# Chunks read of an endless file pinned smaller than one chunk: one, and one ahead.
+READS = 2
 # Real models, pulled beforehand, for the opt-in test: a folder of model folders.
 MODELS = os.environ.get("ATLASSIAN_OFFLINE_MCP_MODELS")
 
@@ -86,12 +99,8 @@ class Hub:
         return httpx.Response(404)
 
     def client(self) -> httpx.Client:
-        """Return a client over this hub, refusing plain http as the real one does."""
-        return httpx.Client(
-            transport=httpx.MockTransport(self.handle),
-            follow_redirects=True,
-            event_hooks={"request": [refuse_plain_http]},
-        )
+        """Return the client that ``model pull`` uses, over this hub instead of the network."""
+        return download_client(httpx.MockTransport(self.handle))
 
 
 def files_in(folder: Path) -> list[str]:
@@ -227,6 +236,58 @@ def test_pull_refuses_a_redirect_to_plain_http_and_a_file_not_served(tmp_path: P
     with pytest.raises(ModelError, match=r"tokenizer\.json: the hub answered 404"):
         pull(MODEL, tmp_path, Hub({"onnx/model.onnx": GRAPH}).client())
     assert files_in(tmp_path) == ["model.onnx"]
+
+
+def test_pull_follows_a_few_redirects_and_no_more(tmp_path: Path) -> None:
+    """A hub that redirects for ever is given up, after MAX_REDIRECTS (5) redirects."""
+    asked: list[str] = []
+
+    def endless(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        return httpx.Response(302, headers={"location": f"https://files.example/{len(asked)}"})
+
+    with pytest.raises(ModelError, match="TooManyRedirects"):
+        pull(MODEL, tmp_path, download_client(httpx.MockTransport(endless)))
+    assert len(asked) == MAX_REDIRECTS + 1 == REQUESTS
+    assert files_in(tmp_path) == []
+
+
+def test_pull_stops_reading_a_file_past_its_pinned_size(tmp_path: Path) -> None:
+    """An endless body is cut short at the first chunk beyond the pin, not read to its end."""
+    sent: list[int] = []
+
+    def chunks() -> Iterator[bytes]:
+        while True:
+            sent.append(1)
+            assert len(sent) <= READS, "read past the pinned size"
+            yield b"x" * CHUNK_BYTES
+
+    def endless(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=chunks())
+
+    with pytest.raises(ModelError, match="larger or slower than pinned"):
+        pull(MODEL, tmp_path, download_client(httpx.MockTransport(endless)))
+    assert files_in(tmp_path) == []
+
+
+def test_pull_gives_up_a_file_past_its_deadline(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """However small, a file that comes too slowly is given up, and nothing is left."""
+    monkeypatch.setattr(model_pull, "FILE_DEADLINE_S", -1)
+    with pytest.raises(ModelError, match="larger or slower than pinned"):
+        pull(MODEL, tmp_path, Hub(SERVED).client())
+    assert files_in(tmp_path) == []
+
+
+def test_files_from_a_folder_replace_one_in_place_of_another_hash(tmp_path: Path) -> None:
+    """A file of the right size but not the pinned one is copied again from the folder."""
+    source = tmp_path / "source"
+    (source / "onnx").mkdir(parents=True)
+    (source / "onnx" / "model.onnx").write_bytes(GRAPH)
+    (source / "tokenizer.json").write_bytes(TOKENIZER)
+    copy_from(MODEL, tmp_path / "models", source)
+    (tmp_path / "models" / "pinned" / "tokenizer.json").write_bytes(b'{"a": "tokenizer"}')
+    assert copy_from(MODEL, tmp_path / "models", source) == ["tokenizer.json"]
+    assert (tmp_path / "models" / "pinned" / "tokenizer.json").read_bytes() == TOKENIZER
 
 
 def test_files_from_a_folder_are_checked_as_pulled_ones(tmp_path: Path) -> None:
