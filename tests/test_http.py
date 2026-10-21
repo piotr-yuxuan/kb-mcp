@@ -11,7 +11,7 @@ from atlassian_offline_mcp.adapters.http import (
     INTERVAL_S,
     RETRIES,
     Request,
-    SignInNeeded,
+    SignInNeededError,
     Site,
     SiteError,
 )
@@ -63,7 +63,7 @@ def test_a_json_response_is_read_with_its_parameters() -> None:
 def test_a_401_means_sign_in_is_needed() -> None:
     """An expired session stops the run rather than failing one document."""
     reader, _ = site(httpx.Response(401))
-    with pytest.raises(SignInNeeded):
+    with pytest.raises(SignInNeededError):
         reader.json(Request("/rest/api/3/myself"))
 
 
@@ -72,7 +72,7 @@ def test_a_redirect_to_the_identity_provider_means_sign_in_is_needed() -> None:
     reader, asked = site(
         httpx.Response(302, headers={"location": "https://id.atlassian.com/login?continue=x"})
     )
-    with pytest.raises(SignInNeeded):
+    with pytest.raises(SignInNeededError):
         reader.json(Request("/wiki/api/v2/spaces"))
     assert len(asked) == 1
 

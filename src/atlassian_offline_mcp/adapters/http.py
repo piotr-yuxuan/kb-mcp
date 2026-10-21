@@ -40,7 +40,7 @@ class Request:
     params: Mapping[str, str | list[str]] = field(default_factory=dict)
 
 
-class SignInNeeded(Exception):  # noqa: N818 a state of the session, not a fault
+class SignInNeededError(Exception):
     """The session no longer opens the site: the user must sign in again."""
 
 
@@ -126,7 +126,7 @@ class Site:
             response = self._http.send(outgoing, stream=True)
             try:
                 if response.status_code == HTTP_UNAUTHORISED:
-                    raise SignInNeeded
+                    raise SignInNeededError
                 if not response.has_redirect_location:
                     body = bytearray()
                     for chunk in response.iter_bytes():
@@ -142,6 +142,6 @@ class Site:
             if host != self._http.base_url.host and not any(
                 host == media or host.endswith(f".{media}") for media in MEDIA_HOSTS
             ):
-                raise SignInNeeded
+                raise SignInNeededError
         message = "too many redirects"
         raise SiteError(message)
