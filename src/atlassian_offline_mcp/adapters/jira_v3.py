@@ -10,13 +10,21 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
-from atlassian_offline_mcp.adapters.fields import Fields
-from atlassian_offline_mcp.domain.content import Attachment, Comment, Issue, Person, Snapshot
+from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
+from atlassian_offline_mcp.domain.content import (
+    Attachment,
+    Comment,
+    Issue,
+    Person,
+    Snapshot,
+    time_revision,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-# The fields that ``issue`` reads; a search that asks for these yields whole issues.
+# The fields that ``issue`` reads: a search that asks for them lists issues fully
+# enough to decide which to fetch, but holds no rendered body.
 ISSUE_FIELDS = (
     "summary,status,issuetype,project,labels,created,updated,reporter,assignee,parent,attachment"
 )
@@ -27,6 +35,9 @@ ISSUE = "issue.json"
 # The comments of every page of GET /rest/api/3/issue/{id}/comment?expand=renderedBody.
 COMMENTS = "comments.json"
 
+# Where an attachment's file is on the site, as the path of its content address.
+CONTENT_PATH = "/rest/api/"
+
 
 def person(fields: Fields) -> Person:
     """Read a user; the email address, when there is one, is left behind."""
@@ -36,22 +47,33 @@ def person(fields: Fields) -> Person:
 
 def attachment(fields: Fields) -> Attachment:
     """Read an attachment; its file is at the path of its ``content`` address."""
+    try:
+        content = urlsplit(fields.text("content"))
+    except ValueError:
+        content = None
+    if content is None or content.scheme != "https" or not content.path.startswith(CONTENT_PATH):
+        message = f"{fields.path}.content: expected an https address under {CONTENT_PATH}"
+        raise RepresentationError(message)
     with fields.refusals():
         return Attachment(
             fields.text("id"),
             fields.text("filename"),
             fields.text("mimeType"),
             fields.integer("size"),
-            urlsplit(fields.text("content")).path,
+            content.path,
         )
 
 
 def issue(fields: Fields) -> Issue:
-    """Read an issue from a search that asked for ``ISSUE_FIELDS``, or from a GET."""
+    """Read an issue from a search that asked for ``ISSUE_FIELDS``, or from a GET.
+
+    Jira sends a field it was asked for even when it is null, except ``parent``, which
+    only an issue with a parent has.
+    """
     values = fields.object("fields")
     reporter = values.optional_object("reporter")
     assignee = values.optional_object("assignee")
-    parent = values.optional_object("parent")
+    parent = values.optional_object("parent", absent=True)
     key = fields.text("key")
     with fields.refusals():
         return Issue(
@@ -73,7 +95,7 @@ def issue(fields: Fields) -> Issue:
 
 def comment(fields: Fields) -> Comment:
     """Read a comment fetched with ``expand=renderedBody``."""
-    author = fields.optional_object("author")
+    author = fields.optional_object("author", absent=True)
     with fields.refusals():
         return Comment(
             fields.text("id"),
@@ -81,6 +103,12 @@ def comment(fields: Fields) -> Comment:
             fields.time("created"),
             fields.text("renderedBody"),
         )
+
+
+def identity(responses: Mapping[str, object]) -> tuple[str, str]:
+    """Read only what names a snapshot's folder: its id and its revision."""
+    fields = Fields(responses.get(ISSUE), ISSUE)
+    return fields.text("id"), time_revision(fields.object("fields").time("updated"))
 
 
 def snapshot(responses: Mapping[str, object]) -> Snapshot:

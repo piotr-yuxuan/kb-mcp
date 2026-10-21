@@ -1,7 +1,8 @@
 """Responses shaped as the Confluence v2 and Jira v3 REST documentation shows them.
 
 Fields that no adapter reads are left out. Values are made up, except that their shapes
-follow what the sandbox site returned on 2026-10-21.
+follow what the sandbox site returned on 2026-10-21; ``fixtures/sandbox/`` keeps some of
+those responses, scrubbed of account ids and the site's address.
 """
 
 from __future__ import annotations
@@ -90,8 +91,37 @@ def v3_comment(**changes: object) -> dict[str, object]:
     """Return one comment of GET /rest/api/3/issue/{id}/comment?expand=renderedBody."""
     comment: dict[str, object] = {
         "id": "10100",
-        "author": {"accountId": "account-2"},
+        "author": {"accountId": "account-2", "displayName": "Another Person"},
         "created": "2026-10-21T08:00:00.000+0000",
         "renderedBody": "<p>Seen.</p>",
     }
     return {**comment, **changes}
+
+
+def v2_space(**changes: object) -> dict[str, object]:
+    """Return one result of GET /wiki/api/v2/spaces?keys=KEY."""
+    space: dict[str, object] = {"id": "196613", "key": "MFS", "name": "A space"}
+    return {**space, **changes}
+
+
+def v2_folder(**changes: object) -> dict[str, object]:
+    """Return GET /wiki/api/v2/folders/{id}."""
+    folder: dict[str, object] = {
+        "id": "197001",
+        "type": "folder",
+        "title": "A folder",
+        "parentId": "196725",
+        "parentType": "page",
+    }
+    return {**folder, **changes}
+
+
+def v1_user(**changes: object) -> dict[str, object]:
+    """Return one result of GET /wiki/rest/api/user/bulk."""
+    user: dict[str, object] = {
+        "type": "known",
+        "accountId": "account-1",
+        "displayName": "A Person",
+        "email": "someone@example.invalid",
+    }
+    return {**user, **changes}

@@ -1,0 +1,32 @@
+{
+ "results": [
+  {
+   "webuiLink": "/pages/viewpageattachments.action?pageId=196845&preview=%2F196845%2F196895%2Fprobe-complex.png",
+   "mediaTypeDescription": "PNG Image",
+   "downloadLink": "/rest/api/content/196845/child/attachment/att196895/download",
+   "createdAt": "2026-10-20T21:37:55.678Z",
+   "version": {
+    "number": 3,
+    "message": "",
+    "minorEdit": false,
+    "authorId": "account-1",
+    "createdAt": "2026-10-20T21:37:55.678Z"
+   },
+   "comment": "",
+   "id": "att196895",
+   "mediaType": "image/png",
+   "pageId": "196845",
+   "fileId": "89fe639b-6ba4-4aba-bdf2-ab695ae92b75",
+   "status": "current",
+   "title": "probe-complex.png",
+   "fileSize": 7153,
+   "_links": {
+    "download": "/rest/api/content/196845/child/attachment/att196895/download",
+    "webui": "/pages/viewpageattachments.action?pageId=196845&preview=%2F196845%2F196895%2Fprobe-complex.png"
+   }
+  }
+ ],
+ "_links": {
+  "base": "https://sandbox.example.invalid/wiki"
+ }
+}

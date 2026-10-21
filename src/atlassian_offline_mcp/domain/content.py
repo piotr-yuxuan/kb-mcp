@@ -20,13 +20,29 @@ PROJECT_KEY = re.compile(r"[A-Z][A-Z0-9_]+")
 ISSUE_KEY = re.compile(r"[A-Z][A-Z0-9_]+-[0-9]+")
 # A path on the site, never another host's: one slash, no second one, no backslash.
 SITE_PATH = re.compile(r"/(?![/\\])[^\s\\]*")
+# A revision's name: a Confluence version, or a Jira update time in UTC.
+REVISION = re.compile(r"[0-9]{6}|[0-9]{8}T[0-9]{6}\.[0-9]{6}Z")
 
 
-def _require(pattern: re.Pattern[str], value: str, name: str) -> None:
-    # The message names the field and the rule, never the value, which is content.
+class RefusedError(ValueError):
+    """A value that a domain type refuses; the message names the field, never the value."""
+
+
+def require(pattern: re.Pattern[str], value: str, name: str) -> None:
+    """Refuse a value that does not match its rule, naming the field and the rule."""
     if not pattern.fullmatch(value):
         message = f"{name}: does not match {pattern.pattern}"
-        raise ValueError(message)
+        raise RefusedError(message)
+
+
+def version_revision(version: int) -> str:
+    """Name a Confluence version, padded so that names sort as versions do."""
+    return f"{version:06d}"
+
+
+def time_revision(updated: datetime) -> str:
+    """Name a state by its update time in UTC, so that names sort as times do."""
+    return updated.astimezone(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
 
 
 @dataclass(frozen=True)
@@ -47,8 +63,21 @@ class Space:
 
     def __post_init__(self) -> None:
         """Refuse an id or a key that could not name a folder."""
-        _require(IDENTIFIER, self.id, "id")
-        _require(SPACE_KEY, self.key, "key")
+        require(IDENTIFIER, self.id, "id")
+        require(SPACE_KEY, self.key, "key")
+
+
+@dataclass(frozen=True)
+class Folder:
+    """A Confluence folder: a node of the space's tree, with a title and no body."""
+
+    id: str
+    title: str
+    parent_id: str | None = None
+
+    def __post_init__(self) -> None:
+        """Refuse an id that could not name a node."""
+        require(IDENTIFIER, self.id, "id")
 
 
 @dataclass(frozen=True)
@@ -63,8 +92,8 @@ class Attachment:
 
     def __post_init__(self) -> None:
         """Refuse an id that could not name a file, and a download off the site."""
-        _require(IDENTIFIER, self.id, "id")
-        _require(SITE_PATH, self.download, "download")
+        require(IDENTIFIER, self.id, "id")
+        require(SITE_PATH, self.download, "download")
 
 
 @dataclass(frozen=True)
@@ -97,13 +126,14 @@ class Document:
     labels: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        """Refuse an id that could not name a folder."""
-        _require(IDENTIFIER, self.id, "id")
+        """Refuse an id that could not name a folder, and a web page off the site."""
+        require(IDENTIFIER, self.id, "id")
+        require(SITE_PATH, self.url, "url")
 
     @property
     def revision(self) -> str:
-        """Name this state by when it was last updated, in UTC."""
-        return self.updated.astimezone(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+        """Name this state by when it was last updated."""
+        return time_revision(self.updated)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -117,14 +147,14 @@ class ConfluenceDocument(Document):
     status: str  # current, archived, trashed, and so on
 
     def __post_init__(self) -> None:
-        """Refuse an id or a space id that could not name a folder or a listing."""
+        """Refuse an id or a space id that could not name a folder."""
         super().__post_init__()
-        _require(IDENTIFIER, self.space_id, "space_id")
+        require(IDENTIFIER, self.space_id, "space_id")
 
     @property
     def revision(self) -> str:
-        """Name this state by its version number, padded so that text order is numeric."""
-        return f"{self.version:06d}"
+        """Name this state by its version."""
+        return version_revision(self.version)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -136,11 +166,16 @@ class BlogPost(ConfluenceDocument):
 
 @dataclass(frozen=True, kw_only=True)
 class Page(ConfluenceDocument):
-    """A Confluence page, with its place in the space's tree."""
+    """A Confluence page, with its place in the space's tree.
+
+    Its parent is a page or a folder, as ``parent_type`` says, or none at the top of the
+    space.
+    """
 
     kind: ClassVar[str] = "pages"
 
     parent_id: str | None = None
+    parent_type: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -160,8 +195,8 @@ class Issue(Document):
     def __post_init__(self) -> None:
         """Refuse an id, a key or a project key that could not name a file."""
         super().__post_init__()
-        _require(ISSUE_KEY, self.key, "key")
-        _require(PROJECT_KEY, self.project, "project")
+        require(ISSUE_KEY, self.key, "key")
+        require(PROJECT_KEY, self.project, "project")
 
 
 @dataclass(frozen=True)

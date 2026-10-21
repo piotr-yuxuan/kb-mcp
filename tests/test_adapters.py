@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
 from atlassian_offline_mcp.adapters import confluence_v2, jira_v3
 from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
-from atlassian_offline_mcp.domain.content import BlogPost, Page, Person
+from atlassian_offline_mcp.domain.content import BlogPost, Folder, Page, Person
 from tests.samples import (
     ATTACHMENT_SIZE,
     PAGE_VERSION,
     v2_attachment,
+    v2_folder,
     v2_page,
     v2_view,
     v3_comment,
@@ -187,7 +190,7 @@ def test_an_issue_snapshot_has_its_rendered_body_attachments_and_comments() -> N
         "/rest/api/3/attachment/content/10000"
     ]
     assert [(item.id, item.author, item.html) for item in snapshot.comments] == [
-        ("10100", Person("account-2"), "<p>Seen.</p>")
+        ("10100", Person("account-2", "Another Person"), "<p>Seen.</p>")
     ]
 
 
@@ -214,3 +217,115 @@ def test_an_issue_snapshot_missing_a_rendering_is_refused(
     """A rendering that is not there fails, rather than mirroring an empty body."""
     with pytest.raises(RepresentationError, match=f"^{path}"):
         jira_v3.snapshot(responses)
+
+
+@pytest.mark.parametrize(
+    ("changes", "path"),
+    [
+        ({"_links": {"webui": "spaces/MFS/pages/1"}}, r"^page: _links\.webui: does not match"),
+        ({"_links": {"webui": "https://elsewhere.example/x"}}, r"^page: _links\.webui: "),
+        ({"authorId": ...}, r"^page\.authorId: missing"),
+    ],
+)
+def test_a_changed_link_or_a_dropped_field_of_a_page_is_refused(
+    changes: dict[str, object], path: str
+) -> None:
+    """A web link off the site, or a field the site stopped sending, fails by its path."""
+    page = {key: value for key, value in v2_page(**changes).items() if value is not ...}
+    with pytest.raises(RepresentationError, match=path):
+        confluence_v2.document(Fields(page, "page"), Page)
+
+
+def test_a_page_snapshot_requires_the_labels_it_asked_for() -> None:
+    """The GET asks for labels, so their absence is a changed response, not no labels."""
+    responses = {
+        confluence_v2.DOCUMENT: v2_page(labels=...),
+        confluence_v2.VIEW: v2_view(),
+        confluence_v2.ATTACHMENTS: [],
+    }
+    del responses[confluence_v2.DOCUMENT]["labels"]  # type: ignore[attr-defined]
+    with pytest.raises(RepresentationError, match=r"^document\.json\.labels: missing"):
+        confluence_v2.snapshot(Page, responses)
+
+
+def test_a_page_keeps_whether_its_parent_is_a_page_or_a_folder() -> None:
+    """A page under a folder has the folder's id as parent, and says it is a folder."""
+    page = confluence_v2.document(Fields(v2_page(parentType="folder"), "page"), Page)
+    assert (page.parent_id, page.parent_type) == ("196725", "folder")
+
+
+def test_a_folder_is_read_with_its_title_and_parent() -> None:
+    """A folder is a node of the tree, with no body."""
+    assert confluence_v2.folder(Fields(v2_folder(), "folder")) == Folder(
+        "197001", "A folder", "196725"
+    )
+
+
+def test_a_project_key_that_is_a_path_is_refused() -> None:
+    """A project key names a folder of the mirror."""
+    issue = v3_issue()
+    issue["fields"]["project"] = {"key": "../PRB"}  # type: ignore[index]
+    with pytest.raises(RepresentationError, match=r"^issue: project: does not match"):
+        jira_v3.issue(Fields(issue, "issue"))
+
+
+@pytest.mark.parametrize("key", ["reporter", "assignee"])
+def test_an_issue_without_a_person_field_is_refused(key: str) -> None:
+    """Jira sends reporter and assignee even when null; a missing one is a change."""
+    issue = v3_issue()
+    del issue["fields"][key]  # type: ignore[attr-defined]
+    with pytest.raises(RepresentationError, match=rf"^issue\.fields\.{key}: missing"):
+        jira_v3.issue(Fields(issue, "issue"))
+
+
+def test_an_issue_without_a_description_among_rendered_fields_is_refused() -> None:
+    """An issue with no description has a null one; none at all is a changed response."""
+    responses = {jira_v3.ISSUE: v3_issue(renderedFields={}), jira_v3.COMMENTS: []}
+    with pytest.raises(RepresentationError, match=r"renderedFields\.description: missing"):
+        jira_v3.snapshot(responses)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "https://api.media.example/file/abc/binary",
+        "http://site.example.invalid/rest/api/3/attachment/content/10000",
+        "https://secret-corp" + chr(0xFF03) + ".atlassian.net/rest/api/3/attachment/content/1",
+    ],
+)
+def test_an_attachment_content_off_the_api_is_refused_without_its_value(content: str) -> None:
+    """A content address elsewhere fails naming the field, never the address."""
+    issue = v3_issue()
+    issue["fields"]["attachment"][0]["content"] = content  # type: ignore[index]
+    with pytest.raises(RepresentationError, match=r"attachment\[0\]\.content: expected") as error:
+        jira_v3.snapshot({jira_v3.ISSUE: issue, jira_v3.COMMENTS: []})
+    assert "corp" not in str(error.value)
+    assert "media" not in str(error.value)
+
+
+def test_a_time_off_the_calendar_is_refused_by_its_path() -> None:
+    """An offset that carries a time out of range fails as a changed response."""
+    page = v2_page(createdAt="0001-01-01T00:00:00+01:00")
+    with pytest.raises(RepresentationError, match=r"^page\.createdAt: expected"):
+        confluence_v2.document(Fields(page, "page"), Page)
+
+
+def test_identity_reads_only_the_id_and_revision() -> None:
+    """A page's identity holds even when its other fields have changed."""
+    responses = {
+        confluence_v2.DOCUMENT: {"id": "196845", "version": {"number": 3}},
+        confluence_v2.VIEW: {"id": "196845", "version": {"number": 3}},
+    }
+    assert confluence_v2.identity(responses) == ("196845", "000003")
+    issue = {jira_v3.ISSUE: {"id": "10000", "fields": {"updated": "2026-10-20T22:37:58.027+0100"}}}
+    assert jira_v3.identity(issue) == ("10000", "20261020T213758.027000Z")
+
+
+def test_the_sandbox_attachment_listing_reads_as_documented() -> None:
+    """The sandbox's own response (scrubbed) downloads through the v1 path under /wiki."""
+    path = Path(__file__).parent / "fixtures" / "sandbox" / "attachments.json"
+    response = Fields(json.loads(path.read_text("utf-8")), "attachments")
+    [attachment] = [confluence_v2.attachment(item) for item in response.objects("results")]
+    assert attachment.download == (
+        "/wiki/rest/api/content/196845/child/attachment/att196895/download"
+    )

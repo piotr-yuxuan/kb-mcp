@@ -1,145 +1,205 @@
-"""The raw store keeps whole snapshots by revision, and files once by digest."""
+"""The raw store keeps responses as received, whole, by revision, and files once."""
 
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime, timedelta, timezone
+import json
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import pytest
 
 from atlassian_offline_mcp.adapters import confluence_v2, jira_v3
 from atlassian_offline_mcp.adapters.fields import RepresentationError
-from atlassian_offline_mcp.adapters.raw_store import RawStore
-from tests.samples import v2_attachment, v2_page, v2_view, v3_comment, v3_issue
+from atlassian_offline_mcp.adapters.raw_store import RawStore, StoreBusyError, Stored, Unreadable
+from atlassian_offline_mcp.domain.content import BlogPost, Folder, Issue, Page, Person, Space
+from tests.samples import (
+    v1_user,
+    v2_attachment,
+    v2_folder,
+    v2_page,
+    v2_space,
+    v2_view,
+    v3_comment,
+    v3_issue,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 FETCHED = datetime(2026, 10, 22, 9, 15, tzinfo=timezone(timedelta(hours=1)))
 NEWER = 10
 
 
-def page_responses(version: int, **changes: object) -> dict[str, object]:
+@pytest.fixture
+def store(tmp_path: Path) -> Iterator[RawStore]:
+    """Give a store under a scratch folder, held for writing."""
+    raw = RawStore(tmp_path / "raw")
+    with raw.writing():
+        yield raw
+
+
+def page_responses(version: int, page_id: str = "196845", **changes: object) -> dict[str, object]:
     """Return the responses of a page's snapshot at a version, with one attachment."""
     stamp = {"number": version, "createdAt": "2026-10-20T21:52:41Z"}
     return {
-        confluence_v2.DOCUMENT: v2_page(version=stamp, **changes),
-        confluence_v2.VIEW: v2_view(version=stamp),
+        confluence_v2.DOCUMENT: v2_page(id=page_id, version=stamp, **changes),
+        confluence_v2.VIEW: v2_view(id=page_id, version=stamp),
         confluence_v2.ATTACHMENTS: [v2_attachment()],
     }
 
 
-def put_page(store: RawStore, version: int, **changes: object) -> Path:
-    """Store a page's snapshot at a version, without files, and return its folder."""
-    return store.put("confluence", "pages", page_responses(version, **changes), FETCHED, {}).folder
+def readable(results: Iterator[Stored | Unreadable] | list[object]) -> list[Stored]:
+    """Keep the snapshots that were read, and fail on any that was not."""
+    items = list(results)
+    assert not [item for item in items if isinstance(item, Unreadable)]
+    return [item for item in items if isinstance(item, Stored)]
 
 
-def test_the_newest_snapshot_of_each_document_is_read_back(tmp_path: Path) -> None:
+def test_the_newest_snapshot_of_each_document_is_read_back(store: RawStore) -> None:
     """Of versions 9 and 10, version 10 is the one read back."""
-    store = RawStore(tmp_path)
-    put_page(store, 9)
-    put_page(store, NEWER)
-    [latest] = store.latest("confluence", "pages")
+    store.put(Page, page_responses(9), FETCHED, {})
+    store.put(Page, page_responses(NEWER), FETCHED, {})
+    [latest] = readable(store.latest(Page))
     assert latest.snapshot.document.revision == "000010"
 
 
-def test_a_snapshot_reads_back_as_the_domain_with_its_record(tmp_path: Path) -> None:
-    """What was stored comes back read by its adapter, fetched at the time given, in UTC."""
-    store = RawStore(tmp_path)
-    put_page(store, 3)
-    [stored] = store.latest("confluence", "pages")
+def test_a_snapshot_reads_back_as_the_domain_with_its_record(store: RawStore) -> None:
+    """What was stored comes back read by its adapter, with the time it was fetched."""
+    folder = store.put(Page, page_responses(3), FETCHED, {})
+    [stored] = readable(store.latest(Page))
+    assert stored.folder == folder
     assert stored.snapshot.html == "<p>Hello, rendered</p>"
-    assert stored.fetched_at == datetime(2026, 10, 22, 8, 15, tzinfo=UTC)
+    assert stored.fetched_at == FETCHED
+    assert json.loads((folder / "store.json").read_text("utf-8"))["fetched_at"] == (
+        "2026-10-22T08:15:00Z"
+    )
     assert stored.blobs == {}
-    assert set(store.responses(stored.folder)) == {
-        confluence_v2.DOCUMENT,
-        confluence_v2.VIEW,
-        confluence_v2.ATTACHMENTS,
-    }
 
 
-def test_issues_are_stored_by_their_id_and_update_time(tmp_path: Path) -> None:
+def test_responses_are_kept_as_received(store: RawStore) -> None:
+    """Fields that no adapter reads, and any text the site sent, come back unchanged."""
+    responses = page_responses(1, ancestors=[{"id": "1"}], note="café \ud800")
+    folder = store.put(Page, responses, FETCHED, {})
+    assert store.responses(folder) == responses
+
+
+def test_issues_are_stored_by_their_id_and_update_time(store: RawStore) -> None:
     """An issue's folder is its id, and its revision its update time in UTC."""
-    store = RawStore(tmp_path)
     responses = {jira_v3.ISSUE: v3_issue(), jira_v3.COMMENTS: [v3_comment()]}
-    stored = store.put("jira", "issues", responses, FETCHED, {})
-    assert stored.folder == tmp_path / "jira" / "issues" / "10000" / "20261020T213758.027000Z"
+    folder = store.put(Issue, responses, FETCHED, {})
+    assert folder == store.root / "jira" / "issues" / "10000" / "20261020T213758.027000Z"
+    [stored] = readable(store.latest(Issue))
+    assert stored.snapshot.document.title == "What are archived ideas?"
 
 
-def test_a_stored_revision_is_not_written_again(tmp_path: Path) -> None:
-    """A revision is immutable: storing it again keeps the first."""
-    store = RawStore(tmp_path)
-    put_page(store, 1, title="First")
-    put_page(store, 1, title="Second")
-    [stored] = store.latest("confluence", "pages")
+def test_a_stored_revision_is_not_written_again(store: RawStore) -> None:
+    """A revision's responses are immutable: storing it again keeps the first."""
+    store.put(Page, page_responses(1, title="First"), FETCHED, {})
+    store.put(Page, page_responses(1, title="Second"), FETCHED, {})
+    [stored] = readable(store.latest(Page))
     assert stored.snapshot.document.title == "First"
 
 
-def test_a_snapshot_that_fails_while_written_leaves_nothing(tmp_path: Path) -> None:
+def test_a_snapshot_that_fails_while_written_leaves_nothing(store: RawStore) -> None:
     """A snapshot is stored whole or not at all, with no hidden folder left behind."""
-    store = RawStore(tmp_path)
     responses = {**page_responses(1), "unwritable.json": object()}
     with pytest.raises(TypeError):
-        store.put("confluence", "pages", responses, FETCHED, {})
-    assert list(store.latest("confluence", "pages")) == []
-    assert list((tmp_path / "confluence" / "pages" / "196845").iterdir()) == []
+        store.put(Page, responses, FETCHED, {})
+    assert list(store.latest(Page)) == []
+    assert list((store.root / "confluence" / "pages" / "196845").iterdir()) == []
 
 
-def test_responses_that_their_adapter_refuses_are_not_stored(tmp_path: Path) -> None:
-    """Nothing unreadable is stored: a snapshot without its view is refused."""
-    store = RawStore(tmp_path)
-    responses = page_responses(1)
-    del responses[confluence_v2.VIEW]
-    with pytest.raises(RepresentationError, match=r"^view\.json: "):
-        store.put("confluence", "pages", responses, FETCHED, {})
-    assert not (tmp_path / "confluence").exists()
+def test_a_changed_response_is_kept_and_reported_when_read(store: RawStore) -> None:
+    """Raw first: a response the adapter refuses is still stored, then read as Unreadable.
+
+    The others still come back, so one changed response never hides the rest.
+    """
+    labels = {"results": [{"label": "renamed field"}]}
+    store.put(Page, page_responses(1, page_id="100"), FETCHED, {})
+    store.put(Page, page_responses(1, page_id="200", labels=labels), FETCHED, {})
+    store.put(Page, page_responses(1, page_id="300"), FETCHED, {})
+    results = list(store.latest(Page))
+    assert [type(item) for item in results] == [Stored, Unreadable, Stored]
+    unreadable = results[1]
+    assert isinstance(unreadable, Unreadable)
+    assert unreadable.where == "confluence/pages/200/000001"
+    assert unreadable.reason == "document.json.labels.results[0].name: missing"
 
 
-def test_hidden_folders_and_stray_files_are_not_snapshots(tmp_path: Path) -> None:
-    """A crash's hidden folder and Finder's .DS_Store are skipped, at every level."""
-    store = RawStore(tmp_path)
-    folder = put_page(store, 1)
-    (folder.parent / ".000002.crashed").mkdir()
+@pytest.mark.parametrize(
+    ("view", "field"),
+    [
+        ({"id": "999"}, r"view\.json\.id"),
+        ({"version": {"number": 2}}, r"view\.json\.version\.number"),
+    ],
+)
+def test_a_view_of_another_page_or_version_is_refused(
+    store: RawStore, view: dict[str, object], field: str
+) -> None:
+    """A snapshot is one document at one revision: a mismatched view is never stored."""
+    responses = page_responses(3)
+    stamp = {"number": 3, "createdAt": "2026-10-20T21:52:41Z"}
+    responses[confluence_v2.VIEW] = v2_view(**{"version": stamp, **view})
+    with pytest.raises(RepresentationError, match=f"^{field}: does not match"):
+        store.put(Page, responses, FETCHED, {})
+    assert not (store.root / "confluence").exists()
+
+
+def test_stray_entries_are_not_snapshots(store: RawStore) -> None:
+    """Hidden leftovers, Finder's .DS_Store and copies are skipped, at every level."""
+    folder = store.put(Page, page_responses(1), FETCHED, {})
+    (folder.parent / ".zzzzzz.crashed").mkdir()
+    (folder.parent / "old").mkdir()
+    (folder.parent / "000001 copy").mkdir()
     (folder.parent / "notes.txt").write_text("", "utf-8")
     (folder.parent.parent / ".DS_Store").write_text("", "utf-8")
-    assert [stored.folder for stored in store.latest("confluence", "pages")] == [folder]
+    (folder / "._view.json").write_text("not JSON", "utf-8")
+    [stored] = readable(store.latest(Page))
+    assert stored.folder == folder
 
 
-@pytest.mark.parametrize("name", ["../escape.json", "plain", "store.json"])
+@pytest.mark.parametrize("name", ["../escape.json", "plain", "store.json", ".hidden.json"])
 def test_a_response_name_that_is_not_a_plain_json_file_is_refused(
-    tmp_path: Path, name: str
+    store: RawStore, name: str
 ) -> None:
     """A response name cannot place a file outside its snapshot, nor be the store's own."""
-    with pytest.raises(ValueError, match="not plain JSON file names"):
-        RawStore(tmp_path).put("confluence", "pages", {**page_responses(1), name: {}}, FETCHED, {})
+    with pytest.raises(ValueError, match="not "):
+        store.put(Page, {**page_responses(1), name: {}}, FETCHED, {})
 
 
-def test_blobs_must_be_stored_files_of_the_snapshot_attachments(tmp_path: Path) -> None:
-    """A snapshot never names a file that is not stored, nor one of another attachment."""
-    store = RawStore(tmp_path)
+def test_blobs_must_name_files_already_stored(store: RawStore) -> None:
+    """Files first, snapshot last: a record never names a file that is not stored."""
     digest = hashlib.sha256(b"never stored").hexdigest()
     with pytest.raises(ValueError, match="blobs:"):
-        store.put("confluence", "pages", page_responses(1), FETCHED, {"att196895": digest})
-    stored = store.put_blob(b"image bytes")
-    with pytest.raises(ValueError, match="blobs:"):
-        store.put("confluence", "pages", page_responses(1), FETCHED, {"att1": stored})
+        store.put(Page, page_responses(1), FETCHED, {"att196895": digest})
+    assert not (store.root / "confluence").exists()
 
 
-def test_a_file_downloaded_later_is_added_to_its_snapshot(tmp_path: Path) -> None:
+def test_a_file_downloaded_later_is_added_to_its_snapshot(store: RawStore) -> None:
     """A file that failed on the first run is recorded when a later run downloads it."""
-    store = RawStore(tmp_path)
-    document = store.put("confluence", "pages", page_responses(1), FETCHED, {}).snapshot.document
+    store.put(Page, page_responses(1), FETCHED, {})
+    [stored] = readable(store.latest(Page))
     digest = store.put_blob(b"image bytes")
-    stored = store.add_blobs(document, {"att196895": digest})
-    assert stored.blobs == {"att196895": digest}
-    assert stored.fetched_at == FETCHED
-    assert store.read(document).blobs == {"att196895": digest}
+    store.add_blobs(stored.snapshot.document, {"att196895": digest})
+    again = store.read(stored.snapshot.document)
+    assert again.blobs == {"att196895": digest}
+    assert again.fetched_at == FETCHED
 
 
-def test_a_file_is_stored_once_under_its_digest(tmp_path: Path) -> None:
+def test_putting_a_stored_revision_records_its_new_blobs(store: RawStore) -> None:
+    """A second put of the same revision keeps the responses and adds the files given."""
+    store.put(Page, page_responses(1), FETCHED, {})
+    digest = store.put_blob(b"image bytes")
+    folder = store.put(Page, page_responses(1, title="Second"), FETCHED, {"att196895": digest})
+    [stored] = readable(store.latest(Page))
+    assert (stored.folder, stored.blobs) == (folder, {"att196895": digest})
+    assert stored.snapshot.document.title == "Probe complex"
+
+
+def test_a_file_is_stored_once_under_its_digest(store: RawStore) -> None:
     """The same bytes stored twice make one file, named by their SHA-256."""
-    store = RawStore(tmp_path)
     digest = store.put_blob(b"image bytes")
     assert digest == hashlib.sha256(b"image bytes").hexdigest()
     assert store.put_blob(b"image bytes") == digest
@@ -147,35 +207,74 @@ def test_a_file_is_stored_once_under_its_digest(tmp_path: Path) -> None:
     assert [path.name for path in store.blob(digest).parent.iterdir()] == [digest]
 
 
-def test_a_digest_that_is_a_path_is_refused(tmp_path: Path) -> None:
+def test_a_digest_that_is_a_path_is_refused(store: RawStore) -> None:
     """A digest read from a record cannot name a file outside the blobs."""
     with pytest.raises(ValueError, match="not a SHA-256 digest"):
-        RawStore(tmp_path).blob("../../../x")
+        store.blob("../../../x")
 
 
-def test_an_empty_store_has_no_snapshots(tmp_path: Path) -> None:
-    """A store that was never written has nothing to read."""
-    assert list(RawStore(tmp_path).latest("jira", "issues")) == []
+def test_writing_needs_the_lock_and_one_writer_holds_it(tmp_path: Path) -> None:
+    """Writes happen inside writing(); a second writer is refused while the first holds."""
+    store = RawStore(tmp_path / "raw")
+    with pytest.raises(RuntimeError, match="only inside"):
+        store.put_blob(b"bytes")
+    with store.writing(), pytest.raises(StoreBusyError), RawStore(store.root).writing():
+        pass
+    with store.writing():
+        store.put_blob(b"bytes")
 
 
-def test_a_listing_is_replaced_whole(tmp_path: Path) -> None:
-    """The newest listing replaces the last; one never stored reads as None."""
-    store = RawStore(tmp_path)
-    assert store.listing("confluence", "pages-196613") is None
-    store.put_listing("confluence", "pages-196613", [v2_page(), v2_page(id="196846")])
-    store.put_listing("confluence", "pages-196613", [v2_page()])
-    [result] = store.listing("confluence", "pages-196613") or []
-    assert confluence_v2.document(result, confluence_v2.Page).id == "196845"
-    assert [path.name for path in (tmp_path / "confluence" / "listings").iterdir()] == [
-        "pages-196613.json"
+def test_an_empty_store_has_nothing(tmp_path: Path) -> None:
+    """A store that was never written has no snapshots, spaces or users."""
+    store = RawStore(tmp_path / "raw")
+    assert list(store.latest(Issue)) == []
+    assert store.spaces() == []
+    assert store.users() == []
+
+
+def test_spaces_listed_on_different_runs_are_all_kept(store: RawStore) -> None:
+    """A run naming one space never drops another space that an earlier run listed."""
+    store.put_space(v2_space(), [v2_page()], [], [v2_folder()])
+    store.put_space(v2_space(id="300000", key="OPS", name="Another"), [], [], [])
+    assert store.spaces() == [
+        Space("196613", "MFS", "A space"),
+        Space("300000", "OPS", "Another"),
+    ]
+    [page] = store.listed("196613", Page)
+    assert isinstance(page, Page)
+    assert page.parent_type == "page"
+    assert store.listed("196613", BlogPost) == []
+    assert store.folders("196613") == [Folder("197001", "A folder", "196725")]
+
+
+def test_a_space_listing_is_replaced_whole(store: RawStore) -> None:
+    """The newest listing of a space replaces the last."""
+    store.put_space(v2_space(), [v2_page(), v2_page(id="196846")], [], [])
+    store.put_space(v2_space(), [v2_page()], [], [])
+    assert [page.id for page in store.listed("196613", Page) if isinstance(page, Page)] == [
+        "196845"
     ]
 
 
-@pytest.mark.parametrize(("source", "name"), [("confluence", "../pages"), ("../x", "spaces")])
-def test_a_listing_outside_the_listings_is_refused(tmp_path: Path, source: str, name: str) -> None:
-    """Neither a listing's source nor its name can place it elsewhere."""
-    store = RawStore(tmp_path)
-    with pytest.raises(ValueError, match="not a source and a listing name"):
-        store.put_listing(source, name, [])
-    with pytest.raises(ValueError, match="not a source and a listing name"):
-        store.listing(source, name)
+def test_an_entry_of_a_listing_that_its_adapter_refuses_is_reported_alone(
+    store: RawStore,
+) -> None:
+    """One changed entry is Unreadable at its index; the others are read."""
+    store.put_space(v2_space(), [v2_page(), v2_page(id="2", title=None)], [], [])
+    first, second = store.listed("196613", Page)
+    assert isinstance(first, Page)
+    where = "confluence/spaces/196613/pages.json[1]"
+    assert second == Unreadable(where, f"{where}.title: expected a string")
+
+
+def test_a_space_id_that_is_a_path_is_refused(store: RawStore) -> None:
+    """A space's id names its folder of listings."""
+    with pytest.raises(RepresentationError, match="space id: does not match"):
+        store.put_space(v2_space(id="../x"), [], [], [])
+
+
+def test_users_are_merged_across_runs_by_account_id(store: RawStore) -> None:
+    """Authors seen by earlier runs stay; a user seen again takes the newer name."""
+    store.put_users([v1_user(), v1_user(accountId="account-2", displayName="Two")])
+    store.put_users([v1_user(displayName="Renamed")])
+    assert store.users() == [Person("account-1", "Renamed"), Person("account-2", "Two")]
