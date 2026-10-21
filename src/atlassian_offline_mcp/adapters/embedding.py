@@ -92,8 +92,11 @@ PREFIXES = {
 
 
 def prefixes(model: str) -> Prefixes | None:
-    """Give the prefixes that a model's card asks for, or None for a model not known."""
-    return PREFIXES.get(model.partition(":")[0])
+    """Give the prefixes that a model's card asks for, or None for a model not known.
+
+    The family is the name before its tag, as Ollama resolves the name.
+    """
+    return PREFIXES.get(ollama_name(model).partition(":")[0])
 
 
 class ModelError(Exception):

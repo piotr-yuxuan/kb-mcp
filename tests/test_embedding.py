@@ -552,6 +552,15 @@ CARDS = [
 ]
 
 
+@pytest.mark.parametrize(
+    "spelt", ["QWEN3-Embedding:0.6B", "registry.ollama.ai/library/qwen3-embedding:0.6b"]
+)
+def test_a_family_is_known_however_ollama_lets_its_name_be_spelt(spelt: str) -> None:
+    """The name that finds the digest finds the prefixes too."""
+    answers = Scripted({QWEN: DIGEST})
+    assert tiny(answers, spelt).prefixes == tiny(answers, QWEN).prefixes != Prefixes("", "")
+
+
 @pytest.mark.parametrize(("model", "query", "document"), CARDS)
 def test_each_family_takes_its_card_s_prefixes(model: str, query: str, document: str) -> None:
     """Written here from each model card, not from the table: a typo there shows."""

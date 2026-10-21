@@ -65,8 +65,15 @@ def vector(text: str) -> list[float]:
 
 
 def listed(model: str) -> str:
-    """Name a model as Ollama lists it: with its tag, ``latest`` when none is given."""
-    return model if ":" in model else f"{model}:latest"
+    """Name a model as Ollama resolves it, from its documented behaviour.
+
+    In lower case, with its tag (``latest`` when none is given), and without the default
+    registry (``registry.ollama.ai`` or ``ollama.com``) and namespace (``library``).
+    """
+    name = model.lower() if ":" in model.lower().rpartition("/")[2] else f"{model.lower()}:latest"
+    for default in ("registry.ollama.ai/", "ollama.com/", "library/"):
+        name = name.removeprefix(default)
+    return name
 
 
 @dataclass
@@ -103,7 +110,7 @@ class Scripted:
         self.asked.append(asked["input"])
         if self.statuses:
             return httpx.Response(self.statuses.pop(0))
-        if listed(asked["model"]) not in self.models:
+        if listed(asked["model"]) not in {listed(name) for name in self.models}:
             message = f'model "{asked["model"]}" not found, try pulling it first'
             return httpx.Response(404, json={"error": {"message": message}})
         if self.refused & set(asked["input"]):
