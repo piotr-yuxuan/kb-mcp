@@ -833,7 +833,7 @@
   overlap: keyword
   lang: en
   expected: [product/brief-dark-mode]
-  partial: [product/okrs-2026-q4, jira/dark-mode-dashboard, ENG-26, design/theming]
+  partial: [product/okrs-2026-q4, product/roadmap-2026, product/discovery-process, engineering/retro-sprint-39, jira/dark-mode-dashboard, ENG-26, design/theming]
   evidence:
     product/brief-dark-mode: "The twenty most visited Hub pages, in order of traffic."
   outdated: []
