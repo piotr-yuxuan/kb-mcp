@@ -14,6 +14,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 
+from atlassian_offline_mcp.app.meaning import Meaning
 from atlassian_offline_mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
 from atlassian_offline_mcp.domain.settings import SettingsError
@@ -74,7 +75,8 @@ def run(arguments: argparse.Namespace) -> int:
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")
         return BAD_SETTINGS
-    library = Library(settings.index, settings.docs)
+    meaning = Meaning(settings.models)
+    library = Library(settings.index, settings.docs, meaning, settings.search_mode)
     server = MCPServer(NAME, instructions=INSTRUCTIONS, log_level="WARNING")
     for method in (library.search, library.read, library.browse, library.status):
         server.add_tool(refusing(method), structured_output=False, annotations=READ_ONLY)

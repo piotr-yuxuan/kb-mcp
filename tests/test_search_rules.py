@@ -218,9 +218,11 @@ def test_a_blank_text_has_no_piece() -> None:
 
 
 def test_fusion_favours_a_document_that_both_rankings_hold() -> None:
-    """Second in both beats first in one: 2 / 62 is more than 1 / 61."""
-    updated = dict.fromkeys(("a", "b", "c"), MOMENT)
-    assert fuse([["a", "b"], ["c", "b"]], updated)[0] == "b"
+    """Fortieth in both beats first in one: 2 / 100 is more than 1 / 61 (not so for k=10)."""
+    others = [f"x{n}" for n in range(78)]
+    one, two = ["a", *others[:38], "both"], ["b", *others[38:76], "both"]
+    updated = dict.fromkeys(["a", "b", "both", *others], MOMENT)
+    assert fuse([one, two], updated)[0] == "both"
 
 
 def test_fusion_ties_go_to_the_newest_then_the_path() -> None:

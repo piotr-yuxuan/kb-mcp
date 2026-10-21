@@ -7,18 +7,21 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from atlassian_offline_mcp.app.meaning import DEPTH, Meaning
 from atlassian_offline_mcp.app.responses import cut
 from atlassian_offline_mcp.app.responses import page as fitted
-from atlassian_offline_mcp.app.tools import UnanswerableError
+from atlassian_offline_mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
 from tests.mirrors import page
+from tests.tiny_model import registered
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
     from _pytest.tempdir import TempPathFactory
 
-    from atlassian_offline_mcp.app.tools import Library
+    from atlassian_offline_mcp.domain.mirror import FrontMatter
 
 SIZE = 300_000
 DOCUMENTS = 2000
@@ -41,17 +44,69 @@ def long_body() -> str:
     return text[:SIZE]
 
 
-@pytest.fixture(scope="module")
-def large(tmp_path_factory: TempPathFactory) -> tuple[Library, str]:
-    """Serve the long page in ENG, and DOCUMENTS pages with long fields in BIG."""
-    body = long_body()
-    documents = [(page("100000", "Long page", labels=LABELS), body)]
+def large_documents() -> list[tuple[FrontMatter, str | None]]:
+    """Give the long page in ENG, and DOCUMENTS pages with long fields in BIG."""
+    documents: list[tuple[FrontMatter, str | None]] = [
+        (page("100000", "Long page", labels=LABELS), long_body())
+    ]
     for number in range(DOCUMENTS):
         title = (f"Gamma {number} " + "Ébauche longue 長い題名 " * 20)[:255]
         crumbs = (*FOLDERS, f"Group {number // 100} " + "g" * 190)
         front = page(str(300000 + number), title, space="BIG", labels=LABELS, breadcrumb=crumbs)
         documents.append((front, None))
-    return built(tmp_path_factory.mktemp("large"), documents), body
+    return documents
+
+
+@pytest.fixture(scope="module")
+def large(tmp_path_factory: TempPathFactory) -> tuple[Library, str]:
+    """Serve the large mirror, searched by words."""
+    return built(tmp_path_factory.mktemp("large"), large_documents()), long_body()
+
+
+@pytest.fixture(scope="module")
+def with_vectors(tmp_path_factory: TempPathFactory) -> Iterator[Path]:
+    """Index the large mirror with the tiny model's vectors, once; give its folder."""
+    root = tmp_path_factory.mktemp("meaning")
+    with pytest.MonkeyPatch.context() as patch:
+        registered(root / "models", patch)
+        built(root, large_documents(), "tiny")
+        yield root
+
+
+@pytest.fixture(params=["semantic", "hybrid"])
+def by_meaning(with_vectors: Path, request: pytest.FixtureRequest) -> tuple[Library, str]:
+    """Serve the large mirror, searched by meaning or by both."""
+    root = with_vectors
+    meaning = Meaning(root / "models")
+    return Library(root / "index.sqlite", root / "docs", meaning, request.param), request.param
+
+
+@pytest.mark.parametrize(
+    ("query", "limit"),
+    [("gamma", SEARCH_LIMIT), ("kafka brokers", SEARCH_LIMIT), ("gamma", 50), ("gamma", 10**6)],
+)
+def test_answers_by_meaning_keep_to_the_same_budgets(
+    by_meaning: tuple[Library, str], query: str, limit: int
+) -> None:
+    """Defaults within 4,000 estimated tokens, any answer within 10,000, each continued."""
+    library, _ = by_meaning
+    answer = library.search(query, limit=limit)
+    assert estimate(answer) <= (BUDGET if limit == SEARCH_LIMIT else CEILING)
+    assert continuation(answer) is not None
+    assert "Ranked by words alone" not in answer
+
+
+def test_paging_by_meaning_gives_each_document_once(by_meaning: tuple[Library, str]) -> None:
+    """Semantic pages give the nearest once each; hybrid ones every match once, and more."""
+    library, mode = by_meaning
+    found = []
+    answer: str | None = library.search("gamma", limit=50)
+    while answer is not None:
+        found += re.findall(r"^\d+\. .*\n {3}(\d+) \|", parts(answer)[1], re.MULTILINE)
+        answer = follow(library, answer)
+    assert len(found) == len(set(found))
+    big = {str(300000 + number) for number in range(DOCUMENTS)}
+    assert len(found) == DEPTH if mode == "semantic" else big <= set(found)
 
 
 def test_default_answers_stay_within_the_budget(large: tuple[Library, str]) -> None:

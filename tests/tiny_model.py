@@ -105,6 +105,14 @@ def tiny(
     folder.mkdir(parents=True, exist_ok=True)
     onnx.save(graph(inputs), folder / "model.onnx")
     tokenizer().save(str(folder / "tokenizer.json"))
+    return entry(models_folder, name, pooling)
+
+
+def entry(
+    models_folder: Path, name: str = "tiny", pooling: Literal["first", "mean", "last"] = "mean"
+) -> Model:
+    """Return the catalogue entry of a tiny model whose files are written already."""
+    folder = models_folder / name
     return Model(
         name=name,
         repository="tests/tiny",

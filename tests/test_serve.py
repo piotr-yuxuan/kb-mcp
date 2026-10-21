@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import anyio
@@ -13,15 +15,16 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.shared.message import SessionMessage
 from mcp_types import JSONRPCError, JSONRPCResponse, TextContent, jsonrpc_message_adapter
 
-from atlassian_offline_mcp.app.indexing import build_index
+from atlassian_offline_mcp.adapters.embedding import load
+from atlassian_offline_mcp.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.cli import main
 from tests.answers import TOOLS, estimate, parts
 from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.tiny_model import registered
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from _pytest.capture import CaptureFixture
+    from _pytest.monkeypatch import MonkeyPatch
 
 BAD_SETTINGS = 2
 STANDING = 1500  # estimated tokens of the instructions and the tool listing together
@@ -38,6 +41,17 @@ sys.addaudithook(guard)
 sys.argv = ["atlassian-offline-mcp"]
 runpy.run_module("atlassian_offline_mcp", run_name="__main__", alter_sys=True)
 """
+# The same, with the tiny model of the tests in the catalogue, pinned from its files in
+# the folder that the first argument names.
+WITH_TINY = GUARDED.replace(
+    'sys.argv = ["atlassian-offline-mcp"]',
+    "from pathlib import Path\n"
+    "from atlassian_offline_mcp.adapters.embedding import CATALOGUE\n"
+    "from tests.tiny_model import entry\n"
+    'CATALOGUE["tiny"] = entry(Path(sys.argv[1]))\n'
+    'sys.argv = ["atlassian-offline-mcp"]',
+)
+ROOT = Path(__file__).parents[1]
 
 
 @pytest.fixture
@@ -169,3 +183,47 @@ def test_refused_settings_exit_before_serving(tmp_path: Path, capsys: CaptureFix
     config = str(tmp_path / "none.toml")
     assert main(["serve", "--config", config, "--data-dir", str(dropbox)]) == BAD_SETTINGS
     assert "settings refused: data_dir: under a Dropbox folder" in capsys.readouterr().err
+
+
+def test_a_hybrid_search_answers_by_meaning_over_stdio_offline(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Offline, meaning finds a page without the query's words; then, without the model.
+
+    No socket is allowed. Once the model's files are gone, the next server answers by
+    words and says why.
+    """
+    home, data = tmp_path / "home", tmp_path / "data"
+    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
+    settings = home / ".config" / "atlassian-offline-mcp" / "config.toml"
+    settings.write_text(
+        f'data_dir = {json.dumps(str(data))}\nmodel = "tiny"\nsearch_mode = "hybrid"\n',
+        encoding="utf-8",
+    )
+    fillers(data / "docs")
+    write(data / "docs", page("4002", "Holiday canteen"), "Leave for a meal.\n")
+    registered(tmp_path / "source", monkeypatch)
+    shutil.copytree(tmp_path / "source" / "tiny", data / "models" / "tiny")
+    embedding = Embedding(load("tiny", data / "models"), data / "vectors.sqlite")
+    build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
+
+    async def search() -> str:
+        command = StdioServerParameters(
+            command=sys.executable,
+            args=["-c", WITH_TINY, str(tmp_path / "source")],
+            env={"HOME": str(home)},
+            cwd=ROOT,
+        )
+        async with Client(command) as client:
+            with anyio.fail_after(WAIT):
+                result = await client.call_tool("search", {"query": "vacation lunch"})
+            assert not result.is_error
+            assert isinstance(result.content[0], TextContent)
+            return result.content[0].text
+
+    found = anyio.run(search)
+    assert "\n1. Holiday canteen\n" in found
+    assert "Ranked by words alone" not in found
+    shutil.rmtree(data / "models" / "tiny")
+    lexical = anyio.run(search)
+    assert "Ranked by words alone: tiny: not pulled" in lexical

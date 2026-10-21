@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
 
 from atlassian_offline_mcp.domain.content import PROJECT_KEY, SPACE_KEY
@@ -19,8 +19,9 @@ DEFAULT_DATA_DIR = "~/atlassian-offline-mcp"
 DEFAULT_MODEL = "multilingual-e5-small"
 MODEL_NAME = re.compile(r"[a-z0-9][a-z0-9.-]{0,63}")
 # How search ranks: by words, by meaning, or by both fused.
-SEARCH_MODES = ("lexical", "semantic", "hybrid")
-DEFAULT_SEARCH_MODE = "lexical"
+type SearchMode = Literal["lexical", "semantic", "hybrid"]
+SEARCH_MODES: tuple[SearchMode, ...] = ("lexical", "semantic", "hybrid")
+DEFAULT_SEARCH_MODE: SearchMode = "lexical"
 KNOWN_KEYS = frozenset({"site", "data_dir", "spaces", "projects", "model", "search_mode"})
 # Folders that may be synchronised to a cloud, under the home directory or by name.
 SYNCED_UNDER_HOME = (
@@ -45,7 +46,7 @@ class Settings:
     spaces: tuple[str, ...] = ()
     projects: tuple[str, ...] = ()
     model: str = DEFAULT_MODEL
-    search_mode: str = DEFAULT_SEARCH_MODE
+    search_mode: SearchMode = DEFAULT_SEARCH_MODE
 
     @property
     def raw(self) -> Path:
@@ -149,12 +150,13 @@ def parse_settings(values: Mapping[str, object], home: Path) -> Settings:
     if not isinstance(model, str) or not MODEL_NAME.fullmatch(model):
         message = "model: the name of an embedding model, such as multilingual-e5-small"
         raise SettingsError(message)
-    mode = values.get("search_mode", DEFAULT_SEARCH_MODE)
-    if mode not in SEARCH_MODES:
+    given = values.get("search_mode", DEFAULT_SEARCH_MODE)
+    mode = next((each for each in SEARCH_MODES if each == given), None)
+    if mode is None:
         message = f"search_mode: one of {', '.join(SEARCH_MODES)}"
         raise SettingsError(message)
     host = f"https://{parts.hostname}" if parts is not None else None
-    return Settings(host, path, tuple(spaces), tuple(projects), model, str(mode))
+    return Settings(host, path, tuple(spaces), tuple(projects), model, mode)
 
 
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:

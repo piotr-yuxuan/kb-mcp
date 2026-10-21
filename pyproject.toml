@@ -59,6 +59,7 @@ name = "Only the model command downloads a model: the server and the index canno
 type = "forbidden"
 source_modules = [
   "atlassian_offline_mcp.app.tools",
+  "atlassian_offline_mcp.app.meaning",
   "atlassian_offline_mcp.app.indexing",
   "atlassian_offline_mcp.commands.serve",
   "atlassian_offline_mcp.commands.index",
