@@ -7,6 +7,7 @@ browser.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 from typing import TYPE_CHECKING
@@ -14,14 +15,16 @@ from urllib.parse import urlsplit
 
 from playwright.sync_api import Error, sync_playwright
 
+from atlassian_offline_mcp.adapters import confluence_v2, jira_v3
+
 if TYPE_CHECKING:
     from pathlib import Path
 
 SIGN_IN_TIMEOUT_S = 300
 POLL_MS = 2_000
-# Signed in once Jira or Confluence answers with an account, from inside the page.
-SIGNED_IN_JS = """async () => {
-  for (const path of ['/rest/api/3/myself', '/wiki/rest/api/user/current']) {
+# Signed in once one of the given paths answers with an account, from inside the page.
+SIGNED_IN_JS = """async (paths) => {
+  for (const path of paths) {
     try {
       const reply = await fetch(path, {signal: AbortSignal.timeout(10000)});
       if (reply.ok && (await reply.json()).accountId) return true;
@@ -31,8 +34,8 @@ SIGNED_IN_JS = """async () => {
 }"""
 
 
-class SignInTimeoutError(Exception):
-    """The user did not finish signing in within the time allowed."""
+class SignInFailedError(Exception):
+    """No sign-in completed: the time ran out, or the window was closed."""
 
 
 def disable_password_saving(profile: Path) -> None:
@@ -58,12 +61,14 @@ def disable_password_saving(profile: Path) -> None:
 def sign_in(
     site: str, profile: Path, chrome: str | None, *, extensions: bool = False
 ) -> list[dict[str, object]]:
-    """Open the site in Chrome, wait until the user is signed in, return its cookies.
+    """Open the site in Chrome, wait until the user is signed in, return every cookie.
 
-    No script runs in the identity provider's pages: only once back on the site.
-    ``extensions`` lets Chrome load extensions, in case the sign-in needs one. Raises
-    SignInTimeoutError when no sign-in completes within ``SIGN_IN_TIMEOUT_S``.
+    No script runs in the identity provider's pages: only once back on the site. The
+    caller keeps those of the site. ``extensions`` lets Chrome load extensions, in case
+    the sign-in needs one. Raises SignInFailedError when no sign-in completes within
+    ``SIGN_IN_TIMEOUT_S``, or when the window is closed.
     """
+    paths = [confluence_v2.current_user_request().path, jira_v3.myself_request().path]
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
             profile,
@@ -74,16 +79,21 @@ def sign_in(
         )
         try:
             page = context.pages[0] if context.pages else context.new_page()
-            page.goto(f"{site}/wiki/home")
             deadline = time.monotonic() + SIGN_IN_TIMEOUT_S
+            # A slow identity provider times the first page out: the polling goes on.
+            with contextlib.suppress(Error):
+                page.goto(f"{site}/wiki/home", timeout=SIGN_IN_TIMEOUT_S * 1000)
             while time.monotonic() < deadline:
-                try:
+                if page.is_closed():
+                    message = "the sign-in window was closed"
+                    raise SignInFailedError(message)
+                # The page may navigate while the check runs: then check again.
+                with contextlib.suppress(Error):
                     on_site = urlsplit(page.url).hostname == urlsplit(site).hostname
-                    if on_site and page.evaluate(SIGNED_IN_JS):
-                        return [dict(cookie) for cookie in context.cookies([site])]
-                except Error:
-                    pass  # the page navigated while the check ran; check again
+                    if on_site and page.evaluate(SIGNED_IN_JS, paths):
+                        return [dict(cookie) for cookie in context.cookies()]
                 page.wait_for_timeout(POLL_MS)
         finally:
             context.close()
-    raise SignInTimeoutError
+    message = f"no sign-in within {SIGN_IN_TIMEOUT_S} s"
+    raise SignInFailedError(message)

@@ -13,40 +13,55 @@ from urllib.parse import urlsplit
 
 from atlassian_offline_mcp.adapters import confluence_v2, http, jira_v3
 from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
-from atlassian_offline_mcp.adapters.http import SignInNeededError, Site, SiteError
+from atlassian_offline_mcp.adapters.http import (
+    SignInNeededError,
+    Site,
+    SiteError,
+    TooManyFailuresError,
+)
 from atlassian_offline_mcp.adapters.raw_store import REPRESENTATIONS, RawStore
-from atlassian_offline_mcp.adapters.session_file import COOKIES, read_cookies, write_cookies
+from atlassian_offline_mcp.adapters.session_file import (
+    COOKIES,
+    for_site,
+    read_cookies,
+    write_cookies,
+)
 from atlassian_offline_mcp.domain.content import IDENTIFIER, BlogPost, Issue, Page
 from atlassian_offline_mcp.domain.files import skip_reason
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
     from datetime import datetime
-    from http.cookiejar import Cookie
 
-    from atlassian_offline_mcp.adapters.http import Request
-    from atlassian_offline_mcp.domain.content import Attachment, Document
+    from atlassian_offline_mcp.adapters.http import ReadPage, Request
+    from atlassian_offline_mcp.domain.content import Attachment, Document, Listed
     from atlassian_offline_mcp.domain.period import Period
     from atlassian_offline_mcp.domain.settings import Settings
 
-    ReadPage = Callable[[Fields, Request], tuple[list[Fields], Request | None]]
+    type SnapshotRequests = Callable[[Listed], dict[str, tuple[Request, ReadPage | None]]]
 
 # A listing longer than this many pages is refused rather than followed.
 MAX_PAGES = 400
 # Folders followed up from the pages of one space, at most.
 MAX_FOLDERS = 1000
-# Jira reads JQL dates in the user's time zone: the search is widened by this much.
-JQL_MARGIN = timedelta(days=1)
-# Documents failing one after another, after which the run stops: the site, the
-# network or the session is wrong, and each further failure would only cost time.
-MAX_FAILED_IN_A_ROW = 10
+# Jira reads JQL dates in the user's time zone, up to 14 hours off UTC, and a date
+# stands for its midnight: two days on each side always cover the period.
+JQL_MARGIN = timedelta(days=2)
 # Exit statuses, beyond 0 for a run without failure.
 SOME_FAILED = 1
 SIGN_IN_NEEDED = 3
 
-
-class RunStoppedError(Exception):
-    """Too many documents failed in a row for the run to go on."""
+# How each kind of document is read from its listing, and which GETs make its snapshot.
+LISTED: dict[type[Document], Callable[[Fields], Listed]] = {
+    Page: partial(confluence_v2.listed, kind=Page),
+    BlogPost: partial(confluence_v2.listed, kind=BlogPost),
+    Issue: jira_v3.listed,
+}
+SNAPSHOT_REQUESTS: dict[type[Document], SnapshotRequests] = {
+    Page: confluence_v2.snapshot_requests,
+    BlogPost: confluence_v2.snapshot_requests,
+    Issue: jira_v3.snapshot_requests,
+}
 
 
 @dataclass
@@ -81,7 +96,11 @@ def label(kind: type[Document]) -> str:
 
 @dataclass
 class Download:
-    """One run over a site, into a store: a period, and a cap on attached files."""
+    """One run over a site, into a store: a period, and a cap on attached files.
+
+    ``failed_targets`` names the user's own keys that failed, for the command to show;
+    they never enter the report.
+    """
 
     site: Site
     store: RawStore
@@ -89,9 +108,8 @@ class Download:
     max_file_bytes: int
     now: Callable[[], datetime]
     report: Report = field(default_factory=Report)
-    not_found: list[str] = field(default_factory=list)
+    failed_targets: list[str] = field(default_factory=list)
     authors: set[str] = field(default_factory=set)
-    failed_in_a_row: int = 0
 
     def run(self, spaces: Sequence[str], projects: Sequence[str]) -> None:
         """Download every space and project named, after checking that the session holds.
@@ -138,13 +156,12 @@ class Download:
         message = f"a listing of more than {MAX_PAGES} pages"
         raise SiteError(message)
 
-    def documents(self, kind: type[Document], entries: Iterable[object]) -> list[Document]:
-        """Read the entries of a listing, counting those that the adapter refuses."""
-        read = jira_v3.issue if kind is Issue else partial(confluence_v2.document, kind=kind)
-        found: list[Document] = []
+    def documents(self, kind: type[Document], entries: Iterable[object]) -> list[Listed]:
+        """Read what decides a fetch from a listing's entries, counting those refused."""
+        found: list[Listed] = []
         for entry in entries:
             try:
-                found.append(read(Fields(entry, kind.kind)))
+                found.append(LISTED[kind](Fields(entry, kind.kind)))
             except RepresentationError as error:
                 self.report.failed(f"{label(kind)} listed", error)
         self.report.add(f"{label(kind)}: listed", len(found))
@@ -153,11 +170,10 @@ class Download:
     def space(self, key: str) -> None:
         """List a space whole, store its listings, and fetch what changed in the period."""
         try:
-            found = Fields(self.site.json(confluence_v2.space_request(key)), "spaces")
-            results = found.objects("results")
-            space = confluence_v2.space(results[0]) if results else None
+            found = self.collect(confluence_v2.space_request(key), confluence_v2.listing_page)
+            space = confluence_v2.space(Fields(found[0], "space")) if found else None
             if space is None:
-                self.not_found.append(key)
+                self.failed_targets.append(f"space {key}: not found")
                 self.report.add("confluence spaces failed: not found")
                 return
             page_listing = confluence_v2.listing_request(space.id, Page)
@@ -165,22 +181,36 @@ class Download:
             pages = self.collect(page_listing, confluence_v2.listing_page)
             posts = self.collect(post_listing, confluence_v2.listing_page)
         except (RepresentationError, SiteError) as error:
+            self.failed_targets.append(f"space {key}: {error}")
             self.report.failed("confluence spaces", error)
             return
         documents = [*self.documents(Page, pages), *self.documents(BlogPost, posts)]
-        folders = self.folders([page for page in documents if isinstance(page, Page)])
-        self.store.put_space(results[0].value, pages, posts, folders)
+        self.store.put_space(found[0], pages, posts, self.folders(pages))
         for document in documents:
             self.consider(document)
 
-    def folders(self, pages: Iterable[Page]) -> list[object]:
-        """GET every folder above the pages, following folders' own parents, as received."""
-        wanted = [page.parent_id for page in pages if page.parent_type == "folder"]
+    def folders(self, pages: Iterable[object]) -> list[object]:
+        """GET every folder above the listed pages, following folders' own parents.
+
+        A page entry that the adapter refuses is passed over here: it only loses its
+        place under a folder in the tree.
+        """
+        wanted: list[str | None] = []
+        for entry in pages:
+            try:
+                page = confluence_v2.document(Fields(entry, "pages"), Page)
+            except RepresentationError:
+                continue
+            if isinstance(page, Page) and page.parent_type == "folder":
+                wanted.append(page.parent_id)
         found: dict[str, object] = {}
-        while wanted and len(found) < MAX_FOLDERS:
+        while wanted:
             folder_id = wanted.pop()
             if folder_id is None or folder_id in found or not IDENTIFIER.fullmatch(folder_id):
                 continue
+            if len(found) >= MAX_FOLDERS:
+                self.report.add("confluence folders: over the cap, left out", len(wanted) + 1)
+                break
             try:
                 response = self.site.json(confluence_v2.folder_request(folder_id))
                 folder = confluence_v2.folder(Fields(response, "folder"))
@@ -200,51 +230,32 @@ class Download:
         try:
             entries = self.collect(jira_v3.search_request(key, start, end), jira_v3.search_page)
         except (RepresentationError, SiteError) as error:
+            self.failed_targets.append(f"project {key}: {error}")
             self.report.failed("jira projects", error)
             return
         for issue in self.documents(Issue, entries):
             self.consider(issue)
 
-    def consider(self, document: Document) -> None:
+    def consider(self, document: Listed) -> None:
         """Fetch a listed document when it is in the period and its revision not stored."""
         if document.updated not in self.period:
             return
-        what = label(type(document))
+        what = label(document.type)
         self.report.add(f"{what}: in the period")
         if self.store.has(document):
             self.report.add(f"{what}: already stored")
             self.complete(document)
             return
         try:
-            self.keep(type(document), self.responses(document))
+            responses = {
+                name: self.site.json(request) if read is None else self.collect(request, read)
+                for name, (request, read) in SNAPSHOT_REQUESTS[document.type](document).items()
+            }
+            self.keep(document.type, responses)
         except (RepresentationError, SiteError) as error:
             self.report.failed(what, error)
-            self.failed_in_a_row += 1
-            if self.failed_in_a_row >= MAX_FAILED_IN_A_ROW:
-                raise RunStoppedError from None
             return
-        self.failed_in_a_row = 0
         self.report.add(f"{what}: fetched")
-
-    def responses(self, document: Document) -> dict[str, object]:
-        """GET the responses that a document's snapshot keeps."""
-        if isinstance(document, Issue):
-            comments = jira_v3.comments_request(document.id)
-            return {
-                jira_v3.ISSUE: self.site.json(jira_v3.issue_request(document.id)),
-                jira_v3.COMMENTS: self.collect(comments, jira_v3.comments_page),
-            }
-        if not isinstance(document, Page | BlogPost):
-            message = f"not a kind of document that is downloaded: {type(document).__name__}"
-            raise TypeError(message)
-        storage = confluence_v2.document_request(document, "storage")
-        view = confluence_v2.document_request(document, "view")
-        attachments = confluence_v2.attachments_request(document)
-        return {
-            confluence_v2.DOCUMENT: self.site.json(storage),
-            confluence_v2.VIEW: self.site.json(view),
-            confluence_v2.ATTACHMENTS: self.collect(attachments, confluence_v2.listing_page),
-        }
 
     def keep(self, kind: type[Document], responses: dict[str, object]) -> None:
         """Download a snapshot's files, then store it with their digests.
@@ -262,12 +273,12 @@ class Download:
         if snapshot and snapshot.document.author and kind is not Issue:
             self.authors.add(snapshot.document.author.account_id)
 
-    def complete(self, document: Document) -> None:
+    def complete(self, document: Listed) -> None:
         """Download the files that a stored snapshot should have and lacks."""
         try:
             stored = self.store.read(document)
         except (RepresentationError, ValueError, OSError) as error:
-            self.report.failed(f"{label(type(document))} read", error)
+            self.report.failed(f"{label(document.type)} read", error)
             return
         missing = [
             attachment
@@ -276,7 +287,7 @@ class Download:
             and skip_reason(attachment, self.max_file_bytes) is None
         ]
         self.store.add_blobs(document, self.files(missing))
-        if stored.snapshot.document.author and not isinstance(document, Issue):
+        if stored.snapshot.document.author and document.type is not Issue:
             self.authors.add(stored.snapshot.document.author.account_id)
 
     def files(self, attachments: Iterable[Attachment]) -> dict[str, str]:
@@ -305,8 +316,12 @@ class Download:
                 users += self.collect(request, confluence_v2.users_page)
             except (RepresentationError, SiteError) as error:
                 self.report.failed("confluence users", error)
-        if users:
-            self.store.put_users(users)
+        try:
+            if users:
+                self.store.put_users(users)
+        except RepresentationError as error:
+            self.report.failed("confluence users", error)
+            return
         self.report.add("confluence users: named", len(users))
 
 
@@ -322,10 +337,10 @@ class Targets:
 
 @dataclass(frozen=True)
 class Outcome:
-    """What a run did, the space keys that found nothing, and the run's exit status."""
+    """What a run did, the user's keys that failed, and the run's exit status."""
 
     report: Report
-    not_found: list[str]
+    failed_targets: list[str]
     status: int
 
 
@@ -339,49 +354,41 @@ def download(
 
     The status is 0 when nothing failed, ``SOME_FAILED`` when something did, and
     ``SIGN_IN_NEEDED`` when the session no longer holds or none was saved. Raises
-    StoreBusyError when another run writes.
+    StoreBusyError, before anything is written, when another run writes.
     """
-    report, not_found, status = Report(), [], None
+    report, failed_targets, status = Report(), [], None
     try:
         cookies = read_cookies(settings.session / COOKIES)
     except OSError, ValueError:
         cookies, status = None, SIGN_IN_NEEDED
     store = RawStore(settings.raw)
-    try:
-        if cookies is not None:
-            with http.client(str(settings.site), cookies) as client, store.writing():
-                site = Site(client, sleep=sleep)
-                run = Download(site, store, targets.period, targets.max_file_bytes, now, report)
-                not_found = run.not_found
-                try:
-                    run.run(targets.spaces, targets.projects)
-                    status = SOME_FAILED if report.failures else 0
-                except SignInNeededError:
-                    status = SIGN_IN_NEEDED
-                except RunStoppedError:
-                    status = SOME_FAILED
-                    report.add("runs: stopped, too many failures in a row")
-                finally:
-                    host = urlsplit(str(settings.site)).hostname or ""
-                    write_cookies(
-                        settings.session / COOKIES, site_cookies(client.cookies.jar, host)
-                    )
-    finally:
-        if status is None:
-            report.add("runs: interrupted")
-        elif status == SIGN_IN_NEEDED:
-            report.add("runs: stopped, sign-in needed")
-        settings.runs.mkdir(parents=True, exist_ok=True)
-        started = now().astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
-        saved = {"status": status, "counts": dict(sorted(report.counts.items()))}
-        (settings.runs / f"{started}.json").write_text(json.dumps(saved, indent=1), "utf-8")
-    return Outcome(report, not_found, status)
-
-
-def site_cookies(jar: Iterable[Cookie], host: str) -> list[dict[str, str | None]]:
-    """Keep the cookies that the site's host is within: never a media host's."""
-    return [
-        {"name": cookie.name, "value": cookie.value, "domain": cookie.domain, "path": cookie.path}
-        for cookie in jar
-        if host == cookie.domain.lstrip(".") or host.endswith("." + cookie.domain.lstrip("."))
-    ]
+    site = str(settings.site)
+    with store.writing():
+        try:
+            if cookies is not None:
+                with http.client(site, cookies) as client:
+                    reader = Site(client, sleep=sleep)
+                    span, cap = targets.period, targets.max_file_bytes
+                    run = Download(reader, store, span, cap, now, report)
+                    failed_targets = run.failed_targets
+                    try:
+                        run.run(targets.spaces, targets.projects)
+                        status = SOME_FAILED if report.failures else 0
+                    except SignInNeededError:
+                        status = SIGN_IN_NEEDED
+                    except TooManyFailuresError:
+                        status = SOME_FAILED
+                        report.add("runs: stopped, too many failures in a row")
+                    finally:
+                        host = urlsplit(site).hostname or ""
+                        write_cookies(settings.session / COOKIES, for_site(http.jar(client), host))
+        finally:
+            if status is None:
+                report.add("runs: interrupted")
+            elif status == SIGN_IN_NEEDED:
+                report.add("runs: stopped, sign-in needed")
+            settings.runs.mkdir(parents=True, exist_ok=True)
+            started = now().astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+            saved = {"status": status, "counts": dict(sorted(report.counts.items()))}
+            (settings.runs / f"{started}.json").write_text(json.dumps(saved, indent=1), "utf-8")
+    return Outcome(report, failed_targets, status)

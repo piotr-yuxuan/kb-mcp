@@ -11,11 +11,12 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
-from atlassian_offline_mcp.adapters.http import Request
+from atlassian_offline_mcp.adapters.http import ReadPage, Request
 from atlassian_offline_mcp.domain.content import (
     Attachment,
     Comment,
     Issue,
+    Listed,
     Person,
     Snapshot,
     time_revision,
@@ -154,6 +155,21 @@ def search_page(response: Fields, request: Request) -> tuple[list[Fields], Reque
     if token is not None and not response.flag("isLast"):
         following = Request(request.path, {**request.params, "nextPageToken": token})
     return response.objects("issues"), following
+
+
+def listed(fields: Fields) -> Listed:
+    """Read of a search's entry only what decides a fetch: id and update time."""
+    updated = fields.object("fields").time("updated")
+    with fields.refusals():
+        return Listed(Issue, fields.text("id"), time_revision(updated), updated)
+
+
+def snapshot_requests(issue: Listed) -> dict[str, tuple[Request, ReadPage | None]]:
+    """Name the GETs whose responses make a snapshot, with the paging of comments."""
+    return {
+        ISSUE: (issue_request(issue.id), None),
+        COMMENTS: (comments_request(issue.id), comments_page),
+    }
 
 
 def issue_request(issue_id: str) -> Request:

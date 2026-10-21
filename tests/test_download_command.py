@@ -93,7 +93,7 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     options = ("--site", SITE, "--space", "NOPE", "--since", "7d")
     assert main(command(home, *options)) == SOME_FAILED
     captured = capsys.readouterr()
-    assert "space not found: NOPE" in captured.err
+    assert "space NOPE: not found" in captured.err
     assert "confluence spaces failed: not found: 1" in captured.out
     [report] = chosen.runs.iterdir()
     assert "NOPE" not in report.read_text("utf-8")

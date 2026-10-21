@@ -50,3 +50,20 @@ def write_cookies(path: Path, cookies: Iterable[Mapping[str, object]]) -> None:
         Path(hidden).replace(path)
     finally:
         Path(hidden).unlink(missing_ok=True)
+
+
+def for_site(cookies: Iterable[Mapping[str, object]], host: str) -> list[dict[str, str]]:
+    """Keep the cookies that the site's host is within, with a value: never a media host's.
+
+    A cookie the site set without a value is left out, since it cannot be sent again.
+    """
+    kept: list[dict[str, str]] = []
+    for cookie in cookies:
+        name, value, domain = cookie.get("name"), cookie.get("value"), cookie.get("domain")
+        if not (isinstance(name, str) and isinstance(value, str) and isinstance(domain, str)):
+            continue
+        bare = domain.lstrip(".")
+        if host == bare or host.endswith(f".{bare}"):
+            path = cookie.get("path")
+            kept.append({"name": name, "value": value, "domain": domain, "path": str(path or "/")})
+    return kept

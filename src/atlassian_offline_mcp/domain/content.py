@@ -18,8 +18,9 @@ IDENTIFIER = re.compile(r"[A-Za-z0-9_-]+")
 SPACE_KEY = re.compile(r"~?[A-Za-z0-9]+")
 PROJECT_KEY = re.compile(r"[A-Z][A-Z0-9_]+")
 ISSUE_KEY = re.compile(r"[A-Z][A-Z0-9_]+-[0-9]+")
-# A path on the site, never another host's: one slash, no second one, no backslash.
-SITE_PATH = re.compile(r"/(?![/\\])[^\s\\]*")
+# A path on the site, never another host's: one slash, no second one, no backslash, no
+# control character.
+SITE_PATH = re.compile(r"/(?![/\\])[^\s\\\x00-\x1f\x7f]*")
 # A revision's name: a Confluence version, or a Jira update time in UTC.
 REVISION = re.compile(r"[0-9]{6}|[0-9]{8}T[0-9]{6}\.[0-9]{6}Z")
 
@@ -198,6 +199,37 @@ class Issue(Document):
         super().__post_init__()
         require(ISSUE_KEY, self.key, "key")
         require(PROJECT_KEY, self.project, "project")
+
+
+@dataclass(frozen=True)
+class Listed:
+    """What a listing says of a document: enough to decide whether to fetch it, and how.
+
+    An adapter reads it from a listing's entry leniently, apart from the rest of the
+    entry, so that an entry whose other fields have changed still lets the document be
+    fetched. It names its stored snapshot as the document would.
+    """
+
+    type: type[Document]
+    id: str
+    revision: str
+    updated: datetime
+    version: int | None = None  # a Confluence document's GETs are pinned to its version
+
+    def __post_init__(self) -> None:
+        """Refuse an id or a revision that could not name a folder."""
+        require(IDENTIFIER, self.id, "id")
+        require(REVISION, self.revision, "revision")
+
+    @property
+    def source(self) -> str:
+        """Name the source, as the document's type does."""
+        return self.type.source
+
+    @property
+    def kind(self) -> str:
+        """Name the kind, as the document's type does."""
+        return self.type.kind
 
 
 @dataclass(frozen=True)

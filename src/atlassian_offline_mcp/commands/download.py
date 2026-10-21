@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 BAD_ARGUMENTS = 2
+# The shell's own status for a run stopped by Ctrl-C.
+INTERRUPTED = 130
 MEBIBYTE = 1024 * 1024
 DEFAULT_MAX_FILE_MB = 50
 
@@ -83,10 +85,13 @@ def run(arguments: argparse.Namespace) -> int:
     except StoreBusyError:
         sys.stderr.write("another run is writing the raw store; try again once it ends\n")
         return SOME_FAILED
+    except KeyboardInterrupt:
+        sys.stderr.write(f"interrupted; the counts so far are in {settings.runs}\n")
+        return INTERRUPTED
     for what, number in sorted(outcome.report.counts.items()):
         sys.stdout.write(f"{what}: {number}\n")
-    for key in outcome.not_found:
-        sys.stderr.write(f"space not found: {key}\n")
+    for target in outcome.failed_targets:
+        sys.stderr.write(f"{target}\n")
     if outcome.status == SIGN_IN_NEEDED:
         sys.stderr.write("sign-in needed: run atlassian-offline-mcp login\n")
     return outcome.status

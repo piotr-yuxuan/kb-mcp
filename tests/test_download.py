@@ -3,26 +3,29 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import httpx
 import pytest
 
 from atlassian_offline_mcp.adapters import http
-from atlassian_offline_mcp.adapters.http import Site
+from atlassian_offline_mcp.adapters.http import MAX_FAILED_IN_A_ROW, Site, TooManyFailuresError
 from atlassian_offline_mcp.adapters.raw_store import RawStore, Stored, Unreadable
-from atlassian_offline_mcp.adapters.session_file import COOKIES, write_cookies
+from atlassian_offline_mcp.adapters.session_file import (
+    COOKIES,
+    for_site,
+    read_cookies,
+    write_cookies,
+)
 from atlassian_offline_mcp.app.download import (
-    MAX_FAILED_IN_A_ROW,
     SIGN_IN_NEEDED,
     SOME_FAILED,
     Download,
-    RunStoppedError,
     Targets,
     download,
-    site_cookies,
 )
 from atlassian_offline_mcp.domain.content import BlogPost, Issue, Page
 from atlassian_offline_mcp.domain.period import period
@@ -111,13 +114,19 @@ class FakeSite:
     jira: bool = True
     pages_fail: bool = False
     many_pages: int = 0
+    set_cookies: list[str] = field(default_factory=list)
+    html_page: str | None = None
+    listing_changed: bool = False
+    media_fails: bool = False
     asked: list[httpx.URL] = field(default_factory=list)
 
     def routes(self) -> dict[str, Callable[[httpx.Request], httpx.Response]]:
         """Map each path to its answer."""
         routes: dict[str, Callable[[httpx.Request], httpx.Response]] = {
             "/wiki/rest/api/user/current": lambda _: httpx.Response(
-                200, json={"type": "anonymous"} if self.anonymous else {"accountId": "account-1"}
+                200,
+                json={"type": "anonymous"} if self.anonymous else {"accountId": "account-1"},
+                headers=[("set-cookie", cookie) for cookie in self.set_cookies],
             ),
             "/rest/api/3/myself": lambda _: httpx.Response(
                 200 if self.jira else 404, json={"accountId": "account-1"}
@@ -163,6 +172,10 @@ class FakeSite:
         self.asked.append(request.url)
         if self.pages_fail and request.url.path.startswith("/wiki/api/v2/pages/"):
             return httpx.Response(500)
+        if self.html_page and request.url.path == f"/wiki/api/v2/pages/{self.html_page}":
+            return httpx.Response(200, content=b"<html>Maintenance</html>")
+        if self.media_fails and request.url.path == "/file/abc/binary":
+            return httpx.Response(500)
         route = self.routes().get(request.url.path)
         return route(request) if route else httpx.Response(404)
 
@@ -175,6 +188,10 @@ class FakeSite:
             return httpx.Response(200, json={"results": [PAGES["1003"]], "_links": {}})
         following = f"/wiki/api/v2/spaces/{SPACE}/pages?limit=250&cursor=c2"
         first = [PAGES["1001"], PAGES["1002"]]
+        if self.listing_changed:
+            first = [
+                {key: value for key, value in page.items() if key != "title"} for page in first
+            ]
         return httpx.Response(200, json={"results": first, "_links": {"next": following}})
 
     def document(self, request: httpx.Request, document: dict[str, object]) -> httpx.Response:
@@ -255,15 +272,26 @@ def test_a_second_run_fetches_no_document_again(tmp_path: Path) -> None:
     assert done.report.counts["confluence pages: already stored"] == len(["1001", "1002"])
 
 
-def test_the_search_names_the_project_and_widens_the_period_by_a_day(tmp_path: Path) -> None:
-    """Jira reads dates in the user's time zone: a day more on each side."""
+def test_the_search_covers_the_period_in_every_time_zone_of_jira(tmp_path: Path) -> None:
+    """Jira reads the JQL's dates at midnight in the user's zone, from UTC-12 to UTC+14.
+
+    Whatever the zone, the dates searched must hold the whole period; the period itself
+    then decides on each issue.
+    """
     fake = FakeSite()
-    run(RawStore(tmp_path / "raw"), fake)
+    store = RawStore(tmp_path / "raw")
+    # Late in the UTC day, where UTC+14 is already two dates ahead of the period's end.
+    span = period("2026-10-15T23:30:00+00:00", "2026-10-22T23:30:00+00:00", NOW)
+    with fake.client() as client, store.writing():
+        Download(Site(client, sleep=no_sleep), store, span, CAP, lambda: NOW).run([], ["PRB"])
     [search] = [url for url in fake.asked if url.path == "/rest/api/3/search/jql"]
-    assert search.params["jql"] == (
-        'project = "PRB" AND updated >= "2026-10-14" AND updated < "2026-10-23"'
-        " ORDER BY updated DESC"
-    )
+    jql = search.params["jql"]
+    assert jql.startswith('project = "PRB" AND updated >= "')
+    start, end = (date.fromisoformat(text) for text in re.findall(r'"(\d{4}-\d{2}-\d{2})"', jql))
+    for hours in range(-12, 15):
+        zone = timezone(timedelta(hours=hours))
+        assert datetime.combine(start, time(), zone) <= span.start
+        assert datetime.combine(end, time(), zone) >= span.end
 
 
 def test_a_changed_response_is_kept_raw_and_reported_by_its_path(tmp_path: Path) -> None:
@@ -340,17 +368,24 @@ def test_a_run_with_a_failure_says_so_in_its_status(
     assert json.loads(report.read_text("utf-8"))["status"] == SOME_FAILED
 
 
-def test_only_the_site_cookies_are_saved_back(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    """A cookie that the media host set never joins the saved session."""
-    chosen = saved_session(tmp_path, monkeypatch, FakeSite())
-    jar = httpx.Cookies()
-    jar.set("kept", "1", domain=".example.invalid")
-    jar.set("media", "2", domain=".atlassian.com")
-    assert [cookie["name"] for cookie in site_cookies(jar.jar, "sandbox.example.invalid")] == [
-        "kept"
-    ]
+def test_only_the_site_cookies_with_a_value_are_saved_back(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A cookie that the media host set, or one without a value, never joins the session."""
+    fake = FakeSite(set_cookies=["rolled=2; Domain=.example.invalid; Path=/wiki", "empty"])
+    chosen = saved_session(tmp_path, monkeypatch, fake)
     download(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+    saved = read_cookies(chosen.session / COOKIES)
+    assert {cookie["name"] for cookie in saved} == {"rolled"}
     assert (chosen.session / COOKIES).stat().st_mode & 0o777 == OWNER_ONLY
+    assert for_site(
+        [
+            {"name": "kept", "value": "1", "domain": ".example.invalid"},
+            {"name": "media", "value": "2", "domain": ".atlassian.com"},
+            {"name": "none", "value": None, "domain": ".example.invalid"},
+        ],
+        "sandbox.example.invalid",
+    ) == [{"name": "kept", "value": "1", "domain": ".example.invalid", "path": "/"}]
 
 
 def test_a_space_key_that_finds_nothing_fails_the_run_and_is_named_locally(
@@ -363,7 +398,7 @@ def test_a_space_key_that_finds_nothing_fails_the_run_and_is_named_locally(
         site = Site(client, sleep=no_sleep)
         done = Download(site, store, period("7d", None, NOW), CAP, lambda: NOW)
         done.run(["ENG"], [])
-    assert done.not_found == ["ENG"]
+    assert done.failed_targets == ["space ENG: not found"]
     assert done.report.counts["confluence spaces failed: not found"] == 1
     assert done.report.failures == 1
 
@@ -385,6 +420,71 @@ def test_a_run_stops_after_documents_fail_one_after_another(tmp_path: Path) -> N
         done = Download(
             Site(client, sleep=no_sleep), store, period("7d", None, NOW), CAP, lambda: NOW
         )
-        with pytest.raises(RunStoppedError):
+        with pytest.raises(TooManyFailuresError):
             done.run(["MFS"], [])
-    assert done.report.counts["confluence pages failed: status 500"] == MAX_FAILED_IN_A_ROW
+    assert done.report.counts["confluence pages failed: status 500"] == MAX_FAILED_IN_A_ROW - 1
+
+
+def test_an_answer_that_is_not_json_fails_one_document_and_the_run_goes_on(
+    tmp_path: Path,
+) -> None:
+    """A proxy page instead of one document's JSON costs that document alone."""
+    store = RawStore(tmp_path / "raw")
+    done = run(store, FakeSite(html_page="1002"))
+    assert done.report.counts["confluence pages failed: not JSON"] == 1
+    pages = [item.snapshot.document.id for item in store.latest(Page) if isinstance(item, Stored)]
+    assert pages == ["1001"]
+    assert [item for item in store.latest(Issue) if isinstance(item, Stored)]
+
+
+def test_a_listing_entry_with_a_changed_field_is_still_fetched(tmp_path: Path) -> None:
+    """Only id, version and time decide a fetch: a listing without titles still works."""
+    store = RawStore(tmp_path / "raw")
+    done = run(store, FakeSite(listing_changed=True))
+    pages = [item.snapshot.document.id for item in store.latest(Page) if isinstance(item, Stored)]
+    assert sorted(pages) == ["1001", "1002"]
+    assert done.report.counts["confluence pages: fetched"] == len(pages)
+
+
+def test_a_file_that_failed_is_downloaded_by_a_later_run(tmp_path: Path) -> None:
+    """The snapshot is kept without the file; the next run fetches the file alone."""
+    store = RawStore(tmp_path / "raw")
+    first = run(store, FakeSite(media_fails=True))
+    assert first.report.counts["files failed: status 500"] >= 1
+    [fresh] = [
+        item
+        for item in store.latest(Page)
+        if isinstance(item, Stored) and item.snapshot.document.id == "1001"
+    ]
+    assert "att1" not in fresh.blobs
+    again = FakeSite()
+    second = run(store, again)
+    assert second.report.counts["confluence pages: already stored"] == len(["1001", "1002"])
+    assert store.read(fresh.snapshot.document).blobs["att1"]
+    assert not [url for url in again.asked if url.path.startswith("/wiki/api/v2/pages/")]
+
+
+def test_a_second_run_downloads_no_file_again(tmp_path: Path) -> None:
+    """Posts and issues already stored, with their files, cost no request but listings."""
+    store = RawStore(tmp_path / "raw")
+    run(store, FakeSite())
+    again = FakeSite()
+    done = run(store, again)
+    assert "files: downloaded" not in done.report.counts
+    assert done.report.counts["confluence blogposts: already stored"] == 1
+    assert done.report.counts["jira issues: already stored"] == 1
+    assert not [
+        url for url in again.asked if "/attachment" in url.path or url.path == "/file/abc/binary"
+    ]
+
+
+def test_an_expired_session_still_leaves_a_run_report(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The report says why the run stopped."""
+    chosen = saved_session(tmp_path, monkeypatch, FakeSite(anonymous=True))
+    download(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+    [report] = chosen.runs.iterdir()
+    saved = json.loads(report.read_text("utf-8"))
+    assert saved["status"] == SIGN_IN_NEEDED
+    assert saved["counts"]["runs: stopped, sign-in needed"] == 1

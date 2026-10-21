@@ -35,7 +35,7 @@ def test_a_space_lists_its_pages_with_archived_ones_and_its_blog_posts() -> None
 
 def test_both_bodies_are_asked_for_at_the_listed_version() -> None:
     """The storage body comes with labels; both GETs name the same version."""
-    page = confluence_v2.document(Fields(v2_page(), "page"), Page)
+    page = confluence_v2.listed(Fields(v2_page(), "page"), Page)
     assert url(confluence_v2.document_request(page, "storage")) == (
         "/wiki/api/v2/pages/196845?body-format=storage&version=3&include-labels=true"
     )

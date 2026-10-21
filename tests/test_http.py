@@ -8,12 +8,16 @@ import httpx
 import pytest
 
 from atlassian_offline_mcp.adapters.http import (
+    HTTP_OK,
     INTERVAL_S,
+    MAX_FAILED_IN_A_ROW,
     RETRIES,
     Request,
     SignInNeededError,
     Site,
     SiteError,
+    TooManyFailuresError,
+    refuse_plain_http,
 )
 
 SITE = "https://sandbox.example.invalid"
@@ -186,3 +190,68 @@ def test_a_path_keeps_its_own_query_beside_the_parameters() -> None:
         f"{SITE}/wiki/api/v2/spaces/1/pages?limit=250&cursor=c2",
         f"{SITE}/wiki/rest/api/user/bulk?limit=50&accountId=a&accountId=b",
     ]
+
+
+def test_an_answer_that_is_not_json_fails_that_get() -> None:
+    """A proxy's or a maintenance page's HTML, served with 200, is a failure of one GET."""
+    reader, _ = site(httpx.Response(200, content=b"<html>Maintenance</html>"))
+    with pytest.raises(SiteError, match=r"^not JSON$"):
+        reader.json(Request("/wiki/api/v2/spaces"))
+
+
+def test_a_body_that_does_not_decode_fails_without_retrying() -> None:
+    """A body that its Content-Encoding cannot decode is not worth asking for again."""
+    broken = httpx.Response(
+        200, stream=httpx.ByteStream(b"not gzip"), headers={"content-encoding": "gzip"}
+    )
+    reader, asked = site(broken)
+    with pytest.raises(SiteError, match=r"^DecodingError$"):
+        reader.json(Request("/wiki/api/v2/spaces"))
+    assert len(asked) == 1
+
+
+def test_a_retry_after_that_is_not_ascii_digits_falls_back_to_backing_off() -> None:
+    """A superscript digit is a digit to str.isdigit, but not a number of seconds."""
+    clock = Clock()
+    reader, _ = site(
+        httpx.Response(429, headers=[(b"retry-after", "\u00b2".encode("latin-1"))]),
+        httpx.Response(200, json={}),
+        clock=clock,
+    )
+    assert reader.json(Request("/a")) == {}
+    assert 1.0 in clock.sleeps
+
+
+def test_gets_failing_one_after_another_stop_the_run() -> None:
+    """After so many failed GETs in a row, the site, the network or the session is wrong."""
+    reader, _ = site(*[httpx.Response(404)] * MAX_FAILED_IN_A_ROW)
+    for _ in range(MAX_FAILED_IN_A_ROW - 1):
+        with pytest.raises(SiteError):
+            reader.json(Request("/a"))
+    with pytest.raises(TooManyFailuresError):
+        reader.json(Request("/a"))
+
+
+def test_a_success_starts_the_count_of_failures_again() -> None:
+    """Failures spread among successes never stop a run."""
+    answers = [httpx.Response(404)] * (MAX_FAILED_IN_A_ROW - 1) + [httpx.Response(200, json={})]
+    reader, _ = site(*answers * 2)
+    for answer in answers * 2:
+        if answer.status_code == HTTP_OK:
+            assert reader.json(Request("/a")) == {}
+        else:
+            with pytest.raises(SiteError):
+                reader.json(Request("/a"))
+
+
+def test_a_request_over_plain_http_is_refused_before_it_is_sent() -> None:
+    """The session's cookies never travel in clear, and the refusal is not retried."""
+    sent: list[httpx.Request] = []
+    http_client = httpx.Client(
+        base_url="http://sandbox.example.invalid",
+        transport=httpx.MockTransport(lambda request: sent.append(request) or httpx.Response(200)),
+        event_hooks={"request": [refuse_plain_http]},
+    )
+    with pytest.raises(SiteError, match="plain HTTP refused"):
+        Site(http_client, sleep=lambda _: None).json(Request("/a"))
+    assert sent == []

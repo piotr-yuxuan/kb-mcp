@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.browser import SIGN_IN_TIMEOUT_S, SignInTimeoutError
+from atlassian_offline_mcp.adapters.browser import SignInFailedError
 from atlassian_offline_mcp.app.login import login
 from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
 from atlassian_offline_mcp.domain.settings import SettingsError
@@ -29,7 +29,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def run(arguments: argparse.Namespace) -> int:
-    """Sign in; exit 2 for bad settings, 3 when no sign-in completes in time."""
+    """Sign in; exit 2 for bad settings, 3 when no sign-in completes."""
     try:
         settings = settings_of(arguments)
     except SettingsError as error:
@@ -41,8 +41,8 @@ def run(arguments: argparse.Namespace) -> int:
     sys.stdout.write(f"Sign in to {settings.site} in the Chrome window that opens.\n")
     try:
         login(settings, settings.site, arguments.chrome, extensions=arguments.keep_extensions)
-    except SignInTimeoutError:
-        sys.stderr.write(f"no sign-in within {SIGN_IN_TIMEOUT_S} s\n")
+    except SignInFailedError as error:
+        sys.stderr.write(f"not signed in: {error}\n")
         return NOT_SIGNED_IN
     sys.stdout.write("Signed in; the session is saved.\n")
     return 0

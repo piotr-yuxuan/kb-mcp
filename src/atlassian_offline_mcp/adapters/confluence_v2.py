@@ -10,12 +10,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
-from atlassian_offline_mcp.adapters.http import Request
+from atlassian_offline_mcp.adapters.http import ReadPage, Request
 from atlassian_offline_mcp.domain.content import (
     SITE_PATH,
     Attachment,
     BlogPost,
     Folder,
+    Listed,
     Page,
     Person,
     Snapshot,
@@ -170,7 +171,26 @@ def folder_request(folder_id: str) -> Request:
     return Request(f"{WIKI}/api/v2/folders/{folder_id}")
 
 
-def document_request(document: Page | BlogPost, body: str) -> Request:
+def listed(fields: Fields, kind: type[Page | BlogPost]) -> Listed:
+    """Read of a listing's entry only what decides a fetch: id, version, time."""
+    version = fields.object("version")
+    number = version.integer("number")
+    with fields.refusals():
+        return Listed(
+            kind, fields.text("id"), version_revision(number), version.time("createdAt"), number
+        )
+
+
+def snapshot_requests(document: Listed) -> dict[str, tuple[Request, ReadPage | None]]:
+    """Name the GETs whose responses make a snapshot, with the paging of a listing."""
+    return {
+        DOCUMENT: (document_request(document, "storage"), None),
+        VIEW: (document_request(document, "view"), None),
+        ATTACHMENTS: (attachments_request(document), listing_page),
+    }
+
+
+def document_request(document: Listed, body: str) -> Request:
     """GET a page or a blog post at its version, with its body as ``storage`` or ``view``."""
     params = {"body-format": body, "version": str(document.version)}
     if body == "storage":
@@ -178,7 +198,7 @@ def document_request(document: Page | BlogPost, body: str) -> Request:
     return Request(f"{WIKI}/api/v2/{document.kind}/{document.id}", params)
 
 
-def attachments_request(document: Page | BlogPost) -> Request:
+def attachments_request(document: Listed) -> Request:
     """GET the first page of a page's, or a blog post's, attachments."""
     return Request(
         f"{WIKI}/api/v2/{document.kind}/{document.id}/attachments", {"limit": LISTING_LIMIT}

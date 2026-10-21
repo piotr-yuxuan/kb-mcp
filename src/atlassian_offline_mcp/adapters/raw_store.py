@@ -24,6 +24,7 @@ from atlassian_offline_mcp.domain.content import (
     BlogPost,
     Folder,
     Issue,
+    Listed,
     Page,
     Person,
     RefusedError,
@@ -185,11 +186,11 @@ class RawStore:
             message = "the raw store is written only inside RawStore.writing()"
             raise RuntimeError(message)
 
-    def folder(self, document: Document) -> Path:
+    def folder(self, document: Document | Listed) -> Path:
         """Return where the snapshot of this document at this revision is, or would be."""
         return self.root / document.source / document.kind / document.id / document.revision
 
-    def has(self, document: Document) -> bool:
+    def has(self, document: Document | Listed) -> bool:
         """Say whether this document's revision is stored."""
         return self.folder(document).is_dir()
 
@@ -239,7 +240,7 @@ class RawStore:
         self._merge_blobs(target, blobs)
         return target
 
-    def add_blobs(self, document: Document, blobs: Mapping[str, str]) -> None:
+    def add_blobs(self, document: Document | Listed, blobs: Mapping[str, str]) -> None:
         """Record files downloaded after their snapshot was stored, such as on a retry."""
         self._check_writing()
         self._check_blobs(blobs)
@@ -272,9 +273,10 @@ class RawStore:
             raise RepresentationError(message)
         return record.time("fetched_at"), blobs
 
-    def read(self, document: Document) -> Stored:
+    def read(self, document: Document | Listed) -> Stored:
         """Read the stored snapshot of this document at this revision."""
-        return self._read(type(document), self.folder(document))
+        kind = document.type if isinstance(document, Listed) else type(document)
+        return self._read(kind, self.folder(document))
 
     def _read(self, kind: type[Document], folder: Path) -> Stored:
         fetched_at, blobs = self._read_record(folder)
