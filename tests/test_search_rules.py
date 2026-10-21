@@ -211,6 +211,13 @@ def test_a_long_paragraph_is_cut_at_a_line_break_then_a_space_then_anywhere() ->
     assert [b - a for a, b in pieces(solid, limit=10)] == [10, 10, 5]
 
 
+def test_a_blank_line_beyond_the_limit_ends_no_piece_before_it() -> None:
+    """Only a blank line within the limit can end a piece; a later one waits its turn."""
+    text = "one two three four five six\n\nseven"
+    spans = pieces(text, limit=10)
+    assert [text[a:b].strip() for a, b in spans] == ["one two", "three four", "five six", "seven"]
+
+
 def test_a_blank_text_has_no_piece() -> None:
     """Nothing to embed in white space alone."""
     assert pieces("") == []

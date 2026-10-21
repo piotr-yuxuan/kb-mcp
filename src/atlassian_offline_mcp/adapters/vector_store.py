@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 LAYOUT = np.dtype("<f4")
 # Texts embedded, then committed, at a time: what an interruption may lose at most.
 BATCH = 256
+# How long a write waits for another run's, in seconds: about one batch's embedding.
+WAIT_S = 60
 CREATE = "CREATE TABLE IF NOT EXISTS vectors (key TEXT PRIMARY KEY, vector BLOB NOT NULL)"
 
 
@@ -88,9 +90,14 @@ class VectorStore:
 
 @contextmanager
 def opened(path: Path) -> Iterator[VectorStore]:
-    """Open the store at ``path``, creating it when there is none; close it after use."""
-    connection = sqlite3.connect(path, autocommit=False)
+    """Open the store at ``path``, creating it when there is none; close it after use.
+
+    Two runs may use the store at once, an index and an evaluation: in WAL mode, reads
+    hold no lock and leave no transaction open, and a write waits for the other's.
+    """
+    connection = sqlite3.connect(path, timeout=WAIT_S)
     try:
+        connection.execute("PRAGMA journal_mode = WAL")
         connection.execute(CREATE)
         connection.commit()
         yield VectorStore(connection)

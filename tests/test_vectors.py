@@ -181,3 +181,16 @@ def test_a_model_whose_files_changed_leaves_the_index_in_place(
     assert "index not built: tiny: files not as pinned" in capsys.readouterr().err
     with reading(data / "index.sqlite") as reader:
         assert reader.summary() == before
+
+
+def test_two_runs_share_the_store_at_once(tmp_path: Path) -> None:
+    """A read leaves no lock behind: another run writes while the first is open."""
+    with (
+        vector_store.opened(tmp_path / "v.db") as first,
+        vector_store.opened(tmp_path / "v.db") as second,
+    ):
+        assert second.get(["a"]) == {}
+        first.put({"a": b"1234"})
+        assert second.get(["a"]) == {"a": b"1234"}
+        second.put({"b": b"5678"})
+        assert first.get(["a", "b"]) == {"a": b"1234", "b": b"5678"}

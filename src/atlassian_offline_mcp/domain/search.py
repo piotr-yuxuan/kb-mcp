@@ -7,6 +7,7 @@ which order a space or a project is browsed. Nothing here reads a file or the in
 
 from __future__ import annotations
 
+import bisect
 import re
 import string
 import unicodedata
@@ -470,10 +471,13 @@ def pieces(text: str, limit: int = PIECE) -> list[tuple[int, int]]:
         start = found.start()
         end = min(start + limit, len(text))
         if end < len(text):
-            fitting = [cut for cut in breaks if start < cut <= end]
+            # The last blank line that fits, found by halves: a long section stays linear.
+            at = bisect.bisect_right(breaks, end) - 1
+            fitting = breaks[at] if at >= 0 else 0
             # A line break or space just past the limit ends a piece that fits it exactly.
             line, space = (text.rfind(each, start + 1, end + 1) for each in ("\n", " "))
-            end = fitting[-1] if fitting else next((cut for cut in (line, space) if cut > 0), end)
+            cuts = (fitting, line, space) if fitting > start else (line, space)
+            end = next((cut for cut in cuts if cut > start), end)
         spans.append((start, end))
         start = end
     return spans
