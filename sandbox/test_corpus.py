@@ -13,6 +13,7 @@ from sandbox.seed_corpus import (
     Page,
     Ticket,
     read_corpus,
+    read_golden,
     read_ideas,
     read_tickets,
     timeline,
@@ -136,16 +137,29 @@ def test_french_pages_and_titles(pages: dict[str, Page]) -> None:
 def test_every_page_converts_to_well_formed_storage_with_its_links(
     pages: dict[str, Page],
 ) -> None:
-    """Conversion refuses raw HTML, unknown links and malformed XHTML: none occurs."""
+    """Conversion refuses raw HTML, unknown links and malformed XHTML: none occurs.
+
+    The bible also asks every page to link to at least one other page.
+    """
     titles = {key: page.title for key, page in pages.items()}
     unlinked = [key for key, page in pages.items() if not to_storage(page, titles)[1]]
     assert unlinked == []
 
 
-def test_addresses_are_reserved_and_no_real_name_appears(pages: dict[str, Page]) -> None:
-    """Web and email addresses use reserved domains; no denied name appears."""
-    texts = {key: page.markdown for key, page in pages.items()}
-    texts |= {idea.key: idea.markdown for idea in read_ideas().values()}
+def test_addresses_are_reserved_and_no_real_name_appears(
+    pages: dict[str, Page], tickets: list[Ticket]
+) -> None:
+    """Web and email addresses use reserved domains; no denied name appears anywhere."""
+    texts = {key: f"{page.title}\n{page.markdown}" for key, page in pages.items()}
+    texts |= {key: f"{idea.summary}\n{idea.markdown}" for key, idea in read_ideas().items()}
+    texts |= {
+        ticket.key: "\n".join([ticket.summary, ticket.markdown, *ticket.comments])
+        for ticket in tickets
+    }
+    texts |= {
+        question.id: "\n".join([question.question, *question.evidence.values()])
+        for question in read_golden()
+    }
     problems = []
     for key, text in texts.items():
         # A placeholder such as <service> stands for any name.
@@ -181,6 +195,29 @@ def test_tickets_are_numbered_epics_first_with_unique_summaries(tickets: list[Ti
     numbers = sorted(int(ticket.key.removeprefix("ENG-")) for ticket in tickets)
     assert numbers == list(range(1, TICKETS + 1))
     assert len({ticket.summary for ticket in tickets}) == TICKETS
+
+
+def test_parents_come_before_their_children(tickets: list[Ticket]) -> None:
+    """The importer links a ticket to its epic only if the epic was read first."""
+    seen: set[str] = set()
+    for ticket in tickets:
+        assert ticket.parent is None or ticket.parent in seen
+        seen.add(ticket.key)
+
+
+def test_imported_tickets_keep_their_dates(tickets: list[Ticket]) -> None:
+    """The dates Jira holds since the trial import: the derivation must not move them."""
+    by_key = {ticket.key: timeline(ticket) for ticket in tickets}
+    imported = {
+        "ENG-1": ("2025-03-24 10:00", "2025-08-02 17:00"),
+        "ENG-31": ("2025-03-28 20:00", "2025-04-17 17:00"),
+        "ENG-69": ("2025-07-18 17:00", "2025-07-29 14:00"),
+    }
+    for key, (created, resolved) in imported.items():
+        line = by_key[key]
+        assert line.resolved is not None
+        found = (line.created.strftime("%Y-%m-%d %H:%M"), line.resolved.strftime("%Y-%m-%d %H:%M"))
+        assert found == (created, resolved)
 
 
 def test_most_tickets_are_closed_and_their_dates_span_the_calendar(tickets: list[Ticket]) -> None:
