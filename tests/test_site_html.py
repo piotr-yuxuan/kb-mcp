@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import re
 from pathlib import Path, PurePosixPath
+from urllib.parse import quote
 
 import pytest
 
 from atlassian_offline_mcp.adapters.pandoc import Pandoc
-from atlassian_offline_mcp.adapters.site_html import Context, Mirrored, normalise
+from atlassian_offline_mcp.adapters.site_html import Context, MarkupError, Mirrored, normalise
 
 FIXTURES = Path(__file__).parent / "fixtures" / "sandbox"
 SITE = "https://site.example.invalid"
@@ -283,3 +284,84 @@ def test_a_malformed_address_keeps_its_text_alone() -> None:
 def test_odd_markup_is_converted_without_error(html: str, kept: str) -> None:
     """Markup found by fuzzing that once raised: its text comes through instead."""
     assert kept in markdown(html)
+
+
+@pytest.mark.parametrize("name", ["my image.png", "été.png"])
+def test_a_file_name_in_an_address_is_read_decoded(name: str) -> None:
+    """An address carries the file name percent-encoded; the attachment's is plain."""
+    mirrored = Mirrored(SITE, documents={}, files={}, names={("1", name): OWN})
+    encoded = quote(name)
+    html = f'<p><img src="/wiki/download/attachments/1/{encoded}?version=1" alt="shot"></p>'
+    page = Pandoc.find().markdown(normalise(html, Context("1", HERE, mirrored)))
+    assert page.strip() == f"![shot](../../{OWN})"
+
+
+def test_an_image_names_its_page_by_its_data_attributes() -> None:
+    """The container attribute names the page whose file of that id is shown."""
+    mirrored = Mirrored(
+        SITE, documents={}, files={("1", "att5"): OWN, ("2", "att5"): INCLUDED}, names={}
+    )
+    html = (
+        '<img data-linked-resource-id="5" data-linked-resource-type="attachment"'
+        ' data-linked-resource-container-id="2" src="/x.png" alt="shot">'
+    )
+    page = Pandoc.find().markdown(normalise(html, Context("1", HERE, mirrored)))
+    assert page.strip() == f"![shot](../../{INCLUDED})"
+
+
+@pytest.mark.parametrize(
+    ("macro", "label"), [("info", "Info"), ("note", "Note"), ("warning", "Warning"), ("tip", "Tip")]
+)
+def test_each_information_panel_is_labelled_by_its_kind_and_title(macro: str, label: str) -> None:
+    """The label names the kind of panel, then its title when it has one."""
+    body = '<div class="confluence-information-macro-body"><p>Body</p></div>'
+    untitled = f'<div data-macro-name="{macro}">{body}</div>'
+    titled = f'<div data-macro-name="{macro}"><p class="title">Heads up</p>{body}</div>'
+    assert markdown(untitled).strip() == f"> **{label}**\n>\n> Body"
+    assert markdown(titled).strip() == f"> **{label}: Heads up**\n>\n> Body"
+
+
+def test_a_panels_title_is_its_own_not_a_nested_panels() -> None:
+    """An untitled panel holding a titled one takes no title from it."""
+    inner = (
+        '<div data-macro-name="note"><p class="title">Inner</p>'
+        '<div class="confluence-information-macro-body"><p>Deep</p></div></div>'
+    )
+    html = (
+        f'<div data-macro-name="info"><div class="confluence-information-macro-body">{inner}'
+        "</div></div>"
+    )
+    assert markdown(html).splitlines()[0] == "> **Info**"
+
+
+def test_a_code_macros_title_comes_before_its_code() -> None:
+    """A titled code macro keeps its title, in bold."""
+    html = (
+        '<div class="code panel" data-macro-name="code"><div class="codeHeader panelHeader">'
+        '<b>setup.py</b></div><div class="codeContent"><pre data-syntaxhighlighter-params='
+        '"brush: py">x = 1</pre></div></div>'
+    )
+    assert markdown(html) == "**setup.py**\n\n``` py\nx = 1\n```\n"
+
+
+def test_a_link_to_another_host_stays_absolute() -> None:
+    """A path that looks like the site's, on another host, is not the mirror's."""
+    page = markdown('<p><a href="https://other.example.invalid/browse/PRB-1">elsewhere</a></p>')
+    assert page.strip() == "[elsewhere](https://other.example.invalid/browse/PRB-1)"
+
+
+def test_a_malformed_link_costs_its_link_alone() -> None:
+    """A site path that no address parser reads keeps its text, and the page converts."""
+    page = markdown('<p>Before <a href="////[x/y">odd</a> after</p>')
+    assert "Before" in page
+    assert "after" in page
+
+
+def test_deep_markup_is_read_whole_up_to_the_parsers_limit() -> None:
+    """Hundreds of nested levels are read whole; beyond the limit, the body is refused."""
+    deep = "<p>BEFORE</p>" + "<div>" * 300 + "DEEP" + "</div>" * 300 + "<p>AFTER</p>"
+    page = markdown(deep)
+    assert ("BEFORE" in page, "DEEP" in page, "AFTER" in page) == (True, True, True)
+    deeper = "<div>" * 3000 + "DEEP" + "</div>" * 3000 + "<p>AFTER</p>"
+    with pytest.raises(MarkupError):
+        normalise(deeper, Context("196845", HERE, MIRRORED))

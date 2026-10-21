@@ -18,9 +18,10 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, override
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
-from lxml.html import Element, HtmlElement, document_fromstring, tostring
+from lxml.etree import ErrorTypes, LxmlError
+from lxml.html import Element, HtmlElement, HTMLParser, document_fromstring, tostring
 
 from atlassian_offline_mcp.domain.mirror_layout import visible
 
@@ -34,6 +35,10 @@ MACRO = "data-macro-name"
 PANEL_HEADER = "panelHeader"
 PANEL_CONTENT = "panelContent"
 INFORMATION_BODY = "confluence-information-macro-body"
+# The titles of an information panel and of a code macro, as Confluence renders them;
+# the sandbox's own panels and code have none.
+INFORMATION_TITLE = "title"
+CODE_HEADER = "codeHeader"
 # A code macro's highlighter parameters, such as "brush: py; gutter: false".
 CODE_PARAMETERS = "data-syntaxhighlighter-params"
 BRUSH = re.compile(r"(?:^|;)\s*brush:\s*([A-Za-z0-9_+#.-]+)")
@@ -73,7 +78,7 @@ VIEW_PAGE = "/wiki/pages/viewpage.action"
 VIEW_PAGE_ID = "pageId"
 ISSUE_ADDRESS = re.compile(r"/browse/(?P<key>[A-Z][A-Z0-9_]+-[0-9]+)(?:[/?].*)?")
 KEPT_SCHEMES = frozenset({"http", "https", "mailto"})
-WEB_SCHEMES = frozenset({"http", "https"})
+WEB_PREFIXES = ("http://", "https://")
 
 # Elements that are interface or code, never content: removed with what they hold.
 REMOVED = (
@@ -188,12 +193,17 @@ def replace(element: HtmlElement, new: HtmlElement) -> None:
 
 
 def part(element: HtmlElement, name: str) -> HtmlElement | None:
-    """Return the first element within, in document order, that has this class.
+    """Return the macro's own first element, in document order, that has this class.
 
-    An element's own parts come before those of the constructs it holds; the element
-    itself is never its own part.
+    An element inside a macro that this one holds is that macro's, not this one's; the
+    element itself is never its own part.
     """
-    found = element.xpath(f"descendant::*[{HAS_CLASS}][1]", name=f" {name} ")
+    depth = len(element.xpath(f"ancestor-or-self::*[@{MACRO}]"))
+    found = element.xpath(
+        f"descendant::*[{HAS_CLASS}][count(ancestor::*[@{MACRO}]) = $depth][1]",
+        name=f" {name} ",
+        depth=depth,
+    )
     return found[0] if found else None
 
 
@@ -285,10 +295,15 @@ class Part(Construct):
 
 @dataclass(frozen=True)
 class Panel(Construct):
-    """A panel: a blockquote whose first line is its label in bold."""
+    """A panel: a blockquote whose first line is its label in bold.
 
-    label: str | None  # None: the panel's own header names it, or "Panel"
+    The label is the panel's kind and its title, such as "Note: Heads up"; a custom
+    panel is named by its title alone, or "Panel".
+    """
+
+    kind: str  # empty for a custom panel
     body: str  # the class of the part that holds its content
+    header: str  # the class of the part that holds its title, when it has one
 
     @override
     def rewrite(self, element: HtmlElement, context: Context) -> None:
@@ -297,14 +312,14 @@ class Panel(Construct):
         if body is None:
             UNSUPPORTED.rewrite(element, context)
             return
-        header = part(element, PANEL_HEADER)
+        header = part(element, self.header)
         title = "" if header is None else header.text_content().strip()
-        label = new("strong", self.label or title or "Panel")
+        label = new("strong", ": ".join(filter(None, (self.kind, title))) or "Panel")
         replace(element, new("blockquote", None, new("p", None, label), body))
 
 
 class Code(Construct):
-    """A code macro: a block of code, with the language of its highlighter."""
+    """A code macro: its title in bold if it has one, then its code, in its language."""
 
     @override
     def rewrite(self, element: HtmlElement, context: Context) -> None:
@@ -318,7 +333,9 @@ class Code(Construct):
         code = new("code", source.text_content())
         if language and language not in PLAIN_BRUSHES:
             code.set("class", f"language-{language}")
-        replace(element, new("pre", None, code))
+        header = part(element, CODE_HEADER)
+        title = None if header is None else new("p", None, new("strong", header.text_content()))
+        replace(element, new("div", None, title, new("pre", None, code)))
 
 
 class Status(Construct):
@@ -371,11 +388,11 @@ class Computed(Construct):
 
 # What each macro of the site becomes; a macro absent from this table is unsupported.
 MACROS: dict[str, Construct] = {
-    "info": Panel("Info", INFORMATION_BODY),
-    "note": Panel("Note", INFORMATION_BODY),
-    "warning": Panel("Warning", INFORMATION_BODY),
-    "tip": Panel("Tip", INFORMATION_BODY),
-    "panel": Panel(None, PANEL_CONTENT),
+    "info": Panel("Info", INFORMATION_BODY, INFORMATION_TITLE),
+    "note": Panel("Note", INFORMATION_BODY, INFORMATION_TITLE),
+    "warning": Panel("Warning", INFORMATION_BODY, INFORMATION_TITLE),
+    "tip": Panel("Tip", INFORMATION_BODY, INFORMATION_TITLE),
+    "panel": Panel("", PANEL_CONTENT, PANEL_HEADER),
     "code": Code(),
     "status": Status(),
     "expand": Expand(),
@@ -412,70 +429,62 @@ class Task(Construct):
 class Image(Construct):
     """An image: its local asset, or a link to where it is, never fetched."""
 
-    @staticmethod
-    def attachment(element: HtmlElement, context: Context) -> tuple[bool, PurePosixPath | None]:
-        """Say whether the image is an attachment, and return its asset if it has one.
-
-        An attachment is found by its page and id, else by its page and file name.
-        """
-        files, names = context.mirrored.files, context.mirrored.names
-        linked = element.get(LINKED_ID)
-        if element.get(LINKED_TYPE) == LINKED_ATTACHMENT and linked:
-            owner = element.get(LINKED_CONTAINER) or context.owner
-            key = (owner, ATTACHMENT_PREFIX + linked)
-            return True, files.get(key) or names.get((owner, element.get(LINKED_NAME, "")))
-        path = (context.on_site(element.get("src", "")) or "").partition("?")[0]
-        confluence = CONFLUENCE_FILE.fullmatch(path)
-        if confluence:
-            return True, names.get((confluence["owner"], confluence["name"]))
-        jira = JIRA_FILE.match(path)
-        if jira:
-            return True, files.get((context.owner, jira["id"]))
-        return False, None
-
     @override
     def rewrite(self, element: HtmlElement, context: Context) -> None:
-        """Show the asset, or link the image with its alt text."""
-        attachment, asset = self.attachment(element, context)
-        alt = element.get("alt") or element.get(LINKED_NAME) or "image"
+        """Show the image's asset, or link it with its alt text.
+
+        An attachment is found by its page and id, else by its page and file name, as
+        its data attributes or its address give them; one without a file says so.
+        """
+        source = element.get("src", "")
+        path = (context.on_site(source) or "").partition("?")[0]
+        confluence = CONFLUENCE_FILE.fullmatch(path)
+        jira = JIRA_FILE.match(path)
+        linked = element.get(LINKED_ID) if element.get(LINKED_TYPE) == LINKED_ATTACHMENT else None
+        owner = element.get(LINKED_CONTAINER) or (
+            confluence["owner"] if confluence else context.owner
+        )
+        name = element.get(LINKED_NAME) or (unquote(confluence["name"]) if confluence else "")
+        identifier = ATTACHMENT_PREFIX + linked if linked else jira["id"] if jira else ""
+        files, names = context.mirrored.files, context.mirrored.names
+        asset = files.get((owner, identifier)) or names.get((owner, name))
+        alt = element.get("alt") or name or "image"
         if asset is not None:
             image = new("img")
             image.set("src", context.relative(asset))
             image.set("alt", alt)
             replace(element, image)
             return
-        address = context.absolute(element.get("src", "")) or ""
+        address = context.absolute(source) or ""
         link = new("a", alt)
-        if urlsplit(address).scheme in WEB_SCHEMES:
+        if address.startswith(WEB_PREFIXES):
             link.set("href", address)
-        link.tail = " (image not downloaded)" if attachment else None
+        link.tail = " (image not downloaded)" if linked or confluence or jira else None
         replace(element, new("span", None, link))
 
 
 class Link(Construct):
     """A link: relative when it leads to a mirrored document, else as readers follow it."""
 
-    @staticmethod
-    def handle(element: HtmlElement, context: Context) -> str | None:
-        """Return the handle of the document that a link names, if it names one."""
-        if element.get(LINKED_TYPE) in LINKED_DOCUMENTS and element.get(LINKED_ID):
-            return element.get(LINKED_ID)
-        path = context.on_site(element.get("href", "")) or ""
+    @override
+    def rewrite(self, element: HtmlElement, context: Context) -> None:
+        """Point the link at the mirror, at the site, or nowhere, keeping its text.
+
+        A document is named by its data attributes, or by its address on the site.
+        """
+        href = element.get("href", "")
+        path = context.on_site(href) or ""
+        page, _, query = path.partition("?")
         found = [
             match["id"] for pattern in DOCUMENT_ADDRESSES if (match := pattern.fullmatch(path))
         ]
+        if page == VIEW_PAGE:
+            found += parse_qs(query).get(VIEW_PAGE_ID, [])
         issue = ISSUE_ADDRESS.fullmatch(path)
-        address = urlsplit(path)
-        if address.path == VIEW_PAGE:
-            found += parse_qs(address.query).get(VIEW_PAGE_ID, [])
-        return found[0] if found else issue["key"] if issue else None
-
-    @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
-        """Point the link at the mirror, at the site, or nowhere, keeping its text."""
-        handle = self.handle(element, context)
-        target = None if handle is None else context.mirrored.documents.get(handle)
-        address = context.absolute(element.get("href", ""))
+        linked = element.get(LINKED_ID) if element.get(LINKED_TYPE) in LINKED_DOCUMENTS else None
+        handle = linked or (found[0] if found else issue["key"] if issue else "")
+        target = context.mirrored.documents.get(handle)
+        address = context.absolute(href)
         if target is not None:
             element.set("href", context.relative(target))
         elif address is not None:
@@ -557,19 +566,33 @@ PASSES: tuple[tuple[str, Construct], ...] = (
 )
 
 
+class MarkupError(ValueError):
+    """A body that the parser could not read whole; the message holds no content."""
+
+
 def normalise(html: str, context: Context) -> str:
     """Return the site's HTML of one body as plain HTML for pandoc.
 
     Characters that no file could hold, such as lone surrogates, go before parsing; the
     rest of the invisible ones go once parsed, entities included. The body is parsed as a
-    document's, so that lxml never sets a text it has not cleaned.
+    document's, so that lxml never sets a text it has not cleaned. Raises
+    ``MarkupError`` for a body the parser cannot read whole, such as one nested deeper
+    than its limit, rather than mirroring part of it.
     """
-    root = document_fromstring(f"<html><body>{visible(html)}</body></html>").body
-    root.tag = "div"
-    for path, construct in PASSES:
-        for element in root.xpath(path):
-            # An element that an outer construct dropped, such as a macro in a status,
-            # is no longer in the body.
-            if element is root or root in element.iterancestors():
-                construct.rewrite(element, context)
+    parser = HTMLParser(huge_tree=True)
+    try:
+        root = document_fromstring(f"<html><body>{visible(html)}</body></html>", parser=parser).body
+        root.tag = "div"
+        for path, construct in PASSES:
+            for element in root.xpath(path):
+                # An element that an outer construct dropped, such as a macro in a status,
+                # is no longer in the body.
+                if element is root or root in element.iterancestors():
+                    construct.rewrite(element, context)
+    except LxmlError as error:
+        message = f"markup: {type(error).__name__}"
+        raise MarkupError(message) from None
+    if any(error.type == ErrorTypes.ERR_RESOURCE_LIMIT for error in parser.error_log):
+        message = "markup: nested beyond the parser's limit"
+        raise MarkupError(message)
     return tostring(root, encoding="unicode")
