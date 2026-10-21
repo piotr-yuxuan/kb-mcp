@@ -126,9 +126,10 @@ def span(offset: int, count: int, built_at: datetime) -> str:
 def cut(text: str, budget: int) -> int:
     """Choose where a slice of a body ends, within the budget.
 
-    The slice ends after a line break when one falls in the second half of what fits.
+    The slice ends after a line break when one falls in the second half of what fits,
+    and holds one character at least, so that reading always moves on.
     """
-    fits = fitting(text, budget)
+    fits = fitting(text, budget) or min(1, len(text))
     if fits == len(text):
         return fits
     newline = text.rfind("\n", fits // 2, fits)

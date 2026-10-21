@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from atlassian_offline_mcp.app.responses import cut
 from atlassian_offline_mcp.app.tools import UnanswerableError
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
 from tests.mirrors import page
@@ -162,3 +163,10 @@ def test_site_content_stays_inside_the_block(tmp_path: Path) -> None:
     assert [PAYLOAD in content for _, content, _ in blocks] == [True] * 4 + [False, True, False]
     boundaries = {found[1] for found in map(OPENING.search, answers) if found}
     assert len(boundaries) == len(answers)
+
+
+def test_a_slice_moves_on_even_without_room() -> None:
+    """With no budget left, a slice still takes one character; an empty text none."""
+    assert cut("abc", 0) == 1
+    assert cut("", 0) == 0
+    assert cut("line one\nline two\n", 4) == len("line one\n")
