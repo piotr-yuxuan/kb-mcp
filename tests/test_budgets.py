@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from atlassian_offline_mcp.app.responses import cut
+from atlassian_offline_mcp.app.responses import page as fitted
 from atlassian_offline_mcp.app.tools import UnanswerableError
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
 from tests.mirrors import page
@@ -170,3 +171,11 @@ def test_a_slice_moves_on_even_without_room() -> None:
     assert cut("abc", 0) == 1
     assert cut("", 0) == 0
     assert cut("line one\nline two\n", 4) == len("line one\n")
+
+
+def test_a_list_holds_one_item_however_large() -> None:
+    """An item larger than the whole budget is still shown, so the cursor moves on."""
+    assert fitted(["x" * 30_000, "y"], 2, 10, lambda count: f"more({count})") == (
+        1,
+        "More: more(1)",
+    )

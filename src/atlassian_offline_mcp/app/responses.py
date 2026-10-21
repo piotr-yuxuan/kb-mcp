@@ -39,16 +39,6 @@ def tokens(text: str) -> int:
     return -(-(len(text) + 2 * other) // 3)
 
 
-def fitting(text: str, budget: int) -> int:
-    """Count the leading characters of a text whose estimate fits in ``budget``."""
-    thirds = 0
-    for index, char in enumerate(text):
-        thirds += 1 if char.isascii() else 3
-        if thirds > 3 * budget:
-            return index
-    return len(text)
-
-
 def short(text: str, limit: int = FIELD) -> str:
     """Show a text from the site on one line, shortened to ``limit`` characters."""
     flat = SPACES.sub(" ", text).strip()
@@ -60,22 +50,19 @@ def stamp(moment: datetime) -> str:
     return moment.strftime("%Y-%m-%d %H:%M UTC")
 
 
-def block(content: str) -> str:
-    """Wrap content read from the index in the untrusted block.
+def answer(header: str, content: str = "", footer: str = "") -> str:
+    """Put an answer together: the server's header, the block if any, then the footer.
 
-    The boundary is the start of the content's SHA-256, so the content cannot hold the
-    closing marker but by a chance of 2^-64.
+    The block holds content read from the index, marked as untrusted. Its boundary is the
+    start of the content's SHA-256, so the content cannot hold the closing marker but by
+    a chance of 2^-64.
     """
     boundary = hashlib.sha256(content.encode("utf-8", "surrogatepass")).hexdigest()[:16]
-    return (
+    block = (
         f'<untrusted-reference-data boundary="{boundary}">\n{content}\n'
         f'</untrusted-reference-data boundary="{boundary}">'
     )
-
-
-def answer(header: str, content: str = "", footer: str = "") -> str:
-    """Put an answer together: the server's header, the block if any, then the footer."""
-    return "\n".join(part for part in (header, content and block(content), footer) if part)
+    return "\n".join(part for part in (header, content and block, footer) if part)
 
 
 def call(tool: Callable[..., str], **arguments: object) -> str:
@@ -129,7 +116,13 @@ def cut(text: str, budget: int) -> int:
     The slice ends after a line break when one falls in the second half of what fits,
     and holds one character at least, so that reading always moves on.
     """
-    fits = fitting(text, budget) or min(1, len(text))
+    thirds, fits = 0, len(text)
+    for index, char in enumerate(text):
+        thirds += 1 if char.isascii() else 3
+        if thirds > 3 * budget:
+            fits = index
+            break
+    fits = fits or min(1, len(text))
     if fits == len(text):
         return fits
     newline = text.rfind("\n", fits // 2, fits)

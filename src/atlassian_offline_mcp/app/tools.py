@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict
 from atlassian_offline_mcp.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.app import responses
 from atlassian_offline_mcp.domain.search import (
+    MAX_WORDS,
     Filters,
     Passage,
     identifiers,
@@ -101,10 +102,10 @@ def instant(name: str, value: str | None) -> datetime | None:
         return None
     try:
         moment = datetime.fromisoformat(value)
-    except ValueError:
+        return (moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment).astimezone(UTC)
+    except ValueError, OverflowError:
         message = f"{name}: an ISO 8601 date or time, such as 2026-10-01 or 2026-10-01T09:00Z"
         raise UnanswerableError(message) from None
-    return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment
 
 
 def start_of(cursor: str | None, built_at: datetime) -> int:
@@ -221,6 +222,8 @@ class Library:
         count, footer = responses.page(items, total - offset, allowed, more)
         counted = f"Documents found: {total if whole else f'at least {total}'}"
         header = f"{counted}; {responses.span(offset, count, built_at)}"
+        if planned.dropped:
+            header += f" Only the first {MAX_WORDS} words of the query were searched."
         return responses.answer(header, "\n".join(items[:count]), footer)
 
     def read(

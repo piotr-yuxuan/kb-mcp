@@ -43,7 +43,9 @@ def build_index(docs: Path, index: Path, built_at: datetime) -> Report:
         for file in markdown.documents(docs):
             path = file.relative_to(docs).as_posix()
             try:
-                front, body = markdown.load(file.read_text(encoding="utf-8"), path)
+                # Line endings are kept as written, so that a body reads back exactly.
+                text = file.read_text(encoding="utf-8", newline="")
+                front, body = markdown.load(text, path)
                 cut = sections(body)
                 writer.add(path, front, cut)
             except UnicodeDecodeError:

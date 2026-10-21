@@ -68,6 +68,18 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
     )
 
 
+def test_line_endings_read_back_as_written(data: Path) -> None:
+    """A body holding CR LF line breaks keeps them, and is cut at its headings."""
+    body = "# Kafka\r\n\r\nLead.\r\n## Retention\r\nSeven days.\r\n"
+    path = write(data / "docs", page("196845", "Kafka"), body)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    with reading(data / "index.sqlite") as reader:
+        (entry,) = reader.entries(paths=[path])
+        assert reader.text(path, 0, entry.length) == body
+        second = body.index("## ")
+        assert reader.bounds(path) == [(0, second), (second, len(body))]
+
+
 def test_a_refused_file_is_named_and_the_others_indexed(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:

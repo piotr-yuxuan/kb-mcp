@@ -112,11 +112,13 @@ WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
 LISTING = """
 SELECT d.* FROM documents d
 WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
+ORDER BY d.path
 """
 BOUNDS = """
 SELECT s.start, coalesce(lead(s.start) OVER (ORDER BY s.number), d.length) AS end
 FROM sections s JOIN documents d ON d.rowid = s.document
 WHERE d.path = :path
+ORDER BY s.number
 """
 TEXT = """
 SELECT s.start, s.head || s.body AS text FROM sections s JOIN documents d ON d.rowid = s.document
@@ -192,14 +194,14 @@ class Writer:
             [(document, label) for label in front.labels],
         )
         # The title, labels and breadcrumb go with the first section alone, so that FTS5,
-        # which counts rows, counts a document's words once; the title's own heading is
-        # not counted again as a heading.
+        # which counts rows, counts a document's words once; the first section's heading,
+        # when it is the title, is not counted again.
         about = (front.title, " ".join(front.labels), " / ".join(front.breadcrumb))
         rows = [
             (
                 self._next_section + index,
                 *(about if index == 0 else ("", "", "")),
-                "" if section.heading == front.title else section.heading,
+                "" if index == 0 and section.heading == front.title else section.heading,
                 section.body,
             )
             for index, section in enumerate(sections)
@@ -286,7 +288,10 @@ def entry(row: sqlite3.Row) -> Entry:
 
 
 class Reader:
-    """Queries of one open index; every list it returns is bounded."""
+    """Queries of one open index.
+
+    A list is bounded by a limit, or else by what one space, project or filter holds.
+    """
 
     def __init__(self, connection: sqlite3.Connection) -> None:
         """Read through an open, read-only connection."""

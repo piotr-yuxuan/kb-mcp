@@ -90,6 +90,8 @@ def test_a_client_calls_every_tool_over_stdio(home: Path) -> None:
                 assert not result.is_error
                 assert result.structured_content is None
                 assert [content.type for content in result.content] == ["text"]
+            misspelt = await client.call_tool("search", {"query": "x", "filters": {"spaec": "ENG"}})
+            assert misspelt.is_error
             refused = await client.call_tool("search", {"query": "x", "filters": {"space": "NOPE"}})
             assert refused.is_error
             assert isinstance(refused.content[0], TextContent)
@@ -100,6 +102,9 @@ def test_a_client_calls_every_tool_over_stdio(home: Path) -> None:
             status = (await client.call_tool("status", {})).content[0]
             assert isinstance(status, TextContent)
             assert "spaces: ENG 31, OPS 1" in status.text
+            found = (await client.call_tool("search", {"query": "another space"})).content[0]
+            assert isinstance(found, TextContent)
+            assert "\n1. Another space\n" in found.text
 
     anyio.run(session)
     assert faults == []

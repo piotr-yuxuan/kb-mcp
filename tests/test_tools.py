@@ -114,8 +114,12 @@ def test_an_exact_phrase_beats_the_same_words_scattered(tmp_path: Path) -> None:
     assert refs(library.search("consumer lag"))[:2] == ["196846", "196845"]
 
 
-def test_a_long_pages_title_beats_a_newer_body_match(tmp_path: Path) -> None:
-    """A title word of a page of 200 sections keeps its rarity, and so its weight."""
+def test_a_long_pages_title_word_keeps_its_rarity(tmp_path: Path) -> None:
+    """A title word of a page of 200 sections outweighs a rare word in a newer body.
+
+    Were the title on every section, its word would fill most rows of the index, FTS5
+    would count it as worthless, and the newer page, holding the other word, would win.
+    """
     long_body = "# Terraform modules\n\n" + "".join(
         f"## Part {number}\n\n{LOREM}\n\n" for number in range(200)
     )
@@ -125,19 +129,59 @@ def test_a_long_pages_title_beats_a_newer_body_match(tmp_path: Path) -> None:
             (page("196845", "Terraform modules"), long_body),
             (
                 page("196846", "Infrastructure", updated=NEWER),
-                f"# Infrastructure\n\nWe use terraform. {LOREM}\n",
+                f"# Infrastructure\n\nWe watch for drift. {LOREM}\n",
             ),
         ],
     )
-    assert refs(library.search("terraform"))[:2] == ["196845", "196846"]
+    assert refs(library.search("terraform drift"))[:2] == ["196845", "196846"]
 
 
-def test_a_capped_expression_says_at_least(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    """When an expression reaches its cap of documents, the count is a lower bound."""
-    library = built(tmp_path, [])
+def test_a_capped_expression_keeps_its_best_and_says_at_least(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """At its cap, an expression keeps its best documents, and the count is a bound."""
+    titled = [(page(str(196800 + n), f"Zeta {n}"), None) for n in range(3)]
+    mentioned = [(page(str(196900 + n), f"Other {n}"), f"# Other {n}\n\nZeta.\n") for n in range(5)]
+    library = built(tmp_path, titled + mentioned)
     monkeypatch.setattr(sqlite_index, "PER_EXPRESSION", 3)
-    assert parts(library.search("lorem"))[0].startswith("Documents found: at least 3;")
-    assert parts(library.search("lorem", sort="updated"))[0].startswith("Documents found: 30;")
+    answer = library.search("zeta")
+    assert parts(answer)[0].startswith("Documents found: at least 3;")
+    assert sorted(refs(answer)) == ["196800", "196801", "196802"]
+    assert parts(library.search("zeta", sort="updated"))[0].startswith("Documents found: 8;")
+
+
+def test_the_best_section_is_judged_without_the_title(tmp_path: Path) -> None:
+    """A title word that a later section holds too opens that section, not the first."""
+    body = f"# Rollback plan\n\n## Overview\n\n{LOREM}\n\n## Steps\n\nRoll the release back.\n"
+    library = built(tmp_path, [(page("196845", "Rollback plan"), body)])
+    assert 'section 3 Steps: read(ref="196845", section=3)' in library.search("release rollback")
+
+
+def test_a_later_heading_like_the_title_stays_a_heading(tmp_path: Path) -> None:
+    """Only the first section's heading, the title, is left out of the headings."""
+    body = f"# Rollback\n\n{LOREM}\n\n## Rollback\n\nSteps.\n"
+    library = built(tmp_path, [(page("196845", "Rollback"), body)])
+    assert 'section 2 Rollback: read(ref="196845", section=2)' in library.search("rollback")
+
+
+def test_a_page_id_names_confluence_documents_only(tmp_path: Path) -> None:
+    """The number of an issue's id pins nothing: issues are named by their keys."""
+    library = built(tmp_path, [(issue("PROJ-7", "Kafka upgrade"), None)])
+    assert issue("PROJ-7", "Kafka upgrade").id == "10007"
+    assert refs(library.search("10007")) == []
+
+
+def test_a_decomposed_query_is_composed_first(tmp_path: Path) -> None:
+    """A query typed in NFD, as macOS often gives text, finds the composed title."""
+    library = built(tmp_path, [(page("196845", "Économie générale"), None)])
+    assert refs(library.search("e\u0301conomie")) == ["196845"]
+
+
+def test_words_beyond_the_tenth_are_said_to_be_left_out(tmp_path: Path) -> None:
+    """The answer says when a long query was cut."""
+    library = built(tmp_path, [])
+    words = " ".join(f"word{number}" for number in range(12))
+    assert "Only the first 10 words of the query were searched." in library.search(words)
 
 
 @pytest.fixture
@@ -206,6 +250,8 @@ def test_an_unknown_value_is_refused_with_the_valid_ones(
     [
         ({"filters": {"spaec": "ENG"}}, "filters: no spaec"),
         ({"filters": {"updated_after": "yesterday"}}, "updated_after: an ISO 8601 date"),
+        ({"filters": {"updated_after": "0001-01-01T00:00:00+05:00"}}, "updated_after: an ISO"),
+        ({"filters": {"updated_before": "9999-12-31T23:59:59-05:00"}}, "updated_before: an ISO"),
         ({"query": "x" * 501}, "query: at most 500 characters"),
         ({"query": "kafka", "cursor": "8"}, "cursor: give the one"),
         ({"query": "kafka", "cursor": "8@20200101T000000Z"}, "cursor: the index was rebuilt"),
@@ -257,6 +303,20 @@ def test_a_section_starts_at_its_heading_and_stops_at_the_next(tmp_path: Path) -
     assert parts(answer)[1].split("\n\n", 1)[1] == "## Retention\n\nSeven days.\n\n"
     assert answer.endswith('Next section: read(ref="196845", section=3)')
     assert continuation(library.read("196845", section=3)) is None
+
+
+def test_offsets_reach_the_last_character_and_stop_there(tmp_path: Path) -> None:
+    """The last character of a body or a section is an offset; the end is not."""
+    body = "# Kafka\n\nLead.\n\n## Retention\n\nSeven days.\n\n## Compaction\n\nLast value.\n"
+    library = built(tmp_path, [(page("196845", "Kafka"), body)])
+    last = parts(library.read("196845", offset=len(body) - 1))[1].split("\n\n", 1)[1]
+    assert last == "\n"
+    with pytest.raises(UnanswerableError, match=f"offset: 0 to {len(body) - 1} here"):
+        library.read("196845", offset=len(body))
+    end = body.index("## Compaction")
+    assert parts(library.read("196845", section=2, offset=end - 1))[1].endswith("\n\n\n")
+    with pytest.raises(UnanswerableError, match="offset: "):
+        library.read("196845", section=2, offset=end)
 
 
 @pytest.mark.parametrize(
@@ -361,14 +421,18 @@ def test_a_project_is_browsed_by_parent_chains(tmp_path: Path) -> None:
             (issue("PROJ-2", "Story", breadcrumb=("PROJ-10",)), None),
             (issue("PROJ-1", "Sub-task", breadcrumb=("PROJ-2",)), None),
             (issue("PROJ-3", "Orphan", breadcrumb=("OTHER-1",)), None),
+            (issue("PROJ-20", "Late"), None),
+            (issue("PROJ-9", "Early"), None),
         ],
     )
     assert tree_lines(library.browse(project="PROJ")) == [
         "- [OTHER-1]",
         "  - Orphan (PROJ-3)",
+        "- Early (PROJ-9)",
         "- Epic (PROJ-10)",
         "  - Story (PROJ-2)",
         "    - Sub-task (PROJ-1)",
+        "- Late (PROJ-20)",
     ]
 
 
