@@ -321,6 +321,21 @@ def test_a_space_is_browsed_depth_first(tmp_path: Path) -> None:
     assert tree_lines(library.browse(space="DOC", parent="101")) == ["- Child (105)"]
 
 
+def test_documents_with_one_place_in_the_tree_come_by_path(tmp_path: Path) -> None:
+    """Two pages of one title under one parent keep one order, page after page."""
+    library = built(
+        tmp_path,
+        [
+            (page("102", "Same", space="DOC"), f"# Same\n\n{LOREM}\n"),
+            (page("101", "Same", space="DOC"), f"# Same\n\n{LOREM}\n"),
+        ],
+    )
+    first = library.browse(space="DOC", limit=1)
+    second = follow(library, first)
+    assert second is not None
+    assert [tree_lines(first), tree_lines(second)] == [["- Same (101)"], ["- Same (102)"]]
+
+
 def test_a_page_of_results_names_the_ancestors_of_its_first_line(tmp_path: Path) -> None:
     """A page that starts inside a subtree begins with one context line."""
     library = built(

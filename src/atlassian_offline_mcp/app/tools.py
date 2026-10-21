@@ -219,8 +219,8 @@ class Library:
 
         allowed = responses.budget(limit, SEARCH_LIMIT)
         count, footer = responses.page(items, total - offset, allowed, more)
-        found = f"Documents found: {total if whole else f'at least {total}'}"
-        header = f"{found}; {responses.span(offset, count, built_at)}"
+        counted = f"Documents found: {total if whole else f'at least {total}'}"
+        header = f"{counted}; {responses.span(offset, count, built_at)}"
         return responses.answer(header, "\n".join(items[:count]), footer)
 
     def read(
@@ -303,7 +303,10 @@ class Library:
         if parent is not None and top not in listed:
             return responses.answer(NOT_MIRRORED)
         paths = tree_paths([entry.front for entry in listed])
-        pairs = sorted(zip(paths, listed, strict=True), key=lambda pair: tree_key(pair[0]))
+        # Ties go by path: pages of results need one order from call to call.
+        pairs = sorted(
+            zip(paths, listed, strict=True), key=lambda pair: (tree_key(pair[0]), pair[1].path)
+        )
         base = next((path for path, entry in pairs if entry == top), ())
         pairs = [pair for pair in pairs if pair[0][: len(base)] == base and pair[0] != base]
         size = clamp(limit, BROWSE_LIMITS)
