@@ -1,0 +1,740 @@
+epic:
+  key: ENG-15
+  summary: Access review tooling
+  sprints: [18, 25]
+  labels: [security]
+  description: |
+    ## Goal
+
+    Give Security a tool to run the quarterly access reviews, and drive the JML
+    process from Haven, so that leavers lose access within 24 hours automatically.
+
+    ## Scope
+
+    - Haven as the source of truth for joiners, movers and leavers; the identity
+      provider acts on its dates.
+    - Role profiles for joiners, a 30-day overlap for movers, and automatic removal
+      for leavers and contractors.
+    - The review tool: campaigns in January, April, July and October; Keep, Revoke or
+      Not sure; reminders, escalation and suspension; evidence for PCI DSS.
+    - Connectors for every system in scope, each with its second reviewer.
+    - Service accounts and break-glass accounts.
+
+    ## Out of scope
+
+    - Hardware security keys for administrators (ENG-16).
+    - Systems outside the identity provider, for which the automation opens a ticket
+      to the system's owner instead.
+
+    ## Pages
+
+    - [Quarterly access reviews](../../corpus/security/access-reviews.md)
+    - [New joiner onboarding: your first two weeks](../../corpus/people/onboarding.md)
+  comments:
+    - "Rhiannon: People will keep Haven's dates accurate. That is what the automation runs on, so we treat them as binding."
+    - "Callum: Leaver automation is live. What is left is clean-up, and the April review will run entirely in the tool."
+tickets:
+  - key: ENG-577
+    type: Story
+    summary: Send Haven's start, move and leaving dates to the identity provider
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      As Security, I want the identity provider to act on the dates People record in
+      Haven, so that access follows a person's situation without a separate request.
+
+      Acceptance criteria:
+
+      - A start date, a change of team and a leaving date recorded in Haven reach the
+        identity provider within 15 minutes.
+      - Each event carries the person's team, role, manager and last working day.
+      - A date changed in Haven replaces the one sent earlier.
+      - A failed delivery is retried, and Security is alerted if it still fails after
+        an hour.
+    comments:
+      - "Rhiannon: From now on People treat the leaving date in Haven as final once it is entered, since access follows it."
+  - key: ENG-578
+    type: Story
+    summary: Open review campaigns on the first working Monday of each review month
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As Security, I want campaigns to open on a fixed calendar, so that managers know
+      when to expect them and auditors see a regular cadence.
+
+      Acceptance criteria:
+
+      - Campaigns open in January, April, July and October, on the first working
+        Monday of the month.
+      - Security can prepare and check a campaign before it opens.
+      - Each campaign shows its certification deadline, 10 business days after
+        opening, and its revocation deadline, 5 business days after that.
+      - The head of security signs the campaign off once revocations are confirmed.
+  - key: ENG-579
+    type: Story
+    summary: Email each manager their reports' entitlements when a campaign opens
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      As a manager, I want one email on the opening Monday listing what my reports can
+      access, so that I can certify everything in one sitting.
+
+      Acceptance criteria:
+
+      - For each report, the email lists every entitlement with its system, the date it
+        was granted and the date it was last used.
+      - The email links to the review, which is also reachable from the identity
+        provider's portal.
+      - The certification deadline is shown at the top of the review.
+      - Managers without reports receive nothing.
+  - key: ENG-580
+    type: Story
+    summary: Certify each entitlement as Keep, Revoke or Not sure
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As a manager, I want a simple choice for each entitlement, so that certifying is
+      a decision and not a form.
+
+      Acceptance criteria:
+
+      - For each entitlement, the manager chooses **Keep**, **Revoke** or **Not sure**.
+      - Every decision is stored with the name of the person who took it and the time.
+      - A Revoke becomes a revocation task for the system's owner.
+      - The manager can save and come back; nothing is final until they submit.
+  - key: ENG-581
+    type: Task
+    summary: Connect identity provider group memberships to the review tool
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      The identity provider is the first connector, and the only one the January pilot
+      needs: every group membership is in scope, with no second reviewer.
+
+      - Read memberships, and the last sign-in to each application, every night.
+      - Write Revoke decisions back as group removals, logged with the decision's
+        author.
+      - Deploy to production before the year-end change freeze starts on 18 December,
+        so that the pilot can open on Monday 5 January 2026.
+    comments:
+      - "Callum: In production before the freeze. It stays read-only until the pilot opens; removals switch on with it."
+  - key: ENG-582
+    type: Task
+    summary: Inventory the systems in scope for quarterly access reviews
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Before building more connectors, agree which systems the tool covers, what is
+      reviewed on each and who the second reviewer is. PCI DSS requires the review for
+      the card data environment; we apply it to every system that holds Internal data
+      or above.
+
+      For each system, record the owner, the entitlements reviewed, the second
+      reviewer, and whether it sits behind the identity provider. Systems outside it
+      cannot be handled through group removals and need either their own connector or
+      a ticket to their owner.
+  - key: ENG-583
+    type: Task
+    summary: Collect a role profile from every team lead
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Ask each team lead which groups each role in their team needs on day one, and
+      record the answer as a role profile. Start with the teams that hire most:
+      Payments Core, Payouts, Merchant Support and Merchant Experience.
+
+      Push back on anything that looks like production access: no profile may include
+      it. Profiles cover chat channels, repositories, staging and the everyday tools,
+      and nothing else.
+    comments:
+      - "Inès: Support agent, France is in, with the French Harbour queues."
+      - "Femi: The UK support profiles are done, at T1 only. T2 roles stay with the T2 lead."
+  - key: ENG-584
+    type: Story
+    summary: Grant joiners' access by role profile, never with production access
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As a new joiner's manager, I want the standard access for the role to arrive on
+      its own, so that I do not request a dozen things one by one.
+
+      Acceptance criteria:
+
+      - A joiner receives their role's profile, as agreed under ENG-583, when the
+        account is enabled on the first morning.
+      - The tool refuses to save a profile that includes a production entitlement.
+      - Production access is requested later through the access request form,
+        approved by the manager and then by the system owner.
+    comments:
+      - "Callum: Tested in staging. It goes to production on 6 January, the first deploy day after the freeze."
+  - key: ENG-585
+    type: Story
+    summary: Create joiners' accounts 5 business days before the start date
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As a manager, I want my new joiner's account to exist before day one, so that the
+      first sign-in on the new laptop works during the welcome session.
+
+      Acceptance criteria:
+
+      - The identity provider account is created 5 business days before the start date
+        recorded in Haven, and stays disabled until the first morning.
+      - A start date moved in Haven moves both steps.
+      - Access to the card data environment also needs the annual secure handling
+        training recorded in Haven.
+
+      What the joiner sees is described in
+      [new joiner onboarding](../../corpus/people/onboarding.md).
+  - key: ENG-586
+    type: Task
+    summary: Write the managers' guide to certifying access
+    status: Done
+    priority: Low
+    labels: [security]
+    description: |
+      Managers certify four times a year and forget the rules in between. Add a short
+      guide for them to
+      [quarterly access reviews](../../corpus/security/access-reviews.md):
+
+      - how to open the review, and what Keep, Revoke and Not sure each mean;
+      - a reason for every privileged entitlement kept;
+      - choose Not sure rather than Keep when unsure what an entitlement is;
+      - nobody certifies their own access.
+
+      Keep it short: most managers should be done in twenty minutes.
+  - key: ENG-587
+    type: Task
+    summary: Launch the January review in the tool for identity provider groups
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      The January review opens on Monday 5 January 2026. Run it as a pilot in the tool
+      for identity provider group memberships only, and keep the spreadsheets for
+      every other system this one last time.
+
+      - Prepare the campaign, and check it with two managers before it opens.
+      - Send it on the opening Monday, with a short feedback form linked from the
+        email.
+      - Done when the campaign is out. Certification is then followed in the tool,
+        and the feedback shapes the work before April, when every system in scope
+        moves to the tool.
+    comments:
+      - "Callum: Campaign prepared and checked with two managers. It goes out on the opening Monday."
+  - key: ENG-588
+    type: Bug
+    summary: Last-used date is empty for access granted through nested groups
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      **Steps to reproduce:** add a user to a group that is itself a member of the
+      group granting Lantern access, sign in to Lantern as that user, then open their
+      entitlements in the review.
+
+      **Expected:** the Lantern entitlement shows the date of last use.
+
+      **Actual:** the date is empty, so the manager cannot tell whether the access is
+      still used. Several managers in the January pilot reported it.
+
+      **Fix:** the connector resolves nested groups and attributes each application
+      sign-in to every group path that grants it.
+  - key: ENG-589
+    type: Bug
+    summary: Heads of department were asked to certify their own access
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      **Steps to reproduce:** open the January pilot as a head of department whose
+      Haven record lists them as their own manager.
+
+      **Expected:** their entitlements go to their own manager to certify. Nobody
+      certifies their own access.
+
+      **Actual:** their own entitlements appeared in their review, ready to keep.
+
+      **Fix:** the tool refuses any decision on the reviewer's own entitlements and
+      routes them to the reviewer's manager in Haven; People corrected the records
+      that pointed to themselves.
+    comments:
+      - "Rhiannon: Haven records fixed for the four heads of department concerned."
+  - key: ENG-590
+    type: Bug
+    summary: Review page times out for managers with more than 40 reports
+    status: Done
+    priority: Low
+    labels: [security]
+    description: |
+      **Steps to reproduce:** open the January pilot as a manager with more than 40
+      reports.
+
+      **Expected:** the review loads within a few seconds.
+
+      **Actual:** the page times out after 30 seconds and shows nothing.
+
+      **Cause:** last-used dates were fetched one entitlement at a time.
+
+      **Fix:** the tool fetches them in one query per system and pages the review by
+      person, 20 people at a time.
+  - key: ENG-591
+    type: Story
+    summary: Route Not sure decisions to the system owner
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As a manager, I want to say that I do not know what an entitlement is, so that I
+      do not keep it just to be safe.
+
+      Acceptance criteria:
+
+      - A Not sure decision goes to the system owner's queue in the tool, with the
+        manager's note.
+      - The system owner chooses Keep or Revoke before the certification deadline.
+      - A Not sure still undecided at the deadline counts as overdue, like any
+        uncertified entitlement.
+  - key: ENG-592
+    type: Story
+    summary: Pre-select Revoke for entitlements unused for 90 days
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As Security, I want stale access to be removed by default, so that keeping it
+      takes a deliberate choice.
+
+      Acceptance criteria:
+
+      - An entitlement unused for 90 days appears with Revoke pre-selected.
+      - The last-used date is shown beside it, so that the manager sees why.
+      - The manager may change the choice, with a reason if the entitlement is
+        privileged.
+      - Entitlements granted less than 90 days ago are never pre-selected.
+  - key: ENG-593
+    type: Story
+    summary: Require a reason and a second reviewer for privileged entitlements kept
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      An entitlement is privileged when it allows any of these in production: changing
+      code or configuration, reading secrets, reading cardholder data, reading personal
+      data in bulk, or granting access to others.
+
+      Acceptance criteria:
+
+      - A privileged entitlement cannot be kept without a reason, and cannot be kept in
+        bulk.
+      - The system's second reviewer must agree before a Keep counts.
+      - A disagreement goes back to the manager with the reviewer's note.
+  - key: ENG-594
+    type: Story
+    summary: Remind late managers on days 5 and 8, and report them on day 10
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As Security, I want late certification chased without anyone writing emails by
+      hand.
+
+      Acceptance criteria:
+
+      - On business day 5 after opening, managers who have not started receive a
+        reminder.
+      - On business day 8, the reminder is copied to the manager's head of department.
+      - On business day 10, the deadline, Security receives the list of overdue
+        managers to send to the head of security and the chief technology officer.
+      - Managers who have submitted receive no reminder.
+  - key: ENG-595
+    type: Story
+    summary: Suspend uncertified privileged entitlements on business day 13
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      Suspension is the last step, and rare by design.
+
+      Acceptance criteria:
+
+      - On business day 13, privileged entitlements still uncertified are suspended,
+        not revoked.
+      - The holder and their manager are told why, and that certifying lifts the
+        suspension.
+      - Certification restores the entitlement within an hour.
+      - Everyday entitlements are never suspended.
+
+      The escalation timetable is in
+      [quarterly access reviews](../../corpus/security/access-reviews.md).
+    comments:
+      - "Ottilie: Agreed. I would rather suspend a few entitlements than chase managers for weeks."
+  - key: ENG-596
+    type: Task
+    summary: Connect Kubernetes namespace write access and Shipwright production rights
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Two Platform systems, with Platform as second reviewer for both:
+
+      - production Kubernetes clusters: write access to each namespace;
+      - Shipwright: the rights to deploy and roll back in production.
+
+      Read role bindings and Shipwright's production rights nightly, with the last use
+      taken from their audit logs. A Revoke removes the person from the granting group;
+      direct bindings are reported to Platform to remove by hand.
+    comments:
+      - "Bram: Platform will second-review both. We found a handful of direct role bindings and are removing them."
+  - key: ENG-597
+    type: Task
+    summary: Connect Strongroom production paths and Switchboard kill switch rights
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      - Strongroom: read and write access to `prod/` paths, with Security as second
+        reviewer. Access is granted per path, and the last use comes from
+        `strongroom audit`.
+      - Switchboard: the right to flip kill switches in production, with Platform as
+        second reviewer. The last flip per person comes from the audit log added under
+        ENG-8.
+
+      Paths and their policies are described in
+      [Using Strongroom](../../corpus/security/strongroom-how-to.md).
+  - key: ENG-598
+    type: Task
+    summary: Connect card data environment accounts, with Payments Core as second reviewer
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      PCI DSS requires every account in the card data environment, human or service, to
+      be reviewed every quarter. Nadia Ferreira, for Payments Core, is the second
+      reviewer.
+
+      - List every account, including service accounts, which go to the system owner
+        rather than to managers.
+      - Show, for each human account, whether the annual secure handling training is
+        recorded in Haven.
+      - Send Payments Core the list the day before a campaign opens.
+    comments:
+      - "Nadia: Payments Core will second-review. A day's notice before each campaign lets us plan the time."
+  - key: ENG-599
+    type: Task
+    summary: Connect warehouse access to marts and personal data tables
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Warehouse access is reviewed for the `marts` layer and for tables with columns
+      tagged as personal data, which are Confidential under
+      [data classification](../../corpus/security/data-classification.md). Tomasz
+      Wilde, for Data Platform, is the second reviewer.
+
+      - Read Trino roles and their grants nightly, with the last query time per person.
+      - Show "personal data" beside every role that opens a tagged table.
+      - Send pipeline service accounts to Data Platform, not to managers.
+    comments:
+      - "Tomasz: Data Platform will second-review. Role names were cryptic, so we added a one-line description to each."
+  - key: ENG-600
+    type: Task
+    summary: Connect merchant-api-admin, Harbour, Haven and Tally administrator rights
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      The last connectors before the April campaign:
+
+      - `merchant-api` admin console: the `merchant-api-admin` role, second-reviewed by
+        Merchant Experience;
+      - Harbour: administrator rights, second-reviewed by Femi Haldane;
+      - Haven: administrator rights and access to payroll documents, second-reviewed by
+        Rhiannon Dace;
+      - Tally: approver rights, second-reviewed by Arjun Pelletier.
+    comments:
+      - "Femi: Happy to second-review Harbour administrators."
+      - "Arjun: Tally approvers too. Expect questions about anyone approving outside their own cost centre."
+  - key: ENG-601
+    type: Bug
+    summary: April campaign set to open on Easter Monday
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      **Steps to reproduce:** look at the schedule of the April 2026 campaign.
+
+      **Expected:** it opens on the first working Monday of April, Monday 13 April
+      2026.
+
+      **Actual:** it was set for Monday 6 April, Easter Monday, a bank holiday in the
+      UK and in France, and every business-day deadline was counted from it.
+
+      **Fix:** campaign dates and business-day deadlines use the UK and French bank
+      holiday calendars, and each person's deadlines follow the calendar of their
+      country in Haven.
+    comments:
+      - "Callum: Good catch. The April campaign now opens on the 13th."
+  - key: ENG-602
+    type: Story
+    summary: Let system owners certify privileged and service accounts
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As a system owner, I want to certify the privileged and service accounts on my
+      system in the same campaign, so that the accounts no manager sees are reviewed
+      too.
+
+      Acceptance criteria:
+
+      - System owners receive their own list on the opening Monday, with the same
+        10-business-day deadline as managers.
+      - Service accounts show their named owner, their recorded purpose and their last
+        use.
+      - The system owner carries out revocations within 5 business days of the
+        certification deadline.
+  - key: ENG-603
+    type: Story
+    summary: Disable service accounts without an owner at the end of a review
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Every service account must have a named owner who is a current employee, a
+      purpose recorded in the identity provider, credentials held only in Strongroom
+      (see [Using Strongroom](../../corpus/security/strongroom-how-to.md)), and no
+      interactive sign-in.
+
+      Acceptance criteria:
+
+      - The tool flags service accounts that miss any of these.
+      - An account with no owner is disabled at the end of the review in which it is
+        found.
+      - If something breaks, the team that notices becomes the account's owner.
+  - key: ENG-604
+    type: Story
+    summary: Export each campaign's evidence for PCI DSS
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      Auditors ask, for every review, what was reviewed, who decided and what was
+      removed.
+
+      Acceptance criteria:
+
+      - One export per campaign holds the campaign as sent, every decision with the
+        name of the person who took it and the time, and each revocation with its
+        confirmation.
+      - Security keeps the exports, and nobody can edit them.
+      - Managers cannot download them, so that no private copies circulate.
+    comments:
+      - "Callum: Walked the auditors through the January pilot's export. They asked for nothing more."
+  - key: ENG-605
+    type: Story
+    summary: Remove a mover's old access after a 30-day overlap
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As the new manager of someone who changed team, I want their old team's access to
+      end on its own, so that it does not wait for the next quarterly review.
+
+      Acceptance criteria:
+
+      - A change of team in Haven applies the new role profile on the effective date.
+      - The old team's access stays for 30 days so that work can be handed over, then
+        is removed automatically, unless the new manager asks to keep a named
+        entitlement, with a reason.
+      - A move into or out of a privileged role triggers an immediate review of the
+        person's access by Security.
+  - key: ENG-606
+    type: Bug
+    summary: Movers lost their old team's access on the effective date
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      **Steps to reproduce:** record in Haven a change of team from Payouts to Ledger,
+      effective today.
+
+      **Expected:** the Ledger profile is applied today, and the Payouts access stays
+      for 30 days.
+
+      **Actual:** the Payouts access was removed on the effective date, in the middle of
+      a handover.
+
+      **Fix:** the overlap is tracked for each entitlement of the old profile, and its
+      removal is scheduled for day 30 instead of being applied with the new profile.
+    comments:
+      - "Yusuf: Thanks. Our engineer who moved to Ledger had their Payouts access back within the hour."
+  - key: ENG-607
+    type: Story
+    summary: Expire contractors' access on the end date recorded in Haven
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As Security, I want contractors' access to end when their engagement does, without
+      a leaver request.
+
+      Acceptance criteria:
+
+      - A contractor's account cannot be created without an end date.
+      - Access expires automatically at the end of that date.
+      - An extension recorded in Haven before the old date passes moves the expiry.
+      - The contractor's manager is reminded 10 business days before the end date.
+  - key: ENG-608
+    type: Story
+    summary: Revoke leavers' access within 24 hours automatically
+    status: Done
+    priority: Highest
+    labels: [security]
+    description: |
+      As Security, I want leavers' access removed without anyone having to remember, so
+      that no leaver keeps access for days. The clock starts at the end of the last
+      working day recorded in Haven. The identity provider then:
+
+      1. disables the account and revokes every session and refresh token;
+      2. removes the account from every group, which ends access to Kubernetes,
+         Shipwright, Lantern, the warehouse, Harbour and chat;
+      3. calls Strongroom to revoke the person's tokens;
+      4. removes the `merchant-api-admin` role and Switchboard rights.
+
+      Acceptance criteria: every step completes within 24 hours, is logged, and alerts
+      Security if it fails. See
+      [quarterly access reviews](../../corpus/security/access-reviews.md).
+    comments:
+      - "Rhiannon: People have briefed every manager: the last working day in Haven is now what turns access off."
+      - "Callum: Live in production. The first leavers went through cleanly."
+  - key: ENG-609
+    type: Story
+    summary: Open a ticket for each leaver's account outside the identity provider
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Some systems cannot sit behind the identity provider, and their accounts need a
+      person to remove them.
+
+      Acceptance criteria:
+
+      - For each such system the leaver had an account on, the automation opens a
+        ticket assigned to the system's owner.
+      - The ticket is due within the same 24 hours as the rest of the leaver's access.
+      - Overdue tickets are escalated to Security.
+      - A leaver who owned service accounts or tokens is flagged to their manager
+        before the last day, so that ownership can be reassigned.
+  - key: ENG-610
+    type: Bug
+    summary: Leaver automation counted from the contract end, not the last working day
+    status: Done
+    priority: Highest
+    labels: [security]
+    description: |
+      **Steps to reproduce:** record a leaver in Haven whose last working day is two
+      weeks before the end of their contract, as with garden leave or annual leave
+      taken at the end of a notice period.
+
+      **Expected:** access removed within 24 hours of the end of the last working day.
+
+      **Actual:** the automation used the contract end date, so access would have
+      stayed for two more weeks.
+
+      **Fix:** the automation reads the last working day, or the start of garden leave
+      where there is one. A leaving date moved earlier in Haven reschedules the
+      removal at once.
+    comments:
+      - "Rhiannon: Haven now asks for the last working day separately on every leaver record."
+  - key: ENG-611
+    type: Task
+    summary: Write the security on-call steps for immediate departures
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      When People need someone's access to end at once, the automation is too slow.
+      Write the steps for the security on-call, whose rota is listed in the
+      [security incident response plan](../../corpus/security/incident-response-plan.md):
+
+      1. People call the security on-call through Klaxon, at any hour.
+      2. The on-call disables the account by hand in the identity provider, revokes
+         every session and revokes the person's Strongroom tokens.
+      3. The on-call confirms to People within 1 hour of the call.
+    comments:
+      - "Rhiannon: People have the steps. We hope to use them rarely."
+  - key: ENG-612
+    type: Story
+    summary: List break-glass accounts in every review for the head of security
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Each critical system has two break-glass accounts, sealed in Strongroom since
+      ENG-569. They belong to nobody's team, so no manager would ever see them.
+
+      Acceptance criteria:
+
+      - Every campaign lists all break-glass accounts, with each use since the last
+        review.
+      - The head of security certifies them.
+      - A use that Security did not review within 1 business day is flagged.
+  - key: ENG-613
+    type: Story
+    summary: Add a Keep all button for managers with large teams
+    status: Won't Do
+    priority: Low
+    labels: [security]
+    description: |
+      Several managers in the January pilot asked for one button to keep every
+      entitlement of a report whose role has not changed.
+
+      Proposal:
+
+      - a Keep all per report, for everyday entitlements only;
+      - privileged entitlements would still need a reason each;
+      - entitlements unused for 90 days would stay pre-selected as Revoke.
+    comments:
+      - "Callum: Won't do. A keep-all is how a quarterly review turns into a click-through, and auditors look for exactly that."
+  - key: ENG-614
+    type: Task
+    summary: Build a connector for each supplier portal outside the identity provider
+    status: Won't Do
+    priority: Low
+    labels: [security]
+    description: |
+      Some teams use supplier portals with their own accounts, outside the identity
+      provider. Proposal: one connector per portal, so that leavers' accounts there are
+      removed automatically like the rest, and each portal's accounts appear in the
+      quarterly review.
+
+      Each connector would need the supplier's administration interface, its own
+      credentials in Strongroom and its own tests.
+    comments:
+      - "Callum: Won't do. Each portal would need its own connector and upkeep. Leavers' accounts there are covered by the ticket to the system owner (ENG-609), and new portals should sit behind the identity provider instead."
+  - key: ENG-615
+    type: Task
+    summary: Retire the spreadsheets used for access reviews
+    status: Done
+    priority: Lowest
+    labels: [security, tech-debt]
+    description: |
+      Until the January pilot, each review ran on one spreadsheet per system, sent by
+      email. From April, every system in scope is in the tool.
+
+      - Archive past spreadsheets with Security's review evidence, readable by
+        Security only.
+      - Remove the spreadsheet templates and the mailing list used to send them.
+      - Point the old instructions to the managers' guide (ENG-586).
+    comments:
+      - "Callum: Archived and removed. Nothing left to go back to."

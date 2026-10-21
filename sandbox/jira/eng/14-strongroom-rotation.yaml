@@ -1,0 +1,768 @@
+epic:
+  key: ENG-14
+  summary: Secrets rotation in Strongroom
+  sprints: [6, 13]
+  labels: [security]
+  description: |
+    ## Goal
+
+    Make Strongroom the only place a secret lives, as
+    [ADR-020](../../corpus/architecture/adr-020-strongroom.md) decides, and rotate
+    secrets on a schedule instead of by hand. Production database credentials are
+    rotated every 30 days.
+
+    ## Scope
+
+    - Rotation in Strongroom: `strongroom rotate`, two valid versions during a
+      rotation, and revocation once no workload holds the old version.
+    - Schedules set per path; service-to-service tokens default to 90 days.
+    - The sidecar that mounts secrets and follows a new version within 90 seconds.
+    - Moving every team's secrets out of hand-made Kubernetes objects, CI variables,
+      repositories and laptops by the end of September.
+    - An audit trail of every read and change.
+
+    ## Out of scope
+
+    - Merchants' API keys, which are revoked through the `merchant-api` admin console.
+    - Hardware security keys for administrators (ENG-16).
+
+    ## Pages
+
+    - [Using Strongroom](../../corpus/security/strongroom-how-to.md)
+    - [Playbook: leaked secret or API key](../../corpus/security/leaked-secret.md)
+  comments:
+    - "Callum: Every team lead has their list of secrets held outside Strongroom. The deadline is the end of September."
+    - "Ottilie: Good progress. Please make sure the teams with long lists are not left until the last week of September."
+tickets:
+  - key: ENG-538
+    type: Task
+    summary: Send each team its list of secrets held outside Strongroom
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      [ADR-020](../../corpus/architecture/adr-020-strongroom.md) makes Strongroom the
+      only place a secret may live. Security's April inventory found the rest in four
+      other places: Kubernetes secret objects created by hand, variables in continuous
+      integration, configuration files committed to repositories, and files on
+      engineers' laptops.
+
+      Split the inventory by owning team and send each team lead their list, with the
+      Strongroom path each secret should move to and the deadline: the end of
+      September.
+
+      Done when every team lead has acknowledged their list in `#team-security`.
+    comments:
+      - "Callum: Lists sent. Payouts and Ledger have the longest ones, mostly hand-made Kubernetes secrets."
+      - "Yusuf: Payouts acknowledged. We will start with payout-gateway's bank token."
+  - key: ENG-539
+    type: Story
+    summary: Rotate a PostgreSQL service role's password from Strongroom on demand
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      As a service owner, I want Strongroom to rotate my service's database credential
+      in one command, so that rotation no longer means a hand-written password change
+      followed by a redeploy. Each service has its own database role, as ADR-012 sets
+      out.
+
+      Acceptance criteria:
+
+      - `strongroom rotate prod/card-auth/db-app --reason "scheduled"` creates a new
+        version and sets the new password on the service's PostgreSQL role.
+      - The command prints the new version number.
+      - If setting the password fails, the current version is left untouched and the
+        command exits with an error.
+  - key: ENG-540
+    type: Story
+    summary: Keep the old and new versions valid side by side during a rotation
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Revoking a credential before its consumers hold the new one causes exactly the
+      outage we want to avoid. During a rotation, both versions must work.
+
+      Acceptance criteria:
+
+      - After `strongroom rotate`, the previous version stays valid until it is revoked,
+        by a person or by a schedule.
+      - For PostgreSQL targets, the previous password keeps working until revocation.
+      - `strongroom versions` lists both versions as valid, with who created them and
+        when, never their values.
+  - key: ENG-541
+    type: Task
+    summary: Run Strongroom with replicas as a tier-one Platform service
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Once every secret lives in Strongroom, its availability matters: services that
+      are already running keep the secrets they hold, but new pods cannot start
+      without it. ADR-020 names this as the main cost of a single store.
+
+      - Run Strongroom with replicas, so that losing one does not stop reads.
+      - Add it to Platform's tier-one services in Lantern, paging Platform's on-call
+        through Klaxon.
+      - Back up its storage and test a restore in `staging-eu`.
+    comments:
+      - "Bram: Replicas running in production. Restore tested in staging-eu with no data lost."
+  - key: ENG-542
+    type: Story
+    summary: Record a reason with every rotation, write and revocation
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As Security, I want every change to a secret to carry a reason, so that the
+      audit trail answers why as well as who.
+
+      Acceptance criteria:
+
+      - `strongroom rotate`, `strongroom put` and `strongroom revoke` refuse to run
+        without `--reason`.
+      - Scheduled rotations record the reason `scheduled`.
+      - The reason appears in `strongroom versions` and in the audit log, next to the
+        person or workload that made the change.
+  - key: ENG-543
+    type: Story
+    summary: Show which workloads hold a lease on a secret
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Before revoking an old version, we need to know who still reads it.
+
+      ```bash
+      strongroom consumers prod/payout-gateway/bank-api-token
+      ```
+
+      Acceptance criteria:
+
+      - The command lists each workload identity holding a lease, its namespace and
+        the version it holds.
+      - It works for anyone allowed to see the path's metadata, without access to the
+        value.
+      - A version that no workload holds does not appear, so that it can be revoked
+        safely.
+  - key: ENG-544
+    type: Story
+    summary: Refresh mounted secrets within 90 seconds of a new version
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      Services read secrets from files that the Strongroom sidecar mounts for the paths
+      named in their annotations. When a new version is created the files must follow,
+      or every rotation becomes a redeploy.
+
+      Acceptance criteria:
+
+      - The sidecar replaces the file under `/var/run/strongroom/` within 90 seconds of
+        a new version.
+      - The volume is held in memory and never written to the container's disk.
+      - A service that reads the file each time, or watches it, picks up the new value
+        without a restart.
+      - The behaviour is described in
+        [Using Strongroom](../../corpus/security/strongroom-how-to.md).
+  - key: ENG-545
+    type: Bug
+    summary: Sidecar keeps serving the old version after its watch connection drops
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      **Steps to reproduce:** in `staging-eu`, restart one Strongroom replica, then
+      rotate `staging/notify/webhook-signing-key`.
+
+      **Expected:** the sidecar of every `notify` pod replaces the file within 90
+      seconds.
+
+      **Actual:** pods whose sidecar had been connected to the restarted replica kept
+      the old file until the pod itself restarted.
+
+      **Fix:** the sidecar reconnects with backoff and, once reconnected, compares every
+      mounted version with the current one instead of waiting for the next change
+      event.
+    comments:
+      - "Lukas: Verified by restarting each replica in turn during a rotation. Every pod moved inside the 90 seconds."
+  - key: ENG-546
+    type: Story
+    summary: Revoke an old version by number once nothing reads it
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As a service owner, I want to revoke one old version explicitly, so that a
+      rotation ends with a single valid value.
+
+      ```bash
+      strongroom revoke prod/card-auth/db-app --version 17 --reason "rotation complete"
+      ```
+
+      Acceptance criteria:
+
+      - Only the named version is revoked; the current one stays valid.
+      - The command warns and asks for confirmation when `strongroom consumers` still
+        shows a lease on that version.
+      - For PostgreSQL targets, the revoked password stops working at once.
+      - A service still holding the version gets the error `version revoked`.
+  - key: ENG-547
+    type: Story
+    summary: Refuse Kubernetes secret objects not created by the Strongroom agent
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      Hand-made Kubernetes secrets are one of the places ADR-020 means to end. Once
+      teams have moved theirs, the clusters must refuse new ones.
+
+      Acceptance criteria:
+
+      - An admission policy rejects any secret object that the Strongroom agent did not
+        create.
+      - The rejection message names the policy and points to Using Strongroom.
+      - An audit mode logs would-be rejections without blocking, for the migration.
+      - Objects on a temporary allowlist keep working until their team has moved them.
+    comments:
+      - "Bram: Audit mode is on in production. Refusal stays off until each team's list is empty."
+  - key: ENG-548
+    type: Task
+    summary: Move Payouts' hand-made Kubernetes secrets into Strongroom
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Payouts holds the longest list from ENG-538, mostly secrets for `payout-gateway`
+      and `settlement-batcher` created by hand in the cluster.
+
+      For each one: store it under the service's `prod/` path, add the path to the
+      workload's annotations, deploy, and only then delete the hand-made object. Start
+      with `prod/payout-gateway/bank-api-token`, the token for our settlement bank.
+      Credentials issued by a supplier are stored with `strongroom put --from-stdin`,
+      since Strongroom cannot rotate them itself.
+    comments:
+      - "Yusuf: Bank token moved and deployed between batch peaks. No failed batches."
+      - "Yusuf: Every Payouts object is deleted from the cluster."
+  - key: ENG-549
+    type: Task
+    summary: Move Ledger's database credentials into Strongroom
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      `ledger` still reads its database credentials from secret objects created by
+      hand, including the read-only replica credential used by the warehouse extracts.
+
+      - Move them to `prod/ledger/db-app` and `prod/ledger/replica-readonly`.
+      - Switch every consumer to the sidecar, then delete the old objects.
+      - Agree the replica switch with Data Platform, since Conveyor workers read it.
+      - Keep clear of the `recon-daily` job, which runs at 02:00 UTC.
+    comments:
+      - "Kwabena: Done. Both paths are live and recon-daily ran clean the next morning."
+  - key: ENG-550
+    type: Story
+    summary: Give Conveyor runs short-lived database credentials from Strongroom
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      As a pipeline owner, I want each Conveyor run to receive its own credential, so
+      that no pipeline keeps a long-lived password in its configuration.
+
+      Acceptance criteria:
+
+      - At the start of a run, Conveyor fetches a short-lived credential from
+        Strongroom with the pipeline's workload identity.
+      - The credential expires soon after the run ends.
+      - Reads appear in `strongroom audit` under the Conveyor worker's identity.
+      - Pipelines in continuous integration use the same mechanism, so that no secret
+        is kept as a CI variable.
+    comments:
+      - "Tomasz: Live for every scheduled pipeline. merchant_orders_daily was the first to move."
+  - key: ENG-551
+    type: Task
+    summary: Remove the two production database passwords from CI variables
+    status: Done
+    priority: Highest
+    labels: [security]
+    description: |
+      The April inventory found two production database passwords stored as variables
+      in our continuous integration system, readable by anyone able to edit a pipeline
+      in those repositories.
+
+      1. Change the pipelines that use them to fetch a short-lived credential from
+         Strongroom (ENG-550).
+      2. Rotate both passwords with `strongroom rotate`, since the old values were
+         widely readable.
+      3. Delete the variables, and check the CI audit log for jobs that read them
+         outside the expected pipelines.
+    comments:
+      - "Bram: Both variables deleted. The audit log shows reads by the two expected pipelines only."
+      - "Callum: Thanks. That line of the inventory is closed."
+  - key: ENG-552
+    type: Bug
+    summary: Admission policy rejects the Strongroom agent's secret objects in new namespaces
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      **Steps to reproduce:** in `staging-eu`, with the policy from ENG-547 refusing,
+      create a new namespace and deploy a workload annotated with
+      `strongroom.quillmoor.example/inject`.
+
+      **Expected:** the agent creates the secret object and the pod starts.
+
+      **Actual:** the policy rejects the object and the pod waits for its volume.
+
+      **Cause:** the policy recognised the agent by a list of namespaces, which did not
+      include new ones.
+
+      **Fix:** the policy recognises the agent by its workload identity, in any
+      namespace.
+    comments:
+      - "Bram: Found before refusal reached production. Rechecked with three new namespaces."
+  - key: ENG-553
+    type: Story
+    summary: Rotate secrets automatically on a schedule set per path
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      As an owning team, I want to set how often Strongroom rotates each of my secrets,
+      so that rotation happens without anyone having to remember it.
+
+      Acceptance criteria:
+
+      - A schedule is set per path by the owning team, through a pull request reviewed
+        by Security.
+      - `strongroom schedule show prod/card-auth/db-app` prints the schedule and the
+        next rotation.
+      - A scheduled rotation runs the same steps as `strongroom rotate`, with the reason
+        `scheduled`.
+      - The old version is revoked after a grace period set per path.
+  - key: ENG-554
+    type: Story
+    summary: Rotate service-to-service tokens every 90 days by default
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Most teams will not choose a schedule for their tokens, so the default has to be
+      a sensible one.
+
+      Acceptance criteria:
+
+      - Every service-to-service token path gets a 90-day schedule when it is created,
+        unless the owning team sets another.
+      - Existing token paths move to the default, staggered over a month so that they
+        do not all rotate on the same day.
+      - `strongroom schedule show` says when a path uses the default.
+  - key: ENG-555
+    type: Task
+    summary: Move Payments Core secrets out of committed configuration files
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      Configuration files in the `card-auth` and `fx-quote` repositories still hold
+      secrets, and each one is already a secret scanner finding. Under ADR-020 a
+      committed secret counts as leaked.
+
+      For each secret: rotate it in Strongroom first, move the consumers to the
+      sidecar, revoke the old value, and only then remove it from the file. Leave git
+      history alone: a rotated and revoked secret left in history is harmless.
+
+      Done when Security has closed the scanner findings.
+    comments:
+      - "Nadia: card-auth done in a quiet hour, with no authorisation errors in Lantern."
+      - "Nadia: fx-quote done as well. Findings handed back to Security."
+  - key: ENG-556
+    type: Story
+    summary: Shared team paths for supplier website credentials
+    status: Done
+    priority: Low
+    labels: [security]
+    description: |
+      Some teams share a login for a supplier's website, and today it sits in a
+      document or a chat message. It belongs in Strongroom like any other secret.
+
+      Acceptance criteria:
+
+      - Paths under `team/<team>/` are readable and writable by that team's group only.
+      - `strongroom put team/payouts/bank-portal --from-stdin --reason "..."` stores a
+        new version without the value reaching shell history.
+      - Team paths are never rotated on a schedule, since the supplier sets the
+        password.
+  - key: ENG-557
+    type: Bug
+    summary: strongroom put keeps the trailing newline of values read from standard input
+    status: Done
+    priority: Low
+    labels: [security]
+    description: |
+      **Steps to reproduce:**
+
+      ```bash
+      printf 'example\n' | strongroom put team/payouts/bank-portal --from-stdin --reason "test"
+      strongroom get team/payouts/bank-portal
+      ```
+
+      **Expected:** the stored value is `example`.
+
+      **Actual:** the stored value ends with a newline, and the supplier's website
+      rejects the password when it is copied from the command's output.
+
+      **Fix:** one trailing newline is stripped from values read from standard input,
+      and the command's help says so.
+    comments:
+      - "Yusuf: Confirmed. The bank portal login works again."
+  - key: ENG-558
+    type: Story
+    summary: Ask for a reason on every human read of a production path
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      People should rarely read production secrets, and when they do we want to know
+      why.
+
+      Acceptance criteria:
+
+      - `strongroom get` on a `prod/` path by a person asks for a reason before
+        returning the value.
+      - The read is logged with the person, the path, the version and the reason.
+      - Security receives a weekly report of human reads of `prod/` paths, grouped by
+        person and path.
+      - Reads by workloads are logged but never asked for a reason.
+  - key: ENG-559
+    type: Story
+    summary: Show who read a secret over a period with strongroom audit
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      When a secret leaks, the first question is who used it. The audit command must
+      answer that in one line.
+
+      ```bash
+      strongroom audit prod/payout-gateway/bank-api-token --since 7d
+      ```
+
+      Acceptance criteria:
+
+      - It lists every read and every change, with the time in UTC, the caller's
+        identity (person or workload) and the version.
+      - `--since` accepts hours or days, such as `72h` or `7d`.
+      - The owning team's lead and Security can run it on the team's paths.
+  - key: ENG-560
+    type: Task
+    summary: Move notify and merchant-api secrets into Strongroom
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Merchant Experience's list holds the webhook signing keys of `notify`, the API
+      key of our email provider, and the database credentials of `merchant-api`.
+
+      - Start in `staging-eu` with `staging/notify/webhook-signing-key`.
+      - Store the signing keys and database credentials, switch the services to the
+        sidecar, then delete the old copies.
+      - The email provider's key is issued by the supplier: store it with
+        `strongroom put prod/notify/email-provider-api-key --from-stdin`.
+  - key: ENG-561
+    type: Task
+    summary: Collect maintenance credentials kept on engineers' laptops
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      The inventory found credentials kept as files on laptops for "just this once"
+      maintenance. The [laptop security baseline](../../corpus/security/laptop-baseline.md)
+      already says that no secret lives in a file.
+
+      1. Ask each engineer named in the inventory to delete the files and confirm it in
+         writing.
+      2. Rotate every credential that was on a laptop, since nobody can prove where
+         else it went.
+      3. Point people to `strongroom get`, with a reason, for the rare read they still
+         need.
+  - key: ENG-562
+    type: Bug
+    summary: Scheduled rotation revoked a version that settlement-batcher still held
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      **Steps to reproduce:** in `staging-eu`, put `staging/settlement-batcher/db-app`
+      on a schedule with a short grace period and wait for the rotation.
+
+      **Expected:** the old version stays valid while any workload holds it.
+
+      **Actual:** the old version was revoked when the grace period ended.
+      `settlement-batcher`, which reads its secrets only at start, failed with
+      `version revoked` until it was redeployed.
+
+      **Fix:** a scheduled rotation revokes the old version only once
+      `strongroom consumers` shows no lease on it, and tells the owning team when a
+      lease is still held after the grace period.
+    comments:
+      - "Yusuf: We keep reading at start for now, so a rotation means a redeploy for us. This makes that safe."
+  - key: ENG-563
+    type: Task
+    summary: Move Risk ML and Data Platform secrets into Strongroom
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Risk ML holds tokens for `risk-scorer` and for jobs on Kiln; Data Platform holds
+      the service accounts that Trino and Conveyor workers use.
+
+      - Move each one to a `prod/` path owned by the team.
+      - Replace any secret written into a Kiln job's YAML file with a Strongroom path;
+        Kiln jobs read secrets the same way as services.
+      - Delete the old copies once the consumers read from Strongroom.
+    comments:
+      - "Mireille: Risk ML's list is empty."
+      - "Tomasz: Data Platform is done. The last Trino service account moved this morning."
+  - key: ENG-564
+    type: Story
+    summary: Rotate production database credentials every 30 days
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      As Security, I want every production database credential rotated automatically
+      every 30 days, so that a credential that leaks stays useful for a month at most,
+      not for years.
+
+      Acceptance criteria:
+
+      - Every production database credential path, such as `prod/card-auth/db-app`,
+        has a 30-day schedule.
+      - New production database paths get the 30-day schedule when they are created.
+      - First rotations are staggered across the month rather than run on one day.
+      - `strongroom schedule show` gives the next rotation for each path.
+      - Owning teams may shorten the schedule but not lengthen it.
+    comments:
+      - "Callum: Every production database path is on the schedule, apart from those still waiting for their team's move."
+      - "Nadia: card-auth rotated on schedule this week with no authorisation errors."
+  - key: ENG-565
+    type: Story
+    summary: Alert the owning team when a scheduled rotation fails
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      A failed scheduled rotation leaves the old version in place, which is safe but
+      silent. The owning team needs to know.
+
+      Acceptance criteria:
+
+      - A failed rotation is retried once.
+      - If the retry fails, Lantern alerts the owning team's on-call through Klaxon,
+        with the path, the target and the error.
+      - A Lantern panel lists, per team, the paths whose last scheduled rotation failed
+        or is overdue.
+  - key: ENG-566
+    type: Bug
+    summary: Scheduled rotation of ledger's credential broke recon-daily at 02:00 UTC
+    status: Done
+    priority: Highest
+    labels: [security]
+    description: |
+      **Steps to reproduce:** rotate `prod/ledger/db-app` while a workload is starting
+      and fetching the credential.
+
+      **Expected:** the workload receives a version that works.
+
+      **Actual:** the first 30-day rotation (ENG-564) ran at 02:00 UTC, as `recon-daily`
+      started. The job fetched the new version before the password had been set on the
+      database role, failed to authenticate, and had to be rerun by the Ledger on-call.
+
+      **Fix:** Strongroom sets the password on the target first and publishes the new
+      version only once it works. At the team's request, Ledger's paths rotate in
+      working hours only.
+    comments:
+      - "Kwabena: The rerun finished well before the morning checks, with no breaks."
+      - "Callum: The ordering fix applies to every PostgreSQL target, not only ledger."
+  - key: ENG-567
+    type: Task
+    summary: Write the rotation section of Using Strongroom
+    status: Done
+    priority: Low
+    labels: [security]
+    description: |
+      Teams keep asking how to rotate now, how to read a schedule and when to revoke.
+      Add a rotation section to
+      [Using Strongroom](../../corpus/security/strongroom-how-to.md):
+
+      - `strongroom rotate`, `strongroom schedule show` and `strongroom revoke`, with
+        an example each;
+      - the 30-day schedule for production database credentials and the 90-day default
+        for service-to-service tokens;
+      - revoke only when `strongroom consumers` shows that no workload still holds the
+        old version.
+  - key: ENG-568
+    type: Task
+    summary: Confirm that no secret remains outside Strongroom at the end of September
+    status: Done
+    priority: High
+    labels: [security]
+    description: |
+      ADR-020's deadline is the end of September. Rerun the April inventory against
+      the same places and check that only Strongroom is left:
+
+      - no hand-made Kubernetes secret objects outside the temporary allowlist;
+      - no secrets in CI variables;
+      - no open scanner findings for committed secrets;
+      - every laptop confirmation received.
+
+      Report the result per team in `#team-security`, and chase any gap with the team
+      lead.
+    comments:
+      - "Callum: First rerun done. Two teams still have hand-made objects to delete; I will rerun once they confirm, and the allowlist goes under ENG-574."
+      - "Ottilie: Thanks. Let us close this before the end of the month."
+  - key: ENG-569
+    type: Story
+    summary: Seal break-glass credentials in Strongroom and page on every read
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Each critical system keeps two break-glass accounts for when the identity
+      provider is unavailable. Their credentials belong in Strongroom too, and reading
+      one must never go unnoticed.
+
+      Acceptance criteria:
+
+      - Break-glass credentials live under sealed paths that ask for a reason on every
+        read.
+      - Reading one pages the security on-call through Klaxon.
+      - The credential is rotated after each use, once Security has reviewed it.
+
+      How break-glass accounts are certified is in
+      [quarterly access reviews](../../corpus/security/access-reviews.md).
+  - key: ENG-570
+    type: Bug
+    summary: strongroom consumers still lists pods deleted hours ago
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      **Steps to reproduce:** scale a workload down to zero, wait ten minutes, and run
+      `strongroom consumers` on one of its paths.
+
+      **Expected:** no lease for the deleted pods.
+
+      **Actual:** their leases stay listed until they expire, up to a day later, which
+      holds back scheduled revocations (ENG-562) for as long.
+
+      **Fix:** the sidecar releases its lease when the pod terminates, and a lease that
+      is not renewed expires after 30 minutes.
+    comments:
+      - "Lukas: Verified with a scale-down in staging-eu. The lease disappeared within a minute."
+  - key: ENG-571
+    type: Task
+    summary: Write rotate-then-revoke into the leaked secret playbook
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      With rotation in Strongroom, the order of steps for a leaked secret changes:
+      rotate first, so that a new value exists and consumers move, then revoke the old
+      one. Revoking first can cause the outage an attacker would want.
+
+      Update the [leaked secret playbook](../../corpus/security/leaked-secret.md):
+
+      - production secrets rotated, and the old value revoked, within 1 hour;
+      - `strongroom audit` and `strongroom consumers` to scope the leak;
+      - merchants' API keys stay with the `merchant-api` admin console.
+  - key: ENG-572
+    type: Story
+    summary: Mirror Strongroom into the cloud provider's secrets store
+    status: Won't Do
+    priority: Low
+    labels: [security]
+    description: |
+      Proposal from Platform: copy every secret into our cloud provider's secrets store
+      as a fallback, so that new pods can start if Strongroom is unavailable.
+
+      Acceptance criteria as proposed:
+
+      - a one-way copy of every `prod/` path, refreshed on each new version;
+      - the sidecar falls back to the copy when Strongroom does not answer.
+
+      Context: [ADR-020](../../corpus/architecture/adr-020-strongroom.md) considered the
+      cloud provider's store as an alternative.
+    comments:
+      - "Callum: Won't do. ADR-020 rejected a second store, and this is one, card data environment included. Replicas (ENG-541) are our answer to availability."
+  - key: ENG-573
+    type: Story
+    summary: Rotate merchant API keys on a Strongroom schedule
+    status: Won't Do
+    priority: Low
+    labels: [security]
+    description: |
+      Proposal: put merchants' API keys on a Strongroom schedule like our own secrets,
+      so that a key pasted into a Harbour ticket stops working after a while.
+
+      - Strongroom would issue the new key on a schedule.
+      - Merchant Hub would show it to the merchant to deploy.
+
+      Today, a leaked merchant key is handled as the
+      [leaked secret playbook](../../corpus/security/leaked-secret.md) describes.
+    comments:
+      - "Callum: Won't do. Merchants' API keys are their credentials, not ours. They create new keys in Merchant Hub, and we revoke old ones through the merchant-api admin console."
+  - key: ENG-574
+    type: Task
+    summary: Remove the temporary allowlist for hand-made Kubernetes secrets
+    status: Done
+    priority: Medium
+    labels: [security, tech-debt]
+    description: |
+      The admission policy from ENG-547 kept an allowlist of hand-made secret objects,
+      so that teams could move at their own pace. Every team has now moved.
+
+      - Delete the remaining hand-made objects once their workloads read from the
+        sidecar.
+      - Remove the allowlist, so that the policy refuses every secret object the
+        Strongroom agent did not create.
+      - Check in Lantern that no pod failed to start afterwards.
+    comments:
+      - "Bram: Allowlist removed in production. No rejected pods since."
+  - key: ENG-575
+    type: Bug
+    summary: strongroom schedule show prints times without a time zone
+    status: Done
+    priority: Lowest
+    labels: [security]
+    description: |
+      **Steps to reproduce:** run `strongroom schedule show prod/card-auth/db-app` on a
+      laptop set to Paris time.
+
+      **Expected:** the next rotation in UTC, labelled as such.
+
+      **Actual:** a local time with no zone, an hour away from what the Lantern panel
+      shows.
+
+      **Fix:** the command prints times in UTC with the zone, like every other
+      Strongroom command.
+  - key: ENG-576
+    type: Task
+    summary: Hand rotation schedules over to each owning team
+    status: Done
+    priority: Medium
+    labels: [security]
+    description: |
+      Under ADR-020, every secret has an owning team responsible for rotating it.
+      Security set the first schedules; ownership now moves to the teams.
+
+      - Record the owning team on every path that still shows Security.
+      - Give each team lead the list of their schedules and the alerts they now
+        receive (ENG-565).
+      - Production database credentials stay at 30 days; other schedules are the
+        team's to set.
+    comments:
+      - "Callum: Handed over to every team lead."

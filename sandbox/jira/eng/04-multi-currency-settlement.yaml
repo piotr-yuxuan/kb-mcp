@@ -1,0 +1,787 @@
+epic:
+  key: ENG-4
+  summary: Multi-currency settlement
+  sprints: [15, 24]
+  labels: [payments]
+  description: |
+    ## Goal
+
+    Settle euro card payments in euros, through SEPA, to merchants with a euro bank
+    account, and pay sellers in euros from euro balances, instead of converting euro
+    takings to sterling and back.
+
+    ## Scope
+
+    - A ledger balance per merchant and currency, with euro settlement accounts.
+    - EUR settlement through SEPA with a 14:00 CET cut-off, built by `settlement-batcher`
+      as ISO 20022 credit transfer files.
+    - A cut-off and a bank holiday calendar per currency.
+    - EUR seller payouts moved from the bank's international transfer service to SEPA.
+    - Merchant Hub: a euro bank account in settings, separate euro and sterling
+      settlement reports, an expected settlement date for each batch.
+    - A pilot with eight French marketplaces in January 2026, extended to twenty
+      merchants in France, Belgium and the Netherlands, before general availability.
+
+    ## Out of scope
+
+    - Settlement in any other currency.
+    - Any change to sterling settlement.
+    - Showing buyers prices in their own currency, and choosing a settlement currency
+      per payment.
+
+    ## Pages
+
+    - [Product brief: multi-currency settlement](../../corpus/product/brief-multi-currency.md)
+    - [Settlement windows and cut-off times](../../corpus/payments/settlement-cutoffs.md)
+    - [Payments platform architecture](../../corpus/payments/platform-architecture.md)
+  comments:
+    - "Oskar: Pilot plan agreed with the account managers: eight French marketplaces first, then up to twenty merchants across France, Belgium and the Netherlands."
+    - "Yusuf: Payouts, Ledger and Payments Core all have work in this epic; we run it from #team-payouts and review progress at the Tuesday sync."
+tickets:
+  - key: ENG-148
+    type: Task
+    summary: "Agree the SEPA credit transfer file format with our settlement bank"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Our settlement bank accepts euro settlement and EUR payout files only in its
+      ISO 20022 credit transfer format for SEPA, with its own rules on references,
+      batching and character sets. Before `settlement-batcher` can build anything, the
+      format must be agreed in writing with the bank's operations desk.
+
+      - Collect the bank's specification and its sample files.
+      - List the fields we fill from our data: debtor account, creditor IBAN and name,
+        amount, end-to-end reference.
+      - Agree how a rejected file is reported back to us.
+      - Record the result in the `settlement-batcher` repository, under
+        `docs/formats/sepa.md`.
+    comments:
+      - "Yusuf: The operations desk sent the specification and two sample files. They validate every file against the schema before acceptance, so one bad field rejects the whole file."
+      - "Kwabena: The end-to-end reference must carry our batch identifier, or recon-daily will not be able to match the statement lines."
+  - key: ENG-149
+    type: Story
+    summary: "Hold a separate ledger balance per merchant and currency"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      As Finance, I need each merchant's money held per currency, so that a euro
+      balance never silently becomes a sterling one.
+
+      Today every merchant has a single settlement balance, in GBP, and euro takings
+      are converted into it. With euro settlement, a merchant may hold GBP and EUR at
+      the same time.
+
+      Acceptance criteria:
+
+      - The ledger keeps one balance account per merchant and currency.
+      - A posting in one currency to an account in another is rejected.
+      - Existing GBP balances are unchanged.
+      - Balance queries take a currency and never add amounts across currencies.
+    comments:
+      - "Kwabena: Reviewed the model. No cross-currency postings at all: a conversion is two journals, one per currency, linked by the quote identifier."
+  - key: ENG-150
+    type: Task
+    summary: "Present the euro settlement design at the Thursday payments design review"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Write a design note for euro settlement end to end and take it to the Thursday
+      payments design review, which wants a written proposal a week ahead. It should
+      cover:
+
+      - the ledger accounts per currency and the postings between them;
+      - the euro settlement file built by `settlement-batcher` and sent through SEPA;
+      - EUR seller payouts paid from EUR balances;
+      - where `fx-quote` is still called, which should be only where a merchant
+        settles a currency to an account in another one;
+      - the pilot plan.
+
+      Product background: [Product brief: multi-currency settlement](../../corpus/product/brief-multi-currency.md).
+    comments:
+      - "Nadia: Accepted at the review. Payments Core asks to be told before anything new calls fx-quote on the authorisation path."
+  - key: ENG-151
+    type: Task
+    summary: "Add EUR bank and settlement accounts to the ledger"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Add the euro accounts that settlement needs: our EUR account at the settlement
+      bank, `1101-BANK-EUR`, beside `1100-BANK-GBP`, and a EUR settlement account for
+      each merchant that opts in. Expand only: no existing account changes.
+
+      ```bash
+      shipwright migrate ledger --plan
+      shipwright migrate ledger --apply
+      ```
+
+      The migration adds rows to the chart of accounts and a currency check on new
+      settlement accounts. Run it in staging first and confirm that the next morning's
+      `recon-daily` run is still clean.
+  - key: ENG-152
+    type: Story
+    summary: "Render EUR batches as ISO 20022 credit transfer files in settlement-batcher"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      As the Payouts team, we need `settlement-batcher` to render a EUR batch as a SEPA
+      credit transfer file in the format agreed in ENG-148, so that our settlement bank
+      can accept it.
+
+      Acceptance criteria:
+
+      - One file per batch, as for GBP; several files per cycle for the same currency
+        are fine.
+      - Every file is validated against the bank's schema before it is sent.
+      - The end-to-end reference carries the batch identifier.
+      - Amounts stay in integer minor units until the file is rendered.
+      - GBP files are unchanged, byte for byte.
+  - key: ENG-153
+    type: Story
+    summary: "Post euro settlement journals between merchant EUR accounts"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      When a merchant settles in euros, captured EUR card payments move from the
+      receivable account to the merchant's EUR settlement account, then out to the
+      merchant's euro bank account, all in EUR.
+
+      Acceptance criteria:
+
+      - Each step is one balanced journal in EUR, posted by the service that caused it,
+        with a reference that reconciliation can match.
+      - Every journal carries an idempotency key.
+      - No step calls `fx-quote` for a merchant who settles euros in euros.
+      - The Ledger team reviews the postings before merge.
+  - key: ENG-154
+    type: Story
+    summary: "Configure a settlement cut-off per currency in settlement-batcher"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      `settlement-batcher` has one cut-off, 15:30 UK time, because it only ever sent
+      GBP files on the same-day rail. Euro settlement needs its own, and the next
+      currency should need no code.
+
+      Acceptance criteria:
+
+      - Cut-offs live in `config/cutoffs.yaml`, one entry per currency, each naming its
+        rail and its calendar.
+      - GBP stays at 15:30 on the same-day rail.
+      - EUR is 14:00 on the SEPA credit transfer rail.
+      - A file accepted after its currency's cut-off is given the next business day as
+        its expected value date.
+  - key: ENG-155
+    type: Story
+    summary: "Keep one bank holiday calendar per currency in settlement-batcher"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      GBP and EUR settle on different calendars, so `settlement-batcher` needs one per
+      currency:
+
+      - `calendars/uk-england-wales.yaml`: the bank holidays of England and Wales,
+        including substitute days;
+      - `calendars/sepa.yaml`: the SEPA closing days, 1 January, Good Friday, Easter
+        Monday, 1 May, 25 December and 26 December, with no substitute days.
+
+      Each currency's entry in `config/cutoffs.yaml` names its calendar, and
+      business-day arithmetic always takes a currency. Finance publishes the next
+      year's dates each November. See
+      [Settlement windows and cut-off times](../../corpus/payments/settlement-cutoffs.md).
+  - key: ENG-156
+    type: Story
+    summary: "Refuse to start settlement-batcher when a calendar year is missing"
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      If a currency's calendar has no entry for the current or the next year,
+      `settlement-batcher` would treat every weekday as a business day and promise
+      value dates the bank will not honour.
+
+      Acceptance criteria:
+
+      - On start-up, `settlement-batcher` checks that every calendar named in
+        `config/cutoffs.yaml` covers the current year and the next.
+      - If one does not, it refuses to start and logs the file and the missing year.
+      - A unit test covers a calendar that lacks next year.
+
+      Noisy, but safe: a pod that will not start is caught at the canary stage.
+  - key: ENG-157
+    type: Story
+    summary: "Pay sellers in EUR from EUR balances without conversion"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      As a marketplace with sellers in France, I want them paid in euros from my euro
+      balance, so that nobody pays for a conversion to sterling and back.
+
+      Acceptance criteria:
+
+      - `payout-gateway` takes EUR payouts from the seller's EUR balance and batches
+        them per marketplace and currency, as today.
+      - No `fx-quote` call is made when the balance and the seller's bank account are
+        both in EUR.
+      - A seller whose balance and bank account are in different currencies still gets
+        a quote.
+      - Batches stay capped at 500 payouts.
+    comments:
+      - "Yusuf: Merged behind the euro settlement flag. Production waits for a deploy window outside the freezes."
+  - key: ENG-158
+    type: Bug
+    summary: "EUR cut-off without a time zone would move by an hour at the end of March"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In staging, run `settlement-batcher` on a simulated clock
+      across the last Sunday of March 2026, with the EUR cut-off configured as
+      `cutoff: "14:00"` and no zone.
+
+      **Expected.** The cut-off stays at 14:00 Paris time, 13:00 UK time, on both sides
+      of the clock change.
+
+      **Actual.** The bare time was read at a fixed offset of UTC+01:00, CET taken
+      literally. Right in winter, but after the change it fell at 15:00 Paris time, so
+      files accepted in that extra hour would have been promised same-day settlement.
+
+      **Fix.** Every cut-off now carries a named `timezone`, resolved day by day:
+
+      ```yaml
+      EUR:
+        rail: sepa-credit-transfer
+        cutoff: "14:00"
+        timezone: Europe/Paris
+        calendar: sepa
+      ```
+    comments:
+      - "Yusuf: Good catch from the clock-change run. GBP gets Europe/London for the same reason, although it never broke."
+      - "Lukas: The config loader now rejects a cut-off without a timezone."
+  - key: ENG-159
+    type: Task
+    summary: "Exercise the SEPA rail end to end in staging during the peak trading freeze"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Production is frozen from 24 November to 2 December 2025, but build, test and
+      staging stay open ([Change freeze calendar 2025](../../corpus/release/change-freeze-2025.md)).
+      Use the week to run euro settlement and EUR payouts end to end in `staging-eu`:
+
+      - settle a day of EUR card payments for a test marketplace to a euro account;
+      - pay its sellers in EUR;
+      - check every file against the bank's schema, and every journal in the ledger.
+
+      The merchant sandbox cannot help: its simulated settlement bank settles at once,
+      whatever the time or the calendar, so cut-offs cannot be tested there. See
+      [Test merchants and test cards](../../corpus/payments/test-merchants.md).
+    comments:
+      - "Yusuf: The test marketplace and its sellers are set up in staging-eu; first full run today."
+  - key: ENG-160
+    type: Story
+    summary: "Match the EUR account statement in recon-daily"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      `recon-daily` loads only our GBP statement. With a EUR account at the settlement
+      bank, it must also load the EUR end-of-day statement and match each line to a
+      ledger entry by bank reference, amount and value date, exactly as for GBP.
+
+      Acceptance criteria:
+
+      - Unmatched EUR statement lines raise `LDG-4102 MISSING_SETTLEMENT_LINE` with
+        currency EUR.
+      - `recon.breaks` records the currency of every break.
+      - The Lantern panel "ledger reconciliation" can filter by currency.
+      - A EUR statement missing at 02:00 UTC is retried hourly until 08:00 UTC.
+
+      Runbook: [Runbook: ledger reconciliation breaks](../../corpus/payments/ledger-reconciliation.md).
+  - key: ENG-161
+    type: Story
+    summary: "Count EUR breaks in GBP against the £5 auto-clear threshold"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Breaks under £5 in total are cleared automatically. Once a run can hold EUR
+      breaks as well as GBP ones, the total needs a single currency.
+
+      Acceptance criteria:
+
+      - `recon-daily` converts each EUR break to GBP at that day's rate before adding
+        up the absolute values.
+      - The threshold stays £5 for the whole run, whatever its mix of currencies.
+      - `recon.runs` stores the rate used, so that a run can be explained later.
+      - The runbook says that the effective threshold in euros moves a little from day
+        to day.
+    comments:
+      - "Arjun: Fine by Finance, as long as the rate is recorded on the run."
+      - "Kwabena: It is, on every row of recon.runs."
+  - key: ENG-162
+    type: Story
+    summary: "Show cut-off times in UTC and local time in pgw-admin payouts show"
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      On-call engineers and Support argue about whether a payout made the cut-off
+      because the times they compare are in different zones. `pgw-admin payouts show`
+      should print the cut-off for the payout's currency in UTC with the local time
+      beside it, then the value date:
+
+      ```text
+      accepted:      2025-11-18T11:17:02Z
+      cut-off:       2025-11-18T13:00:00Z (14:00 Europe/Paris)
+      value date:    2025-11-18
+      ```
+
+      Acceptance criteria: the lines appear for GBP and EUR payouts, and take the zone
+      from `config/cutoffs.yaml`.
+  - key: ENG-163
+    type: Task
+    summary: "Ship the SEPA rail dark before the year-end change freeze"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      The year-end freeze runs from 18 December 2025 to 5 January 2026, and the pilot
+      starts in January. Deploy `settlement-batcher`, `payout-gateway` and the ledger
+      changes to production before the freeze, with euro settlement off for everyone.
+
+      - The allow-list flag `sb.settlement-batcher.eur-settlement` defaults to off, with
+        nobody on its list.
+      - Raise a `CHG-` ticket for the ledger migration, with the staging results.
+      - Confirm in production that GBP files are unchanged for two days before the
+        freeze.
+
+      Adding pilot merchants waits for the first deploy day after the freeze.
+    comments:
+      - "Lukas: Change ticket approved for a deploy in the week of 8 December."
+      - "Yusuf: Release cut and clean in staging. The production deploy goes out on Monday."
+  - key: ENG-164
+    type: Story
+    summary: "Let merchants add a euro bank account in Merchant Hub settings"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      As a merchant settling euros, I want to add a euro bank account in Merchant Hub,
+      so that my euro settlements go to it.
+
+      Acceptance criteria:
+
+      - Settings offer a second bank account, in EUR, beside the GBP one, for merchants
+        on the pilot allow-list.
+      - The IBAN is validated before it is saved.
+      - Each currency settles to the account set for it; there is no choice per
+        payment.
+      - Built and tested in staging during the freeze, and released with the first
+        deploy after it.
+  - key: ENG-165
+    type: Story
+    summary: "Show euro and sterling settlements as separate reports in Merchant Hub"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Merchants settling in two currencies need one settlement report per currency,
+      never a mixed total.
+
+      Acceptance criteria:
+
+      - The settlements page has a currency selector, GBP or EUR, for merchants with
+        both.
+      - Each report shows amounts in its own currency only.
+      - Exports carry the currency in the file name and on every row.
+      - Merchants settling only in GBP see no change.
+  - key: ENG-166
+    type: Task
+    summary: "Write the French merchant guide to euro settlement with the Paris support team"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Support must be ready before the pilot. Inès Moreau's team writes the merchant
+      guide to euro settlement in French, and engineering checks every statement about
+      timing and accounts.
+
+      - How to add a euro bank account, and what changes in the reports.
+      - The EUR cut-off, and what happens to a file accepted after it.
+      - SEPA closing days, and why they differ from UK bank holidays.
+      - Who to contact during the pilot.
+
+      Engineering review: Yusuf for payouts, Kwabena for balances. Background on the
+      merchants concerned: [Supporting French-speaking merchants](../../corpus/support/french-speaking-merchants.md).
+  - key: ENG-167
+    type: Task
+    summary: "Assess settlement in US dollars and Swiss francs"
+    status: Won't Do
+    priority: Low
+    labels: [payments]
+    description: |
+      Account managers passed on requests to settle dollars and Swiss francs as well as
+      euros. Assess what each currency would need: a rail and its cut-off, a calendar,
+      ledger accounts, the bank's file format, and Support's readiness. Count how many
+      merchants asked for each, and how much volume they would bring.
+    comments:
+      - "Oskar: Won't do in this epic. Each currency came up with only a handful of merchants; we will look again when one of them has real demand."
+  - key: ENG-168
+    type: Story
+    summary: "Settle EUR through SEPA with a 14:00 CET cut-off"
+    status: Done
+    priority: Highest
+    labels: [payments]
+    description: |
+      As a merchant with a euro bank account, I want my euro card payments settled in
+      euros, so that I stop paying for two conversions.
+
+      This story turns on EUR settlement through SEPA with a 14:00 CET cut-off for the
+      pilot merchants.
+
+      Acceptance criteria:
+
+      - `settlement-batcher` sends EUR settlement files as SEPA credit transfers.
+      - A file our settlement bank accepts before 14:00 CET settles the same business
+        day; after it, the next business day on the SEPA calendar.
+      - The cut-off is 13:00 UK time all year.
+      - [Settlement windows and cut-off times](../../corpus/payments/settlement-cutoffs.md)
+        lists both currencies.
+    comments:
+      - "Yusuf: Cut-off behaviour checked on both sides of 14:00 CET in staging, with acceptance times taken from the bank's acknowledgements."
+  - key: ENG-169
+    type: Task
+    summary: "Open euro settlement to eight French pilot marketplaces"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Add the eight French marketplaces chosen with the account managers to the
+      allow-list of `sb.settlement-batcher.eur-settlement`, one a day, once deploys
+      resume after the freeze.
+
+      For each one:
+
+      - confirm their euro bank account in Merchant Hub;
+      - watch their first EUR settlement file and its acceptance time;
+      - check the next morning's `recon-daily` run for EUR breaks;
+      - tell Inès Moreau's team, who hold the conversation with the merchant.
+  - key: ENG-170
+    type: Bug
+    summary: "SEPA file rejected for accented characters in seller names"
+    status: Done
+    priority: Highest
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In a dry run with the pilot marketplaces' seller data,
+      build a EUR payout file that includes a seller whose account name contains an
+      accent, such as "Hélène", and submit it to the bank's test service.
+
+      **Expected.** The bank accepts the file.
+
+      **Actual.** The bank's schema check rejected the whole file, because SEPA allows
+      only a restricted Latin character set. In production, every payout in the file
+      would have waited for the next business day.
+
+      **Fix.** Names are transliterated to the SEPA character set when the file is
+      rendered (é to e, ç to c, ß to ss); our records keep the original. Each file is
+      validated before sending, and a rejection now alerts `#team-payouts`.
+    comments:
+      - "Yusuf: Fixed before the first pilot file. Every pilot marketplace's seller names now pass the bank's test service."
+  - key: ENG-171
+    type: Story
+    summary: "Show an expected settlement date for each batch in Merchant Hub"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      As a merchant, I want to see when each settlement batch should reach my bank, so
+      that I do not need to ask Support.
+
+      Acceptance criteria:
+
+      - Each batch on the settlements page shows an expected settlement date.
+      - The date comes from `settlement-batcher`: the bank's acceptance time against the
+        currency's cut-off, then that currency's calendar.
+      - Before acceptance, the page shows the date the batch would get at the next
+        cycle.
+      - Once the bank reports the value date, it replaces the estimate.
+  - key: ENG-172
+    type: Bug
+    summary: "Expected EUR settlement date wrong for files accepted 13:00 to 14:00 UK time"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In Merchant Hub on staging, open a EUR batch that the
+      simulated bank accepted at 13:20 UK time on a business day.
+
+      **Expected.** Expected settlement date: the next business day, since 13:20 UK time
+      is after the 14:00 CET cut-off.
+
+      **Actual.** Hub showed the same day. It compared the acceptance time with 14:00 in
+      the account's own time zone instead of showing the date `settlement-batcher`
+      computes.
+
+      **Fix.** Hub now displays the expected date from the API and computes nothing
+      itself. Tests cover acceptance at 12:59 and 13:01 UK time.
+    comments:
+      - "Inès: Our pilot merchants would certainly have asked about this one. Glad it is fixed."
+  - key: ENG-173
+    type: Task
+    summary: "Add per-currency acceptance panels to the payout-gateway overview dashboard"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Add to the Lantern dashboard "payout-gateway overview" one panel per currency
+      showing when our settlement bank accepted each file, against that currency's
+      cut-off, and how many files missed it each day.
+
+      The on-call should be able to answer "did today's EUR files make the cut-off?"
+      without writing a query. Show times in UK time, with the cut-off drawn as a line
+      at 15:30 for GBP and at 13:00 for EUR.
+  - key: ENG-174
+    type: Story
+    summary: "Skip currency conversion for merchants who settle euros in euros"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Once a merchant settles EUR to a euro account, their euro card payments must stay
+      in euros from capture to settlement.
+
+      Acceptance criteria:
+
+      - No `fx-quote` call for the EUR captures of a merchant with a EUR settlement
+        account.
+      - `fx-quote` is still called where a merchant settles a currency to an account in
+        another one.
+      - The settlement report shows no conversion line for EUR payments that stayed in
+        EUR.
+      - A Lantern panel counts quotes by reason, so that the drop is visible.
+  - key: ENG-175
+    type: Bug
+    summary: "settlement-batcher held EUR files on SEPA closing days instead of sending them"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In staging, run a EUR cycle on a simulated Good Friday, a
+      SEPA closing day.
+
+      **Expected.** As for GBP on bank holidays, `settlement-batcher` sends the file and
+      the bank holds it until the next business day.
+
+      **Actual.** It held the EUR files itself until the next SEPA business day, then
+      sent the whole backlog at once, which would slow the bank's acceptance that
+      morning.
+
+      **Fix.** The calendar sets the expected value date only and never delays sending.
+      Weekends and closing days now behave the same way in both currencies.
+  - key: ENG-176
+    type: Task
+    summary: "Extend the euro settlement pilot to twenty merchants in France, Belgium and the Netherlands"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      The January pilot has run clean. Extend it to twenty merchants in France, Belgium
+      and the Netherlands by adding them to the allow-list of
+      `sb.settlement-batcher.eur-settlement`, in two waves a day apart.
+
+      For each wave:
+
+      - confirm the merchants' euro bank accounts;
+      - watch their first files against the 14:00 CET cut-off;
+      - check EUR breaks in the next `recon-daily` run;
+      - collect questions from Support and the account managers for the general
+        availability FAQ.
+    comments:
+      - "Oskar: First wave confirmed with the account managers for the first days of February."
+  - key: ENG-177
+    type: Bug
+    summary: "Payouts calendar marks 1 May as a EUR settlement day"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** As a pilot merchant, open the payouts calendar in Merchant
+      Hub and look at May 2026.
+
+      **Expected.** Friday 1 May is a SEPA closing day, so no EUR settlement. Monday
+      4 May, the early May bank holiday, closes GBP only.
+
+      **Actual.** The calendar used the England and Wales calendar for every currency:
+      it showed EUR settling on 1 May and not on 4 May.
+
+      **Fix.** The calendar takes the currency and reads the matching file from
+      `settlement-batcher`. Reported by one of the French pilot marketplaces; our tests
+      had only covered GBP dates, and now cover every closing day of both calendars.
+    comments:
+      - "Oskar: Exactly what piloting country by country was meant to catch."
+  - key: ENG-178
+    type: Story
+    summary: "Refuse payout onboarding for sellers with a bank account outside GBP and EUR"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Quillmoor Payouts pays only in GBP and EUR. Today a seller with a bank account in
+      another currency can be onboarded, and their first payout fails at the bank.
+
+      Acceptance criteria:
+
+      - `payout-gateway` rejects a seller bank account whose currency is neither GBP nor
+        EUR, with a clear error to the marketplace.
+      - Existing sellers in that state are listed for Support.
+      - Support has a macro for the conversation with the marketplace.
+    comments:
+      - "Femi: Macro added in Harbour, so T1 can answer these without escalating."
+  - key: ENG-179
+    type: Task
+    summary: "Load-test settlement-batcher with a month-end day of EUR files"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Month-end is when large marketplaces pay their sellers at the same moment. Before
+      general availability, push a month-end day of EUR files through
+      `settlement-batcher` in staging, at three times the pilot's busiest day.
+
+      Check that:
+
+      - rendering stays in seconds per file;
+      - every file validates against the bank's schema;
+      - the 12:45 UK time cycle, which must reach the bank before 13:00 UK time, is
+        rendered and sent in time.
+  - key: ENG-180
+    type: Story
+    summary: "Return EUR balances on the existing balance resource of the Merchant API"
+    status: Won't Do
+    priority: Medium
+    labels: [payments]
+    description: |
+      Pilot merchants' developers asked to read their EUR balance through the Merchant
+      API. The balance resource holds a single amount, in the settlement currency, and
+      integrations read it as the merchant's whole balance.
+
+      Proposal: return every currency's balance on that resource. Showing a second
+      currency there would change what an existing field means for every integration
+      that reads it. See
+      [ADR-023: Version public APIs by date](../../corpus/architecture/adr-023-api-versioning.md).
+    comments:
+      - "Nadia: Won't do here. It is a breaking change to the balance resource and has to wait for dated API versions. Euro balances stay in the Hub reports for now."
+  - key: ENG-181
+    type: Task
+    summary: "Move existing EUR seller payouts from international transfers to SEPA"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Until now, EUR payouts went through our settlement bank's international transfer
+      service, which settles the next business day at best. Move every marketplace that
+      already pays sellers in EUR onto SEPA credit transfers.
+
+      - Switch marketplaces ten at a time, never between 12:00 and 13:30 UK time.
+      - For each one, confirm that the first SEPA file is accepted and that the next
+        `recon-daily` run is clean.
+      - Close the international transfer route for EUR once the last marketplace has
+        moved.
+    comments:
+      - "Yusuf: All but the last ten marketplaces have moved. They switch on Monday morning."
+  - key: ENG-182
+    type: Task
+    summary: "Run the launch checklist for euro settlement with Support and Finance"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Work through the [launch checklist](../../corpus/product/launch-checklist.md)
+      before general availability on 9 March:
+
+      - Support trained, with the French guide and the English macros;
+      - Finance agrees the per-currency reports and has the 2026 calendars loaded;
+      - Lantern alerts for EUR acceptance and EUR breaks routed to the right rotas;
+      - the release notes entry drafted;
+      - a rollback plan: take merchants off the allow-list; nothing already settled is
+        affected.
+    comments:
+      - "Arjun: Finance signs off the reporting."
+      - "Femi: Support signs off; the English macros are live."
+  - key: ENG-183
+    type: Bug
+    summary: "Monthly charge on the EUR account raised LDG-4102 instead of a fee journal"
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Run `recon-daily` for the first business day of the month,
+      when the bank's monthly charge appears on our EUR account statement.
+
+      **Expected.** The line is recognised by its fee narrative and a fee journal is
+      posted to the bank charges account, as for GBP.
+
+      **Actual.** The fee matcher knew only the GBP narrative, so the EUR charge raised
+      `LDG-4102 MISSING_SETTLEMENT_LINE`. The run cleared it as under £5, but it should
+      never have been a break.
+
+      **Fix.** Fee narratives are configured per account and currency.
+    comments:
+      - "Kwabena: Fixed, and the EUR narrative is in the matcher's tests."
+  - key: ENG-184
+    type: Story
+    summary: "Make euro settlement generally available on 9 March"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      As any merchant with a euro bank account, I want to settle euros in euros without
+      being part of a pilot.
+
+      Acceptance criteria:
+
+      - On 9 March 2026, euro settlement is open to every merchant from Merchant Hub
+        settings, with no allow-list.
+      - The release notes announce it and link to the settlement windows page rather
+        than repeating the cut-offs.
+      - Support and the account managers are told the day before.
+      - Pilot merchants keep their settings with no action on their part.
+  - key: ENG-185
+    type: Task
+    summary: "Document the EUR rail on the settlement windows page"
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      Update [Settlement windows and cut-off times](../../corpus/payments/settlement-cutoffs.md)
+      for euro settlement:
+
+      - a row for EUR by SEPA credit transfer, with its 14:00 CET cut-off and the
+        13:00 UK time conversion that Support quotes;
+      - the SEPA closing days beside the England and Wales calendar;
+      - the `timezone` field in `config/cutoffs.yaml`, and why it exists;
+      - a history note on this epic.
+  - key: ENG-186
+    type: Task
+    summary: "Remove the euro settlement allow-list after general availability"
+    status: Done
+    priority: Lowest
+    labels: [payments, tech-debt]
+    description: |
+      With euro settlement open to everyone, `sb.settlement-batcher.eur-settlement` is
+      on for all merchants and its allow-list is dead weight. Remove the flag from
+      `switchboard.yaml` and the code paths that read it, in one release, well within
+      the 90 days the flag policy allows after full rollout.
+
+      Before merging, check that no merchant still settles through the old GBP-only
+      path by mistake.

@@ -1,0 +1,769 @@
+epic:
+  key: ENG-6
+  summary: Self-serve refunds API
+  sprints: [26, 34]
+  labels: [payments]
+  description: |
+    ## Goal
+
+    Merchants issue full and partial refunds themselves, from the Merchant API and from
+    Merchant Hub, without raising a ticket. Support handles the exceptions only.
+
+    ## Scope
+
+    - `POST` and `GET` refund endpoints on the Merchant API, with an idempotency key on
+      every write, as [ADR-008](../../corpus/architecture/adr-008-idempotency-keys.md)
+      requires.
+    - A refund written to the ledger as a pending debit the moment it is accepted.
+    - Refund states: requested, pending approval, submitted, succeeded, failed.
+    - Refunds over £10,000 need a second approver, a T2 support specialist, as Support
+      already requires today.
+    - A Refund button in Merchant Hub, built on the public API.
+    - Refund webhooks sent by `notify`.
+    - A pilot with twenty merchants in June 2026, then general availability.
+
+    ## Out of scope
+
+    - Disputes and chargebacks (ENG-28).
+    - Refunds outside the 180-day window, and refunds to a card or account other than
+      the one that paid.
+    - Bulk refunds from an uploaded file.
+
+    ## Pages
+
+    - [Product brief: self-serve refunds API](../../corpus/product/brief-self-serve-refunds.md)
+    - [Handling merchant refund requests](../../corpus/support/refunds.md)
+  comments:
+    - "Linnea: Payments Core builds the API and the ledger flow with Ledger's review; Merchant Experience builds the Hub screens on the same API."
+    - "Femi: Support's rules stay the source of truth for the window and the approval threshold. Dorian is our contact for anything T2 needs."
+tickets:
+  - key: ENG-226
+    type: Task
+    summary: "Design the Merchant API refunds endpoints"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Write the API design for self-serve refunds and review it with Merchant
+      Experience and the Ledger team:
+
+      ```text
+      POST /v1/payments/{payment_id}/refunds   create a full or partial refund
+      GET  /v1/refunds/{refund_id}             read one refund
+      GET  /v1/payments/{payment_id}/refunds   list a payment's refunds
+      ```
+
+      Cover the bodies, amounts in integer minor units with a currency, the refund
+      states, an error code for each rule in
+      [Handling merchant refund requests](../../corpus/support/refunds.md), and the
+      idempotency key on every write.
+    comments:
+      - "Linnea: Walked three merchants' developers through the shape; no objections."
+      - "Nadia: Approved at the Thursday design review."
+  - key: ENG-227
+    type: Story
+    summary: "Post a pending refund debit to the ledger when a refund is accepted"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      As a merchant, I want my available balance to drop the moment I refund, so that
+      the same money can never be refunded twice.
+
+      Acceptance criteria:
+
+      - When a refund is accepted, one journal posts a pending debit from the
+        merchant's balance.
+      - When the card scheme confirms the refund, the pending debit becomes final.
+      - Two refunds racing for the same remaining amount cannot both be accepted.
+      - The Ledger team reviews the double-entry model before merge.
+    comments:
+      - "Kwabena: Model reviewed. Pending refund debits sit in their own account per currency, so the balance query stays a single sum."
+  - key: ENG-228
+    type: Story
+    summary: "Require an Idempotency-Key header when creating a refund"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      A merchant whose connection drops after sending a refund will retry it, and the
+      retry must never refund twice.
+
+      Acceptance criteria:
+
+      - `POST` on refunds without `Idempotency-Key` returns `400`.
+      - Same key, same request: the stored response is replayed with
+        `Idempotent-Replayed: true`.
+      - Same key while the first request is still running: `409`.
+      - Keys are scoped to the merchant account and kept for 24 hours.
+
+      ```bash
+      curl -X POST https://api.sandbox.quillmoor.example/v1/payments/pay_7Hc20dLq/refunds \
+        -H "Authorization: Bearer $QM_TEST_KEY" \
+        -H "Idempotency-Key: 5f1d8a2e-0c4b-4f7e-9a63-2b8e1c7d4f90" \
+        -d '{"amount": 6000, "currency": "GBP"}'
+      ```
+  - key: ENG-229
+    type: Task
+    summary: "Declare sb.merchant-api.self-serve-refunds for the pilot allow-list"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      The feature stays behind a Switchboard flag until general availability. Declare
+      it in `merchant-api`'s `switchboard.yaml`:
+
+      ```yaml
+      flags:
+        - name: sb.merchant-api.self-serve-refunds
+          kind: allow-list
+          owner: merchant-experience
+          description: Self-serve refunds in the API and Hub for allow-listed merchants (ENG-6).
+          default: false
+      ```
+
+      Merchant Hub reads the same flag to show or hide the Refund button, so a merchant
+      on the allow-list gets the API and the button together. The flag is removed once
+      refunds are generally available.
+  - key: ENG-230
+    type: Story
+    summary: "Model refund states from requested to succeeded or failed"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Merchants and Support need to know where every refund stands.
+
+      Acceptance criteria:
+
+      - A refund is requested, pending approval, submitted, succeeded or failed.
+      - Every transition is recorded with its time and the person or service behind it.
+      - Transitions outside this graph are rejected in code and covered by tests:
+
+      ```text
+      requested --> submitted --> succeeded
+          |              \-----> failed
+          +--> pending approval --> submitted
+      ```
+  - key: ENG-231
+    type: Story
+    summary: "Refuse refunds more than 180 days after the payment"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      A payment can be refunded within 180 days of the payment, and never after, for any
+      merchant.
+
+      Acceptance criteria:
+
+      - The API rejects a refund on a payment older than 180 days with the error code
+        `refund_window_expired`.
+      - The window counts from the payment date shown in Merchant Hub.
+      - Partial refunds do not reopen the window.
+      - The error message tells the merchant to repay the buyer some other way.
+    comments:
+      - "Femi: Matches what Support tells merchants today, so the out-of-window macro stays valid."
+  - key: ENG-232
+    type: Story
+    summary: "Allow partial refunds until they reach the captured amount"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      As a merchant, I want to refund one item of a basket, then another, without
+      contacting Support.
+
+      Acceptance criteria:
+
+      - A payment can take several partial refunds, each with its own reference.
+      - The API refuses a refund that would take the total past the captured amount,
+        and says how much is left to refund.
+      - A payment that was authorised but never captured cannot be refunded; the error
+        points to cancelling it instead.
+      - Example: £240 captured, £60 refunded, then £180; a third refund is refused.
+  - key: ENG-233
+    type: Story
+    summary: "Read one refund and list a payment's refunds through the Merchant API"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      As a merchant's developer, I want to read refunds back, so that my order pages
+      show what really happened.
+
+      Acceptance criteria:
+
+      - `GET /v1/refunds/{refund_id}` returns the refund with its state, amount,
+        currency, timestamps and, once submitted, the acquirer reference.
+      - `GET /v1/payments/{payment_id}/refunds` lists a payment's refunds, newest
+        first, with the amount left to refund.
+      - No response shows more of the card than the payment resource already does.
+  - key: ENG-234
+    type: Bug
+    summary: "Two concurrent partial refunds could exceed the remaining amount"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** On a payment with £100 captured, send two partial refunds
+      of £70, with different idempotency keys, at the same moment.
+
+      **Expected.** One is accepted; the other is refused, since only £30 remains.
+
+      **Actual.** Both were accepted in staging: each checked the remaining amount
+      before either had posted its pending debit.
+
+      **Fix.** The remaining amount is checked and the pending debit posted in one
+      ledger transaction, holding a lock on the payment's refund account. A test sends
+      20 simultaneous refunds and checks that their total never exceeds the captured
+      amount.
+    comments:
+      - "Kwabena: This is why the ledger goes first. Fix reviewed."
+  - key: ENG-235
+    type: Story
+    summary: "Refunds over £10,000 need a second approver"
+    status: Done
+    priority: Highest
+    labels: [payments]
+    description: |
+      As Quillmoor, we want a second person to approve any large refund before money
+      leaves, however it was requested, to protect merchants from a compromised
+      account.
+
+      Acceptance criteria:
+
+      - Refunds over £10,000 need a second approver: a T2 support specialist, who
+        approves or declines in Harbour.
+      - Such a refund enters `pending approval` and is not sent until approved.
+      - "Over" means more than £10,000: a refund of exactly £10,000.00 goes straight
+        through.
+      - The rule covers full and partial refunds, from the API, Merchant Hub and
+        Support alike.
+      - Whoever requested a refund never approves it.
+
+      The rule as Support applies it: [Handling merchant refund requests](../../corpus/support/refunds.md).
+    comments:
+      - "Dorian: T2 will take these in the refund-approvals queue, in business hours, aiming for a decision within 4 business hours."
+      - "Linnea: Same threshold Support already applies, so merchants meet one rule whichever way they refund."
+  - key: ENG-236
+    type: Story
+    summary: "Open a refund-approvals ticket in Harbour for each refund awaiting approval"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      T2 approves large refunds in Harbour, so each one must arrive there with
+      everything T2 checks before deciding.
+
+      Acceptance criteria:
+
+      - A refund entering `pending approval` creates a ticket in the `refund-approvals`
+        queue, linked to the merchant's account.
+      - The ticket shows the payment and its date, the captured and remaining amounts,
+        any open dispute, the requesting user and channel, and the merchant's balance.
+      - Approve and Decline call `merchant-api`, and only T2 roles see them.
+      - The ticket closes when the refund leaves `pending approval`.
+
+      Queues are described in [Using Harbour](../../corpus/support/harbour-how-to.md).
+    comments:
+      - "Dorian: Tested with two T2 specialists in the sandbox. The balance line saves a trip to the back office."
+  - key: ENG-237
+    type: Story
+    summary: "Block refunds on payments with an open dispute"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Once a dispute opens, a refund would credit the buyer twice: once from the
+      merchant and once through the dispute.
+
+      Acceptance criteria:
+
+      - The API refuses a refund on a payment with an open dispute, with the error code
+        `payment_disputed`.
+      - A refund still in `pending approval` when a dispute opens is cancelled, and the
+        merchant is told why.
+      - The error message suggests accepting the dispute instead.
+  - key: ENG-238
+    type: Story
+    summary: "Post a reversing entry when a refund fails"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      A refund can fail after it is submitted: the issuer returns it, or the card has
+      been closed. The merchant must get the money back in their balance at once.
+
+      Acceptance criteria:
+
+      - When a refund fails, the ledger posts a reversing entry for its debit.
+      - The merchant's balance is restored in the refund's currency.
+      - The failure reason is stored, and shown in Merchant Hub and the API.
+      - Reconciliation can pair the reversal with the original refund journal.
+  - key: ENG-239
+    type: Story
+    summary: "Debit cross-currency refunds in the settlement currency at the day's rate"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      A refund goes back in the payment's original currency, to the card that paid. If
+      the merchant settles in another currency, their balance is debited in the
+      settlement currency at the rate of the day of the refund.
+
+      Acceptance criteria:
+
+      - The refund takes a quote from `fx-quote` and books the debit with its
+        `quote_id`.
+      - The refund shows both amounts and the rate used.
+      - The documentation explains that the debit can differ from what the original
+        payment credited.
+  - key: ENG-240
+    type: Bug
+    summary: "Refund of exactly £10,000.00 was held for approval"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In the sandbox, refund £10,000.00 of a captured payment
+      of £12,000.
+
+      **Expected.** The refund goes straight through: only refunds over £10,000 need a
+      second approver.
+
+      **Actual.** It entered `pending approval` and opened a ticket in
+      `refund-approvals`.
+
+      **Fix.** The check compared with `>=`. It now compares the amount in minor units
+      with `> 1000000`, and tests cover 999999, 1000000 and 1000001 pence.
+    comments:
+      - "Dorian: Good catch. T2 would have had a steady trickle of these."
+  - key: ENG-241
+    type: Story
+    summary: "Hold refunds as pending funds until the merchant's balance covers them"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      A refund is funded from the merchant's Quillmoor balance. When the balance is too
+      low, the refund should wait rather than fail at once.
+
+      Acceptance criteria:
+
+      - A refund the balance cannot cover waits as `pending funds`, and is sent as soon
+        as incoming payments cover it.
+      - If it is still not covered after 5 business days, it fails and `notify` emails
+        the merchant.
+      - Merchant Hub and the API show the state.
+      - The merchant can cancel a refund while it is pending funds.
+  - key: ENG-242
+    type: Story
+    summary: "Add a daily refund limit for API refunds"
+    status: Won't Do
+    priority: Low
+    labels: [payments]
+    description: |
+      Proposal from the design review: a separate daily limit on the total refunded
+      through the API by each merchant, as a guard against a leaked API key.
+
+      To settle: the level of the limit, whether Merchant Hub applies it too, and how
+      Support would explain two sets of limits beside the existing approval rule.
+    comments:
+      - "Nadia: Won't do. The existing rules plus the second approver are enough, and two sets of limits would confuse Support and merchants alike."
+      - "Callum: Agreed from Security's side, given that a leaked merchant API key can be revoked within the hour."
+  - key: ENG-243
+    type: Task
+    summary: "Keep the payment resource's status values unchanged for refunds"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Many integrations treat a payment's `status` as a closed list, so a new value for
+      refunds waiting for approval would break them. Dated versions, under
+      [ADR-023](../../corpus/architecture/adr-023-api-versioning.md), are not available
+      yet.
+
+      - Keep every refund state, including pending approval, on the refund resource
+        only.
+      - Leave the payment resource's status values exactly as they are.
+      - Write a note for ENG-30 listing what payments could show about refunds once
+        dated versions exist.
+    comments:
+      - "Linnea: Note handed to Merchant Experience for the versioning work."
+  - key: ENG-244
+    type: Story
+    summary: "Send refund.requested, refund.succeeded and refund.failed webhooks"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      As a marketplace, I want to update my own order pages when a refund changes
+      state.
+
+      Acceptance criteria:
+
+      - `notify` sends `refund.requested`, `refund.succeeded` and `refund.failed` to the
+        merchant's endpoint.
+      - Each event carries the refund and payment identifiers, the amount in minor
+        units and the currency, and no card data.
+      - Events come from the replicated event log, like other merchant webhooks.
+      - The documentation reminds merchants to deduplicate by event identifier.
+  - key: ENG-245
+    type: Story
+    summary: "Add a Refund button to the payment page in Merchant Hub"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      As a merchant user with the Payments role, I want to refund from the payment
+      page.
+
+      Acceptance criteria:
+
+      - The payment page shows **Refund** for captured payments with an amount left to
+        refund.
+      - The amount defaults to the remaining refundable amount and accepts less, for a
+        partial refund.
+      - Hub calls the public Merchant API: nothing in Hub is impossible through the API.
+      - Above £10,000, Hub says that the refund will wait for approval.
+      - The button disappears once the payment is fully refunded.
+  - key: ENG-246
+    type: Story
+    summary: "Store a reason on partial refunds behind sb.merchant-api.refund-reasons"
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      Merchants and T2 both want to know why a partial refund was made: one item out of
+      stock, a delivery charge, a goodwill gesture.
+
+      Acceptance criteria:
+
+      - Creating a refund accepts an optional `reason` of up to 200 characters on
+        partial refunds.
+      - The reason is stored, returned when the refund is read, and shown in Merchant
+        Hub and on the Harbour approval ticket.
+      - The behaviour sits behind the release flag `sb.merchant-api.refund-reasons`,
+        off by default.
+  - key: ENG-247
+    type: Task
+    summary: "Choose the twenty pilot merchants from the heaviest refund ticket raisers"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      The pilot should go to the merchants who feel the problem most. With Linnea
+      Ashdown and Femi Haldane, pick twenty merchants from those who raised the most
+      refund tickets in Q1 2026.
+
+      For each one:
+
+      - confirm a developer contact and at least one Hub user with the Payments role;
+      - agree how they report problems during the pilot;
+      - add them to the list for the allow-list of `sb.merchant-api.self-serve-refunds`.
+    comments:
+      - "Femi: List agreed with the account managers."
+  - key: ENG-248
+    type: Task
+    summary: "Open self-serve refunds to the twenty pilot merchants"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Add the twenty pilot merchants to the allow-list of
+      `sb.merchant-api.self-serve-refunds`, five a day, and watch each one's first
+      refunds.
+
+      - Check the ledger's pending debits against the refunds created.
+      - Check that refunds over £10,000 reach T2 in `refund-approvals`.
+      - Count the share of their refunds issued without a ticket.
+      - Collect problems in this ticket for a weekly review with Linnea.
+    comments:
+      - "Linnea: The first five are on today; the other fifteen follow over the week."
+  - key: ENG-249
+    type: Bug
+    summary: "Reused idempotency key with a different amount created a second refund"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Create a partial refund of £20 with an `Idempotency-Key`.
+      Send the same key again with an amount of £25.
+
+      **Expected.** `422` with the error code `idempotency_key_reused`, as ADR-008
+      requires for the same key with a different request.
+
+      **Actual.** Stored responses were looked up by key and request fingerprint
+      together, so the changed body matched nothing and a second refund of £25 was
+      created. Found in the sandbox by a pilot merchant's integration tests.
+
+      **Fix.** The lookup is by key alone; a fingerprint mismatch now returns `422`.
+    comments:
+      - "Nadia: Checked the other write endpoints in merchant-api; the shared library had the same bug and is fixed for all of them."
+  - key: ENG-250
+    type: Story
+    summary: "Record who approved a large refund and when"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      As a merchant, I want to see who approved a large refund, and when.
+
+      Acceptance criteria:
+
+      - On approval in Harbour, the refund stores the T2 approver's name and the time.
+      - Both are shown to the merchant in Merchant Hub and returned by the API.
+      - A declined refund stores who declined it and a reason the merchant can read.
+      - Approval sends the refund at once.
+  - key: ENG-251
+    type: Bug
+    summary: "API refunds raised LDG-4102 because their reference lacked the refund prefix"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In staging, create a refund through the new API, replay
+      the acquiring bank's settlement for it, and run `recon-daily`.
+
+      **Expected.** The statement line matches the refund's ledger entry.
+
+      **Actual.** It raised `LDG-4102 MISSING_SETTLEMENT_LINE`. The matcher recognises
+      refund lines by a prefix in the acquirer reference, which the old internal refund
+      tool set and the new API did not.
+
+      **Fix.** The API sets the same prefix. See
+      [Runbook: ledger reconciliation breaks](../../corpus/payments/ledger-reconciliation.md).
+    comments:
+      - "Kwabena: Caught in staging before any pilot refund settled."
+  - key: ENG-252
+    type: Story
+    summary: "Flag partial refunds that add up to over £10,000 within 24 hours"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      A merchant could split a large refund into partial refunds under the threshold.
+      Harbour should catch it.
+
+      Acceptance criteria:
+
+      - When several partial refunds on one payment add up to more than £10,000 within
+        24 hours, Harbour flags the payment.
+      - The refund that crosses the threshold, and any after it, are held in
+        `pending approval` and go through T2 approval as one refund over £10,000.
+      - The approval ticket lists the earlier refunds that were already sent.
+    comments:
+      - "Dorian: T2 treats the set as one refund, which is what our guidance already says."
+  - key: ENG-253
+    type: Story
+    summary: "Let merchants cancel a refund that is pending approval or pending funds"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      As a merchant who refunded twice by mistake, I want to cancel the second refund
+      if it has not left yet.
+
+      Acceptance criteria:
+
+      - A refund in `pending approval` or `pending funds` can be cancelled from Merchant
+        Hub and through the API.
+      - Cancelling releases the pending debit in the ledger.
+      - In any other state, cancelling is refused: a refund that has been sent cannot be
+        recalled.
+      - The approval ticket of a cancelled refund closes itself in Harbour.
+  - key: ENG-254
+    type: Task
+    summary: "Build the refunds dashboard in Lantern"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      The epic's measures need a home. Build a Lantern dashboard, "refunds", with:
+
+      - the share of refunds issued without a ticket, by week;
+      - the median time from request to submission, for refunds needing no approval;
+      - refunds waiting in pending approval, and the time to a decision;
+      - refunds by state and by channel: API, Hub or Support;
+      - refunds paid twice, from reconciliation, which must stay at zero.
+
+      Targets are in [Product brief: self-serve refunds API](../../corpus/product/brief-self-serve-refunds.md).
+    comments:
+      - "Linnea: This is the dashboard we will report the OKR from."
+  - key: ENG-255
+    type: Bug
+    summary: "Approval tickets raised out of hours went to the support duty agent"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Request a refund over £10,000 on a Friday evening.
+
+      **Expected.** The ticket waits in `refund-approvals` for a T2 specialist on Monday
+      morning. Approvals happen only in business hours, and the support duty agent does
+      not approve refunds.
+
+      **Actual.** Harbour's out-of-hours rule assigned the ticket to the support duty
+      agent, notified them, and set a one-hour first response target that the queue
+      does not have.
+
+      **Fix.** `refund-approvals` tickets are excluded from the out-of-hours rule.
+    comments:
+      - "Dorian: Confirmed with Femi: large refunds wait for business hours, and the refund-approval-pending macro tells the merchant so."
+  - key: ENG-256
+    type: Story
+    summary: "Accept bulk refunds from an uploaded file"
+    status: Won't Do
+    priority: Low
+    labels: [payments]
+    description: |
+      Several pilot merchants asked to upload a file of refunds rather than call the
+      API once per refund: one row per refund, with the payment, the amount and a
+      reason.
+
+      To settle: validation and partial failure, approval for rows over the threshold,
+      and how idempotency works for a file.
+    comments:
+      - "Linnea: Won't do in this epic; it was a non-goal from the start. It goes on the roadmap as a next item, since six of the merchants we interviewed in May asked for it."
+  - key: ENG-257
+    type: Task
+    summary: "Train T2 to approve refunds in the refund-approvals queue"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Before general availability, every T2 specialist, eight in London and three in
+      Paris, should have approved and declined a refund in the sandbox.
+
+      - Walk through both with Dorian Pask.
+      - Cover the checks: the payment, the 180-day window, the remaining amount, open
+        disputes, the requesting user, the balance, and odd patterns that go to Risk
+        Operations through `fraud-reports`.
+      - Confirm the 4 business hour target and that approvals wait for business hours.
+    comments:
+      - "Dorian: Sessions booked for the first week of July, in London and in Paris."
+      - "Inès: The Paris team uses fr-remboursement-validation-t2 for French merchants waiting on an approval."
+  - key: ENG-258
+    type: Task
+    summary: "Publish the refunds endpoints in the API reference"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Document the refunds endpoints on `docs.quillmoor.example` before general
+      availability:
+
+      - create, read and list, with examples against the sandbox;
+      - the idempotency key, and what each response code means;
+      - the refund states, including pending approval and pending funds;
+      - the refund webhooks;
+      - the rules: the 180-day window, partial refunds, the approval threshold, and
+        disputes, worded exactly as on the support pages.
+  - key: ENG-259
+    type: Bug
+    summary: "Refund amount field rejected a decimal comma for French-language users"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** As a Merchant Hub user whose language is French, open a
+      payment, choose **Rembourser** and enter `12,50`.
+
+      **Expected.** A refund of 12.50 in the payment's currency.
+
+      **Actual.** The field reported an invalid amount; only `12.50` was accepted.
+
+      **Fix.** The amount field reads and formats numbers in the user's language, and
+      sends integer minor units to the API. Tests cover French and English input.
+    comments:
+      - "Inès: Two pilot merchants in France reported it on the same morning."
+  - key: ENG-260
+    type: Task
+    summary: "Run the launch checklist for self-serve refunds"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Work through the [launch checklist](../../corpus/product/launch-checklist.md)
+      before general availability on 28 July:
+
+      - Support trained and macros ready, in English and French;
+      - `refund-approvals` staffed in business hours;
+      - the refunds dashboard and its alerts in Lantern;
+      - the API reference published;
+      - the release notes entry drafted;
+      - a rollback plan: turn the flag down; refunds already accepted carry on.
+    comments:
+      - "Femi: Support signs off."
+      - "Nadia: Engineering signs off. Go for 28 July."
+  - key: ENG-261
+    type: Task
+    summary: "Check every pilot refund against the ledger before general availability"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Before refunds open to every merchant, confirm that the pilot left the books
+      clean. For every refund the twenty pilot merchants made:
+
+      - its journals balance, and a failed refund has its reversing entry;
+      - no payment was refunded beyond its captured amount;
+      - no refund was paid twice;
+      - every refund over £10,000 went through T2 approval.
+
+      ```sql
+      SELECT payment_id, SUM(amount_minor) AS refunded, MAX(captured_minor) AS captured
+      FROM ledger.refunds
+      WHERE merchant_id = ANY(:pilot_merchants)
+      GROUP BY payment_id
+      HAVING SUM(amount_minor) > MAX(captured_minor);
+      ```
+    comments:
+      - "Kwabena: The query returns no rows, and no refund was paid twice. Clear to go."
+  - key: ENG-262
+    type: Story
+    summary: "Make self-serve refunds generally available in the API and Merchant Hub"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      As any merchant, I want to refund my buyers myself, without a ticket.
+
+      Acceptance criteria:
+
+      - On 28 July 2026, self-serve refunds are on for every merchant, in the Merchant
+        API and in Merchant Hub.
+      - The release notes announce them with the refund webhooks, and link to the
+        support page for the rules.
+      - Support and the account managers are told the day before.
+      - Pilot merchants see no change.
+  - key: ENG-263
+    type: Task
+    summary: "Remove sb.merchant-api.self-serve-refunds after general availability"
+    status: Done
+    priority: Low
+    labels: [payments, tech-debt]
+    description: |
+      Once general availability has held for a couple of days, remove the pilot flag
+      from `merchant-api`'s `switchboard.yaml`, and the code paths in the API and in
+      Merchant Hub that read it, in one release.
+
+      Before merging, check that no merchant is still excluded by an old allow-list
+      rule.
+  - key: ENG-264
+    type: Task
+    summary: "Add self-serve refunds to the Merchant Hub release notes"
+    status: Done
+    priority: Lowest
+    labels: [payments]
+    description: |
+      Draft the July entries of
+      [Merchant Hub release notes 2026](../../corpus/product/merchant-hub-release-notes-2026.md),
+      to publish on the day of general availability:
+
+      - self-serve refunds, generally available on 28 July after the June pilot with
+        twenty merchants;
+      - the refund webhooks `refund.requested`, `refund.succeeded` and `refund.failed`;
+      - a link to the support page for the approval threshold and the refund window,
+        rather than the numbers themselves.

@@ -1,0 +1,765 @@
+epic:
+  key: ENG-30
+  summary: Date-based API versioning (ADR-023)
+  sprints: [34, 40]
+  labels: [architecture]
+  description: |
+    ## Goal
+
+    Version the Merchant API by date, as ADR-023 decided, so that merchants take
+    breaking changes one version at a time, when they choose, and can try a version on a
+    single request before moving to it. The path stays `/v1`; the version travels in the
+    `Quillmoor-Version` header, and the first dated version is `2026-04-01`.
+
+    ## Scope
+
+    - The `Quillmoor-Version` header: parsing, validation (`invalid_version`,
+      `version_retired`), and the serving version on every response.
+    - A pinned version on each API key; new keys pinned to the newest version when they
+      are created.
+    - The version registry and the transformers at the edge of `merchant-api`, with the
+      first dated version after `2026-04-01`.
+    - The changelog generated from the registry, the developer page and the upgrade
+      assistant in Merchant Hub.
+    - Support's view: pinned versions in the admin console, and `api_version` in the
+      request logs.
+    - Contract tests once per supported version in CI.
+
+    ## Out of scope
+
+    - Internal APIs stay unversioned and change only additively, as the June backend
+      guild agreed. Only `merchant-api` handles the header; nothing behind it ever sees
+      the version.
+    - The internal composite endpoints for Merchant Hub, which change with the front end
+      (ADR-016).
+
+    ## Rollout and status
+
+    Everything ships behind `sb.merchant-api.date-versioning`, an allow-list flag. ENG
+    Sprint 40 is the last planned sprint, with about six in ten tickets done; the team
+    has agreed to extend the epic for the rest of the quarter rather than split it.
+
+    ## Pages
+
+    - [ADR-023: Version public APIs by date](../../corpus/architecture/adr-023-api-versioning.md)
+    - [API design guidelines](../../corpus/engineering/api-design.md)
+    - [OKRs Q4 2026](../../corpus/product/okrs-2026-q4.md)
+  comments:
+    - "Noor: Recorded the June guild's decision in the description: internal APIs stay unversioned, and only merchant-api handles the header."
+    - "Linnea: Reminder that the Q3 committed key result is every new API key pinned to a dated version by 27 September."
+    - "Noor: We have asked every team that shapes a merchant-api response to review it before the current shapes are frozen. Payments Core are looking at the card-auth decline reasons."
+tickets:
+  - key: ENG-1162
+    type: Task
+    summary: Spike on resolving the API version at merchant-api's edge
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Find where `merchant-api` can decide a request's version exactly once: after
+      authentication, since the key's pin is needed, and before routing, so that handlers
+      only ever see the newest shape.
+
+      Answer in a short write-up in `#team-merchant-hub`:
+
+      - which middleware resolves the version, and how the result reaches the
+        transformers and the logs;
+      - how the internal composite endpoints under `/internal/hub/` bypass it, since they
+        are not versioned;
+      - what changes for idempotency, which fingerprints the request.
+    comments:
+      - "Felix: The authentication middleware already loads the key, so the version resolves right after it. Composite endpoints skip the whole chain."
+  - key: ENG-1163
+    type: Task
+    summary: List the breaking changes waiting on a dated version
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Collect the changes that "only add" has blocked, so that the first dated versions
+      have a queue. Known so far:
+
+      - `payout.arrival_date` names the date a payout leaves our settlement bank, not the
+        date it reaches the seller;
+      - list endpoints return 10 items by default;
+      - the balance holds a single amount, in the settlement currency (ENG-4);
+      - a payment cannot show a refund awaiting a second approval (ENG-6).
+
+      Ask Merchant Support for the questions they answer most often about field names.
+    comments:
+      - "Noor: Support confirm the arrival date question comes up several times a week."
+  - key: ENG-1164
+    type: Story
+    summary: Add a pinned version column to merchant-api's API keys
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      The expand step for pinning: each API key needs somewhere to hold its version.
+
+      Acceptance criteria:
+
+      - A nullable column holds the pinned version; empty means not pinned, served as
+        `2026-04-01`.
+      - The migration follows [Database migrations](../../corpus/release/database-migrations.md)
+        and passes `migrations-lint`:
+
+      ```sql
+      SET lock_timeout = '2s';
+      ALTER TABLE api_keys ADD COLUMN pinned_version date;
+      ```
+
+      - Nothing reads or writes the column in this release.
+  - key: ENG-1165
+    type: Task
+    summary: Declare sb.merchant-api.date-versioning as an allow-list flag
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      All of ENG-30 ships dark, then opens to named merchants before everyone. Declare
+      the flag in `merchant-api`'s `switchboard.yaml`:
+
+      ```yaml
+      - name: sb.merchant-api.date-versioning
+        kind: allow-list
+        owner: merchant-experience
+        description: Honour the Quillmoor-Version header for allow-listed merchants (ENG-30).
+        default: false
+      ```
+
+      An allow-list flag is as temporary as a release flag. It starts counting towards
+      clean-up on the day it reaches 100% with no allow-list; see
+      [Feature flags and kill switches](../../corpus/release/feature-flags.md).
+  - key: ENG-1166
+    type: Story
+    summary: Accept a pinned version when an API key is created
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      As Merchant Experience, we need key creation to store a version before we turn
+      pinning on for every new key.
+
+      Acceptance criteria:
+
+      - Key creation, from the developer page and the internal API, stores the newest
+        dated version in the new column, behind the flag.
+      - Until the registry exists, the only valid version is `2026-04-01`.
+      - Existing keys are not touched.
+      - The key's version is returned wherever the key's details are.
+  - key: ENG-1167
+    type: Task
+    summary: Design the transformer pair for request upgrades and response downgrades
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      `merchant-api` implements only the newest version in its core. Each breaking change
+      is written once, as a pair: one transformation turns an older request into the
+      newer shape, the other turns a newer response back into the older shape.
+
+      Design the interface for the pair and the registry entry that declares it, so that
+      the documentation and the changelog come from the same source:
+
+      ```yaml
+      - version: next
+        changes:
+          - id: balance-per-currency
+            summary: The balance holds one amount per currency.
+            response_downgrade: keep the settlement currency's amount only
+      ```
+  - key: ENG-1168
+    type: Story
+    summary: Show each API key's pinned version on the developer page
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      As a merchant's developer, I want to see which version each of my API keys is pinned
+      to, next to the key itself.
+
+      Acceptance criteria:
+
+      - The developer page in Merchant Hub shows the pinned version beside each key.
+      - The value comes from `merchant-api`, never from Merchant Hub's own data.
+      - Behind the flag until pinning goes live for new keys.
+  - key: ENG-1169
+    type: Story
+    summary: Show pinned versions to support in the merchant-api admin console
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Merchant Support needs an account's pinned version to answer questions about
+      versions, without asking an engineer.
+
+      Acceptance criteria:
+
+      - The `merchant-api` admin console lists each of an account's API keys with its
+        pinned version.
+      - It is read-only: support cannot change a pin.
+      - T2 can see the support period of each version, taken from ADR-023, next to it.
+    comments:
+      - "Femi: T2 will answer version questions from the console and the ADR, not from memory."
+  - key: ENG-1170
+    type: Story
+    summary: Parametrise merchant-api contract tests by version
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Every transformation must be tested at every version it touches. The contract
+      tests need to know about versions before the first transformation exists.
+
+      Acceptance criteria:
+
+      - Each contract test can declare the versions it covers.
+      - The harness sends the `Quillmoor-Version` header for the version under test.
+      - With only `2026-04-01` registered, every test passes unchanged.
+  - key: ENG-1171
+    type: Task
+    summary: Write the developer migration guide for dated versions
+    status: In Progress
+    priority: Medium
+    labels: [architecture]
+    description: |
+      A guide for merchants' developers: how to read the changelog, how to try a version
+      on a single request with the header, how to move to it, and why to send the header
+      explicitly once they have moved.
+
+      The Q3 draft waited on how long older behaviour is supported, which ADR-023 now
+      settles: 24 months from each version's release. Publishing the guide is a committed
+      key result in [OKRs Q4 2026](../../corpus/product/okrs-2026-q4.md), carried over
+      from Q3.
+    comments:
+      - "Linnea: In review with Merchant Support and the developers of two merchants."
+  - key: ENG-1172
+    type: Story
+    summary: Merchant Hub names the newest API version on every call
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Merchant Hub calls `merchant-api` with the newest version, explicitly, on every
+      request, and never relies on a pin.
+
+      Acceptance criteria:
+
+      - The shared client in `merchant-hub` sets `Quillmoor-Version` to the newest version
+        on every call to `merchant-api`.
+      - The value is taken from the registry at build time, so a Hub release always
+        matches the API it was tested against.
+      - The composite endpoints receive the header too and ignore it, since they are not
+        versioned.
+
+      See [ADR-024](../../corpus/architecture/adr-024-react-merchant-hub.md).
+  - key: ENG-1173
+    type: Story
+    summary: Let merchants move a key's pin in Merchant Hub, with 72 hours to move back
+    status: To Do
+    priority: Low
+    labels: [architecture]
+    description: |
+      As a merchant, I want to move my key's pin to a newer version from Merchant Hub, and
+      move it back if my integration breaks.
+
+      Acceptance criteria:
+
+      - The developer page offers to move a key's pin forward to any newer supported
+        version.
+      - For 72 hours after a move, the merchant can move the pin back.
+      - Requests that send the header are unaffected by the pin either way.
+    comments:
+      - "Noor: Back to the backlog. The upgrade assistant ships read-only first; for now merchants change versions in their integration, not in Hub."
+  - key: ENG-1174
+    type: Story
+    summary: Chain transformers from a request's version up to the newest
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      Acceptance criteria:
+
+      - A request at an older version passes through the request upgrades of every
+        version after it, in order, up to the newest.
+      - Its response passes back down through the matching downgrades, in reverse order.
+      - The core of `merchant-api` only ever sees the newest shape.
+      - With only `2026-04-01` registered, the chain is empty and responses are
+        byte-for-byte what they were, checked by a test.
+      - Each step of the chain is traced as its own span.
+  - key: ENG-1175
+    type: Bug
+    summary: Webhooks sent by notify carry no api_version field
+    status: To Do
+    priority: Medium
+    labels: [architecture]
+    description: |
+      **Steps to reproduce:** create a payout for a merchant whose key is pinned to a
+      dated version, and look at the webhook `notify` sends.
+
+      **Expected:** per ADR-023, the webhook is rendered at the merchant's pinned version
+      and carries an `api_version` field in its body. A webhook replayed later is rendered
+      at the version pinned at the time of the replay; see
+      [How to replay a merchant webhook](../../corpus/payments/replay-webhook.md).
+
+      **Actual:** no `api_version` field; webhooks are always rendered in the
+      `2026-04-01` shape.
+
+      **Fix:** not started.
+    comments:
+      - "Felix: Harmless while no dated version changes a webhook payload, which is why it waits. It must be fixed before one does."
+  - key: ENG-1176
+    type: Task
+    summary: Ask every team that shapes merchant-api responses to review them
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Before the versioning work freezes today's shapes, each team whose data reaches
+      merchants through `merchant-api` reviews its fields, names and enumerations.
+      Anything a team would rename goes into a later dated version, not into today's
+      shapes.
+
+      - Payments Core: the decline reasons that `card-auth` passes through.
+      - Payouts: payout statuses and dates.
+      - Ledger: balance amounts.
+
+      Track the answers here.
+    comments:
+      - "Nadia: Payments Core will review the decline reasons that card-auth passes through."
+      - "Yusuf: Payouts has nothing beyond the arrival date, which is already on the list."
+  - key: ENG-1177
+    type: Bug
+    summary: Developer page shows null as the version of unpinned keys
+    status: Done
+    priority: Low
+    labels: [architecture]
+    description: |
+      **Steps to reproduce:** as an allow-listed merchant, open the developer page with a
+      key created before pinning existed.
+
+      **Expected:** "Not pinned: served as 2026-04-01".
+
+      **Actual:** "Version: null".
+
+      **Fix:** the page shows the text above for keys without a pinned version, and the
+      admin console does the same.
+  - key: ENG-1178
+    type: Story
+    summary: Send Deprecation and Sunset headers near the end of a version's support
+    status: To Do
+    priority: Low
+    labels: [architecture]
+    description: |
+      As a merchant, I want my own monitoring to notice when my version is about to lose
+      support.
+
+      Acceptance criteria:
+
+      - Responses served at a version approaching the end of its support carry the
+        standard `Deprecation` and `Sunset` headers.
+      - The account's technical contacts get emails six months, three months and one
+        month before the end, and Merchant Hub shows a banner.
+    comments:
+      - "Noor: Moved to the backlog. Each version is supported for 24 months, so the baseline needs none of this for well over a year."
+  - key: ENG-1179
+    type: Story
+    summary: Parse and validate the Quillmoor-Version header
+    status: Done
+    priority: Highest
+    labels: [architecture]
+    description: |
+      As a merchant's developer, I want to choose the version of a single request with a
+      header, so that I can try a version before moving my key to it.
+
+      Acceptance criteria:
+
+      - `Quillmoor-Version: 2026-04-01` selects a version; versions are dates written
+        `YYYY-MM-DD`.
+      - The header overrides the pin for that request only. Without it, the key's pin
+        applies, and an unpinned key is served as `2026-04-01`.
+      - An unknown or malformed version gets `400` with `invalid_version`; a version past
+        its support period gets `400` with `version_retired`.
+      - Behind `sb.merchant-api.date-versioning`.
+    comments:
+      - "Felix: This merges behind the flag together with the registry, so the two are tested as one."
+  - key: ENG-1180
+    type: Story
+    summary: Load the version registry from versions.yaml
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      Acceptance criteria:
+
+      - `merchant-api/versions.yaml` lists every version and its changes, each with its
+        transformations.
+      - `2026-04-01` is the baseline, with no changes; a `next` entry holds changes not
+        yet released.
+      - `merchant-api` refuses to start if the registry is invalid, for example if a
+        change names a transformation that does not exist.
+      - CI rejects a registry with more than four new versions in a calendar year.
+      - The changelog and the documentation read the same file.
+  - key: ENG-1181
+    type: Bug
+    summary: Malformed Quillmoor-Version values return 500 instead of 400
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      **Steps to reproduce:** against a development build with the flag on, send
+      `Quillmoor-Version: 2026-4-1`, or `Quillmoor-Version: latest`.
+
+      **Expected:** `400` with the error code `invalid_version`.
+
+      **Actual:** `500`. The date parser raised an error before validation ran.
+
+      **Fix:** the header is checked against the `YYYY-MM-DD` format first, then against
+      the registry, and every failure maps to `invalid_version`. Contract tests now cover
+      both error codes.
+  - key: ENG-1182
+    type: Bug
+    summary: Retries that change Quillmoor-Version replay the first version's response
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      **Steps to reproduce:** send a `POST` with an `Idempotency-Key` and one
+      `Quillmoor-Version`, then retry with the same key and a different version.
+
+      **Expected:** the version is part of the request fingerprint, so the retry is a
+      different request and is rejected as a reused key: `422` with
+      `idempotency_key_reused`, as
+      [ADR-008](../../corpus/architecture/adr-008-idempotency-keys.md) defines.
+
+      **Actual:** the stored response from the first version was replayed, with
+      `Idempotent-Replayed: true`.
+
+      **Fix:** the resolved version, from the header or the pin, is added to the
+      fingerprint.
+  - key: ENG-1183
+    type: Task
+    summary: Review card-auth decline reasons exposed through merchant-api
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Payments Core's part of the response review: check the decline reasons that
+      `card-auth` passes through `merchant-api` to merchants before the versioning work
+      freezes their current shape.
+
+      For each reason, check that it is stable, documented and named consistently with
+      the others. Anything to rename goes into a later dated version as its own ticket,
+      with a downgrade for older versions.
+
+      **Result:** the reasons are stable and documented. One reason code is spelt
+      inconsistently with the others; Merchant Experience would rather rename it in the
+      next API version than now, and Payments Core agree (ENG-1188).
+    comments:
+      - "Nadia: Starting the review this week, with the list of reasons merchant-api exposes today."
+  - key: ENG-1184
+    type: Story
+    summary: Run the contract tests once per supported version in CI
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      At four versions a year and 24 months of support, up to eight versions can be live
+      at once, and each must keep behaving as documented.
+
+      Acceptance criteria:
+
+      - The `contracts` check runs the whole suite once per supported version on every
+        `merchant-api` change.
+      - Versions run in parallel, so the check stays within CI's 15-minute target.
+      - A failure names the version as well as the test.
+
+      See [Continuous integration](../../corpus/engineering/continuous-integration.md).
+  - key: ENG-1185
+    type: Story
+    summary: Log the requested version as api_version on every request
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      At the September backend guild, Theo asked whether the requested version is logged.
+      It was not.
+
+      Acceptance criteria:
+
+      - Every `merchant-api` request log line carries `api_version`, the version that
+        served it, and whether it came from the header or the pin.
+      - Merchant Support can search Lantern by `api_version` and account.
+      - The data shows which merchants are still on old versions.
+
+      See [Backend guild notes September 2026](../../corpus/engineering/guild-backend-2026-09.md).
+    comments:
+      - "Felix: Done within sprint 38, as the guild asked."
+  - key: ENG-1186
+    type: Story
+    summary: Run Quillmoor-Version handling in staging behind its flag
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Acceptance criteria:
+
+      - The release with header parsing, the registry and the transformer chain is
+        deployed to `staging-eu`.
+      - The flag is on in staging for the test merchants only.
+      - Smoke tests send requests with and without the header, and with an invalid one.
+      - The contract tests pass for every supported version against the staging
+        deployment.
+      - Payouts and Payments Core are told, since their staging tests go through
+        `merchant-api`.
+  - key: ENG-1187
+    type: Task
+    summary: Write the version section of the merchant-api README
+    status: In Progress
+    priority: Medium
+    labels: [architecture, follow-up]
+    description: |
+      An action from the sprint 38 retrospective: the `merchant-api` README needs a
+      section on versions for engineers working on the service.
+
+      It covers how a request's version is resolved, how to add a change to
+      `versions.yaml` with its transformations, and how to run the contract tests for one
+      version. It needs examples: trying a version on one request with `curl`, reading
+      the `Quillmoor-Version` response header, and what each `400` means.
+
+      See [ENG Sprint 39 retrospective](../../corpus/engineering/retro-sprint-39.md).
+    comments:
+      - "Felix: The section is written; the examples are still missing. Carried into sprint 40."
+  - key: ENG-1188
+    type: Task
+    summary: Rename the inconsistently spelt card-auth decline reason in a dated version
+    status: To Do
+    priority: Low
+    labels: [architecture]
+    description: |
+      Payments Core's review found one decline reason code spelt inconsistently with the
+      others. The payments weekly sync of 15 September agreed to rename it in the next API
+      version rather than now; see
+      [Payments weekly sync 2026-09-15](../../corpus/payments/weekly-sync-2026-09-15.md).
+
+      Register the change in `versions.yaml` with a response downgrade that returns the
+      old spelling to merchants on earlier versions, and add contract tests at both
+      versions.
+    comments:
+      - "Oskar: Told Merchant Experience the rename can wait for the next API version."
+  - key: ENG-1189
+    type: Story
+    summary: Pin every new API key to a dated version at creation
+    status: Done
+    priority: Highest
+    labels: [architecture]
+    description: |
+      A committed Q3 key result: every new API key pinned to a dated version by 27
+      September.
+
+      Acceptance criteria:
+
+      - From go-live, every new Merchant API key is pinned to the newest dated version
+        when it is created.
+      - The developer page shows that version for new keys.
+      - Existing keys are unchanged for now.
+      - Support can see the pin in the admin console.
+    comments:
+      - "Linnea: Going live on Monday 21 September, ahead of the key result's deadline."
+  - key: ENG-1190
+    type: Story
+    summary: Transformer for the renamed refund field in the first dated version
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      The first change that needs a new dated version is a renamed field on refunds.
+
+      Acceptance criteria:
+
+      - The core of `merchant-api` uses the new name.
+      - The response downgrade serves the old name to merchants on earlier versions; the
+        request upgrade accepts the old name from them.
+      - The change is registered under `next` in `versions.yaml`, so it gets its date when
+        the version is released.
+      - Contract tests cover the field at both versions.
+      - In `staging-eu` behind the flag.
+    comments:
+      - "Noor: Review done. It goes to staging with its transformer next; the version gets its date when it is released."
+  - key: ENG-1191
+    type: Story
+    summary: Generate the merchant changelog from the version registry
+    status: Done
+    priority: Medium
+    labels: [architecture]
+    description: |
+      As a merchant's developer, I want one changelog that lists every version and every
+      change in it, with what I need to do.
+
+      Acceptance criteria:
+
+      - The changelog on `developers.quillmoor.example` is generated from
+        `versions.yaml`, so code and documentation cannot drift apart.
+      - Each change shows its summary and what to do to move past it.
+      - Documentation ships page by page, as each version change lands, as Product
+        decided.
+  - key: ENG-1192
+    type: Story
+    summary: Upgrade assistant preview on the developer page
+    status: Done
+    priority: High
+    labels: [architecture]
+    description: |
+      As a merchant's developer, I want to know what would change for my integration if
+      I moved a key to the latest version.
+
+      Acceptance criteria:
+
+      - The developer page lists, for each API key, the dated version it is pinned to and
+        the changes it would see by moving to the latest version, endpoint by endpoint.
+      - It is read-only: merchants change versions in their integration, not in Hub.
+      - Released as a preview.
+
+      Announced in the [Merchant Hub release notes 2026](../../corpus/product/merchant-hub-release-notes-2026.md).
+  - key: ENG-1193
+    type: Task
+    summary: Publish the public reference pages for the Quillmoor-Version header
+    status: In Progress
+    priority: Medium
+    labels: [architecture]
+    description: |
+      The reference pages were drafted in sprint 39. Publish them in sprint 40, page by
+      page, as Product decided:
+
+      - the header, and how it overrides the pin for one request;
+      - pinning, and what an unpinned key is served;
+      - the errors `invalid_version` and `version_retired`;
+      - the support period of 24 months per version.
+
+      Merchant Support's first-line team already points developers to the API
+      documentation, so each page goes live with a note in the support channel.
+  - key: ENG-1194
+    type: Task
+    summary: Add acceptance criteria for older versions to the remaining stories
+    status: In Progress
+    priority: Medium
+    labels: [architecture, follow-up]
+    description: |
+      Two ENG-30 stories came back from review because nobody had agreed what "done"
+      meant for older versions.
+
+      For every remaining story, write down what a merchant on `2026-04-01` sees, which
+      contract tests prove it, and who signs it off. No story enters the sprint without
+      them.
+
+      An action from the [ENG Sprint 39 retrospective](../../corpus/engineering/retro-sprint-39.md).
+  - key: ENG-1195
+    type: Bug
+    summary: Refund downgrade misses the renamed field in expanded refund objects
+    status: In Progress
+    priority: High
+    labels: [architecture]
+    description: |
+      **Steps to reproduce:** in `staging-eu`, as a merchant on `2026-04-01`, fetch a
+      payment with its refunds expanded:
+
+      ```bash
+      curl https://api.quillmoor.example/v1/payments/pay_7Kd2 \
+        -H "Quillmoor-Version: 2026-04-01" -G -d expand=refunds
+      ```
+
+      **Expected:** every refund in the response carries the old field name.
+
+      **Actual:** top-level refund resources are downgraded, but refunds nested under an
+      expanded payment carry the new name.
+
+      **Fix in progress:** apply the downgrade to every refund object in a response,
+      wherever it appears.
+  - key: ENG-1196
+    type: Story
+    summary: Turn on date-based versioning for every merchant
+    status: In Progress
+    priority: Highest
+    labels: [architecture]
+    description: |
+      The last step of the rollout: switch `sb.merchant-api.date-versioning` from its
+      allow-list to every merchant.
+
+      Acceptance criteria:
+
+      - The flag is at 100% with no allow-list, which starts its clean-up clock.
+      - The first dated version after `2026-04-01` is released with its date, and the
+        changelog lists it.
+      - Merchant Support is briefed before the switch.
+      - It is live well before the change freeze; see the
+        [change freeze calendar 2026](../../corpus/release/change-freeze-2026.md).
+  - key: ENG-1197
+    type: Story
+    summary: Make the upgrade assistant generally available
+    status: In Progress
+    priority: High
+    labels: [architecture]
+    description: |
+      The upgrade assistant has been in preview since October. General availability is a
+      committed key result for Q4.
+
+      Acceptance criteria:
+
+      - Feedback from the preview is triaged, and anything blocking is fixed.
+      - The assistant works for every API key, pinned or not.
+      - It links to the migration guide once published.
+      - Merchant Support has the macro for questions about it.
+    comments:
+      - "Linnea: Preview feedback is mostly about wording. Nothing blocking so far."
+  - key: ENG-1198
+    type: Task
+    summary: Email merchants whose unpinned keys called the API in the last 30 days
+    status: In Progress
+    priority: Medium
+    labels: [architecture]
+    description: |
+      Active API keys pinned to a dated version stand far below the Q4 target, and the
+      key result is at risk because it depends on merchants' developers acting.
+
+      Email every merchant with an unpinned key that made a call in the last 30 days,
+      using the `api_version` logs to find them. The email explains what pinning is, links
+      to the upgrade assistant and the migration guide, and says how long `2026-04-01` is
+      supported.
+    comments:
+      - "Linnea: First batch sent to the most active keys. Later batches will link to the migration guide once it is published."
+  - key: ENG-1199
+    type: Story
+    summary: Report in Merchant Hub the version each integration uses
+    status: To Do
+    priority: Low
+    labels: [architecture]
+    description: |
+      As a merchant, I want to see which versions my integrations actually request, not
+      only what my keys are pinned to.
+
+      Acceptance criteria:
+
+      - The developer page shows, per API key, the versions requested in the last 30 days
+        and how many requests named one in the header.
+      - Data comes from the `api_version` request logs.
+    comments:
+      - "Noor: Moved to the backlog at the sprint 39 retrospective. The upgrade assistant shows the pinned version for now."
+  - key: ENG-1200
+    type: Story
+    summary: Move keys on a retired version to the oldest supported version
+    status: To Do
+    priority: Lowest
+    labels: [architecture]
+    description: |
+      When a version reaches the end of its support, keys still pinned to it are moved
+      to the oldest supported version, after the last notice.
+
+      Acceptance criteria:
+
+      - A job finds keys pinned to a version past its support period and moves each one
+        to the oldest supported version.
+      - It runs only after the last email notice has gone.
+      - Each move is logged and visible in the admin console.
+
+      Not needed until the baseline's support ends.

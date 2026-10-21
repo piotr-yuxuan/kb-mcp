@@ -1,0 +1,759 @@
+epic:
+  key: ENG-22
+  summary: Shadow mode and promotion gates
+  sprints: [13, 21]
+  labels: [risk-ml]
+  description: |
+    Put rules between a trained candidate and the payments it decides, so that a new
+    fraud model replaces the champion only when it is measurably better and behaves
+    well on live traffic.
+
+    ## Goal
+
+    The candidate from the ENG-21 pipeline meant for promotion, `cand-20251103-a`,
+    passes an offline gate, 14 days in shadow mode and sign-off before it can become
+    `fraudscore-v7`.
+
+    ## Scope
+
+    - The offline gate: recall at a 0.5% decline rate at least 2 points above the
+      champion, no loss of AUC-PR, a bootstrap interval, the slice rule, latency, and
+      registered features only.
+    - Shadow scoring in `risk-scorer`: both models score, only the champion decides.
+    - `modelctl shadow`, `modelctl approve`, and a `modelctl promote` that refuses
+      unapproved candidates.
+    - The Risk Operations review of declines that only the challenger would make.
+
+    ## Out of scope
+
+    - Training itself (ENG-21) and GPU capacity.
+    - Rolling back a model in production; see
+      [Rolling back a model in production](../../corpus/ml/model-rollback.md).
+
+    ## Pages
+
+    - [Model evaluation and promotion](../../corpus/ml/evaluation-and-promotion.md)
+    - [Risk operations: reviewing declined payments](../../corpus/ml/risk-ops-reviews.md)
+  comments:
+    - "Mireille: Shadow tooling is done. The v7 shadow period ends on 2026-02-01, and I will sign off once I have read the three reports."
+    - "Rafael: Risk Operations is staffed for the review in the last week of January."
+tickets:
+  - key: ENG-850
+    type: Story
+    summary: "Gate challengers on recall at a 0.5% decline rate"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      We agreed with Risk Operations and Payments Core that the model may decline at
+      most 0.5% of authorisations. Within that budget, the only question is how much
+      fraud a model catches.
+
+      As a reviewer, I want one headline number for every candidate.
+
+      Acceptance criteria:
+
+      - The report computes recall at a 0.5% decline rate on the out-of-time holdout,
+        counted in payments, not in money.
+      - Value-weighted recall is reported alongside for Finance, but is not part of the
+        gate.
+      - The decline rate excludes rules-based and issuer declines.
+    comments:
+      - "Arjun: Thanks for keeping value-weighted recall in the report. We will read it, not gate on it."
+  - key: ENG-851
+    type: Story
+    summary: "Require a challenger to beat the champion by 2 points of recall"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      As the head of risk ML, I want a bar that a lucky month cannot clear.
+
+      Acceptance criteria:
+
+      - A challenger passes offline only if its recall at a 0.5% decline rate is at
+        least 2 points above the champion's, on the challenger's holdout.
+      - A 1.8-point gain fails, whatever its AUC-PR.
+
+      Two points is about the smallest gain that survives the noise of a single month's
+      holdout and a change of seed. Every promotion has a cost: Risk Operations retunes
+      its reviews, and the new model declines different honest buyers. Smaller gains are
+      bundled with the next improvement.
+    comments:
+      - "Mireille: Agreed at Risk ML planning. Two points, and not negotiable per candidate."
+  - key: ENG-852
+    type: Story
+    summary: "Reject a challenger whose AUC-PR is below the champion's"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      AUC-PR summarises precision and recall across every threshold. With fraud at about
+      0.3% of authorisations, it is far more sensitive than metrics that reward getting
+      legitimate payments right.
+
+      As a reviewer, I want AUC-PR as a health check beside the recall gate.
+
+      Acceptance criteria:
+
+      - The report shows AUC-PR for champion and challenger on the same holdout.
+      - A challenger whose AUC-PR is lower than the champion's is rejected, whatever its
+        recall gain.
+  - key: ENG-853
+    type: Bug
+    summary: "The report compared challengers with figures from the champion's own report"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Run the `report` stage of `fraudscore_training` for any
+      candidate and read the headline table.
+
+      **Expected.** Champion and challenger scored on the same holdout, the
+      challenger's.
+
+      **Actual.** The champion's column was copied from the champion's own report, which
+      used a different month, so the gain mixed model quality with a change of month.
+
+      **Fix.** The stage loads the current champion from the registry and rescores the
+      challenger's holdout with it. v6, which predates run names, is loaded by version
+      label.
+  - key: ENG-854
+    type: Task
+    summary: "Review cand-20251006-a, the first candidate under the new gate"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      The first candidate from the ENG-21 pipeline, run name `cand-20251006-a`, is due
+      on 2025-10-06. Review its report against the gate as it stands, with a reviewer
+      who did not train it.
+
+      Result: stopped at offline review. The report showed a gain of +6.0 points at a
+      0.5% decline rate, but a merchant feature used month-end values, so it knew about
+      chargebacks that arrived after the payment: leakage. Every feature must now be
+      registered in the feature store, where definitions without an as-of rule are
+      rejected.
+    comments:
+      - "Sunniva: Same trap as ENG-829, on the merchant side this time. The registered-feature check would have caught both."
+      - "Mireille: Rejected. A huge offline gain is more often leakage than genius."
+  - key: ENG-855
+    type: Story
+    summary: "Bootstrap the recall gain by resampling whole days 1,000 times"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a reviewer, I want to know whether a gain is real or the luck of one month.
+
+      Acceptance criteria:
+
+      - The report gives a 95% bootstrap interval for the recall gain over the champion.
+      - The bootstrap resamples whole days, 1,000 times, because payments on the same
+        day are not independent: one fraud ring can fill an afternoon.
+      - The gate requires the interval's lower bound to be above 0.
+  - key: ENG-856
+    type: Story
+    summary: "Fail a challenger that loses over 3 points on a slice with 500 frauds"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      An average gain can hide a loss on a group we care about.
+
+      Acceptance criteria:
+
+      - The gate checks every slice of the report: currency (GBP, EUR), merchant
+        segment, first-seen card tokens, with and without 3DS, and five amount bands.
+      - A slice with 500 or more frauds in the holdout may not lose more than 3 points
+        of recall against the champion.
+      - Smaller slices are reported but do not fail the gate.
+    comments:
+      - "Linnea: First-seen card tokens will be the slice to watch, since the embedding has nothing to read there."
+  - key: ENG-857
+    type: Bug
+    summary: "Tied scores pushed the realised decline rate above 0.5%"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Compute the operating point on a holdout where many
+      payments share a calibrated score, as isotonic calibration produces.
+
+      **Expected.** A realised decline rate at or below 0.5%.
+
+      **Actual.** The quantile landed inside a block of tied scores, every tied payment
+      was declined, and the rate went above 0.5%.
+
+      **Fix.** Take the quantile with `method="higher"`:
+
+      ```python
+      threshold = np.quantile(scores, 1.0 - decline_rate, method="higher")
+      declined = scores >= threshold
+      ```
+  - key: ENG-858
+    type: Task
+    summary: "Write the offline review checklist for Risk ML reviewers"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      A Risk ML reviewer who did not train the candidate checks its report against one
+      list. Write it:
+
+      | Check | Pass condition |
+      |---|---|
+      | Holdout | Out-of-time, after the window, labels matured |
+      | Recall at a 0.5% decline rate | At least 2 points above the champion |
+      | Confidence | Lower bound of the 95% interval above 0 |
+      | AUC-PR | Not lower than the champion's |
+      | Slices | No slice with 500 or more frauds loses more than 3 points |
+      | Latency | p99 within `risk-scorer`'s 35 ms budget |
+      | Features | Every feature registered in the feature store |
+
+      A review takes 2 to 4 working days.
+    comments:
+      - "Sunniva: I will take the first review of the November candidate, since I am not training it."
+  - key: ENG-859
+    type: Task
+    summary: "Prepare the cand-20251103-a run on the August 2025 holdout"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      Set up the ENG-21 pipeline's run for the candidate meant for promotion: the
+      13-month window from 2024-07-01 to 2025-07-31 and the August 2025 holdout, whose
+      labels matured on 2025-10-30. Dry-run it once the labels have matured, then start
+      the real run on Monday 2025-11-03:
+
+      ```bash
+      conveyor run fraudscore_training --config training/cand-20251103-a.yaml --dry-run
+      conveyor run fraudscore_training --config training/cand-20251103-a.yaml
+      ```
+
+      Three seeds, median registered. See
+      [Training the fraud model](../../corpus/ml/fraud-model-training.md).
+    comments:
+      - "Linnea: Dry run clean, label check included. The real run starts on Monday morning."
+  - key: ENG-860
+    type: Story
+    summary: "Load-test risk-scorer with the champion and a challenger loaded"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Shadow mode means `risk-scorer` holds two models and scores every authorisation
+      twice. Before any shadow period, we need to know that it still fits its budget.
+
+      Acceptance criteria:
+
+      - A load test of `risk-scorer` runs with both models loaded, at peak traffic.
+      - p99 stays within `risk-scorer`'s 35 ms budget.
+      - The results go into the candidate's evaluation report.
+      - Site Reliability watches the test, which takes a day.
+    comments:
+      - "Lukas: SRE will watch. Tell us the day before in #team-sre."
+  - key: ENG-861
+    type: Story
+    summary: "Record sign-off in the registry with modelctl approve"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Sign-off is by the head of risk ML and nobody else, after reading the evaluation
+      report, the shadow report and the Risk Operations review.
+
+      Acceptance criteria:
+
+      - `modelctl approve fraudscore --candidate <run name> --note "<summary>"` records
+        the approval, its author and the note in the registry.
+      - Only the head of risk ML can approve.
+      - `modelctl history fraudscore` lists approvals with the other registry events.
+  - key: ENG-862
+    type: Story
+    summary: "Make modelctl promote refuse a candidate without an approval"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As the head of risk ML, I want the registry, not memory, to enforce the gate.
+
+      Acceptance criteria:
+
+      - `modelctl promote fraudscore --candidate <run name>` fails unless an approval is
+        recorded for that candidate.
+      - Only people with the `promoter` role in the registry can promote.
+      - Promotion assigns the next version label and moves the champion alias to it.
+      - The switch reaches every `risk-scorer` pod within a couple of minutes.
+    comments:
+      - "Mireille: Promoter role granted to the Risk ML engineers. Approval stays with me."
+  - key: ENG-863
+    type: Task
+    summary: "Review cand-20251103-a against the offline gate"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      Check the report of `cand-20251103-a` against the checklist of ENG-858, with
+      `fraudscore-v6` rescored on the August 2025 holdout.
+
+      | | v6 | Candidate |
+      |---|---|---|
+      | AUC-PR | 0.418 | 0.482 |
+      | Recall at a 0.5% decline rate | 66.1% | 71.4% |
+
+      The gain is +5.3 points, with a bootstrap interval of 4.1 to 6.4. No slice loses:
+      the weakest is first-seen card tokens, which still gains 0.8 points. The load test
+      gave a p99 of 21 ms. Every feature is registered.
+    comments:
+      - "Sunniva: Passed on every line. Ready for shadow mode as soon as the tooling is."
+  - key: ENG-864
+    type: Story
+    summary: "Score every authorisation with both models in risk-scorer"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      As Risk ML, we want to see how a challenger behaves on live traffic without
+      letting it decide anything.
+
+      Acceptance criteria:
+
+      - `risk-scorer` can hold a champion and one shadow challenger, each with its own
+        threshold.
+      - Every authorisation is scored by both.
+      - Only the champion's score reaches `card-auth`; the challenger's never does.
+      - A shadow scoring failure never fails or delays the champion's score.
+    comments:
+      - "Nadia: Please make the last point a test, not a promise. card-auth has 800 ms in total and uses most of it."
+  - key: ENG-865
+    type: Story
+    summary: "Write challenger scores and would-be decisions to the warehouse"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a reviewer, I want shadow results in the warehouse, so that I can analyse them
+      like any other data.
+
+      Acceptance criteria:
+
+      - For each authorisation scored in shadow mode, `risk-scorer` writes the
+        challenger's score and its would-be decision, keyed by authorisation and by the
+        candidate's run name.
+      - Shadow rows go to a table of their own, so that queries on
+        `raw.risk_scorer_decisions` still see only real decisions.
+      - Nothing about the challenger's decision reaches `card-auth` or merchants.
+  - key: ENG-866
+    type: Bug
+    summary: "Challenger scores reached card-auth in staging"
+    status: Done
+    priority: Highest
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** In `staging-eu`, load a challenger in shadow mode with a
+      lower threshold than the champion's, and send test authorisations while pods
+      restart.
+
+      **Expected.** `card-auth` declines only on the champion's score.
+
+      **Actual.** Pods that started while the challenger was loading served the
+      challenger's score to `card-auth` for a few minutes.
+
+      **Fix.** The model that answers `card-auth` is chosen from the champion alias
+      only; the shadow model sits in a separate slot with no path to the response. A
+      test fails if a shadow score ever appears in a response. See
+      [Staging environments](../../corpus/release/staging-environments.md).
+    comments:
+      - "Nadia: Thank you for catching this in staging. Please link the test from this ticket."
+      - "Lukas: No production impact. Shadow mode was not enabled outside staging."
+  - key: ENG-867
+    type: Task
+    summary: "Keep the previous champion loaded as the rollback target on promotion"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      When a challenger is promoted, `risk-scorer` must keep the previous champion in
+      memory, so that a rollback needs no deploy and no fetch. Change promotion so that
+      the old champion moves to the rollback slot, and so that new pods load both models
+      at start-up.
+
+      Check with `modelctl status fraudscore` after a promotion in staging. The rollback
+      itself is described on
+      [Rolling back a model in production](../../corpus/ml/model-rollback.md).
+  - key: ENG-868
+    type: Story
+    summary: "Add modelctl shadow to start a candidate's shadow period"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I want to start and follow shadow mode from the registry's
+      CLI.
+
+      ```bash
+      modelctl shadow fraudscore --candidate <run name> --days 14
+      modelctl status fraudscore
+      ```
+
+      Acceptance criteria:
+
+      - `shadow` loads the candidate into every `risk-scorer` pod as the shadow model.
+      - `status` shows the champion, the shadowing candidate, the shadow day reached and
+        the days left.
+    comments:
+      - "Matteo: Status reads well. Could it show the start date too?"
+      - "Linnea: Added."
+  - key: ENG-869
+    type: Story
+    summary: "Require 14 days in shadow mode before promotion"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      As the head of risk ML, I want every challenger that passes offline to spend 14
+      days in shadow mode before promotion.
+
+      Acceptance criteria:
+
+      - `modelctl approve` refuses a candidate with fewer than 14 completed shadow days.
+      - The days count only once the offline checks pass.
+      - There is no shorter option, whatever the offline gain.
+
+      Fourteen days always include two full weekends, and weekend traffic on our
+      marketplaces looks different enough to matter. Shadow mode cannot measure recall,
+      since labels take weeks to settle; it measures behaviour. See
+      [Model evaluation and promotion](../../corpus/ml/evaluation-and-promotion.md).
+    comments:
+      - "Mireille: Agreed. No exceptions, including retrains of the champion."
+  - key: ENG-870
+    type: Story
+    summary: "Restart the shadow period when the challenger changes in any way"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a reviewer, I want the 14 days to describe the exact model that will be
+      promoted.
+
+      Acceptance criteria:
+
+      - Any change to the shadowing candidate resets its shadow day count to zero: new
+        artefacts, a new threshold or a recalibration.
+      - `modelctl status` shows when and why the count was reset.
+      - The shadow report covers only the days since the last reset.
+  - key: ENG-871
+    type: Bug
+    summary: "Shadow writes to the warehouse dropped rows at peak traffic"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Run shadow mode in staging under the load test's peak
+      traffic profile, and compare shadow rows with the authorisations scored.
+
+      **Expected.** One shadow row per authorisation.
+
+      **Actual.** About one row in a few hundred was missing at peak, because the writer
+      dropped batches when its buffer was full.
+
+      **Fix.** Batches are retried with back-off instead of dropped, and the shadow data
+      records, for each day, how many authorisations have no shadow row.
+  - key: ENG-872
+    type: Story
+    summary: "Track a challenger's would-be decline rate on every shadow day"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      A calibration problem shows up in the would-be decline rate first.
+
+      Acceptance criteria:
+
+      - The shadow report shows the challenger's would-be decline rate for each day.
+      - The rate must stay between 0.4% and 0.6% on every day; a day outside that band
+        fails the shadow period.
+      - Days are UTC days, and weekends are marked.
+  - key: ENG-873
+    type: Story
+    summary: "Measure the overlap between champion and challenger declines"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a reviewer, I want to know whether the two models agree about who is a
+      fraudster.
+
+      Acceptance criteria:
+
+      - The shadow report shows the overlap: the share of the champion's declines that
+        the challenger would also have declined.
+      - An overlap below 50% is flagged, and sign-off waits for a written explanation.
+      - Payments that only the challenger would decline are listed for Risk Operations
+        (ENG-874).
+  - key: ENG-874
+    type: Story
+    summary: "Send 300 challenger-only declines to Risk Operations for review"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Risk Operations' judgement on unique declines is the closest thing to fresh labels
+      that shadow mode has.
+
+      Acceptance criteria:
+
+      - In each shadow period, 300 payments that only the challenger would have declined
+        are sampled and loaded into Harbour's "Declined payment review" view.
+      - Reviewers record confirmed fraud, legitimate or inconclusive, as in their daily
+        process.
+      - The outcomes appear in the shadow report.
+      - The review takes 3 working days and overlaps shadow mode.
+
+      Procedure:
+      [Risk operations: reviewing declined payments](../../corpus/ml/risk-ops-reviews.md).
+    comments:
+      - "Rafael: Fine by Risk Operations. Give us a week's notice so that the daily sample is not squeezed."
+  - key: ENG-875
+    type: Bug
+    summary: "Would-be decline rate counted rules-based declines"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** In staging, shadow the champion against itself and read
+      the shadow report.
+
+      **Expected.** The same decline rate on both sides, since it is the same model.
+
+      **Actual.** The challenger's would-be decline rate was higher, because the report
+      counted rules-based declines on the challenger's side.
+
+      **Fix.** The would-be decline rate counts only payments whose challenger score is
+      at or above its threshold. Rules-based and issuer declines are excluded on both
+      sides. Shadowing the champion against itself is now a test.
+  - key: ENG-876
+    type: Task
+    summary: "Build the shadow report from the warehouse scores"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Assemble one shadow report per candidate from the warehouse rows of ENG-865,
+      covering:
+
+      - the would-be decline rate by day (ENG-872);
+      - the overlap with the champion's declines (ENG-873);
+      - the Risk Operations review of challenger-only declines (ENG-874);
+      - authorisations without a shadow row (ENG-871).
+
+      Attach it to the candidate in the registry, next to the evaluation report, so that
+      sign-off reads both in one place.
+  - key: ENG-877
+    type: Bug
+    summary: "The shadow day counter reset when risk-scorer pods restarted"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Start a 14-day shadow period in staging, then restart
+      `risk-scorer` with a routine deploy.
+
+      **Expected.** The shadow period carries on, and `modelctl status` shows the same
+      day.
+
+      **Actual.** The count restarted from day 1, because each pod kept the start date in
+      memory.
+
+      **Fix.** The start date and any reset live in the registry, which pods read on
+      start-up. A restart neither resets nor extends the period.
+    comments:
+      - "Linnea: This would have cost us a week on the November candidate. Glad it surfaced now."
+  - key: ENG-878
+    type: Story
+    summary: "Let a candidate shadow before its offline review completes"
+    status: Done
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I want to start shadow mode while the offline review is
+      still under way, to save time.
+
+      Acceptance criteria:
+
+      - `modelctl shadow` accepts a candidate whose offline review is open.
+      - Its shadow days count only from the day the offline checks pass, and only if
+        nothing about the model has changed since.
+      - `modelctl status` shows the uncounted days separately.
+  - key: ENG-879
+    type: Task
+    summary: "Attach the evaluation report to each candidate in the registry"
+    status: Done
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      Reviewers expect the report in one place and in one order: configuration and
+      lineage; the headline table of AUC-PR and recall at a 0.5% decline rate for
+      champion and challenger; the bootstrap interval; the slice table; the
+      precision-recall curves; the twenty features with the most gain; the score
+      histograms; and the load test's latency figures.
+
+      Store it with the candidate and make it readable with
+      `modelctl report fraudscore --candidate <run name>`. A report missing a section is
+      sent back unread.
+  - key: ENG-880
+    type: Story
+    summary: "Let a deputy sign off promotions when the head of risk ML is away"
+    status: Won't Do
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I would like a named deputy who can sign off a candidate
+      while the head of risk ML is on annual leave, so that a finished shadow period
+      does not wait.
+
+      Acceptance criteria:
+
+      - A deputy role in the registry with the same approval rights.
+      - Approvals by the deputy marked as such in `modelctl history`.
+    comments:
+      - "Mireille: Won't do. Sign-off stays with one person, and there is no deputy. A model that is genuinely better will still be better a week later."
+  - key: ENG-881
+    type: Task
+    summary: "Write the model evaluation and promotion contract on the wiki"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Write the page that every candidate is held to: the two metrics, the offline
+      checklist, why 2 points, shadow mode and what it measures, sign-off, promotion,
+      and a typical timeline of three to four weeks from the end of a training run.
+
+      Owner: the head of risk ML. Page:
+      [Model evaluation and promotion](../../corpus/ml/evaluation-and-promotion.md).
+      Link it from the training page, so that the two read as one procedure.
+    comments:
+      - "Mireille: Approved. This is the contract from now on."
+  - key: ENG-882
+    type: Task
+    summary: "Check the drift reference after each promotion"
+    status: Done
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      After a promotion, drift monitoring must compare the new champion with its own
+      holdout, not the previous model's; otherwise every panel shows the new model
+      drifting.
+
+      Add to the promotion steps: confirm that the "fraudscore drift" dashboard in
+      Lantern has switched to the new version's reference distributions, which the
+      `register` stage writes (ENG-842). See
+      [Model drift monitoring](../../corpus/ml/drift-monitoring.md).
+  - key: ENG-883
+    type: Task
+    summary: "Update model cards as part of every promotion"
+    status: Done
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      Each promotion changes two model cards. Add to the promotion steps:
+
+      - write a card for the new champion: purpose, architecture, training data,
+        evaluation, serving and known limitations;
+      - add a status line to the previous champion's card, saying that it is now the
+        rollback target;
+      - watch the decline rate on the "risk-scorer overview" dashboard for the rest of
+        the day.
+
+      Use [Model card: fraudscore-v6](../../corpus/ml/model-card-fraudscore-v6.md) as
+      the template.
+  - key: ENG-884
+    type: Story
+    summary: "Shorten shadow mode for candidates with a large offline gain"
+    status: Won't Do
+    priority: Lowest
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I would like a candidate with a very large offline gain to
+      need only 7 days in shadow mode, so that clear improvements reach production
+      sooner.
+
+      Acceptance criteria:
+
+      - A shorter shadow period when the lower bound of the gain's interval exceeds a
+        set value.
+      - The same daily checks as in a full period.
+    comments:
+      - "Mireille: Won't do. A huge offline gain is more often leakage than genius, and shadow mode is where that shows. 14 days, always."
+  - key: ENG-885
+    type: Task
+    summary: "Start cand-20251103-a in shadow mode on 2026-01-19"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      The offline review has passed (ENG-863) and the shadow tooling is in place. Start
+      the 14-day shadow period on Monday 2026-01-19, so that it ends on 2026-02-01 and
+      covers two full weekends:
+
+      ```bash
+      modelctl shadow fraudscore --candidate cand-20251103-a --days 14
+      modelctl status fraudscore
+      ```
+
+      Tell Risk Operations in `#risk-ops` the week before, and check that the first
+      day's would-be decline rate is within 0.4% to 0.6%.
+    comments:
+      - "Linnea: Started. Day 1 is inside the band."
+      - "Rafael: Noted in #risk-ops."
+  - key: ENG-886
+    type: Task
+    summary: "Arrange Risk Operations' review of cand-20251103-a's unique declines"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Agree the dates and the reviewers with the Risk Operations lead for the review of
+      `cand-20251103-a`. The 300 payments that only the candidate would have declined
+      are sampled after the first shadow weekend and loaded into Harbour.
+
+      The review takes 3 working days and must finish before the shadow period ends on
+      2026-02-01, so that the head of risk ML can read it with the evaluation and shadow
+      reports.
+    comments:
+      - "Rafael: Three reviewers booked for the week of 2026-01-26."
+  - key: ENG-887
+    type: Story
+    summary: "Add risk-scorer p99 and scoring errors to the shadow report"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      The last piece of the shadow tooling. As a reviewer, I want the shadow report to
+      show the cost of running the challenger, not only its decisions.
+
+      Acceptance criteria:
+
+      - The report shows `risk-scorer`'s p99 with both models loaded, by day, against
+        the 35 ms budget.
+      - It counts scoring errors for each model separately.
+      - Figures come from live traffic on the "risk-scorer overview" dashboard in
+        Lantern, not from the load test.
+  - key: ENG-888
+    type: Task
+    summary: "Plan the v7 promotion for Wednesday 2026-02-04 with Risk Operations"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      If the shadow period ending on 2026-02-01 is clean and the head of risk ML signs
+      off, promote `cand-20251103-a` on the morning of Wednesday 2026-02-04, when Risk
+      Operations is fully staffed.
+
+      - Tell Risk Operations in their channel the day before.
+      - Promote with `modelctl promote fraudscore --candidate cand-20251103-a`; it
+        becomes `v7`, and `v6` stays loaded as the rollback target.
+      - Watch the decline rate for the rest of the day, and update both model cards.
+    comments:
+      - "Rafael: Wednesday morning works. We will brief the reviewers on Tuesday."

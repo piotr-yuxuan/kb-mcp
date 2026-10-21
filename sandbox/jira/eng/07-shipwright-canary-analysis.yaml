@@ -1,0 +1,787 @@
+epic:
+  key: ENG-7
+  summary: Shipwright canary analysis
+  sprints: [3, 10]
+  labels: [platform]
+  description: |
+    ## Goal
+
+    Replace the manual canary, a 10-minute look at dashboards by whoever was deploying,
+    with an automated stage in Shipwright that compares canary pods with baseline pods
+    and stops a bad release on its own. The manual check, added in 2022, missed most of
+    the regressions it was meant to catch.
+
+    ## Scope
+
+    - One canary shape for every service: 5% of production traffic for 30 minutes.
+    - Automated analysis of error rate and p99 latency against the baseline, with
+      thresholds calibrated by replaying past deploys.
+    - Inconclusive verdicts for quiet services, `shipwright approve-canary` and
+      `shipwright retry-canary`.
+    - `extra_checks` in `shipwright.yaml`, which may only add reasons to fail.
+
+    ## Out of scope
+
+    Rollout waves after the canary, deploy windows, change tickets, and kill switches
+    (ENG-8).
+
+    ## Pages
+
+    - [How code reaches production](../../corpus/release/deployment-pipeline.md)
+    - [Canary analysis thresholds](../../corpus/release/canary-analysis.md)
+  comments:
+    - "Lukas: Site Reliability co-owns the thresholds with Platform from now on. Disputed verdicts go to #team-sre."
+    - "Bram: Closing. Every service runs the same canary, judged at 0.5 points of error rate and 20% of p99."
+tickets:
+  - key: ENG-265
+    type: Task
+    summary: "Survey how teams check a release before full rollout today"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Before designing the automated canary, find out what each team actually does
+      between staging and full rollout. Today the canary is a manual step: whoever is
+      deploying watches dashboards for about 10 minutes, then promotes.
+
+      Ask every team that owns a production service:
+
+      - which dashboards and signals they look at;
+      - how long they really wait before promoting;
+      - which regressions of the last twelve months reached full rollout anyway.
+
+      Write the answers up in `#team-platform`. They decide the default signals of the
+      analysis.
+    comments:
+      - "Lukas: Most teams watch the error rate and nothing else. Payments Core is the only team that checks p99 before promoting."
+      - "Bram: Then error rate and p99 are the two default signals. Anything else can come later as an opt-in."
+  - key: ENG-266
+    type: Story
+    summary: "Start canary pods next to the pods of the current release"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As a service owner, I want Shipwright to start canary pods running the new
+      release alongside the pods of the current release, so that both groups serve the
+      same mix of production traffic and can be compared fairly.
+
+      Acceptance criteria:
+
+      - the canary stage adds a separate group of pods, labelled with the release and
+        the role `canary`; the existing pods are labelled `baseline`;
+      - the baseline keeps its size: canary pods are added, not swapped in;
+      - `shipwright status <service>` shows which release each group of pods runs;
+      - if the release is stopped, the canary pods are removed and the baseline carries
+        on serving.
+  - key: ENG-267
+    type: Story
+    summary: "Split production traffic between canary and baseline pods at the ingress"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As the platform team, we want the canary to receive a fixed share of real
+      traffic, not whatever share its pod count happens to give it.
+
+      Acceptance criteria:
+
+      - requests are split at the service's ingress by weight, set by Shipwright,
+        independent of how many pods each group runs;
+      - each request goes to exactly one group, and the measured split stays within
+        half a percentage point of the target over 5 minutes;
+      - setting the canary weight to zero sends all traffic back to the baseline in
+        under a minute;
+      - the split works for services that do not speak HTTP as well as for HTTP ones.
+    comments:
+      - "Lukas: Tested on merchant-api in production at 1% for an hour. The split held to within 0.1 points."
+  - key: ENG-268
+    type: Task
+    summary: "Export error rate and p99 per pod group to Lantern"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Canary analysis compares two groups of pods, so every metric it reads must say
+      which group it came from. Add a `pod_group` label, `canary` or `baseline`, to the
+      request metrics recorded at each service's ingress, and publish them to Lantern.
+
+      - Error rate: the share of requests ending in a server error, an HTTP 5xx or a
+        failed call for services that do not speak HTTP.
+      - p99 latency, measured at the service's own ingress.
+
+      Check the label's cardinality with the Lantern maintainers before turning it on
+      for every service.
+    comments:
+      - "Lukas: Cardinality is fine: two values per service, and the label is dropped from the long-term rollups."
+  - key: ENG-269
+    type: Story
+    summary: "Read each service's canary settings from shipwright.yaml"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As a reviewer, I want the canary settings of a service to be visible in its
+      repository, so that a change to them is reviewed like any other change.
+
+      Acceptance criteria:
+
+      - `shipwright.yaml` accepts a `stages.canary` block with `traffic_percent` and
+        `duration_minutes`;
+      - Shipwright reads the block at deploy time and records the values on the release;
+      - a service without the block gets the defaults.
+
+      ```yaml
+      stages:
+        canary:
+          traffic_percent: 5
+          duration_minutes: 30
+      ```
+  - key: ENG-270
+    type: Story
+    summary: "Canary each release on 5% of production traffic for 30 minutes"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As the platform team, we want one canary shape for every service: 5% of
+      production traffic for 30 minutes, compared with the current release, before any
+      full rollout begins.
+
+      Acceptance criteria:
+
+      - the canary stage sends 5% of traffic to the canary pods for 30 minutes, and
+        hands over to the full rollout only on a "pass" verdict;
+      - the share and the duration are the same for every service, with no per-service
+        or per-release override;
+      - `shipwright status --follow` shows the canary and the time it has left;
+      - the stage is described on
+        [How code reaches production](../../corpus/release/deployment-pipeline.md).
+    comments:
+      - "Nadia: For card-auth, 5% for 30 minutes is a lot of authorisations. Plenty to judge on."
+      - "Bram: Agreed at the platform review: one shape for everyone, with no shortcut for small changes."
+  - key: ENG-271
+    type: Task
+    summary: "Build a harness that replays canary analysis over about 200 past deploys"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      We want thresholds based on evidence rather than taste. Build a harness that
+      replays the canary analysis against the recorded metrics of past deploys: about
+      200 production deploys from the last twelve months, including every deploy that
+      led to an incident this year.
+
+      For each deploy and each candidate pair of thresholds, the harness reports what
+      the analysis would have decided. That lets us count missed regressions and false
+      failures side by side before choosing. Keep the deploy list in the Shipwright
+      repository so that the replay can be run again whenever the analysis changes.
+    comments:
+      - "Lukas: The set is ready, with every incident-linked deploy of the year marked as a regression the canary must catch."
+  - key: ENG-272
+    type: Story
+    summary: "Count only server errors in the canary error rate"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As a service owner, I want a release that rejects bad input more strictly not to
+      fail its canary for doing so.
+
+      Acceptance criteria:
+
+      - the canary error rate is the share of requests that end in a server error: an
+        HTTP 5xx, or a failed call for services that do not speak HTTP;
+      - client errors are excluded by default;
+      - the definition is printed next to the verdict in the Shipwright output, so that
+        nobody has to guess what was counted.
+  - key: ENG-273
+    type: Story
+    summary: "Measure canary p99 latency at the service's own ingress"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As the platform team, we want latency measured where callers feel it. The p99 of
+      both groups is measured at the service's own ingress, so a slow dependency counts
+      against the release. That is deliberate: a release that calls a dependency twice
+      as often has made the service slower.
+
+      Acceptance criteria:
+
+      - p99 is computed per group from the ingress latency histogram, not from timings
+        reported by clients;
+      - a group with too few requests in a window reports no value rather than a noisy
+        one;
+      - the Shipwright output shows both p99 values and how far apart they are.
+  - key: ENG-274
+    type: Bug
+    summary: "Canary share drifted above 5% when the baseline scaled down"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** Deploy `merchant-api` to production in the late afternoon,
+      when its autoscaler shrinks the baseline, and watch the traffic split during the
+      canary.
+
+      **Expected.** The canary receives 5% of requests throughout.
+
+      **Actual.** After the autoscaler removed baseline pods, the ingress controller
+      rebuilt its upstreams and dropped the weights, falling back to round robin by pod.
+      The canary peaked at about 11% of requests.
+
+      **Fix.** Shipwright now reasserts the weights whenever the ingress configuration
+      changes, and fails the stage if the measured share stays outside 4% to 6% for more
+      than 2 minutes.
+    comments:
+      - "Bram: Good catch. A canary that silently takes twice its share defeats the point of a canary."
+  - key: ENG-275
+    type: Story
+    summary: "Automated canary verdict on error rate and p99 latency"
+    status: Done
+    priority: Highest
+    labels: [platform]
+    description: |
+      As someone deploying, I want Shipwright to decide whether the canary passes,
+      instead of a person reading dashboards.
+
+      First version, chosen from the replay results: the canary fails when the error
+      rate rises 1 point above the baseline, or when p99 rises 30%.
+
+      Acceptance criteria:
+
+      - the verdict is "pass" or "fail", shown in `shipwright status` and posted to
+        `#deploys`;
+      - a "fail" stops the release;
+      - the thresholds live in Shipwright's own configuration, not in each service, so
+        that nobody can loosen them for a deploy;
+      - the replay harness runs in CI against every change to the analysis code.
+    comments:
+      - "Bram: Live for every service from this sprint. We start at 1 point and 30% and look again after a month of real deploys."
+  - key: ENG-276
+    type: Story
+    summary: "Leave the first 5 minutes of the canary unjudged as warm-up"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As a service owner, I want cold caches and fresh connection pools on new pods not
+      to fail my canary in its first minutes.
+
+      Acceptance criteria:
+
+      - the first 5 minutes of the canary are warm-up and are not judged;
+      - metrics are still collected and shown during warm-up, marked as such;
+      - the warm-up counts towards the 30 minutes: it does not make the canary longer;
+      - the Shipwright output says when warm-up ends and judging begins.
+  - key: ENG-277
+    type: Story
+    summary: "Fail the canary only after 3 consecutive breaching evaluations"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As a service owner, I want a single noisy minute not to stop a good release.
+
+      Acceptance criteria:
+
+      - from the end of warm-up, Shipwright evaluates both signals every minute, over a
+        sliding 5-minute window;
+      - a signal must breach its threshold on 3 consecutive evaluations to fail the
+        canary;
+      - every evaluation is recorded, so that the output can show why a canary failed
+        or passed;
+      - the replay harness confirms that the rule removes the false failures it found,
+        without hiding any incident-linked deploy.
+    comments:
+      - "Lukas: The replay agrees: most false failures were a single bad minute, and none of the incident-linked deploys was that short."
+  - key: ENG-278
+    type: Story
+    summary: "Stop the release and send traffic back to current pods on a failed canary"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      As someone deploying, I want a failed canary to undo itself, without anyone
+      having to run a command in a hurry.
+
+      Acceptance criteria:
+
+      - on a "fail" verdict, Shipwright stops the release and sends all traffic back to
+        the pods of the current release, usually in under a minute;
+      - nothing is rolled out, and the release is marked as stopped by canary analysis;
+      - the canary pods are removed once traffic has moved back;
+      - the stop and its reason are posted to `#deploys` and to the owning team's
+        channel.
+  - key: ENG-279
+    type: Task
+    summary: "Post canary stages and verdicts to #deploys and team channels"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      Shipwright already posts the start of each deploy in `#deploys`. Extend the
+      messages to the canary: its start, the end of warm-up, the verdict, and the reason
+      for a failure, with a link to the service's Lantern dashboard. Send the same
+      messages to the owning team's channel, found from `owners` in `shipwright.yaml`.
+
+      ```text
+      merchant-api canary: fail (p99 +34% over baseline on 3 consecutive evaluations)
+      ```
+
+      Keep each message to one line; the details belong on the dashboard.
+    comments:
+      - "Bram: Shipped. #deploys is noisier, but nobody has asked to turn it off."
+  - key: ENG-280
+    type: Story
+    summary: "Inconclusive canary verdict below 1,000 requests"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As the owner of a quiet service, I want the canary not to pass a release just
+      because it saw too little traffic to judge.
+
+      Acceptance criteria:
+
+      - the canary needs at least 1,000 requests over its run to be judged;
+      - below that, the verdict is "inconclusive": Shipwright holds the release and asks
+        a human in the owning team's channel;
+      - the hold never expires into a rollout; it waits for an approval or a stop.
+
+      The rule is written up on
+      [Canary analysis thresholds](../../corpus/release/canary-analysis.md).
+  - key: ENG-281
+    type: Story
+    summary: "Approve an inconclusive canary with shipwright approve-canary"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As someone from the owning team, I want to release a held canary once I have
+      looked at it myself.
+
+      Acceptance criteria:
+
+      - `shipwright approve-canary <service>` continues to the full rollout and records
+        who approved;
+      - it is accepted only for an "inconclusive" verdict;
+      - the hold message links the Lantern dashboard "Canary analysis", so that the
+        approver looks before approving.
+
+      ```bash
+      shipwright approve-canary settlement-batcher
+      ```
+  - key: ENG-282
+    type: Bug
+    summary: "Canary passed a merchant-api release whose error rate rose 0.8 points"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      The first of two regressions that the first thresholds missed.
+
+      **What happened.** A `merchant-api` release raised the error rate from 0.3% on
+      the baseline to 1.1% on the canary pods: 0.8 points, under the 1-point threshold.
+      The canary passed and the release reached full rollout. The team saw the errors
+      in Lantern the same afternoon and landed a revert commit.
+
+      **Expected.** A rise of that size stops the release at the canary.
+
+      **Actual.** The verdict was "pass".
+
+      **Fix.** The deploy joins the replay set as a regression the canary must catch.
+      The threshold itself is revisited in ENG-290 and ENG-291.
+    comments:
+      - "Lukas: Not a bug in the code: the analysis did what we told it. The threshold is the bug."
+  - key: ENG-283
+    type: Story
+    summary: "Lantern dashboard comparing canary and baseline pods"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As someone approving an inconclusive canary or disputing a verdict, I want to see
+      both groups side by side.
+
+      Acceptance criteria:
+
+      - a Lantern dashboard named "Canary analysis", with the service and the release
+        as variables;
+      - error rate and p99 for canary and baseline, with the thresholds drawn as lines
+        and the warm-up shaded;
+      - each evaluation marked as a pass or a breach;
+      - linked from every Shipwright canary message.
+  - key: ENG-284
+    type: Task
+    summary: "Judge batch services such as settlement-batcher on job success in staging"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Batch services such as `settlement-batcher` serve no request traffic, so a share
+      of traffic means nothing for them. For services marked as batch in
+      `shipwright.yaml`:
+
+      - skip the traffic split;
+      - judge the release on job success during the staging stage instead;
+      - always end the canary as "inconclusive", so that someone from the owning team
+        approves it with `shipwright approve-canary`.
+
+      Agree the list of batch services with their owners before switching it on.
+    comments:
+      - "Yusuf: Fine for settlement-batcher. We would rather approve by hand than have it judged on a handful of runs."
+  - key: ENG-285
+    type: Bug
+    summary: "Canary passed a notify release whose p99 rose 26%"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      The second regression that the first thresholds missed.
+
+      **What happened.** A `notify` release made webhook signing slower. p99 at the
+      ingress rose from 210 ms on the baseline to 265 ms on the canary pods, 26%, under
+      the 30% threshold. The canary passed, and webhook deliveries ran slow until the
+      next release.
+
+      **Expected.** A rise of a quarter in p99 stops the release.
+
+      **Actual.** The verdict was "pass".
+
+      **Fix.** Added to the replay set. With ENG-282, it is the reason the thresholds are
+      tightened in ENG-291.
+    comments:
+      - "Bram: Two misses in the first month. That is enough evidence to tighten."
+  - key: ENG-286
+    type: Story
+    summary: "Add service-specific canary signals with extra_checks"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As a service owner, I want to add a signal that matters for my service to its
+      canary analysis.
+
+      Acceptance criteria:
+
+      - `stages.canary.extra_checks` in `shipwright.yaml` lists named checks registered
+        with Shipwright;
+      - extra checks can only add reasons to fail; they cannot loosen or replace the two
+        default thresholds;
+      - a check may opt in to counting specific client errors;
+      - an unknown check name fails the build stage with a clear message.
+
+      ```yaml
+      stages:
+        canary:
+          extra_checks: [webhook_delivery_success]
+      ```
+  - key: ENG-287
+    type: Story
+    summary: "Webhook delivery success as an extra canary check for notify"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As the Merchant Experience team, we want `notify` canaries to fail when webhook
+      deliveries start failing, even when the service's own error rate looks healthy.
+
+      Acceptance criteria:
+
+      - a `webhook_delivery_success` check compares the delivery success rate of canary
+        and baseline pods;
+      - it uses the same windows and the same 3-consecutive-evaluations rule as the
+        default signals;
+      - `notify`'s `shipwright.yaml` turns it on, and other services may reuse it.
+    comments:
+      - "Ama: Merchants notice failed webhooks long before they notice anything else. Glad to see this."
+  - key: ENG-288
+    type: Story
+    summary: "Run the canary again on the same artefact with shipwright retry-canary"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      As someone deploying, I want to rerun a canary when both groups suffered from
+      something outside my change, such as an issuer slowing down mid-canary.
+
+      Acceptance criteria:
+
+      - `shipwright retry-canary <service>` starts a new canary with the same artefact,
+        with no rebuild and no new staging stage;
+      - it is accepted only after a failed or inconclusive verdict, and inside the deploy
+        windows;
+      - the output of the earlier attempt stays attached to the release.
+
+      Add it to the [Shipwright CLI cheat sheet](../../corpus/release/shipwright-cheatsheet.md).
+  - key: ENG-289
+    type: Bug
+    summary: "Canary error rate ignored failed calls on services that do not speak HTTP"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** Deploy, to a test service that answers over a protocol
+      other than HTTP, a release that fails one call in ten.
+
+      **Expected.** The canary error rate is about 10 points above the baseline, and the
+      canary fails.
+
+      **Actual.** The error rate was 0% on both groups. The ingress metrics only counted
+      HTTP status codes, so every failed call looked like a success.
+
+      **Fix.** The ingress now records failed calls for other protocols too, and the
+      analysis counts them as server errors. The replay set gained a deploy of this
+      kind.
+  - key: ENG-290
+    type: Task
+    summary: "Replay past deploys with candidate thresholds after the two misses"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Run the replay harness from ENG-271 again, with the two missed regressions added
+      (ENG-282 and ENG-285), over a grid of error-rate thresholds from 0.3 to 1 point and
+      p99 thresholds from 15% to 30%.
+
+      For each pair, report the regressions caught and the good deploys failed. We are
+      looking for the loosest pair that catches both misses and every incident-linked
+      deploy, so that teams do not learn to retry failed canaries by reflex.
+    comments:
+      - "Lukas: 0.5 points and 20% is the loosest pair that catches everything on the list. Proposal in ENG-291."
+  - key: ENG-291
+    type: Story
+    summary: "Tighten canary thresholds to 0.5 points of error rate and 20% of p99"
+    status: Done
+    priority: Highest
+    labels: [platform]
+    description: |
+      As the platform team, we want the canary to catch the regressions that the first
+      thresholds missed (ENG-282, ENG-285).
+
+      New rule: the canary fails when the error rate rises 0.5 points or more above the
+      baseline, or when p99 rises 20% or more. Points are percentage points: a baseline
+      of 0.2% and a canary of 0.7% fails; 0.2% and 0.6% passes.
+
+      Acceptance criteria:
+
+      - the replay set, now with both misses, shows each of them failing;
+      - the change is announced in `#team-platform` and `#deploys` a week ahead;
+      - the 1-point and 30% values are removed from the configuration, not kept as an
+        option.
+    comments:
+      - "Bram: Approved. Errors stay in absolute points: a relative rule would fail every canary of a service whose baseline is close to zero."
+      - "Lukas: Live for every service. I will watch the first weeks of verdicts closely."
+  - key: ENG-292
+    type: Story
+    summary: "Lint the canary block of shipwright.yaml on every pull request"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      As a reviewer, I want the canary values to be visible in each repository but
+      impossible to change.
+
+      Acceptance criteria:
+
+      - release engineering's linter checks `shipwright.yaml` on every pull request;
+      - it rejects a `canary` block whose `traffic_percent` is anything other than 5, or
+        whose `duration_minutes` is anything other than 30;
+      - it accepts `extra_checks`, and rejects any key that would remove or loosen a
+        default check;
+      - its error message links to the deployment pipeline page.
+  - key: ENG-293
+    type: Bug
+    summary: "approve-canary accepted a failed verdict before the release was stopped"
+    status: Done
+    priority: Highest
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** Let a canary fail on a test service, then run
+      `shipwright approve-canary <service>` within a few seconds of the verdict.
+
+      **Expected.** Refused: approval exists only for an "inconclusive" verdict.
+
+      **Actual.** Accepted. In the seconds between the "fail" verdict and the release
+      being marked as stopped, the command checked the release state rather than the
+      verdict, and the rollout started.
+
+      **Fix.** The verdict and the release state are now written in one transaction, and
+      approval checks the verdict itself. Regression test added. Found in testing; no
+      production release was affected.
+    comments:
+      - "Lukas: Worth the Highest. That is the one command that must never turn a fail into a rollout."
+  - key: ENG-294
+    type: Task
+    summary: "Annotate Lantern graphs with canary stage changes"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      Every Shipwright stage change already appears as an annotation on the service's
+      Lantern graphs. Add the canary's own events: its start, the end of warm-up, the
+      verdict, and a stop if there is one. Each annotation carries the release and a
+      link to the "Canary analysis" dashboard.
+
+      This lets anyone reading a graph tell at a glance whether a symptom began with the
+      canary or before it, which is the first question when deciding whether a release
+      is to blame.
+  - key: ENG-295
+    type: Story
+    summary: "Shorter canary for trivial changes"
+    status: Won't Do
+    priority: Low
+    labels: [platform]
+    description: |
+      Requested by two teams: let a release marked as trivial, such as a copy change or
+      a single configuration value, run a 10-minute canary instead of 30 minutes.
+
+      Acceptance criteria as requested:
+
+      - a `trivial: true` marker on the release, set by its author;
+      - when it is set, the canary lasts 10 minutes, with the same thresholds.
+
+      The requesters argue that the 30 minutes add up over a week of small releases.
+    comments:
+      - "Bram: Won't Do. The trivial changes are the ones nobody looks at closely, and configuration-only changes are releases like any other. The canary stays 5% for 30 minutes for everything."
+  - key: ENG-296
+    type: Story
+    summary: "Per-deploy option to loosen the canary thresholds"
+    status: Won't Do
+    priority: Lowest
+    labels: [platform]
+    description: |
+      Requested after a failed canary: an option on `shipwright deploy` to raise the
+      thresholds for one deploy, for a release that is known to be slower by design.
+
+      Acceptance criteria as requested:
+
+      - `--canary-p99-percent` and `--canary-error-points` options on `shipwright deploy`;
+      - the values used are recorded on the release.
+
+      The requesting team's release added a synchronous call and was expected to be
+      about a quarter slower at p99.
+    comments:
+      - "Lukas: Won't Do. Nobody can loosen or remove the two default thresholds, for one deploy or for good. Post the Shipwright output in #team-sre and we will look at the verdict with you."
+      - "Bram: Agreed. Disputed verdicts are how the thresholds improve; per-deploy overrides would only hide them."
+  - key: ENG-297
+    type: Task
+    summary: "Add the canary block to every production service's shipwright.yaml"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      The defaults apply without the block, but we want the values to be visible in
+      every repository. Open a pull request in each production service's repository
+      that adds the `stages.canary` block with 5 and 30, plus any extra checks the team
+      wants.
+
+      Track the repositories in this ticket and merge by the end of the sprint. Batch
+      services get the batch marker from ENG-284 instead of a traffic split.
+    comments:
+      - "Bram: All production services are done, the batch jobs included."
+  - key: ENG-298
+    type: Bug
+    summary: "Canary compared itself with a baseline mid-rollout of another release"
+    status: Done
+    priority: High
+    labels: [platform]
+    description: |
+      **Steps to reproduce.** Start a manual production deploy of a service while a
+      release train release of the same service is still in its rollout waves.
+
+      **Expected.** The second release waits at the end of staging.
+
+      **Actual.** Both ran. The second canary compared itself with a mix of old and new
+      pods, so its verdict meant nothing.
+
+      **Fix.** Shipwright now runs one production deploy per service at a time. A second
+      release waits at the end of staging and continues when the first finishes or is
+      stopped; if the first was stopped, the second is not promoted automatically. See
+      the [Release train FAQ](../../corpus/release/release-train-faq.md).
+    comments:
+      - "Lukas: This explains two of the odd verdicts disputed in #team-sre last month."
+  - key: ENG-299
+    type: Task
+    summary: "Write the canary analysis thresholds page"
+    status: Done
+    priority: Medium
+    labels: [platform]
+    description: |
+      Document the analysis for service owners on a short page in the release section:
+      the two signals and their thresholds with worked examples, what counts as an
+      error, how the verdict is reached, the inconclusive rule for quiet services, extra
+      checks, and how to dispute a verdict in `#team-sre`.
+
+      Name Site Reliability and Platform as joint owners, and link the page from the
+      deployment pipeline page. Published as
+      [Canary analysis thresholds](../../corpus/release/canary-analysis.md).
+    comments:
+      - "Lukas: Published, with the history of the first thresholds so that nobody proposes 1 point again."
+  - key: ENG-300
+    type: Task
+    summary: "Remove the manual canary prompt from Shipwright"
+    status: Done
+    priority: Medium
+    labels: [platform, tech-debt]
+    description: |
+      The old canary, a prompt asking the person deploying to confirm after looking at
+      dashboards, still exists behind a setting. Delete the prompt, the setting and the
+      documentation that describes it.
+
+      Services that still set it get a lint error pointing at the canary block, so that
+      nobody keeps a manual step by accident. Check the release train configuration as
+      well, since it skipped the prompt in its own way.
+  - key: ENG-301
+    type: Task
+    summary: "Rewrite the canary section of How code reaches production"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      Rewrite the canary section of
+      [How code reaches production](../../corpus/release/deployment-pipeline.md):
+      5% of traffic for 30 minutes, the automated comparison with the baseline, the
+      stop that sends traffic back to the current pods, and why no service gets a
+      shorter canary.
+
+      Add the `canary` block to the example `shipwright.yaml`, explain `extra_checks`,
+      and add a line for this epic to the page's history.
+  - key: ENG-302
+    type: Story
+    summary: "Report canary verdicts per team and per month"
+    status: Done
+    priority: Low
+    labels: [platform]
+    description: |
+      As the platform team, we want to know whether the canary is earning its 30
+      minutes.
+
+      Acceptance criteria:
+
+      - a Lantern panel showing canaries run, passed, failed and inconclusive, per team
+        and per month;
+      - each failed canary links to its Shipwright output;
+      - verdicts disputed in `#team-sre` are tagged, so that they can be counted and
+        reviewed.
+    comments:
+      - "Lukas: First weeks at the new thresholds: a handful of failures, and all but one were real regressions."
+  - key: ENG-303
+    type: Task
+    summary: "Hand the canary thresholds over to joint Platform and SRE ownership"
+    status: Done
+    priority: Lowest
+    labels: [platform]
+    description: |
+      Before closing the epic:
+
+      - record Site Reliability and Platform as joint owners of the thresholds;
+      - set a quarterly review of failed and disputed canaries;
+      - keep the replay harness in the Shipwright repository, so that any proposal to
+        change a threshold comes with a replay of past deploys.
+
+      Then close ENG-7.
+    comments:
+      - "Bram: Done. Closing the epic."

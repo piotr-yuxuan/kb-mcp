@@ -1,0 +1,742 @@
+epic:
+  key: ENG-3
+  summary: Card authorisation latency
+  sprints: [10, 18]
+  labels: [payments]
+  description: |
+    ## Goal
+
+    Keep `card-auth` within its p99 budget of 800 ms, and make sure one slow issuer or
+    an overloaded hardware security module cannot slow down payments for every
+    merchant.
+
+    ## Scope
+
+    - Latency measured by stage, on the Lantern dashboard "card-auth overview".
+    - The issuer timeout, and how `CAU-1207 ISSUER_TIMEOUT` is handled.
+    - Capacity: load tests, `CAU-1301 HSM_QUEUE_FULL`, the pod range, autoscaling.
+    - 3DS step-up sampling as a Switchboard flag the on-call can lower without a
+      deploy.
+    - Levers for the on-call, written up in the runbook.
+
+    ## Out of scope
+
+    The `fx-quote` rewrite (ENG-5), the fraud model served by `risk-scorer`, and the
+    acquiring bank connection itself.
+
+    ## Pages
+
+    - [Runbook: card authorisation latency](../../corpus/payments/card-auth-latency.md)
+    - [Incident report 2025-09-17: card authorisation latency](../../corpus/incidents/report-2025-09-17-card-auth-latency.md)
+  comments:
+    - "Nadia: Scope agreed with Payments Core and Site Reliability. Load tests first, so that we know where the limits are."
+tickets:
+  - key: ENG-109
+    type: Story
+    summary: Measure each authorisation stage with cardauth_stage_duration_seconds
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      When `card-auth` is slow we only see the end-to-end latency in
+      `cardauth_request_duration_seconds`, and the on-call has to guess which part grew.
+
+      Acceptance criteria:
+
+      - A histogram `cardauth_stage_duration_seconds`, labelled `stage`, for: request
+        parsing and merchant checks, the `risk-scorer` call, the `fx-quote` call,
+        hardware security module operations, 3DS checks, and the acquiring bank and
+        issuer round trip.
+      - The ledger journal is written asynchronously and is not a stage on the path.
+      - The stages are emitted as spans as well, with the same names.
+    comments:
+      - "Imogen: Spans and histogram share the stage names, so a slow trace can be matched to the panel."
+  - key: ENG-110
+    type: Story
+    summary: Latency by stage panel on the card-auth overview dashboard
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Add a **Latency by stage** panel to the Lantern dashboard "card-auth overview",
+      showing the p99 of each stage stacked, for the active region.
+
+      Acceptance criteria:
+
+      - Whichever stage grew is visible at a glance during an incident.
+      - The panel shows the last hour by default.
+      - Each stage links to its own panel (Risk score, FX, Security module queue, 3DS,
+        Issuer).
+
+      The point is the shape: the issuer is the largest part of the budget, and
+      everything we control should stay small.
+    comments:
+      - "Imogen: Baseline on a normal weekday afternoon: issuer round trip 480 ms at p99, 3DS 250 ms, risk-scorer 45 ms, parsing 15 ms, FX 20 ms, security modules 12 ms."
+  - key: ENG-111
+    type: Task
+    summary: Count CAU-1301 rejections and queue depth per hardware security module
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Before load testing, make the security module queue visible.
+
+      | Metric | What it measures |
+      |---|---|
+      | `cardauth_hsm_queue_depth` | Requests waiting for a hardware security module, by module |
+      | `cardauth_hsm_rejections_total` | `CAU-1301 HSM_QUEUE_FULL` count |
+
+      Add a **Security module queue** panel per module to "card-auth overview". A module
+      whose latency is flat at zero is out of service, and the panel should make that
+      obvious.
+  - key: ENG-112
+    type: Story
+    summary: Load test card-auth in staging against the issuer simulator
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      We do not know how much traffic `card-auth` can take before something gives.
+
+      Acceptance criteria:
+
+      - A load test in `staging-eu` ramps authorisations from normal peak to three
+        times normal peak, against the issuer simulator.
+      - It records p99 by stage, `CAU-1301` and the number of pods at each step.
+      - It measures capacity and where it breaks, not production latency.
+      - The run is booked through `#team-platform`, since it slows everyone's staging;
+        see [Staging environments](../../corpus/release/staging-environments.md).
+    comments:
+      - "Lukas: Slot booked for Thursday afternoon. Site Reliability will watch the cluster side."
+  - key: ENG-113
+    type: Story
+    summary: Move 3DS step-up sampling into Switchboard as sb.card-auth.stepup-sampling
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      The share of risk-flagged transactions sent to a 3DS step-up is a configuration
+      value, and changing it needs a deploy. When 3DS is slow, the on-call needs to
+      lower it in minutes.
+
+      Acceptance criteria:
+
+      - The Switchboard flag `sb.card-auth.stepup-sampling`, a number between 0 and 1,
+        with a normal value of `1.0`.
+      - Changing it takes effect without a deploy.
+      - Step-ups requested by the issuer or required by regulation are not affected.
+      - The flag's description names Risk ML as the team to tell when it is lowered.
+
+      See [Feature flags and kill switches](../../corpus/release/feature-flags.md) for
+      naming.
+    comments:
+      - "Mireille: Fine by Risk ML as long as we hear about every change below 1.0 at once."
+  - key: ENG-114
+    type: Story
+    summary: Lower the issuer timeout from 5 to 3 seconds
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      `card-auth` waits 5 seconds for an issuer before giving up. A buyer who has waited
+      3 seconds has usually left, and every second we hold a request also holds a
+      worker and a pod.
+
+      Acceptance criteria:
+
+      - The issuer timeout is 3 seconds.
+      - A request that times out ends in `CAU-1207 ISSUER_TIMEOUT`, counted in
+        `cardauth_issuer_timeouts_total`.
+      - The change is rolled out through the canary and watched on "card-auth overview"
+        for a day.
+    comments:
+      - "Nadia: The runbook should say plainly: do not raise it again during an incident."
+      - "Corinne: Live since 1 September. Early numbers: issuer timeouts as a share of authorisations barely moved, and worker occupancy at the evening peak is lower."
+  - key: ENG-115
+    type: Bug
+    summary: CAU-1301 under load tests at about 2.5 times normal peak traffic
+    status: Done
+    priority: Highest
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Run the staging load test from ENG-112 and ramp past twice
+      the normal peak.
+
+      **Expected.** Latency rises gradually; the autoscaler adds pods and the security
+      modules keep up.
+
+      **Actual.** At about 2.5 times normal peak traffic, `CAU-1301 HSM_QUEUE_FULL`
+      appears and climbs as pods are added. Each pod holds its own sessions to the
+      hardware security modules; past about 40 pods the modules spend more time
+      switching between sessions than doing work.
+
+      **Fix.** Cap `card-auth` at 40 pods (ENG-116) and plan capacity with 2.5 times
+      normal peak as our headroom.
+    comments:
+      - "Dara: Confirmed on the module side: session switches per second rise steeply above 40 pods."
+      - "Nadia: 2.5 times is the number we plan with from now on."
+  - key: ENG-116
+    type: Story
+    summary: Keep card-auth between 12 and 40 pods
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      After the load tests, the pod range becomes a contract.
+
+      ```yaml
+      # card-auth: HorizontalPodAutoscaler
+      spec:
+        minReplicas: 12
+        maxReplicas: 40
+      ```
+
+      Acceptance criteria:
+
+      - Never fewer than 12 pods, so that a single node failure does not hurt.
+      - Never more than 40, because beyond that the security modules thrash and
+        `CAU-1301` gets worse, not better.
+      - The range is documented with its reasons next to the autoscaler's definition.
+  - key: ENG-117
+    type: Task
+    summary: Annotate card-auth overview with deploys and Switchboard changes
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      A deploy or a flag change in the half hour before a rise in latency is the first
+      suspect. Make both visible without leaving the dashboard.
+
+      - Add a **Deploys and flag changes** annotation strip along the top of every
+        panel of "card-auth overview".
+      - Feed it from Shipwright deploys of `card-auth`, `risk-scorer` and `fx-quote`, and
+        from Switchboard changes to `sb.card-auth.*` flags.
+  - key: ENG-118
+    type: Story
+    summary: Issuer timeouts by issuer panel on card-auth overview
+    status: Done
+    priority: Medium
+    labels: [payments, pir-action]
+    description: |
+      PIR action from the SEV1 of 17 September 2025, written up in the
+      [incident report](../../corpus/incidents/report-2025-09-17-card-auth-latency.md):
+      the dashboard had no per-issuer view, so telling one slow issuer from many took
+      longer than it should have.
+
+      Acceptance criteria:
+
+      - A panel **Issuer timeouts by issuer** on "card-auth overview", from
+        `cardauth_issuer_timeouts_total` labelled by issuer.
+      - A per-issuer latency view, so that one slow issuer stands out from the rest.
+      - The panel shows at a glance whether one issuer or many are affected.
+  - key: ENG-119
+    type: Story
+    summary: Evaluate CardAuthP99High per region
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      `CardAuthP99High` fires when `card-auth` p99 is over 800 ms for 10 minutes, but
+      it is computed over both regions, so the warm standby's light traffic dilutes the
+      active region's latency.
+
+      Acceptance criteria:
+
+      - The alert is evaluated per region, from `cardauth_request_duration_seconds`.
+      - Only the active region pages the payments on-call.
+      - The standby region's alert opens a ticket instead.
+  - key: ENG-120
+    type: Story
+    summary: Acquiring bank link panel on card-auth overview
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      If every issuer is slow at once, the problem is usually between us and the card
+      schemes rather than at an issuer.
+
+      Acceptance criteria:
+
+      - An **Acquiring bank link** panel on "card-auth overview": connection count,
+        errors and round-trip latency to the acquiring bank.
+      - The panel sits next to the issuer panels, so the on-call can tell one issuer
+        from all of them.
+  - key: ENG-121
+    type: Task
+    summary: Agree with Risk ML how far the on-call may lower step-up sampling
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Lowering `sb.card-auth.stepup-sampling` shifts some fraud risk back to us. Agree
+      the limits with Risk ML and record them in the flag's description in Switchboard,
+      where the on-call sees them when changing the value.
+
+      | Value | Who may set it |
+      |---|---|
+      | `1.0` | Anyone, to restore |
+      | `0.5` | Payments on-call |
+      | `0.25` | Payments on-call, telling `#team-risk-ml` at once |
+      | below `0.25` | Only with Mireille Okonkwo or the Risk ML on-call |
+    comments:
+      - "Mireille: Agreed. Below a quarter, fraud exposure grows quickly; we want a person from Risk ML on the call."
+  - key: ENG-122
+    type: Story
+    summary: Per-issuer concurrency limits in card-auth
+    status: Done
+    priority: Highest
+    labels: [payments, pir-action]
+    description: |
+      PIR action from 17 September 2025. Every issuer shares one pool of workers, so a
+      slow issuer took all of them and payments to healthy issuers failed.
+
+      Acceptance criteria:
+
+      - One issuer can hold at most a fixed share of each pod's workers.
+      - Requests beyond that share are declined at once with a retryable reason,
+        instead of queueing behind the slow issuer.
+      - The share is configuration, with a default for every issuer.
+
+      ```yaml
+      issuer_concurrency:
+        default_max_share: 0.25
+      ```
+    comments:
+      - "Corinne: Owner. A share per issuer, checked with a slow simulated issuer in ENG-125 before the canary."
+      - "Ottilie: Thank you. This is the change that would have made 17 September an issuer problem rather than ours."
+  - key: ENG-123
+    type: Story
+    summary: Autoscale card-auth on in-flight requests as well as CPU
+    status: Done
+    priority: High
+    labels: [payments, pir-action]
+    description: |
+      PIR action from 17 September 2025. Workers waiting on a slow issuer use almost no
+      CPU, so the autoscaler kept `card-auth` at 18 pods while it ran out of capacity.
+
+      Acceptance criteria:
+
+      - The HorizontalPodAutoscaler scales on in-flight requests per pod as well as on
+        CPU; whichever asks for more pods wins.
+      - The range stays 12 to 40 pods.
+      - A load test with one slow simulated issuer shows the autoscaler adding pods
+        before the worker pool is exhausted.
+    comments:
+      - "Corinne: Kept CPU as a second metric rather than replacing it; CPU still leads on ordinary traffic spikes."
+  - key: ENG-124
+    type: Bug
+    summary: Per-issuer concurrency limit counts retried authorisations twice
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In staging, send authorisations to one issuer and make
+      the acquiring bank link drop a few connections, so that `card-auth` retries them.
+
+      **Expected.** A retried authorisation holds one slot in its issuer's limit.
+
+      **Actual.** The retry takes a second slot before the first is released, so an
+      issuer reaches its limit at about half the real concurrency and healthy requests
+      are declined.
+
+      **Fix.** Release the slot before the retry takes a new one, and test it with
+      forced connection drops.
+  - key: ENG-125
+    type: Task
+    summary: Load test the per-issuer limits with one slow simulated issuer
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Reproduce the shape of 17 September in staging before the limits reach
+      production.
+
+      - Send a fifth of the load test's traffic with the `issuer_timeout` card, so that
+        one simulated issuer never answers.
+      - Confirm that p99 for the other issuers stays under 800 ms.
+      - Confirm that the slow issuer never holds more than its share of workers.
+
+      Book the slot in `#team-platform`.
+    comments:
+      - "Corinne: Healthy issuers stayed under 800 ms throughout. Without the limits, the same run exhausted the pool in four minutes."
+  - key: ENG-126
+    type: Task
+    summary: Add the step-up sampling lever to the card authorisation latency runbook
+    status: Done
+    priority: Medium
+    labels: [payments, pir-action]
+    description: |
+      PIR action from 17 September 2025. The runbook did not mention
+      `sb.card-auth.stepup-sampling`; the operations lead found it by reading the
+      Switchboard keys.
+
+      - Add a section on reducing 3DS step-up sampling when the 3DS stage is slow.
+      - Say who may set which value, as agreed with Risk ML.
+      - Add a line to the after-incident steps: put the flag back to `1.0`.
+
+      See [Runbook: card authorisation latency](../../corpus/payments/card-auth-latency.md).
+  - key: ENG-127
+    type: Story
+    summary: Count 3DS step-ups by reason as risk, issuer or regulatory
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Risk ML want to see what lowering step-up sampling actually changes.
+
+      Acceptance criteria:
+
+      - A counter `cardauth_stepups_total`, labelled with the reason: `risk`, `issuer`
+        or `regulatory`.
+      - Only `risk` step-ups are affected by `sb.card-auth.stepup-sampling`.
+      - A 3DS panel on "card-auth overview" shows the three series.
+    comments:
+      - "Mireille: Exactly what we needed. We will look at the issuer series first."
+  - key: ENG-128
+    type: Bug
+    summary: Lowering step-up sampling also skips issuer-requested step-ups
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In staging, set `sb.card-auth.stepup-sampling` to `0.5`
+      and pay with the `stepup_challenge` card.
+
+      **Expected.** The issuer requests a step-up, and it always happens: the flag
+      applies only to risk-flagged transactions.
+
+      **Actual.** About half of issuer-requested step-ups are skipped too, as the new
+      `cardauth_stepups_total` counter showed.
+
+      **Fix.** Apply the sampling only to step-ups with the reason `risk`. Issuer and
+      regulatory step-ups bypass it, with a test for each reason.
+    comments:
+      - "Mireille: Glad we found it in staging, not after a real incident."
+  - key: ENG-129
+    type: Story
+    summary: Let the on-call raise card-auth's autoscaler floor during a traffic spike
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      When the autoscaler lags behind a spike, the on-call should raise the floor rather
+      than wait. Document it and check that the on-call has the rights.
+
+      ```bash
+      kubectl --context prod-primary -n card-auth patch hpa card-auth \
+        --type merge -p '{"spec":{"minReplicas":30}}'
+      ```
+
+      Acceptance criteria:
+
+      - The `payments-primary` rota can patch the autoscaler in the `card-auth`
+        namespace.
+      - The runbook says to put the floor back to 12 afterwards and never to set
+        `maxReplicas` above 40.
+  - key: ENG-130
+    type: Story
+    summary: Open security module sessions before a new card-auth pod takes traffic
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      A new pod opens its sessions to the hardware security modules on its first
+      requests, so the first authorisations it serves are slow.
+
+      Acceptance criteria:
+
+      - The readiness check passes only once the pod's module sessions are open.
+      - A new pod takes about 90 seconds to warm up and receives no traffic before.
+      - Scaling up during a spike no longer shows a latency bump on the Security module
+        queue panel.
+  - key: ENG-131
+    type: Task
+    summary: Repeat the card-auth load test before the November peak
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Run the staging load test again at the current release, with per-issuer limits
+      and the new autoscaling, before the change freeze.
+
+      - Ramp to three times normal peak.
+      - Record where `CAU-1301` first appears and how the autoscaler behaves.
+      - Repeat the slow issuer scenario from ENG-125.
+
+      Book the slot in `#team-platform` and run it with Site Reliability.
+    comments:
+      - "Lukas: CAU-1301 first appeared at about 2.5 times normal peak again, with 40 pods. Limits held during the slow issuer run."
+  - key: ENG-132
+    type: Story
+    summary: Restart card-auth pods a few at a time to protect the security module queue
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Each pod reopens its sessions to the hardware security modules on start-up. A
+      rollout that replaces many pods at once fills the module queue.
+
+      Acceptance criteria:
+
+      - Shipwright rolls out `card-auth` a few pods at a time, never removing a pod
+        before its replacement is ready.
+
+      ```yaml
+      strategy:
+        rollingUpdate:
+          maxSurge: 4
+          maxUnavailable: 0
+      ```
+
+      - The runbook warns never to restart all `card-auth` pods at once.
+  - key: ENG-133
+    type: Bug
+    summary: FX stage missing from latency by stage for cross-currency authorisations
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In the sandbox, pay on `mer_test_multi` in a currency
+      that needs a quote, then look at **Latency by stage**.
+
+      **Expected.** The `fx-quote` call appears as its own stage.
+
+      **Actual.** Its time is counted under parsing and merchant checks, because the
+      quote is requested before the stage timer for FX starts.
+
+      **Fix.** Start the FX stage before the quote request, and add a cross-currency
+      case to the stage tests.
+  - key: ENG-134
+    type: Bug
+    summary: CAU-1207 declines reach merchants without a retryable reason
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In the sandbox, pay with the `issuer_timeout` card on
+      `mer_test_gb_marketplace` (see
+      [Test merchants and test cards](../../corpus/payments/test-merchants.md)).
+
+      **Expected.** After 3 seconds the authorisation ends in `CAU-1207` and the merchant
+      receives a decline with a "try again" response.
+
+      **Actual.** The merchant receives the generic decline reason, so some marketplaces
+      tell buyers that their card was refused, and buyers do not retry.
+
+      **Fix.** Map `CAU-1207` to the retryable decline reason in `merchant-api`'s
+      response, and add a test for the `issuer_timeout` scenario.
+    comments:
+      - "Femi: Several merchants wrote to Support on 17 September because their buyers had been told their card was refused. Thank you."
+  - key: ENG-135
+    type: Task
+    summary: Brief the payments on-call on the card-auth levers before the November peak
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Before the peak, walk every engineer on `payments-primary` through the levers:
+
+      - find the stage first, on **Latency by stage**;
+      - scale within 12 to 40 pods, never above;
+      - reduce step-up sampling only for a slow 3DS stage, and tell Risk ML;
+      - for `CAU-1207` on one issuer, tell rather than tune;
+      - for `CAU-1301`, look at the modules, not the pod count.
+
+      Thirty minutes, recorded for those on leave.
+  - key: ENG-136
+    type: Story
+    summary: Raise card-auth's pod ceiling above 40 for the November peak
+    status: Won't Do
+    priority: Medium
+    labels: [payments]
+    description: |
+      Proposal: raise `maxReplicas` from 40 to 60 for the two weeks of the November
+      peak, to give the autoscaler more room if traffic exceeds the 2.5 times headroom
+      measured in ENG-131.
+
+      Raised by Site Reliability during peak planning, as insurance for the busiest
+      evenings, with the ceiling to return to 40 after the change freeze.
+    comments:
+      - "Nadia: Won't Do. Beyond 40 pods the security modules spend more time switching sessions than working, which makes CAU-1301 worse, as ENG-115 showed. More modules would raise the ceiling; more pods will not."
+  - key: ENG-137
+    type: Bug
+    summary: Issuers missing from the limits configuration share one concurrency bucket
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In staging, send traffic for two issuers that have no
+      entry in the issuer concurrency configuration, and make one of them slow.
+
+      **Expected.** Each issuer gets its own limit at the default share.
+
+      **Actual.** Both fall into one `unknown` bucket, so the slow one consumes the
+      other's share and its requests are declined.
+
+      **Fix.** Give every issuer its own bucket at `default_max_share`, whether or not
+      it is configured, with a test for two unconfigured issuers.
+  - key: ENG-138
+    type: Task
+    summary: Rewrite the card authorisation latency runbook around stages and levers
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Rewrite [Runbook: card authorisation latency](../../corpus/payments/card-auth-latency.md)
+      before the peak, around what ENG-3 built:
+
+      - the alert, `CAU-1207` and `CAU-1301`;
+      - the first five minutes on "card-auth overview";
+      - a decision tree from the stage that grew to the lever;
+      - Lever A, scale the pods; Lever B, step-up sampling; Lever C, issuer timeouts;
+        Lever D, the security module queue;
+      - things not to do, and what to reset afterwards.
+    comments:
+      - "Corinne: Added a composite worked example; it reads better than any single incident."
+      - "Lukas: Reviewed from the Site Reliability side. Good to publish."
+  - key: ENG-139
+    type: Bug
+    summary: Latency by stage panel stacks the asynchronous ledger write
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Open **Latency by stage** on "card-auth overview" during a
+      slow ledger period.
+
+      **Expected.** The ledger journal, written asynchronously, is not on the
+      authorisation path and does not appear in the stack.
+
+      **Actual.** It is stacked with the other stages, so a slow ledger makes
+      authorisation look slow when it is not.
+
+      **Fix.** Remove the ledger write from the stack and show it on its own **Ledger
+      writes** panel.
+  - key: ENG-140
+    type: Story
+    summary: Approval rate across all issuers on card-auth overview
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      On 17 September the clearest sign of a problem was the approval rate across all
+      issuers falling from its usual 91% to 64%. Nobody had that number on a dashboard;
+      it was worked out by hand.
+
+      Acceptance criteria:
+
+      - A panel showing the approval rate across all issuers, and the same rate without
+        the issuer with the most timeouts.
+      - The usual rate drawn as a reference line.
+    comments:
+      - "Femi: Support will use this panel to answer merchants who ask whether a decline is on our side."
+  - key: ENG-141
+    type: Story
+    summary: Skip risk-scorer calls when card-auth is over its latency budget
+    status: Won't Do
+    priority: Medium
+    labels: [payments]
+    description: |
+      Proposal: when `card-auth` p99 is over 800 ms, skip the `risk-scorer` call and
+      authorise without a fraud score, saving around 45 ms per authorisation at p99.
+
+      Suggested in the peak readiness review as a last-resort lever, for an evening
+      when the issuer stage alone eats most of the budget and every millisecond we
+      control matters.
+    comments:
+      - "Mireille: The fraud model's scores are not optional, and an over-budget evening is exactly when fraudsters are busy."
+      - "Nadia: Won't Do. If risk-scorer is slow, page Risk ML; the runbook says so."
+  - key: ENG-142
+    type: Story
+    summary: Show the share of workers each issuer holds on card-auth overview
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      With per-issuer limits in place, the on-call should see which issuers are close
+      to their share before they reach it.
+
+      Acceptance criteria:
+
+      - A panel showing, for the ten busiest issuers, the share of workers each holds.
+      - The configured limit drawn as a line.
+      - Declines caused by the limit shown separately from `CAU-1207`.
+    comments:
+      - "Corinne: Watched it through the first evenings of the peak: no issuer came near its share, and traffic came closer to the 2.5 times headroom than ever, with no CAU-1301."
+  - key: ENG-143
+    type: Task
+    summary: Record card-auth headroom through the November peak
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      During the [change freeze](../../corpus/release/change-freeze-2025.md), watch
+      `card-auth` through the busiest trading days and record how close it came to its
+      limits.
+
+      - Peak authorisations per second against normal peak, per day.
+      - Highest pod count and highest security module queue depth.
+      - Any `CAU-1301` and any `CardAuthP99High`.
+
+      The results feed next year's load test and capacity plan.
+    comments:
+      - "Corinne: Rota for the peak evenings agreed. Dara and I will watch the dashboards."
+  - key: ENG-144
+    type: Story
+    summary: Keep the card-auth load test repeatable before every peak
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      The load test was assembled by hand twice this year. Next year someone else will
+      need to run it.
+
+      Acceptance criteria:
+
+      - The scenarios live in `card-auth`'s repository, with a short guide.
+      - Site Reliability can run it with Payments Core in a booked staging slot.
+      - It reports where `CAU-1301` first appears, as a multiple of normal peak.
+    comments:
+      - "Lukas: Ran it from the guide without help. Good."
+  - key: ENG-145
+    type: Task
+    summary: Remove the unused 5-second issuer timeout setting from card-auth
+    status: Done
+    priority: Lowest
+    labels: [payments, tech-debt]
+    description: |
+      The issuer timeout has been 3 seconds since the start of September, but the old
+      5-second value is still defined as a commented-out setting and in two test
+      fixtures.
+
+      - Remove it from the configuration and the fixtures.
+      - Make the tests read the timeout from the configuration instead of hard-coding
+        it.
+  - key: ENG-146
+    type: Task
+    summary: Remove the deploy-time step-up sampling configuration value
+    status: Done
+    priority: Low
+    labels: [payments, tech-debt]
+    description: |
+      Since `sb.card-auth.stepup-sampling` moved to Switchboard, the old configuration
+      value is still read as a fallback when Switchboard cannot be reached.
+
+      - Remove the configuration key and its fallback.
+      - Use Switchboard's own cached value instead, as other flags do.
+      - Check that no environment still sets the old key.
+  - key: ENG-147
+    type: Task
+    summary: Close the card authorisation latency epic with latency and headroom figures
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Write the closing note for ENG-3 in `#team-payments-core`:
+
+      - p99 by stage before and after;
+      - the load test results and the 2.5 times headroom;
+      - the PIR actions from 17 September and their tickets;
+      - what is left for later.
+
+      Close the epic at the end of ENG Sprint 18.

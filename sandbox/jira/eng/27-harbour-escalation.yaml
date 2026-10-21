@@ -1,0 +1,832 @@
+epic:
+  key: ENG-27
+  summary: Harbour escalation workflow
+  sprints: [11, 18]
+  labels: [support]
+  description: |
+    ## Goal
+
+    Make every escalation of a merchant's ticket happen from Harbour itself, quickly
+    and visibly: from T1 to T2, from T2 to the engineering team that owns the service,
+    and from any P1 straight to the payments on-call through Klaxon.
+
+    ## Scope
+
+    - **Escalate to T2**, the `t2-investigations` queue and the escalation note.
+    - **Create engineering ticket**, with the component of the service at fault, and
+      the ENG ticket's status in the side panel.
+    - **Page payments on-call** from the action menu, and an automatic page whenever a
+      ticket is set to P1; out of business hours, the support duty agent is paged too.
+    - First-response clocks that survive queue moves, merges and reopening, with amber
+      and red warnings.
+    - Incident tags `inc-[short name]` and closing replies from the tagged view.
+
+    ## Out of scope
+
+    - The P1 to P4 scale and its targets, which do not change.
+    - Klaxon's acknowledgement times and escalation chain, which belong to engineering.
+    - Merging the support, incident and security scales.
+
+    ## Pages
+
+    - [Support escalation playbook](../../corpus/support/escalation.md)
+    - [Ticket priorities and SLAs](../../corpus/support/priorities-and-slas.md)
+    - [Using Harbour](../../corpus/support/harbour-how-to.md)
+    - [On-call rota and paging policy](../../corpus/incidents/on-call.md)
+  comments:
+    - "Femi: The priority scale stays exactly as it is. This epic changes what Harbour does with a priority, not what the priority means."
+    - "Lukas: Site Reliability owns Harbour's side of the Klaxon integration. Questions about pages that did not arrive go to #team-sre."
+tickets:
+  - key: ENG-1045
+    type: Task
+    summary: Map how P1 tickets reach the payments on-call today
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Before building anything, write down how a P1 ticket reaches an engineer today.
+      Agents ask the T2 duty specialist in `#team-support`, email
+      `payments-oncall@quillmoor.example`, or phone whoever they know on the payments
+      rota, and nothing on the ticket shows whether anyone was paged.
+
+      Use the payouts incident of 3 June as the worked case: Merchant Support handled
+      64 Harbour tickets that morning, and Harbour cannot tell us which of them reached
+      the on-call, or when. See the
+      [incident report](../../corpus/incidents/report-2025-06-03-payouts-delayed.md).
+
+      Deliverable: a one-page flow of today's routes, the delays we can measure from
+      ticket history, and the decisions this epic needs.
+    comments:
+      - "Femi: Add the out-of-hours route. At night the support duty agent is the only person who sees the ticket, and they page by email."
+  - key: ENG-1046
+    type: Task
+    summary: Give Harbour a Klaxon service account with its token in Strongroom
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Harbour needs to open Klaxon pages on its own. Create a service account for
+      Harbour in Klaxon that can open pages and read their status, and nothing else.
+
+      Done when:
+
+      - the account exists in Klaxon and is owned by Site Reliability;
+      - its token is in Strongroom, the only secrets store under ADR-020, and Harbour
+        reads it from there at start-up;
+      - no token appears in Harbour's settings screen or admin notes;
+      - a test page from Harbour reaches a test rota in Klaxon.
+    comments:
+      - "Lukas: Site Reliability will own the account. Klaxon itself is on sre-primary, so the integration is ours too."
+      - "Callum: Put the token on the 90-day schedule for service tokens, and nowhere but Strongroom."
+  - key: ENG-1047
+    type: Story
+    summary: Add the t2-investigations queue to Harbour
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As the T2 duty specialist, I need one queue holding every ticket that T1
+      escalates, so that nothing escalated waits in somebody's personal view.
+
+      Acceptance criteria:
+
+      - A `t2-investigations` queue exists, worked by T2 and sorted by due time, oldest
+        first.
+      - Only users with a T2 role can take a ticket over from it; T1 agents can still
+        read and follow its tickets.
+      - The queue shows each ticket's priority, product and escalating agent.
+      - The T2 duty specialist of the day, taken from the team calendar, is shown at
+        the top of the queue.
+  - key: ENG-1048
+    type: Story
+    summary: Escalate to T2 with the product, account reference and a one-line summary
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      As a T1 agent, I want an action that moves a ticket to T2 and asks for what T2
+      needs, so that the next tier can start without coming back to me.
+
+      Acceptance criteria:
+
+      - **Escalate to T2** in the Actions menu moves the ticket to
+        `t2-investigations`.
+      - It requires three fields: the product (Quillmoor Pay, Quillmoor Payouts,
+        Merchant Hub or Merchant API), the merchant's account reference, and a
+        one-line summary.
+      - The escalating agent stays the owner and is kept as a follower; the owner
+        changes only when T2 takes the ticket over.
+      - The ticket's priority and first-response clock do not change.
+    comments:
+      - "Dorian: The three fields are required, not optional. A summary reading 'see ticket' is not a summary."
+  - key: ENG-1049
+    type: Task
+    summary: Agree the T2 escalation note template with the T2 lead
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Every escalation note should let T2 start without asking a question. Agree its
+      shape with Dorian and the T1 leads, then load it as the internal note that
+      **Escalate to T2** opens:
+
+      ```text
+      Merchant: [trading name], account [reference]
+      Asked: [what the merchant wants, in one sentence]
+      Checked: [what you have already looked at, and what you found]
+      Payments or payouts: [references, amounts, dates]
+      Merchant told: [what you have promised, and by when]
+      ```
+
+      Add the `escalated-to-t2` macro for the matching reply to the merchant, which
+      says that the agent stays on the ticket.
+    comments:
+      - "Dorian: Agreed as above. Five lines; anything longer goes in a second note."
+      - "Ewan: Loaded as the note template for T1 in London. Inès has it for Paris."
+  - key: ENG-1050
+    type: Story
+    summary: Page the payments on-call from a ticket's action menu
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      As a support agent, I want to page the payments on-call from the ticket itself,
+      so that I do not have to copy details into an email at the worst moment.
+
+      Acceptance criteria:
+
+      - **Page payments on-call** in the Actions menu sends a Klaxon page to
+        `payments-primary`.
+      - The action opens a form, prefilled in the short shape the on-call reads on a
+        phone:
+
+      ```text
+      P1 / payments: [one line on the symptom]
+      Merchants affected: [count and references, or "one so far"]
+      Since: [time, UK]
+      Evidence: [error codes, payment references, Lantern link if you have one]
+      Harbour: [ticket link]
+      Support contact: [your name, and how to reach you]
+      ```
+
+      - Every agent can use it, T1 included, without asking T2.
+    comments:
+      - "Nadia: Short is right. The on-call reads it on a phone, often half awake."
+  - key: ENG-1051
+    type: Story
+    summary: Show the Klaxon pages sent from a ticket in its side panel
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As an agent, I want to see on the ticket whether a page has gone out and whether
+      the on-call has acknowledged it, so that nobody pages twice.
+
+      Acceptance criteria:
+
+      - The side panel lists every Klaxon page sent from the ticket, with its time,
+        rota and state: sent, acknowledged or escalated.
+      - The state refreshes within a minute of a change in Klaxon.
+      - If Klaxon cannot be reached, the panel says so instead of showing nothing.
+      - The page history stays on the ticket after it is solved.
+  - key: ENG-1052
+    type: Bug
+    summary: Escalate to T2 drops the escalating agent as a follower
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. As a T1 agent, open a ticket you own in `general`.
+      2. Use **Escalate to T2** and fill in the three fields.
+      3. Open the ticket's followers.
+
+      **Expected:** you are still the owner and a follower, and you receive T2's
+      internal notes.
+
+      **Actual:** you are no longer a follower. The move ran the `general` queue's exit
+      rule, which clears followers, so the merchant's next reply reached nobody.
+
+      **Fix:** the escalation moves the ticket first and then adds the agent back as a
+      follower; the exit rule no longer clears followers on escalations.
+  - key: ENG-1053
+    type: Story
+    summary: Open an ENG ticket from Harbour with the faulty service as its component
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As a T2 specialist, I want to raise an engineering ticket from the Harbour
+      ticket, so that T3 gets the merchant's reference and the Harbour link without my
+      copying them.
+
+      Acceptance criteria:
+
+      - **Create engineering ticket** opens a ticket in ENG with the merchant's account
+        reference, the Harbour link and a component.
+      - The component is the service at fault: `card-auth` and `fx-quote` for Payments
+        Core, `payout-gateway` and `settlement-batcher` for Payouts, `ledger` for
+        Ledger, `merchant-api`, `merchant-hub` and `notify` for Merchant Experience,
+        `risk-scorer` for Risk ML.
+      - The ENG ticket's summary defaults to the escalation summary.
+
+      The routing table is in the
+      [support escalation playbook](../../corpus/support/escalation.md).
+    comments:
+      - "Kwabena: Ledger is happy with the list. Questions about statement lines come to us, not to Payouts."
+  - key: ENG-1054
+    type: Task
+    summary: Keep the payments-oncall email address as the fallback when Harbour is down
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Mail to `payments-oncall@quillmoor.example` opens a Klaxon page to the payments
+      on-call. Once paging moves into Harbour, that address must stay as the route for
+      when Harbour itself is unavailable.
+
+      - Check that mail to the address still opens a page on `payments-primary`, with
+        the subject as the page's first line.
+      - Agree with Site Reliability who owns the mailbox rule.
+      - Keep the address in the playbook's paging section and in Harbour's own help,
+        marked as the fallback.
+  - key: ENG-1055
+    type: Story
+    summary: Tag every ticket about a declared incident with its inc- short name
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      As the support liaison in an incident, I need to count and answer every ticket
+      about it together. During the SEV1 of 17 September, in
+      `#inc-card-auth-latency`, the related tickets could only be found by searching
+      for them one by one; see the
+      [incident report](../../corpus/incidents/report-2025-09-17-card-auth-latency.md).
+
+      Acceptance criteria:
+
+      - A tag `inc-[short name]` can be added to many tickets at once, from a search or
+        a view.
+      - Each incident tag gets a view listing its tickets with their status and last
+        public reply.
+      - The view shows the number of tickets and of merchants, for the liaison's
+        updates in the incident channel.
+    comments:
+      - "Femi: This is what was missing on 17 September. Counting tickets by hand while writing Beacon updates does not work."
+  - key: ENG-1056
+    type: Story
+    summary: Show the linked ENG ticket's status in the Harbour side panel
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As the agent who owns a merchant's ticket, I want to see where the engineering
+      ticket stands without leaving Harbour, so that I can keep the merchant informed
+      and engineers never need to write to them.
+
+      Acceptance criteria:
+
+      - The side panel lists every ENG ticket linked to the Harbour ticket, with its
+        key, status and assignee.
+      - The status refreshes within 15 minutes of a change.
+      - When a linked ENG ticket is done, the Harbour ticket's owner is notified, to
+        confirm the fix with the merchant and solve the ticket.
+  - key: ENG-1057
+    type: Bug
+    summary: ENG tickets raised from Harbour lose an account reference linked by hand
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. Open a ticket whose sender Harbour could not match to a merchant account.
+      2. Link the account by hand.
+      3. Use **Create engineering ticket**.
+
+      **Expected:** the ENG ticket carries the merchant's account reference.
+
+      **Actual:** the reference is empty. The action read the account from the
+      sender's email match rather than from the ticket's linked account.
+
+      **Fix:** read the reference from the linked account, and refuse to create the
+      ENG ticket while no account is linked, with a message saying where to link one.
+  - key: ENG-1058
+    type: Story
+    summary: Route P1 tickets to the payments on-call
+    status: Done
+    priority: Highest
+    labels: [support]
+    description: |
+      As a support agent, I want setting a ticket to P1 to page the payments on-call by
+      itself, so that a merchant who cannot take payments reaches an engineer within
+      minutes, whoever is on shift.
+
+      Acceptance criteria:
+
+      - Changing a ticket's priority to P1 sends a Klaxon page to `payments-primary`,
+        with the ticket's summary and link.
+      - The page shows as sent in the ticket's side panel, so that nobody pages a
+        second time.
+      - Other changes to a P1 ticket send nothing new.
+      - The rule can be switched on queue by queue.
+
+      What the on-call does with the page is set out in
+      [On-call rota and paging policy](../../corpus/incidents/on-call.md).
+    comments:
+      - "Nadia: Fine by Payments. A P1 that turns out to be the merchant's own configuration is still worth a page."
+      - "Lukas: If the primary does not acknowledge, Klaxon escalates to payments-secondary by itself. Harbour does not need to retry."
+  - key: ENG-1059
+    type: Task
+    summary: Test P1 paging against a Klaxon test rota and switch it on for general
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Before P1 paging reaches a real phone, test it end to end against a Klaxon test
+      rota, then switch it on for the `general` queue.
+
+      - Two volunteers from the payments rota carry the test rota for a week.
+      - Set ten test tickets to P1 across `general`, `payouts` and `strategic`, in and
+        out of business hours.
+      - Check each page's text and link, the time from the priority change to the
+        page, and the side panel.
+      - Check that nothing is sent for P2 to P4.
+
+      Any failure that loses or delays a page blocks the switch on `general`. Record
+      the results on this ticket.
+    comments:
+      - "Yusuf: Ten pages, all within 20 seconds of the priority change. Saving a P1 ticket a second time paged us again; raised as a bug. The link also asks for a sign-in on the phone."
+      - "Femi: Switched on for general, and agents told not to edit a P1 ticket until the double page is fixed. Other queues wait for the fix."
+  - key: ENG-1060
+    type: Task
+    summary: Move the support duty rota into Klaxon
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Harbour cannot page the support duty agent while the duty rota lives on the team
+      calendar. Create the `support-duty` rota in Klaxon:
+
+      - one agent on duty outside business hours and all weekend, for P1 tickets only;
+      - weekly duty, handing over at the same day and time as the engineering rotas;
+      - swaps made in Klaxon, under the same rule as engineering swaps;
+      - T2 specialists and T1 agents with more than a year in the team.
+
+      See [Support shift patterns](../../corpus/support/shift-patterns.md).
+  - key: ENG-1061
+    type: Story
+    summary: Page the support duty agent for P1 tickets out of business hours
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      As the support duty agent, I want to be paged when a P1 arrives at night or at
+      the weekend, so that the merchant gets a first response within 15 minutes at all
+      hours.
+
+      Acceptance criteria:
+
+      - A ticket set to P1 outside the business hours of its queue pages the
+        `support-duty` rota as well as `payments-primary`.
+      - In business hours, only the payments on-call is paged.
+      - Tickets from French-speaking merchants follow the same rule; the duty agent
+        answers in English and attaches `fr-p1-accuse-reception`.
+      - Both pages appear in the side panel.
+    comments:
+      - "Inès: Agreed with the Paris team. Out of hours a French merchant gets the English reply with our French acknowledgement attached."
+  - key: ENG-1062
+    type: Bug
+    summary: Saving a P1 ticket again sends a second Klaxon page
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. Set a ticket to P1; a page goes to the payments on-call.
+      2. Change another field, such as the product, and save.
+
+      **Expected:** no new page; the side panel still shows the first one.
+
+      **Actual:** a second page goes out. The rule fired on every save of a ticket
+      whose priority is P1, rather than on the change to P1. Found on the test rota in
+      ENG-1059.
+
+      **Fix:** the rule fires only when the priority changes to P1. Setting P1 again
+      after a downgrade pages again, on purpose.
+    comments:
+      - "Yusuf: Seen twice on the test rota, both times for the same ticket."
+  - key: ENG-1063
+    type: Story
+    summary: Pin open P1 tickets at the top of every Harbour view
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As any agent, I want open P1 tickets above everything else in every view, so
+      that nobody works a P3 while a merchant cannot take payments.
+
+      Acceptance criteria:
+
+      - Open P1 tickets are pinned at the top of every queue and personal view,
+        whatever the sort order.
+      - The pin goes when the ticket is downgraded or solved.
+      - A pinned ticket shows the time left to its first-response target.
+  - key: ENG-1064
+    type: Story
+    summary: Notify the T2 duty specialist when a ticket is set to P2
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As the T2 duty specialist, I want to know when a ticket becomes a P2, so that T2
+      can join if the cause is not obvious within the hour.
+
+      Acceptance criteria:
+
+      - Setting a ticket to P2 notifies the T2 duty specialist of the day in Harbour.
+      - The ticket moves to the top of its queue.
+      - No page is sent: out of business hours, the notification waits for the
+        morning shift.
+      - When no duty specialist is set on the team calendar, the T2 lead is notified
+        instead.
+  - key: ENG-1065
+    type: Story
+    summary: Turn tickets amber at 75% of the first-response target
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As an agent, I want to see which tickets are close to breaching, so that I answer
+      them first.
+
+      Acceptance criteria:
+
+      - A ticket turns amber when 75% of its first-response target has elapsed, and
+        red when the target is missed.
+      - The clock follows the business hours of the queue the ticket arrived in.
+      - A **My due soon** view lists every ticket I own that turns amber in the next
+        two hours.
+      - The due time stays on the ticket in text; colour is never the only signal.
+
+      The targets are on
+      [Ticket priorities and SLAs](../../corpus/support/priorities-and-slas.md).
+  - key: ENG-1066
+    type: Bug
+    summary: Moving a ticket to fr-marchands restarts its first-response clock
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. A merchant whose account language is English writes in French to `general` at
+         16:00 UK time; the ticket is set to P3.
+      2. A London agent moves it to `fr-marchands`.
+
+      **Expected:** the ticket keeps its original due time; moving a ticket never
+      restarts or changes its clock.
+
+      **Actual:** Harbour recomputed the due time from the moment of the move, in Paris
+      business hours, which hid breaches from the weekly report.
+
+      **Fix:** the due time is set when the ticket is created and survives queue
+      moves. See
+      [Supporting French-speaking merchants](../../corpus/support/french-speaking-merchants.md).
+    comments:
+      - "Inès: That explains the late tickets that never showed as breaches in Paris. Thank you."
+  - key: ENG-1067
+    type: Story
+    summary: Keep the earliest creation time and highest priority when merging tickets
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As an agent, I want merged tickets to keep the most urgent clock, so that merging
+      duplicates never hides a breach.
+
+      Acceptance criteria:
+
+      - **Merge** joins duplicate tickets; the surviving ticket keeps the earliest
+        creation time and the highest priority of the set.
+      - If any merged ticket was a P1 with a page sent, no new page goes out.
+      - Tickets merged into another get no satisfaction survey.
+      - The history of every merged ticket stays readable on the surviving one.
+  - key: ENG-1068
+    type: Task
+    summary: Rewrite the support escalation playbook around the new Harbour actions
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Rewrite the support escalation playbook now that **Escalate to T2**, **Create
+      engineering ticket** and **Page payments on-call** exist, and P1 tickets page by
+      themselves.
+
+      - Replace the manual steps with the actions; the tiers T1, T2 and T3 stay as
+        they are.
+      - Keep the table of when to page and the list of when not to.
+      - Say plainly that setting P1 pages the on-call, and that nobody should page a
+        second time.
+      - Leave acknowledgement times to the on-call page.
+
+      Owner: Dorian, with Lukas checking the section on what happens after a page.
+    comments:
+      - "Dorian: Draft is in #team-support. Comments by Friday, please."
+      - "Lukas: The section after the page is right. Keep acknowledgement times on the on-call page rather than repeating them."
+  - key: ENG-1069
+    type: Story
+    summary: Add the ack-p1 macro and its p1-ack tag
+    status: Done
+    priority: Low
+    labels: [support]
+    description: |
+      As an agent answering a P1, I want a first-response macro to adapt, so that the
+      merchant hears from a person within 15 minutes.
+
+      Acceptance criteria:
+
+      - `ack-p1` thanks the merchant, says that engineers have been alerted, and asks
+        for two failed payment references.
+      - It sets the tag `p1-ack`, which the weekly review uses to count P1 first
+        responses.
+      - Its internal description names the escalation playbook.
+      - A reply sent with the macro text unchanged is marked for the weekly review,
+        since an unedited macro does not count as a first response.
+  - key: ENG-1070
+    type: Task
+    summary: Train agents in London and Paris on P1 paging
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Before automatic paging covers every queue, every agent who can set a P1 needs to
+      know what it sets off.
+
+      - One 30-minute session in London and one in Paris, recorded for the support
+        duty rota.
+      - Cover what counts as a P1, what the page contains, how to read the side panel,
+        and what to do when the on-call says the problem is not ours.
+      - Stress the commonest mistake: a payout problem is a P2, however large the
+        marketplace.
+
+      Ewan runs London, Inès runs Paris.
+    comments:
+      - "Ewan: London sessions done. The recording is pinned in #team-support for the duty rota."
+      - "Inès: Paris session done, in French."
+  - key: ENG-1071
+    type: Story
+    summary: Flag three tickets reporting the same failure within 30 minutes
+    status: Won't Do
+    priority: Medium
+    labels: [support]
+    description: |
+      As the T2 duty specialist, I want Harbour to tell me when three or more merchants
+      report the same failure in payments or payouts within 30 minutes, so that we
+      page even when each ticket alone is a P2.
+
+      Acceptance criteria:
+
+      - Harbour groups new tickets by product and by keywords in the symptom.
+      - A group of three or more within 30 minutes notifies the T2 duty specialist and
+        suggests a page.
+      - Agents can dismiss a false group with one click.
+    comments:
+      - "Joss: Tried the grouping on six weeks of tickets. It grouped unrelated tickets far more often than it found real clusters."
+      - "Femi: Won't Do. The three-merchants rule stays with agents, who apply it from the playbook and post in #team-support so that others tag new tickets."
+  - key: ENG-1072
+    type: Bug
+    summary: Klaxon pages from French tickets arrive without a summary
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. In `fr-marchands`, set to P1 a ticket whose summary has an accented letter,
+         such as « Paiements refusés ».
+      2. Open the page in Klaxon.
+
+      **Expected:** the page shows the ticket's summary and link.
+
+      **Actual:** the summary line is empty and only the link arrives. Harbour sent the
+      page body in Latin-1, which Klaxon rejected and dropped.
+
+      **Fix:** send the page body as UTF-8, and add a test with accented summaries.
+      Found while preparing the Paris training session.
+    comments:
+      - "Inès: The link still arrives, so the on-call can open the ticket, but please fix it before the peak."
+  - key: ENG-1073
+    type: Task
+    summary: Switch on P1 paging for every queue before the peak freeze
+    status: Done
+    priority: Highest
+    labels: [support]
+    description: |
+      P1 paging has run on `general` since ENG-1059. Switch it on for every other queue
+      before the peak trading freeze starts on 24 November, so that the busiest weekend
+      of the year runs on the new route.
+
+      - Enable the rule on every queue, `fr-marchands` and `strategic` included.
+      - Confirm with Nadia and Yusuf that the payments rota is ready for the extra
+        pages.
+      - Announce it in `#team-support` with the rewritten playbook.
+      - Keep the switch per queue, so that a queue can be turned off if pages misfire.
+    comments:
+      - "Yusuf: Payouts is fine with it. Most payout problems are P2 anyway."
+      - "Femi: The announcement for #team-support is drafted. It goes out the day the switch flips."
+  - key: ENG-1074
+    type: Story
+    summary: Send the closing reply to every ticket tagged for an incident
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As the support liaison, I want to send the closing reply from the incident's
+      tagged view, so that every merchant who wrote in hears that the incident is
+      resolved.
+
+      Acceptance criteria:
+
+      - From an `inc-` view, one action sends an adapted reply to every open ticket in
+        the view.
+      - Tickets that already had a public reply after the resolution are skipped.
+      - The view then lists any tagged ticket with no public reply since the
+        resolution.
+      - Tickets tagged `inc-` get no satisfaction survey.
+  - key: ENG-1075
+    type: Task
+    summary: Build a Harbour health dashboard in Lantern
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Agents and the on-call need one place to see whether Harbour, and its paging, is
+      working. Build a Lantern dashboard named "Harbour health" with:
+
+      - Harbour's availability and page load times;
+      - the delay between a priority change to P1 and the Klaxon page;
+      - failed calls from Harbour to Klaxon over the last hour.
+
+      Alert `sre-primary` when Harbour cannot reach Klaxon for 5 minutes, since P1
+      pages would stop. Link the dashboard from
+      [Using Harbour](../../corpus/support/harbour-how-to.md), next to the email
+      fallback.
+    comments:
+      - "Lukas: Dashboard and alert are live. The alert pages sre-primary, not the payments rota."
+  - key: ENG-1076
+    type: Bug
+    summary: Ticket link in a Klaxon page opens Harbour's sign-in screen on phones
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. Receive a P1 page in the Klaxon phone app.
+      2. Tap the Harbour link.
+
+      **Expected:** the ticket opens, after single sign-on if needed.
+
+      **Actual:** the link opens Harbour's sign-in screen and, after sign-in, lands on
+      the home view; the on-call has to search for the ticket. First noticed in
+      ENG-1059, and hit again by the payments on-call since paging went live.
+
+      **Fix:** the page carries the ticket's permanent link, and Harbour's sign-in
+      keeps the target through the redirect.
+    comments:
+      - "Yusuf: Hit it twice last week. Searching for the ticket costs a minute nobody has on a P1."
+  - key: ENG-1077
+    type: Story
+    summary: Restrict downgrading a P1 to T2 specialists and team leads
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As the head of support, I want P1 downgrades limited and explained, so that
+      nobody lowers a priority to move a due time.
+
+      Acceptance criteria:
+
+      - Only users with a T2 or team lead role can change a P1 to a lower priority.
+      - A downgrade asks for a reason, saved as an internal note.
+      - Harbour records every priority change with who made it, when, and how long
+        was left before the due time.
+  - key: ENG-1078
+    type: Story
+    summary: Weekly report of P1 tickets, pages and breaches
+    status: Done
+    priority: Low
+    labels: [support]
+    description: |
+      As the head of support, I want a weekly report of P1 tickets, so that the Monday
+      review and the P1 breach reviews start from the same figures.
+
+      Acceptance criteria:
+
+      - For the previous Monday to Sunday: P1 tickets received, answered on time and
+        breached, per queue.
+      - For each P1: the time to page, the time to acknowledgement, and whether the
+        support duty agent was paged.
+      - Every downgrade made in the hour before a due time is listed.
+      - Breaches link to their tickets, for Femi's review within the week.
+  - key: ENG-1079
+    type: Story
+    summary: Set the priority from the merchant's urgency answer on the contact form
+    status: Won't Do
+    priority: Low
+    labels: [support]
+    description: |
+      As a T1 agent, I would like Harbour to set the priority from the urgency the
+      merchant chooses on the contact form in Merchant Hub, so that urgent tickets do
+      not wait at the default P3.
+
+      Acceptance criteria:
+
+      - Each answer on the contact form maps to a priority from P1 to P4.
+      - Agents can change the priority afterwards.
+      - A mapped P1 pages the payments on-call like any other.
+    comments:
+      - "Dorian: Most merchants pick the most urgent option whatever the problem. Mapping it to P1 would page the on-call for how-to questions."
+      - "Femi: Won't Do. Agents set the priority. Harbour keeps showing the merchant's answer on the ticket, which is enough to triage it first."
+  - key: ENG-1080
+    type: Bug
+    summary: Reopened tickets keep their original first-response target
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. Solve a P3 ticket.
+      2. Three days later the merchant replies, and the ticket reopens.
+
+      **Expected:** a new first-response target at the ticket's current priority,
+      counted from the reopening.
+
+      **Actual:** the ticket keeps its original target, long passed, turns red at once
+      and counts as a breach in the weekly report.
+
+      **Fix:** reopening sets a new target, and the weekly report counts the reply to a
+      reopened ticket as a new first response.
+  - key: ENG-1081
+    type: Task
+    summary: Review the P1 pages sent during the peak trading freeze
+    status: Done
+    priority: Medium
+    labels: [support, follow-up]
+    description: |
+      The peak trading freeze ran from 24 November to 2 December, the first peak with
+      P1 paging on every queue. Review every page Harbour sent over the period:
+
+      - time from ticket creation to P1, and from P1 to the on-call's acknowledgement;
+      - P1 tickets that turned out to be the merchant's own configuration;
+      - tickets that should have been P1 and sat at the default P3.
+
+      ```sql
+      select ticket_id, queue, created_at, p1_set_at, page_acknowledged_at
+      from harbour.p1_pages
+      where p1_set_at between '2025-11-24' and '2025-12-03'
+      order by p1_set_at;
+      ```
+
+      Bring the findings to the support weekly review.
+    comments:
+      - "Femi: Every page was acknowledged quickly. Two tickets sat at the default P3 for too long before triage; the morning shift now triages general from the oldest ticket first."
+  - key: ENG-1082
+    type: Task
+    summary: Remove the manual paging steps from support macros
+    status: Done
+    priority: Low
+    labels: [support, tech-debt]
+    description: |
+      Several macros and their internal descriptions still tell agents to email or
+      phone the payments on-call for a P1. Now that setting P1 pages by itself, these
+      steps cause double pages.
+
+      - Find the macros that cite the escalation playbook and remove the manual paging
+        steps.
+      - Keep the email route in the playbook only, as the fallback when Harbour is
+        down.
+      - Ewan checks the English macros and Inès the French ones,
+        `fr-p1-accuse-reception` included.
+  - key: ENG-1083
+    type: Task
+    summary: Hand the Harbour escalation rules over to support operations
+    status: Done
+    priority: Lowest
+    labels: [support]
+    description: |
+      Hand the rules this epic built to the people who will run them, and close the
+      epic.
+
+      - List every Harbour rule it added: P1 paging, support duty paging, the P2
+        notification, pinning, clock colours, merges and reopening.
+      - Name support operations as owner of the rules, and Site Reliability as owner
+        of Harbour's Klaxon account.
+      - Check that the escalation playbook, the priorities page and Using Harbour all
+        say that setting P1 pages the on-call.
+    comments:
+      - "Femi: Ownership agreed with Joss for support operations. Closing the epic once the page links are checked."

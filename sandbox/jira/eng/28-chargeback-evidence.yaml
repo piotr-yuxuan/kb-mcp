@@ -1,0 +1,809 @@
+epic:
+  key: ENG-28
+  summary: Chargeback evidence automation
+  sprints: [27, 36]
+  labels: [support]
+  description: |
+    ## Goal
+
+    Submit every dispute's evidence on time without anyone pressing a button. On the
+    submission date, at least 7 calendar days before the scheme's deadline, the
+    evidence attached to the dispute is packaged and submitted through the acquiring
+    bank to the issuer. Today a T2 specialist submits every dispute's evidence by hand,
+    and disputes are still lost only because the evidence arrived late.
+
+    ## Scope
+
+    - The scheme deadline on the Harbour ticket, and our two dates derived from it:
+      the submission date and Respond by.
+    - The dispute page in Merchant Hub: the reason family, the evidence that helps,
+      uploads, the merchant's statement, and the pack that went out.
+    - The evidence pack, the daily submission, the reminder to T2 two days before the
+      submission date, rejections and outcomes.
+    - The authorisation outcome and 3DS result from `card-auth` in fraud disputes.
+
+    ## Out of scope
+
+    - The £15 dispute fee, which does not change.
+    - Pre-arbitration, which T2 handles case by case.
+    - Fraud labels built from chargebacks, which belong to Risk ML.
+
+    Product: Linnea Ashdown. Support: Dorian Pask. Built by Merchant Experience in
+    `#team-merchant-hub`.
+
+    ## Pages
+
+    - [Chargebacks and disputes](../../corpus/support/chargebacks.md)
+    - [Support macros](../../corpus/support/macros.md)
+    - [Merchant Hub release notes 2026](../../corpus/product/merchant-hub-release-notes-2026.md)
+  comments:
+    - "Dorian: T2 keeps reviewing evidence before the submission date. The automation submits whatever is attached, nothing more."
+    - "Linnea: Questions about the dispute pages go to #team-merchant-hub; questions about T2's process go to Dorian."
+tickets:
+  - key: ENG-1084
+    type: Task
+    summary: Count disputes lost because evidence reached the issuer late
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Before automating submission, measure what late evidence costs us. From the
+      `disputes` queue in Harbour, list every dispute of the last four quarters that
+      was lost with no review because the evidence reached the issuer after the
+      scheme's deadline, and how late it was.
+
+      ```sql
+      select date_trunc('quarter', decided_at) as quarter, count(*) as lost_late
+      from harbour.disputes
+      where outcome = 'lost' and loss_reason = 'evidence_late'
+      group by 1
+      order by 1;
+      ```
+
+      Share the result with Dorian and Linnea: it sets the case for a fixed submission
+      date.
+    comments:
+      - "Dorian: Several a quarter, and every one of them lost only because the evidence arrived a day or two late."
+  - key: ENG-1085
+    type: Task
+    summary: Document how T2 submits dispute evidence by hand
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Write down, step by step, how T2 submits dispute evidence by hand today, with
+      Dorian and one T2 specialist in each office: where the scheme deadline is read,
+      how evidence is collected from the merchant, how it is checked, and how it is
+      uploaded to the acquiring bank.
+
+      Mark each step that automation would replace, and each that stays with T2, such
+      as reviewing the evidence against the dispute's reason. Time a sample of ten
+      submissions, so that we know what the manual process costs.
+    comments:
+      - "Maëlle: Paris side written up. Most of our time goes on chasing merchants for evidence, not on the upload itself."
+  - key: ENG-1086
+    type: Story
+    summary: Map the card schemes' reason codes to five evidence families
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As a merchant, I want my dispute described in plain words, with the evidence that
+      helps, rather than by a scheme's reason code.
+
+      Acceptance criteria:
+
+      - Every reason code the acquiring bank sends maps to one of five families: Fraud,
+        Not received, Not as described, Duplicate or wrong amount, Credit not
+        processed.
+      - The family shows on the dispute in Merchant Hub and on the Harbour ticket.
+      - An unmapped code shows the dispute without a family and alerts
+        `#team-merchant-hub`, rather than guessing.
+
+      This mapping is separate from Risk ML's three label groups, described on
+      [Labelling fraud from chargebacks](../../corpus/ml/chargeback-labels.md).
+    comments:
+      - "Mireille: Please keep the two mappings apart. Ours feeds training labels and changes on a different schedule."
+  - key: ENG-1087
+    type: Story
+    summary: Store the scheme deadline on every dispute ticket in Harbour
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      As a T2 specialist, I want the card scheme's deadline on the dispute's ticket, so
+      that I stop reading it from the acquiring bank's notification by hand.
+
+      Acceptance criteria:
+
+      - When a chargeback arrives, the ticket Harbour opens in `disputes` gets a
+        **Scheme deadline** field, read from the acquiring bank's notification.
+      - The field is visible in Harbour only; merchants never see it.
+      - Inquiries carry their own deadline in the same field.
+      - A notification with no deadline flags the ticket for T2.
+  - key: ENG-1088
+    type: Story
+    summary: Derive the submission date and Respond by from the scheme deadline
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      As T2, I want two dates of our own computed from the scheme deadline, so that
+      every dispute runs to the same timetable.
+
+      Acceptance criteria:
+
+      - **Submission date**: 7 calendar days before the scheme deadline.
+      - **Respond by**: 3 calendar days before the submission date.
+      - Both are recomputed if the scheme deadline is corrected.
+
+      ```python
+      from datetime import date, timedelta
+
+
+      def submission_date(scheme_deadline: date) -> date:
+          return scheme_deadline - timedelta(days=7)
+
+
+      def respond_by(scheme_deadline: date) -> date:
+          return submission_date(scheme_deadline) - timedelta(days=3)
+      ```
+
+      A deadline on the 30th gives a submission date on the 23rd and Respond by on the
+      20th.
+    comments:
+      - "Dorian: Calendar days, not business days. Weekends count."
+      - "Linnea: Agreed. Merchants only ever see Respond by."
+  - key: ENG-1089
+    type: Story
+    summary: Show Respond by on the dispute page and in dispute emails
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As a merchant, I want one date by which to upload my evidence, so that I know
+      when I am late.
+
+      Acceptance criteria:
+
+      - The dispute page in Merchant Hub and the emails from `notify` show **Respond
+        by**.
+      - Neither shows the scheme deadline.
+      - Respond by is shown in the account's language and time zone.
+      - The date is the same on the page, in the email and in Harbour.
+  - key: ENG-1090
+    type: Bug
+    summary: Scheme deadlines at the end of a UTC day move the submission date a day late
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. Receive a chargeback whose notification gives the scheme deadline as 23:59
+         UTC on a date in British Summer Time.
+      2. Open its Harbour ticket.
+
+      **Expected:** a submission date 7 calendar days before the deadline's date.
+
+      **Actual:** the deadline was converted to UK time first, became 00:59 on the next
+      day, and the submission date moved a day later: only 6 days before the scheme's
+      deadline.
+
+      **Fix:** store the scheme deadline as a date, never converted, and do the
+      arithmetic on dates only. A test covers deadlines either side of midnight.
+    comments:
+      - "Nadia: Same lesson as everywhere in payments: a deadline is a date, not a timestamp."
+  - key: ENG-1091
+    type: Task
+    summary: Add the dispute.respond_by placeholder to the dispute macros
+    status: Done
+    priority: Low
+    labels: [support]
+    description: |
+      Harbour macros need the new date. Add the `{{dispute.respond_by}}` placeholder,
+      and update `dispute-opened` so that it asks the merchant to upload evidence in
+      Merchant Hub by that date, and still mentions the £15 dispute fee.
+
+      The macro states policy figures, so its internal description names the
+      chargebacks page, and its owner checks it whenever that page changes. Ewan
+      reviews the wording.
+  - key: ENG-1092
+    type: Story
+    summary: List the evidence that helps most for each reason family
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As a merchant, I want the dispute page to tell me which documents help for this
+      kind of dispute, so that I send one delivery confirmation rather than ten pages
+      of order history.
+
+      Acceptance criteria:
+
+      - Each reason family has a short list, written by T2. For Not received: proof of
+        delivery with a date and address, and tracking. For Not as described: the
+        listing as it appeared at purchase, photographs and the buyer's messages.
+      - The list for the dispute's family shows next to the uploader.
+      - T2 can change the lists without a deploy.
+  - key: ENG-1093
+    type: Story
+    summary: Let merchants add a short written statement to their evidence
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As a merchant, I want to explain in two or three sentences why the cardholder's
+      claim is wrong, so that the issuer reads our case in our words.
+
+      Acceptance criteria:
+
+      - The dispute page has a statement field next to the uploads, with a character
+        limit shown as the merchant types.
+      - The statement can be edited until the submission date.
+      - The help text asks for a factual and polite statement, since issuers read it.
+      - T2 sees the statement on the Harbour ticket.
+  - key: ENG-1094
+    type: Task
+    summary: Agree the evidence pack format with the acquiring bank
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      The acquiring bank receives our evidence and forwards it to the issuer. Before we
+      build the pack, agree with them:
+
+      - the file format and the maximum size of a pack;
+      - how the dispute, its reason and the merchant are identified on it;
+      - how they acknowledge receipt, and how they report a rejected upload;
+      - whether submission before our submission date is accepted for every card
+        scheme.
+
+      Nadia joins for anything touching authorisation data. Record the answers on this
+      ticket.
+    comments:
+      - "Linnea: Agreed with the acquiring bank: one file per dispute, statement first, an acknowledgement for every upload, and early submission accepted for every scheme."
+  - key: ENG-1095
+    type: Bug
+    summary: Respond by shows in the browser's time zone instead of the account's
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. Sign in to Merchant Hub from a browser whose time zone is ahead of the
+         account's.
+      2. Open a dispute.
+
+      **Expected:** Respond by in the account's time zone, as for every date in Hub
+      since January; see
+      [Merchant Hub release notes 2026](../../corpus/product/merchant-hub-release-notes-2026.md).
+
+      **Actual:** the dispute page formatted the date in the browser's time zone, and
+      could show a day later than the email.
+
+      **Fix:** use Hub's shared date formatter, which takes the account's time zone.
+  - key: ENG-1096
+    type: Story
+    summary: Assemble the uploads and the statement into one evidence pack
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      As T2, I want each dispute's evidence assembled into the file the acquiring bank
+      accepts, so that nobody builds packs by hand.
+
+      Acceptance criteria:
+
+      - The pack holds the merchant's statement first, then the documents in the order
+        of the family's list, then anything T2 adds.
+      - Each page carries the dispute's reference and the merchant's account reference.
+      - The pack is rebuilt whenever the evidence changes, and T2 can preview it from
+        the Harbour ticket.
+      - A pack over the bank's size limit is flagged on the ticket, never truncated.
+  - key: ENG-1097
+    type: Story
+    summary: Show supported formats and the size limit on the evidence uploader
+    status: Done
+    priority: Low
+    labels: [support]
+    description: |
+      As a merchant, I want to know before uploading which files are accepted, so that
+      a rejected upload does not cost me days.
+
+      Acceptance criteria:
+
+      - The uploader lists the supported formats and the maximum size of a file.
+      - Files of other formats are refused at once, with a message saying why.
+      - Password-protected documents are refused with the same kind of message, since
+        the issuer cannot open them.
+  - key: ENG-1098
+    type: Task
+    summary: Privacy review of evidence packs
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Evidence packs leave Quillmoor and can hold buyers' personal data. Review the pack
+      with Beatrix before any pack is submitted:
+
+      - what personal data a pack may hold, family by family;
+      - that T2's checklist still removes personal data beyond what the case needs,
+        such as other customers' names in a screenshot;
+      - that only the merchant's uploads, the statement and T2's additions go into a
+        pack;
+      - that our agreement with the acquiring bank covers what we send.
+
+      Record the outcome on this ticket.
+    comments:
+      - "Beatrix: Reviewed. Redaction stays with T2, before the submission date. Anything the automation adds to a pack on its own needs my review first."
+  - key: ENG-1099
+    type: Bug
+    summary: Evidence uploads over the size limit fail without an error
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. On a dispute page, upload a scanned delivery note larger than the maximum file
+         size.
+
+      **Expected:** a message saying that the file is too large, with the limit.
+
+      **Actual:** the progress bar reaches the end and the file never appears. Nothing
+      tells the merchant that the upload failed, and they believe their evidence is in.
+
+      **Fix:** check the size in the browser before uploading, and show the server's
+      error when the check is bypassed. Reported by a T2 specialist testing with real
+      delivery notes.
+  - key: ENG-1100
+    type: Story
+    summary: Remind T2 two days before the submission date when no evidence is attached
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      As a T2 specialist, I want to know which disputes still have no evidence while
+      there is time to chase the merchant.
+
+      Acceptance criteria:
+
+      - Two days before the submission date, Harbour adds a reminder to every dispute
+        ticket with no evidence attached.
+      - The reminder suggests the `dispute-evidence-reminder` macro.
+      - Disputes the merchant has accepted get no reminder.
+      - A view lists the day's reminders for the T2 duty specialist.
+    comments:
+      - "Ewan: The macro is ENG-1102. The reminder can point to it once it exists."
+  - key: ENG-1101
+    type: Story
+    summary: Show the submitted evidence pack and its date on the dispute page
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As a merchant, I want to see what was sent on my behalf and when, so that I do
+      not have to ask support.
+
+      Acceptance criteria:
+
+      - Once evidence is submitted, the dispute page shows the date of submission and
+        lets the merchant download the pack that went out.
+      - Before submission, it shows Respond by and the evidence uploaded so far.
+      - The dispute's status reads Submitted, then the issuer's decision when it
+        arrives.
+  - key: ENG-1102
+    type: Task
+    summary: Write the dispute-evidence-reminder macro
+    status: Done
+    priority: Low
+    labels: [support]
+    description: |
+      Write `dispute-evidence-reminder`, for T2 to send when Harbour's two-day reminder
+      fires. It tells the merchant that no evidence has arrived for the dispute,
+      repeats the Respond by date, points to the dispute page in Merchant Hub, and says
+      that the merchant can accept the dispute from the same page if they prefer not to
+      contest it.
+
+      No internal names, tools or error codes. The internal description names the
+      chargebacks page. Owner: Ewan.
+  - key: ENG-1103
+    type: Story
+    summary: Show the scheme deadline to merchants in Merchant Hub
+    status: Won't Do
+    priority: Low
+    labels: [support]
+    description: |
+      As a merchant, I would like to see the card scheme's own deadline next to Respond
+      by, so that I know how much time there really is.
+
+      Acceptance criteria:
+
+      - The dispute page shows the scheme deadline under Respond by.
+      - The emails from `notify` show it too.
+
+      Raised by two merchants in the usability test of the evidence uploader.
+    comments:
+      - "Dorian: Showing it invites evidence after Respond by, and the 7-day rule is not negotiable for any merchant."
+      - "Linnea: Won't Do. Merchants see Respond by; the scheme deadline stays in Harbour."
+  - key: ENG-1104
+    type: Story
+    summary: Let T2 submit an evidence pack early from Harbour
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As a T2 specialist, I want to submit a complete pack before its submission date,
+      so that a dispute with strong evidence does not wait.
+
+      Acceptance criteria:
+
+      - **Submit evidence now** on the dispute's ticket sends the current pack by the
+        same route as the automatic submission.
+      - It asks for confirmation and records who submitted and when.
+      - After an early submission, the automatic submission skips the dispute; later
+        uploads are kept on the ticket but not sent.
+  - key: ENG-1105
+    type: Story
+    summary: Treat a dispute with no evidence on its submission date as accepted
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      As T2, I want a dispute with nothing attached on its submission date handled the
+      same way every time.
+
+      Acceptance criteria:
+
+      - On the submission date, a dispute with no evidence submits nothing and is
+        treated as accepted.
+      - The disputed amount and the dispute fee stay debited, and the dispute closes.
+      - The merchant gets an email, and the Harbour ticket an internal note, saying
+        that no evidence was received.
+      - This happens only after the two-day reminder of ENG-1100 has fired.
+    comments:
+      - "Dorian: Accepting by default is right. By then the merchant has had the email, Respond by and our reminder."
+  - key: ENG-1106
+    type: Bug
+    summary: Evidence pack includes documents the merchant deleted
+    status: Done
+    priority: Highest
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. Upload two documents on a dispute page.
+      2. Delete one of them.
+      3. Preview the pack from the Harbour ticket.
+
+      **Expected:** the pack holds only the remaining document.
+
+      **Actual:** the deleted document is still in the pack. Deleting hid the file in
+      Merchant Hub, but the pack builder read every file stored for the dispute. A
+      merchant may delete a file precisely because it holds data that should not leave
+      us.
+
+      **Fix:** the pack builder reads only active documents, and deleting a document
+      removes it from storage.
+    comments:
+      - "Beatrix: Thank you for catching this before the first live pack. Please confirm that deleted files are gone from storage, not only hidden."
+      - "Linnea: Confirmed. Storage is purged on delete, and the pack builder's tests cover it."
+  - key: ENG-1107
+    type: Task
+    summary: Fit T2's evidence checklist around automatic submission
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      With submission automated, T2's review must be finished before the submission
+      date rather than on it. Agree with Dorian how the checklist works now:
+
+      - the evidence matches the dispute's reason family;
+      - documents are readable, in a supported format and within the upload size;
+      - personal data beyond what the case needs is removed;
+      - the merchant's statement is factual and polite;
+      - the submission date is still at least 7 calendar days before the scheme
+        deadline.
+
+      Add a **Reviewed** mark to the ticket, set by the T2 specialist who checked it.
+  - key: ENG-1108
+    type: Story
+    summary: Submit evidence 7 days before the scheme deadline
+    status: Done
+    priority: Highest
+    labels: [support]
+    description: |
+      As T2, I want every dispute's evidence submitted on its submission date without
+      anyone pressing a button, so that no dispute is lost because the evidence reached
+      the issuer late.
+
+      Acceptance criteria:
+
+      - Every day, for each dispute whose submission date is today, the evidence
+        attached to it is packaged and submitted through the acquiring bank.
+      - The submission date is at least 7 calendar days before the scheme deadline;
+        nothing is ever submitted later.
+      - Disputes already submitted by hand are skipped.
+      - Each submission is recorded on the Harbour ticket with the pack that went out.
+
+      The rules are on [Chargebacks and disputes](../../corpus/support/chargebacks.md).
+    comments:
+      - "Linnea: Build it behind a switch. It stays off for real disputes until the T2 briefing is done and we agree the go-live date."
+  - key: ENG-1109
+    type: Story
+    summary: Alert T2 when the acquiring bank rejects an evidence submission
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      As T2, I want to know at once when a submission is rejected, so that it can be
+      put right while the scheme deadline is still days away.
+
+      Acceptance criteria:
+
+      - The acknowledgement from the acquiring bank is read for every submission.
+      - A rejection moves the ticket to the top of the `disputes` queue with the bank's
+        reason, and notifies the T2 duty specialist.
+      - A rejected pack can be corrected and submitted again from the ticket.
+      - A submission with no acknowledgement by the next business morning counts as
+        rejected.
+  - key: ENG-1110
+    type: Task
+    summary: Dry run evidence packs alongside T2's manual submissions
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Before anything is sent automatically, run the pack builder in dry-run mode for a
+      week: on each dispute's submission date it builds the pack but does not send it,
+      while T2 keeps submitting by hand.
+
+      - Compare each automatic pack with what T2 sent: the documents, their order and
+        the statement.
+      - List every difference on this ticket as a defect, a T2 habit, or a missing
+        rule.
+      - Go ahead only when no defect is left open.
+    comments:
+      - "Maëlle: Paris packs matched, except two where we had added the 3DS result by hand, from a query Payments Core ran for us."
+      - "Dorian: Same gap in London. I have asked Nadia to bring it to the payments weekly sync."
+  - key: ENG-1111
+    type: Bug
+    summary: Submission job skips disputes whose submission date is a Sunday
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. In staging, create a dispute whose scheme deadline falls on a Sunday, so that
+         its submission date is also a Sunday.
+      2. Let that Sunday pass.
+
+      **Expected:** the pack is built and submitted on the Sunday; submission dates are
+      calendar days.
+
+      **Actual:** nothing happens. The job had been scheduled Monday to Saturday, copied
+      from a business-day job, and the dispute stays unsubmitted.
+
+      **Fix:** run the job every day of the week, and alert `#team-merchant-hub`
+      whenever a submission date passes with no submission.
+  - key: ENG-1112
+    type: Story
+    summary: Update Harbour with each dispute's outcome from the acquiring bank
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As an agent, I want the issuer's decision on the ticket as soon as it arrives, so
+      that the merchant hears the outcome from us.
+
+      Acceptance criteria:
+
+      - Outcomes from the acquiring bank (won, lost, pre-arbitration) update the
+        dispute's ticket and its status in Merchant Hub.
+      - Harbour suggests the matching macro, `dispute-outcome-won` or
+        `dispute-outcome-lost`; see [Support macros](../../corpus/support/macros.md).
+      - A won dispute returns the disputed amount to the balance; the dispute fee stays
+        charged.
+      - Pre-arbitration goes to T2 with no macro.
+  - key: ENG-1113
+    type: Story
+    summary: Translate the dispute evidence pages and emails into French
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      As a French-speaking merchant, I want the dispute pages and emails in French,
+      like the rest of Merchant Hub since May.
+
+      Acceptance criteria:
+
+      - Every string this epic added exists in French, written by the Paris team rather
+        than machine-translated.
+      - The terms match our French replies: litige, rétrofacturation, justificatifs.
+      - Dates follow French conventions, such as 3 juillet 2026.
+      - Inès's team reviews every string before release.
+
+      Conventions:
+      [Supporting French-speaking merchants](../../corpus/support/french-speaking-merchants.md).
+    comments:
+      - "Inès: Every string reviewed by the Paris team. Three were reworded to match the words merchants already see in our replies."
+  - key: ENG-1114
+    type: Bug
+    summary: Evidence uploaded after the submission date disappears
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. Let a dispute's evidence be submitted on its submission date.
+      2. As the merchant, upload another document on the dispute page.
+
+      **Expected:** the document is not added to the submitted pack, the merchant is
+      told so, and the document is kept on the Harbour ticket in case the case goes to
+      pre-arbitration.
+
+      **Actual:** the upload appears to succeed in Merchant Hub and is then discarded;
+      T2 never sees it.
+
+      **Fix:** after submission, the uploader says that evidence can no longer be sent,
+      and any late document is attached to the ticket with an internal note.
+  - key: ENG-1115
+    type: Story
+    summary: Return the dispute fee when the merchant wins
+    status: Won't Do
+    priority: Lowest
+    labels: [support]
+    description: |
+      As a merchant who wins a dispute, I would like the £15 dispute fee returned along
+      with the disputed amount.
+
+      Acceptance criteria:
+
+      - A won outcome credits the dispute fee back to the merchant's balance.
+      - The payout report shows the credit as its own line.
+
+      Raised by merchants on T2's calls about dispute outcomes.
+    comments:
+      - "Dorian: The fee covers our handling of the case, which is the same work whether the merchant wins or loses."
+      - "Linnea: Won't Do. The £15 fee is not returned whatever the outcome, and this epic does not change pricing."
+  - key: ENG-1116
+    type: Task
+    summary: Design note for authorisation evidence from card-auth
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Fraud-family packs need each payment's authorisation outcome and 3DS result: a
+      payment authenticated with 3DS usually moves the fraud liability to the issuer.
+      Today someone in Payments Core queries `card-auth`'s records by hand whenever T2
+      asks.
+
+      Nadia to write a short design note on how the evidence job can get this data
+      without that manual query, and without receiving anything that could identify
+      the card beyond what Support already sees. It touches the card data
+      environment's boundary, so it goes to the Thursday design review.
+    comments:
+      - "Dorian: Nadia will take this to the payments weekly sync on 4 August."
+      - "Nadia: Agreed in principle on 4 August: a small read endpoint on card-auth, keyed by payment token. The note is ready for Thursday's design review."
+  - key: ENG-1117
+    type: Bug
+    summary: Disputes list search ignores the buyer's email address
+    status: Done
+    priority: Low
+    labels: [support]
+    description: |
+      **Steps to reproduce**
+
+      1. In Merchant Hub, open the disputes list.
+      2. Search for the email address of a buyer who raised a dispute.
+
+      **Expected:** the buyer's disputes are listed.
+
+      **Actual:** no result. The disputes search looked only at payment and dispute
+      references, and ignored the buyer's email address.
+
+      **Fix:** add the buyer's email address to the disputes search index. Merchants
+      often know a dispute by the buyer who raised it.
+  - key: ENG-1118
+    type: Task
+    summary: Lantern dashboard for automatic evidence submissions
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Product follows the share of disputes with merchant evidence that are submitted
+      automatically, against a target of 90% this quarter. Build a Lantern dashboard
+      showing, per day:
+
+      - disputes reaching their submission date, with and without evidence;
+      - submitted automatically, submitted early by hand, and rejected by the acquiring
+        bank;
+      - disputes closed as accepted for lack of evidence.
+
+      Linnea reads it for the quarter's scoring; T2 uses it to watch the first weeks
+      after go-live.
+  - key: ENG-1119
+    type: Task
+    summary: Brief T1 and T2 before automatic submission goes live
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Before automatic submission goes live, every agent who touches disputes needs to
+      know what changes.
+
+      - T2: the submission sends whatever is attached on the submission date, so
+        review evidence before it; early submission from Harbour; what a rejection
+        looks like.
+      - T1: what merchants now see on the dispute page, which macros to use, and that
+        the 7-day rule is not negotiable.
+      - Update the internal descriptions of the dispute macros.
+
+      Dorian runs the T2 session; Ewan and Inès run T1 in London and Paris.
+    comments:
+      - "Ewan: London T1 sessions done. Inès ran Paris the same day."
+  - key: ENG-1120
+    type: Task
+    summary: Plan general availability of automatic submission on 27 August
+    status: Done
+    priority: Medium
+    labels: [support]
+    description: |
+      Agree the go-live of automatic evidence submission for every merchant on 27
+      August, now that the dry run, the rejection alerts and the T2 briefing are done.
+
+      - Submission switches on for every dispute whose submission date falls on or
+        after 27 August; earlier ones stay with T2.
+      - Draft the August entry of
+        [Merchant Hub release notes 2026](../../corpus/product/merchant-hub-release-notes-2026.md).
+      - T2 and Merchant Experience watch the first week's submissions on the Lantern
+        dashboard.
+      - From go-live, T2 submits by hand only to submit early.
+    comments:
+      - "Linnea: Go for 27 August. The release notes entry is drafted."
+  - key: ENG-1121
+    type: Story
+    summary: Read-only card-auth endpoint for authorisation evidence by payment token
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      As T2, I want the evidence job to fetch a payment's authorisation evidence itself,
+      without anyone in Payments Core querying `card-auth` by hand.
+
+      Acceptance criteria:
+
+      - A read endpoint on `card-auth`, keyed by payment token, returns the
+        authorisation outcome, the 3DS result and timestamps, and nothing else.
+      - It runs inside the card data environment, and PANs never leave it; see
+        [Payments platform architecture](../../corpus/payments/platform-architecture.md).
+      - Only Support's evidence job may call it.
+      - In staging by 28 August, ahead of the epic's close.
+    comments:
+      - "Nadia: Nothing gets built until the note in ENG-1116 has been through the design review."
+      - "Callum: Security wants to see that note too, since the endpoint sits on the card data environment's boundary."
+  - key: ENG-1122
+    type: Story
+    summary: Attach the authorisation outcome and 3DS result to fraud-family packs
+    status: Done
+    priority: High
+    labels: [support]
+    description: |
+      As T2, I want fraud-family packs to carry the authorisation outcome and 3DS
+      result, so that the authentication data can win a fraud dispute without more work
+      from the merchant.
+
+      Acceptance criteria:
+
+      - For every dispute in the Fraud family, the pack builder calls the endpoint from
+        ENG-1121 and adds one page with the outcome, the 3DS result and timestamps.
+      - Other families get nothing added.
+      - The page appears in the Harbour preview, so that T2 can tell the merchant when
+        the authentication data may be enough.
+      - If the endpoint fails, the pack is built without it and T2 is told.
+    comments:
+      - "Beatrix: Authorisation outcome, 3DS result and timestamps only, as reviewed. Fine."

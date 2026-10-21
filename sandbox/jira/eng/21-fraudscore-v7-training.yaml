@@ -1,0 +1,781 @@
+epic:
+  key: ENG-21
+  summary: fraudscore-v7 training pipeline
+  sprints: [4, 12]
+  labels: [risk-ml]
+  description: |
+    Build the training pipeline that produces `fraudscore-v7`: gradient-boosted trees
+    with a sequence embedding trained on Kiln, fed by `fraud_features_daily`.
+
+    ## Goal
+
+    A reproducible Conveyor pipeline, `fraudscore_training`, that turns one
+    configuration file into a registered candidate, and gives the same answer when it
+    is rerun a month later.
+
+    ## Scope
+
+    - Labels from chargebacks, Risk Operations findings and confirmed merchant reports,
+      with a 60-day wait for chargebacks.
+    - A 13-month training window followed by a one-month out-of-time holdout.
+    - The stages `snapshot`, `labels`, `encoder`, `trees`, `calibrate`, `report` and
+      `register`.
+    - A PyTorch sequence encoder on Kiln's `train-long` queue and LightGBM trees on
+      `train-short`.
+    - Lineage in the registry: configuration commit, Iceberg snapshot, image digest and
+      seeds.
+
+    ## Out of scope
+
+    - The promotion gates and shadow mode, which are ENG-22.
+    - Changes to `fraud_features_daily` itself, which Data Platform owns.
+    - Retraining `fraudscore-v6`.
+
+    ## Pages
+
+    - [Training the fraud model](../../corpus/ml/fraud-model-training.md)
+    - [Labelling fraud from chargebacks](../../corpus/ml/chargeback-labels.md)
+    - [Pipeline: fraud_features_daily](../../corpus/data/pipeline-fraud-features-daily.md)
+  comments:
+    - "Mireille: Window length and label wait are mine to decide. Everything else is the candidate author's call, judged by the gate once ENG-22 lands."
+    - "Linnea: Pipeline handed over to ENG-22. The first real candidate is planned for early October."
+tickets:
+  - key: ENG-811
+    type: Task
+    summary: "Create the fraudscore_training pipeline in Conveyor with empty stages"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      v6 was trained in a single LightGBM process on Conveyor's general workers, with no
+      record of which data it read. Replace that with a Conveyor pipeline,
+      `fraudscore_training`, whose stages run in a fixed order and can be rerun one at a
+      time:
+
+      ```text
+      snapshot -> labels -> encoder -> trees -> calibrate -> report -> register
+      ```
+
+      For now each stage only logs its inputs and exits. Configurations live in the
+      `risk-ml` repository under `training/`, one YAML file per run, passed with
+      `--config`. A `--dry-run` flag resolves everything without training anything.
+    comments:
+      - "Linnea: Skeleton merged. A dry run with the example configuration walks all seven stages."
+  - key: ENG-812
+    type: Task
+    summary: "Measure how late fraud chargebacks arrived in v6's training data"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      v6 labels a payment after a 45-day wait for chargebacks. Before we choose the
+      wait for the new pipeline, measure how many fraud chargebacks on the v6 training
+      data arrived after day 45, and plot the share received by days after
+      authorisation.
+
+      Result: about 8% of fraud chargebacks in the old data arrived after day 45, so v6
+      learnt from labels that called some fraud legitimate. The new wait is decided in
+      ENG-813. The reasoning belongs on
+      [Labelling fraud from chargebacks](../../corpus/ml/chargeback-labels.md).
+    comments:
+      - "Sunniva: The tail is long but thin once you pass day 60. Chart posted in the thread in #team-risk-ml."
+  - key: ENG-813
+    type: Story
+    summary: "Wait 60 days for chargebacks before labelling a payment"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I need labels that do not call recent fraud legitimate, so
+      that the model does not learn that fresh fraud is fine.
+
+      Acceptance criteria:
+
+      - A payment authorised less than 60 days before the run date has no label for
+        that run.
+      - The wait is one setting, `label_maturity_days: 60`, in the run configuration.
+      - Changing it needs the head of risk ML, with Risk Operations.
+      - The 45-day wait used for v6 is not kept as an option.
+
+      Follows the measurement in ENG-812.
+    comments:
+      - "Mireille: Agreed with Risk Operations on today's call. 60 days, and the setting is mine."
+  - key: ENG-814
+    type: Task
+    summary: "Map card scheme reason codes to fraud, service and processing groups"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Each card scheme publishes its own chargeback reason codes. Write
+      `risk-ml/labels/reason_codes.yaml`, mapping every code to one of three groups:
+
+      - **fraud**: the cardholder says they did not make or authorise the payment;
+      - **service**: goods not received, not as described, cancelled subscriptions;
+      - **processing**: duplicate processing, wrong amount, late presentment.
+
+      Only the fraud group makes a fraud label. An unmapped code must fail the label
+      build rather than be guessed, so that a scheme's new code is noticed before the
+      next training run.
+  - key: ENG-815
+    type: Story
+    summary: "Build marts.fraud_labels nightly from all three label sources"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As the training pipeline, I need one table of labels, so that the `labels` stage
+      does not join three sources itself.
+
+      Acceptance criteria:
+
+      - A nightly build writes `marts.fraud_labels`, one row per authorisation that has
+        any label source.
+      - Sources: chargebacks, Risk Operations findings marked confirmed fraud, and
+        merchant reports that Risk Operations has confirmed.
+      - Columns include `label`, `label_source`, `first_evidence_at`, `amount_minor` and
+        `currency`.
+      - A chargeback reversed after the merchant wins with evidence removes the fraud
+        label.
+      - Several chargebacks on one payment count once.
+    comments:
+      - "Hana: Happy for this to live in marts. Please add it to catalogue/owners.yaml with Risk ML as the owning team."
+  - key: ENG-816
+    type: Story
+    summary: "Train fraudscore on a 13-month window ending where the holdout begins"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I want each candidate trained on a 13-month window that
+      ends where the out-of-time holdout begins, so that every calendar month appears at
+      least once and the month just before the holdout appears twice, once in each year.
+
+      Acceptance criteria:
+
+      - The configuration sets `window.months: 13`, and `window.end` is the day before
+        `holdout.start`.
+      - The holdout is the single month straight after the window.
+      - For an August 2025 holdout, the window runs from 2024-07-01 to 2025-07-31.
+      - Changing the window length needs the head of risk ML.
+
+      v6 used 12 months. The extra month brings the seasonal patterns around
+      marketplace sales events into the window.
+    comments:
+      - "Mireille: 13 it is. Longer windows get tested later in this epic rather than argued about now."
+  - key: ENG-817
+    type: Story
+    summary: "Refuse a training run whose holdout labels have not matured"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      As a reviewer, I need to trust that the holdout had settled labels on the run
+      date.
+
+      Acceptance criteria:
+
+      - The `labels` stage refuses to start when the holdout's last day plus 60 days
+        falls after the run date.
+      - The error names the date on which the labels mature.
+
+      ```python
+      def check_label_maturity(holdout_end: date, run_date: date) -> None:
+          matured_on = holdout_end + timedelta(days=LABEL_MATURITY_DAYS)
+          if matured_on > run_date:
+              raise ValueError(f"holdout labels mature on {matured_on}; rerun on or after that date")
+      ```
+    comments:
+      - "Linnea: Merged. Tried it with an August holdout and today's date: it refuses, as it should."
+  - key: ENG-818
+    type: Story
+    summary: "Pin the Iceberg snapshot of fraud_features_daily in the run configuration"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I want a rerun next month to read exactly the same feature
+      rows, even after late data has landed or a backfill has run.
+
+      Acceptance criteria:
+
+      - The configuration holds `features.snapshot_id`, the Apache Iceberg snapshot of
+        `marts.fraud_features_daily`.
+      - The `snapshot` stage of a dry run prints the snapshot to paste in.
+      - A real run without a pinned snapshot fails; nothing trains against "latest".
+      - Backfills of the table create new snapshots, so Data Platform agrees them with
+        us first. See
+        [Pipeline: fraud_features_daily](../../corpus/data/pipeline-fraud-features-daily.md).
+    comments:
+      - "Hana: Agreed. We will check in #team-risk-ml before any backfill of this table."
+  - key: ENG-819
+    type: Story
+    summary: "Check every daily partition of the window and holdout before training"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I want a run to stop early when the feature table has
+      holes, because a window with missing days quietly underweights whatever happened
+      on them.
+
+      Acceptance criteria:
+
+      - The `snapshot` stage lists every `feature_date` partition from the window's
+        first day to the holdout's last.
+      - Any missing day fails the stage, with the list of missing dates.
+      - The failure message points to `#team-data` for a backfill, never to dropping
+        the days.
+  - key: ENG-820
+    type: Story
+    summary: "Read training features through qm_features point-in-time joins"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I want training sets and online scores to use the same
+      feature definitions.
+
+      Acceptance criteria:
+
+      - The pipeline reads features only through the `qm_features` library, never with
+        hand-written SQL.
+      - Reads join on the authorisation's own timestamp, so no aggregate looks past
+        authorisation time.
+      - A feature outside the requested feature set is refused.
+      - The `fraudscore_v7` feature set holds 286 tabular features: velocity counts,
+        merchant and seller history, and descriptions of the payment itself.
+
+      ```python
+      features = FeatureSet.load("fraudscore_v7")
+      frame = features.read_offline(start="2025-05-01", end="2025-05-31", snapshot_id=snapshot_id)
+      ```
+    comments:
+      - "Sunniva: Reviewed. The as-of tests pass for all 286 definitions."
+  - key: ENG-821
+    type: Bug
+    summary: "Sandbox merchants' synthetic fraud appeared in the first training set"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Dry-run the pipeline on any window and count the fraud
+      labels by merchant.
+
+      **Expected.** Only real merchants' payments.
+
+      **Actual.** Sandbox merchants, which generate synthetic fraud patterns on purpose,
+      made up a visible share of the fraud labels.
+
+      **Fix.** The configuration gains `exclude.test_merchants: true`, read from the
+      list on [Test merchants and test cards](../../corpus/payments/test-merchants.md)
+      and applied to both the window and the holdout. The setting must stay `true`; the
+      pipeline warns when it is not.
+    comments:
+      - "Linnea: One sandbox merchant ranked among the top sources of fraud labels. Nobody would have believed the model."
+  - key: ENG-822
+    type: Story
+    summary: "Keep only the first attempt of a retried authorisation"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I want one fraudster's retries to count once. A declined
+      payment retried by the marketplace appears as several authorisations, and v6
+      learnt from every one of them.
+
+      Acceptance criteria:
+
+      - The configuration sets `exclude.duplicate_retries: keep_first`.
+      - Retries are grouped, and only the first attempt is kept, in the window and in
+        the holdout.
+      - The dry run reports how many rows were dropped as retries.
+  - key: ENG-823
+    type: Task
+    summary: "Create the risk-ml team in Kiln for training jobs"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      The new pipeline submits its heavy stages to Kiln, the GPU cluster's scheduler.
+      Create the `risk-ml` team in Kiln, add every Risk ML engineer, and allow the
+      Conveyor service account to submit jobs for the team.
+
+      Anyone running a training job needs membership of the team and read access to the
+      `marts` layer. Add both to the prerequisites of a training run, and check the set-up
+      with `kiln status --team risk-ml`.
+    comments:
+      - "Matteo: Team created and everyone in Risk ML added. The Conveyor account can submit to train-long and train-short."
+  - key: ENG-824
+    type: Story
+    summary: "Train the sequence encoder on Kiln's train-long queue with 8 GPUs"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I want a sequence encoder that reads a card token's recent
+      authorisation events, because v6 saw only aggregates and never the order of
+      events.
+
+      Acceptance criteria:
+
+      - A small PyTorch encoder turns the last 32 events into a 64-dimensional
+        embedding.
+      - Settings come from the configuration:
+
+      ```yaml
+      sequence_encoder:
+        events_per_card: 32
+        embedding_dim: 64
+        layers: 2
+        heads: 4
+        epochs: 6
+        kiln:
+          queue: train-long
+          gpus: 8
+      ```
+
+      - The `encoder` stage trains once per seed, seeds side by side, and saves
+        `encoder.pt`.
+    comments:
+      - "Matteo: First full encoder run took a little over 9 hours on 8 GPUs."
+  - key: ENG-825
+    type: Task
+    summary: "Build the risk-ml-train image for Kiln training jobs"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Every stage that runs on Kiln needs the same environment. Build a `risk-ml-train`
+      container image with Python, PyTorch, LightGBM, scikit-learn, the Trino client and
+      the `qm_features` package, and rebuild it monthly.
+
+      Tag each build by month. Keep the notebook image separate, so that a package
+      added for exploration never changes what a training run uses.
+  - key: ENG-826
+    type: Story
+    summary: "Key event sequences on the card token, never the PAN"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As the head of security, I need the training pipeline to stay outside the card
+      data environment.
+
+      Acceptance criteria:
+
+      - Sequences are keyed on the card token that `card-auth` issues; no column
+        holding a PAN is read.
+      - At serving time, the token never leaves the scoring path.
+      - The `encoder` stage fails the run if any input column is classified Restricted.
+
+      See [Payments platform architecture](../../corpus/payments/platform-architecture.md)
+      for where the boundary sits.
+    comments:
+      - "Callum: Reviewed the column list. Tokens only, so fine by me."
+  - key: ENG-827
+    type: Story
+    summary: "Train LightGBM on the tabular features plus the 64-dimensional embedding"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I want gradient-boosted trees that see both the 286
+      tabular features and the encoder's 64 dimensions.
+
+      Acceptance criteria:
+
+      - The `trees` stage runs on Kiln's `train-short` queue with 1 GPU, once per seed,
+        with the encoder frozen.
+      - Settings: `num_leaves: 255`, `learning_rate: 0.03`, `num_boost_round: 4000` and
+        `early_stopping_rounds: 200`.
+      - The stage saves `trees.txt` and takes about 2 hours.
+  - key: ENG-828
+    type: Bug
+    summary: "The encoder stage read the latest snapshot instead of the pinned one"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Start a three-seed run with a pinned `snapshot_id` while
+      `fraud_features_daily` lands a late partition.
+
+      **Expected.** All three seeds read the same rows, and recall at the operating
+      point varies by about 0.2 points across seeds.
+
+      **Actual.** The tree stage honoured the pin, but the encoder read event sequences
+      from the latest snapshot. Seeds that started at different times read different
+      rows, and their recall disagreed by more than 1 point.
+
+      **Fix.** The encoder reads sequences at the pinned snapshot too, and every stage
+      logs the snapshot it read.
+  - key: ENG-829
+    type: Bug
+    summary: "Month-end seller chargeback rate leaked labels into an early run"
+    status: Done
+    priority: Highest
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Train with a seller chargeback rate computed from
+      month-end values, then score the holdout.
+
+      **Expected.** A gain in line with other feature changes.
+
+      **Actual.** The run scored 9 points higher on the holdout. The feature counted
+      chargebacks that arrived after the authorisation, so it carried the label into
+      the features. Useless in practice.
+
+      **Fix.** Use `seller__chargeback_rate__90d`, which counts only chargebacks received
+      before the authorisation (`as_of: authorised_at`). A holdout recall far above the
+      champion is now treated as leakage until every new feature's as-of time has been
+      checked.
+    comments:
+      - "Mireille: Nine points should have been the clue. Celebrate after the as-of check, not before."
+      - "Sunniva: Feature review now rejects any definition without an as_of line."
+  - key: ENG-830
+    type: Story
+    summary: "Weight fraud examples with scale_pos_weight instead of downsampling"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Fraud is about 0.3% of authorisations. Early runs downsampled legitimate
+      payments, which distorted the calibration and moved the decline threshold.
+
+      As a Risk ML engineer, I want class imbalance handled without throwing data away.
+
+      Acceptance criteria:
+
+      - Positives are weighted with `scale_pos_weight: 20`; no legitimate payments are
+        dropped.
+      - The comparison with the downsampled run, on the same holdout, is attached to
+        this ticket.
+  - key: ENG-831
+    type: Story
+    summary: "Fit isotonic calibration on the last two weeks of the window"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As `card-auth`, I need scores between 0 and 1 whose meaning stays stable from one
+      model to the next.
+
+      Acceptance criteria:
+
+      - The `calibrate` stage fits isotonic calibration with scikit-learn on the last
+        two weeks of the training window.
+      - The trees never see those two weeks.
+      - The stage saves `calibration.joblib`.
+      - v6's sigmoid calibration is not carried over.
+    comments:
+      - "Linnea: Isotonic behaves better at the top of the score range, which is the only part the threshold cares about."
+  - key: ENG-832
+    type: Task
+    summary: "Compare training windows longer than 13 months"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Check that the 13-month window of ENG-816 does not leave recall on the table.
+      Train the same configuration on longer windows, with the same holdout and three
+      seeds each, and compare recall at a 0.5% decline rate.
+
+      Result: longer windows did not help. The oldest months describe fraud patterns
+      that the card schemes and our merchants have since closed off, and recall at the
+      operating point fell slightly.
+    comments:
+      - "Mireille: Thanks. Question closed: the window stays at 13 months."
+  - key: ENG-833
+    type: Story
+    summary: "Compute the decline threshold for a 0.5% decline rate on the holdout"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      As Payments Core, we need each model to decline at most 0.5% of authorisations on
+      its own scores.
+
+      Acceptance criteria:
+
+      - The pipeline computes the threshold that produces a 0.5% decline rate on the
+        holdout and writes it to `threshold.json` beside the model.
+      - Each model gets its own threshold; nobody sets one by hand.
+      - The realised decline rate on the holdout lies between 0.45% and 0.5%.
+      - Rules-based and issuer declines are not part of the rate.
+    comments:
+      - "Nadia: Thanks. 0.5% is the ceiling we agreed for card-auth. Tell us before it ever moves."
+  - key: ENG-834
+    type: Story
+    summary: "Score the holdout and write an evaluation report in the report stage"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a reviewer, I want one document per candidate instead of numbers pasted into
+      chat.
+
+      Acceptance criteria:
+
+      - The `report` stage scores the out-of-time holdout with the calibrated model.
+      - It writes AUC-PR, recall at a 0.5% decline rate, the precision-recall curve and
+        the score histogram.
+      - The report is stored with the candidate's artefacts.
+      - Comparison with the champion, and the promotion rules, are left to ENG-22.
+  - key: ENG-835
+    type: Story
+    summary: "Train three seeds and register the median, not the best"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      The encoder is not bit-for-bit deterministic on GPUs: recall at the operating
+      point varies by about 0.2 points across seeds. Picking the best seed flatters the
+      candidate, and the gate would be measuring luck.
+
+      Acceptance criteria:
+
+      - Every run trains three seeds, listed in the configuration under `seeds`.
+      - The `register` stage calls `modelctl register` with the median seed's
+        artefacts: `encoder.pt`, `trees.txt`, `calibration.joblib` and `threshold.json`.
+      - The seed count is fixed at three, not chosen per run.
+    comments:
+      - "Matteo: Three encoder seeds at once is 24 GPUs on train-long. Fine today; it will matter if Kiln ever gets quotas."
+  - key: ENG-836
+    type: Bug
+    summary: "The register stage accepted a candidate built from a dirty working tree"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Edit a file under `training/` without committing it, then
+      run the pipeline to the end.
+
+      **Expected.** The `register` stage refuses, because the lineage would name a
+      commit that is not what ran.
+
+      **Actual.** The candidate was registered with the last commit's hash.
+
+      **Fix.** `register` checks the working tree and fails on any uncommitted change,
+      naming the files.
+  - key: ENG-837
+    type: Task
+    summary: "Record the container image digest in each candidate's lineage"
+    status: Done
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      Rebuilding the `risk-ml-train` image from the current base image changes library
+      versions under us. Record the digest of the image that each stage ran in, store it
+      with the candidate, and document that a rerun rebuilds from that digest rather
+      than from the current base image.
+
+      This completes the lineage: configuration commit, Iceberg snapshot, image digest
+      and seeds.
+  - key: ENG-838
+    type: Story
+    summary: "Print a candidate's lineage with modelctl describe"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a reviewer, I want one command that tells me what a candidate is made of.
+
+      Acceptance criteria:
+
+      - `modelctl describe fraudscore --candidate <run name>` prints the configuration's
+        commit, the Iceberg snapshot, the image digest, the seeds, the feature set and
+        the holdout metrics.
+      - `modelctl list fraudscore --candidates` lists registered candidates.
+      - A candidate has a run name but no version label; `modelctl promote` assigns the
+        label later.
+    comments:
+      - "Sunniva: The feature set listing is the part I will use most. Thanks."
+  - key: ENG-839
+    type: Bug
+    summary: "Chargebacks received after the cut-off were labelled legitimate"
+    status: Done
+    priority: High
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Run the `labels` stage for a window whose payments include
+      some with fraud evidence arriving after the run's cut-off.
+
+      **Expected.** Those payments are unlabelled for this run and left out.
+
+      **Actual.** They were labelled legitimate, because the join treated "no fraud
+      evidence yet" as "no fraud".
+
+      **Fix.** The stage compares `first_evidence_at` in `marts.fraud_labels` with the
+      cut-off: evidence after it makes the payment unlabelled, not legitimate. A test
+      covers a payment charged back on day 61.
+  - key: ENG-840
+    type: Task
+    summary: "Dry-run the whole pipeline on a May 2025 holdout"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      Before the first real candidate, run every stage end to end on a May 2025
+      holdout, whose labels matured at the end of July, with the 13 months before it as
+      the window.
+
+      Record the timings and anything that breaks. The expected shape of a full run is
+      roughly 9 hours for the encoder on 8 GPUs, 2 for the trees, and the rest for joins
+      and scoring.
+    comments:
+      - "Linnea: About 14 hours end to end. The snapshot check looks wrong on one month; filed as ENG-843."
+  - key: ENG-841
+    type: Story
+    summary: "Shorten the label wait with partial labels for faster retrains"
+    status: Won't Do
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      As a Risk ML engineer, I would like to train on payments younger than 60 days by
+      estimating their labels from the chargebacks received so far, so that retrains
+      can use fresher data.
+
+      Acceptance criteria:
+
+      - Young payments are weighted by the expected share of chargebacks still to come.
+      - A comparison against the 60-day rule on the same holdout.
+    comments:
+      - "Mireille: Won't do. A mislabelled payment in training costs more than a few weeks of freshness. Worth trying for monitoring, not for training."
+  - key: ENG-842
+    type: Story
+    summary: "Write a drift reference distribution when a candidate is registered"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As whoever watches the champion, I need each model to carry the distributions it
+      should be compared with.
+
+      Acceptance criteria:
+
+      - The `register` stage stores the holdout's score distribution and the training
+        window's distributions of the top 40 features by gain.
+      - The references are attached to the candidate in the registry.
+      - Drift jobs read the reference of the model being served, not a fixed one.
+
+      See [Model drift monitoring](../../corpus/ml/drift-monitoring.md).
+  - key: ENG-843
+    type: Bug
+    summary: "The snapshot stage missed a gap in fraud_features_daily partitions"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      **Steps to reproduce.** Dry-run a window in which one `feature_date` partition is
+      missing and another day was written twice.
+
+      **Expected.** The `snapshot` stage fails and lists the missing day.
+
+      **Actual.** It passed. The check compared the number of partitions with the number
+      of days in the range, and the duplicate made the counts match.
+
+      **Fix.** Compare the set of dates rather than counts, and fail on duplicates as
+      well as gaps.
+    comments:
+      - "Hana: The duplicate came from a rerun on our side and is cleaned up. The missing day is ENG-844."
+  - key: ENG-844
+    type: Task
+    summary: "Ask Data Platform to backfill the missing feature partitions"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      The fixed `snapshot` stage reports missing days in `fraud_features_daily` inside
+      the planned window. Do not drop them. Ask Data Platform in `#team-data` for a
+      backfill, agree which snapshot the training run will pin afterwards, and rerun the
+      dry run once it lands.
+
+      The procedure is on
+      [Backfilling historical partitions](../../corpus/data/backfills.md).
+    comments:
+      - "Hana: Backfilled. The new snapshot id is posted in #team-risk-ml."
+  - key: ENG-845
+    type: Story
+    summary: "Add a slice table to the evaluation report"
+    status: Done
+    priority: Medium
+    labels: [risk-ml]
+    description: |
+      As a reviewer, I want to see where a candidate gains and where it loses, because
+      an average can hide a loss on a group we care about.
+
+      Acceptance criteria:
+
+      - The report shows recall at a 0.5% decline rate and the number of frauds for each
+        slice: currency (GBP, EUR), merchant segment, first-seen card tokens, payments
+        with and without 3DS, and five amount bands.
+      - An empty slice is shown as a row with zero frauds, never dropped, since it
+        usually means a join lost data.
+  - key: ENG-846
+    type: Task
+    summary: "Document the pipeline on the Training the fraud model page"
+    status: Done
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      Write the wiki page that explains how a candidate is trained, from configuration
+      to registration: the model, the data, the 13-month window, the 60-day label wait,
+      the stages, reproducibility, and the traps we have fallen into.
+
+      The page stops where a candidate lands in the registry; the promotion rules belong
+      to ENG-22. Changes to the page need the head of risk ML's review. Page:
+      [Training the fraud model](../../corpus/ml/fraud-model-training.md).
+    comments:
+      - "Mireille: Approved. The window and the label wait stay under my review."
+  - key: ENG-847
+    type: Task
+    summary: "Add a hand-over checklist for candidates to the training page"
+    status: Done
+    priority: Low
+    labels: [risk-ml]
+    description: |
+      The reviewer checks the gate; the author makes the gate meaningful. Add a
+      checklist for the author to go through before posting a run name in
+      `#team-risk-ml`:
+
+      - the holdout is the month straight after the window, with matured labels;
+      - all three seeds used the same `snapshot_id`, and their recall lies within 0.5
+        points of one another;
+      - no feature outside the registered feature set;
+      - the top twenty features by gain look sensible;
+      - the decline rate on the holdout is within 0.45% to 0.5%;
+      - the slice table has no empty rows.
+  - key: ENG-848
+    type: Task
+    summary: "Script the top twenty features by gain for candidate reviews"
+    status: Done
+    priority: Lowest
+    labels: [risk-ml]
+    description: |
+      A feature nobody has heard of in first place deserves an explanation. Add a short
+      script to the `risk-ml` repository that prints the top twenty features by gain
+      from a registered `trees.txt`:
+
+      ```python
+      booster = lgb.Booster(model_file="trees.txt")
+      gains = booster.feature_importance(importance_type="gain")
+      top = sorted(zip(booster.feature_name(), gains), key=lambda pair: pair[1], reverse=True)[:20]
+      ```
+
+      On the dry runs, embedding dimensions take several of the top places, next to the
+      24-hour velocity counts per card token and per device.
+  - key: ENG-849
+    type: Task
+    summary: "Port fraudscore-v6 training into fraudscore_training"
+    status: Won't Do
+    priority: Lowest
+    labels: [risk-ml, tech-debt]
+    description: |
+      v6 was trained in a single LightGBM process on a 12-month window, without Kiln.
+      Port its configuration into the new pipeline, so that v6 could be retrained with
+      the same stages, lineage and label rules as the new model.
+
+      This would need a v6 feature set in the feature store and a trees-only path
+      through the stages.
+    comments:
+      - "Mireille: Won't do. v6 stays as it was trained until the new model replaces it, and after that it is only a fallback. We will not retrain it."

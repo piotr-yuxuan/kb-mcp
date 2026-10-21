@@ -1,0 +1,714 @@
+epic:
+  key: ENG-13
+  summary: Beacon status page automation
+  sprints: [30, 36]
+  labels: [sre]
+  description: |
+    ## Goal
+
+    Get the first public update of every SEV1 onto Beacon within 15 minutes of
+    declaration, without the IC having to write it. After the SEV1 of 2025-09-17 the
+    first update went out 22 minutes after declaration, written from scratch while the
+    IC was busy with the scaling decision.
+
+    ## Scope
+
+    - Klaxon drafts the first SEV1 update from the template, with the component chosen
+      from the services named in the declaration.
+    - Approvals by the IC and the communications lead, and posting to Beacon, from the
+      Klaxon incident record.
+    - Update reminders, severity changes and resolution kept in step between Klaxon
+      and Beacon.
+    - Merchant Hub's incident banner fed from the same template as Beacon.
+
+    ## Out of scope
+
+    Who approves, which stays the IC and the communications lead; wording for security
+    incidents, which follows the SIRT; and writing the SEV1 public summary itself.
+
+    ## Pages
+
+    - [Status page communications](../../corpus/incidents/status-page.md)
+    - [Incident report 2025-09-17: card authorisation latency](../../corpus/incidents/report-2025-09-17-card-auth-latency.md)
+    - [PIR actions tracker](../../corpus/incidents/pir-actions-tracker.md)
+  comments:
+    - "Femi: Support will review every template that Klaxon drafts from before it goes live."
+    - "Lukas: The last sprint holds the end-to-end SEV1 draft and the payout delay template from Payouts."
+tickets:
+  - key: ENG-499
+    type: Task
+    summary: Measure how long first Beacon updates took in past incidents
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Set a baseline from the Klaxon records and Beacon's history before changing
+      anything:
+
+      | Incident | Level | First Beacon update after declaration |
+      |---|---|---|
+      | 2025-06-03, payouts delayed | SEV2 | 20 minutes |
+      | 2025-09-17, card authorisation latency | SEV1 | 22 minutes |
+      | 2026-02-11, Merchant Hub login outage | SEV2 | 15 minutes |
+
+      The target for a SEV1 is 15 minutes. For each incident, note where the time went:
+      waiting for the communications lead, drafting, or approval.
+    comments:
+      - "Femi: The time goes on the first draft. Once there is wording on the screen, approval takes a couple of minutes."
+  - key: ENG-500
+    type: Task
+    summary: Give Klaxon a Beacon API token held in Strongroom
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Klaxon needs to create and update Beacon incidents and component states.
+
+      - Create a Beacon API token scoped to incidents and component states only, with no
+        access to subscribers.
+      - Store it in Strongroom; Klaxon reads it at start-up and again after each
+        rotation.
+      - Log every call Klaxon makes to Beacon with the incident it belongs to.
+    comments:
+      - "Callum: Scope is fine. Rotate it with the other service tokens in Strongroom."
+  - key: ENG-501
+    type: Task
+    summary: Map each service to its Beacon component
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Keep in Klaxon the mapping from services to the components merchants see. The
+      services are never shown publicly.
+
+      | Component | Services |
+      |---|---|
+      | Card payments | `card-auth`, `risk-scorer`, `fx-quote` |
+      | Payouts | `payout-gateway`, `settlement-batcher` |
+      | Merchant Hub | `merchant-hub` |
+      | Merchant API | `merchant-api` |
+      | Webhooks and emails | `notify` |
+
+      `ledger` has no component of its own. The mapping matches
+      [status page communications](../../corpus/incidents/status-page.md).
+  - key: ENG-502
+    type: Task
+    summary: Load the status page templates into Klaxon
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Copy the templates from status page communications into Klaxon as versioned
+      text: the SEV1 first update, the follow-up while investigating, Identified,
+      Monitoring, Resolved, Payouts delayed, Merchant Hub sign-in, and scheduled
+      maintenance.
+
+      - Merchant Support and Site Reliability can edit them; every edit is reviewed by
+        Femi Haldane's team.
+      - The wiki page and Klaxon stay word for word the same; a change to one is made
+        to the other in the same week.
+    comments:
+      - "Femi: Loaded and checked against the page. No differences."
+  - key: ENG-503
+    type: Story
+    summary: Post an approved update to Beacon from the Klaxon incident record
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      As a communications lead, I want to post updates to Beacon from the incident
+      record, without copying text between two tools in the middle of an incident.
+
+      Acceptance criteria:
+
+      - from the record, choose the component, its state (Operational, Degraded
+        performance, Partial outage, Major outage or Under maintenance), the incident
+        state (Investigating, Identified, Monitoring or Resolved) and the text;
+      - the update can be posted only once approved;
+      - the Beacon incident is linked to the Klaxon record, and every post appears on
+        the record's timeline.
+  - key: ENG-504
+    type: Story
+    summary: Record the IC's and the communications lead's approvals with one click each
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      As an IC, I want to approve an update in one click, so that approval never waits
+      for me to find the right screen.
+
+      Acceptance criteria:
+
+      - each draft has two approval buttons: the IC's, for accuracy, and the
+        communications lead's, for tone and clarity;
+      - each approval is recorded on the timeline with the person's name and the time;
+      - the post button stays disabled until both approvals are given.
+  - key: ENG-505
+    type: Story
+    summary: Fill a drafted update's times from the declaration, in UTC
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As a communications lead, I want the times in a draft filled for me, so that I
+      only check them.
+
+      Acceptance criteria:
+
+      - "It started at about `[HH:MM]` UTC" is filled with the start of impact given in
+        the declaration, or the declaration time if none was given;
+      - "We will post our next update by `[HH:MM]` UTC" is filled with the expected
+        posting time plus 30 minutes for a SEV1, or 60 minutes for a SEV2;
+      - every time in a draft is in UTC.
+  - key: ENG-506
+    type: Story
+    summary: Pick the Beacon component from the services named in a declaration
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As a communications lead, I want the draft to name the component merchants will
+      recognise, chosen from the services the declarer named.
+
+      Acceptance criteria:
+
+      - the component comes from the mapping in ENG-501;
+      - several services in one component give that one component;
+      - services in two components give both, flagged for the communications lead to
+        confirm;
+      - the communications lead can always change the component before approval.
+  - key: ENG-507
+    type: Bug
+    summary: Drafted update gave the UK time but labelled it UTC
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** In staging, declare a test SEV1 at 09:00 UTC in June,
+      which is 10:00 UK time.
+
+      **Expected.** "It started at about 09:00 UTC."
+
+      **Actual.** "It started at about 10:00 UTC." The template renderer used the
+      server's local time zone, Europe/London, and appended "UTC".
+
+      **Fix.** The renderer formats every time in UTC explicitly. A test declares
+      incidents on both sides of the clock changes in March and October.
+    comments:
+      - "Lukas: The same mistake would have reached every update in summer. Thanks for catching it in staging."
+  - key: ENG-508
+    type: Story
+    summary: Refuse to post an update until two different people have approved it
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      The IC never approves alone. Both the IC and the communications lead approve every
+      update, every time.
+
+      Acceptance criteria:
+
+      - Klaxon refuses to post an update approved by only one person, even if that
+        person approves twice;
+      - the reason is shown next to the disabled post button;
+      - there is no override, for anyone.
+    comments:
+      - "Femi: Agreed with Lukas: no override. If the rota is slow, the IC names a stand-in instead."
+  - key: ENG-509
+    type: Story
+    summary: Prompt the IC to name a stand-in communications lead after 10 minutes
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As an IC on a SEV1, I want help when the communications lead has not joined, so
+      that the first update is not held up by one slow page.
+
+      Acceptance criteria:
+
+      - if nobody from the `comms-lead` rota has joined within 10 minutes of a SEV1
+        page, Klaxon prompts the IC to name a stand-in from the channel: any support
+        team lead, or the IC rota secondary;
+      - the stand-in approves in the communications lead's place until the rota
+        answers;
+      - the handover to the rota's communications lead is recorded on the timeline.
+  - key: ENG-510
+    type: Story
+    summary: Flag internal names in a draft before it reaches approval
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Updates say what merchants see, never what broke inside: no service names, no
+      error codes, no tool names, and nobody outside Quillmoor named.
+
+      Acceptance criteria:
+
+      - the draft is checked against the service list, error code patterns, internal
+        tool names, and words such as "issuer" and "acquiring bank";
+      - findings are shown above the draft, for example:
+
+      ```text
+      Flagged: "card-auth" (service name), "CAU-1207" (error code)
+      ```
+
+      - findings warn but do not block; the communications lead decides.
+  - key: ENG-511
+    type: Story
+    summary: Remind the communications lead when the next update falls due
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As a communications lead, I want a reminder before the next update falls due, so
+      that the status page never goes quiet.
+
+      Acceptance criteria:
+
+      - after each post, Klaxon schedules the next update: every 30 minutes for a SEV1,
+        every 60 minutes for a SEV2, until resolved;
+      - a reminder in the channel 5 minutes before it falls due, with a follow-up draft;
+      - if nothing has changed, the follow-up draft says so, since silence reads as
+        "they have forgotten us".
+  - key: ENG-512
+    type: Story
+    summary: Start the 15-minute clock when a SEV2 is raised to SEV1
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      A SEV2 that becomes a SEV1 starts the 15-minute clock from the change and moves to
+      30-minute updates.
+
+      Acceptance criteria:
+
+      - raising an incident to SEV1 drafts the first SEV1 update at once if nothing has
+        been posted yet;
+      - if updates have been posted, the next one falls due 15 minutes after the change,
+        and every 30 minutes after that;
+      - the change and the new due time are posted in the channel.
+  - key: ENG-513
+    type: Bug
+    summary: No draft when a declaration named only services that Beacon does not show
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** In staging, declare a test SEV1 naming only `ledger`.
+
+      **Expected.** A draft with no component, flagged for the communications lead to
+      choose one.
+
+      **Actual.** The draft step failed silently. The communications lead found no
+      draft in the record and nothing explaining why.
+
+      **Fix.** Klaxon always drafts. When no named service maps to a component, the
+      draft leaves the component empty and posting stays blocked until one is chosen.
+  - key: ENG-514
+    type: Story
+    summary: Resolve the Beacon incident when the IC resolves it in Klaxon
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Beacon is resolved when the IC resolves in Klaxon, not before.
+
+      Acceptance criteria:
+
+      - resolving the incident in Klaxon drafts the Resolved update, with the window of
+        impact filled from the record;
+      - the Beacon incident cannot be resolved from Klaxon while the record is still
+        open;
+      - the Resolved update still needs both approvals;
+      - for a SEV1, the draft keeps the line promising a summary within 10 business
+        days.
+  - key: ENG-515
+    type: Task
+    summary: Chart minutes from declaration to first Beacon update in Lantern
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      Add a panel to the Lantern dashboard "on-call health": for every SEV1 and SEV2
+      posted on Beacon, the minutes from declaration to the first update, split into
+      waiting for a draft, waiting for approval and posting.
+
+      Mark the 15-minute SEV1 target and the 30-minute SEV2 target on the panel, and
+      include the incidents measured in ENG-499 as history.
+  - key: ENG-516
+    type: Story
+    summary: Queue updates while Beacon is unreachable and post them with their original times
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Beacon is hosted outside our production regions, but it can still be unreachable.
+
+      Acceptance criteria:
+
+      - when a post fails, Klaxon keeps the approved update and retries;
+      - the communications lead is told at once in the channel, so that the fallback in
+        [status page communications](../../corpus/incidents/status-page.md) can start;
+      - once Beacon answers, queued updates are posted in order with their original
+        times.
+    comments:
+      - "Teodor: Tested by blocking Beacon from staging for 20 minutes. Three updates queued and posted in order afterwards."
+  - key: ENG-517
+    type: Story
+    summary: Ask the Paris support team for a French version of SEV1 and EUR payout updates
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      For SEV1 incidents, and for any incident affecting EUR payouts, the support team
+      in Paris adds a French version to the following update.
+
+      Acceptance criteria:
+
+      - after each update on such an incident, Klaxon posts a request in the incident
+        channel tagging the Paris support team, with the English text;
+      - the French text is added under the English one in the following update;
+      - see [supporting French-speaking merchants](../../corpus/support/french-speaking-merchants.md).
+    comments:
+      - "Inès: Works for us. We add the French under the English in the following update."
+  - key: ENG-518
+    type: Task
+    summary: Evaluate machine translation for the French version of updates
+    status: Won't Do
+    priority: Low
+    labels: [sre]
+    description: |
+      Look at whether Klaxon could add a machine-translated French version to SEV1 and
+      EUR payout updates straight away, instead of waiting for the following update.
+      Compare quality on the existing templates and on past updates, and the risk of a
+      public statement nobody at Quillmoor has read in French.
+    comments:
+      - "Inès: Won't Do. A public statement in French should be written by someone who answers French-speaking merchants every day. The request in ENG-517 already gets a French version into the following update."
+  - key: ENG-519
+    type: Bug
+    summary: One person could approve an update as both IC and stand-in
+    status: Done
+    priority: Highest
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** In a test SEV1, wait 10 minutes for the prompt, name
+      yourself, the IC, as stand-in communications lead, then approve the draft in both
+      roles.
+
+      **Expected.** Klaxon refuses: the stand-in must be someone other than the IC.
+
+      **Actual.** Both approvals were accepted, and the update could be posted with one
+      person's approval.
+
+      **Fix.** The check in ENG-508 now compares people, not roles, and the stand-in
+      prompt refuses the IC.
+    comments:
+      - "Lukas: Found in the staging dry runs. Exactly the case the two-person rule exists for."
+  - key: ENG-520
+    type: Task
+    summary: Dry-run the drafted first update against a staging Beacon page
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Declare a test SEV1 in staging Klaxon for each Beacon component and follow it
+      through to a staging Beacon page:
+
+      - the draft, its component and its times;
+      - both approvals, by two people;
+      - posting, the next-update reminder and resolution.
+
+      Note anything that surprised the people taking part, and file bugs in this epic.
+    comments:
+      - "Lukas: One dry run per component, all posted to the staging page with both approvals. ENG-519 came out of it."
+  - key: ENG-521
+    type: Task
+    summary: Copy each approved update's wording into Harbour for support agents
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Support agents should tell merchants exactly what Beacon says. When an update is
+      posted, Klaxon writes the same text into a note on the incident in Harbour, so
+      that agents replying to merchants can quote it.
+
+      The communications lead still briefs agents; this only saves them copying text by
+      hand.
+    comments:
+      - "Femi: Agents found the note on their first try in the dry run. Good."
+  - key: ENG-522
+    type: Story
+    summary: Publish the first SEV1 update without waiting for approval
+    status: Won't Do
+    priority: Medium
+    labels: [sre]
+    description: |
+      Proposal: if neither approval has arrived 15 minutes after a SEV1 is declared,
+      post the drafted first update automatically, so that the 15-minute rule is always
+      met even when both the IC and the communications lead are busy. The draft would
+      carry a note that it was posted without review, and the next update would need
+      both approvals as usual.
+    comments:
+      - "Femi: Won't Do. Nothing goes on Beacon without the IC and the communications lead, and a stand-in already covers a slow rota. An unapproved public statement is a worse failure than a late one."
+  - key: ENG-523
+    type: Task
+    summary: Create the SEV1 public summary task for the communications lead at resolution
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      For a SEV1, a short public summary is published within 10 business days, once
+      the PIR has met. The communications lead drafts it from the PIR's summary; the
+      IC, Femi Haldane and Legal approve it.
+
+      When a SEV1 is resolved, Klaxon creates a task for the communications lead with
+      the due date, the approvers and links to the PIR page and the Beacon incident.
+  - key: ENG-524
+    type: Story
+    summary: Announce scheduled maintenance from a CHG- ticket five business days ahead
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      Planned work that merchants could notice is announced on Beacon at least 5
+      business days ahead, as the region failover game day was.
+
+      Acceptance criteria:
+
+      - a `CHG-` ticket in the Change Register marked as visible to merchants creates a
+        draft from the scheduled maintenance template;
+      - the communications lead is reminded 6 business days before the work;
+      - the announcement needs the usual two approvals.
+
+      Example: [the April 2026 game day](../../corpus/incidents/game-day-2026-04.md).
+  - key: ENG-525
+    type: Bug
+    summary: A draft with unfilled square brackets reached the approval step
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** In staging, declare a test SEV1 that names no services.
+
+      **Expected.** The draft cannot be approved while any placeholder in square
+      brackets remains.
+
+      **Actual.** The title read `[Component] disruption` and the IC approved it; the
+      communications lead caught it before posting.
+
+      **Fix.** Placeholders are highlighted, and both approval buttons stay disabled
+      until none remains.
+  - key: ENG-526
+    type: Task
+    summary: Walk the comms-lead rota through the drafted first update
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Run half-hour sessions with everyone on the `comms-lead` rota, night cover
+      included:
+
+      - where the draft appears and what Klaxon filled in;
+      - checking the component and the wording, and approving;
+      - naming a stand-in, and what to do when Beacon cannot be reached.
+
+      Update the communications lead's checklist on status page communications to
+      match.
+    comments:
+      - "Femi: Everyone on the comms-lead rota has been through it, including the night cover."
+  - key: ENG-527
+    type: Story
+    summary: Show a Merchant Hub incident banner from the same template as Beacon
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      As a merchant signed in to Merchant Hub, I want to see that there is an incident
+      without going to the status page.
+
+      Acceptance criteria:
+
+      - when Beacon reports an incident, Merchant Hub shows a banner with the same
+        wording and a link to `status.quillmoor.example`;
+      - the banner and Beacon are fed from the same approved update, with no separate
+        approval;
+      - announced in the
+        [Merchant Hub release notes](../../corpus/product/merchant-hub-release-notes-2026.md).
+    comments:
+      - "Malik: The banner text comes from the posted update, so it cannot drift from Beacon."
+  - key: ENG-528
+    type: Story
+    summary: Show the incident banner only to merchants whose products are affected
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As a merchant who uses only Quillmoor Payouts, I do not want a card payments
+      banner on every page.
+
+      Acceptance criteria:
+
+      - the banner is shown when the incident's component matches a product the
+        merchant uses;
+      - Merchant Hub and Merchant API incidents are shown to every merchant;
+      - a merchant can dismiss the banner until the next update.
+  - key: ENG-529
+    type: Bug
+    summary: Incident banner stayed on Merchant Hub after the Beacon incident was resolved
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** Post a test incident, let the banner appear, then resolve
+      the incident in Klaxon.
+
+      **Expected.** The banner disappears within a minute of the Resolved update.
+
+      **Actual.** It stayed for up to 15 minutes, because `merchant-hub` cached the
+      incident list.
+
+      **Fix.** Klaxon sends a clear event when it posts a Resolved update, and the
+      cache lasts 60 seconds at most.
+  - key: ENG-530
+    type: Task
+    summary: Page sre-primary when an approved update fails to post
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      The Beacon integration belongs to Site Reliability, like Klaxon itself. If an
+      approved update has not posted 2 minutes after approval, page `sre-primary` as
+      well as telling the communications lead in the channel, so that someone works on
+      the integration while the fallback runs.
+    comments:
+      - "Lukas: Added, and tested by revoking the staging token."
+  - key: ENG-531
+    type: Task
+    summary: Review the wording of every template with Merchant Support
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      Read every template in Klaxon with Merchant Support against the writing rules:
+
+      - say what merchants see, what they can do and when the next update is;
+      - name nobody outside Quillmoor and guess at no cause;
+      - British English, sentence case and plain words, as in the
+        [content style guide](../../corpus/design/content-style.md).
+
+      Change both the wiki page and Klaxon together.
+  - key: ENG-532
+    type: Bug
+    summary: Edits made after approval were posted without new approvals
+    status: Done
+    priority: Highest
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** Draft an update, get both approvals, then change a
+      sentence and post.
+
+      **Expected.** Any change after approval clears both approvals.
+
+      **Actual.** The edited text was posted under the earlier approvals, so neither
+      approver had seen what went public.
+
+      **Fix.** Any change to the text, the component or either state clears both
+      approvals, and the timeline records what changed.
+    comments:
+      - "Femi: Glad this was found before anything real went out."
+  - key: ENG-533
+    type: Story
+    summary: A seller-facing payout delay template for the first update
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As a communications lead on a payouts incident, I want a ready-made first update
+      written for sellers rather than engineers, so that it can go out quickly.
+
+      Acceptance criteria:
+
+      - Yusuf Achterberg drafts the template, and Merchant Support reviews it;
+      - Site Reliability loads it into Klaxon, and drafts use it when the Payouts
+        component is affected;
+      - its wording matches
+        [payout delays: what to tell merchants](../../corpus/support/payout-delay-faq.md).
+    comments:
+      - "Yusuf: Reviewed by Support and handed to Site Reliability."
+      - "Lukas: Loaded into Klaxon. Payouts drafts now start from it."
+  - key: ENG-534
+    type: Story
+    summary: Let the IC record a decision not to post on Beacon for a SEV2
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      A SEV2 goes on Beacon only when merchants can see the effect, a judgement for the
+      IC and the communications lead together.
+
+      Acceptance criteria:
+
+      - 25 minutes after a SEV2 is declared, if nothing is posted, Klaxon asks whether
+        merchants can see the effect;
+      - "No Beacon update" is recorded on the timeline with a one-line reason and both
+        names, and the reminders stop;
+      - the question comes back if the severity changes.
+    comments:
+      - "Corinne: The stale FX quotes SEV2 of 8 August is the case: every quote was honoured, so nothing was posted, and the decision lived only in a DECISION line in the channel."
+  - key: ENG-535
+    type: Bug
+    summary: No draft for a SEV1 declared from the app's Declare incident button
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** Declare a test SEV1 from the phone app's "Declare
+      incident" button.
+
+      **Expected.** The same as `/klaxon declare`: a first Beacon update drafted from
+      the template.
+
+      **Actual.** The incident record and channel were created, but no draft. The app's
+      declaration path skipped the drafting step.
+
+      **Fix.** Drafting now runs when the incident record is created, whatever created
+      it, and a test covers chat, the app and a severity change.
+  - key: ENG-536
+    type: Story
+    summary: Post the first SEV1 update from a template drafted at declaration
+    status: Done
+    priority: High
+    labels: [sre, pir-action]
+    description: |
+      Action 3 of the PIR for the
+      [card authorisation latency SEV1 of 2025-09-17](../../corpus/incidents/report-2025-09-17-card-auth-latency.md),
+      owned by Lukas Brennand. The first Beacon update went out 22 minutes after
+      declaration, against a target of 15.
+
+      Acceptance criteria, end to end:
+
+      - a SEV1 declared in Klaxon, from chat or the app, arrives with its first Beacon
+        update drafted from the template, the component chosen from the services named
+        in the declaration;
+      - the communications lead checks the component and the wording, the IC approves,
+        and the update is posted from Klaxon;
+      - the draft is a starting point and can be changed before approval.
+    comments:
+      - "Femi: The comms-lead rota is ready for it."
+      - "Lukas: Works end to end from chat, and from the app once the fix for ENG-535 is out. I will mark the action closed on the PIR actions tracker."
+  - key: ENG-537
+    type: Task
+    summary: Unpin the hand-kept first-update template from #team-sre
+    status: Done
+    priority: Lowest
+    labels: [sre]
+    description: |
+      Since the SEV1 of 2025-09-17, the communications lead has kept a copy of the
+      first-update template pinned in `#team-sre`. Now that Klaxon drafts the first
+      update, the pinned copy can only drift from the real one.
+
+      - Unpin it, and pin a link to status page communications instead.
+      - Remove the step "copy the pinned template" from the communications lead's
+        notes.
+    comments:
+      - "Lukas: I will unpin it once ENG-536 is done. Status page communications gets its update after the epic closes."

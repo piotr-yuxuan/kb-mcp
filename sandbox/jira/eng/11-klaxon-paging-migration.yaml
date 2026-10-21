@@ -1,0 +1,773 @@
+epic:
+  key: ENG-11
+  summary: Klaxon paging migration
+  sprints: [2, 7]
+  labels: [sre]
+  description: |
+    ## Goal
+
+    Move every production rota and every paging alert onto Klaxon, so that one system
+    pages, escalates and records who is on call. Today each team keeps its rota in the
+    old paging service with its own hand-over day, most of them on Friday afternoon, and
+    nobody can see the whole picture.
+
+    ## Scope
+
+    - A Klaxon rota for every owning team, plus the IC rota and the `comms-lead` rota.
+    - Lantern alerts paging through Klaxon with a severity, and escalation chains for
+      SEV1 and SEV2.
+    - `/klaxon declare`, incident channels and incident records.
+    - Swaps, overrides, shadowing, and the on-call schedule sent to Haven for the
+      allowance.
+    - Weekly hand-overs on Mondays at 10:00 UK time for every rota.
+    - Switching off the old paging service.
+
+    ## Out of scope
+
+    Beacon updates, SLOs and burn alerts (ENG-12), and the incident policy itself,
+    which Site Reliability owns separately.
+
+    ## Pages
+
+    - [On-call rota and paging policy](../../corpus/incidents/on-call.md)
+    - [Production incident management](../../corpus/incidents/incident-management.md)
+    - [Setting up Klaxon on your phone](../../corpus/incidents/klaxon-setup.md)
+  comments:
+    - "Bram: Approved for ENG Sprints 2 to 7. The common Monday hand-over is the part I care most about."
+    - "Lukas: Payments rotas move first, since they page the most; the other teams follow in the sprints after."
+tickets:
+  - key: ENG-421
+    type: Task
+    summary: Inventory every rota, alert route and escalation in the old paging service
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Before moving anything, write down what the old paging service does for us
+      today, team by team:
+
+      - each rota, its members, its hours and its hand-over day;
+      - each alert that pages, where it comes from in Lantern and whom it reaches;
+      - each escalation step and its delay.
+
+      Post the inventory in `#team-sre` and use it as the checklist for the rest of
+      ENG-11. Mark any alert that nobody remembers acting on: it is a candidate for a
+      ticket rather than a page.
+    comments:
+      - "Lukas: Inventory posted. Hand-over days vary from team to team, and most rotas hand over on Friday afternoon."
+      - "Teodor: Platform has two alerts that page at night and have never needed anyone to act. Marked."
+  - key: ENG-422
+    type: Task
+    summary: Sync phone numbers and contact details into Klaxon from Haven every hour
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Klaxon needs a phone number for everyone on a rota, for text messages and calls.
+      Take the numbers from Haven instead of asking people to type them again, so that
+      a number changed in Haven reaches Klaxon without anyone having to update two
+      places.
+
+      Acceptance criteria:
+
+      - the sync runs every hour;
+      - a number changed in Haven appears in Klaxon within the hour;
+      - a leaver is removed from Klaxon at the next sync;
+      - numbers are never copied into wiki pages; people use the contact card in
+        Klaxon instead.
+    comments:
+      - "Rhiannon: People are happy for Klaxon to read work numbers and the personal mobiles that people have flagged for on-call use, and nothing else from Haven."
+  - key: ENG-423
+    type: Story
+    summary: Sign in to the Klaxon app through single sign-on only
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As an engineer joining a rota, I want to sign in to Klaxon on my phone with my
+      company account, so that I have no extra password to keep and a leaver loses
+      Klaxon along with everything else.
+
+      Acceptance criteria:
+
+      - the app offers single sign-on only and has no separate password;
+      - a disabled company account can no longer acknowledge pages;
+      - personal phones are allowed, and a company phone is available from the team
+        lead for anyone who prefers to keep work off their own.
+    comments:
+      - "Callum: Security is happy with this. No local accounts at all, please."
+  - key: ENG-424
+    type: Task
+    summary: Create the payments-primary and payments-secondary rotas in Klaxon
+    status: Done
+    priority: Highest
+    labels: [sre]
+    description: |
+      Payments Core, Payouts and Ledger engineers share one 24/7 first-responder rota
+      for `card-auth`, `fx-quote`, `payout-gateway`, `settlement-batcher` and `ledger`.
+      Create it in Klaxon as `payments-primary` and `payments-secondary`, with the
+      members of the three teams' current rotas, and point every paging alert for those
+      services at it.
+
+      "The payments on-call", in runbooks and in Harbour, means whoever is primary on
+      `payments-primary`. Payouts and Ledger keep business-hours rotas of their own for
+      escalations; those move in ENG-430.
+    comments:
+      - "Nadia: One rota for the three teams is the right call. Nobody should have to guess which payments team owns a page at 03:00."
+  - key: ENG-425
+    type: Story
+    summary: Page through Klaxon from Lantern alerts, carrying the alert's severity
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      As an on-call engineer, I want every paging alert in Lantern to reach me through
+      Klaxon with the severity the alert sets, so that the response time I owe is clear
+      from the page itself.
+
+      Acceptance criteria:
+
+      - each paging alert in Lantern names a Klaxon rota and a severity, SEV1 to SEV4;
+      - the page shows the alert name, the service and a link to its Lantern panel;
+      - `PayoutQueueBacklog` pages `payments-primary` as a SEV2;
+      - an alert without a rota fails review instead of paging nobody.
+  - key: ENG-426
+    type: Story
+    summary: Default notification rules of push, then a text at 1 minute, then a call at 3
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As someone on call, I want Klaxon to try my phone three ways before it escalates,
+      so that a push notification lost in a busy phone does not become a missed page.
+
+      Acceptance criteria:
+
+      - a new profile starts with these rules: a push notification with the loud
+        "klaxon" sound at once, a text message after 1 minute unacknowledged, and a
+        phone call after 3 minutes, repeated once;
+      - the rules are shown under Profile, Notification rules;
+      - all three steps have run before the SEV1 escalation to the secondary at 5
+        minutes.
+  - key: ENG-427
+    type: Bug
+    summary: Phone numbers imported from Haven without the country code
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** Run the Haven sync (ENG-422) for someone whose number is
+      stored in Haven as `07700 900123`, then send them a test page.
+
+      **Expected.** A push at once, a text message at 1 minute and a call at 3 minutes.
+
+      **Actual.** The push only. The text and the call fail with "invalid number" in
+      Klaxon's delivery log, and nothing tells the person.
+
+      **Fix.** The sync now normalises numbers to international format, with +44 by
+      default and +33 for people employed in France. Numbers that still fail to parse
+      are listed in `#team-sre` after each sync.
+    comments:
+      - "Lukas: Fixed. A handful of people had a landline in Haven and have since corrected it."
+  - key: ENG-428
+    type: Story
+    summary: Escalate unacknowledged SEV1 and SEV2 pages along a fixed chain
+    status: Done
+    priority: Highest
+    labels: [sre]
+    description: |
+      As a team lead, I want an unacknowledged page to move up the chain on its own, so
+      that a phone left in a coat pocket does not delay an incident.
+
+      Acceptance criteria:
+
+      | Page | First step | Then |
+      |---|---|---|
+      | SEV1 | The secondary at 5 minutes | The team lead at 10 minutes, then the head of department |
+      | SEV2 | The secondary at 15 minutes | The team lead at 30 minutes |
+
+      - each step is recorded on the page's timeline;
+      - an acknowledgement at any step stops the chain.
+    comments:
+      - "Yusuf: Tested on the payouts rota with a phone switched off. The team lead's phone rang at 10 minutes, as it should."
+  - key: ENG-429
+    type: Story
+    summary: Page the IC rota for every SEV1 and SEV2
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      As the payments on-call, I want an IC paged with me for every SEV1 or SEV2, so
+      that I can work on the problem while someone else coordinates.
+
+      Acceptance criteria:
+
+      - rotas `ic-primary` and `ic-secondary`, 24/7, staffed by trained ICs from
+        several teams;
+      - Klaxon pages `ic-primary` whenever a SEV1 or SEV2 page or declaration is
+        created, and escalates to `ic-secondary` like any other rota;
+      - an IC may hold the IC rota on top of a team rota, but Klaxon warns when anyone
+        is primary on both in the same week.
+
+      The IC role is described in
+      [production incident management](../../corpus/incidents/incident-management.md).
+    comments:
+      - "Saskia: The first IC rota is published, with trained ICs from Site Reliability, Payments Core, Payouts and Platform."
+  - key: ENG-430
+    type: Task
+    summary: Move the payouts and ledger escalation rotas to Klaxon
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Payouts and Ledger keep business-hours rotas for escalations from the payments
+      on-call: business days, 08:00 to 20:00 UK time. `payouts` also takes the calls to
+      our settlement bank's operations desk; `ledger` takes schema migration questions
+      and reconciliation breaks.
+
+      Out of hours, a page to either rota is best effort: route it to the team lead's
+      phone as well as to the scheduled person, and let whoever is awake answer.
+
+      Done when both rotas exist in Klaxon with those hours, out-of-hours pages reach
+      the team lead, and the old rotas are removed.
+    comments:
+      - "Kwabena: Ledger's rota is set up. I am happy to be the out-of-hours fallback as long as it stays rare."
+  - key: ENG-431
+    type: Task
+    summary: Move the Merchant Experience, Platform, Site Reliability and Risk ML rotas to Klaxon
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Create the 24/7 rotas below and point their alerts at them:
+
+      | Rota | Pages for |
+      |---|---|
+      | `merchant-exp-primary`, `merchant-exp-secondary` | `merchant-api`, `merchant-hub`, `notify` |
+      | `platform-primary`, `platform-secondary` | Kubernetes, Shipwright, Switchboard, the message brokers |
+      | `sre-primary`, `sre-secondary` | Lantern, Klaxon itself, anything without an owner |
+      | `risk-ml-primary` | `risk-scorer` and the fraud model |
+
+      Each team checks its members and its alert list against the inventory from
+      ENG-421 before its old route is removed.
+  - key: ENG-432
+    type: Story
+    summary: Page payments-primary from email sent to the payments on-call address
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As a colleague outside engineering, or anyone who cannot reach chat, I want to
+      page the payments on-call by email, so that a payments problem never waits for
+      someone to find the right person.
+
+      Acceptance criteria:
+
+      - email to payments-oncall@quillmoor.example opens a page to `payments-primary`,
+        with the subject as the page title and the body attached;
+      - the sender gets an automatic reply naming the person paged;
+      - the page's timeline shows that it was opened by email, and by whom.
+  - key: ENG-433
+    type: Bug
+    summary: CardAuthP99High paged a second time from the standby region
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** Let `card-auth` p99 stay above 800 ms for 10 minutes in
+      the active region.
+
+      **Expected.** One page to `payments-primary`.
+
+      **Actual.** Two pages. The standby region's copy of `CardAuthP99High` also fired:
+      its handful of warm-up requests had a p99 over 800 ms.
+
+      **Fix.** The alert is still evaluated per region, but only the active region's
+      result pages. The standby region's result stays visible on the "card-auth
+      overview" dashboard. See the
+      [card authorisation latency runbook](../../corpus/payments/card-auth-latency.md).
+    comments:
+      - "Corinne: Thanks. Being paged twice for one alert at night made me check the wrong region first."
+  - key: ENG-434
+    type: Story
+    summary: Create the comms-lead rota, staffed by Merchant Support
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      As an IC, I want a communications lead paged with me for SEV1 and SEV2, so that
+      merchants and Support hear from us while I run the incident.
+
+      Acceptance criteria:
+
+      - a rota `comms-lead`, staffed by Merchant Support;
+      - 24/7 for SEV1, business hours otherwise;
+      - paged together with the IC rota for every SEV1 and SEV2 declaration;
+      - the communications lead joins the incident channel on acknowledging.
+    comments:
+      - "Femi: Support has enough people trained for nights. We will review the SEV1 night cover after three months."
+  - key: ENG-435
+    type: Story
+    summary: Hold SEV3 pages until the morning and turn SEV4 into tickets
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As an on-call engineer, I do not want to be woken for a minor degradation that
+      has a workaround.
+
+      Acceptance criteria:
+
+      - a SEV3 is never paged out of hours; Klaxon posts it in the owning team's
+        channel and it is acknowledged by 10:00 the next business morning;
+      - a SEV4 never pages; Klaxon opens a ticket for the owning team, to be handled
+        within the sprint;
+      - an on-call who sees a SEV3 getting worse can raise it with `/klaxon declare`.
+  - key: ENG-436
+    type: Story
+    summary: Declare an incident from any chat channel with /klaxon declare
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      As anyone at Quillmoor, including people outside engineering, I want to declare
+      an incident from any chat channel, so that declaring is quicker than wondering
+      whether to.
+
+      Acceptance criteria:
+
+      - `/klaxon declare` asks four questions: the severity, a short name, the affected
+        services, and a one-line summary of what merchants see;
+      - people who know the answers can type them in one go:
+
+      ```text
+      /klaxon declare sev2 payouts-delayed "Payouts to sellers are arriving late"
+      ```
+
+      - the "Declare incident" button in the phone app does the same.
+    comments:
+      - "Lukas: Short names should describe the symptom, not the suspected cause. The help text says so."
+  - key: ENG-437
+    type: Story
+    summary: Open the incident channel and the incident record on declaration
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As the person declaring, I want Klaxon to set the incident up for me, so that the
+      first minutes go on the problem rather than on admin.
+
+      Acceptance criteria:
+
+      - Klaxon creates the channel `#inc-<short name>` and invites the declarer and the
+        owning team's on-call;
+      - it opens an incident record whose timeline starts at the moment of declaration,
+        with every time in UTC;
+      - for a SEV1 or SEV2 it pages the IC rota and the `comms-lead` rota.
+  - key: ENG-438
+    type: Story
+    summary: Announce each declaration in #team-sre and in the owning team's channel
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      As Site Reliability, we want to see every incident as it starts, so that we can
+      help early and notice when two incidents are really one.
+
+      Acceptance criteria:
+
+      - one line per declaration, with the severity, the short name, the channel and
+        the summary, in `#team-sre` and in the owning team's channel;
+      - a change of severity posts a second line;
+      - nothing else from the incident is copied into either channel.
+  - key: ENG-439
+    type: Bug
+    summary: /klaxon declare created no channel when the short name held spaces
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      **Steps to reproduce.**
+
+      ```text
+      /klaxon declare sev3 "payouts slow" "Some payouts are a cycle late"
+      ```
+
+      **Expected.** A channel `#inc-payouts-slow`, with the declarer and the on-call
+      invited.
+
+      **Actual.** The incident record was created, but channel creation failed and
+      nobody was invited. The declarer saw no error.
+
+      **Fix.** Spaces and capitals in a short name become hyphens and lower case.
+      Anything else is refused with a message that suggests a symptom, such as
+      `payouts-delayed`.
+  - key: ENG-440
+    type: Story
+    summary: Raise or lower an incident's severity from the Klaxon record
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As an IC, I want to change the severity in the incident record and have Klaxon
+      page or stand down people to match, so that the response follows the impact.
+
+      Acceptance criteria:
+
+      - the IC changes the level in the record with a one-line reason;
+      - raising to SEV2 or SEV1 pages the IC and `comms-lead` rotas; lowering stands
+        them down;
+      - the change and its reason are posted in the incident channel and kept on the
+        timeline, so that the PIR can quote them;
+      - a new level starts its own clock for the IC rota.
+  - key: ENG-441
+    type: Story
+    summary: Agree whole-shift swaps in Klaxon at least 24 hours ahead
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As someone on call, I want to swap a shift with a colleague inside Klaxon, so
+      that the person paged is always the person who agreed to be.
+
+      Acceptance criteria:
+
+      - one person proposes the swap in Klaxon and the other accepts it there;
+      - swaps that start less than 24 hours ahead are refused; the team lead can set
+        an emergency override instead;
+      - both schedules update as soon as the swap is accepted.
+
+      A swap agreed in chat but not in Klaxon changes nothing, because Klaxon is the
+      only thing that pages.
+    comments:
+      - "Jonah: Swapped a week with Corinne through it. Both schedules updated straight away."
+  - key: ENG-442
+    type: Story
+    summary: Cover a short absence on call with a Klaxon override
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      As someone on call with a two-hour appointment or a flight, I want my secondary
+      to cover those hours without a whole-shift swap.
+
+      Acceptance criteria:
+
+      - either person can set an override for a number of hours;
+      - the 24-hour rule for swaps does not apply to overrides;
+      - the override shows on both people's schedules and ends on its own;
+      - the outgoing person is reminded of any override left in place at hand-over.
+  - key: ENG-443
+    type: Story
+    summary: Let shadowing engineers receive every page without stopping escalations
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Engineers join a rota after shadowing it for two full weeks: they receive every
+      page and join every incident, but do nothing alone.
+
+      Acceptance criteria:
+
+      - any rota can have "shadow" members;
+      - a shadow receives every page for the rota, with the same notification rules;
+      - a shadow's acknowledgement does not stop the escalation chain;
+      - the team lead is told when a shadow's two weeks are over, so that they can be
+        added to the rota proper.
+    comments:
+      - "Jonah: Our two newest Payouts engineers will be the first shadows. Being paged without being able to stop the chain is exactly right."
+  - key: ENG-444
+    type: Bug
+    summary: Acknowledging from the lock screen did not stop the text and the call
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** Receive a test page, long-press the notification on the
+      lock screen and choose Acknowledge.
+
+      **Expected.** The page is acknowledged and no further notification step runs.
+
+      **Actual.** Klaxon shows the page as acknowledged, but the text message still
+      arrives at 1 minute and the call at 3 minutes.
+
+      **Fix.** The lock-screen action now cancels the remaining steps on the server,
+      not only in the app. Checked on both phone platforms we support, with the phone
+      locked and set to silent.
+  - key: ENG-445
+    type: Story
+    summary: Send yourself a test page from the Klaxon app
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As someone starting a shift, I want to prove that a page can wake me, before a
+      real one has to.
+
+      Acceptance criteria:
+
+      - the app has Profile, Send test page;
+      - the test follows my own notification rules: push at once, text at 1 minute,
+        call at 3 minutes;
+      - a test page never escalates to anyone else and is not counted in page
+        reports;
+      - acknowledging the call stops the test.
+  - key: ENG-446
+    type: Task
+    summary: Write the guide to setting up Klaxon on your phone
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      Most missed pages turn out to be a phone setting, not a person. Write a short
+      guide in the incidents section covering:
+
+      - installing the app and signing in;
+      - letting Klaxon break through silent mode and do-not-disturb;
+      - the default notification rules;
+      - the phone settings that cause missed pages: battery saving, focus modes,
+        notification summaries, volume, a second device;
+      - sending a test page, and repeating it at the start of every shift.
+
+      Published as
+      [Setting up Klaxon on your phone](../../corpus/incidents/klaxon-setup.md).
+    comments:
+      - "Femi: Support's night cover followed it on their own phones. Two needed the battery setting changed."
+  - key: ENG-447
+    type: Story
+    summary: Warn the team lead when a rota drops below six people
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      A rota needs at least six people, so that nobody is on call more than one week in
+      six.
+
+      Acceptance criteria:
+
+      - Klaxon warns the team lead, and posts in `#team-sre`, when a rota's members fall
+        below six, shadows not counted;
+      - the warning repeats weekly until the rota is back to six;
+      - Site Reliability can lend a secondary as an override until the team recovers,
+        and the override is visible to the team lead.
+  - key: ENG-448
+    type: Story
+    summary: Send the on-call schedule to Haven so the allowance is paid without a claim
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      As someone on call, I want the allowance paid without having to claim it.
+
+      Acceptance criteria:
+
+      - each week Klaxon sends Haven who was on call, primary or secondary;
+      - Haven pays £250 per week on call with the following month's salary;
+      - part weeks, from swaps and cover, are paid pro rata by day;
+      - time off in lieu stays a separate request in Haven.
+
+      The rules are on the
+      [on-call rota and paging policy](../../corpus/incidents/on-call.md).
+    comments:
+      - "Rhiannon: Payroll is happy with the weekly file. Colleagues employed in France are on call under the French on-call agreement; Haven handles both."
+  - key: ENG-449
+    type: Bug
+    summary: A swapped on-call week was paid to both people
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** Two people swap a whole week in Klaxon, then the weekly
+      export to Haven runs.
+
+      **Expected.** The person who took the week is paid the £250 allowance for it; the
+      other is paid nothing for that week.
+
+      **Actual.** Both were paid. The export read the original schedule and the
+      accepted swap separately and added them together.
+
+      **Fix.** The export reads the final schedule, after swaps and overrides. A test
+      covers whole-week swaps, part-week swaps and overrides.
+    comments:
+      - "Rhiannon: Three overpayments so far. They will be corrected in the next payroll, with the people's agreement."
+  - key: ENG-450
+    type: Task
+    summary: Give every person and rota a contact card in Klaxon
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      Escalation lists should name people and rotas, never phone numbers, so that a
+      number changed in Haven is never stale on a wiki page.
+
+      - Give each person and each rota a contact card in Klaxon, filled from the Haven
+        sync (ENG-422).
+      - Add cards for the heads of area.
+      - Write the escalation contacts page from those cards, with no numbers on it.
+
+      Published as
+      [Escalation contacts for incidents](../../corpus/incidents/escalation-contacts.md).
+  - key: ENG-451
+    type: Task
+    summary: Move the data-primary and security-oncall rotas to Klaxon
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      Data Platform and Security run rotas under the same paging policy, with
+      additions of their own on their own pages.
+
+      - Create `data-primary`, paging for Tier 1 warehouse tables.
+      - Create `security-oncall`, 24/7, for security reports, and point
+        security@quillmoor.example at a page to it.
+      - Remove both teams' routes from the old paging service.
+
+      This ticket covers the rotas and routing only; each team's additions stay with
+      the team.
+    comments:
+      - "Tomasz: Only Tier 1 tables should page; the rest post in #team-data. Please keep it that way when you move us."
+  - key: ENG-452
+    type: Story
+    summary: Page reports for Site Reliability's monthly rota review
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      As Site Reliability, we want to see each rota's load every month, so that a team
+      drowning in pages is noticed before it burns out.
+
+      Acceptance criteria, per rota and per week:
+
+      - out-of-hours pages, against a target of fewer than two;
+      - pages acknowledged and closed with no action taken;
+      - escalations to the secondary.
+
+      A rota above the out-of-hours target for two months running is highlighted, so
+      that its team lead can be given an action to fix its alerts.
+  - key: ENG-453
+    type: Task
+    summary: Evaluate dedicated pager devices for engineers on call
+    status: Won't Do
+    priority: Low
+    labels: [sre]
+    description: |
+      A few engineers asked for a separate device for paging, so that work stays off
+      their own phones. Compare a dedicated pager device with Klaxon on a phone:
+      reliability through silent mode, coverage indoors, how a page is acknowledged,
+      and what Site Reliability would have to run to support it.
+    comments:
+      - "Lukas: Won't Do. A company phone with only Klaxon on it gives the same separation, and anyone can ask their team lead for one. A second kind of device would also need a paging route of its own to maintain."
+  - key: ENG-454
+    type: Task
+    summary: Move every rota to weekly hand-overs on Mondays at 10:00
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      Today each team chooses its own hand-over day, and most chose Friday afternoon:
+      the person who has just taken over goes straight into a weekend with an
+      unfamiliar backlog.
+
+      Move every rota in Klaxon, the IC rota included, to weekly hand-overs on Mondays
+      at 10:00 UK time:
+
+      ```yaml
+      handover:
+        every: week
+        day: monday
+        time: "10:00"
+        timezone: Europe/London
+      ```
+
+      When the Monday is a bank holiday, the hand-over still happens at 10:00. The
+      policy is on
+      [on-call rota and paging policy](../../corpus/incidents/on-call.md).
+    comments:
+      - "Lukas: Schedules updated for every rota, the IC rota included. The first common hand-over is the Monday after the change."
+      - "Yusuf: Payouts is glad to see the end of Friday hand-overs."
+  - key: ENG-455
+    type: Bug
+    summary: Monday hand-over ran at 11:00 UK time during British Summer Time
+    status: Done
+    priority: High
+    labels: [sre]
+    description: |
+      **Steps to reproduce.** Create a rota with a Monday 10:00 hand-over, then check
+      who is on call at 10:30 UK time on a Monday in summer.
+
+      **Expected.** The incoming person.
+
+      **Actual.** The outgoing person, until 11:00 UK time. Schedules stored the
+      hand-over as 10:00 UTC.
+
+      **Fix.** Every schedule now stores a time zone, Europe/London for every rota,
+      and existing schedules were migrated. A test covers the clock changes in March
+      and October.
+    comments:
+      - "Kwabena: Caught it because two of us thought we were off call at 10:15. Thanks for the quick fix."
+  - key: ENG-456
+    type: Task
+    summary: Write the on-call handover checklist for Monday hand-overs
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      A hand-over takes 15 to 30 minutes and should cover the same ground every week.
+      Write a checklist, to be copied into the hand-over thread in the team channel:
+
+      - before the call: a short summary of the week, overrides cleared;
+      - on the call: open incidents, PIRs waiting, `pir-action` tickets due, alerts
+        silenced in Lantern, releases held back, `CHG-` tickets for the week, planned
+        maintenance, change freezes and bank holidays;
+      - for the incoming person: on call in Klaxon from 10:00, a test page, laptop and
+        access checked.
+
+      Published as
+      [On-call handover checklist](../../corpus/incidents/handover-checklist.md).
+  - key: ENG-457
+    type: Story
+    summary: An on-call health dashboard in Lantern built from Klaxon page reports
+    status: Done
+    priority: Low
+    labels: [sre]
+    description: |
+      As a team lead, I want to see my rota's page load without asking Site
+      Reliability for a report.
+
+      Acceptance criteria:
+
+      - a Lantern dashboard "on-call health", with one row per rota;
+      - out-of-hours pages per week, pages with no action, and escalations to the
+        secondary, from the page reports of ENG-452;
+      - the monthly numbers are posted in `#team-sre` with a link to the dashboard.
+  - key: ENG-458
+    type: Task
+    summary: Keep the old paging service's email bridge running for another quarter
+    status: Won't Do
+    priority: Lowest
+    labels: [sre]
+    description: |
+      Some alerts still reach people through the old paging service's email bridge,
+      which turns an alert email into a text message. The proposal was to keep the
+      bridge running for one more quarter, alongside Klaxon, while the last teams moved
+      and checked their alerts, and to switch it off afterwards. It would need the old
+      service kept up, patched and monitored for that quarter.
+    comments:
+      - "Lukas: Won't Do. Every rota and alert is on Klaxon now. The only users of the bridge were two alerts that the inventory found nobody acts on, and they became tickets instead."
+  - key: ENG-459
+    type: Task
+    summary: Switch off the old paging service
+    status: Done
+    priority: Medium
+    labels: [sre]
+    description: |
+      With every rota and alert route on Klaxon, switch the old paging service off:
+
+      1. confirm for a full week that no alert still points at it;
+      2. export its page history for the records and attach it to this ticket;
+      3. switch it off and remove its credentials from Strongroom;
+      4. remove it from the incident policy and from team pages.
+
+      After this, Klaxon is the only thing that pages.
+    comments:
+      - "Lukas: No page has gone through it for a full week. Switching it off on Thursday."

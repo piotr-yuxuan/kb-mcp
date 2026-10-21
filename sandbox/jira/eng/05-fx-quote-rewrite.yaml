@@ -1,0 +1,755 @@
+epic:
+  key: ENG-5
+  summary: fx-quote rewrite
+  sprints: [20, 28]
+  labels: [payments]
+  description: |
+    ## Goal
+
+    Replace the engine behind `fx-quote` with one that knows how old every rate is, so
+    that the conversions that still happen use fresh rates, and a stale rate is
+    visible the moment it is used.
+
+    ## Scope
+
+    - A new engine in Go that takes mid-market rates from the provider's streaming
+      feed and judges each rate's age by the provider's timestamp.
+    - Quotes with an identifier, a rate and an expiry, valid for 30 seconds.
+    - `FXQ-2002 STALE_RATE` for any quote that uses a rate older than 60 seconds, and
+      a defined behaviour for each caller when it happens.
+    - Metrics and the Lantern dashboard "fx-quote overview".
+    - Moving `card-auth` and `payout-gateway` to the new engine behind
+      `sb.fx-quote.v2-engine`, which retires the old per-caller rate caches.
+    - Live conversion previews in Merchant Hub.
+
+    ## Out of scope
+
+    - New currency pairs: GBP and EUR only.
+    - A second rate provider.
+    - How the ledger rounds converted amounts, which stays half-even.
+
+    ## Pages
+
+    - [fx-quote service](../../corpus/payments/fx-quote-service.md)
+    - [Payments platform architecture](../../corpus/payments/platform-architecture.md)
+  comments:
+    - "Nadia: Corinne leads the engineering; Payments Core reviews every change on the quote path, since it sits inside the card-auth budget."
+    - "Corinne: The card-auth canary is running at 5%. payout-gateway follows once both callers handle FXQ-2002."
+tickets:
+  - key: ENG-187
+    type: Task
+    summary: "Write the design note for the fx-quote rewrite"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Today's `fx-quote` keeps a rate cache for each caller and cannot say how old a
+      rate is when it quotes. Write the design note for its replacement and take it to
+      the Thursday payments design review.
+
+      Cover:
+
+      - the streaming rate feed and how a rate's age is judged;
+      - the quote contract: identifier, rate, expiry, 30 seconds of validity;
+      - the 60-second freshness limit and `FXQ-2002 STALE_RATE`;
+      - moving `card-auth` and `payout-gateway` over behind a Switchboard flag;
+      - the latency the quote may add to an authorisation.
+
+      Where the service sits: [Payments platform architecture](../../corpus/payments/platform-architecture.md).
+    comments:
+      - "Nadia: Accepted. Keep the quote call within the 20 ms or so the FX stage of card-auth takes today."
+  - key: ENG-188
+    type: Story
+    summary: "Consume mid-market rates from the provider's streaming feed"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      As `fx-quote`, I need a continuous stream of mid-market rates, so that quotes rest
+      on the newest rate rather than on a cache refreshed on a timer.
+
+      Acceptance criteria:
+
+      - Each pod subscribes to the external rate provider's streaming feed for GBP to
+        EUR and EUR to GBP.
+      - In normal conditions rates arrive several times a second.
+      - Each rate keeps the provider's own timestamp.
+      - The feed credentials come from Strongroom, never from configuration files.
+    comments:
+      - "Corinne: The provider has given us a test endpoint, and its credentials are in Strongroom."
+  - key: ENG-189
+    type: Story
+    summary: "Judge a rate's age by the provider's timestamp, not its arrival"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      A rate that reaches us now may have been set seconds ago at the provider.
+      `fx-quote` must judge how old a rate is by the provider's timestamp, never by the
+      moment the message arrived.
+
+      Acceptance criteria:
+
+      - Each stored rate carries `rate_timestamp` from the provider.
+      - A rate's age is the current time minus `rate_timestamp`.
+      - A rate stamped more than one second in the future is discarded and counted.
+      - Unit tests cover an old rate delivered late, which must count as old.
+  - key: ENG-190
+    type: Task
+    summary: "Scaffold the rewritten fx-quote engine in Go"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Create the new engine in Go, following
+      [ADR-003](../../corpus/architecture/adr-003-go-latency-critical.md), since quotes
+      sit on the authorisation path.
+
+      - Repository layout, build and tests in continuous integration.
+      - Health and readiness endpoints, OpenTelemetry traces, structured logs.
+      - Deployed to `staging-eu` through Shipwright, taking no traffic.
+      - Its own PostgreSQL database for issued quotes.
+
+      The old engine keeps serving every caller until the flag says otherwise.
+  - key: ENG-191
+    type: Task
+    summary: "Declare sb.fx-quote.v2-engine to move quote traffic to the new engine"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Callers move to the new engine gradually. Declare a release flag in
+      `fx-quote`'s `switchboard.yaml`:
+
+      ```yaml
+      flags:
+        - name: sb.fx-quote.v2-engine
+          kind: release
+          owner: payments-core
+          description: Serve quotes from the rewritten engine (ENG-5).
+          default: false
+      ```
+
+      `fx-quote` reads the flag on each request and sends that share of quotes to the
+      new engine. The old engine is wrapped to return the new response shape, so
+      callers can adopt the contract first and be moved by the flag afterwards.
+  - key: ENG-192
+    type: Story
+    summary: "Issue quotes with an identifier, a rate and a 30-second expiry"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      As a caller, I want a quote I can book a moment later, so that the rate I used is
+      the rate I get. A quote looks like this, and `expires_at` is 30 seconds after
+      `issued_at`:
+
+      ```json
+      {
+        "quote_id": "fxq_3Rb17PcA",
+        "sell_currency": "GBP",
+        "buy_currency": "EUR",
+        "rate": "1.171250",
+        "rate_timestamp": "2025-12-18T10:02:11.904Z",
+        "issued_at": "2025-12-18T10:02:12.310Z",
+        "expires_at": "2025-12-18T10:02:42.310Z"
+      }
+      ```
+
+      Every quote is stored, so that the ledger can look it up by `quote_id` when the
+      conversion is booked.
+  - key: ENG-193
+    type: Story
+    summary: "Return rates as six-place decimal strings and leave rounding to the ledger"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Rates leave `fx-quote` as decimal strings with six places, and converted amounts
+      are rounded half-even to integer minor units by the ledger, not by the caller,
+      in line with [ADR-017](../../corpus/architecture/adr-017-money-minor-units.md).
+
+      Acceptance criteria:
+
+      - No floating-point value anywhere on the quote path, in Go or in JSON.
+      - The ledger rounds half-even when it books a conversion.
+      - Callers display the amount the ledger booked, never one they computed.
+  - key: ENG-194
+    type: Story
+    summary: "Reject conversions booked on an expired quote"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      A caller that waits too long must ask for a new quote, and the ledger enforces
+      it.
+
+      Acceptance criteria:
+
+      - A conversion journal must reference a `quote_id`.
+      - The ledger looks the quote up and rejects the booking if `expires_at` has
+        passed, with an error the caller can recognise.
+      - Rejections are counted per caller in Lantern.
+      - `card-auth` and `payout-gateway` treat a rejection as a reason to ask again,
+        never as a failure shown to a merchant.
+    comments:
+      - "Kwabena: Ledger side merged. The quote's expiry is the only clock that counts; no grace period."
+  - key: ENG-195
+    type: Bug
+    summary: "Quote expiry counted from the rate timestamp instead of the issue time"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In staging, request a quote while the newest rate for the
+      pair is 8 seconds old.
+
+      **Expected.** `expires_at` is 30 seconds after `issued_at`.
+
+      **Actual.** `expires_at` was 30 seconds after `rate_timestamp`, so the quote lived
+      only 22 seconds and some bookings were rejected as expired.
+
+      **Fix.** Expiry is computed from `issued_at`. The rate's age is a separate clock,
+      checked against the 60-second freshness limit, and the two now have different
+      names in the code.
+    comments:
+      - "Corinne: Two clocks, two names: quoteValidity and rateMaxAge."
+  - key: ENG-196
+    type: Story
+    summary: "Raise FXQ-2002 STALE_RATE when a quote used a rate older than 60 seconds"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      A conversion must never rest silently on an old rate. Define
+      `FXQ-2002 STALE_RATE`: a quote used a rate older than 60 seconds.
+
+      Acceptance criteria:
+
+      - When a conversion is booked, `fx-quote` compares the quote's `rate_timestamp`
+        with its `issued_at`, and raises `FXQ-2002` if the gap is over 60 seconds.
+      - The error is logged with the pair, the rate's age and the caller.
+      - The counter `fxquote_stale_rate_total` is labelled by pair.
+      - The code and its meaning are documented on the service page.
+  - key: ENG-197
+    type: Story
+    summary: "Publish fxquote_rate_age_seconds for each currency pair"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      On-call engineers need to see a stale rate before it becomes a stale quote.
+
+      Acceptance criteria:
+
+      - `fx-quote` exports the gauge `fxquote_rate_age_seconds`, labelled by currency
+        pair, updated every second from the newest rate it holds.
+      - A recording rule keeps the maximum per minute for 30 days.
+      - The gauge's documentation gives the early warning: a rate age climbing steadily
+        past 10 seconds.
+  - key: ENG-198
+    type: Task
+    summary: "Shadow the old engine and compare quotes on card-auth traffic"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Before any caller is moved, run the new engine in shadow: `fx-quote` sends each
+      `card-auth` quote request to both engines, answers from the old one, and logs both
+      results.
+
+      Compare a week of pairs:
+
+      - the rate difference per quote, in basis points;
+      - the age of the rate each engine used, where the old one can tell;
+      - the latency of each engine.
+
+      Post the distribution here before the canary starts.
+    comments:
+      - "Corinne: Shadow mode is wired up in staging; production shadowing starts with the sprint."
+  - key: ENG-199
+    type: Bug
+    summary: "Shadow comparison counts per-caller cache differences as rate mismatches"
+    status: Won't Do
+    priority: Low
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Run the shadow comparison from ENG-198 over an hour of
+      `card-auth` traffic.
+
+      **Expected.** Mismatches show where the two engines disagree about the market.
+
+      **Actual.** Most mismatches come from the old engine's per-caller caches, which
+      serve rates up to one refresh interval old. The report cannot tell the two causes
+      apart.
+
+      **Proposed fix.** Tag each old-engine rate with the age of its cache entry.
+    comments:
+      - "Nadia: Won't do. The per-caller caches disappear with this epic, and the shadow run only has to show that the new engine is right. We filter the report by hand for the week."
+  - key: ENG-200
+    type: Story
+    summary: "Hold one rate store per currency pair for every caller"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      The old engine kept a cache per caller, so `card-auth` and `payout-gateway` could
+      be quoted different rates at the same moment.
+
+      Acceptance criteria:
+
+      - The new engine holds one in-memory store per currency pair, fed by the stream.
+      - Every caller is quoted from the same newest rate.
+      - The store keeps the provider's timestamp with each rate.
+      - Two pods' newest rates agree within one second, checked by a test.
+  - key: ENG-201
+    type: Story
+    summary: "Move card-auth to the new quote contract"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      `card-auth` asks for a quote when a buyer pays in a currency the merchant does not
+      settle in. It must speak the new contract before the flag can send it to the new
+      engine.
+
+      Acceptance criteria:
+
+      - `card-auth` reads `quote_id`, `rate` and `expires_at`, and passes `quote_id`
+        when the ledger books the conversion.
+      - It asks again if the quote expires before booking.
+      - The call stays inside the FX stage of the authorisation on "card-auth
+        overview".
+      - Payments Core reviews the change, since it sits on the authorisation path.
+  - key: ENG-202
+    type: Story
+    summary: "Move payout-gateway to the new quote contract"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      `payout-gateway` asks for a quote when a seller's balance is in one currency and
+      their bank account in the other. It must adopt the new contract.
+
+      Acceptance criteria:
+
+      - `payout-gateway` passes `quote_id` when it books each conversion.
+      - It books each conversion within the quote's 30 seconds.
+      - A booking rejected for an expired quote leads to a fresh quote, never to a
+        failed payout.
+    comments:
+      - "Yusuf: Reviewed with Payouts. Quotes are taken per seller conversion during the batch build."
+  - key: ENG-203
+    type: Task
+    summary: "Load-test the new engine against card-auth's FX stage budget"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      The FX stage of an authorisation has a usual p99 of 20 ms, and every millisecond
+      comes out of `card-auth`'s 800 ms budget. Load-test the new engine in staging at
+      2.5 times normal peak quote traffic, and compare it with the old one:
+
+      ```bash
+      shipwright exec fx-quote -- fxq-admin loadtest --rps 1200 --duration 15m --pair GBP-EUR
+      ```
+
+      Pass if the new engine's p99 is no worse than the old one's and stays under
+      20 ms. The stages are described in
+      [Runbook: card authorisation latency](../../corpus/payments/card-auth-latency.md).
+    comments:
+      - "Lukas: The load generator is ready in staging; we run it on the first day of the sprint."
+  - key: ENG-204
+    type: Task
+    summary: "Cover cross-currency payments on mer_test_multi in end-to-end tests"
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      The sandbox merchant `mer_test_multi`, Test Multi-Currency Ltd, is the account to
+      use for cross-currency payments and `fx-quote`
+      ([Test merchants and test cards](../../corpus/payments/test-merchants.md)). Add
+      end-to-end tests on it that:
+
+      - authorise a cross-currency payment and book its conversion;
+      - let a quote expire before booking and check that a fresh one is requested;
+      - check that the booked amount was rounded by the ledger.
+  - key: ENG-205
+    type: Task
+    summary: "Send 5% of card-auth quotes to the new engine"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Start the canary: set `sb.fx-quote.v2-engine` to 5% of `card-auth` quote requests
+      in production, with `payout-gateway` still on the old engine.
+
+      Watch for a week, on "card-auth overview" and the new quote panels:
+
+      - the FX stage p99;
+      - bookings rejected for expired quotes;
+      - the `FXQ-2002` count;
+      - rate differences against the shadow results from ENG-198.
+
+      Set the flag back to 0% if any of them moves.
+    comments:
+      - "Corinne: Canary planned for the first Tuesday of the sprint, well away from the cut-offs."
+  - key: ENG-206
+    type: Story
+    summary: "Notify #team-payments-core of FXQ-2002 at low urgency"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      `FXQ-2002` should reach a person, but during bedding-in we expect false alarms
+      while callers settle on the new contract.
+
+      Acceptance criteria:
+
+      - A Lantern alert fires when `fxquote_stale_rate_total` rises for any pair.
+      - It posts to `#team-payments-core` as a low-urgency notification and does not
+        page.
+      - Its description links to [fx-quote service](../../corpus/payments/fx-quote-service.md)
+        and says that it should become a page once the rewrite has bedded in.
+    comments:
+      - "Nadia: Agreed for now. We revisit the urgency when the rollout is complete."
+  - key: ENG-207
+    type: Bug
+    summary: "Quotes for a 500-payout batch expired before the last conversions were booked"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In staging, cut a EUR batch of 500 payouts for sellers
+      whose balances are in GBP.
+
+      **Expected.** Every conversion is booked on a valid quote.
+
+      **Actual.** `payout-gateway` requested every seller's quote at the start of the
+      batch build. The build took about 40 seconds, so the last conversions were booked
+      after their quotes had expired; the ledger rejected them and those payouts fell
+      to the next cycle.
+
+      **Fix.** Each quote is requested immediately before its booking, and conversions
+      are booked in chunks of 50.
+    comments:
+      - "Yusuf: Reproduced in staging with a full 500-payout batch; the fix is in review."
+  - key: ENG-208
+    type: Story
+    summary: "Build the fx-quote overview dashboard in Lantern"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      On-call engineers need one place to see the quote service's health.
+
+      Acceptance criteria: the Lantern dashboard "fx-quote overview" shows
+
+      - `fxquote_rate_age_seconds` per currency pair, with a line at 10 seconds;
+      - the rate of `FXQ-2002`, per pair and per caller;
+      - quotes issued per caller, and the share served by the new engine;
+      - the quote latency p99;
+      - bookings rejected for expired quotes.
+  - key: ENG-209
+    type: Bug
+    summary: "FXQ-2002 raised only at booking when the rate feed lags"
+    status: Done
+    priority: Highest
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In staging, delay the rate feed until the newest rate is
+      90 seconds old, then authorise a cross-currency payment on the new engine.
+
+      **Expected.** No quote is issued on a rate older than 60 seconds.
+
+      **Actual.** The engine kept quoting from the last rate it had received.
+      `FXQ-2002 STALE_RATE` was raised only when the conversion was booked, by which
+      time the payment had gone through on a stale rate. First seen on the canary,
+      during a two-minute lag at the provider.
+
+      **Fix.** The age check moves to the moment of quoting: `fx-quote` checks the
+      newest rate's age before it issues a quote, and raises `FXQ-2002` there. Whether
+      it then refuses the quote is decided separately, in ENG-210.
+    comments:
+      - "Corinne: Fix deployed under the canary. The check at booking stays as a second line."
+      - "Nadia: Good. Next is what callers do with the code; see ENG-210."
+  - key: ENG-210
+    type: Story
+    summary: "Refuse stale quotes only when sb.fx-quote.refuse-stale-rates is on"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      With the age check at quoting time, the engine can either refuse a quote on a
+      stale rate or issue it flagged with `FXQ-2002`. While callers bed in, we prefer a
+      slightly stale quote to a declined payment.
+
+      Acceptance criteria:
+
+      - A new operational flag, `sb.fx-quote.refuse-stale-rates`, defaults to off.
+      - Off: the quote is issued, and `FXQ-2002` is logged and counted.
+      - On: no quote is issued, and the caller receives `FXQ-2002`.
+      - The flag changes without a deploy and shows on "fx-quote overview".
+    comments:
+      - "Nadia: Off for now. We decide its permanent setting once both callers handle the refusal."
+  - key: ENG-211
+    type: Story
+    summary: "Decline cross-currency authorisations with a retryable reason on FXQ-2002"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      When `fx-quote` refuses a quote, `card-auth` must neither hang nor guess a rate.
+
+      Acceptance criteria:
+
+      - On `FXQ-2002`, `card-auth` declines the cross-currency authorisation with a
+        retryable reason, so the merchant's checkout can try again.
+      - These declines are counted apart from issuer declines on "card-auth overview".
+      - Tested in staging with `sb.fx-quote.refuse-stale-rates` on.
+      - Merchants see the existing retryable decline reason; no new reason code.
+  - key: ENG-212
+    type: Story
+    summary: "Leave payouts queued for the next cycle on FXQ-2002"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      When `fx-quote` refuses a quote for a seller's conversion, `payout-gateway` must
+      not fail the payout.
+
+      Acceptance criteria:
+
+      - The payout stays queued and is tried again at the next 15-minute cycle.
+      - The payout's history records the refusal.
+      - Refusals are counted on "payout-gateway overview".
+      - Payouts held back this way count towards `PayoutQueueBacklog` like any others.
+    comments:
+      - "Yusuf: Merged. If refusals last across a cut-off, those payouts move to the next business day, and Support should hear about it in #inc-payments."
+  - key: ENG-213
+    type: Task
+    summary: "Send a quarter of quotes from both callers to the new engine"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      The `card-auth` canary has been clean since ENG-205, and both callers handle
+      `FXQ-2002`. Raise `sb.fx-quote.v2-engine` to 25% of quotes from both `card-auth`
+      and `payout-gateway`.
+
+      Watch for a week:
+
+      - bookings rejected for expired quotes;
+      - `FXQ-2002` per caller;
+      - the FX stage p99 on "card-auth overview";
+      - payout conversions moved to the next cycle.
+  - key: ENG-214
+    type: Story
+    summary: "Check booked conversion rates against a reference rate every hour in the ledger"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Bookings can go wrong in ways a quote cannot see: an inverted pair, a conversion
+      booked against the wrong quote, a rounding bug. The ledger should check its own
+      conversions.
+
+      Acceptance criteria:
+
+      - Every hour, the ledger compares the rates of the last hour's conversions with a
+        reference rate it fetches from the provider separately from the streaming feed.
+      - If the deviation exceeds 0.25%, it pages `payments-primary`.
+      - Each run's deviation is kept, so that trends can be seen.
+      - The Ledger team owns the check.
+    comments:
+      - "Kwabena: Ledger owns it. It runs as its own CronJob in the ledger namespace, beside recon-daily."
+  - key: ENG-215
+    type: Task
+    summary: "Compare a week of conversions on each engine with Finance"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      Finance wants evidence that the new engine does not change what conversions cost
+      us. With a quarter of quotes on the new engine, there is enough volume on each to
+      compare. Export a week of conversions booked on each engine and review them with
+      Arjun Pelletier's team:
+
+      ```sql
+      SELECT engine, pair, COUNT(*) AS conversions,
+             AVG(ABS(booked_rate - reference_rate) / reference_rate) AS mean_deviation
+      FROM ledger.conversions
+      WHERE booked_at >= now() - interval '7 days'
+      GROUP BY engine, pair;
+      ```
+
+      Post the result in this ticket, with the deviation per pair for each engine.
+    comments:
+      - "Arjun: Send us the export once the week is in, and we will review it the same day."
+  - key: ENG-216
+    type: Bug
+    summary: "Feed consumer did not reconnect after the provider closed the stream"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In staging, have the provider's test endpoint close the
+      stream cleanly, as it does before announced maintenance.
+
+      **Expected.** The consumer reconnects within seconds and rates resume.
+
+      **Actual.** The consumer logged the closed stream and stopped. Rates aged until
+      the pod was restarted.
+
+      **Fix.** On a closed stream, the consumer reconnects with exponential backoff,
+      from 1 second up to 30, and logs each attempt. A test closes the stream and
+      checks that fresh rates arrive.
+    comments:
+      - "Corinne: Reproduced against the provider's test endpoint, which closes streams on request."
+  - key: ENG-217
+    type: Story
+    summary: "Cache quotes inside card-auth to save the FX stage"
+    status: Won't Do
+    priority: Low
+    labels: [payments]
+    description: |
+      Proposal from the latency work: `card-auth` keeps the last quote for each pair
+      for a few seconds and reuses it, which removes the FX stage from most
+      cross-currency authorisations and saves most of its 20 ms p99 on the busiest
+      pairs.
+
+      The cost is a cache of rates of unknown age, outside `fx-quote`, where neither
+      `FXQ-2002` nor the rate age gauge can see it.
+    comments:
+      - "Nadia: Won't do. A per-caller cache is exactly what this rewrite removes: nobody could say how old its rates were."
+  - key: ENG-218
+    type: Task
+    summary: "Send half of all quotes to the new engine"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      After a clean week at 25%, raise `sb.fx-quote.v2-engine` to 50% for both callers.
+      Same checks as ENG-213, plus the ledger's hourly rate check from ENG-214, which
+      now sees conversions from both engines.
+
+      If the week is clean, plan the full rollout for early May, away from the
+      end-of-month peak.
+  - key: ENG-219
+    type: Task
+    summary: "Document the two clocks and FXQ-2002 on the fx-quote service page"
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      Readers confuse a quote's validity with a rate's freshness. Update
+      [fx-quote service](../../corpus/payments/fx-quote-service.md) with:
+
+      - quote validity: 30 seconds after the quote is issued;
+      - rate freshness: the rate may be at most 60 seconds old when the quote is
+        issued;
+      - `FXQ-2002 STALE_RATE`, and how each caller handles a refusal;
+      - the dashboard "fx-quote overview" and the 10-second early warning;
+      - a short history of the rewrite.
+  - key: ENG-220
+    type: Bug
+    summary: "Rate age gauge read zero for a pair with no rate since start-up"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** Start an `fx-quote` pod while the feed is withholding one
+      pair, and read `fxquote_rate_age_seconds` for that pair.
+
+      **Expected.** The gauge shows that the pair has no rate.
+
+      **Actual.** It read 0, which looks perfectly fresh on the dashboard.
+
+      **Fix.** A pair with no rate reports no age, and a separate gauge,
+      `fxquote_rate_missing`, reads 1 for it. A pod is not ready until every pair has a
+      rate.
+  - key: ENG-221
+    type: Task
+    summary: "Stop the old fx-quote engine in staging before the production rollout"
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      Before the production rollout, prove that nothing in staging still depends on the
+      old engine or its per-caller caches. Set `sb.fx-quote.v2-engine` to 100% in
+      `staging-eu`, scale the old engine to zero for two working days, and watch every
+      caller for errors.
+
+      Anything that breaks gets its own ticket before the flag goes to 100% in
+      production.
+    comments:
+      - "Lukas: Old engine at zero in staging-eu. Watching every caller until Wednesday."
+  - key: ENG-222
+    type: Task
+    summary: "List the bedding-in settings to revisit after the fx-quote rewrite"
+    status: Done
+    priority: Lowest
+    labels: [payments, follow-up]
+    description: |
+      Two settings were chosen for the bedding-in period, and should be revisited once
+      the new engine has run at full rollout for a while:
+
+      - `sb.fx-quote.refuse-stale-rates` is off, so a quote on a stale rate is issued
+        and flagged with `FXQ-2002` rather than refused (ENG-210);
+      - the `FXQ-2002` alert posts to `#team-payments-core` at low urgency and does not
+        page (ENG-206).
+
+      Record both on the service page and raise them at the next quarterly planning.
+    comments:
+      - "Nadia: Listed. Both stay as they are for now."
+  - key: ENG-223
+    type: Task
+    summary: "Roll sb.fx-quote.v2-engine out to every caller in production"
+    status: Done
+    priority: High
+    labels: [payments]
+    description: |
+      Raise `sb.fx-quote.v2-engine` to 100% for `card-auth` and `payout-gateway` in
+      production, on a Wednesday morning, away from both cut-offs.
+
+      - Watch "fx-quote overview" and "card-auth overview" for two hours.
+      - Keep the old engine running, unused, for one more week as a fallback.
+      - Once full rollout holds, put the flag's removal on the next flag clean-up,
+        within the 90 days the flag policy allows.
+    comments:
+      - "Corinne: Booked for Wednesday 6 May, with Lukas watching card-auth overview alongside us."
+  - key: ENG-224
+    type: Bug
+    summary: "Conversion preview kept an expired quote after the browser tab was hidden"
+    status: Done
+    priority: Low
+    labels: [payments]
+    description: |
+      **Steps to reproduce.** In Merchant Hub on staging, open a payout with a
+      conversion preview, switch to another browser tab for a minute, then come back.
+
+      **Expected.** The preview shows a valid quote.
+
+      **Actual.** Browsers slow timers in hidden tabs, so the refresh never fired and
+      the preview showed a quote that had expired.
+
+      **Fix.** When the tab becomes visible again, Hub compares `expires_at` with the
+      current time and fetches a new quote if needed.
+  - key: ENG-225
+    type: Story
+    summary: "Show live conversion previews in Merchant Hub"
+    status: Done
+    priority: Medium
+    labels: [payments]
+    description: |
+      As a merchant whose payout or settlement involves a currency conversion, I want
+      to see the rate before it happens.
+
+      Acceptance criteria:
+
+      - Merchant Hub shows the rate, the time the quote was issued and how long it
+        remains valid.
+      - When the quote expires, Hub fetches a new one automatically.
+      - The preview uses the rewritten `fx-quote` through the Merchant API.
+      - Released to every merchant in May, with an entry in
+        [Merchant Hub release notes 2026](../../corpus/product/merchant-hub-release-notes-2026.md).
