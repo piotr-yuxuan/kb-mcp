@@ -199,8 +199,9 @@ ran.
   those of the first, second and fourth patterns, except names beginning with `_` or
   `.`. `_tree.md` has no front matter, and nothing under `assets/` is a document.
 - `<SPACE>` is the space key, `<PROJECT>` the project key, `<KEY>` the issue key.
-- `<slug>`: the title decomposed (Unicode NFKD) and lowered, keeping ASCII letters and
-  digits; every run of other characters becomes one `-`; leading and trailing `-` are
+- `<slug>`: the title decomposed (Unicode NFKD) and lowered, its combining marks dropped
+  (`Crème` gives `creme`), keeping ASCII letters and digits; every run of other
+  characters becomes one `-`; leading and trailing `-` are
   removed; it is cut at 60 characters, and a `-` left at the cut is removed. An empty
   slug leaves `<id>.md`. When a title changes, the file is renamed and the old name
   removed.
