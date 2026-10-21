@@ -9,6 +9,7 @@ answered as asked raises ``UnanswerableError``, whose message says what would do
 from __future__ import annotations
 
 import json
+import math
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -86,9 +87,9 @@ class Ranking:
 
     paths: list[str]
     whole: bool  # every document matching the words is counted
-    meaning: dict[str, tuple[int, int]]  # for each document shown by meaning, the
-    # section number and the body offset of its best piece
-    nearest: bool  # ranked by meaning alone: the count is of the nearest, not of matches
+    meaning: dict[str, tuple[int, int, int]]  # for each document shown by meaning, the
+    # section number of its best piece, and the piece's start and end in the body
+    counted: str = "found"  # what the count line calls the documents counted
     note: str = ""  # the sentence saying why meaning, though asked for, was not used
 
 
@@ -119,24 +120,25 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
     words = rank((one for one, _ in found), first, by_update=by_update)
     whole = all(every for _, every in found)
     if asked.mode == "lexical" or by_update:
-        return Ranking(words, whole, {}, nearest=False)
+        return Ranking(words, whole, {})
     near = meaning.nearest(reader, asked.query, filters) if meaning else Nearest({}, NOT_SET_UP)
     if near.reason:
         note = f" Ranked by words alone: {near.reason}."
-        return Ranking(words, whole, {}, nearest=False, note=note)
-    scores = {path: score for path, (score, _, _) in near.found.items()}
+        return Ranking(words, whole, {}, note=note)
+    scores = {path: score for path, (score, *_) in near.found.items()}
     by_meaning = rank([scores], first, by_update=False)
-    shown = {path: (number, offset) for path, (_, number, offset) in near.found.items()}
+    shown = {path: tuple(where) for path, (_, *where) in near.found.items()}
     if asked.mode == "semantic":
-        return Ranking(by_meaning, whole=True, meaning=shown, nearest=True)
+        return Ranking(by_meaning, whole=True, meaning=shown, counted="nearest in meaning")
     updated = {path: s.updated for one, _ in found for path, s in one.items()}
     updated |= {path: score.updated for path, score in scores.items()}
     # Both lists begin with the documents named; the rest is fused.
     fused = fuse([words[len(first) :], by_meaning[len(first) :]], updated)
+    # A document that words do not find is ranked by meaning alone: shown by meaning.
     places = {path: at for at, path in enumerate(words)}
-    higher = [path for at, path in enumerate(by_meaning) if at < places.get(path, len(words))]
+    higher = [path for at, path in enumerate(by_meaning) if at < places.get(path, math.inf)]
     by_higher = {path: shown[path] for path in higher if path in shown}
-    return Ranking([*first, *fused], whole, by_higher, nearest=False)
+    return Ranking([*first, *fused], whole, by_higher, counted="found by words or meaning")
 
 
 def passage_of(reader: Reader, entry: Entry, ranked: Ranking, planned: Plan) -> Passage:
@@ -146,8 +148,8 @@ def passage_of(reader: Reader, entry: Entry, ranked: Ranking, planned: Plan) -> 
     without them, at its start, with a lead that leaves out the title's heading.
     """
     if entry.path in ranked.meaning:
-        number, offset = ranked.meaning[entry.path]
-        lead = reader.text(entry.path, offset, offset + 2 * responses.SNIPPET)
+        number, start, end = ranked.meaning[entry.path]
+        lead = reader.text(entry.path, start, min(end, start + 2 * responses.SNIPPET))
         return Passage(number, reader.heading(entry.path, number), lead)
     passage = reader.passage(entry.path, planned.match) if planned.words else None
     lead = "" if passage else reader.text(entry.path, 0, 2 * responses.SNIPPET)
@@ -286,7 +288,7 @@ class Library:
             )
             if not planned.words and not by_update:
                 return responses.answer(NO_WORDS)
-            ranked = Ranking([], whole=True, meaning={}, nearest=False)
+            ranked = Ranking([], whole=True, meaning={})
             if planned.words:
                 asked = Asked(query, planned, narrowed, by_update, self._mode)
                 ranked = ranking(reader, self._meaning, asked)
@@ -310,8 +312,7 @@ class Library:
 
         allowed = responses.budget(limit, SEARCH_LIMIT)
         count, footer = responses.page(items, total - offset, allowed, more)
-        kind = "nearest in meaning" if ranked.nearest else "found"
-        counted = f"Documents {kind}: {total if whole else f'at least {total}'}"
+        counted = f"Documents {ranked.counted}: {total if whole else f'at least {total}'}"
         header = f"{counted}; {responses.span(offset, count, built_at)}{ranked.note}"
         if planned.dropped:
             header += f" Only the first {MAX_WORDS} words of the query were searched."

@@ -305,6 +305,7 @@ class Pieces:
     updated: Mapping[str, datetime]  # each document's update, by path
     sections: tuple[int, ...]  # each piece's section number
     offsets: tuple[int, ...]  # where each piece starts in its document's body
+    ends: tuple[int, ...]  # where each piece ends in its document's body
     matrix: NDArray[np.float32]  # one row per piece
 
     def nearest(

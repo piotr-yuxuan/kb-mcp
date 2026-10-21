@@ -38,8 +38,8 @@ STALE = "{name}: the index was built with another version of it; run atlassian-o
 class Nearest:
     """The documents nearest a query, or why there are none to give."""
 
-    found: dict[str, tuple[Score, int, int]]  # each path's score, then its best piece's
-    # section number and offset in the body
+    found: dict[str, tuple[Score, int, int, int]]  # each path's score, then its best
+    # piece's section number, and its start and end in the body
     reason: str = ""
 
 
@@ -80,7 +80,7 @@ class Meaning:
         found = pieces.nearest(vector, allowed, DEPTH)
         return Nearest(
             {
-                path: (score, pieces.sections[index], pieces.offsets[index])
+                path: (score, pieces.sections[index], pieces.offsets[index], pieces.ends[index])
                 for path, (score, index) in found.items()
             }
         )

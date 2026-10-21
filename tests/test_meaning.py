@@ -34,6 +34,11 @@ FAILURE = "tiny: does not embed (Fail)"
 MIXED = "Mixed notes"
 # Its title's unknown words put it far from any query by meaning, near by words.
 WORDS = "Words of many other kinds"
+# Only its perks are near "holidays", a word that no document holds.
+HANDBOOK = (
+    "# Handbook\n\n## Intro\n\nwelcome to the company\n\n## Perks\n\n"
+    "leave leave leave\n\n## Other\n\nsecret words here\n"
+)
 
 
 @pytest.fixture
@@ -54,6 +59,7 @@ def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     mixed = "# Mixed notes\n\n## Notes\n\nrevert\n\n## Plan\n\nrollback deploy rollback deploy\n"
     write(docs, page("4004", MIXED, space="OPS"), mixed)
     write(docs, issue("PROJ-7", "Kafka upgrade"))
+    write(docs, page("4005", "Handbook"), HANDBOOK)
     registered(tmp_path / "data" / "models", monkeypatch)
     embedding = Embedding(load("tiny", tmp_path / "data" / "models"), tmp_path / "data" / "v.db")
     build_index(docs, tmp_path / "data" / "index.sqlite", MOMENT, embedding)
@@ -69,6 +75,11 @@ def library(data: Path, mode: SearchMode, meaning: Meaning | None = None) -> Lib
 def titles(answer: str) -> list[str]:
     """List the titles of a search's hits, in order."""
     return re.findall(r"^\d+\. (.+)$", parts(answer)[1], re.MULTILINE)
+
+
+def hits(answer: str) -> list[str]:
+    """Give each hit of a search, its lines together, in order."""
+    return re.split(r"\n(?=\d+\. )", parts(answer)[1])
 
 
 @pytest.mark.parametrize("mode", ["semantic", "hybrid"])
@@ -110,12 +121,38 @@ def test_an_issue_key_comes_first_in_every_mode(data: Path, mode: SearchMode) ->
 
 def test_hybrid_shows_the_section_that_meaning_ranks_higher(data: Path) -> None:
     """Words rank "Mixed notes" second, meaning first: its plan is shown, not its notes."""
-    answer = library(data, "hybrid").search("revert release")
-    hits = parts(answer)[1].split("\n\n")
-    mixed = next(hit for hit in hits if MIXED in hit)
-    assert "section 3 Plan" in mixed
-    lexical = library(data, "lexical").search("revert release")
-    assert "section 2 Notes" in next(hit for hit in parts(lexical)[1].split("\n\n") if MIXED in hit)
+    hybrid = hits(library(data, "hybrid").search("revert release"))
+    assert "section 3 Plan" in next(hit for hit in hybrid if MIXED in hit)
+    lexical = hits(library(data, "lexical").search("revert release"))
+    assert "section 2 Notes" in next(hit for hit in lexical if MIXED in hit)
+
+
+def test_hybrid_shows_by_meaning_a_document_that_only_meaning_finds(data: Path) -> None:
+    """No word found: the perks are shown, and their snippet stops where their piece does."""
+    answer = library(data, "hybrid").search("holidays")
+    assert answer.startswith("Documents found by words or meaning:")
+    first = hits(answer)[0]
+    assert first.startswith("1. Handbook")
+    assert "section 3 Perks" in first
+    assert "> leave leave leave" in first
+    assert "secret" not in first
+
+
+def test_hybrid_shows_by_words_a_document_both_rank_first(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A tie between the lists goes to words: the section that holds the query's word."""
+    docs = tmp_path / "docs"
+    fillers(docs)
+    tied = "# Tied\n\n## First\n\nrevert revert revert\n\n## Second\n\nundo undo undo rollback\n"
+    write(docs, page("4006", "Tied"), tied)
+    registered(tmp_path / "models", monkeypatch)
+    embedding = Embedding(load("tiny", tmp_path / "models"), tmp_path / "v.db")
+    build_index(docs, tmp_path / "index.sqlite", MOMENT, embedding)
+    semantic = Library(tmp_path / "index.sqlite", docs, Meaning(tmp_path / "models"), "semantic")
+    assert "section 3 Second" in hits(semantic.search("revert"))[0]
+    hybrid = Library(tmp_path / "index.sqlite", docs, Meaning(tmp_path / "models"), "hybrid")
+    assert "section 2 First" in hits(hybrid.search("revert"))[0]
 
 
 def test_without_vectors_meaning_falls_back_to_words_and_says_why(tmp_path: Path) -> None:

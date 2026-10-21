@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from atlassian_offline_mcp.adapters import vector_store
 from atlassian_offline_mcp.domain.mirror import FrontMatter
 from atlassian_offline_mcp.domain.search import (
     Embedded,
@@ -136,10 +137,11 @@ FROM sections s JOIN documents d ON d.rowid = s.document
 WHERE d.path = :path
 ORDER BY s.number
 """
-# Every piece with its document, its section, and its start within the document's body.
+# Every piece with its document, its section, and its span within the document's body.
 PIECES = """
 SELECT d.rowid AS document, d.path, d.updated, s.number,
-       s.start + length(s.head) + p.start AS offset, p.vector
+       s.start + length(s.head) + p.start AS offset,
+       s.start + length(s.head) + p.stop AS finish, p.vector
 FROM pieces p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
 ORDER BY p.rowid
 """
@@ -447,14 +449,15 @@ class Reader:
     def pieces(self) -> Pieces:
         """Read every piece's vector, with where the piece is: what meaning searches."""
         rows = self._connection.execute(PIECES).fetchall()
-        dimensions = len(rows[0]["vector"]) // 4 if rows else 0  # float32
-        matrix = np.frombuffer(b"".join(row["vector"] for row in rows), dtype="<f4")
+        dimensions = len(rows[0]["vector"]) // vector_store.LAYOUT.itemsize if rows else 0
+        matrix = np.frombuffer(b"".join(row["vector"] for row in rows), dtype=vector_store.LAYOUT)
         return Pieces(
             documents=tuple(row["document"] for row in rows),
             paths={row["document"]: row["path"] for row in rows},
             updated={row["path"]: datetime.fromisoformat(row["updated"]) for row in rows},
             sections=tuple(row["number"] for row in rows),
             offsets=tuple(row["offset"] for row in rows),
+            ends=tuple(row["finish"] for row in rows),
             matrix=matrix.astype(np.float32).reshape(len(rows), dimensions),
         )
 

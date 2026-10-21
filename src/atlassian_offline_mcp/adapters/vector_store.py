@@ -40,11 +40,6 @@ def as_bytes(vector: NDArray[np.float32]) -> bytes:
     return vector.astype(LAYOUT).tobytes()
 
 
-def as_vector(blob: bytes) -> NDArray[np.float32]:
-    """Read a vector that the store or the index holds."""
-    return np.frombuffer(blob, dtype=LAYOUT).astype(np.float32)
-
-
 class VectorStore:
     """Vectors by key, in an open store."""
 
