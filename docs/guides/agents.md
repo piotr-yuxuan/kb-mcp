@@ -58,14 +58,17 @@ then keeps the vectors in `<data>/vectors.sqlite`, so later builds embed only wh
 changed. Run `index` again after `ollama pull` of a new version of the model: its
 vectors change. Until then a server started after the pull says that the index is
 stale and answers by words, while one already running goes on with the new weights
-against the old vectors until the index is rebuilt. When the endpoint does not answer, `index` fails and leaves the index in place;
-the server answers by words, saying why, and tries again 30 seconds later. Ollama
-unloads a model five minutes after its last use, so the first search after a pause
-waits for it to load; `OLLAMA_KEEP_ALIVE` (for instance `1h`) keeps it longer. A
-folder `<data>/models/` left by an earlier version can be deleted.
+against the old vectors until the index is rebuilt. When the endpoint does not
+answer, `index` fails and leaves the index in place; the server answers by words,
+saying why, and tries again 30 seconds later. Ollama unloads a model five minutes
+after its last use, so the first search after a pause waits for it to load;
+`OLLAMA_KEEP_ALIVE` (for instance `1h`) keeps it longer. An index built by an earlier
+version names a model of its own, which Ollama does not have: run `index`, rather
+than pull that model. A folder `<data>/models/` left by an earlier version can be
+deleted.
 
 The default model, `qwen3-embedding:0.6b` (639 MB), retrieves English best among the
-models of Ollama's library, by published leaderboard scores. For French content, or a
+small models of Ollama's library compared on the MTEB leaderboard. For French content, or a
 faster cold build, set `model = "embeddinggemma:300m"` (622 MB): best on French, and
 about a quarter of the compute. Any model the endpoint serves can be named; the
 prefixes of `qwen3-embedding`, `embeddinggemma`, `embeddinggemma-2`,
