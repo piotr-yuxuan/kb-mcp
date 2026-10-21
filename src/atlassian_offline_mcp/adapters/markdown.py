@@ -87,8 +87,12 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
 
 
 def documents(docs: Path) -> Iterator[Path]:
-    """Yield every document file of the mirror under ``docs``, in a stable order."""
+    """Yield every document file of the mirror under ``docs``, in a stable order.
+
+    No name on the way to a document begins with ``_`` or ``.``.
+    """
     for pattern in DOCUMENTS:
         for path in sorted(docs.glob(pattern)):
-            if path.is_file() and not path.name.startswith(("_", ".")):
+            names = path.relative_to(docs).parts
+            if path.is_file() and not any(name.startswith(("_", ".")) for name in names):
                 yield path

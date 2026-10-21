@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import pytest
@@ -112,7 +112,17 @@ def test_a_file_without_front_matter_is_refused() -> None:
 
 @pytest.mark.parametrize(
     "changes",
-    [{"type": "issue"}, {"revision": "3"}, {"title": "Two\nlines"}, {"key": "../PRB-1"}],
+    [
+        {"type": "issue"},
+        {"revision": "3"},
+        {"title": "Two\nlines"},
+        {"title": "Two\u2028lines"},
+        {"labels": ("one\x85two",)},
+        {"key": "PRB-1"},
+        {"version": None},
+        {"assignee": "Someone"},
+        {"created": MOMENT.astimezone(timezone(timedelta(hours=1)))},
+    ],
 )
 def test_front_matter_off_its_rules_is_refused(changes: dict[str, object]) -> None:
     """A type of another source, a bad revision, a line break or a bad key is refused."""
@@ -127,6 +137,8 @@ def test_the_documents_are_exactly_the_pages_posts_and_issues(tmp_path: Path) ->
         "confluence/MFS/blog/196900-news.md",
         "confluence/MFS/_tree.md",
         "confluence/MFS/.hidden.md",
+        "confluence/.trash/blog/1-old.md",
+        "jira/_drafts/PRB-9.md",
         "jira/PRB/PRB-1.md",
         "assets/0a1b.md",
     ):
