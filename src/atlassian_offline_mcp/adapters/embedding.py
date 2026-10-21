@@ -123,29 +123,6 @@ CATALOGUE = {
             document_prefix="passage: ",
             dimensions=384,
         ),
-        Model(
-            name="qwen3-embedding-0.6b",
-            repository="onnx-community/Qwen3-Embedding-0.6B-ONNX",
-            revision="c25a394dd583836952667c12f008335071b3f43d",
-            graph=File(
-                "onnx/model_int8.onnx",
-                "6d0ea863f78b4a84afa3c7fcba1ec341572b5e28121aef77b7092b1dfdf679c7",
-                613_527_539,
-            ),
-            tokenizer=File(
-                "tokenizer.json",
-                "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
-                11_423_705,
-            ),
-            pooling="last",
-            pad="<|endoftext|>",
-            query_prefix=(
-                "Instruct: Given a web search query, retrieve relevant passages that answer"
-                " the query\nQuery:"
-            ),
-            document_prefix="",
-            dimensions=1024,
-        ),
     )
 }
 

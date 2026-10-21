@@ -260,7 +260,7 @@ def test_the_command_lists_the_catalogue_and_refuses_an_unknown_model(
     assert main(["model", "list", *config]) == 0
     listed = capsys.readouterr().out
     assert all(f"{name}: " in listed for name in CATALOGUE)
-    chosen = "multilingual-e5-small: intfloat/multilingual-e5-small, 487 MB, not pulled, the"
+    chosen = "bge-small-en-v1.5: BAAI/bge-small-en-v1.5, 133 MB, not pulled, the setting"
     assert chosen in listed
     assert main(["model", "pull", "no-such-model", *config]) == REFUSED
     assert "the known models" in capsys.readouterr().err

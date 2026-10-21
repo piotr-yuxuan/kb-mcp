@@ -14,14 +14,16 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 DEFAULT_DATA_DIR = "~/atlassian-offline-mcp"
-# The embedding model that indexes and queries by meaning; the catalogue of
-# adapters.embedding names the others.
-DEFAULT_MODEL = "multilingual-e5-small"
+# The embedding model that indexes by meaning; the catalogue of adapters.embedding names
+# the others. Chosen by plan 011's evaluation, which multilingual-e5-small all but tied,
+# and won on French questions.
+DEFAULT_MODEL = "bge-small-en-v1.5"
 MODEL_NAME = re.compile(r"[a-z0-9][a-z0-9.-]{0,63}")
 # How search ranks: by words, by meaning, or by both fused.
 type SearchMode = Literal["lexical", "semantic", "hybrid"]
 SEARCH_MODES: tuple[SearchMode, ...] = ("lexical", "semantic", "hybrid")
-DEFAULT_SEARCH_MODE: SearchMode = "lexical"
+# Plan 011's evaluation found hybrid better than lexical, and no worse on identifiers.
+DEFAULT_SEARCH_MODE: SearchMode = "hybrid"
 KNOWN_KEYS = frozenset({"site", "data_dir", "spaces", "projects", "model", "search_mode"})
 # Folders that may be synchronised to a cloud, under the home directory or by name.
 SYNCED_UNDER_HOME = (
