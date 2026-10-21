@@ -21,7 +21,6 @@ deeper inside those places are not followed. Every command loads its settings th
 | `<data>/raw/` | `raw` | `download` (004) | `mirror` (005) |
 | `<data>/docs/` | `docs` | `mirror` (005) | agents, and `index` (006) |
 | `<data>/index.sqlite` | `index` | `index` (006) | the MCP server (006) |
-| `<data>/models/` | `models` | `model pull` (011) | `index`, the MCP server, `eval` (011) |
 | `<data>/vectors.sqlite` | `vectors` | `index`, `eval` (011) | `index`, `eval` (011) |
 | `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011) |
 | `<data>/session/` | `session` | `login` (004) | the carriers of 004 only |
@@ -302,18 +301,24 @@ three empty for an index built without a model. An index of another schema is re
 with the command that rebuilds it. The
 MCP server opens it read-only, never writes, and reopens it when the file is replaced;
 it searches by meaning with the model that the index names, and only while the
-catalogue's fingerprint for it is the index's.
+endpoint's fingerprint for it is the index's.
 
 ### Models and vectors
 
-Owned by `adapters.embedding` (running) and `adapters.model_pull` (downloading), 011.
-`<data>/models/<name>/` holds a model's files, laid out as in its repository, each
-checked against the SHA-256 that the catalogue pins. `<data>/vectors.sqlite` keeps
-every vector embedded, keyed by the SHA-256 of the model's fingerprint and the text,
-committed in batches; it only grows, and deleting it costs a full embedding. Under
-`<data>/eval/`, `indexes/<model>.sqlite` are the indexes that `eval` builds, and
-`results/<UTC time>.json` its numbers: the golden file's SHA-256, models, measures,
-ranks and tests, by question id, never a question's text.
+No model runs in this program (plan 018): `adapters.embedding` alone asks an
+OpenAI-compatible endpoint, the setting `embedding_url` (by default Ollama's
+`http://127.0.0.1:11434/v1`), and refuses one that is not a literal loopback address
+unless the command is given `--allow-remote-embeddings`. A model's fingerprint is the
+SHA-256 of its name, the digest that Ollama lists for it (`/api/tags`, empty from a
+server that lists none), its dimensions, its query and document prefixes, and the
+adapter's format version. `<data>/vectors.sqlite` keeps every vector embedded, keyed
+by the SHA-256 of that fingerprint and the text, committed in batches; it only grows,
+and deleting it costs a full embedding. A text that the endpoint refuses has no
+vector there, and is asked again at the next build. Under `<data>/eval/`,
+`indexes/<model>.sqlite` (each `/` and `:` of the name written `_`) are the indexes
+that `eval` builds, and `results/<UTC time>.json` its numbers: the golden file's
+SHA-256, models, measures, ranks and tests, by question id, never a question's text.
+A `<data>/models/` folder left by plan 011 is read by nothing.
 
 ## The session
 
