@@ -11,7 +11,7 @@ import pytest
 from atlassian_offline_mcp.adapters import sqlite_index
 from atlassian_offline_mcp.app.tools import UnanswerableError
 from tests.answers import built, continuation, follow, parts
-from tests.mirrors import LOREM, MOMENT, issue, location, page
+from tests.mirrors import FILLERS, LOREM, MOMENT, issue, location, page
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -473,3 +473,66 @@ def test_no_index_is_refused_with_the_command_that_builds_it(tmp_path: Path) -> 
     (tmp_path / "index.sqlite").unlink()
     with pytest.raises(UnanswerableError, match="atlassian-offline-mcp index"):
         library.status()
+
+
+def test_each_tool_shows_the_mirror_date_apart_from_the_others(tmp_path: Path) -> None:
+    """The date of the copy, not of the last edit, is what each answer calls mirrored."""
+    fetched, created = MOMENT + timedelta(days=3), MOMENT - timedelta(days=10)
+    front = page("196845", "Kafka", fetched_at=fetched, created=created, labels=("ops",))
+    library = built(tmp_path, [(front, None)])
+    assert "| updated 2026-10-20 21:52 UTC | mirrored 2026-10-23\n" in library.search("kafka")
+    first = parts(library.read("196845", max_chars=20))[1]
+    for line in ("mirrored: 2026-10-23 21:52 UTC", "created: 2026-10-10 21:52 UTC"):
+        assert f"\n{line}\n" in first
+    assert "\nupdated: 2026-10-20 21:52 UTC\n" in first
+    later = follow(library, library.read("196845", max_chars=20))
+    assert later is not None
+    assert "\nmirrored: 2026-10-23 21:52 UTC\n" in parts(later)[1]
+    assert "(196845, updated 2026-10-20, mirrored 2026-10-23)" in library.browse(space="ENG")
+    assert "\nnewest mirror date: 2026-10-23 21:52 UTC\n" in library.status()
+
+
+def test_what_changed_pages_through_every_document_once(varied: Library) -> None:
+    """Following the cursor of a listing by update gives each document once, in order."""
+    answer: str | None = varied.search(sort="updated")
+    headers, found = [], []
+    while answer is not None:
+        headers.append(parts(answer)[0])
+        found += refs(answer)
+        answer = follow(varied, answer)
+    every = FILLERS + 4  # the fillers, and the four documents of the fixture
+    assert len(found) == len(set(found)) == every
+    assert headers[:2] == [
+        f"Documents found: {every}; 1 to 8 below. Index built 2026-10-20 21:52 UTC.\n",
+        f"Documents found: {every}; 9 to 16 below. Index built 2026-10-20 21:52 UTC.\n",
+    ]
+
+
+@pytest.mark.parametrize("parent", ["999999", "PROJ-7", "196846"])
+def test_a_parent_outside_the_space_is_not_mirrored(varied: Library, parent: str) -> None:
+    """A parent that the space does not hold lists nothing."""
+    assert varied.browse(space="ENG", parent=parent).startswith("Not mirrored:")
+
+
+def test_only_a_query_of_more_than_ten_words_is_said_cut(tmp_path: Path) -> None:
+    """Ten words are all searched; the eleventh is not, and the answer says so."""
+    library = built(tmp_path, [])
+    note = "Only the first 10 words of the query were searched."
+    ten = " ".join(f"word{number}" for number in range(10))
+    assert note not in library.search(ten)
+    assert note in library.search(f"{ten} word10")
+
+
+def test_hits_show_a_status_other_than_current(varied: Library) -> None:
+    """A page's usual status goes unsaid; an issue's is shown."""
+    answer = varied.search("kafka")
+    assert "| current" not in answer
+    assert "| Done\n" in answer
+
+
+def test_a_document_shows_ten_labels_at_most(tmp_path: Path) -> None:
+    """Labels beyond the tenth are left out of the metadata."""
+    labels = tuple(f"label{number}" for number in range(12))
+    library = built(tmp_path, [(page("196845", "Kafka", labels=labels), None)])
+    shown = parts(library.read("196845"))[1]
+    assert f"\nlabels: {', '.join(labels[:10])}\n" in shown
