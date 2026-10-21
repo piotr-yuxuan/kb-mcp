@@ -1,0 +1,390 @@
+"""A download end to end, over a scripted site that answers as the REST documentation says."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+import httpx
+import pytest
+
+from atlassian_offline_mcp.adapters import http
+from atlassian_offline_mcp.adapters.http import Site
+from atlassian_offline_mcp.adapters.raw_store import RawStore, Stored, Unreadable
+from atlassian_offline_mcp.adapters.session_file import COOKIES, write_cookies
+from atlassian_offline_mcp.app.download import (
+    MAX_FAILED_IN_A_ROW,
+    SIGN_IN_NEEDED,
+    SOME_FAILED,
+    Download,
+    RunStoppedError,
+    Targets,
+    download,
+    site_cookies,
+)
+from atlassian_offline_mcp.domain.content import BlogPost, Issue, Page
+from atlassian_offline_mcp.domain.period import period
+from atlassian_offline_mcp.domain.settings import Settings
+from tests.samples import (
+    v1_user,
+    v2_attachment,
+    v2_folder,
+    v2_page,
+    v2_space,
+    v3_comment,
+    v3_issue,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
+    from _pytest.monkeypatch import MonkeyPatch
+
+SITE = "https://sandbox.example.invalid"
+MEDIA = "https://api.media.atlassian.com/file/abc/binary?token=t"
+NOW = datetime(2026, 10, 22, 9, tzinfo=UTC)
+CAP = 1000
+PICTURE = b"\x89PNG picture"
+SPACE = "196613"
+OWNER_ONLY = 0o600
+
+
+def stamp(day: int, number: int = 3) -> dict[str, object]:
+    """Return a v2 version, created on a day of October 2026."""
+    return {"number": number, "createdAt": f"2026-10-{day:02d}T10:00:00.000Z"}
+
+
+# Two pages and a blog post changed in the last week; one page did not.
+PAGES = {
+    "1001": v2_page(id="1001", title="Fresh page", version=stamp(20)),
+    "1002": v2_page(
+        id="1002", title="Page in a folder", version=stamp(21), parentId="2001", parentType="folder"
+    ),
+    "1003": v2_page(id="1003", title="Old page", version=stamp(1)),
+}
+POSTS = {"1101": v2_page(id="1101", title="Weekly news", version=stamp(19), parentId=None)}
+FOLDERS = {
+    "2001": v2_folder(id="2001", title="Inner", parentId="2002", parentType="folder"),
+    "2002": v2_folder(id="2002", title="Outer", parentId="1001", parentType="page"),
+}
+ATTACHMENTS = {
+    "1001": [
+        v2_attachment(
+            id="att1",
+            fileSize=len(PICTURE),
+            downloadLink="/rest/api/content/1001/child/attachment/att1/download",
+        ),
+        v2_attachment(id="att2", title="talk.mp4", mediaType="video/mp4"),
+        v2_attachment(id="att3", title="huge.png", fileSize=CAP + 1),
+    ],
+    "1002": [],
+    "1101": [],
+}
+ISSUE = v3_issue()
+ISSUE["fields"]["attachment"][0]["size"] = len(PICTURE)  # type: ignore[index]
+ISSUES = {
+    "10000": ISSUE,
+    "10001": v3_issue(
+        id="10001",
+        key="PRB-2",
+        fields={**v3_issue()["fields"], "updated": "2026-09-01T10:00:00.000+0000"},  # type: ignore[dict-item]
+    ),
+}
+COMMENTS = [v3_comment(id="10100"), v3_comment(id="10101")]
+SERVED = ["Fresh page", "Page in a folder", "Old page", "Weekly news", "PRB-1", "MFS", "1001"]
+
+
+@dataclass
+class FakeSite:
+    """Answer the GETs of a download as the sandbox would, and record them.
+
+    The switches change the site: one page in a changed shape, an expired session, the
+    spaces found by key, no Jira, every page failing, many pages in the period.
+    """
+
+    changed_labels: bool = False
+    anonymous: bool = False
+    spaces: list[dict[str, object]] = field(default_factory=lambda: [v2_space()])
+    jira: bool = True
+    pages_fail: bool = False
+    many_pages: int = 0
+    asked: list[httpx.URL] = field(default_factory=list)
+
+    def routes(self) -> dict[str, Callable[[httpx.Request], httpx.Response]]:
+        """Map each path to its answer."""
+        routes: dict[str, Callable[[httpx.Request], httpx.Response]] = {
+            "/wiki/rest/api/user/current": lambda _: httpx.Response(
+                200, json={"type": "anonymous"} if self.anonymous else {"accountId": "account-1"}
+            ),
+            "/rest/api/3/myself": lambda _: httpx.Response(
+                200 if self.jira else 404, json={"accountId": "account-1"}
+            ),
+            "/wiki/api/v2/spaces": lambda _: httpx.Response(200, json={"results": self.spaces}),
+            f"/wiki/api/v2/spaces/{SPACE}/pages": self.pages,
+            f"/wiki/api/v2/spaces/{SPACE}/blogposts": lambda _: httpx.Response(
+                200, json={"results": list(POSTS.values()), "_links": {}}
+            ),
+            "/wiki/rest/api/user/bulk": lambda _: httpx.Response(
+                200, json={"results": [v1_user()]}
+            ),
+            "/wiki/rest/api/content/1001/child/attachment/att1/download": lambda _: httpx.Response(
+                302, headers={"location": MEDIA}
+            ),
+            "/file/abc/binary": lambda _: httpx.Response(200, content=PICTURE),
+            "/rest/api/3/search/jql": lambda _: httpx.Response(
+                200, json={"issues": list(ISSUES.values()), "isLast": True}
+            ),
+            "/rest/api/3/issue/10000": lambda _: httpx.Response(200, json=ISSUES["10000"]),
+            "/rest/api/3/issue/10000/comment": self.comments,
+            "/rest/api/3/attachment/content/10000": lambda _: httpx.Response(
+                303, headers={"location": MEDIA}
+            ),
+        }
+        for folder_id, folder in FOLDERS.items():
+            routes[f"/wiki/api/v2/folders/{folder_id}"] = lambda _, f=folder: httpx.Response(
+                200, json=f
+            )
+        for kind, documents in (("pages", PAGES), ("blogposts", POSTS)):
+            for document_id, document in documents.items():
+                routes[f"/wiki/api/v2/{kind}/{document_id}"] = lambda request, d=document: (
+                    self.document(request, d)
+                )
+                listed = {"results": ATTACHMENTS.get(document_id, []), "_links": {}}
+                routes[f"/wiki/api/v2/{kind}/{document_id}/attachments"] = lambda _, j=listed: (
+                    httpx.Response(200, json=j)
+                )
+        return routes
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        """Answer one GET, or 404 for a path the site does not have."""
+        self.asked.append(request.url)
+        if self.pages_fail and request.url.path.startswith("/wiki/api/v2/pages/"):
+            return httpx.Response(500)
+        route = self.routes().get(request.url.path)
+        return route(request) if route else httpx.Response(404)
+
+    def pages(self, request: httpx.Request) -> httpx.Response:
+        """Serve the pages listing in two pages, linked by _links.next."""
+        if self.many_pages:
+            many = [v2_page(id=str(5000 + i), version=stamp(20)) for i in range(self.many_pages)]
+            return httpx.Response(200, json={"results": many, "_links": {}})
+        if "cursor" in request.url.params:
+            return httpx.Response(200, json={"results": [PAGES["1003"]], "_links": {}})
+        following = f"/wiki/api/v2/spaces/{SPACE}/pages?limit=250&cursor=c2"
+        first = [PAGES["1001"], PAGES["1002"]]
+        return httpx.Response(200, json={"results": first, "_links": {"next": following}})
+
+    def document(self, request: httpx.Request, document: dict[str, object]) -> httpx.Response:
+        """Serve a page or a post with the body asked for, at the version asked for."""
+        version = document["version"]
+        assert isinstance(version, dict)
+        assert request.url.params["version"] == str(version["number"])
+        body = request.url.params["body-format"]
+        served = {**document, "body": {body: {"value": f"<p>{body}</p>", "representation": body}}}
+        if self.changed_labels and document["id"] == "1002":
+            served["labels"] = {"results": [{"label": "renamed field"}]}
+        return httpx.Response(200, json=served)
+
+    def comments(self, request: httpx.Request) -> httpx.Response:
+        """Serve two comments, one per page."""
+        start = int(request.url.params["startAt"])
+        return httpx.Response(
+            200,
+            json={"comments": [COMMENTS[start]], "startAt": start, "total": len(COMMENTS)},
+        )
+
+    def client(self) -> httpx.Client:
+        """Return an httpx client whose GETs this site answers."""
+        return httpx.Client(base_url=SITE, transport=httpx.MockTransport(self.handle))
+
+
+def run(store: RawStore, fake: FakeSite) -> Download:
+    """Run one download of the space and the project over the fake site."""
+    with fake.client() as client, store.writing():
+        done = Download(
+            Site(client, sleep=lambda _: None), store, period("7d", None, NOW), CAP, lambda: NOW
+        )
+        done.run(["MFS"], ["PRB"])
+    return done
+
+
+def test_a_space_and_a_project_are_downloaded_with_their_files(tmp_path: Path) -> None:
+    """What changed in the period is stored with its pictures; what did not, is not."""
+    store = RawStore(tmp_path / "raw")
+    done = run(store, FakeSite())
+    pages = [item for item in store.latest(Page) if isinstance(item, Stored)]
+    assert sorted(item.snapshot.document.id for item in pages) == ["1001", "1002"]
+    fresh = next(item for item in pages if item.snapshot.document.id == "1001")
+    assert fresh.snapshot.html == "<p>view</p>"
+    assert store.blob(fresh.blobs["att1"]).read_bytes() == PICTURE
+    assert set(fresh.blobs) == {"att1"}  # the video and the file over the cap are listed only
+    [post] = store.latest(BlogPost)
+    assert isinstance(post, Stored)
+    [issue] = store.latest(Issue)
+    assert isinstance(issue, Stored)
+    assert [comment.id for comment in issue.snapshot.comments] == ["10100", "10101"]
+    assert store.blob(issue.blobs["10000"]).read_bytes() == PICTURE
+    assert done.report.failures == 0
+
+
+def test_a_space_is_listed_whole_with_its_folders_and_authors(tmp_path: Path) -> None:
+    """The tree comes whole, folders followed to the top; the authors are named."""
+    store = RawStore(tmp_path / "raw")
+    run(store, FakeSite())
+    assert sorted(item.id for item in store.listed(SPACE, Page) if isinstance(item, Page)) == [
+        "1001",
+        "1002",
+        "1003",
+    ]
+    assert sorted(folder.id for folder in store.folders(SPACE)) == ["2001", "2002"]  # type: ignore[union-attr]
+    assert [user.display_name for user in store.users()] == ["A Person"]  # type: ignore[union-attr]
+
+
+def test_a_second_run_fetches_no_document_again(tmp_path: Path) -> None:
+    """With nothing changed, only listings and searches are asked for."""
+    store = RawStore(tmp_path / "raw")
+    fake = FakeSite()
+    run(store, fake)
+    again = FakeSite()
+    done = run(store, again)
+    fetched = [url.path for url in again.asked if "/pages/" in url.path or "/issue/" in url.path]
+    assert fetched == []
+    assert done.report.counts["confluence pages: already stored"] == len(["1001", "1002"])
+
+
+def test_the_search_names_the_project_and_widens_the_period_by_a_day(tmp_path: Path) -> None:
+    """Jira reads dates in the user's time zone: a day more on each side."""
+    fake = FakeSite()
+    run(RawStore(tmp_path / "raw"), fake)
+    [search] = [url for url in fake.asked if url.path == "/rest/api/3/search/jql"]
+    assert search.params["jql"] == (
+        'project = "PRB" AND updated >= "2026-10-14" AND updated < "2026-10-23"'
+        " ORDER BY updated DESC"
+    )
+
+
+def test_a_changed_response_is_kept_raw_and_reported_by_its_path(tmp_path: Path) -> None:
+    """A page in a changed shape is stored as received, and the run names the field."""
+    store = RawStore(tmp_path / "raw")
+    done = run(store, FakeSite(changed_labels=True))
+    results = {
+        item.where if isinstance(item, Unreadable) else item.snapshot.document.id: item
+        for item in store.latest(Page)
+    }
+    assert set(results) == {"1001", "confluence/pages/1002/000003"}
+    reason = "document.json.labels.results[0].name: missing"
+    assert done.report.counts[f"confluence pages read failed: {reason}"] == 1
+
+
+def test_the_report_names_nothing_the_site_served(tmp_path: Path) -> None:
+    """Counts and paths only: no title, key, id or name."""
+    done = run(RawStore(tmp_path / "raw"), FakeSite(changed_labels=True))
+    text = json.dumps(done.report.counts)
+    assert not [word for word in SERVED if word in text]
+
+
+def settings(tmp_path: Path) -> Settings:
+    """Return settings with a data directory under the scratch folder."""
+    return Settings(SITE, tmp_path / "data")
+
+
+def targets(spaces: list[str], projects: list[str]) -> Targets:
+    """Return the targets of a run over the last week, with the test's cap."""
+    return Targets(spaces, projects, period("7d", None, NOW), CAP)
+
+
+def saved_session(tmp_path: Path, monkeypatch: MonkeyPatch, fake: FakeSite) -> Settings:
+    """Save a session, and let the run's client reach the fake site."""
+    chosen = settings(tmp_path)
+    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    monkeypatch.setattr(http, "client", lambda *_: fake.client())
+    return chosen
+
+
+def no_sleep(_: float) -> None:
+    """Wait for nothing."""
+
+
+def test_without_a_saved_session_the_run_asks_to_sign_in(tmp_path: Path) -> None:
+    """No cookies saved: nothing is asked of the site, and the status says sign in."""
+    outcome = download(settings(tmp_path), targets(["MFS"], []), lambda: NOW, no_sleep)
+    assert outcome.status == SIGN_IN_NEEDED
+    assert outcome.report.counts["runs: stopped, sign-in needed"] == 1
+    [report] = (tmp_path / "data" / "runs").iterdir()
+    assert json.loads(report.read_text("utf-8"))["status"] == SIGN_IN_NEEDED
+
+
+def test_an_expired_session_stops_the_run_before_anything_is_stored(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Confluence answering as to an anonymous user means the session has expired."""
+    chosen = saved_session(tmp_path, monkeypatch, FakeSite(anonymous=True))
+    outcome = download(chosen, targets(["MFS"], ["PRB"]), lambda: NOW, no_sleep)
+    assert outcome.status == SIGN_IN_NEEDED
+    assert not (chosen.raw / "confluence" / "pages").exists()
+    assert not (chosen.raw / "jira").exists()
+
+
+def test_a_run_with_a_failure_says_so_in_its_status(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A document that failed makes the run's status 1, and its report says why."""
+    chosen = saved_session(tmp_path, monkeypatch, FakeSite(changed_labels=True))
+    outcome = download(chosen, targets(["MFS"], ["PRB"]), lambda: NOW, no_sleep)
+    assert outcome.status == SOME_FAILED
+    assert outcome.report.failures == 1
+    [report] = chosen.runs.iterdir()
+    assert json.loads(report.read_text("utf-8"))["status"] == SOME_FAILED
+
+
+def test_only_the_site_cookies_are_saved_back(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """A cookie that the media host set never joins the saved session."""
+    chosen = saved_session(tmp_path, monkeypatch, FakeSite())
+    jar = httpx.Cookies()
+    jar.set("kept", "1", domain=".example.invalid")
+    jar.set("media", "2", domain=".atlassian.com")
+    assert [cookie["name"] for cookie in site_cookies(jar.jar, "sandbox.example.invalid")] == [
+        "kept"
+    ]
+    download(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+    assert (chosen.session / COOKIES).stat().st_mode & 0o777 == OWNER_ONLY
+
+
+def test_a_space_key_that_finds_nothing_fails_the_run_and_is_named_locally(
+    tmp_path: Path,
+) -> None:
+    """The key goes to not_found, for the command to print; the report counts a failure."""
+    fake = FakeSite(spaces=[])
+    store = RawStore(tmp_path / "raw")
+    with fake.client() as client, store.writing():
+        site = Site(client, sleep=no_sleep)
+        done = Download(site, store, period("7d", None, NOW), CAP, lambda: NOW)
+        done.run(["ENG"], [])
+    assert done.not_found == ["ENG"]
+    assert done.report.counts["confluence spaces failed: not found"] == 1
+    assert done.report.failures == 1
+
+
+def test_a_site_without_jira_still_downloads_its_spaces(tmp_path: Path) -> None:
+    """Jira not answering is one failure; the spaces are downloaded all the same."""
+    store = RawStore(tmp_path / "raw")
+    done = run(store, FakeSite(jira=False))
+    assert done.report.counts["jira failed: status 404"] == 1
+    assert [item for item in store.latest(Page) if isinstance(item, Stored)]
+    assert list(store.latest(Issue)) == []
+
+
+def test_a_run_stops_after_documents_fail_one_after_another(tmp_path: Path) -> None:
+    """When every document fails, the run stops instead of trying them all."""
+    store = RawStore(tmp_path / "raw")
+    fake = FakeSite(pages_fail=True, many_pages=MAX_FAILED_IN_A_ROW + 5)
+    with fake.client() as client, store.writing():
+        done = Download(
+            Site(client, sleep=no_sleep), store, period("7d", None, NOW), CAP, lambda: NOW
+        )
+        with pytest.raises(RunStoppedError):
+            done.run(["MFS"], [])
+    assert done.report.counts["confluence pages failed: status 500"] == MAX_FAILED_IN_A_ROW

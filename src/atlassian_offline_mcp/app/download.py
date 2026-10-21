@@ -9,6 +9,7 @@ from datetime import UTC, timedelta
 from functools import partial
 from itertools import batched
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 from atlassian_offline_mcp.adapters import confluence_v2, http, jira_v3
 from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
@@ -21,6 +22,7 @@ from atlassian_offline_mcp.domain.files import skip_reason
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
     from datetime import datetime
+    from http.cookiejar import Cookie
 
     from atlassian_offline_mcp.adapters.http import Request
     from atlassian_offline_mcp.domain.content import Attachment, Document
@@ -35,9 +37,16 @@ MAX_PAGES = 400
 MAX_FOLDERS = 1000
 # Jira reads JQL dates in the user's time zone: the search is widened by this much.
 JQL_MARGIN = timedelta(days=1)
+# Documents failing one after another, after which the run stops: the site, the
+# network or the session is wrong, and each further failure would only cost time.
+MAX_FAILED_IN_A_ROW = 10
 # Exit statuses, beyond 0 for a run without failure.
 SOME_FAILED = 1
 SIGN_IN_NEEDED = 3
+
+
+class RunStoppedError(Exception):
+    """Too many documents failed in a row for the run to go on."""
 
 
 @dataclass
@@ -82,23 +91,40 @@ class Download:
     report: Report = field(default_factory=Report)
     not_found: list[str] = field(default_factory=list)
     authors: set[str] = field(default_factory=set)
+    failed_in_a_row: int = 0
 
     def run(self, spaces: Sequence[str], projects: Sequence[str]) -> None:
         """Download every space and project named, after checking that the session holds.
 
-        Raises SignInNeededError when it does not, before anything is written.
+        Raises SignInNeededError, before anything is written, when the session no longer
+        holds. A source that does not answer at all (a site without Jira) is counted as a
+        failure, and its targets skipped.
         """
-        if spaces:
-            user = Fields(self.site.json(confluence_v2.current_user_request()), "user")
-            if not confluence_v2.signed_in(user):
-                raise SignInNeededError
-        if projects:
-            self.site.json(jira_v3.myself_request())
-        for key in spaces:
+        confluence = bool(spaces) and self.reachable(
+            "confluence", confluence_v2.current_user_request(), confluence_v2.signed_in
+        )
+        jira = bool(projects) and self.reachable(
+            "jira", jira_v3.myself_request(), jira_v3.signed_in
+        )
+        for key in spaces if confluence else ():
             self.space(key)
-        for key in projects:
+        for key in projects if jira else ():
             self.project(key)
         self.users()
+
+    def reachable(self, source: str, request: Request, signed_in: Callable[[Fields], bool]) -> bool:
+        """GET the signed-in user of a source; say whether the source answers.
+
+        Raises SignInNeededError when it answers as to nobody.
+        """
+        try:
+            user = Fields(self.site.json(request), "user")
+        except (RepresentationError, SiteError) as error:
+            self.report.failed(source, error)
+            return False
+        if not signed_in(user):
+            raise SignInNeededError
+        return True
 
     def collect(self, request: Request, read_page: ReadPage) -> list[object]:
         """Follow a paged listing to its end, and return every result as received."""
@@ -132,7 +158,7 @@ class Download:
             space = confluence_v2.space(results[0]) if results else None
             if space is None:
                 self.not_found.append(key)
-                self.report.add("confluence spaces: not found")
+                self.report.add("confluence spaces failed: not found")
                 return
             page_listing = confluence_v2.listing_request(space.id, Page)
             post_listing = confluence_v2.listing_request(space.id, BlogPost)
@@ -193,7 +219,11 @@ class Download:
             self.keep(type(document), self.responses(document))
         except (RepresentationError, SiteError) as error:
             self.report.failed(what, error)
+            self.failed_in_a_row += 1
+            if self.failed_in_a_row >= MAX_FAILED_IN_A_ROW:
+                raise RunStoppedError from None
             return
+        self.failed_in_a_row = 0
         self.report.add(f"{what}: fetched")
 
     def responses(self, document: Document) -> dict[str, object]:
@@ -280,47 +310,78 @@ class Download:
         self.report.add("confluence users: named", len(users))
 
 
+@dataclass(frozen=True)
+class Targets:
+    """What a run downloads: spaces and projects, the period, and the largest file kept."""
+
+    spaces: Sequence[str]
+    projects: Sequence[str]
+    period: Period
+    max_file_bytes: int
+
+
+@dataclass(frozen=True)
+class Outcome:
+    """What a run did, the space keys that found nothing, and the run's exit status."""
+
+    report: Report
+    not_found: list[str]
+    status: int
+
+
 def download(
     settings: Settings,
-    targets: tuple[Sequence[str], Sequence[str]],
-    period: Period,
-    max_file_bytes: int,
+    targets: Targets,
     now: Callable[[], datetime],
-) -> tuple[Download, int]:
-    """Run a download with the saved session, save its report, and return its status.
+    sleep: Callable[[float], None],
+) -> Outcome:
+    """Run a download with the saved session, and save its report, even when stopped.
 
-    ``targets`` are the space keys and the project keys. The status is 0 when nothing
-    failed, ``SOME_FAILED`` when something did, and ``SIGN_IN_NEEDED`` when the session
-    no longer holds (or none was saved). Raises StoreBusyError when another run writes.
+    The status is 0 when nothing failed, ``SOME_FAILED`` when something did, and
+    ``SIGN_IN_NEEDED`` when the session no longer holds or none was saved. Raises
+    StoreBusyError when another run writes.
     """
-    store = RawStore(settings.raw)
+    report, not_found, status = Report(), [], None
     try:
         cookies = read_cookies(settings.session / COOKIES)
     except OSError, ValueError:
-        cookies = None
-    with http.client(str(settings.site), cookies or []) as client, store.writing():
-        run = Download(Site(client), store, period, max_file_bytes, now)
-        status = SIGN_IN_NEEDED
+        cookies, status = None, SIGN_IN_NEEDED
+    store = RawStore(settings.raw)
+    try:
         if cookies is not None:
-            try:
-                run.run(*targets)
-                status = SOME_FAILED if run.report.failures else 0
-            except SignInNeededError:
-                pass
-            rolled = [
-                {
-                    "name": cookie.name,
-                    "value": cookie.value,
-                    "domain": cookie.domain,
-                    "path": cookie.path,
-                }
-                for cookie in client.cookies.jar
-            ]
-            write_cookies(settings.session / COOKIES, rolled)
-    if status == SIGN_IN_NEEDED:
-        run.report.add("runs: stopped, sign-in needed")
-    settings.runs.mkdir(parents=True, exist_ok=True)
-    started = now().astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
-    report = {"status": status, "counts": dict(sorted(run.report.counts.items()))}
-    (settings.runs / f"{started}.json").write_text(json.dumps(report, indent=1), "utf-8")
-    return run, status
+            with http.client(str(settings.site), cookies) as client, store.writing():
+                site = Site(client, sleep=sleep)
+                run = Download(site, store, targets.period, targets.max_file_bytes, now, report)
+                not_found = run.not_found
+                try:
+                    run.run(targets.spaces, targets.projects)
+                    status = SOME_FAILED if report.failures else 0
+                except SignInNeededError:
+                    status = SIGN_IN_NEEDED
+                except RunStoppedError:
+                    status = SOME_FAILED
+                    report.add("runs: stopped, too many failures in a row")
+                finally:
+                    host = urlsplit(str(settings.site)).hostname or ""
+                    write_cookies(
+                        settings.session / COOKIES, site_cookies(client.cookies.jar, host)
+                    )
+    finally:
+        if status is None:
+            report.add("runs: interrupted")
+        elif status == SIGN_IN_NEEDED:
+            report.add("runs: stopped, sign-in needed")
+        settings.runs.mkdir(parents=True, exist_ok=True)
+        started = now().astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+        saved = {"status": status, "counts": dict(sorted(report.counts.items()))}
+        (settings.runs / f"{started}.json").write_text(json.dumps(saved, indent=1), "utf-8")
+    return Outcome(report, not_found, status)
+
+
+def site_cookies(jar: Iterable[Cookie], host: str) -> list[dict[str, str | None]]:
+    """Keep the cookies that the site's host is within: never a media host's."""
+    return [
+        {"name": cookie.name, "value": cookie.value, "domain": cookie.domain, "path": cookie.path}
+        for cookie in jar
+        if host == cookie.domain.lstrip(".") or host.endswith("." + cookie.domain.lstrip("."))
+    ]

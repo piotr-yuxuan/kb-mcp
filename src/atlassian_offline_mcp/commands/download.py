@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.adapters.raw_store import StoreBusyError
-from atlassian_offline_mcp.app.download import SIGN_IN_NEEDED, SOME_FAILED, download
+from atlassian_offline_mcp.app.download import SIGN_IN_NEEDED, SOME_FAILED, Targets, download
 from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
 from atlassian_offline_mcp.domain.content import PROJECT_KEY, SPACE_KEY
 from atlassian_offline_mcp.domain.period import PeriodError, period
@@ -68,24 +69,24 @@ def run(arguments: argparse.Namespace) -> int:
         return BAD_ARGUMENTS
     spaces = arguments.space or list(settings.spaces)
     projects = arguments.project or list(settings.projects)
-    if settings.site is None or not (spaces or projects) or arguments.max_file_mb < 1:
-        sys.stderr.write("refused: needs a site, a --space or a --project, and a positive cap\n")
+    problems = [
+        "site: not set; add it to the settings or pass --site" if settings.site is None else "",
+        "nothing to download: name a --space or a --project" if not (spaces or projects) else "",
+        "--max-file-mb: at least 1" if arguments.max_file_mb < 1 else "",
+    ]
+    for problem in filter(None, problems):
+        sys.stderr.write(f"refused: {problem}\n")
         return BAD_ARGUMENTS
+    targets = Targets(spaces, projects, span, arguments.max_file_mb * MEBIBYTE)
     try:
-        done, status = download(
-            settings,
-            (spaces, projects),
-            span,
-            arguments.max_file_mb * MEBIBYTE,
-            lambda: datetime.now(UTC),
-        )
+        outcome = download(settings, targets, lambda: datetime.now(UTC), time.sleep)
     except StoreBusyError:
         sys.stderr.write("another run is writing the raw store; try again once it ends\n")
         return SOME_FAILED
-    for what, number in sorted(done.report.counts.items()):
+    for what, number in sorted(outcome.report.counts.items()):
         sys.stdout.write(f"{what}: {number}\n")
-    for key in done.not_found:
+    for key in outcome.not_found:
         sys.stderr.write(f"space not found: {key}\n")
-    if status == SIGN_IN_NEEDED:
+    if outcome.status == SIGN_IN_NEEDED:
         sys.stderr.write("sign-in needed: run atlassian-offline-mcp login\n")
-    return status
+    return outcome.status

@@ -182,3 +182,8 @@ def comments_page(response: Fields, request: Request) -> tuple[list[Fields], Req
 def myself_request() -> Request:
     """GET the user whom the session signs in; Jira answers 401 to an expired session."""
     return Request("/rest/api/3/myself")
+
+
+def signed_in(response: Fields) -> bool:
+    """Say whether the user answered is someone."""
+    return response.optional_text("accountId", absent=True) is not None
