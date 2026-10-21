@@ -192,9 +192,9 @@ Two more of the store's own records, each replaced whole:
   `put_tombstones()`: each Confluence document absent from its space's listing
   (`domain.deletions.Tombstone`), pending until a probe answers, then dated by its first
   answer of gone (404, trashed, or moved to a space the store does not keep), and
-  confirmed by a second, at least an hour later; an answer from a space that the run
-  did not list is gone too, being out of reach. A document listed again loses its
-  tombstone. The absent are found from the last listing read by id alone
+  confirmed by a second, at least an hour later. A document found in a kept space whose
+  stored listing names it has moved, and loses its tombstone, as does one listed again;
+  one found in a kept space whose listing does not name it goes back to pending. The absent are found from the last listing read by id alone
   (`listed_ids(space_id, kind)`), so that an entry the adapter would refuse is still
   followed, and the ids that have a snapshot (`stored_ids(kind)`); the record is
   written before the space's listing is replaced, so that no absent document is lost to
@@ -275,8 +275,9 @@ placeholder; a backfill that reaches the other page fills it.
 A Confluence document is mirrored in the space whose freshest listing (by `listed_at`)
 names it, which after a move is not the space its snapshot names; the front matter, the
 tree and the path all take that space. A document with a confirmed tombstone is left
-out, unless a listing taken after its first answer of gone names it again. The files of documents gone, and the old file of a document
-that moved, are removed even by a run that reports problems; other files then stay.
+out, unless a listing taken after its first answer of gone names it again. The files of
+documents gone, and the old file of a document that moved, are removed even by a run
+that reports problems; other files then stay.
 
 Then the body: a first-level heading with the title, the converted body, then an
 `## Attachments` section listing each attachment (a link to its asset, or "not
