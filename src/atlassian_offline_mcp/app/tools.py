@@ -310,7 +310,8 @@ class Library:
                 self.search, query=query, filters=filters, sort=sort, limit=limit, cursor=after
             )
 
-        allowed = responses.budget(limit, SEARCH_LIMIT)
+        # A note on falling back to words lengthens the header: the hits make room for it.
+        allowed = responses.budget(limit, SEARCH_LIMIT) - responses.tokens(ranked.note)
         count, footer = responses.page(items, total - offset, allowed, more)
         counted = f"Documents {ranked.counted}: {total if whole else f'at least {total}'}"
         header = f"{counted}; {responses.span(offset, count, built_at)}{ranked.note}"

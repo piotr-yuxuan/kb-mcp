@@ -315,19 +315,23 @@ class Pieces:
         """Score the documents nearest a query by their best piece, at most ``limit``.
 
         Only the documents in ``kept`` count, when it is given. Each path comes with its
-        score, the cosine of its best piece, and that piece's index.
+        score, the cosine of its best piece, and that piece's index. Ties, as between
+        documents of one text, go to the newest update, then the path, before the cut.
         """
-        found: dict[str, tuple[Score, int]] = {}
+        best: dict[str, int] = {}  # each document's best piece
         similarity = self.matrix @ query.reshape(-1) if self.documents else np.empty(0)
         for index in np.argsort(-similarity, kind="stable"):
             document = self.documents[index]
-            path = self.paths[document]
-            if path in found or (kept is not None and document not in kept):
-                continue
-            found[path] = (Score(float(similarity[index]), self.updated[path]), int(index))
-            if len(found) == limit:
-                break
-        return found
+            if kept is None or document in kept:
+                best.setdefault(self.paths[document], int(index))
+        chosen = sorted(
+            best.items(),
+            key=lambda item: (-similarity[item[1]], -self.updated[item[0]].timestamp(), item[0]),
+        )[:limit]
+        return {
+            path: (Score(float(similarity[index]), self.updated[path]), index)
+            for path, index in chosen
+        }
 
 
 def quote(text: str) -> str:

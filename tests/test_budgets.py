@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from atlassian_offline_mcp.adapters.embedding import ModelError
 from atlassian_offline_mcp.app.meaning import Meaning
 from atlassian_offline_mcp.app.responses import cut
 from atlassian_offline_mcp.app.responses import page as fitted
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
     from _pytest.tempdir import TempPathFactory
 
+    from atlassian_offline_mcp.adapters.embedding import Embedder
     from atlassian_offline_mcp.domain.mirror import FrontMatter
 
 SIZE = 300_000
@@ -96,6 +98,22 @@ def test_answers_by_meaning_keep_to_the_same_budgets(
     assert estimate(answer) <= (BUDGET if limit == SEARCH_LIMIT else CEILING)
     assert continuation(answer) is not None
     assert "Ranked by words alone" not in answer
+
+
+def test_a_note_on_falling_back_leaves_the_answer_within_budget(with_vectors: Path) -> None:
+    """However long the reason given in the header, the hits make room for it."""
+
+    def broken(name: str, models: Path) -> Embedder:
+        message = f"{name}: does not load " + "(a long reason) " * 200 + str(models.name)
+        raise ModelError(message)
+
+    meaning = Meaning(with_vectors / "models", broken)
+    library = Library(with_vectors / "index.sqlite", with_vectors / "docs", meaning, "hybrid")
+    for limit, ceiling in ((SEARCH_LIMIT, BUDGET), (50, CEILING)):
+        answer = library.search("gamma", limit=limit)
+        assert "Ranked by words alone" in answer
+        assert estimate(answer) <= ceiling
+        assert continuation(answer) is not None
 
 
 def test_paging_by_meaning_gives_each_document_once(by_meaning: tuple[Library, str]) -> None:

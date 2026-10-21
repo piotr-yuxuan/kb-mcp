@@ -11,14 +11,17 @@ import re
 import threading
 import time
 from dataclasses import replace
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pytest
 
 from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError, load
+from atlassian_offline_mcp.adapters.sqlite_index import reading
 from atlassian_offline_mcp.app.indexing import Embedding, build_index
-from atlassian_offline_mcp.app.meaning import Meaning
+from atlassian_offline_mcp.app.meaning import Meaning, Nearest
 from atlassian_offline_mcp.app.tools import Library
+from atlassian_offline_mcp.domain.search import Filters, Score
 from tests.answers import parts
 from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.tiny_model import registered, tiny
@@ -30,8 +33,12 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from atlassian_offline_mcp.adapters.embedding import Embedder
+    from atlassian_offline_mcp.adapters.sqlite_index import Reader
     from atlassian_offline_mcp.domain.settings import SearchMode
 
+# Where "Mixed notes" comes by words for "4002 revert release": after the issue and
+# the page holding both words.
+WORDS_PLACE = 2
 # The documents a search by meaning gives at most, as the plan says.
 NEAREST = 100
 DECOYS = NEAREST + 5
@@ -369,3 +376,87 @@ def test_a_long_section_is_shown_at_the_piece_that_meaning_found(
     first = hits(answer)[0]
     assert "section 2 Long" in first
     assert "> leave leave leave" in first
+
+
+def test_ties_by_meaning_keep_the_newest_before_the_cut(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A hundred and five documents of one text tie: the hundred newest are kept, newest first."""
+    docs = tmp_path / "docs"
+    fillers(docs)
+    # The newest has the highest id, so the order of pieces, by path, is oldest first.
+    for number in range(105):
+        updated = MOMENT - timedelta(days=105 - number)
+        write(docs, page(str(7000 + number), "Recurring", updated=updated), "leave\n")
+    registered(tmp_path / "models", monkeypatch)
+    embedding = Embedding(load("tiny", tmp_path / "models"), tmp_path / "v.db")
+    build_index(docs, tmp_path / "index.sqlite", MOMENT, embedding)
+    meaning = Meaning(tmp_path / "models")
+    for mode in ("semantic", "hybrid"):
+        tools = Library(tmp_path / "index.sqlite", docs, meaning, mode)
+        shown, _ = tools.ranked("holidays", mode, limit=500)
+        assert [each.path.split("/")[-1][:4] for each in shown] == [
+            str(7104 - number) for number in range(100)
+        ]
+
+
+class Scripted(Meaning):
+    """A search by meaning that ranks the documents it is given in that order."""
+
+    def __init__(self, order: list[tuple[str, int, int, int]], models: Path) -> None:
+        """Rank these paths, each with its section number and its span in the body."""
+        super().__init__(models)
+        self.order = order
+
+    def nearest(self, reader: Reader, query: str, filters: Filters) -> Nearest:
+        """Give the scripted documents, the first nearest."""
+        del reader, query, filters
+        return Nearest(
+            {
+                path: (Score(1.0 - rank / 100, MOMENT), section, start, end)
+                for rank, (path, section, start, end) in enumerate(self.order)
+            }
+        )
+
+
+def plan_of(data: Path) -> tuple[str, int, int]:
+    """Give "Mixed notes", with the span of its third section: its plan."""
+    path = "confluence/OPS/4004-mixed-notes.md"
+    with reading(data / "index.sqlite") as reader:
+        start, end = reader.bounds(path)[2]
+    return path, start, end
+
+
+def test_with_an_identifier_a_tie_still_goes_to_words(data: Path) -> None:
+    """Both lists begin with the issue named: the notes, next in each, are shown by words."""
+    path, start, end = plan_of(data)
+    order = [each.path for each in library(data, "lexical").ranked("PROJ-7 notes", "lexical")[0]]
+    assert order[:2] == ["jira/PROJ/PROJ-7.md", path]
+    scripted = Scripted([(path, 3, start, end)], data / "models")
+    tools = Library(data / "index.sqlite", data / "docs", scripted, "hybrid")
+    shown = next(hit for hit in hits(tools.search("PROJ-7 notes")) if MIXED in hit)
+    assert "section 2 Notes" in shown
+
+
+def test_with_an_identifier_a_place_higher_by_meaning_shows_meaning(data: Path) -> None:
+    """Third by words, second by meaning, after the page named: its plan is shown."""
+    path, start, end = plan_of(data)
+    order = [
+        each.path for each in library(data, "lexical").ranked("4002 revert release", "lexical")[0]
+    ]
+    assert order.index(path) == WORDS_PLACE
+    scripted = Scripted([(path, 3, start, end)], data / "models")
+    tools = Library(data / "index.sqlite", data / "docs", scripted, "hybrid")
+    shown = next(hit for hit in hits(tools.search("4002 revert release")) if MIXED in hit)
+    assert "section 3 Plan" in shown
+
+
+def test_a_model_folder_that_cannot_be_searched_falls_back(data: Path) -> None:
+    """Even the folder unreadable, after a pull as another account: words, never an error."""
+    folder = data / "models" / "tiny"
+    folder.chmod(0)
+    try:
+        answer = library(data, "hybrid").search("revert release")
+    finally:
+        folder.chmod(0o755)
+    assert "Ranked by words alone" in answer
