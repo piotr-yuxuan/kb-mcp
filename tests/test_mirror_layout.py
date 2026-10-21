@@ -7,10 +7,9 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from atlassian_offline_mcp.domain.content import BlogPost, Folder, Issue, Page
+from atlassian_offline_mcp.domain.content import BlogPost, Issue, Page
 from atlassian_offline_mcp.domain.mirror_layout import (
     asset_path,
-    breadcrumb,
     confluence_path,
     issue_path,
     one_line,
@@ -104,24 +103,12 @@ def test_an_asset_keeps_a_plain_extension_only(filename: str, name: str) -> None
 
 
 def test_invisible_characters_are_removed() -> None:
-    """Zero-width, bidirectional, tag and control characters go; tab and line feed stay."""
-    text = "a\u200bb\u202ec\u2066d\U000e0041e\U000e0100f\x07g\th\ni\u00a0j"
-    assert visible(text) == "abcdefg\th\ni\u00a0j"
+    """Zero-width, bidi, tag, control, surrogate and private characters go; tab stays."""
+    text = "a\u200bb\u202ec\u2066d\U000e0041e\U000e0100f\x07g\th\ni\u00a0j\ud800k\ue000l"
+    assert visible(text) == "abcdefg\th\ni\u00a0jkl"
+    assert visible("line\u2028para\u2029end") == "line para end"
 
 
 def test_one_line_turns_every_line_break_into_a_space() -> None:
     """Each kind of line break becomes a space, and invisible characters go."""
     assert one_line("a\nb\r\nc\u2028d\x85e\u200b") == "a b c d e"
-
-
-def test_a_breadcrumb_climbs_to_the_root_and_stops_at_a_loop() -> None:
-    """Titles from the parent up, root first; an unlisted parent or a loop ends it."""
-    root = Folder("1", "Root")
-    middle = Folder("2", "Middle", "1", "folder")
-    looping = Folder("3", "Loop", "4", "folder")
-    other = Folder("4", "Other", "3", "folder")
-    nodes = {node.id: node for node in (root, middle, looping, other)}
-    assert breadcrumb("2", nodes) == ("Root", "Middle")
-    assert breadcrumb("9", nodes) == ()
-    assert breadcrumb(None, nodes) == ()
-    assert breadcrumb("3", nodes) == ("Other", "Loop")

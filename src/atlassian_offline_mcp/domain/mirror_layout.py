@@ -1,35 +1,39 @@
-"""The Markdown mirror's layout: where each file goes, and how each file is laid out.
+"""The Markdown mirror's layout: where each file goes, and how a document is laid out.
 
-The paths and rules are those of ``docs/reference/data-layout.md``. A document and a tree
-are laid out here as plain HTML, which pandoc then writes as Markdown, so that every
-text the site gave is escaped by one writer.
+The paths and rules are those of ``docs/reference/data-layout.md``. A document is laid
+out here as plain HTML, which pandoc then writes as Markdown, so that every text the
+site gave is escaped by one writer.
 """
 
 from __future__ import annotations
 
 import re
 import unicodedata
-from collections import defaultdict
 from html import escape
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.domain.content import BlogPost, Folder, Page
+from atlassian_offline_mcp.domain.content import BlogPost
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
 
-    from atlassian_offline_mcp.domain.content import ConfluenceDocument, Issue, Space
+    from atlassian_offline_mcp.domain.content import ConfluenceDocument, Issue
 
 ASSETS = PurePosixPath("assets")
 TREE = "_tree.md"
 SLUG_LENGTH = 60
 EXTENSION = re.compile(r"[a-z0-9]{1,8}")
+# The name of an asset: the file's SHA-256, then its extension if it has one.
+ASSET_NAME = re.compile(r"[0-9a-f]{64}(?:\.[a-z0-9]{1,8})?")
 NOT_SLUG = re.compile(r"[^a-z0-9]+")
-# Characters that show nothing or reorder what is shown, apart from tab and line feed:
-# format characters (zero-width, bidirectional controls, tags) and controls.
-INVISIBLE_CATEGORIES = frozenset({"Cf", "Cc"})
+# Characters that show nothing, reorder what is shown, or cannot be written, apart from
+# tab and line feed: controls, format characters (zero-width, bidirectional controls,
+# tags), lone surrogates, private use and unassigned code points.
+INVISIBLE_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn"})
 KEPT_CONTROLS = frozenset("\t\n")
+# Line and paragraph separators, which Markdown does not know as line breaks.
+SEPARATORS = frozenset({"Zl", "Zp"})
 # The variation selectors supplement, which no visible text needs.
 VARIATION_SUPPLEMENT = range(0xE0100, 0xE01F0)
 NONE = "<p>None.</p>"
@@ -75,35 +79,23 @@ def asset_path(digest: str, filename: str) -> PurePosixPath:
 
 
 def visible(text: str) -> str:
-    """Remove the characters that show nothing, or reorder what is shown."""
-    return "".join(
-        char
-        for char in text
-        if char in KEPT_CONTROLS
-        or (
-            unicodedata.category(char) not in INVISIBLE_CATEGORIES
-            and ord(char) not in VARIATION_SUPPLEMENT
-        )
-    )
+    """Remove the characters that show nothing, reorder what is shown, or cannot be written.
+
+    A line or paragraph separator (U+2028, U+2029) becomes a space.
+    """
+    kept: list[str] = []
+    for char in text:
+        category = unicodedata.category(char)
+        if char in KEPT_CONTROLS or (
+            category not in INVISIBLE_CATEGORIES and ord(char) not in VARIATION_SUPPLEMENT
+        ):
+            kept.append(" " if category in SEPARATORS else char)
+    return "".join(kept)
 
 
 def one_line(text: str) -> str:
     """Make a text one visible line: line breaks of any kind become spaces."""
     return visible(" ".join(text.splitlines()))
-
-
-def breadcrumb(parent_id: str | None, nodes: Mapping[str, Page | Folder]) -> tuple[str, ...]:
-    """Return the titles of the ancestors from this parent up, root first.
-
-    The walk stops at a parent that is not among the nodes, or at a loop.
-    """
-    titles: list[str] = []
-    seen: set[str] = set()
-    while parent_id is not None and parent_id in nodes and parent_id not in seen:
-        seen.add(parent_id)
-        titles.append(one_line(nodes[parent_id].title))
-        parent_id = nodes[parent_id].parent_id
-    return tuple(reversed(titles))
 
 
 def document_html(
@@ -119,9 +111,9 @@ def document_html(
     heading and its HTML; ``comments`` is None for a document without a comments section.
     """
     items = [
-        f'<li><a href="{escape(link)}">{escape(name)}</a></li>'
+        f'<li><a href="{escape(link)}">{escape(one_line(name))}</a></li>'
         if link is not None
-        else f"<li>{escape(name)} (not downloaded)</li>"
+        else f"<li>{escape(one_line(name))} (not downloaded)</li>"
         for name, link in attachments
     ]
     parts = [f"<h1>{escape(one_line(title))}</h1>", body, "<h2>Attachments</h2>"]
@@ -132,45 +124,3 @@ def document_html(
         if not comments:
             parts.append(NONE)
     return "".join(parts)
-
-
-def tree_html(
-    space: Space, pages: Sequence[Page], folders: Sequence[Folder], links: Mapping[str, str]
-) -> str:
-    """Lay out a space's tree: its pages and folders as a nested list.
-
-    Siblings come by title, then id; a node whose parent is not listed is at the top. A
-    page links its mirrored file, given by ``links``, or says it is not yet mirrored; a
-    folder is its title alone. A node on a loop is under no root, so it is left out.
-    """
-    nodes: dict[str, Page | Folder] = {node.id: node for node in [*folders, *pages]}
-    children: defaultdict[str | None, list[Page | Folder]] = defaultdict(list)
-    for node in nodes.values():
-        children[node.parent_id if node.parent_id in nodes else None].append(node)
-    for siblings in children.values():
-        siblings.sort(key=lambda node: (one_line(node.title).casefold(), node.id))
-    html = [f"<h1>{escape(one_line(space.name))} ({escape(space.key)})</h1>"]
-    if not children[None]:
-        return html[0] + NONE
-    # Depth first, without recursion: one iterator of siblings per open list.
-    html.append("<ul>")
-    stack = [iter(children[None])]
-    while stack:
-        node = next(stack[-1], None)
-        if node is None:
-            stack.pop()
-            html.append("</ul></li>" if stack else "</ul>")
-            continue
-        title = escape(one_line(node.title))
-        if isinstance(node, Folder):
-            html.append(f"<li>{title}")
-        elif node.id in links:
-            html.append(f'<li><a href="{escape(links[node.id])}">{title}</a>')
-        else:
-            html.append(f"<li>{title} (not yet mirrored)")
-        if children[node.id]:
-            html.append("<ul>")
-            stack.append(iter(children[node.id]))
-        else:
-            html.append("</li>")
-    return "".join(html)
