@@ -719,14 +719,16 @@ sops exec-env "$C" 'uv run sandbox/seed_corpus.py --check'
 ```
 
 It compares every page, its links and its section; every idea; every ticket's summary,
-status, resolution, creation date and sprint; and it lists pages with their versions and
-tickets with their `updated` dates, so that two listings can be compared.
+status, resolution, parent, creation and resolution dates, and sprint; every sprint's
+state and dates; and that every document the golden set names is on the site. It lists
+pages with their versions, and tickets and ideas with their `updated` dates, so that
+two listings can be compared.
 
 A page is left alone when the hash of the storage format that pandoc writes for it is
 the one recorded on the page, so the pandoc version matters: another version may write
-other HTML for the same Markdown. Each page records the pandoc version that wrote it,
-and `--check` names it when a page would change. The sandbox was seeded with pandoc
-3.7.0.2.
+other HTML for the same Markdown. Pages written from now on record the pandoc version
+that wrote them, and `--check` names it when it differs from the local one. The sandbox
+was seeded with pandoc 3.7.0.2.
 
 The tests need pandoc on `PATH`:
 
