@@ -31,15 +31,23 @@ from atlassian_offline_mcp.domain.content import (
     Space,
     require,
 )
+from atlassian_offline_mcp.domain.coverage import Coverage, Target
+from atlassian_offline_mcp.domain.deletions import Tombstone
+from atlassian_offline_mcp.domain.period import Period, PeriodError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping
+    from collections.abc import Callable, Iterable, Iterator, Mapping
     from datetime import datetime
 
     from atlassian_offline_mcp.domain.content import Document, Snapshot
 
 # The store's own file in a snapshot, beside the responses.
 RECORD = "store.json"
+# The store's own records of what runs covered, and of documents that answered as gone.
+COVERAGE = "coverage.json"
+TOMBSTONES = "tombstones.json"
+# The store's own record, beside a space's listings, of when they were listed.
+LISTED_AT = "listed_at.json"
 # The file name of a response: one safe path part, then .json.
 RESPONSE_NAME = re.compile(r"[A-Za-z0-9_-]+\.json")
 DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -128,8 +136,20 @@ def _decode(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _reason(error: Exception) -> str:
-    # A representation error names a path; any other message could hold content.
+def _record_json(path: Path) -> object:
+    # A record the store wrote and cannot read back is a changed shape, named by its file.
+    try:
+        return _decode(path)
+    except ValueError:
+        message = f"{path.name}: not JSON"
+        raise RepresentationError(message) from None
+
+
+def reason(error: Exception) -> str:
+    """Say why a read failed: a refused field's path, or the error's class alone.
+
+    A representation error names a path; any other message could hold content.
+    """
     return str(error) if isinstance(error, RepresentationError) else type(error).__name__
 
 
@@ -299,7 +319,7 @@ class RawStore:
             try:
                 yield self._read(kind, revisions[-1])
             except UNREADABLE as error:
-                yield Unreadable(str(revisions[-1].relative_to(self.root)), _reason(error))
+                yield Unreadable(str(revisions[-1].relative_to(self.root)), reason(error))
 
     @staticmethod
     def responses(folder: Path) -> dict[str, object]:
@@ -319,11 +339,14 @@ class RawStore:
         pages: list[object],
         blog_posts: list[object],
         folders: list[object],
+        *,
+        listed_at: datetime | None = None,
     ) -> None:
-        """Replace a space's listings, each as received.
+        """Replace a space's listings, each as received, and say when they were listed.
 
         They are the space itself and every result of every page of the listings of its
-        pages, blog posts and folders.
+        pages, blog posts and folders. ``listed_at`` lets the mirror prefer the freshest
+        of two listings that name one document, as after a move.
         """
         self._check_writing()
         target = self._space(Fields(space, "space").text("id"))
@@ -333,6 +356,16 @@ class RawStore:
                 raise ValueError(message)
             _replace_synced(target / f"{name}.json", _encode(value))
         _replace_synced(target / "space.json", _encode(space))
+        if listed_at is not None:
+            moment = {"listed_at": listed_at.astimezone(UTC).isoformat()}
+            _replace_synced(target / LISTED_AT, _encode(moment))
+
+    def listed_at(self, space_id: str) -> datetime | None:
+        """Say when a space was last listed, or None when no run said so."""
+        path = self._space(space_id) / LISTED_AT
+        if not path.exists():
+            return None
+        return Fields(_decode(path), LISTED_AT).time("listed_at")
 
     def spaces(self) -> list[Space | Unreadable]:
         """Read every space ever listed."""
@@ -342,7 +375,7 @@ class RawStore:
             try:
                 spaces.append(confluence_v2.space(Fields(_decode(folder / "space.json"), where)))
             except UNREADABLE as error:
-                spaces.append(Unreadable(where, _reason(error)))
+                spaces.append(Unreadable(where, reason(error)))
         return spaces
 
     def listed(
@@ -351,6 +384,19 @@ class RawStore:
         """Read the pages, or the blog posts, last listed in a space."""
         path = self._space(space_id) / f"{kind.kind}.json"
         return self._entries(path, partial(confluence_v2.document, kind=kind))
+
+    def listed_ids(self, space_id: str, kind: type[Page | BlogPost]) -> set[str]:
+        """Return the ids that a space's last listing names, read by id alone.
+
+        An entry whose other fields the adapter would refuse still names its document,
+        so that deletions follow every document a download fetched. A listing that
+        cannot be read at all names none.
+        """
+        path = self._space(space_id) / f"{kind.kind}.json"
+        try:
+            return confluence_v2.entry_ids(_decode(path)) if path.exists() else set()
+        except UNREADABLE:
+            return set()
 
     def folders(self, space_id: str) -> list[Folder | Unreadable]:
         """Read the folders last listed in a space."""
@@ -381,14 +427,89 @@ class RawStore:
         try:
             entries = Fields.each(_decode(path), where)
         except UNREADABLE as error:
-            return [Unreadable(where, _reason(error))]
+            return [Unreadable(where, reason(error))]
         results: list[T | Unreadable] = []
         for index, entry in enumerate(entries):
             try:
                 results.append(read(entry))
             except UNREADABLE as error:
-                results.append(Unreadable(f"{where}[{index}]", _reason(error)))
+                results.append(Unreadable(f"{where}[{index}]", reason(error)))
         return results
+
+    def stored_ids(self, kind: type[Document]) -> set[str]:
+        """Return the ids of the documents of a kind that have a stored snapshot."""
+        folders = _named(self.root / kind.source / kind.kind, IDENTIFIER)
+        return {folder.name for folder in folders if _named(folder, REVISION)}
+
+    def coverage(self) -> Coverage:
+        """Read each target's covered period, none when never written."""
+        path = self.root / COVERAGE
+        if not path.exists():
+            return Coverage()
+        periods: dict[Target, Period] = {}
+        for item in Fields.each(_record_json(path), COVERAGE):
+            with item.refusals():
+                target = Target(item.text("source"), item.text("key"))
+            try:
+                periods[target] = Period(item.time("start"), item.time("end"))
+            except PeriodError:
+                message = f"{item.path}: a period that ends before it starts"
+                raise RepresentationError(message) from None
+        return Coverage(periods)
+
+    def put_coverage(self, coverage: Coverage) -> None:
+        """Replace the record of coverage, whole."""
+        self._check_writing()
+        entries = [
+            {
+                "source": target.source,
+                "key": target.key,
+                "start": covered.start.astimezone(UTC).isoformat(),
+                "end": covered.end.astimezone(UTC).isoformat(),
+            }
+            for target, covered in sorted(coverage.periods.items())
+        ]
+        _replace_synced(self.root / COVERAGE, _encode(entries))
+
+    def tombstones(self) -> dict[tuple[str, str], Tombstone]:
+        """Read the documents that answered as gone, by kind and id."""
+        path = self.root / TOMBSTONES
+        if not path.exists():
+            return {}
+        stones: dict[tuple[str, str], Tombstone] = {}
+        for item in Fields.each(_record_json(path), TOMBSTONES):
+            with item.refusals():
+                kind, identifier = item.text("kind"), _identifier(item.text("id"), "id")
+                if kind not in {Page.kind, BlogPost.kind}:
+                    message = f"{item.path}.kind: not a kind of Confluence document"
+                    raise RepresentationError(message)
+                first_gone = item.time("first_gone") if item.optional_text("first_gone") else None
+                stone = Tombstone(
+                    kind,
+                    identifier,
+                    item.text("space"),
+                    first_gone,
+                    confirmed=item.flag("confirmed"),
+                )
+            stones[stone.key] = stone
+        return stones
+
+    def put_tombstones(self, tombstones: Iterable[Tombstone]) -> None:
+        """Replace the record of tombstones, whole."""
+        self._check_writing()
+        entries = [
+            {
+                "kind": stone.kind,
+                "id": stone.id,
+                "space": stone.space_id,
+                "first_gone": stone.first_gone.astimezone(UTC).isoformat()
+                if stone.first_gone
+                else None,
+                "confirmed": stone.confirmed,
+            }
+            for stone in sorted(tombstones, key=lambda each: each.key)
+        ]
+        _replace_synced(self.root / TOMBSTONES, _encode(entries))
 
     def blob(self, digest: str) -> Path:
         """Return where the file with this SHA-256 is, or would be."""

@@ -17,7 +17,7 @@ from atlassian_offline_mcp.adapters.markdown import documents
 from atlassian_offline_mcp.domain.mirror_layout import ASSET_NAME, ASSETS, TREE
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
 
 @dataclass(frozen=True)
@@ -42,11 +42,18 @@ def owned(docs: Path) -> set[PurePosixPath]:
     return {PurePosixPath(path.relative_to(docs).as_posix()) for path in found if path.is_file()}
 
 
-def sync(docs: Path, wanted: Mapping[PurePosixPath, bytes | Path], *, remove: bool) -> Changes:
+def sync(
+    docs: Path,
+    wanted: Mapping[PurePosixPath, bytes | Path],
+    *,
+    remove: bool,
+    retired: Iterable[PurePosixPath] = (),
+) -> Changes:
     """Write each wanted file whose bytes differ, then remove the owned files not wanted.
 
     Each wanted file is given by its bytes, or by the path of a file to copy. Without
-    ``remove``, no file is removed. A folder left empty by a removal goes too.
+    ``remove``, only the ``retired`` files not wanted are removed: those of documents
+    known to be gone or moved. A folder left empty by a removal goes too.
     """
     written = unchanged = 0
     for relative, content in sorted(wanted.items()):
@@ -64,7 +71,8 @@ def sync(docs: Path, wanted: Mapping[PurePosixPath, bytes | Path], *, remove: bo
         finally:
             Path(hidden).unlink(missing_ok=True)
         written += 1
-    stale = sorted(owned(docs) - set(wanted)) if remove else []
+    unwanted = owned(docs) - set(wanted)
+    stale = sorted(unwanted if remove else unwanted & set(retired))
     for relative in stale:
         (docs / relative).unlink()
         folder = (docs / relative).parent

@@ -164,6 +164,11 @@ def listed(fields: Fields) -> Listed:
         return Listed(Issue, fields.text("id"), time_revision(updated), updated)
 
 
+def listed_attachments(fields: Fields) -> tuple[Attachment, ...]:
+    """Read the attachments that a search's entry names, as ``ISSUE_FIELDS`` asks."""
+    return tuple(attachment(item) for item in fields.object("fields").objects("attachment"))
+
+
 def snapshot_requests(issue: Listed) -> dict[str, tuple[Request, ReadPage | None]]:
     """Name the GETs whose responses make a snapshot, with the paging of comments."""
     return {

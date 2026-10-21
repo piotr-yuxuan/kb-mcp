@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, timedelta
 from functools import partial
 from itertools import batched
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
 
 from atlassian_offline_mcp.adapters import confluence_v2, http, jira_v3
@@ -19,7 +19,7 @@ from atlassian_offline_mcp.adapters.http import (
     SiteError,
     TooManyFailuresError,
 )
-from atlassian_offline_mcp.adapters.raw_store import REPRESENTATIONS, RawStore
+from atlassian_offline_mcp.adapters.raw_store import REPRESENTATIONS, RawStore, Unreadable
 from atlassian_offline_mcp.adapters.session_file import (
     COOKIES,
     for_site,
@@ -27,15 +27,24 @@ from atlassian_offline_mcp.adapters.session_file import (
     write_cookies,
 )
 from atlassian_offline_mcp.domain.content import IDENTIFIER, BlogPost, Issue, Page
+from atlassian_offline_mcp.domain.coverage import Coverage, Target, window
+from atlassian_offline_mcp.domain.deletions import (
+    Answer,
+    Tombstone,
+    after_probes,
+    answer_of,
+    probing_order,
+    too_many_gone,
+)
 from atlassian_offline_mcp.domain.files import skip_reason
+from atlassian_offline_mcp.domain.period import EPOCH, Period
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
     from datetime import datetime
 
     from atlassian_offline_mcp.adapters.http import ReadPage, Request
     from atlassian_offline_mcp.domain.content import Attachment, Document, Listed
-    from atlassian_offline_mcp.domain.period import Period
     from atlassian_offline_mcp.domain.settings import Settings
 
     type SnapshotRequests = Callable[[Listed], dict[str, tuple[Request, ReadPage | None]]]
@@ -44,6 +53,11 @@ if TYPE_CHECKING:
 MAX_PAGES = 400
 # Folders followed up from the pages of one space, at most.
 MAX_FOLDERS = 1000
+# Documents absent from their listing that one run probes, at most; the rest wait.
+MAX_PROBES = 200
+HTTP_NOT_FOUND = 404
+# The kinds of Confluence documents that a space lists.
+KINDS: tuple[type[Page | BlogPost], ...] = (Page, BlogPost)
 # Jira reads JQL dates in the user's time zone, up to 14 hours off UTC, and a date
 # stands for its midnight: two days on each side always cover the period.
 JQL_MARGIN = timedelta(days=2)
@@ -96,8 +110,11 @@ def label(kind: type[Document]) -> str:
 
 @dataclass
 class Download:
-    """One run over a site, into a store: a period, and a cap on attached files.
+    """One run over a site, into a store: the periods, and a cap on attached files.
 
+    Each target is fetched over its own window, or over ``period`` when it has none.
+    With ``plan``, the run lists and decides, and fetches and writes nothing. ``covered``
+    names the targets whose listing was read whole, so that their coverage can grow.
     ``failed_targets`` names the user's own keys that failed, for the command to show;
     they never enter the report.
     """
@@ -110,6 +127,13 @@ class Download:
     report: Report = field(default_factory=Report)
     failed_targets: list[str] = field(default_factory=list)
     authors: set[str] = field(default_factory=set)
+    windows: Mapping[Target, Period] = field(default_factory=dict)
+    plan: bool = False
+    covered: list[Target] = field(default_factory=list)
+    tombstones: dict[tuple[str, str], Tombstone] = field(default_factory=dict)
+    absent: dict[str, tuple[dict[tuple[str, str], str], int, dict[tuple[str, str], Tombstone]]] = (
+        field(default_factory=dict)
+    )
 
     def run(self, spaces: Sequence[str], projects: Sequence[str]) -> None:
         """Download every space and project named, after checking that the session holds.
@@ -125,10 +149,17 @@ class Download:
             "jira", jira_v3.myself_request(), jira_v3.signed_in
         )
         for key in spaces if confluence else ():
-            self.space(key)
+            target = Target("confluence", key)
+            if self.space(key, self.windows.get(target, self.period)):
+                self.covered.append(target)
+        if not self.plan:
+            self.probe_absent()
         for key in projects if jira else ():
-            self.project(key)
-        self.users()
+            target = Target("jira", key)
+            if self.project(key, self.windows.get(target, self.period)):
+                self.covered.append(target)
+        if not self.plan:
+            self.users()
 
     def reachable(self, source: str, request: Request, signed_in: Callable[[Fields], bool]) -> bool:
         """GET the signed-in user of a source; say whether the source answers.
@@ -167,15 +198,18 @@ class Download:
         self.report.add(f"{label(kind)}: listed", len(found))
         return found
 
-    def space(self, key: str) -> None:
-        """List a space whole, store its listings, and fetch what changed in the period."""
+    def space(self, key: str, period: Period) -> bool:
+        """List a space whole, store its listings, and fetch what changed in the period.
+
+        Return whether the space was listed whole.
+        """
         try:
             found = self.collect(confluence_v2.space_request(key), confluence_v2.listing_page)
             space = confluence_v2.space(Fields(found[0], "space")) if found else None
             if space is None:
                 self.failed_targets.append(f"space {key}: not found")
                 self.report.add("confluence spaces failed: not found")
-                return
+                return False
             page_listing = confluence_v2.listing_request(space.id, Page)
             post_listing = confluence_v2.listing_request(space.id, BlogPost)
             pages = self.collect(page_listing, confluence_v2.listing_page)
@@ -183,11 +217,87 @@ class Download:
         except (RepresentationError, SiteError) as error:
             self.failed_targets.append(f"space {key}: {error}")
             self.report.failed("confluence spaces", error)
-            return
+            return False
         documents = [*self.documents(Page, pages), *self.documents(BlogPost, posts)]
-        self.store.put_space(found[0], pages, posts, self.folders(pages))
+        if not self.plan:
+            # By id alone, as the last listing is read: an entry refused for its other
+            # fields still names its document, which is then not absent.
+            listed = {
+                Page: confluence_v2.entry_ids(pages),
+                BlogPost: confluence_v2.entry_ids(posts),
+            }
+            self.track(space.id, listed)
+            folders = self.folders(pages)
+            self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
         for document in documents:
-            self.consider(document)
+            self.consider(document, period)
+        return True
+
+    def track(self, space_id: str, listed: Mapping[type[Document], set[str]]) -> None:
+        """Record, as pending, what the space's last listing named and the new one does not.
+
+        The absent are the documents the last listing named, read by id alone, and the
+        store holds, and those already tombstoned in the space. The record is written
+        before the listing is replaced, so that no absent document is lost to a run that
+        stops; they are probed once every space of the run is listed.
+        """
+        known = {key: stone for key, stone in self.tombstones.items() if stone.space_id == space_id}
+        absent: dict[tuple[str, str], str] = {}
+        stored = 0
+        for kind in KINDS:
+            before = self.store.listed_ids(space_id, kind) & self.store.stored_ids(kind)
+            stored += len(before)
+            again = {key[1] for key in known if key[0] == kind.kind}
+            absent |= {(kind.kind, each): space_id for each in (before | again) - listed[kind]}
+        self.absent[space_id] = (absent, stored, known)
+        others = {
+            key: stone for key, stone in self.tombstones.items() if stone.space_id != space_id
+        }
+        self.tombstones = {**others, **after_probes(known, absent, {}, self.now())}
+        self.store.put_tombstones(self.tombstones.values())
+
+    def probe_absent(self) -> None:
+        """Probe what each space no longer lists, and record what is gone.
+
+        Those not confirmed are probed, at most ``MAX_PROBES`` a space and a run, those
+        on their way first; the rest stay pending. A document answering from another
+        space is followed there once that space's stored listing names it, and stays
+        pending until then. Raises SignInNeededError when too many answer gone and the
+        session no longer holds; when the site does not answer, nothing is believed.
+        """
+        canary = (confluence_v2.current_user_request(), confluence_v2.signed_in)
+        kept = {each.id for each in self.store.spaces() if not isinstance(each, Unreadable)}
+        for space_id, (absent, stored, before) in self.absent.items():
+            known = {k: s for k, s in self.tombstones.items() if s.space_id == space_id}
+            # By the tombstones as they stood before this run: those on their way first.
+            order = probing_order(absent, before)[:MAX_PROBES]
+            answers = {k: a for k in order if (a := self.probe(k, kept))}
+            if too_many_gone(answers, stored) and not self.reachable("confluence", *canary):
+                answers = {}  # the site stopped answering: believe none of these answers
+            now = after_probes(known, absent, answers, self.now())
+            others = {k: s for k, s in self.tombstones.items() if s.space_id != space_id}
+            self.tombstones = {**others, **now}
+            self.store.put_tombstones(self.tombstones.values())
+            self.report.add("confluence documents: probed, absent from their listing", len(answers))
+            waiting = sum(1 for stone in now.values() if stone.first_gone is None)
+            self.report.add("confluence documents: absent, waiting for a probe", waiting)
+
+    def probe(self, key: tuple[str, str], kept: set[str]) -> Answer | None:
+        """GET a document absent from its listing, and say what became of it."""
+        try:
+            response = Fields(self.site.json(confluence_v2.probe_request(*key)), "probe")
+            found_space, status = confluence_v2.whereabouts(response)
+        except SiteError as error:
+            if error.status == HTTP_NOT_FOUND:
+                return Answer.GONE
+            self.report.failed("confluence probes", error)
+            return None
+        except RepresentationError as error:
+            self.report.failed("confluence probes", error)
+            return None
+        kind = Page if key[0] == Page.kind else BlogPost
+        named = found_space in kept and key[1] in self.store.listed_ids(found_space, kind)
+        return answer_of(found_space, status, kept, named=named)
 
     def folders(self, pages: Iterable[object]) -> list[object]:
         """GET every folder above the listed pages, following folders' own parents.
@@ -224,28 +334,52 @@ class Download:
                 wanted.append(folder.parent_id)
         return [response for response in found.values() if response is not None]
 
-    def project(self, key: str) -> None:
-        """Search a project's issues updated in the period, and fetch what changed."""
-        start = (self.period.start - JQL_MARGIN).date()
-        end = (self.period.end + JQL_MARGIN).date()
+    def project(self, key: str, period: Period) -> bool:
+        """Search a project's issues updated in the period, and fetch what changed.
+
+        Return whether the search was read whole.
+        """
+        start = (period.start - JQL_MARGIN).date()
+        end = (period.end + JQL_MARGIN).date()
         try:
             entries = self.collect(jira_v3.search_request(key, start, end), jira_v3.search_page)
         except (RepresentationError, SiteError) as error:
             self.failed_targets.append(f"project {key}: {error}")
             self.report.failed("jira projects", error)
-            return
+            return False
+        if self.plan:
+            self.count_files(entries, period)
         for issue in self.documents(Issue, entries):
-            self.consider(issue)
+            self.consider(issue, period)
+        return True
 
-    def consider(self, document: Listed) -> None:
+    def count_files(self, entries: Iterable[object], period: Period) -> None:
+        """Count the files, and their bytes, that a run would download for these issues."""
+        for entry in entries:
+            try:
+                listed = jira_v3.listed(Fields(entry, "issues"))
+                files = jira_v3.listed_attachments(Fields(entry, "issues"))
+            except RepresentationError:
+                continue  # counted by documents() already
+            if listed.updated not in period or self.store.has(listed):
+                continue
+            kept = [each for each in files if skip_reason(each, self.max_file_bytes) is None]
+            self.report.add("files: to download", len(kept))
+            self.report.add("files: bytes to download", sum(each.size for each in kept))
+
+    def consider(self, document: Listed, period: Period) -> None:
         """Fetch a listed document when it is in the period and its revision not stored."""
-        if document.updated not in self.period:
+        if document.updated not in period:
             return
         what = label(document.type)
         self.report.add(f"{what}: in the period")
         if self.store.has(document):
             self.report.add(f"{what}: already stored")
-            self.complete(document)
+            if not self.plan:
+                self.complete(document)
+            return
+        if self.plan:
+            self.report.add(f"{what}: to fetch")
             return
         try:
             responses = {
@@ -331,12 +465,26 @@ class Download:
 
 @dataclass(frozen=True)
 class Targets:
-    """What a run downloads: spaces and projects, the period, and the largest file kept."""
+    """What a run downloads: spaces and projects, how far back, and the largest file kept.
+
+    ``since`` starts every target's window there; without it, each target catches up
+    from the start of its coverage. ``back`` reaches further back (or ``all`` the way);
+    ``until`` ends the windows, by default when the run starts.
+    """
 
     spaces: Sequence[str]
     projects: Sequence[str]
-    period: Period
     max_file_bytes: int
+    since: datetime | None = None
+    back: timedelta | Literal["all"] | None = None
+    until: datetime | None = None
+
+    def windows(self, coverage: Coverage, now: datetime) -> dict[Target, Period]:
+        """Return each target's window; raise PeriodError for one with nowhere to start."""
+        named = [Target("confluence", key) for key in self.spaces]
+        named += [Target("jira", key) for key in self.projects]
+        end = min(self.until, now) if self.until else now  # never past what a run can see
+        return {target: window(coverage, target, self.since, self.back, end) for target in named}
 
 
 @dataclass(frozen=True)
@@ -345,7 +493,44 @@ class Outcome:
 
     report: Report
     failed_targets: list[str]
-    status: int
+    status: int | None
+
+
+def plan(
+    settings: Settings,
+    targets: Targets,
+    now: Callable[[], datetime],
+    sleep: Callable[[float], None],
+) -> Outcome:
+    """List and decide as a run would, and say what it would fetch; write nothing.
+
+    Raises PeriodError for a target with nowhere to start.
+    """
+    store, report = RawStore(settings.raw), Report()
+    windows = targets.windows(store.coverage(), now())
+    try:
+        cookies = read_cookies(settings.session / COOKIES)
+    except OSError, ValueError:
+        return Outcome(report, [], SIGN_IN_NEEDED)
+    with http.client(str(settings.site), cookies) as client:
+        run = Download(
+            Site(client, sleep=sleep),
+            store,
+            Period(EPOCH, now()),
+            targets.max_file_bytes,
+            now,
+            report,
+            windows=windows,
+            plan=True,
+        )
+        try:
+            run.run(targets.spaces, targets.projects)
+        except SignInNeededError:
+            return Outcome(report, run.failed_targets, SIGN_IN_NEEDED)
+        except TooManyFailuresError:
+            report.add("runs: stopped, too many failures in a row")
+            return Outcome(report, run.failed_targets, SOME_FAILED)
+    return Outcome(report, run.failed_targets, SOME_FAILED if report.failures else 0)
 
 
 def download(
@@ -356,24 +541,37 @@ def download(
 ) -> Outcome:
     """Run a download with the saved session, and save its report, even when stopped.
 
-    The status is 0 when nothing failed, ``SOME_FAILED`` when something did, and
-    ``SIGN_IN_NEEDED`` when the session no longer holds or none was saved. Raises
-    StoreBusyError, before anything is written, when another run writes.
+    Each target is fetched over its window; the coverage of every target listed whole
+    grows, and the tombstones found are kept, even when the run stops. The status is 0
+    when nothing failed, ``SOME_FAILED`` when something did, and ``SIGN_IN_NEEDED`` when
+    the session no longer holds or none was saved. Raises PeriodError for a target with
+    nowhere to start, and StoreBusyError when another run writes, both before anything
+    is written.
     """
     report, failed_targets, status = Report(), [], None
+    store, started = RawStore(settings.raw), now()
+    coverage = store.coverage()
+    windows = targets.windows(coverage, started)
     try:
         cookies = read_cookies(settings.session / COOKIES)
     except OSError, ValueError:
         cookies, status = None, SIGN_IN_NEEDED
-    store = RawStore(settings.raw)
     site = str(settings.site)
     with store.writing():
         try:
             if cookies is not None:
                 with http.client(site, cookies) as client:
                     reader = Site(client, sleep=sleep)
-                    span, cap = targets.period, targets.max_file_bytes
-                    run = Download(reader, store, span, cap, now, report)
+                    run = Download(
+                        reader,
+                        store,
+                        Period(EPOCH, started),
+                        targets.max_file_bytes,
+                        now,
+                        report,
+                        windows=windows,
+                        tombstones=store.tombstones(),
+                    )
                     failed_targets = run.failed_targets
                     try:
                         run.run(targets.spaces, targets.projects)
@@ -386,13 +584,17 @@ def download(
                     finally:
                         host = urlsplit(site).hostname or ""
                         write_cookies(settings.session / COOKIES, for_site(http.jar(client), host))
+                        for target in run.covered:
+                            coverage = coverage.extended(target, windows[target])
+                        store.put_coverage(coverage)
+                        store.put_tombstones(run.tombstones.values())
         finally:
             if status is None:
                 report.add("runs: interrupted")
             elif status == SIGN_IN_NEEDED:
                 report.add("runs: stopped, sign-in needed")
             settings.runs.mkdir(parents=True, exist_ok=True)
-            started = now().astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+            stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
             saved = {"status": status, "counts": dict(sorted(report.counts.items()))}
-            (settings.runs / f"{started}.json").write_text(json.dumps(saved, indent=1), "utf-8")
+            (settings.runs / f"{stamp}.json").write_text(json.dumps(saved, indent=1), "utf-8")
     return Outcome(report, failed_targets, status)

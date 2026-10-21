@@ -5,10 +5,17 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
-# A time before now: a number of days or weeks, such as 7d or 2w.
-AGO = re.compile(r"([1-9][0-9]{0,3})([dw])")
-DAYS = {"d": 1, "w": 7}
+# A length of time: a number of days, weeks, months or years, such as 7d, 2w, 6mo or 1y.
+# A month counts 30 days and a year 365: windows need no calendar.
+AGO = re.compile(r"([1-9][0-9]{0,3})(d|w|mo|y)")
+DAYS = {"d": 1, "w": 7, "mo": 30, "y": 365}
+# Before any content of Atlassian Cloud: the start of a window back to everything.
+EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
+# The longest length of time read: a hundred years, far past the epoch, never past the
+# calendar.
+MAX_DAYS = 100 * 365
 
 
 class PeriodError(ValueError):
@@ -33,15 +40,26 @@ class Period:
         return self.start <= moment < self.end
 
 
-def moment(text: str, now: datetime, option: str) -> datetime:
-    """Read ``7d``, ``2w``, an ISO date (midnight UTC) or an ISO time (UTC unless given)."""
+def length(text: str, option: str) -> timedelta | Literal["all"]:
+    """Read a length of time (``7d``, ``2w``, ``6mo``, ``1y``), or ``all`` of it."""
+    if text == "all":
+        return "all"
     ago = AGO.fullmatch(text)
-    if ago:
+    if not ago or int(ago[1]) * DAYS[ago[2]] > MAX_DAYS:
+        message = f"{option}: a number of days, weeks, months or years (7d, 2w, 6mo, 1y), or all"
+        raise PeriodError(message)
+    return timedelta(days=int(ago[1]) * DAYS[ago[2]])
+
+
+def moment(text: str, now: datetime, option: str) -> datetime:
+    """Read ``7d``, ``6mo`` and the like before now, or an ISO date (midnight UTC) or time."""
+    ago = AGO.fullmatch(text)
+    if ago and int(ago[1]) * DAYS[ago[2]] <= MAX_DAYS:
         return now - timedelta(days=int(ago[1]) * DAYS[ago[2]])
     try:
         parsed = datetime.fromisoformat(text)
     except ValueError:
-        message = f"{option}: a number of days or weeks (7d, 2w), or an ISO date"
+        message = f"{option}: a length before now (7d, 2w, 6mo, 1y), or an ISO date"
         raise PeriodError(message) from None
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 

@@ -17,7 +17,13 @@ from typing import TYPE_CHECKING
 from atlassian_offline_mcp.adapters.markdown import TIME, dump
 from atlassian_offline_mcp.adapters.mirror_files import Changes, sync
 from atlassian_offline_mcp.adapters.pandoc import PandocFailedError
-from atlassian_offline_mcp.adapters.raw_store import RawStore, Stored, Unreadable
+from atlassian_offline_mcp.adapters.raw_store import (
+    UNREADABLE,
+    RawStore,
+    Stored,
+    Unreadable,
+    reason,
+)
 from atlassian_offline_mcp.adapters.site_html import Context, MarkupError, Mirrored, normalise
 from atlassian_offline_mcp.domain.catalogue import Catalogue, front_matter
 from atlassian_offline_mcp.domain.content import (
@@ -34,9 +40,11 @@ from atlassian_offline_mcp.domain.mirror_layout import (
     issue_path,
     tree_path,
 )
+from atlassian_offline_mcp.domain.period import EPOCH
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
+    from datetime import datetime
     from pathlib import Path, PurePosixPath
 
     from atlassian_offline_mcp.domain.content import Folder
@@ -109,14 +117,30 @@ def where(store: RawStore, stored: Stored) -> str:
     return stored.folder.relative_to(store.root).as_posix()
 
 
-def read_catalogue(store: RawStore, problems: list[Problem]) -> tuple[Catalogue, set[str]]:
-    """Read the spaces, users and listings; also return the spaces whose listing failed."""
+def listed_at(store: RawStore, space_id: str, problems: list[Problem]) -> datetime:
+    """Say when a space was listed: the epoch when no run said so, or the record is damaged."""
+    try:
+        return store.listed_at(space_id) or EPOCH
+    except UNREADABLE as error:
+        problems.append(Problem(f"confluence/spaces/{space_id}/listed_at.json", reason(error)))
+        return EPOCH
+
+
+def read_catalogue(
+    store: RawStore, problems: list[Problem]
+) -> tuple[Catalogue, set[str], dict[str, datetime]]:
+    """Read the spaces, users and listings.
+
+    Also return the spaces whose listing failed, and when each space was listed.
+    """
     spaces = {space.id: space for space in readable(store.spaces(), problems)}
     users = readable(store.users(), problems)
+    times = {space_id: listed_at(store, space_id, problems) for space_id in spaces}
     listed: dict[str, Page | BlogPost] = {}
     folders: dict[str, tuple[Folder, ...]] = {}
     damaged: set[str] = set()
-    for space_id in spaces:
+    # The freshest listing last, so that it wins for a document that two listings name.
+    for space_id in sorted(spaces, key=times.__getitem__):
         before = len(problems)
         for kind in (Page, BlogPost):
             entries = readable(store.listed(space_id, kind), problems)
@@ -125,25 +149,59 @@ def read_catalogue(store: RawStore, problems: list[Problem]) -> tuple[Catalogue,
         if len(problems) > before:
             damaged.add(space_id)
     names = {user.account_id: user.display_name for user in users if user.display_name}
-    return Catalogue(spaces, names, listed, folders), damaged
+    return Catalogue(spaces, names, listed, folders), damaged, times
 
 
-def place(store: RawStore, catalogue: Catalogue, problems: list[Problem]) -> list[Placed]:
+def place(
+    store: RawStore, catalogue: Catalogue, times: Mapping[str, datetime], problems: list[Problem]
+) -> tuple[list[Placed], dict[PurePosixPath, PurePosixPath | None]]:
     """Read the newest snapshot of every document, and say where each is mirrored.
 
-    A page or a blog post whose space is not listed has no folder, and is reported.
+    A page or a blog post goes to the space whose freshest listing names it, before the
+    one its snapshot names, everywhere the mirror uses its space; one whose space is not
+    listed has no folder, and is reported. A document confirmed gone is left out, unless
+    a listing taken after it answered gone names it again. Also return the files that
+    must go even when the run reports problems: those of documents gone (to None), and
+    the old file of a document that moved (to its new file).
     """
     placed: list[Placed] = []
-    for stored in (item for kind in KINDS for item in readable(store.latest(kind), problems)):
-        document = stored.snapshot.document
+    retired: dict[PurePosixPath, PurePosixPath | None] = {}
+    try:
+        gone = {key: stone for key, stone in store.tombstones().items() if stone.confirmed}
+    except UNREADABLE as error:
+        problems.append(Problem("tombstones.json", reason(error)))
+        gone = {}
+    for found in (item for kind in KINDS for item in readable(store.latest(kind), problems)):
+        stored, document = found, found.snapshot.document
         if isinstance(document, Issue):
             placed.append(Placed(stored, issue_path(document)))
-        elif isinstance(document, ConfluenceDocument) and document.space_id in catalogue.spaces:
+            continue
+        if not isinstance(document, ConfluenceDocument):
+            continue
+        before = catalogue.spaces.get(document.space_id)
+        listed = catalogue.listed.get(document.id)
+        stone = gone.get((document.kind, document.id))
+        # Gone, unless a listing taken after its first answer of gone names it again.
+        named = times.get(listed.space_id) if listed is not None else None
+        is_gone = stone is not None and (named is None or named <= stone.first_gone)
+        moves = listed is not None and listed.space_id != document.space_id
+        old = confluence_path(document, before.key) if before is not None else None
+        if is_gone:
+            if old is not None:
+                retired[old] = None
+            continue
+        if moves:
+            moved = replace(document, space_id=listed.space_id)
+            stored = replace(stored, snapshot=replace(stored.snapshot, document=moved))
+            document = moved
+        if document.space_id in catalogue.spaces:
             key = catalogue.spaces[document.space_id].key
             placed.append(Placed(stored, confluence_path(document, key)))
+            if moves and old is not None:
+                retired[old] = confluence_path(document, key)
         else:
             problems.append(Problem(where(store, stored), "space not listed"))
-    return placed
+    return placed, retired
 
 
 def index(
@@ -198,8 +256,8 @@ def mirror(
 ) -> Outcome:
     """Mirror the raw store into ``docs``, with ``markdown`` writing HTML as Markdown."""
     problems: list[Problem] = []
-    catalogue, damaged = read_catalogue(store, problems)
-    placed = place(store, catalogue, problems)
+    catalogue, damaged, times = read_catalogue(store, problems)
+    placed, retired = place(store, catalogue, times, problems)
     mirrored, assets = index(placed, store, site)
     wanted: dict[PurePosixPath, bytes | Path] = {**assets}
     unsupported: Counter[str] = Counter()
@@ -226,4 +284,7 @@ def mirror(
         except PandocFailedError as error:
             problems.append(Problem(f"confluence/spaces/{space.id}", str(error)))
     written = sum(1 for each in placed if each.path in wanted)
-    return Outcome(written, sync(docs, wanted, remove=not problems), unsupported, tuple(problems))
+    # A moved document's old file goes once its new one is built, never before.
+    gone = [old for old, new in retired.items() if new is None or new in wanted]
+    changes = sync(docs, wanted, remove=not problems, retired=gone)
+    return Outcome(written, changes, unsupported, tuple(problems))

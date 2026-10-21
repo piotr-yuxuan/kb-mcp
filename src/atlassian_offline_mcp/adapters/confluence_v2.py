@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
 from atlassian_offline_mcp.adapters.http import ReadPage, Request
 from atlassian_offline_mcp.domain.content import (
+    IDENTIFIER,
     SITE_PATH,
     Attachment,
     BlogPost,
@@ -188,6 +189,29 @@ def snapshot_requests(document: Listed) -> dict[str, tuple[Request, ReadPage | N
         VIEW: (document_request(document, "view"), None),
         ATTACHMENTS: (attachments_request(document), listing_page),
     }
+
+
+def entry_ids(entries: object) -> set[str]:
+    """Read only the ids of a listing's entries, whatever else each entry holds.
+
+    An entry without a usable id names nothing; entries that are not a list name none.
+    """
+    ids: set[str] = set()
+    for entry in entries if type(entries) is list else []:
+        identifier = entry.get("id") if type(entry) is dict else None
+        if type(identifier) is str and IDENTIFIER.fullmatch(identifier):
+            ids.add(identifier)
+    return ids
+
+
+def probe_request(kind: str, document_id: str) -> Request:
+    """GET a page or a blog post without its body, to learn where it is, if anywhere."""
+    return Request(f"{WIKI}/api/v2/{kind}/{document_id}")
+
+
+def whereabouts(fields: Fields) -> tuple[str, str]:
+    """Read where a probed page or blog post is: its space's id, and its status."""
+    return fields.text("spaceId"), fields.text("status")
 
 
 def document_request(document: Listed, body: str) -> Request:

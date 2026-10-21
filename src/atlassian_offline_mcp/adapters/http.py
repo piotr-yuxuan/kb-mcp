@@ -61,7 +61,15 @@ class SignInNeededError(Exception):
 
 
 class SiteError(Exception):
-    """A GET that did not succeed; the message holds a status or an error class only."""
+    """A GET that did not succeed; the message holds a status or an error class only.
+
+    ``status`` is the HTTP status of the last answer, when the site answered.
+    """
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        """Hold the message, and the status when there was one."""
+        super().__init__(message)
+        self.status = status
 
 
 def refuse_plain_http(request: httpx.Request) -> None:
@@ -167,7 +175,7 @@ class Site:
         ``MAX_FAILED_IN_A_ROW`` GETs in a row got no answer.
         """
         self._breaker.check()
-        failure, wait, answered = "", 0.0, True
+        failure, wait, answered, last = "", 0.0, True, None
         for attempt in range(RETRIES + 1):
             if attempt:
                 self._sleep(min(wait, MAX_WAIT_S))
@@ -183,7 +191,7 @@ class Site:
             if status == HTTP_OK:
                 self._breaker.answered()
                 return body
-            failure = f"status {status}"
+            failure, last = f"status {status}", status
             if answered:
                 break
             after = headers.get("retry-after", "").strip()
@@ -192,7 +200,7 @@ class Site:
             self._breaker.answered()
         else:
             self._breaker.unanswered()
-        raise SiteError(failure)
+        raise SiteError(failure, last)
 
     def once(self, request: Request, max_bytes: int) -> tuple[int, httpx.Headers, bytes]:
         """Make one GET, following redirects to the site or its media hosts only."""
