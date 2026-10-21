@@ -254,3 +254,16 @@ def test_an_injected_page_is_inert_text() -> None:
     assert not [char for char in hidden if char in page]
     assert "zerowidth reversed tags line break" in page
     assert "lonesurrogate entities" in page
+
+
+def test_a_comments_headings_move_three_levels_down_at_most_to_six() -> None:
+    """A comment sits under its own third-level heading, so its headings go under it."""
+    context = Context("PRB-1", PurePosixPath("jira/PRB/PRB-1.md"), MIRRORED, shift=3)
+    page = Pandoc.find().markdown(normalise("<h1>One</h1><h2>Two</h2><h5>Five</h5>", context))
+    assert page.split("\n\n") == ["#### One", "##### Two", "###### Five\n"]
+
+
+def test_a_malformed_address_keeps_its_text_alone() -> None:
+    """An address that cannot be parsed is neither followed nor an error."""
+    page = markdown('<p><a href="http://[broken/x">broken</a> <img src="http://[x" alt="shot"></p>')
+    assert page == "broken shot\n"
