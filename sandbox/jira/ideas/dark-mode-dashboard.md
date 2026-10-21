@@ -15,7 +15,7 @@ merchants, following the operating system's setting by default.
 
 ## Evidence
 
-Eleven of the 24 merchants interviewed in May 2026 mentioned eye strain during evening
+Five of the fourteen merchants interviewed in May 2026 raised eye strain during evening
 reconciliation.
 
 Raised by Priya Castellane.
