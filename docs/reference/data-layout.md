@@ -33,6 +33,9 @@ The site's responses and its HTML change without notice. So that a change stays 
 - **One vocabulary.** `domain.content` names what the mirror holds: `Space`, `Folder`,
   `Page` and `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment`, `Comment`,
   `Person`, and `Snapshot`, a document at one revision with its rendered body.
+  `Listed` is what a listing says of a document (its type, id, revision, update time
+  and Confluence version), read apart from the rest of the entry, so that an entry
+  whose other fields have changed still lets the document be fetched.
   `domain.mirror.FrontMatter` names what the mirror says of each document. A document
   knows where it is stored (`source`, `kind`) and names its state (`revision`). Every
   layer above the adapters works with these types alone.
@@ -124,7 +127,8 @@ The store's interface for snapshots:
   names a missing file. For a revision stored already, `put` keeps the responses and
   records the new blobs.
 - `add_blobs(document, blobs)` records files downloaded later, such as on a retry,
-  replacing the record alone, whole.
+  replacing the record alone, whole. It, `has` and `read` take a `Document` or a
+  `Listed`.
 - `has(document)`; `read(document)`, which returns a `Stored` or raises one of
   `raw_store.UNREADABLE` (`RepresentationError` for a refused field, another
   `ValueError` or an `OSError` for a damaged file); and `latest(kind)`, which yields the
