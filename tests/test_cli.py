@@ -119,6 +119,17 @@ def test_check_refuses_a_part_of_the_data_directory_that_leads_elsewhere(
     assert "data_dir: docs: under a Dropbox folder" in capsys.readouterr().err
 
 
+def test_check_refuses_a_raw_store_that_leads_into_a_git_tree(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A link from <data>/raw into a working tree is refused, naming raw."""
+    (home / "project" / ".git").mkdir(parents=True)
+    (home / "atlassian-offline-mcp").mkdir()
+    (home / "atlassian-offline-mcp" / "raw").symlink_to(home / "project")
+    assert main(["check", "--config", str(home / "none.toml")]) == 1
+    assert "data_dir: raw: inside the git working tree" in capsys.readouterr().err
+
+
 def test_check_refuses_a_settings_file_it_cannot_read(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
