@@ -117,21 +117,23 @@ only the store reads and writes:
 The store's interface for snapshots:
 
 - `put(kind, responses, fetched_at, blobs)`, with `kind` one of `Page`, `BlogPost` and
-  `Issue`, reads only the id and the revision (the kind's `identity`), stores the
-  responses as received, and returns the folder. `blobs` maps attachment ids to digests
+  `Issue`, refuses a snapshot without one of the kind's files (above), reads only the
+  id and the revision (the kind's `identity`), stores the responses as received, and
+  returns the folder. `blobs` maps attachment ids to digests
   of files already stored with `put_blob`: files first, snapshot last, so a record never
   names a missing file. For a revision stored already, `put` keeps the responses and
   records the new blobs.
 - `add_blobs(document, blobs)` records files downloaded later, such as on a retry,
   replacing the record alone, whole.
-- `has(document)`; `read(document)`, which returns a `Stored` or raises
-  `RepresentationError`; and `latest(kind)`, which yields the newest snapshot of each
-  document of a kind as a `Stored`, or as an `Unreadable` (where it is, and the refused
-  field's path or the error's class) when its adapter now refuses it. The others still
-  follow.
+- `has(document)`; `read(document)`, which returns a `Stored` or raises one of
+  `raw_store.UNREADABLE` (`RepresentationError` for a refused field, another
+  `ValueError` or an `OSError` for a damaged file); and `latest(kind)`, which yields the
+  newest snapshot of each document of a kind as a `Stored`, or as an `Unreadable`
+  (where it is, and the refused field's path or the error's class) when it cannot be
+  read. The others still follow.
 - `Stored` is the snapshot read into the domain (`Snapshot`), its folder, `fetched_at`
-  and `blobs`. An attachment absent from `blobs` was not downloaded: a media type not
-  kept, over the size cap, or a failed download.
+  and `blobs`, the files of its own attachments only. An attachment absent from `blobs`
+  was not downloaded: a media type not kept, over the size cap, or a failed download.
 - `responses(folder)` gives the responses as received, for adapters to read what the
   domain does not yet carry (a macro's parameters in the storage body, say).
 
@@ -153,8 +155,9 @@ result of every page of each list:
 <data>/raw/confluence/users.json                        every author seen, from GET /wiki/rest/api/user/bulk
 ```
 
-`put_space(space, pages, blog_posts, folders)` replaces one space's listings; other
-spaces' are kept. `put_users(users)` merges users into those kept, by account id, so the
+`put_space(space, pages, blog_posts, folders)` replaces one space's listings, each file
+whole, one after another; other spaces' are kept. Of each listing entry it reads only
+the space's id, and of each user only the account id. `put_users(users)` merges users into those kept, by account id, so the
 newest name wins. They are read, each entry by its adapter, with `spaces()`,
 `listed(space_id, Page | BlogPost)`, `folders(space_id)` and `users()`; an entry that its
 adapter refuses comes back as an `Unreadable` at its index, and the others are read.
@@ -204,11 +207,13 @@ ran.
   downloaded.
 
 Each document starts with front matter written by `adapters.markdown.dump` and read by
-`adapters.markdown.load`, from a `domain.mirror.FrontMatter`. Its keys come in this
-order, all always present (`null` when unknown or not applicable). Every text is one
-line; times are quoted strings in UTC to the second; strings that YAML could read as
-another type (`'000003'`, `'Yes'`) are quoted; `load` refuses any other key, order or
-type, by name.
+`adapters.markdown.load`, from a `domain.mirror.FrontMatter`; nothing else writes or
+reads it. Its keys come in this order, all always present (`null` when unknown or not
+applicable), and a key that one source alone has is `null` for the other and never
+for its own. Every text is one line, with no line break of any kind; times are in UTC,
+written as quoted strings to the second; strings that YAML 1.1 could read as another
+type (`'000003'`, `'Yes'`) are quoted; `load` refuses any other key, order or type, by
+name.
 
 | Key | Type | Value |
 |---|---|---|
@@ -230,6 +235,13 @@ type, by name.
 | `url` | string or null | the absolute address of the web page: the `site` setting and `Document.url`; `null` when no site is set |
 | `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]` |
 | `fetched_at` | string | `fetched_at` of the snapshot, as `created` |
+
+Images: an image in the rendered HTML names its attachment by
+`data-linked-resource-id` (the attachment id) or by the file name in its `src`, as
+plan 001 found on the sandbox; 005's HTML module, the one module that knows the site's
+markup, maps it to `Stored.blobs`. An image of another page's attachment (through an
+include) has a file only when that page is stored; otherwise the mirror keeps a
+placeholder, until plan 007.
 
 Then the body: a first-level heading with the title, the converted body, then an
 `## Attachments` section listing each attachment (a link to its asset, or "not
