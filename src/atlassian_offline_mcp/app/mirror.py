@@ -43,7 +43,7 @@ from atlassian_offline_mcp.domain.mirror_layout import (
 from atlassian_offline_mcp.domain.period import EPOCH
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
     from datetime import datetime
     from pathlib import Path, PurePosixPath
 
@@ -126,15 +126,21 @@ def listed_at(store: RawStore, space_id: str, problems: list[Problem]) -> dateti
         return EPOCH
 
 
-def read_catalogue(store: RawStore, problems: list[Problem]) -> tuple[Catalogue, set[str]]:
-    """Read the spaces, users and listings; also return the spaces whose listing failed."""
+def read_catalogue(
+    store: RawStore, problems: list[Problem]
+) -> tuple[Catalogue, set[str], dict[str, datetime]]:
+    """Read the spaces, users and listings.
+
+    Also return the spaces whose listing failed, and when each space was listed.
+    """
     spaces = {space.id: space for space in readable(store.spaces(), problems)}
     users = readable(store.users(), problems)
+    times = {space_id: listed_at(store, space_id, problems) for space_id in spaces}
     listed: dict[str, Page | BlogPost] = {}
     folders: dict[str, tuple[Folder, ...]] = {}
     damaged: set[str] = set()
     # The freshest listing last, so that it wins for a document that two listings name.
-    for space_id in sorted(spaces, key=lambda each: listed_at(store, each, problems)):
+    for space_id in sorted(spaces, key=times.__getitem__):
         before = len(problems)
         for kind in (Page, BlogPost):
             entries = readable(store.listed(space_id, kind), problems)
@@ -143,11 +149,11 @@ def read_catalogue(store: RawStore, problems: list[Problem]) -> tuple[Catalogue,
         if len(problems) > before:
             damaged.add(space_id)
     names = {user.account_id: user.display_name for user in users if user.display_name}
-    return Catalogue(spaces, names, listed, folders), damaged
+    return Catalogue(spaces, names, listed, folders), damaged, times
 
 
 def place(
-    store: RawStore, catalogue: Catalogue, problems: list[Problem]
+    store: RawStore, catalogue: Catalogue, times: Mapping[str, datetime], problems: list[Problem]
 ) -> tuple[list[Placed], dict[PurePosixPath, PurePosixPath | None]]:
     """Read the newest snapshot of every document, and say where each is mirrored.
 
@@ -176,7 +182,7 @@ def place(
         listed = catalogue.listed.get(document.id)
         stone = gone.get((document.kind, document.id))
         # Gone, unless a listing taken after its first answer of gone names it again.
-        named = listed_at(store, listed.space_id, problems) if listed is not None else None
+        named = times.get(listed.space_id) if listed is not None else None
         is_gone = stone is not None and (named is None or named <= stone.first_gone)
         moves = listed is not None and listed.space_id != document.space_id
         old = confluence_path(document, before.key) if before is not None else None
@@ -250,8 +256,8 @@ def mirror(
 ) -> Outcome:
     """Mirror the raw store into ``docs``, with ``markdown`` writing HTML as Markdown."""
     problems: list[Problem] = []
-    catalogue, damaged = read_catalogue(store, problems)
-    placed, retired = place(store, catalogue, problems)
+    catalogue, damaged, times = read_catalogue(store, problems)
+    placed, retired = place(store, catalogue, times, problems)
     mirrored, assets = index(placed, store, site)
     wanted: dict[PurePosixPath, bytes | Path] = {**assets}
     unsupported: Counter[str] = Counter()

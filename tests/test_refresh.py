@@ -472,6 +472,26 @@ def test_a_moved_page_takes_its_new_space_everywhere_and_leaves_the_old(tmp_path
     assert moved.name in (docs / "confluence" / "OPS" / "_tree.md").read_text("utf-8")
 
 
+def test_a_damaged_listing_time_is_one_problem_not_one_per_document(tmp_path: Path) -> None:
+    """The time a space was listed is read once a run, and a damaged record named once."""
+    store = RawStore(tmp_path / "raw")
+    with store.writing():
+        for page_id in ("1001", "1002"):
+            view = {"view": {"value": "<p>v</p>", "representation": "view"}}
+            responses = {
+                "document.json": v2_page(id=page_id),
+                "view.json": v2_page(id=page_id, body=view),
+                "attachments.json": [],
+            }
+            store.put(Page, responses, FIRST, {})
+        listing = [v2_page(id="1001"), v2_page(id="1002")]
+        store.put_space(v2_space(), listing, [], [], listed_at=FIRST)
+    (store.root / "confluence" / "spaces" / SPACE / "listed_at.json").write_text("{}", "utf-8")
+    outcome = mirror(store, tmp_path / "docs", SITE, identity)
+    named = [problem.where for problem in outcome.problems if "listed_at" in problem.where]
+    assert named == [f"confluence/spaces/{SPACE}/listed_at.json"]
+
+
 def test_a_page_whose_probe_failed_is_probed_again_on_a_later_run(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
