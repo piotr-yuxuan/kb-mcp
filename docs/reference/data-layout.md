@@ -9,55 +9,64 @@ fixed.
 
 `<data>` is the setting `data_dir`, by default `~/atlassian-offline-mcp`. It is never
 under a synchronised folder (iCloud, `~/Library/CloudStorage`, Dropbox, OneDrive, Google
-Drive, `~/Desktop`, `~/Documents`) and never inside a git working tree. Settings come only
-from `app.settings.load_settings`, which resolves the directory (links followed, `..`
-removed), judges the resolved path with names compared regardless of case, and raises
-`UnsafeDataDirError` when it is refused. Every command therefore works under a directory
-that the guard has passed.
+Drive, `~/Desktop`, `~/Documents`) and never inside a git working tree. Settings come
+from `app.settings.load_settings`, which resolves the data directory and each of the
+places below (links followed, `..` removed), judges each resolved path with names
+compared regardless of case, and raises `UnsafeDataDirError` when one is refused. Links
+deeper inside those places are not followed. Every command loads its settings that way;
+`domain.settings.parse_settings` alone checks no location and is not for commands.
 
-| Path | Written by | Read by |
-|---|---|---|
-| `<data>/raw/` | `download` (004) | `mirror` (005) |
-| `<data>/docs/` | `mirror` (005) | agents, and `index` (006) |
-| `<data>/index.sqlite` | `index` (006) | the MCP server (006) |
-| `<data>/session/` | `login` (004) | the carriers of 004 only |
+| Path | `Settings` | Written by | Read by |
+|---|---|---|---|
+| `<data>/raw/` | `raw` | `download` (004) | `mirror` (005) |
+| `<data>/docs/` | `docs` | `mirror` (005) | agents, and `index` (006) |
+| `<data>/index.sqlite` | `index` | `index` (006) | the MCP server (006) |
+| `<data>/session/` | `session` | `login` (004) | the carriers of 004 only |
+| `<data>/runs/` | `runs` | `download` (004) | the user, and `doctor` (004) |
 
-The paths come from `Settings.raw`, `Settings.docs`, `Settings.index` and
-`Settings.session`; no code builds them otherwise.
+No code builds these paths otherwise.
 
 ## The ontology, and where details of the site live
 
 The site's responses and its HTML change without notice. So that a change stays local:
 
-- **One vocabulary.** `domain.content` names what the mirror holds: `Space`, `Page`,
-  `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment`, `Comment`, `Person`, and
-  `Snapshot`, a document at one revision with its rendered body. A document knows where
-  it is stored (`source`, `kind`) and names its state (`revision`). Every layer above the
-  adapters works with these types alone.
+- **One vocabulary.** `domain.content` names what the mirror holds: `Space`, `Folder`,
+  `Page` and `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment`, `Comment`,
+  `Person`, and `Snapshot`, a document at one revision with its rendered body.
+  `domain.mirror.FrontMatter` names what the mirror says of each document. A document
+  knows where it is stored (`source`, `kind`) and names its state (`revision`). Every
+  layer above the adapters works with these types alone.
 - **One module per representation.** `adapters.confluence_v2` and `adapters.jira_v3` hold
   all that the code knows of those JSON responses: field names, which response holds
-  what, and the file names a snapshot uses. The API paths and query parameters that 004
-  needs go into the same modules. No other code indexes into a response.
-- **Strict reading.** Adapters read through `adapters.fields.Fields`. A missing field, a
-  wrong type or a time without an offset raises `RepresentationError` with the field's
-  path, such as `document.json.version.number: expected an integer`. Only the
-  `optional_` readers accept an absent field, and a response that a snapshot needs is
-  never read as empty when it is missing. A value that a domain type refuses is reported
-  the same way, through `Fields.refusals`, as `page: id: does not match <rule>`.
-  Messages never hold the value, so reports can print them.
-- **Raw first.** The raw store keeps responses exactly as received. After an adapter is
-  fixed, `mirror` reads the store again; nothing is fetched.
+  what, and the file names a snapshot uses. The API paths, query parameters and paging
+  that 004 needs go into the same modules. `adapters.markdown` alone writes and reads
+  front matter. No other code indexes into a response or a front matter.
+- **Strict reading.** Adapters read through `adapters.fields.Fields`. Every field must be
+  present: a missing field, a wrong type or a time without an offset raises
+  `RepresentationError` with the field's path, such as
+  `document.json.version.number: expected an integer`. The `optional_` readers also
+  accept null, and accept absence only where the documented response may leave the field
+  out (labels in a listing, an issue's `parent`). A value that a domain type refuses
+  (`domain.content.RefusedError`) is reported the same way, through `Fields.refusals`, as
+  `page: id: does not match <rule>`. Messages never hold the value, so reports can print
+  them.
+- **Raw first.** The raw store keeps responses exactly as received, reading only what
+  names their folder. A response whose other fields have changed is therefore kept; it
+  reads as `Unreadable` until its adapter is fixed, and then `mirror` reads it again
+  without fetching anything.
 - **HTML likewise.** The site's markup (class names, data attributes, macro names) is
   known to one module of 005, as named constants. Markup it does not know becomes a
   visible placeholder naming the construct, not an error.
 - **Ids are checked by the domain.** The domain types refuse an id or a space id that is
   not one safe path part (`[A-Za-z0-9_-]+`), a space key, project key or issue key that
-  does not look like one, and an attachment download that is not a path on the site.
+  does not look like one, and a download or web page that is not a path on the site.
 
 ## The raw store
 
 Owned by `adapters.raw_store.RawStore`; nothing else reads or writes under
-`<data>/raw/`.
+`<data>/raw/`. One run at a time writes, inside `RawStore.writing()`, which holds a lock
+on `<data>/raw/.lock` and raises `StoreBusyError` when another run holds it; every
+method that writes refuses to run outside it.
 
 ### Snapshots
 
@@ -67,23 +76,29 @@ A snapshot is one document at one revision:
 <data>/raw/<source>/<kind>/<id>/<revision>/<file>.json
 ```
 
-- `source` and `kind`: `confluence/pages`, `confluence/blogposts`, `jira/issues`.
+- `source` and `kind`: `confluence/pages`, `confluence/blogposts`, `jira/issues`, the
+  `source` and `kind` of `Page`, `BlogPost` and `Issue`.
 - `id`: the content id (Confluence) or the issue id (Jira, which stays when the key
   changes).
 - `revision`: the version number padded to six digits for Confluence (`000003`), the
-  update time in UTC for Jira (`20261020T213758.027000Z`). Names sort as text in the
-  order of revisions; the newest snapshot is the last name.
+  update time in UTC to the microsecond for Jira (`20261020T213758.027000Z`). Names sort
+  as text in the order of revisions; the newest snapshot is the last name.
 - A snapshot is written into a hidden folder and renamed into place: it is complete or
-  absent. Its responses are never written again. Hidden names (a crash's leftovers,
-  Finder's `.DS_Store`) and files are not snapshots.
+  absent. Its responses are never written again. Only names the store writes are read:
+  ids, revisions and response files that match their rules. Hidden leftovers of a crash,
+  Finder's `.DS_Store`, AppleDouble `._` files and copies are skipped.
 
-Files of a Confluence snapshot, named by constants of `adapters.confluence_v2`:
+Files of a Confluence snapshot, named by constants of `adapters.confluence_v2`, both
+GETs pinned to the version the listing gave (`version=N`):
 
 | File | Content |
 |---|---|
-| `document.json` (`DOCUMENT`) | `GET /wiki/api/v2/{pages,blogposts}/{id}?body-format=storage&include-labels=true` |
-| `view.json` (`VIEW`) | the same with `body-format=view` |
+| `document.json` (`DOCUMENT`) | `GET /wiki/api/v2/{pages,blogposts}/{id}?version=N&body-format=storage&include-labels=true` |
+| `view.json` (`VIEW`) | `GET /wiki/api/v2/{pages,blogposts}/{id}?version=N&body-format=view` |
 | `attachments.json` (`ATTACHMENTS`) | the `results` of every page of `GET /wiki/api/v2/{pages,blogposts}/{id}/attachments`, as one list |
+
+`confluence_v2.identity` refuses a view of another page or version than the document,
+so a page edited between the two GETs is never stored as one snapshot.
 
 Files of a Jira snapshot, named by constants of `adapters.jira_v3`:
 
@@ -92,73 +107,90 @@ Files of a Jira snapshot, named by constants of `adapters.jira_v3`:
 | `issue.json` (`ISSUE`) | `GET /rest/api/3/issue/{id}?expand=renderedFields` |
 | `comments.json` (`COMMENTS`) | the `comments` of every page of `GET /rest/api/3/issue/{id}/comment?expand=renderedBody`, as one list |
 
-Every snapshot also has the store's own record, `store.json` (`raw_store.RECORD`),
-which only the store reads and writes:
+Every snapshot also has the store's own record, `store.json` (`raw_store.RECORD`), which
+only the store reads and writes:
 
 ```json
 {"fetched_at": "2026-10-22T08:15:00Z", "blobs": [{"attachment": "att196895", "sha256": "<digest>"}]}
 ```
 
-The store's interface:
+The store's interface for snapshots:
 
-- `put(source, kind, responses, fetched_at, blobs)` reads the responses with their kind's
-  adapter first, so nothing unreadable is stored, and the document they describe names
-  the folder. `blobs` maps attachment ids of that snapshot to digests of files already
-  stored with `put_blob`: files first, snapshot last, so a crash never leaves a snapshot
-  that names a missing file. It returns a `Stored`.
-- `Stored` is the snapshot read into the domain (`Snapshot`), its folder, `fetched_at`,
+- `put(kind, responses, fetched_at, blobs)`, with `kind` one of `Page`, `BlogPost` and
+  `Issue`, reads only the id and the revision (the kind's `identity`), stores the
+  responses as received, and returns the folder. `blobs` maps attachment ids to digests
+  of files already stored with `put_blob`: files first, snapshot last, so a record never
+  names a missing file. For a revision stored already, `put` keeps the responses and
+  records the new blobs.
+- `add_blobs(document, blobs)` records files downloaded later, such as on a retry,
+  replacing the record alone, whole.
+- `has(document)`; `read(document)`, which returns a `Stored` or raises
+  `RepresentationError`; and `latest(kind)`, which yields the newest snapshot of each
+  document of a kind as a `Stored`, or as an `Unreadable` (where it is, and the refused
+  field's path or the error's class) when its adapter now refuses it. The others still
+  follow.
+- `Stored` is the snapshot read into the domain (`Snapshot`), its folder, `fetched_at`
   and `blobs`. An attachment absent from `blobs` was not downloaded: a media type not
   kept, over the size cap, or a failed download.
-- `add_blobs(document, blobs)` records files downloaded later, such as on a retry; it
-  replaces the record alone, whole.
-- `has(document)`, `read(document)`, and `latest(source, kind)`, which yields the newest
-  `Stored` of each document of a kind.
-- `responses(folder)` gives the responses as received, for what the domain does not yet
-  carry (a macro's parameters in the storage body, say).
+- `responses(folder)` gives the responses as received, for adapters to read what the
+  domain does not yet carry (a macro's parameters in the storage body, say).
 
-Known limits, until plan 007: an attachment added to a page without a new version is
-not seen; labels beyond the first page that `include-labels` returns are not seen.
+Known limits, until plan 007: a change that makes no new version (an attachment added,
+labels changed, a page archived) leaves the stored snapshot as it was, and the mirror
+takes a page's status from the space's listing, which is fresher; labels beyond the first
+page that `include-labels` returns are not seen.
 
-### Listings
+### A space's listings, and users
 
-A listing is every result of a paged list, as one JSON list, replaced whole on each run:
+Each run that downloads a space replaces that space's listings, each as received, every
+result of every page of each list:
 
 ```
-<data>/raw/<source>/listings/<name>.json
+<data>/raw/confluence/spaces/<space id>/space.json      the space, from GET /wiki/api/v2/spaces?keys=KEY
+<data>/raw/confluence/spaces/<space id>/pages.json      every page, from GET /wiki/api/v2/spaces/{id}/pages, without bodies
+<data>/raw/confluence/spaces/<space id>/blogposts.json  every blog post, likewise
+<data>/raw/confluence/spaces/<space id>/folders.json    every folder that is an ancestor of a listed page, from GET /wiki/api/v2/folders/{id}
+<data>/raw/confluence/users.json                        every author seen, from GET /wiki/rest/api/user/bulk
 ```
 
-| Name | Content |
-|---|---|
-| `spaces` | each space downloaded, as `GET /wiki/api/v2/spaces?keys=KEY` returns it |
-| `pages-<space id>` | every page of the space, from `GET /wiki/api/v2/spaces/{id}/pages` without bodies |
-| `blogposts-<space id>` | every blog post of the space, likewise |
-| `users` | each author of a stored Confluence document, from `GET /wiki/rest/api/user/bulk` |
+`put_space(space, pages, blog_posts, folders)` replaces one space's listings; other
+spaces' are kept. `put_users(users)` merges users into those kept, by account id, so the
+newest name wins. They are read, each entry by its adapter, with `spaces()`,
+`listed(space_id, Page | BlogPost)`, `folders(space_id)` and `users()`; an entry that its
+adapter refuses comes back as an `Unreadable` at its index, and the others are read.
 
-`listing(source, name)` returns the results as `Fields`, or None. Listings give 005 the
-whole tree, titles and breadcrumbs, even of pages whose bodies are outside the period
-downloaded, and the names of Confluence authors, whom v2 gives by account id only. Each
-result reads with `confluence_v2.document`, `confluence_v2.space` or
-`confluence_v2.person`.
+Listings give 005 the whole tree, titles and breadcrumbs, even of pages whose bodies are
+outside the period downloaded, folders included (`Page.parent_type` says whether a parent
+is a page or a folder), and the names of Confluence authors, whom v2 gives by account id
+only.
 
-### Files and runs
+### Files
 
-- Attached files: `<data>/raw/blobs/<sha256[:2]>/<sha256>`, written once.
-- Run reports: `<data>/raw/runs/<UTC time>.json`, written by 004, in the format its plan
-  defines. A run report holds counts and error paths, never content.
+Attached files: `<data>/raw/blobs/<sha256[:2]>/<sha256>`, written once, by
+`put_blob(data)`; `blob(digest)` gives the path.
+
+## Run reports
+
+Owned by `download` (004): `<data>/runs/<UTC time as %Y%m%dT%H%M%SZ>.json`, in the format
+004's plan defines. A run report holds counts and refused fields' paths, never content.
 
 ## The Markdown mirror
 
-Owned by `mirror` (005). Derived from the raw store alone, so it can be rebuilt without
-network, byte for byte: nothing in it depends on when `mirror` ran.
+Owned by `mirror` (005). Derived from the raw store and the `site` setting alone, so it
+can be rebuilt without network, byte for byte: nothing in it depends on when `mirror`
+ran.
 
 ```
 <data>/docs/confluence/<SPACE>/<id>-<slug>.md        a page
 <data>/docs/confluence/<SPACE>/blog/<id>-<slug>.md   a blog post
-<data>/docs/confluence/<SPACE>/_tree.md              the space's page tree
+<data>/docs/confluence/<SPACE>/_tree.md              the space's tree
 <data>/docs/jira/<PROJECT>/<KEY>.md                  an issue
 <data>/docs/assets/<sha256>.<ext>                    an attached file
 ```
 
+- The documents are exactly the files that `adapters.markdown.documents(docs)` yields:
+  those of the first, second and fourth patterns, except names beginning with `_` or
+  `.`. `_tree.md` has no front matter, and nothing under `assets/` is a document.
 - `<SPACE>` is the space key, `<PROJECT>` the project key, `<KEY>` the issue key.
 - `<slug>`: the title decomposed (Unicode NFKD) and lowered, keeping ASCII letters and
   digits; every run of other characters becomes one `-`; leading and trailing `-` are
@@ -167,32 +199,37 @@ network, byte for byte: nothing in it depends on when `mirror` ran.
   removed.
 - `<ext>`: the attachment file name's extension in lower case when it matches
   `[a-z0-9]{1,8}`, otherwise none. Links from documents to assets are relative.
-- `_tree.md`: one nested list item per page of the listing, linking the mirrored file,
-  or naming the page as "not yet mirrored" when its body was not downloaded.
+- `_tree.md`: one nested list item per page and folder of the listings, linking the
+  mirrored file, or naming the page as "not yet mirrored" when its body was not
+  downloaded.
 
-Each document starts with YAML front matter, with these keys in this order, all always
-present (`null` when unknown or not applicable):
+Each document starts with front matter written by `adapters.markdown.dump` and read by
+`adapters.markdown.load`, from a `domain.mirror.FrontMatter`. Its keys come in this
+order, all always present (`null` when unknown or not applicable). Every text is one
+line; times are quoted strings in UTC to the second; strings that YAML could read as
+another type (`'000003'`, `'Yes'`) are quoted; `load` refuses any other key, order or
+type, by name.
 
-| Key | Value |
-|---|---|
-| `source` | `confluence` or `jira` |
-| `type` | `page`, `blogpost` or `issue` |
-| `id` | the content id or issue id, as a string |
-| `key` | the issue key; `null` for Confluence |
-| `title` | the title |
-| `space` | the space key; `null` for Jira |
-| `project` | the project key; `null` for Confluence |
-| `status` | as the site names it |
-| `issue_type` | the issue type, such as `Bug`; `null` for Confluence |
-| `labels` | a list of strings |
-| `author` | the display name when known (from the `users` listing for Confluence), otherwise the account id |
-| `assignee` | the assignee's display name, or account id; `null` when unassigned or for Confluence |
-| `created`, `updated` | ISO 8601 times in UTC, such as `2026-10-20T21:52:41Z` |
-| `version` | the Confluence version number; `null` for Jira |
-| `revision` | the raw store revision mirrored |
-| `url` | the absolute address of the web page |
-| `breadcrumb` | the titles of the ancestors, root first; for an issue, its parent key if any |
-| `fetched_at` | `fetched_at` of the snapshot |
+| Key | Type | Value |
+|---|---|---|
+| `source` | string | `confluence` or `jira` |
+| `type` | string | `page` or `blogpost` (Confluence), `issue` (Jira) |
+| `id` | string | the content id or issue id |
+| `key` | string or null | the issue key; `null` for Confluence |
+| `title` | string | the title |
+| `space` | string or null | the space key; `null` for Jira |
+| `project` | string or null | the project key; `null` for Confluence |
+| `status` | string | as the site names it |
+| `issue_type` | string or null | the issue type, such as `Bug`; `null` for Confluence |
+| `labels` | list of strings | the labels, `[]` when none |
+| `author` | string or null | the display name when known (from `users()` for Confluence), otherwise the account id; `null` when none |
+| `assignee` | string or null | the assignee's display name, or account id; `null` when unassigned or for Confluence |
+| `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'` |
+| `version` | integer or null | the Confluence version number; `null` for Jira |
+| `revision` | string | the raw store revision mirrored |
+| `url` | string or null | the absolute address of the web page: the `site` setting and `Document.url`; `null` when no site is set |
+| `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]` |
+| `fetched_at` | string | `fetched_at` of the snapshot, as `created` |
 
 Then the body: a first-level heading with the title, the converted body, then an
 `## Attachments` section listing each attachment (a link to its asset, or "not
@@ -205,10 +242,10 @@ instructions.
 
 ## The index
 
-Owned by `index` (006). `<data>/index.sqlite` is built from `<data>/docs/` alone (front
-matter and Markdown), into a temporary file that is then renamed into place. Its schema
-is defined in 006's plan. The MCP server opens it read-only, never writes, and reopens it
-when the file is replaced.
+Owned by `index` (006). `<data>/index.sqlite` is built from the documents of
+`<data>/docs/` alone, read with `adapters.markdown`, into a temporary file that is then
+renamed into place. Its schema is defined in 006's plan. The MCP server opens it
+read-only, never writes, and reopens it when the file is replaced.
 
 ## The session
 
