@@ -53,6 +53,8 @@ year runs from 1 April to 31 March. Products:
 
 ### People (all invented)
 
+The main people; pages and tickets add others, all invented too.
+
 | Name | Role |
 |---|---|
 | Hollis Varga | Chief executive |
@@ -719,6 +721,12 @@ sops exec-env "$C" 'uv run sandbox/seed_corpus.py --check'
 It compares every page, its links and its section; every idea; every ticket's summary,
 status, resolution, creation date and sprint; and it lists pages with their versions and
 tickets with their `updated` dates, so that two listings can be compared.
+
+A page is left alone when the hash of the storage format that pandoc writes for it is
+the one recorded on the page, so the pandoc version matters: another version may write
+other HTML for the same Markdown. Each page records the pandoc version that wrote it,
+and `--check` names it when a page would change. The sandbox was seeded with pandoc
+3.7.0.2.
 
 The tests need pandoc on `PATH`:
 
