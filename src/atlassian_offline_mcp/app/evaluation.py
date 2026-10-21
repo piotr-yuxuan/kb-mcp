@@ -30,6 +30,7 @@ from atlassian_offline_mcp.domain.evaluation import (
     holm,
     measure,
     paired_test,
+    percentile,
 )
 
 if TYPE_CHECKING:
@@ -62,19 +63,33 @@ class EvaluationError(Exception):
 def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Question]:
     """Read golden questions from YAML, each ref resolved to the path that it names.
 
-    Every field is checked: an unknown or missing one, an id given twice, a question
-    longer than search takes, or a ref that the mirror does not hold is refused by name.
+    Every field is checked, and refused by name: an unknown or missing one, an id given
+    twice, a question longer than search takes, no expected ref, evidence for a ref not
+    expected, a group named twice or named "all" (which the averages use), a ref that
+    the mirror does not hold, and a file without questions.
     """
     questions: list[Question] = []
     try:
         for given in Fields.each(yaml.safe_load(text), "golden"):
             item = Fields(DEFAULTS | given.value, given.path)
-            evidence = item.object("evidence")
-            if unknown := sorted(set(item.value) - FIELDS):
-                message = f"{item.path}: unknown field {', '.join(unknown)}"
-                raise GoldenError(message)
-            if len(item.text("question")) > LONGEST_QUESTION:
-                message = f"{item.path}.question: at most {LONGEST_QUESTION} characters"
+            evidence, expected, groups = (
+                item.object("evidence"),
+                item.texts("expected"),
+                item.texts("groups"),
+            )
+            unknown = sorted(set(item.value) - FIELDS)
+            faults = {
+                f"unknown field {', '.join(unknown)}": bool(unknown),
+                f"question: at most {LONGEST_QUESTION} characters": (
+                    len(item.text("question")) > LONGEST_QUESTION
+                ),
+                "expected: at least one ref": not expected,
+                "evidence: only for an expected ref": not set(evidence.value) <= set(expected),
+                'groups: each once, and not "all"': len(set(groups)) != len(groups)
+                or "all" in groups,
+            }
+            if fault := next((name for name, found in faults.items() if found), None):
+                message = f"{item.path}: {fault}"
                 raise GoldenError(message)
             questions.append(
                 Question(
@@ -91,8 +106,8 @@ def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Questio
     except (yaml.YAMLError, RepresentationError) as error:
         message = f"not a golden file: {error}"
         raise GoldenError(message) from None
-    if len({question.id for question in questions}) != len(questions):
-        message = "golden: an id is given twice"
+    if not questions or len({question.id for question in questions}) != len(questions):
+        message = "golden: no question, or an id given twice"
         raise GoldenError(message)
     return questions
 
@@ -145,6 +160,12 @@ def evaluate(
         report = build_index(settings.docs, index, built_at, embedding)
         run = Run(name, embedder.fingerprint, report.embedded, clock() - started)
         library = Library(index, settings.docs, Meaning(settings.models), "lexical")
+        refs = ((question.id, path) for question in questions for path in question.paths)
+        if missing := next(((id_, path) for id_, path in refs if not library.resolve(path)), None):
+            message = f"{name}: {missing[0]}: {missing[1]} is not in its index; run index again"
+            raise EvaluationError(message)
+        # Untimed: the first search by meaning loads the model and its vectors.
+        library.ranked(questions[0].text, "hybrid")
         for mode in MODES:
             run.per[mode], run.ranks[mode], spent = {}, {}, []
             for question in questions:
@@ -161,8 +182,7 @@ def evaluate(
                     paths.index(path) + 1 if path in paths else None for path in question.expected
                 ]
             run.groups[mode] = averages(run.per[mode], questions)
-            ordered = sorted(spent)
-            run.times[mode] = (median(spent), ordered[int(TAIL * (len(ordered) - 1))])
+            run.times[mode] = (median(spent), percentile(spent, TAIL))
             lexical = [run.per["lexical"][question.id].reciprocal_rank for question in questions]
             moded = [run.per[mode][question.id].reciprocal_rank for question in questions]
             run.pvalues[mode] = paired_test(lexical, moded)

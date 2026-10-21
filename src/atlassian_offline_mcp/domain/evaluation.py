@@ -23,9 +23,10 @@ CUTOFF = 10
 EXPECTED, PARTIAL = 2, 1
 SAMPLES = 10_000
 SEED = 11
-# What evidence is compared without: a link's address, emphasis and code marks.
+# What evidence is compared without: a link's address, emphasis and code marks, and the
+# pipes of a table's cells, which plain text renders as spaces.
 LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
-MARKS = re.compile(r"[*_`]")
+MARKS = re.compile(r"[*_`|]")
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,11 @@ class Question:
     partial: tuple[str, ...] = ()  # paths, relevance 1
     groups: tuple[str, ...] = ()  # such as the kind of wording, or the language
     evidence: Mapping[str, str] = field(default_factory=dict)  # a phrase of an expected path
+
+    @property
+    def paths(self) -> tuple[str, ...]:
+        """Every document the question names, expected or partial."""
+        return (*self.expected, *self.partial)
 
 
 @dataclass(frozen=True)
@@ -119,6 +125,12 @@ def paired_test(
     flipped = np.abs((signs * np.array(differences)).mean(axis=1))
     beyond = int((flipped >= observed * (1 - 1e-12)).sum())
     return (beyond + 1) / (samples + 1)
+
+
+def percentile(values: Sequence[float], share: float) -> float:
+    """Give the nearest-rank percentile: the smallest value that ``share`` of them reach."""
+    ordered = sorted(values)
+    return ordered[max(0, math.ceil(share * len(ordered)) - 1)]
 
 
 def holm(pvalues: Sequence[float]) -> list[float]:

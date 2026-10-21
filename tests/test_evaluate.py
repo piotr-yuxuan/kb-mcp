@@ -10,15 +10,27 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.app.evaluation import GoldenError, evaluate, read_golden, record, table
+from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError
+from atlassian_offline_mcp.app import evaluation
+from atlassian_offline_mcp.app.evaluation import (
+    EvaluationError,
+    GoldenError,
+    evaluate,
+    read_golden,
+    record,
+    table,
+)
 from atlassian_offline_mcp.app.indexing import build_index
+from atlassian_offline_mcp.app.meaning import Meaning
 from atlassian_offline_mcp.app.tools import Library
 from atlassian_offline_mcp.cli import main
+from atlassian_offline_mcp.domain.evaluation import holm
 from atlassian_offline_mcp.domain.settings import Settings
 from tests.mirrors import MOMENT, fillers, issue, page, write
-from tests.tiny_model import registered
+from tests.tiny_model import registered, tiny
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from _pytest.capture import CaptureFixture
@@ -71,7 +83,15 @@ def golden(data: Path, text: str = GOLDEN) -> list:
         ("- {id: q1, question: x, expected: ['9999']}", r"golden\[0\]: '9999' is not mirrored"),
         ("- {id: q1, question: x, expected: ['4002'], partial: [PROJ-8]}", "PROJ-8"),
         (f"- {{id: q1, question: {'x' * 501}, expected: ['4002']}}", r"question: at most 500"),
-        ("- {id: q1, question: x, expected: ['4002']}\n" * 2, "an id is given twice"),
+        ("- {id: q1, question: x, expected: ['4002']}\n" * 2, "an id given twice"),
+        ("[]", "golden: no question"),
+        ("- {id: q1, question: x, expected: []}", r"golden\[0\]: expected: at least one ref"),
+        (
+            "- {id: q1, question: x, expected: ['4002'], evidence: {'4003': y}}",
+            r"golden\[0\]: evidence: only for an expected ref",
+        ),
+        ("- {id: q1, question: x, expected: ['4002'], groups: [all]}", r"groups: each once"),
+        ("- {id: q1, question: x, expected: ['4002'], groups: [en, en]}", r"groups: each once"),
         ("{id: q1}", "golden: expected a list"),
         ("- [unclosed", "not a golden file"),
     ],
@@ -130,7 +150,7 @@ def test_a_refused_golden_file_exits_2(data: Path, capsys: CaptureFixture[str]) 
     (data / "golden.yaml").write_text("- {id: q1}", encoding="utf-8")
     options = ["--config", str(data / "none.toml"), "--data-dir", str(data)]
     assert main(["eval", str(data / "golden.yaml"), *options]) == REFUSED
-    assert "golden[0].question: missing" in capsys.readouterr().err
+    assert "golden[0].expected: missing" in capsys.readouterr().err
     assert not (data / "eval").exists()
 
 
@@ -143,3 +163,48 @@ def test_the_record_names_its_test_and_golden_file() -> None:
         "seed": 11,
     }
     assert re.fullmatch(r"[0-9a-f]{64}", str(kept["golden_sha256"]))
+
+
+def ticking() -> Callable[[], float]:
+    """Return a clock that moves one second at each reading."""
+    ticks = count()
+    return lambda: float(next(ticks))
+
+
+def test_a_ref_missing_from_the_index_evaluated_is_refused(data: Path) -> None:
+    """Read against an index that holds a page, measured against one that lost it: refused."""
+    questions = golden(data)
+    (data / "docs" / "confluence" / "ENG" / "4003-words.md").unlink()
+    settings = Settings(None, data, model="tiny")
+    with pytest.raises(EvaluationError, match=r"tiny: q2: confluence/ENG/4003-words\.md is not"):
+        evaluate(settings, questions, ["tiny"], ticking(), MOMENT)
+
+
+def test_a_mode_by_meaning_that_falls_back_is_refused(data: Path, monkeypatch: MonkeyPatch) -> None:
+    """Measuring words twice under another name would mislead: the run stops, naming why."""
+
+    def broken(name: str, models: Path) -> object:
+        message = f"{name}: does not load (Fail) {models.name}"
+        raise ModelError(message)
+
+    monkeypatch.setattr(evaluation, "Meaning", lambda models: Meaning(models, broken))
+    settings = Settings(None, data, model="tiny")
+    with pytest.raises(EvaluationError, match="tiny, semantic: Ranked by words alone"):
+        evaluate(settings, golden(data), ["tiny"], ticking(), MOMENT)
+
+
+def test_holm_adjusts_every_test_of_the_run(data: Path, monkeypatch: MonkeyPatch) -> None:
+    """Two models, two modes each against lexical: four tests, adjusted together.
+
+    The tests' p-values are set, small and distinct, so that adjusting per model (0.02,
+    0.04, 0.06, 0.06) differs from adjusting the run (0.04, 0.06, 0.06, 0.06).
+    """
+    monkeypatch.setitem(CATALOGUE, "tiny2", tiny(data / "models", name="tiny2"))
+    given = iter([1.0, 0.01, 0.02, 1.0, 0.03, 0.04])  # lexical, semantic, hybrid, twice
+    monkeypatch.setattr(evaluation, "paired_test", lambda *_: next(given))
+    settings = Settings(None, data, model="tiny")
+    runs = evaluate(settings, golden(data), ["tiny", "tiny2"], ticking(), MOMENT)
+    raw = [run.pvalues[mode] for run in runs for mode in ("semantic", "hybrid")]
+    adjusted = [run.adjusted[mode] for run in runs for mode in ("semantic", "hybrid")]
+    assert raw == [0.01, 0.02, 0.03, 0.04]
+    assert adjusted == holm(raw) == pytest.approx([0.04, 0.06, 0.06, 0.06])

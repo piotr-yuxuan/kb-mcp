@@ -15,6 +15,7 @@ from atlassian_offline_mcp.domain.evaluation import (
     holm,
     measure,
     paired_test,
+    percentile,
 )
 
 QUESTION = Question(
@@ -28,6 +29,9 @@ QUESTION = Question(
 CLOSE = 0.02
 SIGNIFICANT = 0.05
 HALF = 0.5
+NINETEEN = 19
+TEN = 10
+SEVEN = 7.0
 
 
 def test_recall_counts_the_expected_documents_within_ten() -> None:
@@ -89,7 +93,20 @@ def test_section_counts_expected_documents_whose_shown_section_holds_the_evidenc
 def test_holm_adjusts_by_rank_and_keeps_the_order() -> None:
     """[0.01, 0.04, 0.03]: 3 x 0.01, 2 x 0.03, then at least that: 0.03, 0.06, 0.06."""
     assert holm([0.01, 0.04, 0.03]) == pytest.approx([0.03, 0.06, 0.06])
-    assert holm([0.5, 0.9]) == [1.0, 1.0]
+    assert holm([0.6, 0.7]) == [1.0, 1.0]  # 1.2 and 0.7, capped and kept rising
+
+
+def test_the_percentile_is_the_nearest_rank() -> None:
+    """The smallest value that the share of them reach: of 1 to 20, the 95th is 19."""
+    assert percentile(list(range(20, 0, -1)), 0.95) == NINETEEN
+    assert percentile(list(range(1, 11)), 0.95) == TEN
+    assert percentile([SEVEN], 0.95) == SEVEN
+
+
+def test_evidence_in_a_table_row_is_found_without_its_pipes() -> None:
+    """Plain text renders a row's cells apart by spaces, as the evidence was taken."""
+    question = Question("q", "x", expected=("a",), evidence={"a": "SEV1 15 minutes"})
+    assert measure(["a"], question, {"a": "| SEV1 | 15 minutes |"}).section == 1.0
 
 
 def test_two_equal_runs_do_not_differ() -> None:
