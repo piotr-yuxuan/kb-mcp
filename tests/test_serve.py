@@ -15,7 +15,7 @@ from mcp_types import JSONRPCError, JSONRPCResponse, TextContent, jsonrpc_messag
 
 from atlassian_offline_mcp.app.indexing import build_index
 from atlassian_offline_mcp.cli import main
-from tests.answers import estimate, parts
+from tests.answers import TOOLS, estimate, parts
 from tests.mirrors import MOMENT, fillers, issue, page, write
 
 if TYPE_CHECKING:
@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 
     from _pytest.capture import CaptureFixture
 
-TOOLS = ["browse", "read", "search", "status"]
 BAD_SETTINGS = 2
 STANDING = 1500  # estimated tokens of the instructions and the tool listing together
 WAIT = 30  # seconds for one answer of the server
