@@ -11,8 +11,12 @@ Follow the `workflow:plans` skill with these parameters:
 
 - Plans are `docs/work/plans/NNN-slug.md`, tracked by git.
 - Checks, run in full before each review and each merge:
-  - `ruff check` and `ruff format --check`;
-  - `uv run --with-requirements spikes/session_probe.py --with pytest pytest spikes`.
+  - `uv run ruff check` and `uv run ruff format --check`;
+  - `uv run lint-imports`;
+  - `uv run pytest`.
+- The design and the shared contracts are in `docs/work/README.md` and
+  `docs/reference/data-layout.md`. Only the adapter of a representation reads its JSON,
+  and only one module knows the site's HTML.
 - At most three review rounds.
 
 ## Sandbox credentials
