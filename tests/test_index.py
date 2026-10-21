@@ -188,3 +188,21 @@ def test_a_new_index_is_read_from_the_next_reading(data: Path) -> None:
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with reading(data / "index.sqlite") as reader:
         assert reader.summary().spaces == {"ENG": 1, "OPS": 1}
+
+
+@pytest.mark.parametrize("schema", ["1", "2"])
+def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
+    data: Path, schema: str
+) -> None:
+    """Plan 006's index, or one built before the build id: never half read."""
+    write(data / "docs", page("196845", "Kafka"), BODY)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    with sqlite3.connect(data / "index.sqlite") as connection:
+        connection.execute("UPDATE meta SET value = ? WHERE name = 'schema'", (schema,))
+        connection.execute("DELETE FROM meta WHERE name = 'build'")
+    connection.close()
+    refused = pytest.raises(
+        UnavailableIndexError, match="build it with `atlassian-offline-mcp index`"
+    )
+    with refused, reading(data / "index.sqlite"):
+        pass

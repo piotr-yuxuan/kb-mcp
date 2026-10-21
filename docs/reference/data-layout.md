@@ -295,9 +295,11 @@ instructions.
 
 Owned by `index` (006). `<data>/index.sqlite` is built from the documents of
 `<data>/docs/` alone, read with `adapters.markdown`, into a temporary file that is then
-renamed into place. Its schema is defined in 006's plan; schema 2 (011) adds the table
+renamed into place. Its schema is defined in 006's plan; schema 3 (011) adds the table
 `pieces` (each piece of a section's body, its span and its vector) and the meta rows
-`model`, `fingerprint` and `dimensions`, empty for an index built without a model. The
+`build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the last
+three empty for an index built without a model. An index of another schema is refused
+with the command that rebuilds it. The
 MCP server opens it read-only, never writes, and reopens it when the file is replaced;
 it searches by meaning with the model that the index names, and only while the
 catalogue's fingerprint for it is the index's.

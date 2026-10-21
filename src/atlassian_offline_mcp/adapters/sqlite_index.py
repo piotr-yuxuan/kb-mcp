@@ -37,7 +37,8 @@ if TYPE_CHECKING:
 
     from atlassian_offline_mcp.domain.search import Section
 
-SCHEMA = "2"
+# 1 from plan 006; 3 from plan 011, with vectors and a build id.
+SCHEMA = "3"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
