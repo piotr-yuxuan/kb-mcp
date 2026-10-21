@@ -190,6 +190,16 @@ def snapshot_requests(document: Listed) -> dict[str, tuple[Request, ReadPage | N
     }
 
 
+def probe_request(kind: str, document_id: str) -> Request:
+    """GET a page or a blog post without its body, to learn where it is, if anywhere."""
+    return Request(f"{WIKI}/api/v2/{kind}/{document_id}")
+
+
+def whereabouts(fields: Fields) -> tuple[str, str]:
+    """Read where a probed page or blog post is: its space's id, and its status."""
+    return fields.text("spaceId"), fields.text("status")
+
+
 def document_request(document: Listed, body: str) -> Request:
     """GET a page or a blog post at its version, with its body as ``storage`` or ``view``."""
     params = {"body-format": body, "version": str(document.version)}

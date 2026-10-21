@@ -34,6 +34,7 @@ from atlassian_offline_mcp.domain.mirror_layout import (
     issue_path,
     tree_path,
 )
+from atlassian_offline_mcp.domain.period import EPOCH
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -116,7 +117,8 @@ def read_catalogue(store: RawStore, problems: list[Problem]) -> tuple[Catalogue,
     listed: dict[str, Page | BlogPost] = {}
     folders: dict[str, tuple[Folder, ...]] = {}
     damaged: set[str] = set()
-    for space_id in spaces:
+    # The freshest listing last, so that it wins for a document that two listings name.
+    for space_id in sorted(spaces, key=lambda each: store.listed_at(each) or EPOCH):
         before = len(problems)
         for kind in (Page, BlogPost):
             entries = readable(store.listed(space_id, kind), problems)
@@ -128,22 +130,45 @@ def read_catalogue(store: RawStore, problems: list[Problem]) -> tuple[Catalogue,
     return Catalogue(spaces, names, listed, folders), damaged
 
 
-def place(store: RawStore, catalogue: Catalogue, problems: list[Problem]) -> list[Placed]:
+def place(
+    store: RawStore, catalogue: Catalogue, problems: list[Problem]
+) -> tuple[list[Placed], set[PurePosixPath]]:
     """Read the newest snapshot of every document, and say where each is mirrored.
 
-    A page or a blog post whose space is not listed has no folder, and is reported.
+    A page or a blog post goes to the space whose freshest listing names it, before the
+    one its snapshot names, everywhere the mirror uses its space; one whose space is not
+    listed has no folder, and is reported. A document confirmed gone, and listed by no
+    space, is left out. Also return the files that must go even when the run reports
+    problems: those of documents gone, and the old file of a document that moved.
     """
     placed: list[Placed] = []
-    for stored in (item for kind in KINDS for item in readable(store.latest(kind), problems)):
-        document = stored.snapshot.document
+    retired: set[PurePosixPath] = set()
+    gone = {key for key, stone in store.tombstones().items() if stone.confirmed}
+    for found in (item for kind in KINDS for item in readable(store.latest(kind), problems)):
+        stored, document = found, found.snapshot.document
         if isinstance(document, Issue):
             placed.append(Placed(stored, issue_path(document)))
-        elif isinstance(document, ConfluenceDocument) and document.space_id in catalogue.spaces:
+            continue
+        if not isinstance(document, ConfluenceDocument):
+            continue
+        before = catalogue.spaces.get(document.space_id)
+        listed = catalogue.listed.get(document.id)
+        is_gone = listed is None and (document.kind, document.id) in gone
+        moves = listed is not None and listed.space_id != document.space_id
+        if before is not None and (is_gone or moves):
+            retired.add(confluence_path(document, before.key))
+        if is_gone:
+            continue
+        if moves:
+            moved = replace(document, space_id=listed.space_id)
+            stored = replace(stored, snapshot=replace(stored.snapshot, document=moved))
+            document = moved
+        if document.space_id in catalogue.spaces:
             key = catalogue.spaces[document.space_id].key
             placed.append(Placed(stored, confluence_path(document, key)))
         else:
             problems.append(Problem(where(store, stored), "space not listed"))
-    return placed
+    return placed, retired
 
 
 def index(
@@ -199,7 +224,7 @@ def mirror(
     """Mirror the raw store into ``docs``, with ``markdown`` writing HTML as Markdown."""
     problems: list[Problem] = []
     catalogue, damaged = read_catalogue(store, problems)
-    placed = place(store, catalogue, problems)
+    placed, retired = place(store, catalogue, problems)
     mirrored, assets = index(placed, store, site)
     wanted: dict[PurePosixPath, bytes | Path] = {**assets}
     unsupported: Counter[str] = Counter()
@@ -226,4 +251,5 @@ def mirror(
         except PandocFailedError as error:
             problems.append(Problem(f"confluence/spaces/{space.id}", str(error)))
     written = sum(1 for each in placed if each.path in wanted)
-    return Outcome(written, sync(docs, wanted, remove=not problems), unsupported, tuple(problems))
+    changes = sync(docs, wanted, remove=not problems, retired=retired)
+    return Outcome(written, changes, unsupported, tuple(problems))

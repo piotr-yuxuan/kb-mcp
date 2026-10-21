@@ -364,7 +364,7 @@ def settings(tmp_path: Path) -> Settings:
 
 def targets(spaces: list[str], projects: list[str]) -> Targets:
     """Return the targets of a run over the last week, with the test's cap."""
-    return Targets(spaces, projects, period("7d", None, NOW), CAP)
+    return Targets(spaces, projects, CAP, since=period("7d", None, NOW).start)
 
 
 def saved_session(tmp_path: Path, monkeypatch: MonkeyPatch, fake: FakeSite) -> Settings:
