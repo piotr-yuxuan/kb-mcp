@@ -1,0 +1,1 @@
+{"object":"list","data":[{"object":"embedding","embedding":[0.1,0.2],"index":0}],"model":"qwen3-embedding:0.6b","usage":{"prompt_tokens":1,"total_tokens":1}}

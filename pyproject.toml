@@ -55,7 +55,7 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "Only the model command downloads a model: the server and the index cannot"
+name = "The server, the index and the evaluation never reach the site, its browser or its session"
 type = "forbidden"
 source_modules = [
   "atlassian_offline_mcp.app.tools",
@@ -65,5 +65,17 @@ source_modules = [
   "atlassian_offline_mcp.commands.serve",
   "atlassian_offline_mcp.commands.index",
   "atlassian_offline_mcp.commands.evaluate",
+  "atlassian_offline_mcp.commands.model",
 ]
-forbidden_modules = ["atlassian_offline_mcp.adapters.model_pull", "httpx"]
+forbidden_modules = [
+  "atlassian_offline_mcp.adapters.http",
+  "atlassian_offline_mcp.adapters.browser",
+  "atlassian_offline_mcp.adapters.session_file",
+]
+
+[[tool.importlinter.contracts]]
+name = "Use cases and commands reach the network through the adapters alone"
+type = "forbidden"
+source_modules = ["atlassian_offline_mcp.app", "atlassian_offline_mcp.commands"]
+forbidden_modules = ["httpx"]
+allow_indirect_imports = true

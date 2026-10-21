@@ -1,8 +1,8 @@
-"""Search by meaning over an index: its model, loaded once, and its vectors, read once a build.
+"""Search by meaning over an index: its model, connected once a build, and its vectors.
 
-The model is the one the index names, never the setting, and only when the catalogue's
-fingerprint for it is the index's: vectors of another version would not compare with
-the query's. Anything missing gives a reason instead of documents, so that the caller
+The model is the one the index names, never the setting, and only while the endpoint's
+fingerprint for it is the index's: vectors of other weights would not compare with the
+query's. Anything missing gives a reason instead of documents, so that the caller
 answers by words and says why.
 """
 
@@ -10,27 +10,29 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters import embedding
-from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError, signature
+from atlassian_offline_mcp.adapters.embedding import ModelError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
-    from atlassian_offline_mcp.adapters.embedding import Embedder, Model
+    from atlassian_offline_mcp.adapters.embedding import Embedder
     from atlassian_offline_mcp.adapters.sqlite_index import Reader
-    from atlassian_offline_mcp.domain.search import Filters, Pieces, Score
+    from atlassian_offline_mcp.domain.search import Embedded, Filters, Pieces, Score
 
 # The documents nearest a query that a search by meaning gives, at most.
 DEPTH = 100
+# Seconds during which a failed connection is not tried again: searches answer by words
+# at once, rather than each wait on an endpoint that does not answer.
+QUIET_S = 30.0
 NO_VECTORS = (
-    "the index holds no vectors; pull a model (atlassian-offline-mcp model pull),"
-    " then run atlassian-offline-mcp index"
+    "the index holds no vectors; check the embedding model"
+    " (atlassian-offline-mcp model check), then run atlassian-offline-mcp index"
 )
-STALE = "{name}: the index was built with another version of it; run atlassian-offline-mcp index"
+STALE = "{name}: the index was built with other weights of it; run atlassian-offline-mcp index"
 
 
 @dataclass(frozen=True)
@@ -46,30 +48,31 @@ class Meaning:
     """Searches by meaning, over whichever index each call reads."""
 
     def __init__(
-        self, models: Path, load: Callable[[str, Path], Embedder] = embedding.load
+        self, connect: Callable[[str], Embedder], clock: Callable[[], float] = time.monotonic
     ) -> None:
-        """Load models from the folder ``models``, with ``load``."""
-        self._models = models
-        self._load = load
+        """Connect to the model an index names with ``connect``; time failures by ``clock``."""
+        self._connect = connect
+        self._clock = clock
         self._lock = threading.Lock()  # the SDK runs tools in worker threads
+        # The build of the index last searched and its vectors; its connection; and why
+        # there is none, and until when that stands.
+        self._built: tuple[str, Pieces] | None = None
         self._embedder: Embedder | None = None
-        self._pieces: tuple[str, Pieces] | None = None  # the build they were read from
-        # The last model that failed to load: its fingerprint, its files then, and why.
-        self._failed: tuple[str, object, str] | None = None
+        self._failure = ("", 0.0)
 
     def nearest(self, reader: Reader, query: str, filters: Filters) -> Nearest:
         """Find the documents passing the filters whose best piece is nearest the query."""
         embedded = reader.embedded()
         if embedded is None:
             return Nearest({}, NO_VECTORS)
-        current = CATALOGUE.get(embedded.model)
-        if current is None or current.fingerprint != embedded.fingerprint:
-            return Nearest({}, STALE.format(name=embedded.model))
         try:
-            embedder, pieces = self.prepared(reader, current)
-            vector = embedder.query(query)
+            embedder, pieces = self.prepared(reader, embedded)
+            fresh = embedder.fingerprint == embedded.fingerprint
+            vector = embedder.query(query) if fresh else None
         except ModelError as error:
             return Nearest({}, str(error))
+        if vector is None:
+            return Nearest({}, STALE.format(name=embedded.model))
         kept = reader.kept(filters)
         allowed = None if kept is None else set(json.loads(kept))
         found = pieces.nearest(vector, allowed, DEPTH)
@@ -80,24 +83,25 @@ class Meaning:
             }
         )
 
-    def prepared(self, reader: Reader, model: Model) -> tuple[Embedder, Pieces]:
-        """Give an index's model and vectors, each loaded once, and again once changed.
+    def prepared(self, reader: Reader, embedded: Embedded) -> tuple[Embedder, Pieces]:
+        """Give the connection to an index's model and its vectors, each made once a build.
 
-        The vectors are read again for each new build of the index. A model that failed
-        to load is not tried again, nor its files hashed, until its files change.
+        A connection that failed is not tried again for QUIET_S seconds, nor before the
+        build changes once it succeeded, even when its fingerprint is not the index's.
         Raises ModelError.
         """
         with self._lock:
-            if self._embedder is None or self._embedder.fingerprint != model.fingerprint:
-                files = signature(model, self._models)
-                if self._failed is not None and self._failed[:2] == (model.fingerprint, files):
-                    raise ModelError(self._failed[2])
-                try:
-                    self._embedder = self._load(model.name, self._models)
-                except ModelError as error:
-                    self._failed = (model.fingerprint, files, str(error))
-                    raise
             build = reader.build()
-            if self._pieces is None or self._pieces[0] != build:
-                self._pieces = (build, reader.pieces())
-            return self._embedder, self._pieces[1]
+            if self._built is None or self._built[0] != build:
+                self._built = (build, reader.pieces())
+                self._embedder, self._failure = None, ("", 0.0)
+            if self._embedder is None:
+                reason, until = self._failure
+                if self._clock() < until:
+                    raise ModelError(reason)
+                try:
+                    self._embedder = self._connect(embedded.model)
+                except ModelError as error:
+                    self._failure = (str(error), self._clock() + QUIET_S)
+                    raise
+            return self._embedder, self._built[1]

@@ -42,12 +42,17 @@ def test_settings_are_normalised() -> None:
         "http://127.0.0.1:8080/v1",
     )
     mirror = HOME / "mirror"
-    assert {mirror / "models", mirror / "vectors.sqlite", mirror / "eval"} <= set(settings.parts)
+    assert {mirror / "vectors.sqlite", mirror / "eval"} <= set(settings.parts)
+    assert mirror / "models" not in settings.parts
 
 
 def test_the_default_embeddings_come_from_ollama_on_this_machine() -> None:
-    """Ollama's own address."""
-    assert parse_settings({}, HOME).embedding_url == "http://127.0.0.1:11434/v1"
+    """Ollama's own address, and the model that plan 018 chose."""
+    settings = parse_settings({}, HOME)
+    assert (settings.embedding_url, settings.model) == (
+        "http://127.0.0.1:11434/v1",
+        "qwen3-embedding:0.6b",
+    )
 
 
 def test_the_default_data_directory_is_under_the_home() -> None:

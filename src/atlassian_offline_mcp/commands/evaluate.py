@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError, pulled
+from atlassian_offline_mcp.adapters.embedding import ModelError, connect
 from atlassian_offline_mcp.app.evaluation import (
     EvaluationError,
     GoldenError,
@@ -19,7 +19,13 @@ from atlassian_offline_mcp.app.evaluation import (
     table,
 )
 from atlassian_offline_mcp.app.tools import Library, UnanswerableError
-from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
+from atlassian_offline_mcp.commands._options import (
+    add_embedding_options,
+    add_settings_options,
+    model_name,
+    open_endpoint,
+    settings_of,
+)
 from atlassian_offline_mcp.domain.settings import SettingsError
 
 if TYPE_CHECKING:
@@ -36,9 +42,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "eval", help="measure lexical, semantic and hybrid search on golden questions"
     )
     add_settings_options(parser)
+    add_embedding_options(parser)
     parser.add_argument("golden", type=Path, help="a YAML file of golden questions")
     parser.add_argument(
-        "--model", action="append", help="a model to evaluate; by default, every one pulled"
+        "--model",
+        action="append",
+        type=model_name,
+        help="a model to evaluate, as the endpoint names it; by default, the setting",
     )
     parser.set_defaults(run=run)
 
@@ -53,18 +63,15 @@ def run(arguments: argparse.Namespace) -> int:
         settings = settings_of(arguments)
         golden = arguments.golden.read_text(encoding="utf-8")
         questions = read_golden(golden, Library(settings.index, settings.docs).resolve)
+        opened = open_endpoint(arguments, settings)
     except (SettingsError, GoldenError, OSError, UnanswerableError) as error:
         sys.stderr.write(f"refused: {error}\n")
         return BAD_ARGUMENTS
-    names = arguments.model or [
-        name for name, model in sorted(CATALOGUE.items()) if pulled(model, settings.models)
-    ]
-    if not names:
-        sys.stderr.write("no model pulled: atlassian-offline-mcp model pull\n")
-        return SOME_FAILED
     built_at = datetime.now(UTC)
     try:
-        runs = evaluate(settings, questions, names, time.perf_counter, built_at)
+        with opened:
+            embedders = [connect(opened, name) for name in arguments.model or [settings.model]]
+            runs = evaluate(settings, questions, embedders, time.perf_counter, built_at)
     except (ModelError, EvaluationError) as error:
         sys.stderr.write(f"not evaluated: {error}\n")
         return SOME_FAILED

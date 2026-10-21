@@ -1,35 +1,34 @@
-"""Search by meaning and by both, through the tools, on the tiny model (plan 011).
+"""Search by meaning and by both, through the tools, on the tiny model (plans 011, 018).
 
-The tiny model knows a few concepts: a query of one concept's words finds a document
-written with others of that concept, which lexical search cannot.
+The tiny model, behind a scripted endpoint, knows a few concepts: a query of one
+concept's words finds a document written with others of that concept, which lexical
+search cannot.
 """
 
 from __future__ import annotations
 
-import os
 import re
 import threading
 import time
-from dataclasses import replace
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+import httpx
 import pytest
 
-from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError, load
+from atlassian_offline_mcp.adapters.embedding import ModelError, connect, endpoint
 from atlassian_offline_mcp.adapters.sqlite_index import reading
 from atlassian_offline_mcp.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.app.meaning import Meaning, Nearest
 from atlassian_offline_mcp.app.tools import Library
 from atlassian_offline_mcp.domain.search import Filters, Score
 from tests.answers import parts
+from tests.endpoint import DIGEST, URL, Scripted, connector, scripted, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
-from tests.tiny_model import registered, tiny
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from _pytest.monkeypatch import MonkeyPatch
     from numpy.typing import NDArray
 
     from atlassian_offline_mcp.adapters.embedding import Embedder
@@ -43,7 +42,9 @@ WORDS_PLACE = 2
 NEAREST = 100
 DECOYS = NEAREST + 5
 TARGET = "Holiday canteen"
-FAILURE = "tiny: does not embed (Fail)"
+FAILURE = "tiny: the endpoint answered 500"
+# Seconds that a failed connection stands, as the plan says.
+QUIET_S = 30
 MIXED = "Mixed notes"
 # Its title's unknown words put it far from any query by meaning, near by words.
 WORDS = "Words of many other kinds"
@@ -55,7 +56,7 @@ HANDBOOK = (
 
 
 @pytest.fixture
-def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
+def data(tmp_path: Path) -> Path:
     """Give a mirror of more than 100 documents, indexed with the tiny model.
 
     Decoys in ENG are all nearer "revert seller" than the runbook in OPS; the holiday
@@ -73,15 +74,14 @@ def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     write(docs, page("4004", MIXED, space="OPS"), mixed)
     write(docs, issue("PROJ-7", "Kafka upgrade"))
     write(docs, page("4005", "Handbook"), HANDBOOK)
-    registered(tmp_path / "data" / "models", monkeypatch)
-    embedding = Embedding(load("tiny", tmp_path / "data" / "models"), tmp_path / "data" / "v.db")
+    embedding = Embedding(tiny(), tmp_path / "data" / "v.db")
     build_index(docs, tmp_path / "data" / "index.sqlite", MOMENT, embedding)
     return tmp_path / "data"
 
 
 def library(data: Path, mode: SearchMode, meaning: Meaning | None = None) -> Library:
     """Return the tools over the data directory's index, ranking in ``mode``."""
-    meaning = meaning or Meaning(data / "models")
+    meaning = meaning or Meaning(connector())
     return Library(data / "index.sqlite", data / "docs", meaning, mode)
 
 
@@ -174,50 +174,46 @@ def test_hybrid_shows_by_meaning_a_document_that_only_meaning_finds(data: Path) 
     assert "secret" not in first
 
 
-def test_hybrid_shows_by_words_a_document_both_rank_first(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
+def test_hybrid_shows_by_words_a_document_both_rank_first(tmp_path: Path) -> None:
     """A tie between the lists goes to words: the section that holds the query's word."""
     docs = tmp_path / "docs"
     fillers(docs)
     tied = "# Tied\n\n## First\n\nrevert revert revert\n\n## Second\n\nundo undo undo rollback\n"
     write(docs, page("4006", "Tied"), tied)
-    registered(tmp_path / "models", monkeypatch)
-    embedding = Embedding(load("tiny", tmp_path / "models"), tmp_path / "v.db")
-    build_index(docs, tmp_path / "index.sqlite", MOMENT, embedding)
-    semantic = Library(tmp_path / "index.sqlite", docs, Meaning(tmp_path / "models"), "semantic")
+    build_index(docs, tmp_path / "index.sqlite", MOMENT, Embedding(tiny(), tmp_path / "v.db"))
+    semantic = Library(tmp_path / "index.sqlite", docs, Meaning(connector()), "semantic")
     assert "section 3 Second" in hits(semantic.search("revert"))[0]
-    hybrid = Library(tmp_path / "index.sqlite", docs, Meaning(tmp_path / "models"), "hybrid")
+    hybrid = Library(tmp_path / "index.sqlite", docs, Meaning(connector()), "hybrid")
     assert "section 2 First" in hits(hybrid.search("revert"))[0]
 
 
 def test_without_vectors_meaning_falls_back_to_words_and_says_why(tmp_path: Path) -> None:
-    """An index built without a model: words alone, and the command that adds meaning."""
+    """An index built without a model: words alone, and the commands that add meaning."""
     docs = tmp_path / "docs"
     fillers(docs)
     write(docs, page("4002", TARGET), "Leave for a meal.\n")
     build_index(docs, tmp_path / "index.sqlite", MOMENT)
-    answer = Library(tmp_path / "index.sqlite", docs, Meaning(tmp_path), "hybrid").search("meal")
+    tools = Library(tmp_path / "index.sqlite", docs, Meaning(connector()), "hybrid")
+    answer = tools.search("meal")
     assert titles(answer) == [TARGET]
-    assert "Ranked by words alone: the index holds no vectors; pull a model" in parts(answer)[0]
+    assert (
+        "Ranked by words alone: the index holds no vectors; check the embedding model"
+        in (parts(answer)[0])
+    )
 
 
-def test_a_model_removed_or_changed_since_the_build_falls_back(
-    data: Path, monkeypatch: MonkeyPatch
-) -> None:
-    """Files gone: pull it again. Another version in the catalogue: index again."""
-    moved = data.parent / "elsewhere"
-    (data / "models").rename(moved)
-    answer = library(data, "semantic").search("vacation lunch")
-    assert "Ranked by words alone: tiny: not pulled; atlassian-offline-mcp model pull" in answer
-    moved.rename(data / "models")
-    monkeypatch.setitem(CATALOGUE, "tiny", replace(CATALOGUE["tiny"], query_prefix="alpha "))
-    answer = library(data, "hybrid").search("vacation lunch")
-    assert "tiny: the index was built with another version of it" in parts(answer)[0]
+def test_a_model_gone_or_pulled_again_since_the_build_falls_back(data: Path) -> None:
+    """Gone from the endpoint: pull it. Other weights under its name: index again."""
+    gone = library(data, "semantic", Meaning(connector(Scripted({})))).search("vacation lunch")
+    assert "Ranked by words alone: tiny: not there" in gone
+    assert "with Ollama: ollama pull tiny" in gone
+    pulled = Meaning(connector(Scripted({"tiny:latest": "d2" * 32})))
+    answer = library(data, "hybrid", pulled).search("vacation lunch")
+    assert "tiny: the index was built with other weights of it" in parts(answer)[0]
 
 
 class Failing:
-    """An embedder whose model fails at every query, as a broken runtime would."""
+    """An embedder whose every query fails, as an endpoint failing for a while would."""
 
     name = "tiny"
     dimensions = 16
@@ -226,7 +222,7 @@ class Failing:
         """Answer to the tiny model's fingerprint."""
         self.fingerprint = fingerprint
 
-    def documents(self, texts: list[str]) -> NDArray:
+    def documents(self, texts: list[str]) -> list[NDArray | None]:
         """Fail, whatever the texts."""
         del texts
         raise ModelError(FAILURE)
@@ -237,13 +233,31 @@ class Failing:
         raise ModelError(FAILURE)
 
 
-def test_a_failing_model_falls_back_to_words(data: Path) -> None:
-    """The search still answers, by words, and says the model failed by its error's class."""
-    failing = Failing(CATALOGUE["tiny"].fingerprint)
-    meaning = Meaning(data / "models", load=lambda _name, _models: failing)
-    answer = library(data, "hybrid", meaning).search("revert release")
-    assert "Ranked by words alone: tiny: does not embed (Fail)" in parts(answer)[0]
+def test_a_failing_query_falls_back_to_words(data: Path) -> None:
+    """The search still answers, by words, and says what the endpoint answered."""
+    failing = Failing(tiny().fingerprint)
+    answer = library(data, "hybrid", Meaning(lambda _name: failing)).search("revert release")
+    assert f"Ranked by words alone: {FAILURE}" in parts(answer)[0]
     assert titles(answer)[0] == WORDS
+
+
+def test_a_query_refused_or_not_answered_as_embeddings_falls_back(data: Path) -> None:
+    """A 400 for the query, or an answer that is not embeddings: words, with the reason."""
+    refused = Meaning(connector(Scripted(refused={"revert release"})))
+    answer = library(data, "hybrid", refused).search("revert release")
+    assert "Ranked by words alone: tiny: the endpoint answered 400" in parts(answer)[0]
+    answers = Scripted()
+
+    def garbled(request: httpx.Request) -> httpx.Response:
+        if b"revert release" in request.content:
+            return httpx.Response(200, content=b"<html>")
+        return answers(request)
+
+    opened = endpoint(URL, None, remote_allowed=False, transport=httpx.MockTransport(garbled))
+    answer = library(data, "hybrid", Meaning(lambda name: connect(opened, name))).search(
+        "revert release"
+    )
+    assert "Ranked by words alone: tiny: the endpoint's answer is not embeddings" in answer
 
 
 def test_the_ranking_for_an_evaluation_is_the_search_s(data: Path) -> None:
@@ -259,27 +273,33 @@ def test_the_ranking_for_an_evaluation_is_the_search_s(data: Path) -> None:
     assert (mixed.section, mixed.text) == (3, "## Plan\n\nrollback deploy rollback deploy\n")
 
 
-class Loads:
-    """A model loader that records each load, and may wait or fail as told."""
+class Connects:
+    """What connects to a model, recording each connection, waiting or failing as told."""
 
-    def __init__(self, *, wait: float = 0.0, fail: bool = False) -> None:
-        """Load for real, after ``wait`` seconds, or fail every time."""
+    def __init__(
+        self, answers: Scripted | None = None, *, wait: float = 0.0, fail: bool = False
+    ) -> None:
+        """Connect to the scripted models, after ``wait`` seconds, or fail every time."""
         self.names: list[str] = []
+        self.opened = scripted(answers)
         self.wait = wait
         self.fail = fail
 
-    def __call__(self, name: str, models: Path) -> Embedder:
-        """Record the load, then load, or fail as a broken model would."""
+    def __call__(self, name: str) -> Embedder:
+        """Record the connection, then connect, or fail as an endpoint not answering would."""
         self.names.append(name)
         time.sleep(self.wait)
         if self.fail:
             raise ModelError(FAILURE)
-        return load(name, models)
+        return connect(self.opened, name)
+
+
+TWO = {"tiny:latest": DIGEST, "tiny2:latest": DIGEST}
 
 
 def rebuild(data: Path, model: str) -> None:
     """Build the data directory's index again, at the same moment, with ``model``."""
-    embedding = Embedding(load(model, data / "models"), data / "v.db")
+    embedding = Embedding(tiny(Scripted(TWO), model), data / "v.db")
     build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
 
 
@@ -292,39 +312,50 @@ def test_a_rebuilt_index_is_searched_with_its_own_vectors(data: Path) -> None:
     assert titles(tools.search("holidays"))[0] == "Vacation"
 
 
-def test_an_index_built_with_another_model_loads_that_model(
-    data: Path, monkeypatch: MonkeyPatch
-) -> None:
-    """The model follows the index, never the one loaded before."""
-    loads = Loads()
-    tools = Library(data / "index.sqlite", data / "docs", Meaning(data / "models", loads), "hybrid")
+def test_an_index_built_with_another_model_connects_to_that_model(data: Path) -> None:
+    """The model follows the index, never the one connected before; once a build."""
+    connects = Connects(Scripted(TWO))
+    tools = library(data, "hybrid", Meaning(connects))
     tools.search("holidays")
-    second = tiny(data / "models", name="tiny2")
-    monkeypatch.setitem(CATALOGUE, "tiny2", second)
+    tools.search("holidays")
     rebuild(data, "tiny2")
     tools.search("holidays")
     tools.search("holidays")
-    assert loads.names == ["tiny", "tiny2"]
+    assert connects.names == ["tiny", "tiny2"]
 
 
-def test_a_model_that_failed_is_tried_again_only_once_its_files_change(data: Path) -> None:
-    """No hashing of hundreds of megabytes per search: the failure is remembered."""
-    loads = Loads(fail=True)
-    tools = Library(data / "index.sqlite", data / "docs", Meaning(data / "models", loads), "hybrid")
-    for _ in range(3):
+def test_a_failed_connection_stands_for_a_while_then_is_tried_again(data: Path) -> None:
+    """Within 30 seconds, searches answer by words at once; the first after, connects."""
+    now = [0.0]
+    connects = Connects(fail=True)
+    tools = library(data, "hybrid", Meaning(connects, clock=lambda: now[0]))
+    for moment in (0.0, 10.0, QUIET_S - 1.0):
+        now[0] = moment
         assert FAILURE in tools.search("holidays")
-    assert loads.names == ["tiny"]
-    graph = data / "models" / "tiny" / "model.onnx"
-    later = graph.stat().st_mtime_ns + 10**9
-    os.utime(graph, ns=(later, later))
-    tools.search("holidays")
-    assert loads.names == ["tiny", "tiny"]
+    assert connects.names == ["tiny"]
+    now[0] = QUIET_S + 1.0
+    connects.fail = False
+    assert titles(tools.search("holidays"))[0] == "Handbook"
+    assert connects.names == ["tiny", "tiny"]
 
 
-def test_searches_at_once_load_the_model_once(data: Path) -> None:
-    """The SDK runs tools in worker threads: the model is loaded under a lock."""
-    loads = Loads(wait=0.2)
-    tools = Library(data / "index.sqlite", data / "docs", Meaning(data / "models", loads), "hybrid")
+def test_a_stale_index_connects_no_more_while_its_build_lasts(data: Path) -> None:
+    """Other weights since the build: the stale note, without a connection per search."""
+    connects = Connects(Scripted({"tiny:latest": "d2" * 32}))
+    tools = library(data, "hybrid", Meaning(connects))
+    for _ in range(3):
+        assert "the index was built with other weights of it" in tools.search("holidays")
+    assert connects.names == ["tiny"]
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_searches_at_once_wait_for_one_connection(data: Path, *, fail: bool) -> None:
+    """The SDK runs tools in worker threads: one connects, and the others wait for it.
+
+    Then they use its connection, or answer by words at once: never one connection each.
+    """
+    connects = Connects(wait=0.2, fail=fail)
+    tools = library(data, "hybrid", Meaning(connects))
     answers: list[str] = []
     threads = [
         threading.Thread(target=lambda: answers.append(tools.search("holidays"))) for _ in range(3)
@@ -333,54 +364,28 @@ def test_searches_at_once_load_the_model_once(data: Path) -> None:
         thread.start()
     for thread in threads:
         thread.join()
-    assert loads.names == ["tiny"]
-    assert [titles(answer)[0] for answer in answers] == ["Handbook"] * 3
+    assert connects.names == ["tiny"]
+    if fail:
+        assert all(FAILURE in answer for answer in answers)
+    else:
+        assert [titles(answer)[0] for answer in answers] == ["Handbook"] * 3
 
 
-def test_an_unreadable_model_falls_back_to_words(data: Path) -> None:
-    """A file that cannot be read is no tool error: words answer, and say what to do."""
-    graph = data / "models" / "tiny" / "model.onnx"
-    graph.chmod(0)
-    try:
-        answer = library(data, "hybrid").search("revert release")
-    finally:
-        graph.chmod(0o644)
-    assert "Ranked by words alone: tiny: files not as pinned; atlassian-offline-mcp model" in answer
-
-
-def test_a_model_made_readable_again_is_loaded_again(data: Path) -> None:
-    """Permissions restored, content untouched: the failure is forgotten, meaning answers."""
-    tools = library(data, "hybrid")
-    graph = data / "models" / "tiny" / "model.onnx"
-    graph.chmod(0)
-    try:
-        assert "Ranked by words alone" in tools.search("holidays")
-    finally:
-        graph.chmod(0o644)
-    assert titles(tools.search("holidays"))[0] == "Handbook"
-
-
-def test_a_long_section_is_shown_at_the_piece_that_meaning_found(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
+def test_a_long_section_is_shown_at_the_piece_that_meaning_found(tmp_path: Path) -> None:
     """The second piece of a section matches: the snippet starts there, not at the section."""
     docs = tmp_path / "docs"
     fillers(docs)
     body = "# Guide\n\n## Long\n\n" + "opening words " * 72 + "\n\n" + "leave " * 50 + "\n"
     write(docs, page("4007", "Guide"), body)
-    registered(tmp_path / "models", monkeypatch)
-    embedding = Embedding(load("tiny", tmp_path / "models"), tmp_path / "v.db")
-    build_index(docs, tmp_path / "index.sqlite", MOMENT, embedding)
-    meaning = Meaning(tmp_path / "models")
+    build_index(docs, tmp_path / "index.sqlite", MOMENT, Embedding(tiny(), tmp_path / "v.db"))
+    meaning = Meaning(connector())
     answer = Library(tmp_path / "index.sqlite", docs, meaning, "semantic").search("holidays")
     first = hits(answer)[0]
     assert "section 2 Long" in first
     assert "> leave leave leave" in first
 
 
-def test_ties_by_meaning_keep_the_newest_before_the_cut(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
+def test_ties_by_meaning_keep_the_newest_before_the_cut(tmp_path: Path) -> None:
     """A hundred and five documents of one text tie: the hundred newest are kept, newest first."""
     docs = tmp_path / "docs"
     fillers(docs)
@@ -388,10 +393,8 @@ def test_ties_by_meaning_keep_the_newest_before_the_cut(
     for number in range(105):
         updated = MOMENT - timedelta(days=105 - number)
         write(docs, page(str(7000 + number), "Recurring", updated=updated), "leave\n")
-    registered(tmp_path / "models", monkeypatch)
-    embedding = Embedding(load("tiny", tmp_path / "models"), tmp_path / "v.db")
-    build_index(docs, tmp_path / "index.sqlite", MOMENT, embedding)
-    meaning = Meaning(tmp_path / "models")
+    build_index(docs, tmp_path / "index.sqlite", MOMENT, Embedding(tiny(), tmp_path / "v.db"))
+    meaning = Meaning(connector())
     for mode in ("semantic", "hybrid"):
         tools = Library(tmp_path / "index.sqlite", docs, meaning, mode)
         shown, _ = tools.ranked("holidays", mode, limit=500)
@@ -400,12 +403,12 @@ def test_ties_by_meaning_keep_the_newest_before_the_cut(
         ]
 
 
-class Scripted(Meaning):
+class Ordered(Meaning):
     """A search by meaning that ranks the documents it is given in that order."""
 
-    def __init__(self, order: list[tuple[str, int, int, int]], models: Path) -> None:
+    def __init__(self, order: list[tuple[str, int, int, int]]) -> None:
         """Rank these paths, each with its section number and its span in the body."""
-        super().__init__(models)
+        super().__init__(connector())
         self.order = order
 
     def nearest(self, reader: Reader, query: str, filters: Filters) -> Nearest:
@@ -432,8 +435,8 @@ def test_with_an_identifier_a_tie_still_goes_to_words(data: Path) -> None:
     path, start, end = plan_of(data)
     order = [each.path for each in library(data, "lexical").ranked("PROJ-7 notes", "lexical")[0]]
     assert order[:2] == ["jira/PROJ/PROJ-7.md", path]
-    scripted = Scripted([(path, 3, start, end)], data / "models")
-    tools = Library(data / "index.sqlite", data / "docs", scripted, "hybrid")
+    ordered = Ordered([(path, 3, start, end)])
+    tools = Library(data / "index.sqlite", data / "docs", ordered, "hybrid")
     shown = next(hit for hit in hits(tools.search("PROJ-7 notes")) if MIXED in hit)
     assert "section 2 Notes" in shown
 
@@ -445,18 +448,7 @@ def test_with_an_identifier_a_place_higher_by_meaning_shows_meaning(data: Path) 
         each.path for each in library(data, "lexical").ranked("4002 revert release", "lexical")[0]
     ]
     assert order.index(path) == WORDS_PLACE
-    scripted = Scripted([(path, 3, start, end)], data / "models")
-    tools = Library(data / "index.sqlite", data / "docs", scripted, "hybrid")
+    ordered = Ordered([(path, 3, start, end)])
+    tools = Library(data / "index.sqlite", data / "docs", ordered, "hybrid")
     shown = next(hit for hit in hits(tools.search("4002 revert release")) if MIXED in hit)
     assert "section 3 Plan" in shown
-
-
-def test_a_model_folder_that_cannot_be_searched_falls_back(data: Path) -> None:
-    """Even the folder unreadable, after a pull as another account: words, never an error."""
-    folder = data / "models" / "tiny"
-    folder.chmod(0)
-    try:
-        answer = library(data, "hybrid").search("revert release")
-    finally:
-        folder.chmod(0o755)
-    assert "Ranked by words alone" in answer

@@ -1,4 +1,4 @@
-"""Evaluating the search strategies on golden questions, for each model pulled.
+"""Evaluating the search strategies on golden questions, for each model connected.
 
 Each model gets its own index, built from the mirror like any other with the vector
 store, so a second evaluation embeds nothing new. Every question is ranked by
@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from atlassian_offline_mcp.adapters.embedding import load
 from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
 from atlassian_offline_mcp.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.app.meaning import Meaning
@@ -39,6 +38,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from datetime import datetime
 
+    from atlassian_offline_mcp.adapters.embedding import Embedder
     from atlassian_offline_mcp.domain.settings import SearchMode, Settings
 
 MODES: tuple[SearchMode, ...] = ("lexical", "semantic", "hybrid")
@@ -148,31 +148,35 @@ class Run:
 def evaluate(
     settings: Settings,
     questions: Sequence[Question],
-    names: Sequence[str],
+    embedders: Sequence[Embedder],
     clock: Callable[[], float],
     built_at: datetime,
 ) -> list[Run]:
-    """Rank every question in every mode with each model named, and compare the modes.
+    """Rank every question in every mode with each model given, and compare the modes.
 
-    Each model's index is ``<evaluations>/indexes/<model>.sqlite``. Raises
-    EvaluationError when a mode by meaning falls back to words, which would measure
-    words twice, and ModelError for a model that cannot be loaded.
+    Each model's index is ``<evaluations>/indexes/<model>.sqlite``, its name's ``/``
+    and ``:`` written ``_``. Raises EvaluationError when a mode by meaning falls back to
+    words, which would measure words twice, and ModelError for a model that fails.
     """
     runs: list[Run] = []
-    for name in names:
-        embedder = load(name, settings.models)
-        index = settings.evaluations / "indexes" / f"{name}.sqlite"
+    for embedder in embedders:
+        name = embedder.name
+        index = (
+            settings.evaluations / "indexes" / f"{name.replace('/', '_').replace(':', '_')}.sqlite"
+        )
         index.parent.mkdir(parents=True, exist_ok=True)
         started = clock()
         embedding = Embedding(embedder, settings.vectors)
         report = build_index(settings.docs, index, built_at, embedding)
         run = Run(name, embedder.fingerprint, report.embedded, clock() - started)
-        library = Library(index, settings.docs, Meaning(settings.models), "lexical")
+        # The model that the index names is this embedder's.
+        meaning = Meaning({name: embedder}.__getitem__)
+        library = Library(index, settings.docs, meaning, "lexical")
         refs = ((question.id, path) for question in questions for path in question.paths)
         if missing := next(((id_, path) for id_, path in refs if not library.resolve(path)), None):
             message = f"{name}: {missing[0]}: {missing[1]} is not in its index; run index again"
             raise EvaluationError(message)
-        # Untimed: the first search by meaning loads the model and its vectors.
+        # Untimed: the first search by meaning reads the index's vectors.
         library.ranked(questions[0].text, "hybrid")
         for mode in MODES:
             run.per[mode], run.ranks[mode], spent = {}, {}, []

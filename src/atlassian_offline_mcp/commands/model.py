@@ -1,72 +1,64 @@
-"""``model``: pull an embedding model into the data directory, or list the known ones.
+"""``model check``: check that the embedding endpoint answers with a model, or say what to run.
 
-This is the only command that downloads a model; ``index``, ``serve`` and ``eval`` read
-what it pulled, and never reach the network for a model.
+It never downloads a model: with Ollama, ``ollama pull`` does.
 """
 
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-import httpx
-
-from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError, known, pulled
-from atlassian_offline_mcp.adapters.model_pull import copy_from, download_client, pull
-from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
+from atlassian_offline_mcp.adapters.embedding import ModelError, connect, prefixes
+from atlassian_offline_mcp.commands._options import (
+    add_embedding_options,
+    add_settings_options,
+    model_name,
+    open_endpoint,
+    settings_of,
+)
 from atlassian_offline_mcp.domain.settings import SettingsError
 
 if TYPE_CHECKING:
     import argparse
 
-SOME_FAILED = 1
+NOT_READY = 1
 BAD_SETTINGS = 2
-MEGABYTE = 1_000_000
+# Characters of a digest shown, as Ollama shows them.
+SHORT = 12
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``model`` to the command."""
-    parser = subparsers.add_parser("model", help="pull an embedding model, or list them")
+    parser = subparsers.add_parser("model", help="check the embedding model and its endpoint")
     add_settings_options(parser)
-    parser.add_argument("action", choices=("pull", "list"))
-    parser.add_argument("name", nargs="?", help="the model to pull; by default, the setting")
+    add_embedding_options(parser)
+    parser.add_argument("action", choices=("check",))
     parser.add_argument(
-        "--from", dest="source", type=Path, help="a folder holding the files, as the hub does"
+        "name", nargs="?", type=model_name, help="the model to check; by default, the setting"
     )
     parser.set_defaults(run=run)
 
 
 def run(arguments: argparse.Namespace) -> int:
-    """Pull or list; exit 1 when a download failed, 2 for bad settings or an unknown model."""
+    """Check; exit 1 when the endpoint or the model is not ready, 2 for refused settings."""
     try:
         settings = settings_of(arguments)
+        opened = open_endpoint(arguments, settings)
     except SettingsError as error:
         sys.stderr.write(f"refused: {error}\n")
         return BAD_SETTINGS
-    if arguments.action == "list":
-        for name, each in sorted(CATALOGUE.items()):
-            state = "pulled" if pulled(each, settings.models) else "not pulled"
-            size = sum(file.size for file in each.files) // MEGABYTE
-            chosen = ", the setting" if name == settings.model else ""
-            sys.stdout.write(f"{name}: {each.repository}, {size} MB, {state}{chosen}\n")
-        return 0
-    try:
-        model = known(arguments.name or settings.model)
-    except ModelError as error:
-        sys.stderr.write(f"refused: {error}\n")
-        return BAD_SETTINGS
-    try:
-        if arguments.source is not None:
-            fetched = copy_from(model, settings.models, arguments.source)
-        else:
-            with download_client() as client:
-                fetched = pull(model, settings.models, client)
-    except (ModelError, httpx.HTTPError, OSError) as error:
-        reason = str(error) if isinstance(error, ModelError) else type(error).__name__
-        sys.stderr.write(f"not pulled: {reason}\n")
-        return SOME_FAILED
+    name = arguments.name or settings.model
+    with opened:
+        try:
+            embedder = connect(opened, name)
+        except ModelError as error:
+            sys.stderr.write(f"not ready: {error}\n")
+            return NOT_READY
+    known = (
+        "its prefixes known" if prefixes(name) else "no prefixes known: texts embedded as they are"
+    )
     sys.stdout.write(
-        f"{model.name}: {len(fetched)} files fetched, into {settings.models / model.name}\n"
+        f"{name}: {embedder.dimensions} dimensions, from {settings.embedding_url};"
+        f" digest {embedder.digest[:SHORT] or 'not reported'}; {known}\n"
     )
     return 0

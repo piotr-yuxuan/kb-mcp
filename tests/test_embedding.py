@@ -1,420 +1,460 @@
-"""Running embedding models, and pulling their pinned files (plan 011).
+"""Embeddings from an OpenAI-compatible endpoint (plan 018).
 
-The adapter runs on a tiny model built at test time (``tests.tiny_model``); the real
-models run only in the opt-in test at the end.
+The adapter runs against a scripted endpoint (``tests.endpoint``); a real Ollama is
+reached only by the opt-in test at the end.
 """
 
 from __future__ import annotations
 
-import hashlib
-import multiprocessing
+import json
 import os
+import re
 import socket
-import ssl
 import threading
-import time
 from contextlib import suppress
 from dataclasses import replace
-from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import httpx
 import numpy as np
 import pytest
-import truststore
 
-from atlassian_offline_mcp.adapters import embedding, model_pull
+from atlassian_offline_mcp.adapters import embedding
 from atlassian_offline_mcp.adapters.embedding import (
-    CATALOGUE,
-    CHUNK_BYTES,
-    MAX_TOKENS,
-    File,
-    Model,
+    BATCH,
+    DOCUMENTS,
+    MAX_ANSWER_BYTES,
+    SINGLE,
+    ApiEmbedder,
+    Bounds,
     ModelError,
-    known,
-    load,
-    pulled,
-)
-from atlassian_offline_mcp.adapters.model_pull import (
-    HUB,
-    MAX_REDIRECTS,
-    copy_from,
-    download_client,
-    pull,
+    Prefixes,
+    RefusedError,
+    connect,
+    digest,
+    embed,
+    endpoint,
 )
 from atlassian_offline_mcp.cli import main
-from tests.tiny_model import DECODER, DIMENSIONS, ENCODER, entry, registered, tiny
+from atlassian_offline_mcp.domain.settings import DEFAULT_EMBEDDING_URL, SettingsError
+from tests.endpoint import (
+    DIGEST,
+    DIMENSIONS,
+    FIXTURES,
+    REACHABLE,
+    URL,
+    Scripted,
+    nothing_listening,
+    scripted,
+    serving,
+    tiny,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
+    from pathlib import Path
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-GRAPH = b"a graph, as bytes"
-TOKENIZER = b'{"a": "tokeniser"}'
+QWEN = "qwen3-embedding:0.6b"
+NOT_READY = 1
 REFUSED = 2
-SAME = 0.9999
-# Requests that a hub redirecting for ever gets: the first, then MAX_REDIRECTS.
-REQUESTS = 6
-# Chunks read of an endless file pinned smaller than one chunk: one, and one ahead.
-READS = 2
-# Seconds within which a file past its deadline of half a second is given up.
-GIVEN_UP_S = 3
-# A port of this machine that nothing listens on, standing for the hub; how long the
-# stand-in proxy waits for the client.
-CLOSED = "127.0.0.2:9"
+GEMMA = "embeddinggemma:300m"
 LISTENED_S = 10
-# Seconds to watch for onnxruntime's telemetry: it first sends about nine after import.
-TELEMETRY_S = 12
-# Real models, pulled beforehand, for the opt-in test: a folder of model folders.
-MODELS = os.environ.get("ATLASSIAN_OFFLINE_MCP_MODELS")
+# Seconds that the injected clock moves at each look: three looks pass a deadline of 30.
+TICK_S = 11.0
+# Reads of a trickled answer before its deadline of 30 seconds is passed, at most.
+READS = 4
+# Embeddings asked by one query and two probes, each in a single attempt.
+ATTEMPTED = 3
+# A model pulled in a local Ollama, for the opt-in test.
+LIVE = os.environ.get("ATLASSIAN_OFFLINE_MCP_LIVE_MODEL")
 
 
-def pinned(path: str, content: bytes) -> File:
-    """Pin a file by its content, as the catalogue does."""
-    return File(path, hashlib.sha256(content).hexdigest(), len(content))
+def answering(embeddings: Callable[[httpx.Request], httpx.Response]) -> embedding.Endpoint:
+    """Open an endpoint whose list of models is the scripted one, and whose embeddings are these."""
+    models = Scripted()
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return models(request) if request.url.path == "/api/tags" else embeddings(request)
+
+    return over(handle)
 
 
-MODEL = Model(
-    name="pinned",
-    repository="someone/pinned",
-    revision="0123456789abcdef0123456789abcdef01234567",
-    graph=pinned("onnx/model.onnx", GRAPH),
-    tokenizer=pinned("tokenizer.json", TOKENIZER),
-    pooling="mean",
-    pad="<pad>",
-    query_prefix="query: ",
-    document_prefix="passage: ",
-    dimensions=4,
-)
-SERVED = {"onnx/model.onnx": GRAPH, "tokenizer.json": TOKENIZER}
+def over(handle: Callable[[httpx.Request], httpx.Response]) -> embedding.Endpoint:
+    """Open an endpoint at Ollama's address that answers every request with ``handle``."""
+    return endpoint(URL, None, remote_allowed=False, transport=httpx.MockTransport(handle))
 
 
-class Hub:
-    """A scripted hub: each pinned address redirects to a file host that serves it."""
-
-    def __init__(self, files: dict[str, bytes], scheme: str = "https") -> None:
-        """Serve these files of the pinned model, redirecting to ``scheme``."""
-        self.files = files
-        self.scheme = scheme
-        self.asked: list[str] = []
-
-    def handle(self, request: httpx.Request) -> httpx.Response:
-        """Redirect from the hub, then serve from the file host."""
-        self.asked.append(str(request.url))
-        prefix = f"/{MODEL.repository}/resolve/{MODEL.revision}/"
-        if request.url.host == "huggingface.co" and request.url.path.startswith(prefix):
-            name = request.url.path.removeprefix(prefix)
-            location = f"{self.scheme}://files.example/{name}"
-            return httpx.Response(302, headers={"location": location})
-        name = request.url.path.removeprefix("/")
-        if request.url.host == "files.example" and name in self.files:
-            return httpx.Response(200, content=self.files[name])
-        return httpx.Response(404)
-
-    def client(self) -> httpx.Client:
-        """Return the client that ``model pull`` uses, over this hub instead of the network."""
-        return download_client(httpx.MockTransport(self.handle))
+def data(*rows: object) -> httpx.Response:
+    """Answer embeddings with these items, as Ollama shapes them."""
+    return httpx.Response(200, json={"object": "list", "data": list(rows), "model": "tiny"})
 
 
-def files_in(folder: Path) -> list[str]:
-    """List the files under a folder, by name."""
-    return sorted(path.name for path in folder.rglob("*") if path.is_file())
+def recorded() -> tuple[embedding.Endpoint, list[float]]:
+    """Give a scripted endpoint whose waits are recorded, not slept."""
+    waits: list[float] = []
+    return replace(scripted(), sleep=waits.append), waits
+
+
+def test_known_prefixes_are_sent_and_none_for_an_unknown_model() -> None:
+    """Qwen3's instruction before a query alone; EmbeddingGemma's before both; tiny's none."""
+    answers = Scripted({f"{QWEN}": DIGEST, GEMMA: DIGEST, "tiny:latest": DIGEST})
+    for model in (QWEN, GEMMA, "tiny"):
+        embedder = tiny(answers, model)
+        embedder.documents(["undo the payout"])
+        embedder.query("revert")
+    instruction = (
+        "Instruct: Given a web search query, retrieve relevant passages that answer the query"
+        "\nQuery:"
+    )
+    assert answers.asked == [
+        [f"{instruction}probe"],
+        ["undo the payout"],
+        [f"{instruction}revert"],
+        ["task: search result | query: probe"],
+        ["title: none | text: undo the payout"],
+        ["task: search result | query: revert"],
+        ["probe"],
+        ["undo the payout"],
+        ["revert"],
+    ]
+
+
+def test_texts_go_a_batch_at_a_time_and_come_back_in_order() -> None:
+    """70 texts make 3 requests; an answer listing its items shuffled is put in order."""
+    answers = Scripted()
+
+    def shuffled(request: httpx.Request) -> httpx.Response:
+        answer = answers(request)
+        if request.url.path != "/v1/embeddings":
+            return answer
+        content = answer.json()
+        content["data"].reverse()
+        return httpx.Response(200, json=content)
+
+    embedder = connect(over(shuffled), "tiny")
+    texts = [("undo " if number % 2 else "lunch ") + str(number) for number in range(70)]
+    vectors = embedder.documents(texts)
+    assert [len(asked) for asked in answers.asked] == [1, BATCH, BATCH, 70 - 2 * BATCH]
+    alone = [embedder.documents([text])[0] for text in texts]
+    assert all(np.allclose(each, one) for each, one in zip(vectors, alone, strict=True))
+    assert np.allclose(np.linalg.norm(np.array(vectors), axis=1), 1)
 
 
 @pytest.mark.parametrize(
-    ("pooling", "inputs"), [("first", ENCODER), ("mean", ENCODER), ("last", DECODER)]
+    ("answer", "named"),
+    [
+        (data({"embedding": [1.0, 0.0], "index": 0}), "not one vector of 2 per text"),
+        (
+            data({"embedding": [1.0, 0.0], "index": 0}, {"embedding": [0.0, 1.0], "index": 0}),
+            "not one vector",
+        ),
+        (
+            data({"embedding": [1.0, 0.0], "index": 0}, {"embedding": [1.0], "index": 1}),
+            "not embeddings (ValueError)",
+        ),
+        (
+            data({"embedding": ["1.0", "0"], "index": 0}, {"embedding": ["0", "1"], "index": 1}),
+            "not one vector",
+        ),
+        (
+            data({"embedding": [0.0, 0.0], "index": 0}, {"embedding": [0.0, 1.0], "index": 1}),
+            "of no length",
+        ),
+        (
+            httpx.Response(
+                200,
+                content=b'{"data": [{"embedding": [NaN, 1], "index": 0},'
+                b' {"embedding": [0, 1], "index": 1}]}',
+            ),
+            "of no length, or not of numbers",
+        ),
+        (httpx.Response(200, content=b"<html>"), "not embeddings (JSONDecodeError)"),
+        (httpx.Response(200, json={"data": "none"}), "not embeddings (TypeError)"),
+    ],
 )
-def test_a_text_embeds_alike_alone_and_beside_a_longer_one(
-    tmp_path: Path,
-    monkeypatch: MonkeyPatch,
-    pooling: Literal["first", "mean", "last"],
-    inputs: tuple[str, ...],
+def test_an_answer_that_is_not_one_vector_per_text_is_refused(
+    answer: httpx.Response, named: str
 ) -> None:
-    """Padding never changes a vector: pooling heeds the mask, the last token is the text's."""
-    registered(tmp_path, monkeypatch, pooling=pooling, inputs=inputs)
-    embedder = load("tiny", tmp_path)
-    short = "undo the payout"
-    alone = embedder.documents([short])[0]
-    beside = embedder.documents([short, "a much longer text about a release and a holiday"])[0]
-    assert float(alone @ beside) > SAME
-    vectors = embedder.documents([short, "lunch"])
-    assert vectors.shape == (2, DIMENSIONS)
-    assert np.allclose(np.linalg.norm(vectors, axis=1), 1)
+    """Too few items, a repeated index, ragged or non-numeric rows, a zero or NaN vector."""
+    opened = answering(lambda _: answer)
+    with pytest.raises(ModelError, match=re.escape(named)):
+        embed(opened, "tiny", ["one", "two"], SINGLE)
 
 
-def test_words_of_one_concept_are_near_and_others_far(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    """The tiny model's meaning: a paraphrase is nearer than another topic."""
-    registered(tmp_path, monkeypatch)
-    embedder = load("tiny", tmp_path)
-    near, far = embedder.documents(["revert the seller payouts", "lunch at the canteen"])
-    query = embedder.query("undo payout")[0]
-    assert float(query @ near) > float(query @ far)
+def test_a_row_of_another_length_than_the_probe_s_is_refused() -> None:
+    """Every vector of a model has the length its probe had."""
+    opened = answering(lambda _: data({"embedding": [1.0, 0.0, 0.0], "index": 0}))
+    embedder = ApiEmbedder(opened, "tiny", DIGEST, 2, Prefixes("", ""))
+    with pytest.raises(ModelError, match="not one vector of 2 per text"):
+        embedder.query("undo")
 
 
-def test_queries_and_documents_take_their_own_prefixes(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    """A query is embedded after the query prefix, a document after the document one."""
-    model = registered(tmp_path, monkeypatch)
-    plain = load("tiny", tmp_path)
-    prefixed = replace(model, query_prefix="alpha ", document_prefix="beta ")
-    monkeypatch.setitem(CATALOGUE, "tiny", prefixed)
-    embedder = load("tiny", tmp_path)
-    as_query, as_document = plain.documents(["alpha lunch", "beta lunch"])
-    assert float(embedder.query("lunch")[0] @ as_query) > SAME
-    assert float(embedder.documents(["lunch"])[0] @ as_document) > SAME
+def test_a_model_of_more_than_8192_dimensions_is_refused() -> None:
+    """The probe sets the length, within a bound."""
+    opened = answering(lambda _: data({"embedding": [1.0] * 8193, "index": 0}))
+    with pytest.raises(ModelError, match="not one vector of 8193"):
+        connect(opened, "tiny")
 
 
-def test_a_text_beyond_the_token_limit_is_cut_not_refused(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    """Only the first MAX_TOKENS tokens count: what follows changes nothing."""
-    registered(tmp_path, monkeypatch)
-    embedder = load("tiny", tmp_path)
-    head = " ".join(["alpha"] * MAX_TOKENS)
-    long, alpha = embedder.documents([f"{head} {' '.join(['beta'] * 100)}", "alpha"])
-    assert float(long @ alpha) > SAME
+def test_an_answer_past_its_size_is_refused() -> None:
+    """Read a mebibyte at a time, given up past MAX_ANSWER_BYTES, never kept whole."""
+    reads: list[int] = []
 
-
-def test_a_graph_asking_for_an_unknown_input_does_not_load(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    """The adapter names what it cannot give, and the model counts as not loadable."""
-    registered(tmp_path, monkeypatch, inputs=(*ENCODER, "pixel_values"))
-    with pytest.raises(ModelError, match="the graph asks for pixel_values"):
-        load("tiny", tmp_path)
-
-
-def test_a_model_not_pulled_or_altered_does_not_load(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    """Each refusal says why and names the command that pulls the model again."""
-    with pytest.raises(ModelError, match="not pulled; atlassian-offline-mcp model pull"):
-        load("bge-small-en-v1.5", tmp_path)
-    model = registered(tmp_path, monkeypatch)
-    graph = tmp_path / "tiny" / model.graph.path
-    content = bytearray(graph.read_bytes())
-    content[-1] ^= 1  # same size, another hash
-    graph.write_bytes(bytes(content))
-    with pytest.raises(ModelError, match="files not as pinned"):
-        load("tiny", tmp_path)
-
-
-def test_the_fingerprint_changes_with_anything_that_makes_vectors() -> None:
-    """Another commit, prefix or pooling: another fingerprint, so no vector is reused."""
-    assert MODEL.fingerprint != replace(MODEL, revision="1" * 40).fingerprint
-    assert MODEL.fingerprint != replace(MODEL, query_prefix="").fingerprint
-    assert MODEL.fingerprint != replace(MODEL, pooling="first").fingerprint
-    assert (
-        MODEL.fingerprint != replace(MODEL, graph=replace(MODEL.graph, sha256="0" * 64)).fingerprint
-    )
-    assert MODEL.fingerprint == replace(MODEL).fingerprint
-
-
-@pytest.mark.parametrize(("name", "value"), [("FORMAT", 2), ("MAX_TOKENS", 256)])
-def test_the_fingerprint_changes_with_how_the_adapter_runs(
-    monkeypatch: MonkeyPatch, name: str, value: int
-) -> None:
-    """A new format of the adapter, or another token limit, makes vectors anew."""
-    before = MODEL.fingerprint
-    monkeypatch.setattr(embedding, name, value)
-    assert MODEL.fingerprint != before
-
-
-def test_pull_stores_every_file_and_then_fetches_nothing(tmp_path: Path) -> None:
-    """Pinned files land in the model's folder; a second pull asks for nothing."""
-    hub = Hub(SERVED)
-    assert pull(MODEL, tmp_path, hub.client()) == ["onnx/model.onnx", "tokenizer.json"]
-    assert (tmp_path / "pinned" / "onnx" / "model.onnx").read_bytes() == GRAPH
-    assert pulled(MODEL, tmp_path)
-    assert hub.asked[0] == f"{HUB}/someone/pinned/resolve/{MODEL.revision}/onnx/model.onnx"
-    hub.asked.clear()
-    assert pull(MODEL, tmp_path, hub.client()) == []
-    assert hub.asked == []
-
-
-@pytest.mark.parametrize("served", [b"a graph, as bytez", b"a graph, as bytes and more", b"a"])
-def test_pull_refuses_a_file_not_as_pinned_and_leaves_nothing(
-    tmp_path: Path, served: bytes
-) -> None:
-    """Another hash, a larger file or a shorter one: refused, named, and removed."""
-    hub = Hub({**SERVED, "onnx/model.onnx": served})
-    with pytest.raises(ModelError, match=r"pinned: onnx/model\.onnx"):
-        pull(MODEL, tmp_path, hub.client())
-    assert files_in(tmp_path) == []
-
-
-def test_pull_fetches_again_a_file_of_the_right_size_but_another_hash(tmp_path: Path) -> None:
-    """A file in place is hashed, not trusted for its size."""
-    hub = Hub(SERVED)
-    pull(MODEL, tmp_path, hub.client())
-    (tmp_path / "pinned" / "tokenizer.json").write_bytes(b'{"a": "tokenizer"}')
-    assert pull(MODEL, tmp_path, hub.client()) == ["tokenizer.json"]
-    assert (tmp_path / "pinned" / "tokenizer.json").read_bytes() == TOKENIZER
-
-
-def test_pull_refuses_a_redirect_to_plain_http_and_a_file_not_served(tmp_path: Path) -> None:
-    """Each failure names the file; files fetched before it stay for the next run."""
-    with pytest.raises(ModelError, match=r"onnx/model\.onnx: SiteError"):
-        pull(MODEL, tmp_path, Hub(SERVED, scheme="http").client())
-    with pytest.raises(ModelError, match=r"tokenizer\.json: the hub answered 404"):
-        pull(MODEL, tmp_path, Hub({"onnx/model.onnx": GRAPH}).client())
-    assert files_in(tmp_path) == ["model.onnx"]
-
-
-def test_pull_follows_a_few_redirects_and_no_more(tmp_path: Path) -> None:
-    """A hub that redirects for ever is given up, after MAX_REDIRECTS (5) redirects."""
-    asked: list[str] = []
-
-    def endless(request: httpx.Request) -> httpx.Response:
-        asked.append(str(request.url))
-        return httpx.Response(302, headers={"location": f"https://files.example/{len(asked)}"})
-
-    with pytest.raises(ModelError, match="TooManyRedirects"):
-        pull(MODEL, tmp_path, download_client(httpx.MockTransport(endless)))
-    assert len(asked) == MAX_REDIRECTS + 1 == REQUESTS
-    assert files_in(tmp_path) == []
-
-
-def test_pull_stops_reading_a_file_past_its_pinned_size(tmp_path: Path) -> None:
-    """An endless body is cut short at the first chunk beyond the pin, not read to its end."""
-    sent: list[int] = []
-
-    def chunks() -> Iterator[bytes]:
+    def endless() -> Iterator[bytes]:
         while True:
-            sent.append(1)
-            assert len(sent) <= READS, "read past the pinned size"
-            yield b"x" * CHUNK_BYTES
+            reads.append(1)
+            yield b" " * 2**20
 
-    def endless(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=chunks())
-
-    with pytest.raises(ModelError, match="larger or slower than pinned"):
-        pull(MODEL, tmp_path, download_client(httpx.MockTransport(endless)))
-    assert files_in(tmp_path) == []
+    opened = answering(lambda _: httpx.Response(200, content=endless()))
+    with pytest.raises(ModelError, match="too large or too slow"):
+        embed(opened, "tiny", ["one"], SINGLE)
+    assert len(reads) == MAX_ANSWER_BYTES // 2**20 + 1
 
 
-def test_pull_gives_up_a_file_past_its_deadline(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    """However small, a file that comes too slowly is given up, and nothing is left."""
-    monkeypatch.setattr(model_pull, "FILE_DEADLINE_S", -1)
-    with pytest.raises(ModelError, match="larger or slower than pinned"):
-        pull(MODEL, tmp_path, Hub(SERVED).client())
-    assert files_in(tmp_path) == []
-
-
-def test_files_from_a_folder_replace_one_in_place_of_another_hash(tmp_path: Path) -> None:
-    """A file of the right size but not the pinned one is copied again from the folder."""
-    source = tmp_path / "source"
-    (source / "onnx").mkdir(parents=True)
-    (source / "onnx" / "model.onnx").write_bytes(GRAPH)
-    (source / "tokenizer.json").write_bytes(TOKENIZER)
-    copy_from(MODEL, tmp_path / "models", source)
-    (tmp_path / "models" / "pinned" / "tokenizer.json").write_bytes(b'{"a": "tokenizer"}')
-    assert copy_from(MODEL, tmp_path / "models", source) == ["tokenizer.json"]
-    assert (tmp_path / "models" / "pinned" / "tokenizer.json").read_bytes() == TOKENIZER
-
-
-def test_files_from_a_folder_are_checked_as_pulled_ones(tmp_path: Path) -> None:
-    """``--from`` copies files laid out as the hub's, and refuses one not as pinned."""
-    source = tmp_path / "source"
-    (source / "onnx").mkdir(parents=True)
-    (source / "onnx" / "model.onnx").write_bytes(GRAPH)
-    (source / "tokenizer.json").write_bytes(b"not the tokeniser")
-    with pytest.raises(ModelError, match=r"tokenizer\.json: not the file pinned"):
-        copy_from(MODEL, tmp_path / "models", source)
-    (source / "tokenizer.json").write_bytes(TOKENIZER)
-    assert copy_from(MODEL, tmp_path / "models", source) == ["tokenizer.json"]
-    assert pulled(MODEL, tmp_path / "models")
-
-
-def test_an_unknown_model_is_refused_with_the_known_names() -> None:
-    """The message lists what the catalogue has."""
-    with pytest.raises(ModelError, match=r"bge-small-en-v1\.5") as raised:
-        known("no-such-model")
-    assert all(name in str(raised.value) for name in CATALOGUE)
-
-
-def test_the_command_lists_the_catalogue_and_refuses_an_unknown_model(
-    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
-) -> None:
-    """``model list`` names every model and the setting's; ``pull`` of a stranger exits 2."""
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    config = ["--config", str(home / "none.toml")]
-    assert main(["model", "list", *config]) == 0
-    listed = capsys.readouterr().out
-    assert all(f"{name}: " in listed for name in CATALOGUE)
-    chosen = "bge-small-en-v1.5: BAAI/bge-small-en-v1.5, 133 MB, not pulled, the setting"
-    assert chosen in listed
-    assert main(["model", "pull", "no-such-model", *config]) == REFUSED
-    assert "the known models" in capsys.readouterr().err
-
-
-@pytest.mark.skipif(MODELS is None, reason="set ATLASSIAN_OFFLINE_MCP_MODELS to pulled models")
-@pytest.mark.parametrize("name", sorted(CATALOGUE))
-def test_a_pulled_model_embeds_by_meaning(name: str) -> None:
-    """Unit vectors of the catalogue's length; a paraphrase is nearer than another topic."""
-    if not pulled(CATALOGUE[name], Path(str(MODELS))):
-        pytest.skip(f"{name} is not pulled")
-    embedder = load(name, Path(str(MODELS)))
-    documents = embedder.documents(
-        [
-            "To undo a bad release of the payout service, roll back to the previous image.",
-            "The Paris office canteen opens at noon and closes at two.",
-        ]
-    )
-    query = embedder.query("how do I revert a broken deployment of the payments service?")
-    assert documents.shape == (2, CATALOGUE[name].dimensions)
-    assert np.allclose(np.linalg.norm(documents, axis=1), 1, atol=1e-5)
-    near, far = (query @ documents.T)[0]
-    assert near > far
-
-
-def test_pull_gives_up_a_file_trickled_in_past_its_deadline(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    """A byte at a time, as a scanning proxy sends it: each read is checked, not each MiB.
-
-    The file is pinned far larger than the trickle can reach, so that only the deadline
-    can end it.
-    """
-    monkeypatch.setattr(model_pull, "FILE_DEADLINE_S", 0.5)
-    began = time.monotonic()
+def test_an_answer_trickled_past_its_deadline_is_given_up() -> None:
+    """Each read is checked against the deadline, not each request's timeout alone."""
+    reads: list[int] = []
 
     def trickle() -> Iterator[bytes]:
         while True:
-            assert time.monotonic() - began < GIVEN_UP_S, "still reading past the deadline"
-            time.sleep(0.05)
-            yield b"x"
+            reads.append(1)
+            yield b" "
 
-    def slow(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=trickle())
-
-    large = replace(MODEL, graph=replace(MODEL.graph, size=10**9))
-    with pytest.raises(ModelError, match="larger or slower than pinned"):
-        pull(large, tmp_path, download_client(httpx.MockTransport(slow)))
-    assert time.monotonic() - began < GIVEN_UP_S
+    opened = answering(lambda _: httpx.Response(200, content=trickle()))
+    ticks = iter(range(0, 10**6, int(TICK_S)))
+    opened = replace(opened, clock=lambda: float(next(ticks)))
+    with pytest.raises(ModelError, match="too large or too slow"):
+        embed(opened, "tiny", ["one"], SINGLE)
+    assert len(reads) < READS
 
 
-def test_the_client_goes_through_the_proxy_and_the_os_trust_store(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+def test_a_busy_endpoint_is_tried_again_after_waits() -> None:
+    """503 then 200: the second attempt answers, after the first wait."""
+    opened, waits = recorded()
+    answers = Scripted(statuses=[503])
+    opened = replace(opened, http=scripted(answers).http)
+    assert embed(opened, "tiny", ["undo"], DOCUMENTS).shape == (1, DIMENSIONS)
+    assert waits == [1.0]
+
+
+def test_three_failures_give_up_and_a_refusal_is_not_retried() -> None:
+    """Three 503s: refused after waiting 1 then 4 seconds. A 400: refused at once."""
+    answers = Scripted(statuses=[503, 503, 503, 400])
+    opened, waits = recorded()
+    opened = replace(opened, http=scripted(answers).http)
+    with pytest.raises(RefusedError, match="answered 503"):
+        embed(opened, "tiny", ["undo"], DOCUMENTS)
+    assert (len(answers.asked), waits) == (DOCUMENTS.attempts, [1.0, 4.0])
+    with pytest.raises(RefusedError, match="answered 400"):
+        embed(opened, "tiny", ["undo"], DOCUMENTS)
+    assert len(answers.asked) == DOCUMENTS.attempts + 1
+
+
+def test_a_query_the_probe_and_the_list_of_models_make_one_attempt() -> None:
+    """A search falls back to words at once: nothing waits on retries."""
+    answers = Scripted()
+    embedder = tiny(answers)
+    answers.statuses = [503]
+    answers.tags = 503
+    with pytest.raises(RefusedError):
+        embedder.query("undo")
+    with pytest.raises(ModelError, match="list of models answered 503"):
+        connect(embedder.endpoint, "tiny")
+    answers.tags = 200
+    answers.statuses = [503]
+    with pytest.raises(RefusedError):
+        connect(embedder.endpoint, "tiny")
+    assert len(answers.asked) == ATTEMPTED
+
+
+def test_a_redirect_is_not_followed() -> None:
+    """A redirect could lead off the machine: it is a failure, and the only request."""
+    asked: list[str] = []
+
+    def redirect(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        return httpx.Response(307, headers={"location": "https://elsewhere.example/v1/embeddings"})
+
+    with pytest.raises(ModelError, match="answered 307"):
+        embed(answering(redirect), "tiny", ["undo"], SINGLE)
+    assert asked == [f"{URL}/embeddings"]
+
+
+def test_the_key_is_sent_only_when_set_and_never_said() -> None:
+    """A bearer token from the environment; a refusal names the variable, not the key."""
+    headers: list[str | None] = []
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        headers.append(request.headers.get("Authorization"))
+        return httpx.Response(401)
+
+    for key in ("a-secret-key", None):
+        opened = endpoint(URL, key, remote_allowed=False, transport=httpx.MockTransport(refuse))
+        with pytest.raises(ModelError, match=embedding.KEY_VARIABLE) as refused:
+            embed(opened, "tiny", ["undo"], SINGLE)
+        assert "a-secret-key" not in str(refused.value)
+    assert headers == ["Bearer a-secret-key", None]
+
+
+def test_a_missing_model_and_no_answer_say_what_to_run() -> None:
+    """A 404: pull the model, or mind the address. No answer: start Ollama."""
+    with pytest.raises(ModelError, match=r"ends in /v1\); with Ollama: ollama pull other"):
+        tiny(model="other")
+
+    def down(request: httpx.Request) -> httpx.Response:
+        message = "refused"
+        raise httpx.ConnectError(message, request=request)
+
+    with pytest.raises(ModelError, match=r"no answer .*\(ConnectError\).*ollama serve"):
+        digest(over(down), "tiny")
+
+
+def test_the_captured_answers_of_ollama_parse() -> None:
+    """Ollama's own list of models and embeddings, as captured, read as the adapter reads them."""
+    tags = (FIXTURES / "tags.json").read_bytes()
+    answer = (FIXTURES / "embeddings.json").read_bytes()
+    row = json.loads(tags)["models"][0]
+
+    def captured(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, content=tags)
+        return httpx.Response(200, content=answer)
+
+    embedder = connect(over(captured), row["name"])
+    assert embedder.digest == row["digest"]
+    assert embedder.dimensions == len(json.loads(answer)["data"][0]["embedding"])
+    assert np.isclose(np.linalg.norm(embedder.query("undo")), 1)
+
+
+def test_the_fingerprint_changes_with_anything_that_makes_vectors(
+    monkeypatch: MonkeyPatch,
 ) -> None:
-    """On a managed network, TLS is inspected and a proxy set: the client asks the proxy, trusting the OS.
+    """The model, its digest, its dimensions, either prefix, the format; not the address."""
+    first = tiny()
+    changed = [
+        replace(first, name="other"),
+        replace(first, digest="d2" * 32),
+        replace(first, dimensions=8),
+        replace(first, prefixes=Prefixes("query: ", "")),
+        replace(first, prefixes=Prefixes("", "passage: ")),
+    ]
+    prints = {each.fingerprint for each in changed}
+    assert len(prints) == len(changed)
+    assert first.fingerprint not in prints
+    elsewhere = endpoint(
+        "http://127.0.0.2:8080/v1",
+        None,
+        remote_allowed=False,
+        transport=httpx.MockTransport(Scripted()),
+    )
+    assert connect(elsewhere, "tiny").fingerprint == first.fingerprint
+    before = first.fingerprint
+    monkeypatch.setattr(embedding, "FORMAT", embedding.FORMAT + 1)
+    assert first.fingerprint != before
 
-    A listener on this machine stands for the proxy, and the hub is a closed port of this
-    machine: a client that ignored the proxy would fail here at once, never reaching out.
-    """
+
+def test_the_digest_is_the_model_s_row_s() -> None:
+    """Among several models; a name without a tag as ``:latest``; two rows of one name."""
+    answers = Scripted({"tiny:latest": "aa", "tiny:small": "bb", "other:latest": "cc"})
+    assert digest(scripted(answers), "tiny") == "aa"
+    assert digest(scripted(answers), "tiny:small") == "bb"
+    assert digest(scripted(answers), "missing") == ""
+
+    def twice(_: httpx.Request) -> httpx.Response:
+        row = {"name": "tiny:latest", "model": "tiny:latest", "details": {}}
+        rows = [row | {"digest": "bb"}, row | {"digest": "aa"}]
+        return httpx.Response(200, json={"models": rows})
+
+    assert digest(over(twice), "tiny") == "aa+bb"
+
+
+@pytest.mark.parametrize(("status", "found"), [(404, ""), (405, "")])
+def test_a_server_without_ollama_s_list_reports_no_digest(status: int, found: str) -> None:
+    """Another OpenAI-compatible server: no digest, and the vectors follow the name alone."""
+    assert digest(scripted(Scripted(tags=status)), "tiny") == found
+
+
+def test_an_answer_not_shaped_as_ollama_s_reports_no_digest() -> None:
+    """A list of another shape is a server that reports none."""
+    assert digest(over(lambda _: httpx.Response(200, json={"data": []})), "tiny") == ""
+
+
+@pytest.mark.parametrize("status", [401, 403, 429, 500])
+def test_a_list_of_models_that_fails_is_no_empty_digest(status: int) -> None:
+    """A passing failure must not change the fingerprint and throw every vector away."""
+    with pytest.raises(ModelError, match=f"answered {status}"):
+        digest(scripted(Scripted(tags=status)), "tiny")
+
+
+def test_a_model_that_ollama_serves_from_elsewhere_is_refused_unless_allowed() -> None:
+    """A cloud model behind this machine's Ollama sends the text to ollama.com."""
+
+    def cloud(_: httpx.Request) -> httpx.Response:
+        row = {"name": "tiny:cloud", "digest": "ee", "remote_host": "https://ollama.com:443"}
+        return httpx.Response(200, json={"models": [row]})
+
+    with pytest.raises(ModelError, match="from elsewhere"):
+        digest(over(cloud), "tiny:cloud")
+    allowed = endpoint(URL, None, remote_allowed=True, transport=httpx.MockTransport(cloud))
+    assert digest(allowed, "tiny:cloud") == "ee"
+
+
+def test_a_digest_that_changes_during_documents_gives_no_vector() -> None:
+    """An ``ollama pull`` during a build: no vector of the new weights under the old print."""
+    answers = Scripted()
+    embedder = tiny(answers)
+
+    def pulled(request: httpx.Request) -> httpx.Response:
+        answer = answers(request)
+        if request.url.path == "/v1/embeddings":
+            answers.models["tiny:latest"] = "d2" * 32
+        return answer
+
+    changing = replace(embedder, endpoint=over(pulled))
+    with pytest.raises(ModelError, match="changed during this run"):
+        changing.documents(["undo"])
+
+
+def test_a_text_refused_alone_gets_no_vector_and_the_others_theirs() -> None:
+    """One text of 32 refused: 31 vectors and None; the batch of one alike."""
+    texts = [f"undo {number}" for number in range(BATCH)]
+    answers = Scripted(refused={texts[5]})
+    vectors = tiny(answers).documents(texts)
+    assert [index for index, vector in enumerate(vectors) if vector is None] == [5]
+    assert tiny(answers).documents([texts[5]]) == [None]
+
+
+def test_a_batch_whose_every_text_is_refused_alone_is_the_endpoint_s_fault() -> None:
+    """Every text refused, each alone: the endpoint is at fault, not the texts."""
+    texts = ["one", "two", "three"]
+    with pytest.raises(ModelError, match="for every text of a batch, each alone"):
+        tiny(Scripted(refused=set(texts))).documents(texts)
+
+
+def test_a_remote_endpoint_needs_the_flag_and_https() -> None:
+    """Off this machine: refused without the run's word, and over plain http even with it."""
+    with pytest.raises(SettingsError, match="not an address of this machine"):
+        endpoint("https://embeddings.example/v1", None, remote_allowed=False)
+    with pytest.raises(SettingsError, match="https only"):
+        endpoint("http://embeddings.example/v1", None, remote_allowed=True)
+    with endpoint("https://embeddings.example/v1", None, remote_allowed=True) as opened:
+        assert opened.remote_allowed
+
+
+def test_an_allowed_remote_endpoint_goes_through_the_environment_s_proxy(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """On a managed network, a proxy may be the way out: a listener here stands for it, never reaching out."""
     asked: list[bytes] = []
-    monkeypatch.setattr(model_pull, "HUB", f"https://{CLOSED}")
     for name in ("NO_PROXY", "no_proxy"):
         monkeypatch.delenv(name, raising=False)
     with socket.create_server(("127.0.0.1", 0)) as server:
         server.settimeout(LISTENED_S)
+        port = server.getsockname()[1]
+        REACHABLE.add(port)
 
         def listen() -> None:
             with suppress(TimeoutError), server.accept()[0] as connection:
@@ -422,54 +462,120 @@ def test_the_client_goes_through_the_proxy_and_the_os_trust_store(
 
         thread = threading.Thread(target=listen, daemon=True)
         thread.start()
-        monkeypatch.setenv("HTTPS_PROXY", f"http://127.0.0.1:{server.getsockname()[1]}")
-        contexts: list[object] = []
-
-        class Recorded(truststore.SSLContext):
-            def __init__(self, protocol: int) -> None:
-                contexts.append(protocol)
-                super().__init__(protocol)
-
-        monkeypatch.setattr(model_pull.truststore, "SSLContext", Recorded)
-        with pytest.raises(ModelError), download_client() as client:
-            pull(MODEL, tmp_path, client)
-        thread.join(timeout=LISTENED_S)
+        monkeypatch.setenv("HTTPS_PROXY", f"http://127.0.0.1:{port}")
+        try:
+            with (
+                endpoint("https://embeddings.example/v1", None, remote_allowed=True) as opened,
+                pytest.raises(ModelError),
+            ):
+                embed(opened, "tiny", ["undo"], Bounds(LISTENED_S, 1))
+            thread.join(timeout=LISTENED_S)
+        finally:
+            REACHABLE.discard(port)
     assert asked
-    assert asked[0].startswith(f"CONNECT {CLOSED}".encode())
-    assert contexts == [ssl.PROTOCOL_TLS_CLIENT]
+    assert asked[0].startswith(b"CONNECT embeddings.example:443")
 
 
-def run_tiny_and_wait(models: str) -> None:
-    """In a child process: load the tiny model, embed a text, and stay as telemetry would."""
-    CATALOGUE["tiny"] = entry(Path(models))
-    load("tiny", Path(models)).documents(["undo the payout"])
-    time.sleep(TELEMETRY_S)
-
-
-def test_running_a_model_sends_no_telemetry(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    """The onnxruntime library sends telemetry some seconds after its import, unless told not.
-
-    A fresh process, whose every proxy is a listener on this machine, loads and runs the
-    tiny model, with the switch set the other way in its environment: nothing comes to
-    the listener in the seconds that onnxruntime takes to send. Were it to send, it would
-    reach the listener, never the network.
-    """
-    tiny(tmp_path)
+def test_the_guard_stops_a_test_reaching_for_the_network() -> None:
+    """A port of this machine that no test opened, and a name, are both refused."""
     with socket.create_server(("127.0.0.1", 0)) as server:
-        server.settimeout(TELEMETRY_S)
-        proxy = f"http://127.0.0.1:{server.getsockname()[1]}"
-        for name in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy"):
+        port = server.getsockname()[1]
+        with pytest.raises(RuntimeError, match="reached for the network"):
+            socket.create_connection(("127.0.0.1", port))
+    with pytest.raises(RuntimeError, match="reached for the network"):
+        socket.getaddrinfo("example.com", 443)
+
+
+def check(home: Path, url: str, *arguments: str) -> int:
+    """Run ``model check`` with settings naming Qwen3 and an endpoint, from a scratch home."""
+    config = home / "config.toml"
+    config.write_text(f'model = "{QWEN}"\nembedding_url = "{url}"\n', encoding="utf-8")
+    return main(
+        ["model", "check", *arguments, "--config", str(config), "--data-dir", str(home / "data")]
+    )
+
+
+@pytest.fixture
+def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
+    """Give a scratch home, for the settings' checks."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    return tmp_path
+
+
+def test_model_check_says_the_dimensions_and_whether_the_prefixes_are_known(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Qwen3's prefixes are known; tiny's are not, and its texts go as they are."""
+    with serving(Scripted({QWEN: DIGEST, "tiny:latest": DIGEST})) as url:
+        assert check(home, url) == 0
+        assert check(home, url, "tiny") == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out == [
+        f"{QWEN}: {DIMENSIONS} dimensions, from {url}; digest {DIGEST[:12]}; its prefixes known",
+        (
+            f"tiny: {DIMENSIONS} dimensions, from {url}; digest {DIGEST[:12]};"
+            " no prefixes known: texts embedded as they are"
+        ),
+    ]
+
+
+def test_model_check_says_what_to_run(home: Path, capsys: CaptureFixture[str]) -> None:
+    """A model not pulled: ``ollama pull``. Nothing answering: ``ollama serve``. Exit 1."""
+    with serving(Scripted()) as url:
+        assert check(home, url) == NOT_READY
+    assert f"not ready: {QWEN}: not there" in capsys.readouterr().err
+    with nothing_listening() as url:
+        assert check(home, url) == NOT_READY
+    assert "ollama serve" in capsys.readouterr().err
+
+
+def test_model_check_refuses_an_endpoint_elsewhere_without_the_flag(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Even a probe is text sent away: exit 2, before any connection."""
+    assert check(home, "https://embeddings.example/v1") == REFUSED
+    assert "refused: embedding_url: not an address of this machine" in capsys.readouterr().err
+    assert check(home, "http://embeddings.example/v1", "--allow-remote-embeddings") == REFUSED
+    assert "over https only" in capsys.readouterr().err
+
+
+def test_proxies_are_ignored_on_this_machine(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Every proxy set to a port where nothing listens: the endpoint here is still reached."""
+    with nothing_listening() as dead:
+        proxy = dead.removesuffix("/v1")
+        for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy"):
             monkeypatch.setenv(name, proxy)
         for name in ("NO_PROXY", "no_proxy"):
             monkeypatch.delenv(name, raising=False)
-        monkeypatch.setenv("ORT_DISABLE_TELEMETRY", "0")
-        child = multiprocessing.get_context("spawn").Process(
-            target=run_tiny_and_wait, args=(str(tmp_path),)
-        )
-        child.start()
-        try:
-            with pytest.raises(TimeoutError):
-                server.accept()
-        finally:
-            child.kill()
-            child.join()
+        with serving(Scripted({QWEN: DIGEST})) as url:
+            assert check(home, url) == 0
+    assert "its prefixes known" in capsys.readouterr().out
+
+
+@pytest.mark.skipif(LIVE is None, reason="set ATLASSIAN_OFFLINE_MCP_LIVE_MODEL to a pulled model")
+def test_a_model_in_a_local_ollama_embeds_by_meaning() -> None:
+    """Unit vectors; a paraphrase nearer than another topic; a digest, the same twice."""
+    model = str(LIVE)
+    REACHABLE.add(httpx.URL(DEFAULT_EMBEDDING_URL).port or 0)
+    try:
+        with endpoint(DEFAULT_EMBEDDING_URL, None, remote_allowed=False) as opened:
+            embedder = connect(opened, model)
+            documents = embedder.documents(
+                [
+                    "To undo a bad release of the payout service, roll back to the previous image.",
+                    "The Paris office canteen opens at noon and closes at two.",
+                ]
+            )
+            query = embedder.query("how do I revert a broken deployment of the payments service?")
+            again = connect(opened, model).fingerprint
+    finally:
+        REACHABLE.discard(httpx.URL(DEFAULT_EMBEDDING_URL).port or 0)
+    matrix = np.array(documents)
+    assert matrix.shape == (2, embedder.dimensions)
+    assert np.allclose(np.linalg.norm(matrix, axis=1), 1, atol=1e-5)
+    near, far = (query @ matrix.T)[0]
+    assert near > far
+    assert embedder.digest
+    assert again == embedder.fingerprint

@@ -1,22 +1,22 @@
-"""Vectors in the index: each piece embedded once per model, kept across builds (plan 011)."""
+"""Vectors in the index: each piece embedded once per model, kept across builds (011, 018)."""
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 
 from atlassian_offline_mcp.adapters import vector_store
-from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError, load
+from atlassian_offline_mcp.adapters.embedding import ModelError
 from atlassian_offline_mcp.adapters.sqlite_index import reading
 from atlassian_offline_mcp.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.cli import main
 from atlassian_offline_mcp.domain.search import Embedded
+from tests.endpoint import DIMENSIONS, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, fillers, page, write
-from tests.tiny_model import DIMENSIONS, registered
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from numpy.typing import NDArray
 
-    from atlassian_offline_mcp.adapters.embedding import OnnxEmbedder
+    from atlassian_offline_mcp.adapters.embedding import ApiEmbedder
 
 BODY = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
 FILLER_PAGES = 5
@@ -37,7 +37,7 @@ FAILED = 1
 class Counting:
     """An embedder that counts the texts it embeds, and may fail after some calls."""
 
-    inner: OnnxEmbedder
+    inner: ApiEmbedder
     texts: list[str] = field(default_factory=list)
     fail_after: int | None = None
 
@@ -56,10 +56,10 @@ class Counting:
         """The inner model's dimensions."""
         return self.inner.dimensions
 
-    def documents(self, texts: Sequence[str]) -> NDArray[np.float32]:
+    def documents(self, texts: Sequence[str]) -> list[NDArray[np.float32] | None]:
         """Count, then embed; fail as a model would once ``fail_after`` calls are done."""
         if self.fail_after is not None and len(self.texts) >= self.fail_after:
-            message = "tiny: does not embed (Fail)"
+            message = "tiny: the endpoint answered 500"
             raise ModelError(message)
         self.texts += texts
         return self.inner.documents(texts)
@@ -71,13 +71,12 @@ class Counting:
 
 @pytest.fixture
 def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
-    """Give a data directory whose mirror has a few pages, and the tiny model pulled."""
+    """Give a data directory whose mirror has a few pages."""
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     fillers(tmp_path / "data" / "docs", FILLER_PAGES)
     write(tmp_path / "data" / "docs", page("196845", "Rollback"), BODY)
-    registered(tmp_path / "data" / "models", monkeypatch)
     return tmp_path / "data"
 
 
@@ -86,17 +85,17 @@ def build(data: Path, embedder: Counting) -> None:
     build_index(data / "docs", data / "index.sqlite", MOMENT, Embedding(embedder, data / "v.db"))
 
 
-def counting(data: Path) -> Counting:
+def counting() -> Counting:
     """Return a counting embedder over the tiny model."""
-    return Counting(load("tiny", data / "models"))
+    return Counting(tiny())
 
 
 def test_an_index_with_a_model_holds_a_unit_vector_for_every_piece(data: Path) -> None:
     """Every section has a piece here, each with the model's dimensions and unit length."""
-    embedder = counting(data)
+    embedder = counting()
     build(data, embedder)
     with reading(data / "index.sqlite") as reader:
-        assert reader.embedded() == Embedded("tiny", CATALOGUE["tiny"].fingerprint, DIMENSIONS)
+        assert reader.embedded() == Embedded("tiny", tiny().fingerprint, DIMENSIONS)
         pieces = reader.pieces()
         assert len(pieces.documents) == reader.summary().sections == len(embedder.texts)
         assert np.allclose(np.linalg.norm(pieces.matrix, axis=1), 1)
@@ -105,26 +104,24 @@ def test_an_index_with_a_model_holds_a_unit_vector_for_every_piece(data: Path) -
 
 def test_a_rebuild_embeds_only_the_pieces_that_changed(data: Path) -> None:
     """One section edited: one text embedded; the vectors equal a fresh build's."""
-    build(data, counting(data))
+    build(data, counting())
     write(data / "docs", page("196845", "Rollback"), BODY.replace("seller", "sellers"))
-    again = counting(data)
+    again = counting()
     build(data, again)
     assert again.texts == ["Rollback\nRelease\nThe deploy of the sellers service."]
     with reading(data / "index.sqlite") as reader:
         kept = reader.pieces().matrix
     (data / "v.db").unlink()
-    build(data, counting(data))
+    build(data, counting())
     with reading(data / "index.sqlite") as reader:
         assert np.array_equal(reader.pieces().matrix, kept)
 
 
-def test_another_fingerprint_reuses_no_vector(data: Path, monkeypatch: MonkeyPatch) -> None:
-    """The same name with another prefix is another model: every text is embedded again."""
-    first = counting(data)
+def test_another_fingerprint_reuses_no_vector(data: Path) -> None:
+    """The same name with another digest is other weights: every text is embedded again."""
+    first = counting()
     build(data, first)
-    changed = replace(CATALOGUE["tiny"], document_prefix="alpha ")
-    monkeypatch.setitem(CATALOGUE, "tiny", changed)
-    second = counting(data)
+    second = Counting(tiny(Scripted({"tiny:latest": "d2" * 32})))
     build(data, second)
     assert len(second.texts) == len(first.texts)
 
@@ -134,23 +131,25 @@ def test_an_interrupted_build_keeps_the_batches_it_finished(
 ) -> None:
     """A model failing after its first batch: the old index stays, that batch is kept."""
     monkeypatch.setattr(vector_store, "BATCH", 2)
-    failing = Counting(load("tiny", data / "models"), fail_after=2)
+    failing = Counting(tiny(), fail_after=2)
     with pytest.raises(ModelError):
         build(data, failing)
     assert not (data / "index.sqlite").exists()
     assert len(failing.texts) == vector_store.BATCH
-    resumed = counting(data)
+    resumed = counting()
     build(data, resumed)
     (data / "v.db").unlink()
-    whole = counting(data)
+    whole = counting()
     build(data, whole)
     assert sorted(failing.texts + resumed.texts) == sorted(whole.texts)
 
 
-def config(data: Path, model: str) -> list[str]:
-    """Write settings naming a model; return the options that point the command at them."""
+def config(data: Path, model: str, url: str) -> list[str]:
+    """Write settings naming a model and an endpoint; give the options that point at them."""
     settings = data.parent / "config.toml"
-    settings.write_text(f"model = {json.dumps(model)}\n", encoding="utf-8")
+    settings.write_text(
+        f"model = {json.dumps(model)}\nembedding_url = {json.dumps(url)}\n", encoding="utf-8"
+    )
     return ["--config", str(settings), "--data-dir", str(data)]
 
 
@@ -158,29 +157,49 @@ def test_the_command_embeds_with_the_settings_model(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
     """``index`` names the model and what it embedded; the next run embeds nothing."""
-    assert main(["index", *config(data, "tiny")]) == 0
-    out = capsys.readouterr().out
-    assert "pieces by meaning, with tiny;" in out
-    assert main(["index", *config(data, "tiny")]) == 0
+    with serving(Scripted()) as url:
+        assert main(["index", *config(data, "tiny", url)]) == 0
+        out = capsys.readouterr().out
+        assert "pieces by meaning, with tiny (no prefixes known: texts as they are);" in out
+        assert main(["index", *config(data, "tiny", url)]) == 0
     assert "; 0 embedded now, the others kept" in capsys.readouterr().out
 
 
-def test_a_model_whose_files_changed_leaves_the_index_in_place(
+def test_an_endpoint_that_stops_answering_leaves_the_index_in_place(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """A broken model fails the build: the index keeps its vectors, and the exit says so."""
-    assert main(["index", *config(data, "tiny")]) == 0
+    """Ollama not started: the build fails, the index keeps its vectors, and the exit says why."""
+    with serving(Scripted()) as url:
+        assert main(["index", *config(data, "tiny", url)]) == 0
     with reading(data / "index.sqlite") as reader:
         before = reader.summary()
-    graph = data / "models" / "tiny" / "model.onnx"
-    content = bytearray(graph.read_bytes())
-    content[-1] ^= 1
-    graph.write_bytes(bytes(content))
     write(data / "docs", page("196846", "Added since"), BODY)
-    assert main(["index", *config(data, "tiny")]) == FAILED
-    assert "index not built: tiny: files not as pinned" in capsys.readouterr().err
+    capsys.readouterr()
+    with nothing_listening() as url:
+        assert main(["index", *config(data, "tiny", url)]) == FAILED
+    err = capsys.readouterr().err
+    assert "index not built: no answer from the embedding endpoint" in err
+    assert "ollama serve" in err
+    assert 'or set search_mode = "lexical" to index by words alone' in err
     with reading(data / "index.sqlite") as reader:
         assert reader.summary() == before
+
+
+def test_a_piece_the_model_refuses_is_named_and_asked_again(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The others are embedded, the index replaced, the exit 1; the next build asks again."""
+    refused = "Rollback\nRelease\nThe deploy of the seller service."
+    answers = Scripted(refused={refused})
+    with serving(answers) as url:
+        assert main(["index", *config(data, "tiny", url)]) == FAILED
+        err = capsys.readouterr().err
+        assert "not embedded: a piece of confluence/ENG/196845-rollback.md" in err
+        with reading(data / "index.sqlite") as reader:
+            assert len(reader.pieces().documents) == reader.summary().sections - 1
+        asked = sum(refused in each for each in answers.asked)
+        assert main(["index", *config(data, "tiny", url)]) == FAILED
+        assert sum(refused in each for each in answers.asked) > asked
 
 
 def test_two_runs_share_the_store_at_once(tmp_path: Path) -> None:

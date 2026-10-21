@@ -15,10 +15,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
 DEFAULT_DATA_DIR = "~/atlassian-offline-mcp"
-# The embedding model that indexes by meaning; the catalogue of adapters.embedding names
-# the others. Chosen by plan 011's evaluation, which multilingual-e5-small all but tied,
-# and won on French questions.
-DEFAULT_MODEL = "bge-small-en-v1.5"
+# The embedding model that indexes by meaning, as the endpoint names it. Chosen by plan
+# 018 from published retrieval scores: the best in English, French not needed for now.
+DEFAULT_MODEL = "qwen3-embedding:0.6b"
 MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
 # The OpenAI-compatible API that embeds: Ollama on this machine, where it listens.
 DEFAULT_EMBEDDING_URL = "http://127.0.0.1:11434/v1"
@@ -72,11 +71,6 @@ class Settings:
         return self.data_dir / "index.sqlite"
 
     @property
-    def models(self) -> Path:
-        """The embedding models pulled, one folder each."""
-        return self.data_dir / "models"
-
-    @property
     def vectors(self) -> Path:
         """The vectors embedded so far, kept across index builds."""
         return self.data_dir / "vectors.sqlite"
@@ -103,7 +97,6 @@ class Settings:
             self.raw,
             self.docs,
             self.index,
-            self.models,
             self.vectors,
             self.evaluations,
             self.session,
