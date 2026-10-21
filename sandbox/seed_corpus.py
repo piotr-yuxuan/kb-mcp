@@ -702,7 +702,9 @@ def seed_pages(
         if check and action != "leave":
             # The hash is of pandoc's output: another pandoc version may write other HTML.
             pandoc = (matched[key].source or {}).get("pandoc") if key in matched else None
-            cause = f", written with pandoc {pandoc}" if pandoc else ""
+            local = pypandoc.get_pandoc_version()
+            differs = pandoc and pandoc != local
+            cause = f", written with pandoc {pandoc}, here {local}" if differs else ""
             problems.append(f"page {key}: would {action}{cause}")
         elif action != "leave":
             sys.stdout.write(f"{action} page {key}\n")
@@ -776,7 +778,9 @@ def seed_ideas(
     # Search lags writes, so a run soon after another may create an idea twice.
     found = Counter(issue["fields"]["summary"] for issue in listed["issues"])
     problems = [
-        f"idea {name!r} is in {IDEAS_PROJECT} {n} times" for name, n in found.items() if n > 1
+        f"idea {name!r} is in {IDEAS_PROJECT} {n} times"
+        for name, n in found.items()
+        if n > 1 and name in summaries
     ]
     counts = dict.fromkeys(("create", "update", "leave"), 0)
     for idea in ideas.values():

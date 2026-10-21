@@ -471,10 +471,13 @@ def test_tickets_compare_with_their_issues_by_key(tmp_path: Path) -> None:
     issues = {ticket.key: issue(ticket) for ticket in tickets}
     assert compare_tickets(tickets, issues, "sprints", sprints) == []
     for changes in (
-        {"sprints": [{"id": 100 + SPRINTS - 1}]},
-        {"parent": None},
-        {"resolutiondate": at(timeline(running).created)},
+        {"summary": "Another summary"},
         {"status": {"name": "To Do"}},
+        {"resolution": {"name": "Done"}},
+        {"parent": None},
+        {"created": at(timeline(epic).created)},
+        {"resolutiondate": at(timeline(running).created)},
+        {"sprints": [{"id": 100 + SPRINTS - 1}]},
     ):
         changed = issues | {"ENG-32": issue(running, **changes)}
         assert compare_tickets(tickets, changed, "sprints", sprints) == [
@@ -495,9 +498,12 @@ def calendar(number: int, state: str) -> dict:
 
 def test_sprints_compare_with_the_calendar() -> None:
     """Every sprint is closed but the last, which is active, each on its calendar dates."""
-    sprints = {n: calendar(n, "active" if n == SPRINTS else "closed") for n in range(1, 41)}
+    numbers = range(1, SPRINTS + 1)
+    sprints = {n: calendar(n, "active" if n == SPRINTS else "closed") for n in numbers}
     assert compare_sprints(sprints) == []
     late = sprints | {3: calendar(4, "closed") | {"id": 3}}
+    long = sprints | {5: calendar(5, "closed") | {"endDate": calendar(6, "closed")["endDate"]}}
+    assert compare_sprints(long) == ["sprint 5 differs from the calendar"]
     waiting = sprints | {SPRINTS: {"id": SPRINTS, "state": "future"}}
     closed = sprints | {SPRINTS: calendar(SPRINTS, "closed")}
     assert compare_sprints(late) == ["sprint 3 differs from the calendar"]
@@ -511,11 +517,12 @@ def test_sprints_advance_in_order_and_the_last_stays_active() -> None:
 
     def answer(request: httpx.Request) -> httpx.Response:
         """Record each update of a sprint."""
-        sent.append((int(request.url.path.rpartition("/")[2]), json.loads(request.content)))
+        sprint_id = int(request.url.path.rpartition("/")[2])
+        sent.append((sprint_id - 100, json.loads(request.content)))
         return httpx.Response(200, json={})
 
     states = {1: "closed", 2: "active"} | dict.fromkeys(range(3, SPRINTS + 1), "future")
-    sprints = {n: {"id": n, "state": state} for n, state in states.items()}
+    sprints = {n: {"id": 100 + n, "state": state} for n, state in states.items()}
     with httpx.Client(
         base_url="https://site.example.com", transport=httpx.MockTransport(answer)
     ) as client:
