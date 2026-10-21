@@ -26,6 +26,7 @@ import json
 import os
 import posixpath
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -68,6 +69,8 @@ CLOSED = frozenset({"Done", "Won't Do"})
 STATUSES = CLOSED | {"In Progress", "To Do"}
 TICKET_TYPES = frozenset({"Story", "Task", "Bug"})
 PRIORITIES = frozenset({"Highest", "High", "Medium", "Low", "Lowest"})
+# How Jira's REST API writes dates.
+JIRA_DATE = "%Y-%m-%dT%H:%M:%S.%f%z"
 # The date format to choose in the CSV importer's wizard: yyyy-MM-dd HH:mm. The importer
 # reads dates in the importing account's time zone, so they are written in it.
 CSV_DATE = "%Y-%m-%d %H:%M"
@@ -171,6 +174,11 @@ class Ticket:
     span: tuple[int, int]
     place: tuple[int, int]
     source: str
+
+    @property
+    def jira_status(self) -> tuple[str, str | None]:
+        """The ticket's status and resolution in Jira's workflow: Won't Do is a resolution."""
+        return ("Done", self.status) if self.status in CLOSED else (self.status, None)
 
 
 @dataclass(frozen=True)
@@ -362,11 +370,6 @@ def walk(value: object, rewrite: Callable[[dict], list[dict]]) -> object:
     return result
 
 
-def cdata(text: str) -> str:
-    """Wrap a text in CDATA, splitting any ``]]>`` it holds."""
-    return "<![CDATA[" + text.replace("]]>", "]]]]><![CDATA[>") + "]]>"
-
-
 def raw(kind: str, markup: str, markup_format: str = "html") -> dict:
     """Make a pandoc node of raw markup, of kind RawBlock or RawInline."""
     return {"t": kind, "c": [markup_format, markup]}
@@ -385,11 +388,13 @@ def storage_node(node: dict, key: str, titles: Mapping[str, str], linked: set[st
             message = f"{key}: code language {language!r} is not allowed"
             raise ValueError(message)
         parameter = f'<ac:parameter ac:name="language">{language}</ac:parameter>'
+        # CDATA cannot hold ]]>, so it is split across two sections.
+        body = "<![CDATA[" + code.replace("]]>", "]]]]><![CDATA[>") + "]]>"
         return [
             raw(
                 "RawBlock",
                 f'<ac:structured-macro ac:name="code">{parameter if language != "text" else ""}'
-                f"<ac:plain-text-body>{cdata(code)}</ac:plain-text-body></ac:structured-macro>",
+                f"<ac:plain-text-body>{body}</ac:plain-text-body></ac:structured-macro>",
             )
         ]
     if kind == "Div" and content[0][1] and content[0][1][0] in PANELS:
@@ -489,7 +494,7 @@ def ticket_rows(
     ]
     for ticket in tickets:
         line = timeline(ticket)
-        closed = ticket.status in CLOSED
+        status, resolution = ticket.jira_status
         notes = [
             f"{date.astimezone(zone).strftime(CSV_DATE)};{account_id};{text}"
             for date, text in zip(line.comments, ticket.comments, strict=True)
@@ -501,8 +506,8 @@ def ticket_rows(
                 (ticket.parent or "").removeprefix(f"{TICKET_PROJECT}-"),
                 ticket.summary,
                 ticket.type,
-                "Done" if closed else ticket.status,
-                ticket.status if closed else "",
+                status,
+                resolution or "",
                 ticket.priority,
                 line.created.astimezone(zone).strftime(CSV_DATE),
                 line.resolved.astimezone(zone).strftime(CSV_DATE) if line.resolved else "",
@@ -629,6 +634,7 @@ def write_page(
         "key": page.key,
         "sha256": hashlib.sha256(storage.encode()).hexdigest(),
         "version": written["version"]["number"],
+        "pandoc": pypandoc.get_pandoc_version(),
     }
     if live is None or live.property_id is None:
         call(
@@ -694,7 +700,10 @@ def seed_pages(
         action = decide(page.title, parent_id, digest, matched.get(key))
         counts[action] += 1
         if check and action != "leave":
-            problems.append(f"page {key}: would {action}")
+            # The hash is of pandoc's output: another pandoc version may write other HTML.
+            pandoc = (matched[key].source or {}).get("pandoc") if key in matched else None
+            cause = f", written with pandoc {pandoc}" if pandoc else ""
+            problems.append(f"page {key}: would {action}{cause}")
         elif action != "leave":
             sys.stdout.write(f"{action} page {key}\n")
             sys.stdout.flush()
@@ -762,16 +771,24 @@ def seed_ideas(
         message = f"more than 100 ideas in {IDEAS_PROJECT}"
         raise RuntimeError(message)
     issues = {issue["fields"]["summary"]: issue for issue in listed["issues"]}
+    summaries = {idea.summary for idea in ideas.values()}
     present = {idea.key for idea in ideas.values() if idea.summary in issues}
-    problems = []
+    # Search lags writes, so a run soon after another may create an idea twice.
+    found = Counter(issue["fields"]["summary"] for issue in listed["issues"])
+    problems = [
+        f"idea {name!r} is in {IDEAS_PROJECT} {n} times" for name, n in found.items() if n > 1
+    ]
+    counts = dict.fromkeys(("create", "update", "leave"), 0)
     for idea in ideas.values():
         description = to_jira(idea.markdown, idea.source, urls)
         value = {"key": idea.key, "sha256": hashlib.sha256(description.encode()).hexdigest()}
         issue = issues.get(idea.summary)
-        if issue is not None and issue.get("properties", {}).get(PROPERTY_KEY) == value:
-            continue
-        if check:
-            problems.append(f"idea {idea.key}: would {'update' if issue else 'create'}")
+        unchanged = issue is not None and issue.get("properties", {}).get(PROPERTY_KEY) == value
+        action = "leave" if unchanged else "update" if issue else "create"
+        counts[action] += 1
+        if check and action != "leave":
+            problems.append(f"idea {idea.key}: would {action}")
+        if check or action == "leave":
             continue
         fields = {"summary": idea.summary, "description": description}
         if issue is None:
@@ -783,9 +800,14 @@ def seed_ideas(
         call(client, "PUT", f"/rest/api/3/issue/{key}/properties/{PROPERTY_KEY}", json=value)
     if check:
         sys.stdout.writelines(
-            f"idea\t{issue['key']}\t{issue['fields']['updated']}\t{summary}\n"
+            f"{'idea' if summary in summaries else 'other idea'}\t{issue['key']}"
+            f"\t{issue['fields']['updated']}\t{summary}\n"
             for summary, issue in sorted(issues.items(), key=lambda item: item[1]["id"])
         )
+    done = "to create, {} to update" if check else "created, {} updated"
+    sys.stdout.write(
+        f"ideas: {counts['create']} {done.format(counts['update'])}, {counts['leave']} unchanged\n"
+    )
     return problems, present
 
 
@@ -829,9 +851,8 @@ def prepare_jira(client: httpx.Client, *, check: bool) -> tuple[list[str], dict[
         if check:
             problems.append(f"sprint {number} is absent")
             continue
+        # Jira keeps no dates on a future sprint; they are set when the sprint starts.
         planned = {"name": f"{TICKET_PROJECT} Sprint {number}", "originBoardId": boards["scrum"]}
-        planned |= {"startDate": jira_time(sprint_start(number))}
-        planned |= {"endDate": jira_time(sprint_start(number + 1))}
         sprints[number] = call(client, "POST", "/rest/agile/1.0/sprint", json=planned)
     return problems, sprints
 
@@ -845,7 +866,7 @@ def read_issues(client: httpx.Client) -> tuple[dict[str, dict], str]:
     issues: dict[str, dict] = {}
     params = {
         "jql": f"project = {TICKET_PROJECT} ORDER BY key ASC",
-        "fields": f"summary,status,resolution,created,updated,{sprint_field}",
+        "fields": f"summary,status,resolution,resolutiondate,parent,created,updated,{sprint_field}",
         "maxResults": 100,
     }
     for _ in range(MAX_TICKET_PAGES):
@@ -864,7 +885,10 @@ def compare_tickets(
     sprint_field: str,
     sprints: Mapping[int, dict],
 ) -> list[str]:
-    """Compare each ticket with the issue of its key: summary, status, creation and sprint."""
+    """Compare each ticket with the issue of its key.
+
+    Summary, status, resolution, parent, creation and resolution dates, and sprint.
+    """
     problems = []
     for ticket in tickets:
         issue = issues.get(ticket.key)
@@ -872,19 +896,43 @@ def compare_tickets(
             problems.append(f"ticket {ticket.key} is absent")
             continue
         fields, line = issue["fields"], timeline(ticket)
-        closed = ticket.status in CLOSED
-        resolution = (fields.get("resolution") or {}).get("name")
-        created = datetime.strptime(fields["created"], "%Y-%m-%dT%H:%M:%S.%f%z")
-        sprint_ids = {sprint["id"] for sprint in fields.get(sprint_field) or []}
-        wanted = {sprints[line.sprint]["id"]} if line.sprint else set()
-        found = (fields["summary"], fields["status"]["name"], resolution, created.astimezone(UTC))
+        dates = [
+            datetime.strptime(fields[name], JIRA_DATE).astimezone(UTC) if fields[name] else None
+            for name in ("created", "resolutiondate")
+        ]
+        found = (
+            fields["summary"],
+            fields["status"]["name"],
+            (fields.get("resolution") or {}).get("name"),
+            (fields.get("parent") or {}).get("key"),
+            *dates,
+            {sprint["id"] for sprint in fields.get(sprint_field) or []},
+        )
         expected = (
             ticket.summary,
-            "Done" if closed else ticket.status,
-            ticket.status if closed else None,
+            *ticket.jira_status,
+            ticket.parent,
+            line.created,
+            line.resolved,
+            {sprints[line.sprint]["id"]} if line.sprint else set(),
         )
-        if found[:3] != expected or found[3] != line.created or sprint_ids != wanted:
+        if found != expected:
             problems.append(f"ticket {ticket.key} differs from its data")
+    return problems
+
+
+def compare_sprints(sprints: Mapping[int, dict]) -> list[str]:
+    """Compare each sprint with the calendar: closed but the last, which is active."""
+    problems = []
+    for number in range(1, SPRINTS + 1):
+        sprint = sprints[number]
+        state = "active" if number == SPRINTS else "closed"
+        dates = [
+            datetime.fromisoformat(sprint[name]) if name in sprint else None
+            for name in ("startDate", "endDate")
+        ]
+        if sprint["state"] != state or dates != [sprint_start(number), sprint_start(number + 1)]:
+            problems.append(f"sprint {number} differs from the calendar")
     return problems
 
 
@@ -923,7 +971,10 @@ def seed_tickets(
         sys.stdout.writelines(
             f"ticket\t{key}\t{issue['fields']['updated']}\n" for key, issue in issues.items()
         )
-        return compare_tickets(tickets, issues, sprint_field, sprints), set(issues)
+        problems = compare_sprints(sprints) + compare_tickets(
+            tickets, issues, sprint_field, sprints
+        )
+        return problems, set(issues)
     if not absent:
         advance_sprints(client, sprints)
         return [], set(issues)

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+import json
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
+import httpx
 import pytest
 import yaml
 from defusedxml import ElementTree
@@ -17,6 +19,8 @@ from sandbox.seed_corpus import (
     LinkTargets,
     LivePage,
     Page,
+    advance_sprints,
+    compare_sprints,
     compare_tickets,
     decide,
     match,
@@ -439,31 +443,91 @@ def test_tickets_lay_out_as_csv_rows_of_the_importer(tmp_path: Path) -> None:
 
 
 def test_tickets_compare_with_their_issues_by_key(tmp_path: Path) -> None:
-    """An issue matches when its summary, status, resolution, creation and sprint do."""
+    """An issue matches when its summary, status, resolution, parent, dates and sprint do."""
     epic, abandoned, running = epic_file(tmp_path, [33, SPRINTS], ["Won't Do", "In Progress"])
     sprints = {number: {"id": 100 + number} for number in range(1, SPRINTS + 1)}
+    london = ZoneInfo("Europe/London")
 
-    def issue(summary: str, status: str, resolution: str | None, created: str, sprint: int) -> dict:
-        """Build an issue as Jira's search returns it."""
-        fields = {"summary": summary, "status": {"name": status}, "created": created}
-        fields |= {"resolution": {"name": resolution} if resolution else None}
-        return {"fields": fields | {"sprints": [{"id": 100 + sprint}] if sprint else []}}
+    def at(moment: datetime | None) -> str | None:
+        """Write a moment as Jira does, in another time zone."""
+        return moment.astimezone(london).strftime("%Y-%m-%dT%H:%M:%S.000%z") if moment else None
 
-    def at(ticket: Ticket) -> str:
-        """Write a ticket's creation as Jira does, in another time zone."""
-        created = timeline(ticket).created.astimezone(ZoneInfo("Europe/London"))
-        return created.strftime("%Y-%m-%dT%H:%M:%S.000%z")
+    def issue(ticket: Ticket, **changes: object) -> dict:
+        """Build the issue Jira's search would return for a ticket, with some fields changed."""
+        line = timeline(ticket)
+        status, resolution = ticket.jira_status
+        fields = {
+            "summary": ticket.summary,
+            "status": {"name": status},
+            "resolution": {"name": resolution} if resolution else None,
+            "parent": {"key": ticket.parent} if ticket.parent else None,
+            "created": at(line.created),
+            "resolutiondate": at(line.resolved),
+            "sprints": [{"id": 100 + line.sprint}] if line.sprint else [],
+        }
+        return {"fields": fields | changes}
 
-    sprint = timeline(abandoned).sprint or 0
-    issues = {
-        "ENG-1": issue("Epic", "In Progress", None, at(epic), 0),
-        "ENG-31": issue("Ticket 0", "Done", "Won't Do", at(abandoned), sprint),
-        "ENG-32": issue("Ticket 1", "In Progress", None, at(running), SPRINTS - 1),
-    }
     tickets = [epic, abandoned, running]
-    assert compare_tickets(tickets, issues, "sprints", sprints) == [
-        "ticket ENG-32 differs from its data"
-    ]
+    issues = {ticket.key: issue(ticket) for ticket in tickets}
+    assert compare_tickets(tickets, issues, "sprints", sprints) == []
+    for changes in (
+        {"sprints": [{"id": 100 + SPRINTS - 1}]},
+        {"parent": None},
+        {"resolutiondate": at(timeline(running).created)},
+        {"status": {"name": "To Do"}},
+    ):
+        changed = issues | {"ENG-32": issue(running, **changes)}
+        assert compare_tickets(tickets, changed, "sprints", sprints) == [
+            "ticket ENG-32 differs from its data"
+        ]
     assert compare_tickets(tickets, {}, "sprints", sprints) == [
         f"ticket {ticket.key} is absent" for ticket in tickets
     ]
+
+
+def calendar(number: int, state: str) -> dict:
+    """Describe a sprint as Jira's Agile API returns it once started on the calendar."""
+    dates = {"startDate": sprint_start(number), "endDate": sprint_start(number + 1)}
+    return {"id": number, "state": state} | {
+        name: date.strftime("%Y-%m-%dT%H:%M:%S.000Z") for name, date in dates.items()
+    }
+
+
+def test_sprints_compare_with_the_calendar() -> None:
+    """Every sprint is closed but the last, which is active, each on its calendar dates."""
+    sprints = {n: calendar(n, "active" if n == SPRINTS else "closed") for n in range(1, 41)}
+    assert compare_sprints(sprints) == []
+    late = sprints | {3: calendar(4, "closed") | {"id": 3}}
+    waiting = sprints | {SPRINTS: {"id": SPRINTS, "state": "future"}}
+    closed = sprints | {SPRINTS: calendar(SPRINTS, "closed")}
+    assert compare_sprints(late) == ["sprint 3 differs from the calendar"]
+    assert compare_sprints(waiting) == [f"sprint {SPRINTS} differs from the calendar"]
+    assert compare_sprints(closed) == [f"sprint {SPRINTS} differs from the calendar"]
+
+
+def test_sprints_advance_in_order_and_the_last_stays_active() -> None:
+    """Each sprint starts on its dates and closes in order; the last starts, never closes."""
+    sent: list[tuple[int, dict]] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        """Record each update of a sprint."""
+        sent.append((int(request.url.path.rpartition("/")[2]), json.loads(request.content)))
+        return httpx.Response(200, json={})
+
+    states = {1: "closed", 2: "active"} | dict.fromkeys(range(3, SPRINTS + 1), "future")
+    sprints = {n: {"id": n, "state": state} for n, state in states.items()}
+    with httpx.Client(
+        base_url="https://site.example.com", transport=httpx.MockTransport(answer)
+    ) as client:
+        advance_sprints(client, sprints)
+    assert sent[0] == (2, {"state": "closed"})
+    starts = [(n, body) for n, body in sent if body["state"] == "active"]
+    closes = [n for n, body in sent if body["state"] == "closed"]
+    assert [n for n, _ in starts] == list(range(3, SPRINTS + 1))
+    assert closes == list(range(2, SPRINTS))
+    assert all(
+        body["startDate"].startswith(sprint_start(n).strftime("%Y-%m-%dT%H:%M"))
+        and body["endDate"].startswith(sprint_start(n + 1).strftime("%Y-%m-%dT%H:%M"))
+        for n, body in starts
+    )
+    assert [n for n, _ in sent] == [2, *[x for n in range(3, SPRINTS) for x in (n, n)], SPRINTS]
