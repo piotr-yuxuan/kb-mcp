@@ -47,7 +47,12 @@ def space(fields: Fields) -> Space:
 def folder(fields: Fields) -> Folder:
     """Read a folder from GET /wiki/api/v2/folders/{id}."""
     with fields.refusals():
-        return Folder(fields.text("id"), fields.text("title"), fields.optional_text("parentId"))
+        return Folder(
+            fields.text("id"),
+            fields.text("title"),
+            fields.optional_text("parentId"),
+            fields.optional_text("parentType"),
+        )
 
 
 def person(fields: Fields) -> Person:

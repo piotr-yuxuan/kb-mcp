@@ -257,7 +257,7 @@ def test_a_page_keeps_whether_its_parent_is_a_page_or_a_folder() -> None:
 def test_a_folder_is_read_with_its_title_and_parent() -> None:
     """A folder is a node of the tree, with no body."""
     assert confluence_v2.folder(Fields(v2_folder(), "folder")) == Folder(
-        "197001", "A folder", "196725"
+        "197001", "A folder", "196725", "page"
     )
 
 
@@ -329,3 +329,12 @@ def test_the_sandbox_attachment_listing_reads_as_documented() -> None:
     assert attachment.download == (
         "/wiki/rest/api/content/196845/child/attachment/att196895/download"
     )
+
+
+def test_a_listed_page_carries_no_labels_and_an_issue_may_have_no_parent() -> None:
+    """The documented absences: labels in a v2 listing, parent of a top-level issue."""
+    listed = {key: value for key, value in v2_page().items() if key not in {"labels", "body"}}
+    assert confluence_v2.document(Fields(listed, "page"), Page).labels == ()
+    issue = v3_issue()
+    del issue["fields"]["parent"]  # type: ignore[attr-defined]
+    assert jira_v3.issue(Fields(issue, "issue")).parent is None

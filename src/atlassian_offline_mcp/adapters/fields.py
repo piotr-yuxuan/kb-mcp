@@ -11,7 +11,13 @@ from atlassian_offline_mcp.domain.content import RefusedError
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-KIND_NAMES = {str: "a string", int: "an integer", dict: "an object", list: "a list"}
+KIND_NAMES = {
+    str: "a string",
+    int: "an integer",
+    bool: "a boolean",
+    dict: "an object",
+    list: "a list",
+}
 
 
 class RepresentationError(ValueError):
@@ -45,6 +51,11 @@ class Fields:
             message = f"{path}: expected a list"
             raise RepresentationError(message)
         return [cls(item, f"{path}[{index}]") for index, item in enumerate(value)]
+
+    @property
+    def value(self) -> dict[str, object]:
+        """Return the object as it was decoded, to be stored as received."""
+        return self._value
 
     @property
     def path(self) -> str:
@@ -89,6 +100,10 @@ class Fields:
     def integer(self, key: str) -> int:
         """Read an integer; a boolean is not one."""
         return cast("int", self._typed(key, int, nullable=False))
+
+    def flag(self, key: str) -> bool:
+        """Read a boolean."""
+        return cast("bool", self._typed(key, bool, nullable=False))
 
     def optional_integer(self, key: str) -> int | None:
         """Read an integer, or None when it is null."""

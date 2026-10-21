@@ -50,19 +50,26 @@ UNREADABLE = (ValueError, OSError)
 class Representation:
     """How the snapshots of one kind of document are read.
 
-    ``identity`` reads only what names the folder (id and revision), so that a response
-    whose other fields have changed is still kept, to be read once its adapter is fixed;
+    ``files`` names the responses that a snapshot of the kind must have. ``identity``
+    reads only what names the folder (id and revision), so that a response whose other
+    fields have changed is still kept, to be read once its adapter is fixed;
     ``snapshot`` reads it all.
     """
 
+    files: tuple[str, ...]
     identity: Callable[[Mapping[str, object]], tuple[str, str]]
     snapshot: Callable[[Mapping[str, object]], Snapshot]
 
 
+CONFLUENCE_FILES = (confluence_v2.DOCUMENT, confluence_v2.VIEW, confluence_v2.ATTACHMENTS)
 REPRESENTATIONS: dict[type[Document], Representation] = {
-    Page: Representation(confluence_v2.identity, partial(confluence_v2.snapshot, Page)),
-    BlogPost: Representation(confluence_v2.identity, partial(confluence_v2.snapshot, BlogPost)),
-    Issue: Representation(jira_v3.identity, jira_v3.snapshot),
+    Page: Representation(
+        CONFLUENCE_FILES, confluence_v2.identity, partial(confluence_v2.snapshot, Page)
+    ),
+    BlogPost: Representation(
+        CONFLUENCE_FILES, confluence_v2.identity, partial(confluence_v2.snapshot, BlogPost)
+    ),
+    Issue: Representation((jira_v3.ISSUE, jira_v3.COMMENTS), jira_v3.identity, jira_v3.snapshot),
 }
 
 
@@ -195,12 +202,18 @@ class RawStore:
     ) -> Path:
         """Store a snapshot as received, and return its folder.
 
-        Only the id and the revision are read, by the kind's adapter. Every file that
-        ``blobs`` names must be stored first, with ``put_blob``. A revision stored
-        already keeps its responses, and records the new blobs.
+        Every response the kind needs must be there, since a stored revision is never
+        written again; only the id and the revision are read, by the kind's adapter.
+        Every file that ``blobs`` names must be stored first, with ``put_blob``. A
+        revision stored already keeps its responses, and records the new blobs.
         """
         self._check_writing()
-        identifier, revision = REPRESENTATIONS[kind].identity(responses)
+        representation = REPRESENTATIONS[kind]
+        missing = [name for name in representation.files if name not in responses]
+        if missing:
+            message = f"a snapshot without {', '.join(missing)}"
+            raise ValueError(message)
+        identifier, revision = representation.identity(responses)
         _identifier(identifier, "id")
         if not REVISION.fullmatch(revision) or RECORD in responses:
             message = "not a revision, or a response named as the store's record"
@@ -266,7 +279,10 @@ class RawStore:
     def _read(self, kind: type[Document], folder: Path) -> Stored:
         fetched_at, blobs = self._read_record(folder)
         snapshot = REPRESENTATIONS[kind].snapshot(self.responses(folder))
-        return Stored(folder, snapshot, fetched_at, blobs)
+        # Only the snapshot's own attachments: a key of anything else names no file here.
+        known = {attachment.id for attachment in snapshot.attachments}
+        own = {key: digest for key, digest in blobs.items() if key in known}
+        return Stored(folder, snapshot, fetched_at, own)
 
     def latest(self, kind: type[Document]) -> Iterator[Stored | Unreadable]:
         """Yield the newest stored snapshot of each document of a kind, or why it is not.
@@ -347,8 +363,9 @@ class RawStore:
             message = "users: expected a list"
             raise RepresentationError(message)
         merged: dict[str, object] = {}
-        for index, user in enumerate([*kept, *users]):
-            merged[Fields(user, f"users[{index}]").text("accountId")] = user
+        for name, entries in (("users.json", kept), ("users", users)):
+            for index, user in enumerate(entries):
+                merged[Fields(user, f"{name}[{index}]").text("accountId")] = user
         _replace_synced(path, _encode([merged[key] for key in sorted(merged)]))
 
     def users(self) -> list[Person | Unreadable]:

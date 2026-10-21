@@ -74,6 +74,7 @@ class Folder:
     id: str
     title: str
     parent_id: str | None = None
+    parent_type: str | None = None  # a page or a folder, as for a page
 
     def __post_init__(self) -> None:
         """Refuse an id that could not name a node."""

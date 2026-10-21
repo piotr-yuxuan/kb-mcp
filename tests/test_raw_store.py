@@ -244,7 +244,7 @@ def test_spaces_listed_on_different_runs_are_all_kept(store: RawStore) -> None:
     assert isinstance(page, Page)
     assert page.parent_type == "page"
     assert store.listed("196613", BlogPost) == []
-    assert store.folders("196613") == [Folder("197001", "A folder", "196725")]
+    assert store.folders("196613") == [Folder("197001", "A folder", "196725", "page")]
 
 
 def test_a_space_listing_is_replaced_whole(store: RawStore) -> None:
@@ -278,3 +278,55 @@ def test_users_are_merged_across_runs_by_account_id(store: RawStore) -> None:
     store.put_users([v1_user(), v1_user(accountId="account-2", displayName="Two")])
     store.put_users([v1_user(displayName="Renamed")])
     assert store.users() == [Person("account-1", "Renamed"), Person("account-2", "Two")]
+
+
+@pytest.mark.parametrize(
+    ("kind", "missing"),
+    [(Page, confluence_v2.ATTACHMENTS), (Page, confluence_v2.VIEW), (Issue, jira_v3.COMMENTS)],
+)
+def test_a_snapshot_without_one_of_its_responses_is_refused(
+    store: RawStore, kind: type[Page | Issue], missing: str
+) -> None:
+    """A stored revision is never written again, so it must be whole when first stored."""
+    responses: dict[str, object] = (
+        page_responses(1)
+        if kind is Page
+        else {jira_v3.ISSUE: v3_issue(), jira_v3.COMMENTS: [v3_comment()]}
+    )
+    del responses[missing]
+    with pytest.raises(ValueError, match=f"a snapshot without {missing}"):
+        store.put(kind, responses, FETCHED, {})
+    assert not (store.root / kind.source).exists()
+
+
+def test_a_blob_of_another_attachment_is_not_a_file_of_this_snapshot(store: RawStore) -> None:
+    """A record naming an attachment the snapshot lacks gives it no file."""
+    digest = store.put_blob(b"image bytes")
+    store.put(Page, page_responses(1), FETCHED, {"att196895": digest, "att-elsewhere": digest})
+    [stored] = readable(store.latest(Page))
+    assert stored.blobs == {"att196895": digest}
+
+
+def test_a_user_without_an_account_id_is_named_by_its_index(store: RawStore) -> None:
+    """The refusal names the entry of the users given, not of those kept."""
+    store.put_users([v1_user()])
+    with pytest.raises(RepresentationError, match=r"^users\[0\]\.accountId: missing"):
+        store.put_users([{"displayName": "No id"}])
+    assert store.users() == [Person("account-1", "A Person")]
+
+
+@pytest.mark.parametrize(
+    "write",
+    [
+        lambda store: store.put(Page, page_responses(1), FETCHED, {}),
+        lambda store: store.put_space(v2_space(), [], [], []),
+        lambda store: store.put_users([v1_user()]),
+        lambda store: store.put_blob(b"bytes"),
+    ],
+)
+def test_every_write_needs_the_lock(tmp_path: Path, write: object) -> None:
+    """No method writes outside writing()."""
+    store = RawStore(tmp_path / "raw")
+    with pytest.raises(RuntimeError, match="only inside"):
+        write(store)  # type: ignore[operator]
+    assert not (store.root / "confluence").exists()
