@@ -6,7 +6,10 @@ written with others of that concept, which lexical search cannot.
 
 from __future__ import annotations
 
+import os
 import re
+import threading
+import time
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -18,7 +21,7 @@ from atlassian_offline_mcp.app.meaning import DEPTH, Meaning
 from atlassian_offline_mcp.app.tools import Library
 from tests.answers import parts
 from tests.mirrors import MOMENT, fillers, issue, page, write
-from tests.tiny_model import registered
+from tests.tiny_model import registered, tiny
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -26,6 +29,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from numpy.typing import NDArray
 
+    from atlassian_offline_mcp.adapters.embedding import Embedder
     from atlassian_offline_mcp.domain.settings import SearchMode
 
 DECOYS = DEPTH + 5
@@ -221,3 +225,92 @@ def test_the_ranking_for_an_evaluation_is_the_search_s(data: Path) -> None:
     ]
     mixed = next(one for one in shown if "mixed" in one.path)
     assert (mixed.section, mixed.text) == (3, "## Plan\n\nrollback deploy rollback deploy\n")
+
+
+class Loads:
+    """A model loader that records each load, and may wait or fail as told."""
+
+    def __init__(self, *, wait: float = 0.0, fail: bool = False) -> None:
+        """Load for real, after ``wait`` seconds, or fail every time."""
+        self.names: list[str] = []
+        self.wait = wait
+        self.fail = fail
+
+    def __call__(self, name: str, models: Path) -> Embedder:
+        """Record the load, then load, or fail as a broken model would."""
+        self.names.append(name)
+        time.sleep(self.wait)
+        if self.fail:
+            raise ModelError(FAILURE)
+        return load(name, models)
+
+
+def rebuild(data: Path, model: str) -> None:
+    """Build the data directory's index again, at the same moment, with ``model``."""
+    embedding = Embedding(load(model, data / "models"), data / "v.db")
+    build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
+
+
+def test_a_rebuilt_index_is_searched_with_its_own_vectors(data: Path) -> None:
+    """Built again in the same second with a nearer page: the next search finds it."""
+    tools = library(data, "semantic")
+    assert titles(tools.search("holidays"))[0] == "Handbook"
+    write(data / "docs", page("4010", "Vacation"), "vacation vacation vacation vacation\n")
+    rebuild(data, "tiny")
+    assert titles(tools.search("holidays"))[0] == "Vacation"
+
+
+def test_an_index_built_with_another_model_loads_that_model(
+    data: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The model follows the index, never the one loaded before."""
+    loads = Loads()
+    tools = Library(data / "index.sqlite", data / "docs", Meaning(data / "models", loads), "hybrid")
+    tools.search("holidays")
+    second = tiny(data / "models", name="tiny2")
+    monkeypatch.setitem(CATALOGUE, "tiny2", second)
+    rebuild(data, "tiny2")
+    tools.search("holidays")
+    tools.search("holidays")
+    assert loads.names == ["tiny", "tiny2"]
+
+
+def test_a_model_that_failed_is_tried_again_only_once_its_files_change(data: Path) -> None:
+    """No hashing of hundreds of megabytes per search: the failure is remembered."""
+    loads = Loads(fail=True)
+    tools = Library(data / "index.sqlite", data / "docs", Meaning(data / "models", loads), "hybrid")
+    for _ in range(3):
+        assert FAILURE in tools.search("holidays")
+    assert loads.names == ["tiny"]
+    graph = data / "models" / "tiny" / "model.onnx"
+    later = graph.stat().st_mtime_ns + 10**9
+    os.utime(graph, ns=(later, later))
+    tools.search("holidays")
+    assert loads.names == ["tiny", "tiny"]
+
+
+def test_searches_at_once_load_the_model_once(data: Path) -> None:
+    """The SDK runs tools in worker threads: the model is loaded under a lock."""
+    loads = Loads(wait=0.2)
+    tools = Library(data / "index.sqlite", data / "docs", Meaning(data / "models", loads), "hybrid")
+    answers: list[str] = []
+    threads = [
+        threading.Thread(target=lambda: answers.append(tools.search("holidays"))) for _ in range(3)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert loads.names == ["tiny"]
+    assert [titles(answer)[0] for answer in answers] == ["Handbook"] * 3
+
+
+def test_an_unreadable_model_falls_back_to_words(data: Path) -> None:
+    """A file that cannot be read is no tool error: words answer, and say what to do."""
+    graph = data / "models" / "tiny" / "model.onnx"
+    graph.chmod(0)
+    try:
+        answer = library(data, "hybrid").search("revert release")
+    finally:
+        graph.chmod(0o644)
+    assert "Ranked by words alone: tiny: files not as pinned; atlassian-offline-mcp model" in answer

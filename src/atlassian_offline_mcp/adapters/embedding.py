@@ -226,19 +226,19 @@ class OnnxEmbedder:
         return self._model.dimensions
 
     def _run(self, texts: Sequence[str]) -> Vectors:
-        encodings = self._tokenizer.encode_batch(list(texts))
-        ids = np.array([each.ids for each in encodings], dtype=np.int64)
-        mask = np.array([each.attention_mask for each in encodings], dtype=np.int64)
-        feed: dict[str, NDArray[np.int64] | NDArray[np.float32]] = {}
-        for name, shape in self._inputs:
-            if name.startswith(PAST):
-                feed[name] = np.zeros((len(texts), shape[1], 0, shape[3]), dtype=np.float32)
-            else:
-                feed[name] = INPUTS[name](ids, mask)
         try:
+            encodings = self._tokenizer.encode_batch(list(texts))
+            ids = np.array([each.ids for each in encodings], dtype=np.int64)
+            mask = np.array([each.attention_mask for each in encodings], dtype=np.int64)
+            feed: dict[str, NDArray[np.int64] | NDArray[np.float32]] = {
+                name: np.zeros((len(texts), shape[1], 0, shape[3]), dtype=np.float32)
+                if name.startswith(PAST)
+                else INPUTS[name](ids, mask)
+                for name, shape in self._inputs
+            }
             hidden = self._session.run([OUTPUT], feed)[0]
         except Exception as error:
-            # onnxruntime raises exceptions of its own, of no stable type.
+            # tokenizers and onnxruntime raise exceptions of their own, of no stable type.
             message = f"{self.name}: does not embed ({type(error).__name__})"
             raise ModelError(message) from error
         vectors = POOLING[self._model.pooling](hidden, mask)
@@ -269,14 +269,33 @@ def pulled(model: Model, models: Path) -> bool:
 
 
 def matches(path: Path, file: File) -> bool:
-    """Say whether a file on disk is the one pinned: its size, then its SHA-256."""
-    if not path.is_file() or path.stat().st_size != file.size:
-        return False
+    """Say whether a file on disk is the one pinned: its size, then its SHA-256.
+
+    A file that cannot be read does not match: pulling the model again replaces it.
+    """
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(CHUNK_BYTES):
-            digest.update(chunk)
+    try:
+        if not path.is_file() or path.stat().st_size != file.size:
+            return False
+        with path.open("rb") as stream:
+            while chunk := stream.read(CHUNK_BYTES):
+                digest.update(chunk)
+    except OSError:
+        return False
     return digest.hexdigest() == file.sha256
+
+
+def signature(model: Model, models: Path) -> tuple[tuple[int, int] | None, ...]:
+    """Say what a model's files are now, by size and modification time: a cheap check."""
+    found: list[tuple[int, int] | None] = []
+    for file in model.files:
+        try:
+            status = (models / model.name / file.path).stat()
+        except OSError:
+            found.append(None)
+        else:
+            found.append((status.st_size, status.st_mtime_ns))
+    return tuple(found)
 
 
 def load(name: str, models: Path) -> OnnxEmbedder:

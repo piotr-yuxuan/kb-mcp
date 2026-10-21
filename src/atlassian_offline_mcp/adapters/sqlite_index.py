@@ -12,6 +12,7 @@ import json
 import os
 import sqlite3
 import tempfile
+import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -286,6 +287,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
                     ("schema", SCHEMA),
                     ("built_at", moment(built_at)),
                     ("skipped", str(writer.skipped)),
+                    ("build", uuid.uuid4().hex),
                     ("model", embedded.model if embedded else ""),
                     ("fingerprint", embedded.fingerprint if embedded else ""),
                     ("dimensions", str(embedded.dimensions) if embedded else ""),
@@ -438,6 +440,11 @@ class Reader:
         """Say when the index was built."""
         row = self._connection.execute("SELECT value FROM meta WHERE name = 'built_at'").fetchone()
         return datetime.fromisoformat(row[0])
+
+    def build(self) -> str:
+        """Name this build of the index, unlike any other, even one of the same second."""
+        row = self._connection.execute("SELECT value FROM meta WHERE name = 'build'").fetchone()
+        return row[0]
 
     def embedded(self) -> Embedded | None:
         """Name the model of the index's vectors, or None when it was built without one."""

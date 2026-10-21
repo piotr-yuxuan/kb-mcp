@@ -14,14 +14,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.adapters import embedding
-from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError
+from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError, signature
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from datetime import datetime
     from pathlib import Path
 
-    from atlassian_offline_mcp.adapters.embedding import Embedder
+    from atlassian_offline_mcp.adapters.embedding import Embedder, Model
     from atlassian_offline_mcp.adapters.sqlite_index import Reader
     from atlassian_offline_mcp.domain.search import Filters, Pieces, Score
 
@@ -54,7 +53,9 @@ class Meaning:
         self._load = load
         self._lock = threading.Lock()  # the SDK runs tools in worker threads
         self._embedder: Embedder | None = None
-        self._pieces: tuple[datetime, Pieces] | None = None
+        self._pieces: tuple[str, Pieces] | None = None  # the build they were read from
+        # The last model that failed to load: its fingerprint, its files then, and why.
+        self._failed: tuple[str, object, str] | None = None
 
     def nearest(self, reader: Reader, query: str, filters: Filters) -> Nearest:
         """Find the documents passing the filters whose best piece is nearest the query."""
@@ -65,13 +66,7 @@ class Meaning:
         if current is None or current.fingerprint != embedded.fingerprint:
             return Nearest({}, STALE.format(name=embedded.model))
         try:
-            with self._lock:
-                if self._embedder is None or self._embedder.fingerprint != embedded.fingerprint:
-                    self._embedder = self._load(embedded.model, self._models)
-                built = reader.built_at()
-                if self._pieces is None or self._pieces[0] != built:
-                    self._pieces = (built, reader.pieces())
-                embedder, pieces = self._embedder, self._pieces[1]
+            embedder, pieces = self.prepared(reader, current)
             vector = embedder.query(query)
         except ModelError as error:
             return Nearest({}, str(error))
@@ -84,3 +79,25 @@ class Meaning:
                 for path, (score, index) in found.items()
             }
         )
+
+    def prepared(self, reader: Reader, model: Model) -> tuple[Embedder, Pieces]:
+        """Give an index's model and vectors, each loaded once, and again once changed.
+
+        The vectors are read again for each new build of the index. A model that failed
+        to load is not tried again, nor its files hashed, until its files change.
+        Raises ModelError.
+        """
+        with self._lock:
+            if self._embedder is None or self._embedder.fingerprint != model.fingerprint:
+                files = signature(model, self._models)
+                if self._failed is not None and self._failed[:2] == (model.fingerprint, files):
+                    raise ModelError(self._failed[2])
+                try:
+                    self._embedder = self._load(model.name, self._models)
+                except ModelError as error:
+                    self._failed = (model.fingerprint, files, str(error))
+                    raise
+            build = reader.build()
+            if self._pieces is None or self._pieces[0] != build:
+                self._pieces = (build, reader.pieces())
+            return self._embedder, self._pieces[1]
