@@ -141,10 +141,11 @@ The store's interface for snapshots:
 - `responses(folder)` gives the responses as received, for adapters to read what the
   domain does not yet carry (a macro's parameters in the storage body, say).
 
-Known limits, until plan 007: a change that makes no new version (an attachment added,
-labels changed, a page archived) leaves the stored snapshot as it was, and the mirror
-takes a page's status from the space's listing, which is fresher; labels beyond the first
-page that `include-labels` returns are not seen.
+Known limits, for a later plan: a change that makes no new version (an attachment added
+without an edit, labels changed, a page archived, a comment) leaves the stored snapshot
+as it was, as does an edit of a page that this page includes; the mirror takes a page's
+status from the space's listing, which is fresher; labels beyond the first page that
+`include-labels` returns are not seen.
 
 ### A space's listings, and users
 
@@ -159,9 +160,10 @@ result of every page of each list:
 <data>/raw/confluence/users.json                        every author seen, from GET /wiki/rest/api/user/bulk
 ```
 
-`put_space(space, pages, blog_posts, folders)` replaces one space's listings, each file
-whole, one after another; other spaces' are kept. Of each listing entry it reads only
-the space's id, and of each user only the account id. `put_users(users)` merges users into those kept, by account id, so the
+`put_space(space, pages, blog_posts, folders, listed_at=...)` replaces one space's
+listings, each file whole, one after another, and records in `listed_at.json` when they
+were listed (`listed_at(space_id)`); other spaces' are kept. Of each listing entry it
+reads only the space's id, and of each user only the account id. `put_users(users)` merges users into those kept, by account id, so the
 newest name wins. They are read, each entry by its adapter, with `spaces()`,
 `listed(space_id, Page | BlogPost)`, `folders(space_id)` and `users()`; an entry that its
 adapter refuses comes back as an `Unreadable` at its index, and the others are read.
@@ -175,6 +177,23 @@ only.
 
 Attached files: `<data>/raw/blobs/<sha256[:2]>/<sha256>`, written once, by
 `put_blob(data)`; `blob(digest)` gives the path.
+
+### Coverage and tombstones
+
+Two more of the store's own records, each replaced whole:
+
+- `<data>/raw/coverage.json`, read by `coverage()` and written by `put_coverage()`: for
+  each target (a space key or a project key, `domain.coverage.Target`), the one period
+  over which every document updated is stored (`domain.coverage.Coverage`). A run that
+  listed a target whole joins its window to that period when the two overlap or touch;
+  a run without `--since` starts at the covered start, so every run asks again for
+  whatever failed inside the period.
+- `<data>/raw/tombstones.json`, read by `tombstones()` and written by
+  `put_tombstones()`: each Confluence document absent from its space's listing that
+  answered as gone (`domain.deletions.Tombstone`: 404, trashed, or moved to a space the
+  store does not keep), with the time of the first such answer, and whether a second
+  answer, at least an hour later, confirmed it. A document listed again loses its
+  tombstone. `stored_ids(kind)` gives the ids that have a snapshot, for the probes.
 
 ## Run reports
 
@@ -246,7 +265,13 @@ Images: an image in the rendered HTML names its attachment by
 plan 001 found on the sandbox; 005's HTML module, the one module that knows the site's
 markup, maps it to `Stored.blobs`. An image of another page's attachment (through an
 include) has a file only when that page is stored; otherwise the mirror keeps a
-placeholder, until plan 007.
+placeholder; a backfill that reaches the other page fills it.
+
+A Confluence document is mirrored in the space whose freshest listing (by `listed_at`)
+names it, which after a move is not the space its snapshot names; the front matter, the
+tree and the path all take that space. A document with a confirmed tombstone, and listed
+by no space, is left out. The files of documents gone, and the old file of a document
+that moved, are removed even by a run that reports problems; other files then stay.
 
 Then the body: a first-level heading with the title, the converted body, then an
 `## Attachments` section listing each attachment (a link to its asset, or "not
