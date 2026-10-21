@@ -5,45 +5,39 @@ its output becomes one vector per text. The rest of the code sees an ``Embedder`
 name, a number of dimensions, and texts in, unit vectors out. A model whose format
 changes is a change of its entry in ``CATALOGUE``, and of nothing else.
 
-Files are downloaded by ``pull`` alone, pinned by commit and checked by SHA-256;
-``load`` reads them from the models folder and never reaches the network.
+Files are downloaded by ``adapters.model_pull`` alone; ``load`` reads them from the
+models folder, checks them against their pinned SHA-256, and never reaches the network.
 """
 
 from __future__ import annotations
 
 import hashlib
-import os
-import ssl
-import tempfile
-import time
-from dataclasses import dataclass
-from pathlib import Path
+import json
+from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
-import httpx
 import numpy as np
 import onnxruntime
-import truststore
 from tokenizers import Tokenizer
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+    from pathlib import Path
 
     from numpy.typing import NDArray
 
     type Vectors = NDArray[np.float32]
 
-HUB = "https://huggingface.co"
 # Tokens a text is cut to: the window of the smaller models.
 MAX_TOKENS = 512
 # Texts run through a graph at once; texts of like length are batched together.
 BATCH = 16
 CHUNK_BYTES = 1024 * 1024
-# How long one file's download may take, in seconds, and wait between two reads.
-FILE_DEADLINE_S = 3600
-READ_TIMEOUT_S = 60
 # The graph output whose rows are pooled into one vector per text.
 OUTPUT = "last_hidden_state"
+# The version of how this module turns texts into vectors; a change that alters any
+# vector raises it, so that no vector embedded before is reused.
+FORMAT = 1
 
 
 @dataclass(frozen=True)
@@ -78,6 +72,12 @@ class Model:
     def files(self) -> tuple[File, ...]:
         """Every file that the model needs."""
         return (self.graph, self.tokenizer)
+
+    @property
+    def fingerprint(self) -> str:
+        """Name everything that makes the model's vectors, and how this module runs it."""
+        described = json.dumps({**asdict(self), "format": FORMAT, "max_tokens": MAX_TOKENS})
+        return hashlib.sha256(described.encode()).hexdigest()
 
 
 CATALOGUE = {
@@ -159,6 +159,11 @@ class Embedder(Protocol):
         ...
 
     @property
+    def fingerprint(self) -> str:
+        """What the model's vectors depend on; vectors of another one are never reused."""
+        ...
+
+    @property
     def dimensions(self) -> int:
         """The length of each vector."""
         ...
@@ -227,6 +232,11 @@ class OnnxEmbedder:
         return self._model.name
 
     @property
+    def fingerprint(self) -> str:
+        """What the model's vectors depend on."""
+        return self._model.fingerprint
+
+    @property
     def dimensions(self) -> int:
         """The length of each vector."""
         return self._model.dimensions
@@ -269,13 +279,40 @@ def pulled(model: Model, models: Path) -> bool:
     )
 
 
-def load(name: str, models: Path) -> OnnxEmbedder | None:
-    """Load a model of the catalogue from ``models``, or None when it is not pulled.
+def matches(path: Path, file: File) -> bool:
+    """Say whether a file on disk is the one pinned: its size, then its SHA-256."""
+    if not path.is_file() or path.stat().st_size != file.size:
+        return False
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(CHUNK_BYTES):
+            digest.update(chunk)
+    return digest.hexdigest() == file.sha256
 
-    Raises ModelError for a name the catalogue does not have.
+
+def load(name: str, models: Path) -> OnnxEmbedder:
+    """Load a model of the catalogue from ``models``, once its files are checked.
+
+    Raises ModelError, saying why and what to do, for a name the catalogue does not
+    have, a model not pulled, files that are not those pinned, or a graph that does not
+    load.
     """
     model = known(name)
-    return OnnxEmbedder(model, models / model.name) if pulled(model, models) else None
+    folder = models / model.name
+    if not pulled(model, models):
+        message = f"{name}: not pulled; atlassian-offline-mcp model pull {name}"
+        raise ModelError(message)
+    if not all(matches(folder / file.path, file) for file in model.files):
+        message = f"{name}: files not as pinned; atlassian-offline-mcp model pull {name}"
+        raise ModelError(message)
+    try:
+        return OnnxEmbedder(model, folder)
+    except ModelError:
+        raise
+    except Exception as error:
+        # onnxruntime and tokenizers raise exceptions of their own, of no stable type.
+        message = f"{name}: does not load ({type(error).__name__})"
+        raise ModelError(message) from error
 
 
 def known(name: str) -> Model:
@@ -284,51 +321,3 @@ def known(name: str) -> Model:
         message = f"no model {name!r}; the known models: {', '.join(sorted(CATALOGUE))}"
         raise ModelError(message)
     return CATALOGUE[name]
-
-
-def download_client() -> httpx.Client:
-    """Return a client for the hub: the OS trust store, redirects to its file hosts."""
-    context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    timeout = httpx.Timeout(READ_TIMEOUT_S, connect=READ_TIMEOUT_S)
-    return httpx.Client(verify=context, timeout=timeout, follow_redirects=True)
-
-
-def pull(model: Model, models: Path, client: httpx.Client) -> list[str]:
-    """Download the files of a model that its folder lacks; return the paths fetched.
-
-    Each file is pinned by the catalogue's commit, stopped past its size, checked by
-    SHA-256 and only then renamed into place. Raises ModelError naming a file that the
-    hub refuses or that does not match; nothing of that file is left.
-    """
-    folder = models / model.name
-    fetched: list[str] = []
-    for file in model.files:
-        target = folder / file.path
-        if target.is_file() and target.stat().st_size == file.size:
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, name = tempfile.mkstemp(prefix=".pull-", dir=target.parent)
-        temporary = Path(name)
-        try:
-            digest, size = hashlib.sha256(), 0
-            deadline = time.monotonic() + FILE_DEADLINE_S
-            address = f"{HUB}/{model.repository}/resolve/{model.revision}/{file.path}"
-            with os.fdopen(descriptor, "wb") as out, client.stream("GET", address) as response:
-                if response.status_code != httpx.codes.OK:
-                    message = f"{model.name}: {file.path}: the hub answered {response.status_code}"
-                    raise ModelError(message)
-                for chunk in response.iter_bytes(CHUNK_BYTES):
-                    size += len(chunk)
-                    if size > file.size or time.monotonic() > deadline:
-                        message = f"{model.name}: {file.path}: larger or slower than expected"
-                        raise ModelError(message)
-                    digest.update(chunk)
-                    out.write(chunk)
-            if size != file.size or digest.hexdigest() != file.sha256:
-                message = f"{model.name}: {file.path}: not the file pinned (size or SHA-256)"
-                raise ModelError(message)
-            temporary.replace(target)
-        finally:
-            temporary.unlink(missing_ok=True)
-        fetched.append(file.path)
-    return fetched

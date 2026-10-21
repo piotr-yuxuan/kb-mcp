@@ -26,6 +26,8 @@ atlassian-offline-mcp = "atlassian_offline_mcp.cli:main"
 [dependency-groups]
 dev = [
   "import-linter>=2,<3",
+  # Builds the tiny embedding model of the tests.
+  "onnx>=1.19,<2",
   "pytest>=9,<10",
   "ruff>=0.16,<0.17",
 ]
@@ -39,6 +41,7 @@ testpaths = ["tests", "spikes"]
 
 [tool.importlinter]
 root_package = "atlassian_offline_mcp"
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "Layers: commands use cases, which use adapters, which use pure rules"
@@ -50,3 +53,14 @@ layers = [
   "atlassian_offline_mcp.adapters",
   "atlassian_offline_mcp.domain",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Only the model command downloads a model: the server and the index cannot"
+type = "forbidden"
+source_modules = [
+  "atlassian_offline_mcp.app.tools",
+  "atlassian_offline_mcp.app.indexing",
+  "atlassian_offline_mcp.commands.serve",
+  "atlassian_offline_mcp.commands.index",
+]
+forbidden_modules = ["atlassian_offline_mcp.adapters.model_pull", "httpx"]

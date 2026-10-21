@@ -7,18 +7,13 @@ what it pulled, and never reach the network for a model.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
 
-from atlassian_offline_mcp.adapters.embedding import (
-    CATALOGUE,
-    ModelError,
-    download_client,
-    known,
-    pull,
-    pulled,
-)
+from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError, known, pulled
+from atlassian_offline_mcp.adapters.model_pull import copy_from, download_client, pull
 from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
 from atlassian_offline_mcp.domain.settings import SettingsError
 
@@ -36,6 +31,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     add_settings_options(parser)
     parser.add_argument("action", choices=("pull", "list"))
     parser.add_argument("name", nargs="?", help="the model to pull; by default, the setting")
+    parser.add_argument(
+        "--from", dest="source", type=Path, help="a folder holding the files, as the hub does"
+    )
     parser.set_defaults(run=run)
 
 
@@ -59,8 +57,11 @@ def run(arguments: argparse.Namespace) -> int:
         sys.stderr.write(f"refused: {error}\n")
         return BAD_SETTINGS
     try:
-        with download_client() as client:
-            fetched = pull(model, settings.models, client)
+        if arguments.source is not None:
+            fetched = copy_from(model, settings.models, arguments.source)
+        else:
+            with download_client() as client:
+                fetched = pull(model, settings.models, client)
     except (ModelError, httpx.HTTPError, OSError) as error:
         reason = str(error) if isinstance(error, ModelError) else type(error).__name__
         sys.stderr.write(f"not pulled: {reason}\n")
