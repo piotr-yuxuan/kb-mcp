@@ -31,10 +31,13 @@ INTERVAL_S = 0.2
 
 @dataclass(frozen=True)
 class Request:
-    """A GET on the site: a site-relative path, perhaps with a query, and parameters."""
+    """A GET on the site: a site-relative path, perhaps with a query, and parameters.
+
+    A parameter with a list of values is repeated, once per value.
+    """
 
     path: str
-    params: Mapping[str, str] = field(default_factory=dict)
+    params: Mapping[str, str | list[str]] = field(default_factory=dict)
 
 
 class SignInNeeded(Exception):  # noqa: N818 a state of the session, not a fault
