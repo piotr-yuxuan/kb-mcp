@@ -39,9 +39,10 @@ MAX_DIMENSIONS = 8192
 MAX_ANSWER_BYTES = 64 * 1024 * 1024
 # Statuses worth another attempt: the endpoint busy, or failing for a while.
 RETRIED = frozenset({429, 500, 502, 503, 504})
-# Statuses that point at what was sent, or at a failure that outlived its retries: a
-# text sent alone may still embed. A 429 is the endpoint's limit, never the text's.
-REFUSING = frozenset({400, 413, 422}) | RETRIED - {429}
+# Statuses that may point at what was sent, so that a text sent alone may still embed:
+# 500 too, as bge-m3 answers to some Markdown. A gateway's 502, 503 or 504, and a 429,
+# are the endpoint's, never the text's.
+REFUSING = frozenset({400, 413, 422, 500})
 # Seconds waited before the second attempt, and before the third.
 WAITS_S = (1.0, 4.0)
 PROBE = "probe"
@@ -277,7 +278,9 @@ def ollama_name(name: str) -> str:
     """
     lower = name.lower()
     tagged = lower if ":" in lower.rpartition("/")[2] else f"{lower}:latest"
-    return tagged.removeprefix("registry.ollama.ai/").removeprefix("library/")
+    # Ollama refuses a default registry without a namespace; so does the embedding then.
+    host = tagged.removeprefix("registry.ollama.ai/").removeprefix("ollama.com/")
+    return host.removeprefix("library/")
 
 
 def digest(endpoint: Endpoint, model: str) -> str:
@@ -348,10 +351,10 @@ class ApiEmbedder:
     def documents(self, texts: Sequence[str]) -> list[NDArray[np.float32] | None]:
         """Embed texts to be found, BATCH at a time; None for a text the endpoint refuses.
 
-        A batch refused goes again text by text. When every text is refused alone, the
-        probe tells whether the endpoint is at fault rather than the texts. The digest
-        is read before and after, so that no vector of other weights is given under this
-        fingerprint. Raises ModelError.
+        A batch refused goes again text by text. Every text of several refused alone is
+        the endpoint's fault, a limit of its own; one text refused alone is the text's
+        unless the probe fails too. The digest is read before and after, so that no
+        vector of other weights is given under this fingerprint. Raises ModelError.
         """
         self.check()
         found: list[NDArray[np.float32] | None] = []
@@ -369,6 +372,9 @@ class ApiEmbedder:
                     except RefusedError:
                         alone.append(None)
                 if all(vector is None for vector in alone):
+                    if len(alone) > 1:
+                        message = f"{self.name}: the endpoint refuses every text, each alone"
+                        raise ModelError(message) from None
                     probe = [self.prefixes.query + PROBE]
                     embed(self.endpoint, self.name, probe, SINGLE, self.dimensions)
                 found += alone

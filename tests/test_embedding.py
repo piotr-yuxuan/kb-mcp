@@ -60,6 +60,8 @@ if TYPE_CHECKING:
 QWEN = "qwen3-embedding:0.6b"
 NOT_READY = 1
 REFUSED = 2
+# Characters that an endpoint with a short window takes, at most, in one text.
+SHORT_LIMIT = 40
 GEMMA = "embeddinggemma:300m"
 LISTENED_S = 10
 # Seconds that the injected clock moves at each look: three looks pass a deadline of 30.
@@ -256,16 +258,22 @@ def test_a_limit_of_the_endpoint_is_never_the_text_s() -> None:
 
 
 def test_three_failures_give_up_and_a_refusal_is_not_retried() -> None:
-    """Three 503s: refused after waiting 1 then 4 seconds. A 400: refused at once."""
-    answers = Scripted(statuses=[503, 503, 503, 400])
+    """Three 503s, a gateway's: the endpoint's failure after waiting 1 then 4 seconds.
+
+    Three 500s: a refusal, which may be the text's. A 400: refused at once.
+    """
+    answers = Scripted(statuses=[503, 503, 503, 500, 500, 500, 400])
     opened, waits = recorded()
     opened = replace(opened, http=scripted(answers).http)
-    with pytest.raises(RefusedError, match="answered 503"):
+    with pytest.raises(ModelError, match="answered 503") as failed:
         embed(opened, "tiny", ["undo"], DOCUMENTS)
+    assert not isinstance(failed.value, RefusedError)
     assert (len(answers.asked), waits) == (DOCUMENTS.attempts, [1.0, 4.0])
+    with pytest.raises(RefusedError, match="answered 500"):
+        embed(opened, "tiny", ["undo"], DOCUMENTS)
     with pytest.raises(RefusedError, match="answered 400"):
         embed(opened, "tiny", ["undo"], DOCUMENTS)
-    assert len(answers.asked) == DOCUMENTS.attempts + 1
+    assert len(answers.asked) == 2 * DOCUMENTS.attempts + 1
 
 
 def test_a_query_the_probe_and_the_list_of_models_make_one_attempt() -> None:
@@ -274,13 +282,13 @@ def test_a_query_the_probe_and_the_list_of_models_make_one_attempt() -> None:
     embedder = tiny(answers)
     answers.statuses = [503]
     answers.tags = 503
-    with pytest.raises(RefusedError):
+    with pytest.raises(ModelError, match="answered 503"):
         embedder.query("undo")
     with pytest.raises(ModelError, match="list of models answered 503"):
         connect(embedder.endpoint, "tiny")
     answers.tags = 200
     answers.statuses = [503]
-    with pytest.raises(RefusedError):
+    with pytest.raises(ModelError, match="answered 503"):
         connect(embedder.endpoint, "tiny")
     assert len(answers.asked) == ATTEMPTED
 
@@ -386,6 +394,16 @@ def test_the_digest_is_the_model_s_row_s() -> None:
         assert digest(scripted(answers), alias) == "aa"
     pulled = Scripted({"hf.co/Org/Model-GGUF:Q8_0": "ff"})
     assert digest(scripted(pulled), "hf.co/Org/Model-GGUF:Q8_0") == "ff"
+    assert digest(scripted(answers), "ollama.com/library/tiny") == "aa"
+
+
+def test_a_model_of_another_namespace_is_another_model() -> None:
+    """``someone/tiny`` is not ``tiny``: neither takes the other's digest, nor its cloud."""
+    answers = Scripted({"someone/tiny:latest": "bb", "tiny:latest": "aa"})
+    assert digest(scripted(answers), "tiny") == "aa"
+    assert digest(scripted(answers), "someone/tiny") == "bb"
+    with pytest.raises(ModelError, match="not in Ollama's list"):
+        digest(scripted(Scripted({"someone/tiny:latest": "bb"})), "tiny")
     with pytest.raises(ModelError, match=r"not in Ollama's list of models; .* ollama pull missing"):
         digest(scripted(answers), "missing")
 
@@ -454,22 +472,50 @@ def test_a_text_refused_alone_gets_no_vector_and_the_others_theirs() -> None:
     assert tiny(answers).documents([texts[5]]) == [None]
 
 
-def test_a_batch_whose_every_text_is_refused_alone_is_judged_by_the_probe() -> None:
-    """Every text refused, each alone: the endpoint is at fault when the probe fails too.
-
-    A batch of one text, as a rebuild after one edit sends, is judged the same way.
-    """
-    answers = Scripted()
+def quiet(answers: Scripted) -> ApiEmbedder:
+    """Connect to the tiny model, as scripted, waiting no time between attempts."""
     embedder = tiny(answers)
-    embedder = replace(embedder, endpoint=replace(embedder.endpoint, sleep=lambda _: None))
-    for texts in (["one", "two", "three"], ["one"]):
-        answers.statuses = [503] * 10
-        with pytest.raises(ModelError, match="answered 503"):
-            embedder.documents(texts)
-        answers.statuses = []
-        answers.refused = set(texts)
-        assert embedder.documents(texts) == [None] * len(texts)
-        answers.refused = set()
+    return replace(embedder, endpoint=replace(embedder.endpoint, sleep=lambda _: None))
+
+
+def test_every_text_of_several_refused_alone_is_the_endpoint_s_fault() -> None:
+    """An endpoint whose limit is shorter than the pieces refuses them all: no index of holes.
+
+    Its probe, short, would pass: it is not asked. The first batch stops the build.
+    """
+
+    def short(request: httpx.Request) -> httpx.Response:
+        texts = json.loads(request.content)["input"] if request.content else []
+        if any(len(text) > SHORT_LIMIT for text in texts):
+            return httpx.Response(400)
+        return Scripted()(request)
+
+    embedder = connect(over(short), "tiny")
+    texts = [f"undo the payout of seller number {number} at once, today" for number in range(70)]
+    with pytest.raises(ModelError, match="refuses every text, each alone"):
+        embedder.documents(texts)
+    assert embedder.documents(["undo", texts[0]])[1] is None
+
+
+def test_one_text_refused_alone_is_its_own_fault_unless_the_probe_fails() -> None:
+    """A batch of one, as a rebuild after one edit sends: the probe judges."""
+    answers = Scripted(refused={"one"})
+    assert quiet(answers).documents(["one"]) == [None]
+    answers.refused = set()
+    embedder = quiet(answers)
+    answers.statuses = [500] * (DOCUMENTS.attempts + 2)
+    with pytest.raises(RefusedError, match="answered 500"):
+        embedder.documents(["one"])
+    assert answers.statuses == []
+
+
+def test_a_gateway_failing_while_texts_go_alone_leaves_no_hole() -> None:
+    """A 503 among the texts sent alone is the endpoint's: the build stops, nothing missing."""
+    answers = Scripted()
+    embedder = quiet(answers)
+    answers.statuses = [400, 503]
+    with pytest.raises(ModelError, match="answered 503"):
+        embedder.documents(["one", "two"])
 
 
 def test_a_document_of_another_length_than_the_probe_s_is_refused() -> None:
