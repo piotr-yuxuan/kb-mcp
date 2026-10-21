@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import os
 import stat
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
 
+from atlassian_offline_mcp.adapters import confluence_v2
 from atlassian_offline_mcp.adapters.pandoc import Pandoc, PandocFailedError
+from atlassian_offline_mcp.adapters.raw_store import RawStore
 from atlassian_offline_mcp.cli import main
+from atlassian_offline_mcp.domain.content import Page
+from tests.samples import v2_page, v2_view
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -89,3 +94,23 @@ def test_a_pandoc_failure_names_its_status_and_no_content(
     with pytest.raises(PandocFailedError) as failed:
         Pandoc.find().markdown("<p>secret text</p>")
     assert str(failed.value) == "pandoc: exit status 3"
+
+
+def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A page whose space is not listed is reported by its place in the store."""
+    store = RawStore(home / "data" / "raw")
+    stamp = {"number": 1, "createdAt": "2026-10-20T21:52:41Z"}
+    responses = {
+        confluence_v2.DOCUMENT: v2_page(version=stamp),
+        confluence_v2.VIEW: v2_view(version=stamp),
+        confluence_v2.ATTACHMENTS: [],
+    }
+    with store.writing():
+        store.put(Page, responses, datetime(2026, 10, 22, 8, 15, tzinfo=UTC), {})
+    assert main(arguments(home)) == SOME_FAILED
+    captured = capsys.readouterr()
+    assert "documents: 0\n" in captured.out
+    assert "not mirrored: confluence/pages/196845/000001: space not listed\n" in captured.err
+    assert "nothing was removed" in captured.err

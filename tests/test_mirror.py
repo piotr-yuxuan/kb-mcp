@@ -430,3 +430,32 @@ def test_injected_titles_and_names_are_inert(sandbox: Sandbox) -> None:
     assert matter.author == "A Person"
     assert body.startswith("# \\*Bold\\* \\[link\\](http://x.invalid) \\<script\\>\n")
     assert path == "confluence/MFS/100-bold-link-http-x-invalid-script.md"
+
+
+def test_a_clean_run_removes_only_the_files_the_mirror_owns(sandbox: Sandbox) -> None:
+    """A stale document in the layout's place goes; other files under docs/ stay."""
+    sandbox.run()
+    foreign = ["notes.md", "confluence/MFS/.draft.md", "assets/readme.txt", "jira/PRB/sub/x.md"]
+    stale = ["jira/PRB/PRB-99.md", f"assets/{'c' * 64}.png"]
+    for relative in [*foreign, *stale]:
+        (sandbox.docs / relative).parent.mkdir(parents=True, exist_ok=True)
+        (sandbox.docs / relative).write_text("left here", "utf-8")
+    outcome = sandbox.run()
+    assert outcome.changes.removed == len(stale)
+    files = sandbox.files()
+    assert all(relative in files for relative in foreign)
+    assert not [relative for relative in stale if relative in files]
+
+
+def test_the_tree_links_only_files_that_were_built(sandbox: Sandbox) -> None:
+    """A renamed page whose conversion fails is not yet mirrored under its new name."""
+    sandbox.run()
+    with sandbox.store.writing():
+        renamed = page_responses("300", "Leaf, renamed", 3, "<p>Failing leaf.</p>", [])
+        sandbox.store.put(Page, renamed, FETCHED, {})
+    outcome = sandbox.run(markdown=failing_on("Failing leaf."))
+    assert [problem.where for problem in outcome.problems] == ["confluence/pages/300/000003"]
+    tree = sandbox.text("confluence/MFS/_tree.md")
+    assert "Leaf (not yet mirrored)" in tree
+    assert "300-leaf-renamed.md" not in tree
+    assert "confluence/MFS/300-leaf.md" in sandbox.files()

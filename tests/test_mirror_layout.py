@@ -11,6 +11,7 @@ from atlassian_offline_mcp.domain.content import BlogPost, Issue, Page
 from atlassian_offline_mcp.domain.mirror_layout import (
     asset_path,
     confluence_path,
+    document_html,
     issue_path,
     one_line,
     slug,
@@ -112,3 +113,10 @@ def test_invisible_characters_are_removed() -> None:
 def test_one_line_turns_every_line_break_into_a_space() -> None:
     """Each kind of line break becomes a space, and invisible characters go."""
     assert one_line("a\nb\r\nc\u2028d\x85e\u200b") == "a b c d e"
+
+
+def test_an_empty_section_says_none() -> None:
+    """No attachments, and an issue's comments when there are none, read None."""
+    html = document_html("Title", "<p>Body</p>", [], [])
+    assert html.endswith("<h2>Attachments</h2><p>None.</p><h2>Comments</h2><p>None.</p>")
+    assert "Comments" not in document_html("Title", "<p>Body</p>", [], None)

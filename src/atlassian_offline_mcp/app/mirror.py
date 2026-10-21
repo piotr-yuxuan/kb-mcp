@@ -18,7 +18,7 @@ from atlassian_offline_mcp.adapters.markdown import TIME, dump
 from atlassian_offline_mcp.adapters.mirror_files import Changes, sync
 from atlassian_offline_mcp.adapters.pandoc import PandocFailedError
 from atlassian_offline_mcp.adapters.raw_store import RawStore, Stored, Unreadable
-from atlassian_offline_mcp.adapters.site_html import Context, Mirrored, normalise
+from atlassian_offline_mcp.adapters.site_html import Context, MarkupError, Mirrored, normalise
 from atlassian_offline_mcp.domain.catalogue import Catalogue, front_matter
 from atlassian_offline_mcp.domain.content import (
     BlogPost,
@@ -46,9 +46,10 @@ KINDS: tuple[type[Page | BlogPost | Issue], ...] = (Page, BlogPost, Issue)
 COMMENT_SHIFT = 3
 UNKNOWN_AUTHOR = "unknown author"
 # What building one document's file can meet: a value the front matter refuses, a text
-# no file can hold, pandoc failing. A refusal and pandoc's error name no content.
+# no file can hold, markup the parser cannot read whole, pandoc failing. All but the
+# second name no content.
 DOCUMENT_ERRORS = (ValueError, PandocFailedError)
-NAMED_ERRORS = (RefusedError, PandocFailedError)
+NAMED_ERRORS = (RefusedError, MarkupError, PandocFailedError)
 
 
 @dataclass(frozen=True)
@@ -211,10 +212,13 @@ def mirror(
             problems.append(Problem(where(store, each.stored), reason))
     for space in catalogue.spaces.values():
         tree = tree_path(space.key)
+        # Only the files built: a page whose file failed is not yet mirrored.
         links = {
             each.document.id: posixpath.relpath(each.path, tree.parent)
             for each in placed
-            if isinstance(each.document, Page) and each.document.space_id == space.id
+            if isinstance(each.document, Page)
+            and each.document.space_id == space.id
+            and each.path in wanted
         }
         try:
             if space.id not in damaged:
