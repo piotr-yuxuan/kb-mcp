@@ -259,19 +259,68 @@ def test_a_page_moved_to_another_space_listed_in_the_run_is_not_gone(
     assert RawStore(chosen.raw).tombstones() == {}
 
 
-def test_a_page_moved_to_a_space_no_run_lists_is_gone(
+def test_a_page_found_in_a_stored_space_that_does_not_list_it_waits(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A space the store kept once, but that this run does not list, is out of reach."""
+    """Found in a space this run does not list, whose stored listing lacks it: kept, pending."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
     store = RawStore(chosen.raw)
     with store.writing():
         store.put_space(v2_space(id=OTHER_SPACE, key="OPS", name="Ops"), [], [], [])
-    moved = RefreshSite(listing=without("1001"), moved={"1001": OTHER_SPACE})
-    run(chosen, monkeypatch, moved, catch_up(["MFS"], []), SECOND)
+    for day in (0, 1):
+        moved = RefreshSite(listing=without("1001"), moved={"1001": OTHER_SPACE})
+        run(chosen, monkeypatch, moved, catch_up(["MFS"], []), SECOND + timedelta(days=day))
     [stone] = store.tombstones().values()
-    assert (stone.key, stone.first_gone) == (("pages", "1001"), SECOND)
+    assert (stone.key, stone.first_gone, stone.confirmed) == (("pages", "1001"), None, False)
+    mirror(store, chosen.docs, SITE, identity)
+    assert list((chosen.docs / "confluence" / "MFS").glob("1001-*.md"))
+
+
+def test_a_page_found_in_a_stored_space_whose_listing_names_it_is_followed_there(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Named by a space's stored listing, though this run does not list it: moved, not hidden."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    store = RawStore(chosen.raw)
+    with store.writing():
+        ops = v2_space(id=OTHER_SPACE, key="OPS", name="Ops")
+        store.put_space(ops, [{**PAGES["1001"], "spaceId": OTHER_SPACE}], [], [], listed_at=FIRST)
+    for day in (0, 1):
+        moved = RefreshSite(listing=without("1001"), moved={"1001": OTHER_SPACE})
+        run(chosen, monkeypatch, moved, catch_up(["MFS"], []), SECOND + timedelta(days=day))
+    assert store.tombstones() == {}
+    mirror(store, chosen.docs, SITE, identity)
+    assert [path.parent.name for path in chosen.docs.rglob("1001-*.md")] == ["OPS"]
+
+
+def test_a_page_on_its_way_is_probed_before_one_newly_absent(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """With room for one probe, the page answered gone once is confirmed, not starved."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    gone = RefreshSite(listing=without("1002"), gone={"1002"})
+    run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND)
+    monkeypatch.setattr("atlassian_offline_mcp.app.download.MAX_PROBES", 1)
+    both = RefreshSite(listing={"1003": PAGES["1003"]}, gone={"1001", "1002"})
+    run(chosen, monkeypatch, both, catch_up(["MFS"], []), SECOND + timedelta(days=1))
+    stones = RawStore(chosen.raw).tombstones()
+    assert stones[("pages", "1002")].confirmed
+    assert stones[("pages", "1001")].first_gone is None
+
+
+def test_a_listed_entry_that_the_reader_refuses_is_not_absent(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The new listing is read by id too: an entry refused for its version is still listed."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    versionless = {key: value for key, value in PAGES["1002"].items() if key != "version"}
+    refused = RefreshSite(listing={**PAGES, "1002": versionless}, gone={"1002"})
+    run(chosen, monkeypatch, refused, catch_up(["MFS"], []), SECOND)
+    assert RawStore(chosen.raw).tombstones() == {}
 
 
 def test_a_page_moved_out_of_the_kept_spaces_is_gone(

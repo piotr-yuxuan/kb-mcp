@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
+from atlassian_offline_mcp.domain.content import RefusedError
 from atlassian_offline_mcp.domain.deletions import (
     Answer,
     Tombstone,
@@ -41,10 +44,11 @@ def test_a_page_listed_again_loses_its_tombstone() -> None:
     assert after_probes({PAGE: stone(confirmed=True)}, {}, {}, LATER) == {}
 
 
-def test_a_moved_or_present_page_loses_its_tombstone() -> None:
-    """Found elsewhere, or still there: not gone."""
-    for answer in (Answer.MOVED, Answer.PRESENT):
-        assert after_probes({PAGE: stone()}, {PAGE: SPACE}, {PAGE: answer}, LATER) == {}
+def test_a_moved_page_loses_its_tombstone_and_an_unsettled_one_waits_again() -> None:
+    """Followed into a space that lists it: not gone. Found, but unlisted: pending again."""
+    assert after_probes({PAGE: stone()}, {PAGE: SPACE}, {PAGE: Answer.MOVED}, LATER) == {}
+    unsettled = after_probes({PAGE: stone()}, {PAGE: SPACE}, {PAGE: Answer.UNSETTLED}, LATER)
+    assert unsettled == {PAGE: Tombstone("pages", "1001", SPACE)}
 
 
 def test_a_page_not_probed_this_run_keeps_its_tombstone_as_it_was() -> None:
@@ -68,13 +72,20 @@ def test_a_second_answer_within_the_hour_does_not_confirm() -> None:
     assert kept == {PAGE: stone()}
 
 
-def test_a_trashed_or_out_of_scope_page_is_gone_and_one_elsewhere_moved() -> None:
-    """Trashed, or moved where the store does not look, is gone; in a kept space, moved."""
+def test_a_trashed_or_out_of_scope_page_is_gone_and_one_listed_elsewhere_moved() -> None:
+    """Trashed, or where the store never looks, is gone; moved once a kept listing names it."""
     kept = {SPACE, "300000"}
-    assert answer_of(SPACE, "trashed", SPACE, kept) is Answer.GONE
-    assert answer_of("999999", "current", SPACE, kept) is Answer.GONE
-    assert answer_of("300000", "current", SPACE, kept) is Answer.MOVED
-    assert answer_of(SPACE, "archived", SPACE, kept) is Answer.PRESENT
+    assert answer_of(SPACE, "trashed", kept, named=True) is Answer.GONE
+    assert answer_of("999999", "current", kept, named=False) is Answer.GONE
+    assert answer_of("300000", "current", kept, named=True) is Answer.MOVED
+    assert answer_of("300000", "current", kept, named=False) is Answer.UNSETTLED
+    assert answer_of(SPACE, "archived", kept, named=False) is Answer.UNSETTLED
+
+
+def test_a_confirmation_without_a_first_answer_of_gone_is_refused() -> None:
+    """Confirmed means answered gone twice: a tombstone saying otherwise is damaged."""
+    with pytest.raises(RefusedError, match="confirmed"):
+        Tombstone("pages", "1001", SPACE, confirmed=True)
 
 
 def test_pages_on_their_way_are_probed_first_and_confirmed_ones_not_at_all() -> None:

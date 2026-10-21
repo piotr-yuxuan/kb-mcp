@@ -394,16 +394,9 @@ class RawStore:
         """
         path = self._space(space_id) / f"{kind.kind}.json"
         try:
-            entries = Fields.each(_decode(path), path.name) if path.exists() else []
+            return confluence_v2.entry_ids(_decode(path)) if path.exists() else set()
         except UNREADABLE:
             return set()
-        ids: set[str] = set()
-        for entry in entries:
-            try:
-                ids.add(confluence_v2.entry_id(entry))
-            except RepresentationError:
-                continue
-        return ids
 
     def folders(self, space_id: str) -> list[Folder | Unreadable]:
         """Read the folders last listed in a space."""

@@ -191,12 +191,17 @@ def snapshot_requests(document: Listed) -> dict[str, tuple[Request, ReadPage | N
     }
 
 
-def entry_id(fields: Fields) -> str:
-    """Read only the id of a listing's entry, whatever else the entry holds."""
-    with fields.refusals():
-        identifier = fields.text("id")
-        require(IDENTIFIER, identifier, "id")
-        return identifier
+def entry_ids(entries: object) -> set[str]:
+    """Read only the ids of a listing's entries, whatever else each entry holds.
+
+    An entry without a usable id names nothing; entries that are not a list name none.
+    """
+    ids: set[str] = set()
+    for entry in entries if type(entries) is list else []:
+        identifier = entry.get("id") if type(entry) is dict else None
+        if type(identifier) is str and IDENTIFIER.fullmatch(identifier):
+            ids.add(identifier)
+    return ids
 
 
 def probe_request(kind: str, document_id: str) -> Request:

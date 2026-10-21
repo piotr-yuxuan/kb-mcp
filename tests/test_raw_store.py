@@ -369,6 +369,17 @@ def test_a_record_naming_a_key_that_is_a_path_is_refused(store: RawStore) -> Non
         store.coverage()
 
 
+def test_a_tombstone_confirmed_without_a_first_answer_is_refused(store: RawStore) -> None:
+    """A damaged record is refused by name, rather than hiding a page for no reason."""
+    (store.root / "tombstones.json").write_text(
+        '[{"kind": "pages", "id": "1001", "space": "196613", "first_gone": null,'
+        ' "confirmed": true}]',
+        "utf-8",
+    )
+    with pytest.raises(RepresentationError, match=r"tombstones\.json\[0\]: confirmed"):
+        store.tombstones()
+
+
 def test_the_ids_stored_are_those_with_a_snapshot(store: RawStore) -> None:
     """A folder left without a revision is not a stored document."""
     store.put(Page, page_responses(1), FETCHED, {})

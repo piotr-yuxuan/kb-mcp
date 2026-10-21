@@ -13,6 +13,8 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from atlassian_offline_mcp.domain.content import RefusedError
+
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
     from datetime import datetime
@@ -30,9 +32,9 @@ GONE_STATUSES = frozenset({"trashed", "deleted", "purged"})
 class Answer(StrEnum):
     """What a probe of an absent document found."""
 
-    GONE = "gone"  # 404 (deleted, or no longer visible), trashed, or moved out of scope
-    MOVED = "moved"  # in another space that the store keeps
-    PRESENT = "present"  # still in its space: the listing missed it
+    GONE = "gone"  # 404 (deleted, or no longer visible), trashed, or in a space never kept
+    MOVED = "moved"  # in a space whose stored listing names it: followed there now
+    UNSETTLED = "unsettled"  # found, but no stored listing names it yet: probed again
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,12 @@ class Tombstone:
     space_id: str
     first_gone: datetime | None = None
     confirmed: bool = False
+
+    def __post_init__(self) -> None:
+        """Refuse a confirmation without the first answer that it follows."""
+        if self.confirmed and self.first_gone is None:
+            message = "confirmed: without a first answer of gone"
+            raise RefusedError(message)
 
     @property
     def key(self) -> tuple[str, str]:
@@ -81,6 +89,8 @@ def after_probes(
         elif answer is Answer.GONE:
             # Two answers moments apart prove little: confirmation waits a while.
             kept[key] = replace(stone, confirmed=now - stone.first_gone >= CONFIRM_AFTER)
+        elif answer is Answer.UNSETTLED:
+            kept[key] = replace(stone, first_gone=None, confirmed=False)
     return kept
 
 
@@ -90,15 +100,18 @@ def too_many_gone(answers: Mapping[tuple[str, str], Answer], stored: int) -> boo
     return gone > MASS_COUNT or gone > MASS_SHARE * stored
 
 
-def answer_of(found_space: str, status: str, listed_space: str, kept: Collection[str]) -> Answer:
-    """Say what a probe that the site answered found: gone, moved, or still there.
+def answer_of(found_space: str, status: str, kept: Collection[str], *, named: bool) -> Answer:
+    """Say what a probe that the site answered found.
 
-    ``kept`` are the spaces whose listings the store keeps. A document trashed, or moved
-    to a space the store does not keep, has left the mirror's scope: it is gone too.
+    ``kept`` are the spaces whose listings the store keeps; ``named`` says whether the
+    found space's stored listing names the document. A document trashed, or in a space
+    the store never listed, is gone; one that a stored listing names has moved there, and
+    is followed by that space's own listing; any other is still somewhere, unsettled,
+    and probed again on a later run, so that its tracking never ends unseen.
     """
     if status in GONE_STATUSES or found_space not in kept:
         return Answer.GONE
-    return Answer.MOVED if found_space != listed_space else Answer.PRESENT
+    return Answer.MOVED if named else Answer.UNSETTLED
 
 
 def probing_order(
