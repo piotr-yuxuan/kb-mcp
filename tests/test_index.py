@@ -49,7 +49,9 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
     path = write(data / "docs", front, BODY)
     write(data / "docs", issue("PROJ-1", "An issue"))
     status, out, err = index(data, capsys)
-    assert (status, err) == (0, "")
+    assert status == 0
+    off = "search by meaning off: multilingual-e5-small: not pulled; atlassian-offline-mcp model"
+    assert err.startswith(off)
     assert "indexed 2 documents (issue: 1, page: 1)" in out
     with reading(data / "index.sqlite") as reader:
         (entry,) = reader.entries(paths=[path])

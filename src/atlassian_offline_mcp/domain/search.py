@@ -13,11 +13,15 @@ import unicodedata
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from atlassian_offline_mcp.domain.content import ISSUE_KEY
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Collection, Iterable, Mapping, Sequence
     from datetime import datetime
+
+    from numpy.typing import NDArray
 
     from atlassian_offline_mcp.domain.mirror import FrontMatter
 
@@ -183,6 +187,8 @@ BLANK_LINE = re.compile(r"\n[ \t]*\n")
 NOT_SPACE = re.compile(r"\S")
 # Reciprocal rank fusion's constant: a document's share of a list is 1 / (FUSION + rank).
 FUSION = 60
+# Characters of a document's title that each embedded piece begins with.
+EMBEDDED_TITLE = 200
 
 
 @dataclass(frozen=True)
@@ -277,6 +283,49 @@ class Summary:
     projects: dict[str, int]
     sections: int
     newest_fetch: datetime | None
+    model: str | None = None  # the model of the vectors, if any
+    pieces: int = 0
+
+
+@dataclass(frozen=True)
+class Embedded:
+    """The model that embedded an index's pieces, as the index records it."""
+
+    model: str
+    fingerprint: str
+    dimensions: int
+
+
+@dataclass(frozen=True, eq=False)
+class Pieces:
+    """Every piece of an index with its unit vector: what a search by meaning looks through."""
+
+    documents: tuple[int, ...]  # each piece's document, by rowid
+    paths: Mapping[int, str]  # each document's path, by rowid
+    updated: Mapping[str, datetime]  # each document's update, by path
+    sections: tuple[int, ...]  # each piece's section number
+    offsets: tuple[int, ...]  # where each piece starts in its document's body
+    matrix: NDArray[np.float32]  # one row per piece
+
+    def nearest(
+        self, query: NDArray[np.float32], kept: Collection[int] | None, limit: int
+    ) -> dict[str, tuple[Score, int]]:
+        """Score the documents nearest a query by their best piece, at most ``limit``.
+
+        Only the documents in ``kept`` count, when it is given. Each path comes with its
+        score, the cosine of its best piece, and that piece's index.
+        """
+        found: dict[str, tuple[Score, int]] = {}
+        similarity = self.matrix @ query.reshape(-1) if self.documents else np.empty(0)
+        for index in np.argsort(-similarity, kind="stable"):
+            document = self.documents[index]
+            path = self.paths[document]
+            if path in found or (kept is not None and document not in kept):
+                continue
+            found[path] = (Score(float(similarity[index]), self.updated[path]), int(index))
+            if len(found) == limit:
+                break
+        return found
 
 
 def quote(text: str) -> str:
@@ -427,6 +476,25 @@ def pieces(text: str, limit: int = PIECE) -> list[tuple[int, int]]:
         spans.append((start, end))
         start = end
     return spans
+
+
+def passages(title: str, cut: Sequence[Section]) -> list[tuple[int, int, int, str]]:
+    """Give the text to embed for each piece of a document's sections.
+
+    Each is the section's index in ``cut``, the piece's span in the section's body (its
+    heading line aside), and the text: the title (cut to EMBEDDED_TITLE characters), the
+    section's heading when it is not the title, and the piece, one per line. A section
+    without a body has no piece.
+    """
+    found: list[tuple[int, int, int, str]] = []
+    for index, section in enumerate(cut):
+        heading = section.heading if section.heading != title else ""
+        found += [
+            (index, start, end, "\n".join(line for line in lines if line))
+            for start, end in pieces(section.body)
+            for lines in [(title[:EMBEDDED_TITLE], heading, section.body[start:end].strip())]
+        ]
+    return found
 
 
 def fuse(rankings: Iterable[Sequence[str]], updated: Mapping[str, datetime]) -> list[str]:

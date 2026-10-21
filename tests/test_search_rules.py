@@ -7,10 +7,12 @@ from datetime import timedelta
 import pytest
 
 from atlassian_offline_mcp.domain.search import (
+    EMBEDDED_TITLE,
     MAX_WORDS,
     Score,
     fuse,
     identifiers,
+    passages,
     pieces,
     plan,
     quote,
@@ -225,3 +227,16 @@ def test_fusion_ties_go_to_the_newest_then_the_path() -> None:
     """Equal shares: the document updated last comes first, then by path."""
     updated = {"a": MOMENT, "b": MOMENT + timedelta(days=1), "c": MOMENT}
     assert fuse([["a"], ["b"], ["c"]], updated) == ["b", "a", "c"]
+
+
+def test_each_piece_is_embedded_with_its_title_and_heading() -> None:
+    """The title, cut, then the heading unless it is the title, then the piece's text."""
+    title = "T" * (EMBEDDED_TITLE + 50)
+    cut = sections(f"# {title}\n\nFirst.\n\n## Second\n\nMore.\n\n## Empty\n")
+    found = passages(title, cut)
+    assert [(index, text) for index, _, _, text in found] == [
+        (0, f"{'T' * EMBEDDED_TITLE}\nFirst."),
+        (1, f"{'T' * EMBEDDED_TITLE}\nSecond\nMore."),
+    ]
+    index, start, end, _ = found[1]
+    assert cut[index].body[start:end].strip() == "More."

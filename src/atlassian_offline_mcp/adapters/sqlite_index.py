@@ -2,7 +2,8 @@
 
 Only this module knows SQL. ``building`` writes a new index beside the old one and
 renames it into place once complete; ``reading`` opens one read-only for one use, so
-that a replaced file is read from the next use on.
+that a replaced file is read from the next use on. An index built with a model also
+holds the vector of each piece of each section, and names the model.
 """
 
 from __future__ import annotations
@@ -16,15 +17,25 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from atlassian_offline_mcp.domain.mirror import FrontMatter
-from atlassian_offline_mcp.domain.search import Entry, Filters, Passage, Score, Summary
+from atlassian_offline_mcp.domain.search import (
+    Embedded,
+    Entry,
+    Filters,
+    Passage,
+    Pieces,
+    Score,
+    Summary,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
     from atlassian_offline_mcp.domain.search import Section
 
-SCHEMA = "1"
+SCHEMA = "2"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -59,6 +70,11 @@ CREATE VIRTUAL TABLE chunks USING fts5(
   title, labels, breadcrumb, heading, body,
   content = 'sections', content_rowid = 'rowid',
   tokenize = 'unicode61 remove_diacritics 2'
+);
+CREATE TABLE pieces (
+  rowid INTEGER PRIMARY KEY,
+  section INTEGER NOT NULL, start INTEGER NOT NULL, stop INTEGER NOT NULL,
+  vector BLOB NOT NULL
 );
 """
 # The documents that pass a search's filters, as a JSON list of rowids.
@@ -120,6 +136,13 @@ FROM sections s JOIN documents d ON d.rowid = s.document
 WHERE d.path = :path
 ORDER BY s.number
 """
+# Every piece with its document, its section, and its start within the document's body.
+PIECES = """
+SELECT d.rowid AS document, d.path, d.updated, s.number,
+       s.start + length(s.head) + p.start AS offset, p.vector
+FROM pieces p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
+ORDER BY p.rowid
+"""
 TEXT = """
 SELECT s.start, s.head || s.body AS text FROM sections s JOIN documents d ON d.rowid = s.document
 WHERE d.path = :path AND s.start < :end AND s.start + length(s.head) + length(s.body) > :start
@@ -160,8 +183,11 @@ class Writer:
         self._next_section = 1
         self.skipped = 0
 
-    def add(self, path: str, front: FrontMatter, sections: list[Section]) -> None:
-        """Add a document and its sections; refuse a source and id held already."""
+    def add(self, path: str, front: FrontMatter, sections: list[Section]) -> int:
+        """Add a document and its sections; refuse a source and id held already.
+
+        Return the rowid of its first section; the others follow it.
+        """
         values = {name: getattr(front, name) for name in FrontMatter.__dataclass_fields__}
         values |= {
             "labels": json.dumps(front.labels, ensure_ascii=False),
@@ -219,7 +245,15 @@ class Writer:
             " VALUES (?, ?, ?, ?, ?, ?)",
             rows,
         )
+        first = self._next_section
         self._next_section += len(sections)
+        return first
+
+    def add_pieces(self, pieces: Iterable[tuple[int, int, int, bytes]]) -> None:
+        """Add pieces: each its section's rowid, its span in the section's body, its vector."""
+        self._connection.executemany(
+            "INSERT INTO pieces (section, start, stop, vector) VALUES (?, ?, ?, ?)", pieces
+        )
 
     def skip(self) -> None:
         """Count a file of the mirror that could not be indexed."""
@@ -227,11 +261,12 @@ class Writer:
 
 
 @contextmanager
-def building(path: Path, built_at: datetime) -> Iterator[Writer]:
+def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -> Iterator[Writer]:
     """Build a new index at ``path``, in one transaction, into a file beside it.
 
-    The file is renamed into place once complete. On any failure the index already at
-    ``path`` stays, and the new file is removed.
+    ``embedded`` names the model of its pieces' vectors, if any. The file is renamed
+    into place once complete. On any failure the index already at ``path`` stays, and
+    the new file is removed.
     """
     descriptor, name = tempfile.mkstemp(prefix=".index-", suffix=".sqlite", dir=path.parent)
     os.close(descriptor)
@@ -249,6 +284,9 @@ def building(path: Path, built_at: datetime) -> Iterator[Writer]:
                     ("schema", SCHEMA),
                     ("built_at", moment(built_at)),
                     ("skipped", str(writer.skipped)),
+                    ("model", embedded.model if embedded else ""),
+                    ("fingerprint", embedded.fingerprint if embedded else ""),
+                    ("dimensions", str(embedded.dimensions) if embedded else ""),
                 ],
             )
             connection.commit()
@@ -399,11 +437,42 @@ class Reader:
         row = self._connection.execute("SELECT value FROM meta WHERE name = 'built_at'").fetchone()
         return datetime.fromisoformat(row[0])
 
+    def embedded(self) -> Embedded | None:
+        """Name the model of the index's vectors, or None when it was built without one."""
+        meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
+        if not meta["model"]:
+            return None
+        return Embedded(meta["model"], meta["fingerprint"], int(meta["dimensions"]))
+
+    def pieces(self) -> Pieces:
+        """Read every piece's vector, with where the piece is: what meaning searches."""
+        rows = self._connection.execute(PIECES).fetchall()
+        dimensions = len(rows[0]["vector"]) // 4 if rows else 0  # float32
+        matrix = np.frombuffer(b"".join(row["vector"] for row in rows), dtype="<f4")
+        return Pieces(
+            documents=tuple(row["document"] for row in rows),
+            paths={row["document"]: row["path"] for row in rows},
+            updated={row["path"]: datetime.fromisoformat(row["updated"]) for row in rows},
+            sections=tuple(row["number"] for row in rows),
+            offsets=tuple(row["offset"] for row in rows),
+            matrix=matrix.astype(np.float32).reshape(len(rows), dimensions),
+        )
+
+    def heading(self, path: str, number: int) -> str:
+        """Give the heading of a document's section."""
+        row = self._connection.execute(
+            "SELECT s.heading FROM sections s JOIN documents d ON d.rowid = s.document"
+            " WHERE d.path = :path AND s.number = :number",
+            {"path": path, "number": number},
+        ).fetchone()
+        return "" if row is None else row[0]
+
     def summary(self) -> Summary:
         """Say what the index holds and when it was built."""
         meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
         newest = self._connection.execute("SELECT max(fetched_at) FROM documents").fetchone()[0]
         sections = self._connection.execute("SELECT count(*) FROM sections").fetchone()[0]
+        pieces = self._connection.execute("SELECT count(*) FROM pieces").fetchone()[0]
         return Summary(
             built_at=self.built_at(),
             skipped=int(meta["skipped"]),
@@ -412,6 +481,8 @@ class Reader:
             projects=dict(self.values("project")),
             sections=sections,
             newest_fetch=None if newest is None else datetime.fromisoformat(newest),
+            model=meta["model"] or None,
+            pieces=pieces,
         )
 
 

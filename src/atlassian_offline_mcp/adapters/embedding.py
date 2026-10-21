@@ -151,7 +151,10 @@ CATALOGUE = {
 
 
 class Embedder(Protocol):
-    """Texts in, unit vectors of float32 out, one row per text."""
+    """Texts in, unit vectors of float32 out, one row per text.
+
+    Raises ModelError when the model fails to embed.
+    """
 
     @property
     def name(self) -> str:
@@ -179,6 +182,10 @@ class Embedder(Protocol):
 
 class ModelError(Exception):
     """A model that cannot be pulled or run as its entry says; the message says why."""
+
+
+class NotPulledError(ModelError):
+    """A model of the catalogue whose files are not all in the models folder."""
 
 
 # How each input that a graph may declare is made from a batch's ids and mask; decoder
@@ -251,7 +258,12 @@ class OnnxEmbedder:
                 feed[name] = np.zeros((len(texts), shape[1], 0, shape[3]), dtype=np.float32)
             else:
                 feed[name] = INPUTS[name](ids, mask)
-        hidden = self._session.run([OUTPUT], feed)[0]
+        try:
+            hidden = self._session.run([OUTPUT], feed)[0]
+        except Exception as error:
+            # onnxruntime raises exceptions of its own, of no stable type.
+            message = f"{self.name}: does not embed ({type(error).__name__})"
+            raise ModelError(message) from error
         vectors = POOLING[self._model.pooling](hidden, mask)
         return (vectors / np.linalg.norm(vectors, axis=1, keepdims=True)).astype(np.float32)
 
@@ -301,7 +313,7 @@ def load(name: str, models: Path) -> OnnxEmbedder:
     folder = models / model.name
     if not pulled(model, models):
         message = f"{name}: not pulled; atlassian-offline-mcp model pull {name}"
-        raise ModelError(message)
+        raise NotPulledError(message)
     if not all(matches(folder / file.path, file) for file in model.files):
         message = f"{name}: files not as pinned; atlassian-offline-mcp model pull {name}"
         raise ModelError(message)
