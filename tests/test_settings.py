@@ -24,12 +24,19 @@ def test_settings_are_normalised() -> None:
             "data_dir": "~/mirror",
             "spaces": ["ENG", "~5f1a2b"],
             "projects": ["PAY"],
+            "model": "bge-small-en-v1.5",
         },
         HOME,
     )
     assert settings == Settings(
-        "https://example.atlassian.net", HOME / "mirror", ("ENG", "~5f1a2b"), ("PAY",)
+        "https://example.atlassian.net",
+        HOME / "mirror",
+        ("ENG", "~5f1a2b"),
+        ("PAY",),
+        "bge-small-en-v1.5",
     )
+    assert settings.models == HOME / "mirror" / "models"
+    assert settings.models in settings.parts
 
 
 def test_the_default_data_directory_is_under_the_home() -> None:
@@ -51,6 +58,8 @@ def test_the_default_data_directory_is_under_the_home() -> None:
         ({"spaces": "ENG"}, "spaces:"),
         ({"spaces": ["ENG", "not a key"]}, "spaces:"),
         ({"projects": ["pay"]}, "projects:"),
+        ({"model": "../elsewhere"}, "model:"),
+        ({"model": ["bge-small-en-v1.5"]}, "model:"),
     ],
 )
 def test_unusable_settings_are_refused_by_name(values: dict[str, object], named: str) -> None:

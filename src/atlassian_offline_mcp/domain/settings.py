@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -13,7 +14,11 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 DEFAULT_DATA_DIR = "~/atlassian-offline-mcp"
-KNOWN_KEYS = frozenset({"site", "data_dir", "spaces", "projects"})
+# The embedding model that indexes and queries by meaning; the catalogue of
+# adapters.embedding names the others.
+DEFAULT_MODEL = "multilingual-e5-small"
+MODEL_NAME = re.compile(r"[a-z0-9][a-z0-9.-]{0,63}")
+KNOWN_KEYS = frozenset({"site", "data_dir", "spaces", "projects", "model"})
 # Folders that may be synchronised to a cloud, under the home directory or by name.
 SYNCED_UNDER_HOME = (
     Path("Library/Mobile Documents"),
@@ -36,6 +41,7 @@ class Settings:
     data_dir: Path
     spaces: tuple[str, ...] = ()
     projects: tuple[str, ...] = ()
+    model: str = DEFAULT_MODEL
 
     @property
     def raw(self) -> Path:
@@ -53,6 +59,11 @@ class Settings:
         return self.data_dir / "index.sqlite"
 
     @property
+    def models(self) -> Path:
+        """The embedding models pulled, one folder each."""
+        return self.data_dir / "models"
+
+    @property
     def session(self) -> Path:
         """The browser profile and the saved session, never read by agents."""
         return self.data_dir / "session"
@@ -65,7 +76,7 @@ class Settings:
     @property
     def parts(self) -> tuple[Path, ...]:
         """Every place under the data directory where data is written."""
-        return (self.raw, self.docs, self.index, self.session, self.runs)
+        return (self.raw, self.docs, self.index, self.models, self.session, self.runs)
 
 
 def parse_settings(values: Mapping[str, object], home: Path) -> Settings:
@@ -111,8 +122,12 @@ def parse_settings(values: Mapping[str, object], home: Path) -> Settings:
     ):
         message = "projects: a list of project keys"
         raise SettingsError(message)
+    model = values.get("model", DEFAULT_MODEL)
+    if not isinstance(model, str) or not MODEL_NAME.fullmatch(model):
+        message = "model: the name of an embedding model, such as multilingual-e5-small"
+        raise SettingsError(message)
     host = f"https://{parts.hostname}" if parts is not None else None
-    return Settings(host, path, tuple(spaces), tuple(projects))
+    return Settings(host, path, tuple(spaces), tuple(projects), model)
 
 
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:
