@@ -134,12 +134,13 @@ alone.
 
 Add `<data>/docs/` to the workspace (File, Add Folder to Workspace), then make it
 read-only in the editor and keep every edit there behind a confirmation, in your user
-settings:
+settings. The globs are absolute: VS Code reads a relative one from each workspace
+folder, where `atlassian-offline-mcp/docs` is not part of the files' paths.
 
 ```json
 {
-  "files.readonlyInclude": {"**/atlassian-offline-mcp/docs/**": true},
-  "chat.tools.edits.autoApprove": {"**/atlassian-offline-mcp/docs/**": false}
+  "files.readonlyInclude": {"/Users/<you>/atlassian-offline-mcp/docs/**": true},
+  "chat.tools.edits.autoApprove": {"/Users/<you>/atlassian-offline-mcp/docs/**": false}
 }
 ```
 
@@ -156,4 +157,5 @@ Checked on 2026-10-21:
   [settings](https://code.claude.com/docs/en/settings-reference.md).
 - VS Code: [MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers),
   [MCP configuration](https://code.visualstudio.com/docs/agents/reference/mcp-configuration),
-  [approvals](https://code.visualstudio.com/docs/agents/approvals).
+  [approvals](https://code.visualstudio.com/docs/agents/approvals),
+  [read-only files](https://code.visualstudio.com/updates/v1_79).
