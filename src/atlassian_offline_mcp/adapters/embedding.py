@@ -285,16 +285,19 @@ def matches(path: Path, file: File) -> bool:
     return digest.hexdigest() == file.sha256
 
 
-def signature(model: Model, models: Path) -> tuple[tuple[int, int] | None, ...]:
-    """Say what a model's files are now, by size and modification time: a cheap check."""
-    found: list[tuple[int, int] | None] = []
+def signature(model: Model, models: Path) -> tuple[tuple[int, int, int, int] | None, ...]:
+    """Say what a model's files are now, cheaply: their size, inode and times.
+
+    A change of content, of permissions, or a file replaced each changes it.
+    """
+    found: list[tuple[int, int, int, int] | None] = []
     for file in model.files:
         try:
             status = (models / model.name / file.path).stat()
         except OSError:
             found.append(None)
         else:
-            found.append((status.st_size, status.st_mtime_ns))
+            found.append((status.st_size, status.st_ino, status.st_mtime_ns, status.st_ctime_ns))
     return tuple(found)
 
 

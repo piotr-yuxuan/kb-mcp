@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import time
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -16,7 +17,7 @@ import httpx
 import numpy as np
 import pytest
 
-from atlassian_offline_mcp.adapters import model_pull
+from atlassian_offline_mcp.adapters import embedding, model_pull
 from atlassian_offline_mcp.adapters.embedding import (
     CATALOGUE,
     CHUNK_BYTES,
@@ -52,6 +53,8 @@ SAME = 0.9999
 REQUESTS = 6
 # Chunks read of an endless file pinned smaller than one chunk: one, and one ahead.
 READS = 2
+# Seconds within which a file past its deadline of half a second is given up.
+GIVEN_UP_S = 3
 # Real models, pulled beforehand, for the opt-in test: a folder of model folders.
 MODELS = os.environ.get("ATLASSIAN_OFFLINE_MCP_MODELS")
 
@@ -194,7 +197,20 @@ def test_the_fingerprint_changes_with_anything_that_makes_vectors() -> None:
     assert MODEL.fingerprint != replace(MODEL, revision="1" * 40).fingerprint
     assert MODEL.fingerprint != replace(MODEL, query_prefix="").fingerprint
     assert MODEL.fingerprint != replace(MODEL, pooling="first").fingerprint
+    assert (
+        MODEL.fingerprint != replace(MODEL, graph=replace(MODEL.graph, sha256="0" * 64)).fingerprint
+    )
     assert MODEL.fingerprint == replace(MODEL).fingerprint
+
+
+@pytest.mark.parametrize(("name", "value"), [("FORMAT", 2), ("MAX_TOKENS", 256)])
+def test_the_fingerprint_changes_with_how_the_adapter_runs(
+    monkeypatch: MonkeyPatch, name: str, value: int
+) -> None:
+    """A new format of the adapter, or another token limit, makes vectors anew."""
+    before = MODEL.fingerprint
+    monkeypatch.setattr(embedding, name, value)
+    assert MODEL.fingerprint != before
 
 
 def test_pull_stores_every_file_and_then_fetches_nothing(tmp_path: Path) -> None:
@@ -345,3 +361,24 @@ def test_a_pulled_model_embeds_by_meaning(name: str) -> None:
     assert np.allclose(np.linalg.norm(documents, axis=1), 1, atol=1e-5)
     near, far = (query @ documents.T)[0]
     assert near > far
+
+
+def test_pull_gives_up_a_file_trickled_in_past_its_deadline(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A byte at a time, as a scanning proxy sends it: each read is checked, not each MiB."""
+    monkeypatch.setattr(model_pull, "FILE_DEADLINE_S", 0.5)
+    began = time.monotonic()
+
+    def trickle() -> Iterator[bytes]:
+        while True:
+            assert time.monotonic() - began < GIVEN_UP_S, "still reading past the deadline"
+            time.sleep(0.05)
+            yield b"x"
+
+    def slow(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=trickle())
+
+    with pytest.raises(ModelError, match="larger or slower than pinned"):
+        pull(MODEL, tmp_path, download_client(httpx.MockTransport(slow)))
+    assert time.monotonic() - began < GIVEN_UP_S

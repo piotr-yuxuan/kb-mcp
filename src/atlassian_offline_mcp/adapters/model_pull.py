@@ -93,7 +93,8 @@ def pull(model: Model, models: Path, client: httpx.Client) -> list[str]:
                 if response.status_code != httpx.codes.OK:
                     message = f"{model.name}: {file.path}: the hub answered {response.status_code}"
                     raise ModelError(message)
-                place(model, file, target, response.iter_bytes(CHUNK_BYTES))
+                # Every read as it comes, so that a file trickled in is given up on time.
+                place(model, file, target, response.iter_bytes())
         except (httpx.HTTPError, SiteError) as error:
             message = f"{model.name}: {file.path}: {type(error).__name__}"
             raise ModelError(message) from error

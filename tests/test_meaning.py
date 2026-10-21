@@ -339,3 +339,33 @@ def test_an_unreadable_model_falls_back_to_words(data: Path) -> None:
     finally:
         graph.chmod(0o644)
     assert "Ranked by words alone: tiny: files not as pinned; atlassian-offline-mcp model" in answer
+
+
+def test_a_model_made_readable_again_is_loaded_again(data: Path) -> None:
+    """Permissions restored, content untouched: the failure is forgotten, meaning answers."""
+    tools = library(data, "hybrid")
+    graph = data / "models" / "tiny" / "model.onnx"
+    graph.chmod(0)
+    try:
+        assert "Ranked by words alone" in tools.search("holidays")
+    finally:
+        graph.chmod(0o644)
+    assert titles(tools.search("holidays"))[0] == "Handbook"
+
+
+def test_a_long_section_is_shown_at_the_piece_that_meaning_found(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The second piece of a section matches: the snippet starts there, not at the section."""
+    docs = tmp_path / "docs"
+    fillers(docs)
+    body = "# Guide\n\n## Long\n\n" + "opening words " * 72 + "\n\n" + "leave " * 50 + "\n"
+    write(docs, page("4007", "Guide"), body)
+    registered(tmp_path / "models", monkeypatch)
+    embedding = Embedding(load("tiny", tmp_path / "models"), tmp_path / "v.db")
+    build_index(docs, tmp_path / "index.sqlite", MOMENT, embedding)
+    meaning = Meaning(tmp_path / "models")
+    answer = Library(tmp_path / "index.sqlite", docs, meaning, "semantic").search("holidays")
+    first = hits(answer)[0]
+    assert "section 2 Long" in first
+    assert "> leave leave leave" in first
