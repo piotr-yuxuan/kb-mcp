@@ -17,12 +17,12 @@ SIX_MONTHS = timedelta(days=180)
 
 
 def covered() -> Coverage:
-    """Return coverage of the space from mid-October."""
-    return Coverage({SPACE: COVERED})
+    """Return coverage of the space from mid-October to now."""
+    return Coverage({SPACE: Period(COVERED, NOW)})
 
 
 def test_a_run_without_since_catches_up_on_the_covered_period() -> None:
-    """No --since: from the covered start to now."""
+    """No --since: from the covered start to now, the end pinned too."""
     assert window(covered(), SPACE, None, None, NOW) == Period(COVERED, NOW)
 
 
@@ -32,11 +32,18 @@ def test_a_run_with_since_starts_there() -> None:
     assert window(covered(), SPACE, since, None, NOW) == Period(since, NOW)
 
 
+def test_since_and_back_together_reach_back_from_since() -> None:
+    """--back reaches back from --since when both are given."""
+    since = datetime(2026, 10, 25, tzinfo=UTC)
+    assert window(covered(), SPACE, since, SIX_MONTHS, NOW).start == since - SIX_MONTHS
+
+
 def test_back_reaches_before_the_covered_start_and_then_before_that() -> None:
     """--back 6mo, twice, covers twelve months before the first start."""
     first = window(covered(), SPACE, None, length("6mo", "--back"), NOW)
     assert first == Period(COVERED - SIX_MONTHS, NOW)
-    after = covered().extended(SPACE, first, NOW)
+    after = covered().extended(SPACE, first)
+    assert after.periods[SPACE] == Period(COVERED - SIX_MONTHS, NOW)
     second = window(after, SPACE, None, length("6mo", "--back"), NOW)
     assert second.start == COVERED - 2 * SIX_MONTHS
 
@@ -52,28 +59,37 @@ def test_a_target_never_covered_needs_since() -> None:
         window(covered(), PROJECT, None, None, NOW)
 
 
-def test_a_first_run_ending_now_starts_the_coverage() -> None:
+def test_a_first_run_covers_its_period() -> None:
     """--since 7d on a new target covers the last seven days."""
     fetched = Period(NOW - timedelta(days=7), NOW)
-    assert Coverage().extended(PROJECT, fetched, NOW).starts == {PROJECT: fetched.start}
+    assert Coverage().extended(PROJECT, fetched).periods == {PROJECT: fetched}
 
 
-def test_a_run_that_ends_before_the_covered_start_leaves_the_coverage() -> None:
-    """A period that does not join the covered one would leave a gap; it is not counted."""
+def test_a_run_apart_from_the_covered_period_leaves_it() -> None:
+    """A period that does not touch the covered one would claim the gap; it is not joined."""
     fetched = Period(datetime(2026, 1, 1, tzinfo=UTC), datetime(2026, 6, 1, tzinfo=UTC))
-    assert covered().extended(SPACE, fetched, NOW) == covered()
+    assert covered().extended(SPACE, fetched) == covered()
+
+
+def test_a_later_short_run_does_not_claim_the_days_between() -> None:
+    """Covered to 8 October, then --since 3d on the 21st: the 8th to the 18th were not seen."""
+    early = Coverage(
+        {SPACE: Period(datetime(2026, 10, 1, tzinfo=UTC), datetime(2026, 10, 8, tzinfo=UTC))}
+    )
+    late = Period(datetime(2026, 10, 18, tzinfo=UTC), datetime(2026, 10, 21, tzinfo=UTC))
+    assert early.extended(SPACE, late) == early
 
 
 def test_a_run_that_reaches_the_covered_start_joins_it() -> None:
-    """A period ending at or after the covered start makes one period with it."""
+    """A period ending at the covered start makes one period with it."""
     fetched = Period(datetime(2026, 6, 1, tzinfo=UTC), COVERED)
-    assert covered().extended(SPACE, fetched, NOW).starts[SPACE] == fetched.start
+    assert covered().extended(SPACE, fetched).periods[SPACE] == Period(fetched.start, NOW)
 
 
-def test_a_run_inside_the_covered_period_keeps_its_start() -> None:
-    """A catch-up never moves the covered start forward."""
-    fetched = Period(COVERED + timedelta(days=3), NOW)
-    assert covered().extended(SPACE, fetched, NOW).starts[SPACE] == COVERED
+def test_a_run_inside_the_covered_period_keeps_it() -> None:
+    """A catch-up never moves the covered start forward, nor the end back."""
+    fetched = Period(COVERED + timedelta(days=3), NOW - timedelta(days=1))
+    assert covered().extended(SPACE, fetched) == covered()
 
 
 @pytest.mark.parametrize("text", ["6m", "0mo", "forever", "-1d"])

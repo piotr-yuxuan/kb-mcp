@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from atlassian_offline_mcp.domain.deletions import Answer, Tombstone, after_probes, too_many_gone
+from atlassian_offline_mcp.domain.deletions import (
+    Answer,
+    Tombstone,
+    after_probes,
+    answer_of,
+    probing_order,
+    too_many_gone,
+)
 
 FIRST = datetime(2026, 11, 1, tzinfo=UTC)
 LATER = datetime(2026, 11, 2, tzinfo=UTC)
@@ -52,3 +59,25 @@ def test_many_gone_at_once_call_for_a_check_of_the_session() -> None:
     assert too_many_gone(dict(list(gone.items())[:6]), 100)
     assert not too_many_gone(dict(list(gone.items())[:5]), 100)
     assert not too_many_gone({PAGE: Answer.MOVED}, 1)
+
+
+def test_a_second_answer_within_the_hour_does_not_confirm() -> None:
+    """Two runs moments apart prove little: the tombstone waits."""
+    soon = FIRST + timedelta(minutes=5)
+    kept = after_probes({PAGE: stone()}, {PAGE: SPACE}, {PAGE: Answer.GONE}, soon)
+    assert kept == {PAGE: stone()}
+
+
+def test_a_trashed_or_out_of_scope_page_is_gone_and_one_elsewhere_moved() -> None:
+    """Trashed, or moved where the store does not look, is gone; in a kept space, moved."""
+    kept = {SPACE, "300000"}
+    assert answer_of(SPACE, "trashed", SPACE, kept) is Answer.GONE
+    assert answer_of("999999", "current", SPACE, kept) is Answer.GONE
+    assert answer_of("300000", "current", SPACE, kept) is Answer.MOVED
+    assert answer_of(SPACE, "archived", SPACE, kept) is Answer.PRESENT
+
+
+def test_tombstoned_pages_are_probed_first() -> None:
+    """A cap on probes never starves a confirmation."""
+    absent = [("pages", "1"), ("pages", "2"), ("pages", "3")]
+    assert probing_order(absent, {("pages", "3")})[0] == ("pages", "3")

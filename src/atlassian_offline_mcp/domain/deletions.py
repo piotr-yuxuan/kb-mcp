@@ -9,24 +9,29 @@ mass deletion, so the caller checks the session before believing it.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from datetime import timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Collection, Mapping
     from datetime import datetime
 
 # Gone answers in one space beyond which the session is checked again: a count, and a
 # share of the space's stored documents.
 MASS_COUNT = 10
 MASS_SHARE = 0.05
+# How long after a first answer of gone a second one confirms it.
+CONFIRM_AFTER = timedelta(hours=1)
+# The statuses of a document that the site still answers for, but that is gone.
+GONE_STATUSES = frozenset({"trashed", "deleted", "purged"})
 
 
 class Answer(StrEnum):
     """What a probe of an absent document found."""
 
-    GONE = "gone"  # 404, or trashed
-    MOVED = "moved"  # in another space
+    GONE = "gone"  # 404 (deleted, or no longer visible), trashed, or moved out of scope
+    MOVED = "moved"  # in another space that the store keeps
     PRESENT = "present"  # still in its space: the listing missed it
 
 
@@ -65,7 +70,8 @@ def after_probes(
         if key in absent and answer is None:
             kept[key] = stone
         elif key in absent and answer is Answer.GONE:
-            kept[key] = replace(stone, confirmed=True)
+            # Two answers moments apart prove little: confirmation waits a while.
+            kept[key] = replace(stone, confirmed=now - stone.first_gone >= CONFIRM_AFTER)
     for key, space_id in absent.items():
         if key not in known and answers.get(key) is Answer.GONE:
             kept[key] = Tombstone(key[0], key[1], space_id, now)
@@ -76,3 +82,24 @@ def too_many_gone(answers: Mapping[tuple[str, str], Answer], stored: int) -> boo
     """Say whether so many answered gone that the session must be checked first."""
     gone = sum(answer is Answer.GONE for answer in answers.values())
     return gone > MASS_COUNT or gone > MASS_SHARE * stored
+
+
+def answer_of(found_space: str, status: str, listed_space: str, kept: Collection[str]) -> Answer:
+    """Say what a probe that the site answered found: gone, moved, or still there.
+
+    ``kept`` are the spaces whose listings the store keeps. A document trashed, or moved
+    to a space the store does not keep, has left the mirror's scope: it is gone too.
+    """
+    if status in GONE_STATUSES or found_space not in kept:
+        return Answer.GONE
+    return Answer.MOVED if found_space != listed_space else Answer.PRESENT
+
+
+def probing_order(
+    absent: Collection[tuple[str, str]], known: Collection[tuple[str, str]]
+) -> list[tuple[str, str]]:
+    """Order the absent for probing: those already tombstoned first.
+
+    A cap on probes then never starves their confirmation.
+    """
+    return sorted(absent, key=lambda key: (key not in known, key))

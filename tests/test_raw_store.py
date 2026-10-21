@@ -15,6 +15,7 @@ from atlassian_offline_mcp.adapters.raw_store import RawStore, StoreBusyError, S
 from atlassian_offline_mcp.domain.content import BlogPost, Folder, Issue, Page, Person, Space
 from atlassian_offline_mcp.domain.coverage import Coverage, Target
 from atlassian_offline_mcp.domain.deletions import Tombstone
+from atlassian_offline_mcp.domain.period import Period
 from tests.samples import (
     v1_user,
     v2_attachment,
@@ -337,7 +338,12 @@ def test_every_write_needs_the_lock(tmp_path: Path, write: object) -> None:
 def test_coverage_and_tombstones_read_back_as_written(store: RawStore) -> None:
     """The store's two records of runs keep what was put, in any time zone, as UTC."""
     start = datetime(2026, 10, 15, 11, tzinfo=timezone(timedelta(hours=2)))
-    coverage = Coverage({Target("confluence", "MFS"): start, Target("jira", "PRB"): FETCHED})
+    coverage = Coverage(
+        {
+            Target("confluence", "MFS"): Period(start, FETCHED),
+            Target("jira", "PRB"): Period(start - timedelta(days=1), FETCHED),
+        }
+    )
     store.put_coverage(coverage)
     assert store.coverage() == coverage
     stone = Tombstone("pages", "1001", "196613", FETCHED, confirmed=True)
@@ -355,7 +361,8 @@ def test_records_never_written_read_as_empty(tmp_path: Path) -> None:
 def test_a_record_naming_a_key_that_is_a_path_is_refused(store: RawStore) -> None:
     """A record read back is checked like any response."""
     (store.root / "coverage.json").write_text(
-        '[{"source": "confluence", "key": "../x", "start": "2026-10-15T09:00:00+00:00"}]',
+        '[{"source": "confluence", "key": "../x", "start": "2026-10-15T09:00:00+00:00",'
+        ' "end": "2026-10-16T09:00:00+00:00"}]',
         "utf-8",
     )
     with pytest.raises(RepresentationError, match=r"coverage\.json\[0\]: key: does not match"):

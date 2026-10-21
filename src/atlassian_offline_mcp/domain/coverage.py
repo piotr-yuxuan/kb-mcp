@@ -1,8 +1,7 @@
 """The period covered for each target, and the window that each run fetches.
 
-A target (a space or a project) is covered from a start up to the end of the last run
-that fetched it whole: every document updated in that period is stored. A run catches
-up on the covered period, and may reach further back.
+A target (a space or a project) is covered over one period: every document updated in
+it is stored. A run catches up from the covered start to now, and may reach further back.
 """
 
 from __future__ import annotations
@@ -42,22 +41,30 @@ class Target:
 
 @dataclass(frozen=True)
 class Coverage:
-    """The start of each target's covered period."""
+    """Each target's covered period: every document updated in it is stored.
 
-    starts: Mapping[Target, datetime] = field(default_factory=dict)
+    A failure within the period (a document whose fetch failed, an entry the adapter
+    refuses) leaves no hole for long: a run without --since starts at the covered start,
+    so it asks for everything in the period again.
+    """
 
-    def extended(self, target: Target, fetched: Period, now: datetime) -> Coverage:
-        """Return the coverage once a run fetched ``fetched`` whole for the target.
+    periods: Mapping[Target, Period] = field(default_factory=dict)
 
-        The covered period stays one period: a run that ends now, or that reaches the
-        covered start, moves the start to the earlier of the two; another run leaves it.
+    def extended(self, target: Target, fetched: Period) -> Coverage:
+        """Return the coverage once a run listed ``fetched`` whole for the target.
+
+        The covered period stays one period: a run that overlaps it, or touches it,
+        joins it; a run apart from it leaves it as it was, since joining would claim the
+        gap between them.
         """
-        start = self.starts.get(target)
-        joins = fetched.end >= now if start is None else fetched.end >= start
-        if not joins:
+        covered = self.periods.get(target)
+        if covered is None:
+            joined = fetched
+        elif fetched.start <= covered.end and fetched.end >= covered.start:
+            joined = Period(min(covered.start, fetched.start), max(covered.end, fetched.end))
+        else:
             return self
-        earliest = fetched.start if start is None else min(start, fetched.start)
-        return Coverage({**self.starts, target: earliest})
+        return Coverage({**self.periods, target: joined})
 
 
 def window(
@@ -72,7 +79,8 @@ def window(
     It starts at ``since`` when given, otherwise at the covered start (catch-up); ``back``
     reaches that much further back, or to ``EPOCH`` for ``all``.
     """
-    start = since if since is not None else coverage.starts.get(target)
+    covered = coverage.periods.get(target)
+    start = since if since is not None else (covered.start if covered else None)
     if start is None:
         message = f"{target}: nothing covered yet; give --since for its first run"
         raise PeriodError(message)

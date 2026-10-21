@@ -33,6 +33,7 @@ from atlassian_offline_mcp.domain.content import (
 )
 from atlassian_offline_mcp.domain.coverage import Coverage, Target
 from atlassian_offline_mcp.domain.deletions import Tombstone
+from atlassian_offline_mcp.domain.period import Period, PeriodError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Mapping
@@ -45,6 +46,8 @@ RECORD = "store.json"
 # The store's own records of what runs covered, and of documents that answered as gone.
 COVERAGE = "coverage.json"
 TOMBSTONES = "tombstones.json"
+# The store's own record, beside a space's listings, of when they were listed.
+LISTED_AT = "listed_at.json"
 # The file name of a response: one safe path part, then .json.
 RESPONSE_NAME = re.compile(r"[A-Za-z0-9_-]+\.json")
 DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -324,11 +327,14 @@ class RawStore:
         pages: list[object],
         blog_posts: list[object],
         folders: list[object],
+        *,
+        listed_at: datetime | None = None,
     ) -> None:
-        """Replace a space's listings, each as received.
+        """Replace a space's listings, each as received, and say when they were listed.
 
         They are the space itself and every result of every page of the listings of its
-        pages, blog posts and folders.
+        pages, blog posts and folders. ``listed_at`` lets the mirror prefer the freshest
+        of two listings that name one document, as after a move.
         """
         self._check_writing()
         target = self._space(Fields(space, "space").text("id"))
@@ -338,6 +344,16 @@ class RawStore:
                 raise ValueError(message)
             _replace_synced(target / f"{name}.json", _encode(value))
         _replace_synced(target / "space.json", _encode(space))
+        if listed_at is not None:
+            moment = {"listed_at": listed_at.astimezone(UTC).isoformat()}
+            _replace_synced(target / LISTED_AT, _encode(moment))
+
+    def listed_at(self, space_id: str) -> datetime | None:
+        """Say when a space was last listed, or None when no run said so."""
+        path = self._space(space_id) / LISTED_AT
+        if not path.exists():
+            return None
+        return Fields(_decode(path), LISTED_AT).time("listed_at")
 
     def spaces(self) -> list[Space | Unreadable]:
         """Read every space ever listed."""
@@ -401,22 +417,32 @@ class RawStore:
         return {folder.name for folder in folders if _named(folder, REVISION)}
 
     def coverage(self) -> Coverage:
-        """Read the start of each target's covered period, none when never written."""
+        """Read each target's covered period, none when never written."""
         path = self.root / COVERAGE
         if not path.exists():
             return Coverage()
-        starts: dict[Target, datetime] = {}
+        periods: dict[Target, Period] = {}
         for item in Fields.each(_decode(path), COVERAGE):
             with item.refusals():
-                starts[Target(item.text("source"), item.text("key"))] = item.time("start")
-        return Coverage(starts)
+                target = Target(item.text("source"), item.text("key"))
+            try:
+                periods[target] = Period(item.time("start"), item.time("end"))
+            except PeriodError:
+                message = f"{item.path}: a period that ends before it starts"
+                raise RepresentationError(message) from None
+        return Coverage(periods)
 
     def put_coverage(self, coverage: Coverage) -> None:
         """Replace the record of coverage, whole."""
         self._check_writing()
         entries = [
-            {"source": target.source, "key": target.key, "start": start.astimezone(UTC).isoformat()}
-            for target, start in sorted(coverage.starts.items())
+            {
+                "source": target.source,
+                "key": target.key,
+                "start": covered.start.astimezone(UTC).isoformat(),
+                "end": covered.end.astimezone(UTC).isoformat(),
+            }
+            for target, covered in sorted(coverage.periods.items())
         ]
         _replace_synced(self.root / COVERAGE, _encode(entries))
 
