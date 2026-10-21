@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 from atlassian_offline_mcp.adapters.browser import disable_password_saving, sign_in
-from atlassian_offline_mcp.adapters.session_file import COOKIES, write_cookies
+from atlassian_offline_mcp.adapters.session_file import COOKIES, for_site, write_cookies
 
 if TYPE_CHECKING:
     from atlassian_offline_mcp.domain.settings import Settings
@@ -23,4 +24,5 @@ def login(settings: Settings, site: str, chrome: str | None, *, extensions: bool
     profile.mkdir(parents=True, exist_ok=True, mode=0o700)
     settings.session.chmod(0o700)
     disable_password_saving(profile)
-    write_cookies(settings.session / COOKIES, sign_in(site, profile, chrome, extensions=extensions))
+    cookies = sign_in(site, profile, chrome, extensions=extensions)
+    write_cookies(settings.session / COOKIES, for_site(cookies, urlsplit(site).hostname or ""))
