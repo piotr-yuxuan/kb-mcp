@@ -1,0 +1,1300 @@
+# Golden questions for evaluating search over the sandbox corpus (plan 002).
+#
+# Each question names documents by key: a page as <section>/<name>, a ticket as
+# ENG-n, an idea as jira/<name>.
+# - overlap: how the question's words relate to its answers' wording: identifier
+#   (it quotes a code or name), keyword (it shares ordinary words), paraphrase (it
+#   shares no word of four letters or more with their titles and headings).
+# - lang: the question's language, en or fr.
+# - expected: the documents that answer it, relevance 2; two when it needs a
+#   second hop. partial: documents that help, relevance 1.
+# - evidence: for each expected document, 3 to 12 consecutive words of its plain
+#   text that state the answer; absent from the question, the distractors and
+#   the outdated documents.
+# - outdated: superseded documents that hold an older answer.
+# - traps: what the question tests, from a closed list: synonym, acronym,
+#   identifier, near-duplicate, outdated, cross-link, cross-lingual.
+# - distractors: look-alike documents that do not answer it.
+
+- id: q001
+  question: "A deploy of the service that pays our sellers went wrong; how do I restore the previous version?"
+  overlap: paraphrase
+  lang: en
+  expected: [payments/payout-gateway-rollback]
+  partial: [release/reverting-a-release]
+  evidence:
+    payments/payout-gateway-rollback: "Pause, drain, then roll back."
+  outdated: []
+  traps: [synonym, near-duplicate]
+  distractors: [ml/model-rollback]
+
+- id: q002
+  question: "Can I roll back payout-gateway to a release from before the ledger schema migration, and why are such migrations hard to undo?"
+  overlap: keyword
+  lang: en
+  expected: [payments/payout-gateway-rollback, release/database-migrations]
+  partial: [release/change-tickets, release/reverting-a-release]
+  evidence:
+    payments/payout-gateway-rollback: "Never roll back across a ledger schema migration without the Ledger team"
+    release/database-migrations: "Down migrations exist, but they are a last resort"
+  outdated: []
+  traps: [cross-link, near-duplicate]
+  distractors: [ml/model-rollback]
+
+- id: q003
+  question: "What does LDG-4091 mean, and which runbook covers it?"
+  overlap: identifier
+  lang: en
+  expected: [payments/ledger-reconciliation]
+  partial: [incidents/report-2025-12-02-ledger-break]
+  evidence:
+    payments/ledger-reconciliation: "A journal's debits and credits differ."
+  outdated: []
+  traps: [identifier]
+  distractors: [ENG-74]
+
+- id: q004
+  question: "CardAuthP99High is firing; what does it measure, and how fast must the on-call acknowledge if it is a SEV1?"
+  overlap: identifier
+  lang: en
+  expected: [payments/card-auth-latency, incidents/on-call]
+  partial: [incidents/incident-management]
+  evidence:
+    payments/card-auth-latency: "card-auth p99 over 800 ms for 10 minutes"
+    incidents/on-call: "SEV1 5 minutes Klaxon pages the secondary at 5 minutes"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [support/priorities-and-slas]
+
+- id: q005
+  question: "Now that the payments sync added a buffer, by what time must EUR settlement batches really be ready?"
+  overlap: keyword
+  lang: en
+  expected: [payments/weekly-sync-2026-09-01, payments/settlement-cutoffs]
+  partial: [ENG-168, payments/weekly-sync-2026-09-15]
+  evidence:
+    payments/weekly-sync-2026-09-01: "will close the last same-day EUR file at 13:30 CET"
+    payments/settlement-cutoffs: "moved EUR payouts onto SEPA credit transfers, with a 14:00 CET cut-off"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [payments/weekly-sync-2026-08-04, payments/weekly-sync-2026-08-18]
+
+- id: q006
+  question: "Was there a bug about a retry storm after PGW-5021, and which payout-gateway release fixed it?"
+  overlap: identifier
+  lang: en
+  expected: [ENG-54, payments/release-notes-payout-gateway-4-13]
+  partial: [payments/payout-gateway-rollback]
+  evidence:
+    ENG-54: "Fixed in 4.13, released on 10 June 2025"
+    payments/release-notes-payout-gateway-4-13: "4.13 fixes the retry storm after PGW-5021"
+  outdated: []
+  traps: [identifier, near-duplicate]
+  distractors: [payments/release-notes-payout-gateway-4-10, payments/release-notes-payout-gateway-4-11]
+
+- id: q007
+  question: "Which payout-gateway release started capping batch size, at how many payouts, and which epic asked for it?"
+  overlap: keyword
+  lang: en
+  expected: [payments/release-notes-payout-gateway-4-12, ENG-46]
+  partial: [payments/release-notes-payout-gateway-4-13]
+  evidence:
+    payments/release-notes-payout-gateway-4-12: "4.12 caps batches at 500 payouts"
+    ENG-46: "Shipped in 4.12 on 28 May 2025"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [payments/release-notes-payout-gateway-4-11]
+
+- id: q008
+  question: "Does flipping ks.payout-gateway.batch-scheduler need a deploy, and what does it stop?"
+  overlap: identifier
+  lang: en
+  expected: [release/feature-flags, payments/payout-gateway-rollback]
+  partial: [ENG-309]
+  evidence:
+    release/feature-flags: "A kill switch turns an existing feature off without a deploy"
+    payments/payout-gateway-rollback: "the scheduler stops cutting new batches"
+  outdated: []
+  traps: [identifier]
+  distractors: []
+
+- id: q009
+  question: "A release broke checkout: should I push a revert commit or redeploy the previous release?"
+  overlap: keyword
+  lang: en
+  expected: [release/reverting-a-release]
+  partial: [release/shipwright-cheatsheet]
+  evidence:
+    release/reverting-a-release: "A revert commit through the pipeline. The default."
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [payments/payout-gateway-rollback, ml/model-rollback]
+
+- id: q010
+  question: "Yesterday's deploy ran a schema change and broke things; should I undo it?"
+  overlap: paraphrase
+  lang: en
+  expected: [release/reverting-a-release]
+  partial: [release/database-migrations]
+  evidence:
+    release/reverting-a-release: "going back to the old code is often worse than the bug"
+  outdated: []
+  traps: [synonym, near-duplicate]
+  distractors: [payments/payout-gateway-rollback]
+
+- id: q011
+  question: "With shipwright deploy, how long does the canary run, and what makes it fail?"
+  overlap: identifier
+  lang: en
+  expected: [release/deployment-pipeline, release/canary-analysis]
+  partial: [ENG-270]
+  evidence:
+    release/deployment-pipeline: "The canary takes 5% of production traffic for 30 minutes"
+    release/canary-analysis: "the error rate rises 0.5 points or p99 rises 20%"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q012
+  question: "What was CHG-2291 raised for?"
+  overlap: identifier
+  lang: en
+  expected: [release/change-tickets]
+  partial: []
+  evidence:
+    release/change-tickets: "the change ticket for the 2026 ledger schema migration"
+  outdated: []
+  traps: []
+  distractors: [release/change-freeze-2026]
+
+- id: q013
+  question: "What's the rule about dropping a database column, and does anything check it automatically?"
+  overlap: keyword
+  lang: en
+  expected: [release/database-migrations, ENG-391]
+  partial: []
+  evidence:
+    release/database-migrations: "Never drop a column in the release that stops using it"
+    ENG-391: "Lint migrations that drop a column in the same release"
+  outdated: []
+  traps: []
+  distractors: [release/reverting-a-release]
+
+- id: q014
+  question: "What counts as a SEV2 incident?"
+  overlap: keyword
+  lang: en
+  expected: [incidents/incident-management]
+  partial: []
+  evidence:
+    incidents/incident-management: "A major degradation, or one product down"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [security/incident-response-plan, support/priorities-and-slas, jira/one-severity-scale]
+
+- id: q015
+  question: "We had a big outage last Tuesday; how soon do we owe a postmortem?"
+  overlap: paraphrase
+  lang: en
+  expected: [incidents/post-incident-review, incidents/incident-management]
+  partial: []
+  evidence:
+    incidents/post-incident-review: "the review meets within 5 business days of resolution"
+    incidents/incident-management: "Every SEV1 and SEV2 has a PIR within 5 business days"
+  outdated: []
+  traps: [synonym]
+  distractors: [engineering/retro-sprint-39, incidents/pir-actions-tracker]
+
+- id: q016
+  question: "As IC during a SEV1, how often do I post status page updates?"
+  overlap: keyword
+  lang: en
+  expected: [incidents/status-page]
+  partial: [incidents/incident-management]
+  evidence:
+    incidents/status-page: "first update within 15 minutes, then every 30 minutes"
+  outdated: []
+  traps: [acronym]
+  distractors: []
+
+- id: q017
+  question: "Which incident involved CAU-1207, and what severity was it?"
+  overlap: identifier
+  lang: en
+  expected: [incidents/report-2025-09-17-card-auth-latency]
+  partial: [payments/card-auth-latency]
+  evidence:
+    incidents/report-2025-09-17-card-auth-latency: "It was a SEV1 because payments were failing for many merchants"
+  outdated: []
+  traps: [identifier, near-duplicate]
+  distractors: [incidents/report-2025-06-03-payouts-delayed, incidents/report-2026-08-08-stale-fx]
+
+- id: q018
+  question: "DQ-017 caused an incident in May 2026; which pipeline was late and how severe was it?"
+  overlap: identifier
+  lang: en
+  expected: [incidents/report-2026-05-20-orders-late]
+  partial: [data/quality-alerts]
+  evidence:
+    incidents/report-2026-05-20-orders-late: "Severity: SEV3, under the standing rule that a late finance mart"
+  outdated: []
+  traps: [identifier, near-duplicate]
+  distractors: [incidents/report-2025-12-02-ledger-break, incidents/report-2026-08-08-stale-fx]
+
+- id: q019
+  question: "Does ENG-13 give us a template for the first SEV1 update on Beacon, and how soon must that update go out?"
+  overlap: identifier
+  lang: en
+  expected: [incidents/status-page, ENG-536]
+  partial: [incidents/incident-management]
+  evidence:
+    incidents/status-page: "first update within 15 minutes, then every 30 minutes"
+    ENG-536: "arrives with its first Beacon update drafted from the template"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q020
+  question: "During the February 2026 Merchant Hub outage, which severity mix-up happened, and what severity was the outage really?"
+  overlap: keyword
+  lang: en
+  expected: [jira/one-severity-scale, incidents/report-2026-02-11-hub-login]
+  partial: []
+  evidence:
+    jira/one-severity-scale: "a P1 was read as a SEV1 for twenty minutes"
+    incidents/report-2026-02-11-hub-login: "One product down for everyone trying to reach it: a SEV2."
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [incidents/report-2025-06-03-payouts-delayed, support/priorities-and-slas]
+
+- id: q021
+  question: "What is an S2 security incident?"
+  overlap: keyword
+  lang: en
+  expected: [security/incident-response-plan]
+  partial: []
+  evidence:
+    security/incident-response-plan: "An active compromise, with no data exposure confirmed"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [incidents/incident-management, support/priorities-and-slas]
+
+- id: q022
+  question: "After a personal data breach, how fast must we tell the regulator, and how fast the affected merchants?"
+  overlap: keyword
+  lang: en
+  expected: [security/incident-response-plan, legal/dpa-playbook]
+  partial: []
+  evidence:
+    security/incident-response-plan: "the regulator is told within 72 hours of awareness, through the DPO"
+    legal/dpa-playbook: "we tell affected merchants of a personal data breach within 48 hours"
+  outdated: []
+  traps: [cross-link]
+  distractors: [security/phishing]
+
+- id: q023
+  question: "The scanner flagged SCN-7731 on my branch; what is it and what do I do?"
+  overlap: identifier
+  lang: en
+  expected: [security/leaked-secret]
+  partial: [security/strongroom-how-to]
+  evidence:
+    security/leaked-secret: "Rotate in Strongroom first, then revoke the old value."
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q024
+  question: "I followed a dodgy link in an email and gave it my login; how do I recover?"
+  overlap: paraphrase
+  lang: en
+  expected: [security/phishing]
+  partial: []
+  evidence:
+    security/phishing: "reset the password and revoke sessions"
+  outdated: []
+  traps: []
+  distractors: [security/leaked-secret]
+
+- id: q025
+  question: "If a sysadmin fell for a fake login email, does the SIRT treat it as S2 or S3?"
+  overlap: paraphrase
+  lang: en
+  expected: [security/phishing]
+  partial: [security/incident-response-plan]
+  evidence:
+    security/phishing: "They are graded S2 when the person who interacted is an administrator"
+  outdated: []
+  traps: [acronym, near-duplicate]
+  distractors: [incidents/incident-management]
+
+- id: q026
+  question: "When do quarterly access reviews happen, and how long do managers have to certify?"
+  overlap: keyword
+  lang: en
+  expected: [security/access-reviews]
+  partial: []
+  evidence:
+    security/access-reviews: "in January, April, July and October"
+  outdated: []
+  traps: []
+  distractors: [people/performance-reviews]
+
+- id: q027
+  question: "Can I run conveyor backfill on merchant_orders_daily at 03:00 UTC?"
+  overlap: identifier
+  lang: en
+  expected: [data/backfills]
+  partial: [data/merchant-orders-daily]
+  evidence:
+    data/backfills: "Never between 00:00 and 06:00 UTC."
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q028
+  question: "I need to reprocess last year's merchant_orders_daily data; how many days can one run cover?"
+  overlap: identifier
+  lang: en
+  expected: [data/backfills]
+  partial: [ENG-782]
+  evidence:
+    data/backfills: "At most 31 partitions per run."
+  outdated: []
+  traps: [synonym]
+  distractors: [data/merchant-orders-daily]
+
+- id: q029
+  question: "What does DQ-044 mean?"
+  overlap: identifier
+  lang: en
+  expected: [data/quality-alerts]
+  partial: []
+  evidence:
+    data/quality-alerts: "An upstream column changed type or vanished"
+  outdated: []
+  traps: [identifier]
+  distractors: [ENG-708]
+
+- id: q030
+  question: "A cardholder asked to be forgotten; how long do we have to wipe their records from our analytics tables?"
+  overlap: paraphrase
+  lang: en
+  expected: [data/erasure-requests]
+  partial: [legal/dpa-playbook]
+  evidence:
+    data/erasure-requests: "applied in the warehouse within 30 days"
+  outdated: []
+  traps: [synonym]
+  distractors: [data/retention-schedule]
+
+- id: q031
+  question: "An erasure request came in as a DSAR: how long do we have to answer the DSAR, and to apply the erasure in the warehouse?"
+  overlap: keyword
+  lang: en
+  expected: [legal/dpa-playbook, data/erasure-requests]
+  partial: [support/data-subject-requests]
+  evidence:
+    legal/dpa-playbook: "we answer a DSAR within one month of receiving it"
+    data/erasure-requests: "applied in the warehouse within 30 days"
+  outdated: []
+  traps: [cross-link]
+  distractors: []
+
+- id: q032
+  question: "fraudscore-v7 is declining far too many good payments; how do I put v6 back?"
+  overlap: identifier
+  lang: en
+  expected: [ml/model-rollback]
+  partial: []
+  evidence:
+    ml/model-rollback: "The rollback is one command: modelctl pin fraudscore --version v6."
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [payments/payout-gateway-rollback, release/reverting-a-release]
+
+- id: q033
+  question: "My notebook job on Kiln was killed after sitting idle all afternoon; why, and which epic brought that in?"
+  overlap: keyword
+  lang: en
+  expected: [ml/gpu-cluster, ENG-902]
+  partial: [ml/notebooks]
+  evidence:
+    ml/gpu-cluster: "Idle interactive jobs are preempted after 4 hours"
+    ENG-902: "Kiln preempts idle interactive jobs after 4 hours"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q034
+  question: "If we pin fraudscore back to v6, who decides when to unpin it, and how long must a retrained v7 run in shadow mode before promotion?"
+  overlap: identifier
+  lang: en
+  expected: [ml/model-rollback, ml/evaluation-and-promotion]
+  partial: [ENG-869]
+  evidence:
+    ml/model-rollback: "only with the head of risk ML's agreement"
+    ml/evaluation-and-promotion: "runs for 14 days in shadow mode"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q035
+  question: "Why does the scorer only learn from payments older than about eight weeks?"
+  overlap: paraphrase
+  lang: en
+  expected: [ml/fraud-model-training]
+  partial: [ml/chargeback-labels]
+  evidence:
+    ml/fraud-model-training: "labels wait 60 days for chargebacks"
+  outdated: []
+  traps: []
+  distractors: [ml/risk-ops-reviews]
+
+- id: q036
+  question: "Is fraudscore-v7 or fraudscore-v6 the model in production now, and which model card should I read?"
+  overlap: identifier
+  lang: en
+  expected: [ml/model-card-fraudscore-v7]
+  partial: [ml/fraud-model-training, ml/model-card-fraudscore-v6]
+  evidence:
+    ml/model-card-fraudscore-v7: "Champion, serving all traffic through risk-scorer"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: []
+
+- id: q037
+  question: "What kind of model is fraudscore-v7, and where do its features come from?"
+  overlap: identifier
+  lang: en
+  expected: [ml/fraud-model-training]
+  partial: [ml/model-card-fraudscore-v7]
+  evidence:
+    ml/fraud-model-training: "fraudscore-v7 is gradient-boosted trees with a sequence embedding trained on Kiln"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [ml/model-card-fraudscore-v6]
+
+- id: q038
+  question: "Which minimum ratio does body copy need against whatever sits behind it?"
+  overlap: paraphrase
+  lang: en
+  expected: [design/accessibility]
+  partial: []
+  evidence:
+    design/accessibility: "Text contrast is at least 4.5:1 against its background."
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q039
+  question: "How small can a tappable control be?"
+  overlap: paraphrase
+  lang: en
+  expected: [design/accessibility]
+  partial: []
+  evidence:
+    design/accessibility: "Pointer targets are at least 24 by 24 CSS pixels"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q040
+  question: 'Is data-theme="dark" enough to get dark mode, or do the colours need anything else?'
+  overlap: identifier
+  lang: en
+  expected: [design/theming]
+  partial: [ENG-1007]
+  evidence:
+    design/theming: "Every colour comes from a token."
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q041
+  question: "Should deleting a webhook endpoint ask the user to confirm first?"
+  overlap: paraphrase
+  lang: en
+  expected: [design/button]
+  partial: [design/modal]
+  evidence:
+    design/button: "A destructive button never performs its action on the first click."
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q042
+  question: "How many unused holiday days can I bring into January, and by which date must I use them?"
+  overlap: paraphrase
+  lang: en
+  expected: [people/annual-leave-uk]
+  partial: []
+  evidence:
+    people/annual-leave-uk: "carry over up to 8 days of unused annual leave"
+  outdated: [people/annual-leave-uk-2022]
+  traps: [synonym, outdated]
+  distractors: [people/time-off-faq, people/conges-payes-rtt]
+
+- id: q043
+  question: "I woke up unwell; how early must I let my manager know?"
+  overlap: paraphrase
+  lang: en
+  expected: [people/sickness-absence]
+  partial: []
+  evidence:
+    people/sickness-absence: "Tell your manager by 10:00 on your first day of absence"
+  outdated: []
+  traps: []
+  distractors: [workplace/desk-booking]
+
+- id: q044
+  question: "As a new joiner, who helps me through my first weeks, and how many days of annual leave do I get?"
+  overlap: keyword
+  lang: en
+  expected: [people/onboarding, people/annual-leave-uk]
+  partial: []
+  evidence:
+    people/onboarding: "Your buddy is a colleague from another team"
+    people/annual-leave-uk: "A full-time employee has 27 days a year plus bank holidays."
+  outdated: [people/annual-leave-uk-2022]
+  traps: [cross-link, outdated]
+  distractors: []
+
+- id: q045
+  question: "What is the liability cap in our MSA, and can it go higher?"
+  overlap: keyword
+  lang: en
+  expected: [legal/msa-clause-guide]
+  partial: []
+  evidence:
+    legal/msa-clause-guide: "Each party's total liability is capped at 12 months' fees"
+  outdated: []
+  traps: []
+  distractors: [legal/contract-signature-authority]
+
+- id: q046
+  question: "Who has to sign a contract worth £80,000?"
+  overlap: keyword
+  lang: en
+  expected: [legal/contract-signature-authority]
+  partial: []
+  evidence:
+    legal/contract-signature-authority: "£50,000 to £250,000 The CFO"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [finance/spend-approval]
+
+- id: q047
+  question: "A supplier sent me a bottle of champagne; do I have to declare it?"
+  overlap: paraphrase
+  lang: en
+  expected: [legal/gifts-and-hospitality]
+  partial: []
+  evidence:
+    legal/gifts-and-hospitality: "Register gifts over £50, given or received"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q048
+  question: "What are Quill House's opening hours, and is QM-Guest the network for visitors?"
+  overlap: identifier
+  lang: en
+  expected: [workplace/london-office]
+  partial: []
+  evidence:
+    workplace/london-office: "The office is open from 07:00 to 21:00, Monday to Friday."
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [workplace/bureau-de-paris]
+
+- id: q049
+  question: "My onboarding says to sort out a seat for my first week; which weekdays is my squad expected in, and how do I reserve a spot?"
+  overlap: paraphrase
+  lang: en
+  expected: [workplace/desk-booking]
+  partial: [people/onboarding, workplace/meeting-rooms]
+  evidence:
+    workplace/desk-booking: "Team days are Tuesday and Thursday, in both offices."
+  outdated: []
+  traps: [synonym, cross-link]
+  distractors: []
+
+- id: q050
+  question: "Is QM-Staff the staff Wi-Fi in the Paris office as well as in London?"
+  overlap: identifier
+  lang: en
+  expected: [workplace/bureau-de-paris, workplace/london-office]
+  partial: []
+  evidence:
+    workplace/bureau-de-paris: "QM-Staff est réservé aux ordinateurs et aux téléphones de l'entreprise"
+    workplace/london-office: "QM-Staff is for company laptops and company phones."
+  outdated: []
+  traps: [cross-lingual]
+  distractors: []
+
+- id: q051
+  question: "A merchant can't take any payments at 2am on a Sunday; how fast must we answer them?"
+  overlap: paraphrase
+  lang: en
+  expected: [support/priorities-and-slas]
+  partial: [ENG-1058]
+  evidence:
+    support/priorities-and-slas: "a merchant cannot take payments within 15 minutes at all hours"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [incidents/on-call]
+
+- id: q052
+  question: "A cardholder told their bank they never got the goods; how long do we have to send our proof?"
+  overlap: paraphrase
+  lang: en
+  expected: [support/chargebacks]
+  partial: [ENG-1108]
+  evidence:
+    support/chargebacks: "We submit evidence at least 7 calendar days before the scheme's deadline."
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [support/refunds]
+
+- id: q053
+  question: "A merchant wants us to forget everything we hold about them; who do I pass that to?"
+  overlap: paraphrase
+  lang: en
+  expected: [support/data-subject-requests]
+  partial: [legal/dpa-playbook, data/erasure-requests, support/escalation]
+  evidence:
+    support/data-subject-requests: "forwards them to privacy@quillmoor.example the same business day"
+  outdated: []
+  traps: [synonym]
+  distractors: []
+
+- id: q054
+  question: "For refunds over £10,000, who approves when support handles them, and what does the refunds API require?"
+  overlap: keyword
+  lang: en
+  expected: [support/refunds, ENG-235]
+  partial: [product/brief-self-serve-refunds]
+  evidence:
+    support/refunds: "Refunds over £10,000 need T2 approval before they are sent."
+    ENG-235: "Refunds over £10,000 need a second approver: a T2 support specialist"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [support/chargebacks]
+
+- id: q055
+  question: "What's the dispute fee on a chargeback, and do we now submit the evidence automatically?"
+  overlap: keyword
+  lang: en
+  expected: [support/chargebacks, ENG-1108]
+  partial: []
+  evidence:
+    support/chargebacks: "A dispute fee of £15 is charged for each chargeback."
+    ENG-1108: "submitted on its submission date without anyone pressing a button"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [support/refunds]
+
+- id: q056
+  question: "Will the company pay for my cab home at 20:30 after a team dinner?"
+  overlap: paraphrase
+  lang: en
+  expected: [finance/expenses]
+  partial: []
+  evidence:
+    finance/expenses: "A taxi booked at 20:30 to beat the rain does not qualify"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q057
+  question: "Who approves a £40,000 purchase order?"
+  overlap: keyword
+  lang: en
+  expected: [finance/spend-approval]
+  partial: [finance/purchase-orders]
+  evidence:
+    finance/spend-approval: "approved first by the budget holder and then by the finance director"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [legal/contract-signature-authority]
+
+- id: q058
+  question: "Why are some of our cloud costs showing up under CC-9000?"
+  overlap: identifier
+  lang: en
+  expected: [finance/cloud-cost-allocation]
+  partial: [finance/cost-centres]
+  evidence:
+    finance/cloud-cost-allocation: "cannot be traced to a cost centre lands in CC-9000"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q059
+  question: "Do our backend systems still pass messages to each other through the old broker?"
+  overlap: paraphrase
+  lang: en
+  expected: [architecture/adr-019-replicated-event-log]
+  partial: []
+  evidence:
+    architecture/adr-019-replicated-event-log: "Domain events move to Apache Kafka, a replicated log, run by Platform."
+  outdated: [architecture/adr-007-message-broker]
+  traps: [outdated]
+  distractors: []
+
+- id: q060
+  question: "Which ADR moved our domain events onto Kafka?"
+  overlap: keyword
+  lang: en
+  expected: [architecture/adr-019-replicated-event-log]
+  partial: [architecture/adr-001-record-decisions]
+  evidence:
+    architecture/adr-019-replicated-event-log: "Domain events move to Apache Kafka, a replicated log"
+  outdated: [architecture/adr-007-message-broker]
+  traps: [acronym, outdated]
+  distractors: []
+
+- id: q061
+  question: "Which Quillmoor-Version value should my integration send, and how long is a version supported?"
+  overlap: identifier
+  lang: en
+  expected: [architecture/adr-023-api-versioning]
+  partial: [ENG-1179]
+  evidence:
+    architecture/adr-023-api-versioning: "Each version is supported for 24 months from its release date."
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q062
+  question: "We're writing something that must answer within a few milliseconds; which language should it be in?"
+  overlap: paraphrase
+  lang: en
+  expected: [architecture/adr-003-go-latency-critical]
+  partial: []
+  evidence:
+    architecture/adr-003-go-latency-critical: "Services on the synchronous payment path are written in Go."
+  outdated: []
+  traps: []
+  distractors: [architecture/adr-002-python-back-office]
+
+- id: q063
+  question: "How long does Kafka keep domain events, and what did ENG-29 do with events during the move?"
+  overlap: identifier
+  lang: en
+  expected: [architecture/adr-019-replicated-event-log, ENG-1129]
+  partial: []
+  evidence:
+    architecture/adr-019-replicated-event-log: "Events are kept 7 days, whether they have been read or not"
+    ENG-1129: "publish every event to both its RabbitMQ exchange and its Kafka topic"
+  outdated: [architecture/adr-007-message-broker]
+  traps: [outdated]
+  distractors: [data/retention-schedule]
+
+- id: q064
+  question: "How many people must sign off a pull request on card-auth?"
+  overlap: paraphrase
+  lang: en
+  expected: [engineering/code-review]
+  partial: []
+  evidence:
+    engineering/code-review: "Two, at least one from the owning team"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q065
+  question: "What does qm dev up give me?"
+  overlap: identifier
+  lang: en
+  expected: [engineering/local-development]
+  partial: []
+  evidence:
+    engineering/local-development: "builds or pulls the development container, applies migrations"
+  outdated: []
+  traps: []
+  distractors: [release/staging-environments]
+
+- id: q066
+  question: "Where can I suggest a feature for the roadmap?"
+  overlap: paraphrase
+  lang: en
+  expected: [product/discovery-process]
+  partial: [product/roadmap-2026]
+  evidence:
+    product/discovery-process: "Ideas live on the ideas board, the Product Discovery project PRB"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q067
+  question: "Is there a product brief explaining the dark theme for Merchant Hub?"
+  overlap: keyword
+  lang: en
+  expected: [product/brief-dark-mode]
+  partial: [jira/dark-mode-dashboard, ENG-26, design/theming]
+  evidence:
+    product/brief-dark-mode: "One-page brief. Product: Linnea Ashdown."
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q068
+  question: "LDG-4102 keeps firing for refunds that settle just after midnight; is that a known bug?"
+  overlap: identifier
+  lang: en
+  expected: [ENG-74]
+  partial: [payments/ledger-reconciliation]
+  evidence:
+    ENG-74: "every such refund is a break for one day"
+  outdated: []
+  traps: [identifier]
+  distractors: [incidents/report-2025-12-02-ledger-break]
+
+- id: q069
+  question: "When did we cut how long card-auth waits for the cardholder's bank to answer?"
+  overlap: paraphrase
+  lang: en
+  expected: [ENG-114]
+  partial: [payments/card-auth-latency]
+  evidence:
+    ENG-114: "Live since 1 September."
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q070
+  question: "Did CAU-1301 HSM_QUEUE_FULL ever show up during load tests?"
+  overlap: identifier
+  lang: en
+  expected: [ENG-115]
+  partial: [payments/card-auth-latency]
+  evidence:
+    ENG-115: "appears and climbs as pods are added"
+  outdated: []
+  traps: [identifier]
+  distractors: [incidents/report-2025-09-17-card-auth-latency]
+
+- id: q071
+  question: "Is there a ticket for FXQ-2002 errors when the rate feed lags?"
+  overlap: identifier
+  lang: en
+  expected: [ENG-209]
+  partial: [payments/fx-quote-service, incidents/report-2026-08-08-stale-fx]
+  evidence:
+    ENG-209: "The age check moves to the moment of quoting"
+  outdated: []
+  traps: [identifier]
+  distractors: []
+
+- id: q072
+  question: "When the container platform went up a minor version last winter, did every data centre get emptied at once?"
+  overlap: paraphrase
+  lang: en
+  expected: [ENG-351]
+  partial: [architecture/adr-010-kubernetes]
+  evidence:
+    ENG-351: "the standby region first, then the primary"
+  outdated: []
+  traps: []
+  distractors: [architecture/adr-021-active-passive-regions, incidents/game-day-2026-04]
+
+- id: q073
+  question: "Since when does the on-call duty pass to the next person at the start of the working week?"
+  overlap: paraphrase
+  lang: en
+  expected: [ENG-454]
+  partial: [incidents/on-call]
+  evidence:
+    ENG-454: "The first common hand-over is the Monday after the change."
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q074
+  question: "Do we have burn-rate alerts on our SLO error budgets yet?"
+  overlap: keyword
+  lang: en
+  expected: [ENG-475]
+  partial: [incidents/slo-catalogue]
+  evidence:
+    ENG-475: "Live for all three. A fast burn alert"
+  outdated: []
+  traps: [acronym]
+  distractors: []
+
+- id: q075
+  question: "How often do the passwords our services use for PostgreSQL get changed?"
+  overlap: paraphrase
+  lang: en
+  expected: [ENG-564]
+  partial: [security/strongroom-how-to, security/leaked-secret]
+  evidence:
+    ENG-564: "every production database credential rotated automatically every 30 days"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q076
+  question: "Is JML offboarding automated now, or do managers still remove leavers' access by hand?"
+  overlap: keyword
+  lang: en
+  expected: [ENG-608]
+  partial: [security/access-reviews]
+  evidence:
+    ENG-608: "Live in production. The first leavers went through cleanly."
+  outdated: []
+  traps: [acronym]
+  distractors: []
+
+- id: q077
+  question: "Which epic moved merchant_orders_daily to 01:30 UTC?"
+  overlap: identifier
+  lang: en
+  expected: [ENG-17]
+  partial: [ENG-690, data/merchant-orders-daily]
+  evidence:
+    ENG-17: "Move the run to 01:30 UTC"
+  outdated: []
+  traps: []
+  distractors: [data/backfills]
+
+- id: q078
+  question: "Who leads the ENG-20 backfill tooling, and which limits come first?"
+  overlap: identifier
+  lang: en
+  expected: [ENG-20]
+  partial: [data/backfills]
+  evidence:
+    ENG-20: "Hana Ostrowska leads the tooling."
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q079
+  question: "Is the a11y bug about the invisible focus ring on the destructive button tracked?"
+  overlap: keyword
+  lang: en
+  expected: [ENG-972]
+  partial: [design/accessibility, design/button]
+  evidence:
+    ENG-972: "Found in the audit on the developer page"
+  outdated: []
+  traps: [acronym]
+  distractors: []
+
+- id: q080
+  question: "Has anyone proposed letting payout operators roll back a payout-gateway release without paging an engineer?"
+  overlap: keyword
+  lang: en
+  expected: [jira/self-serve-payout-rollback]
+  partial: [payments/payout-gateway-rollback]
+  evidence:
+    jira/self-serve-payout-rollback: "A guarded button in the operations console that runs the runbook's steps"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [release/reverting-a-release]
+
+- id: q081
+  question: "Is anyone proposing to merge the SEV, S and P severity scales into one?"
+  overlap: keyword
+  lang: en
+  expected: [jira/one-severity-scale]
+  partial: [incidents/incident-management, support/priorities-and-slas]
+  evidence:
+    jira/one-severity-scale: "Keep three scales for what they measure"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [security/incident-response-plan]
+
+- id: q082
+  question: "Could the whole 'forget me' process run without people passing emails around?"
+  overlap: paraphrase
+  lang: en
+  expected: [jira/automated-erasure]
+  partial: [data/erasure-requests]
+  evidence:
+    jira/automated-erasure: "One intake form that records the request once"
+  outdated: []
+  traps: [synonym]
+  distractors: [support/data-subject-requests]
+
+- id: q083
+  question: "I never know how many of my days off will roll into January; is anything planned?"
+  overlap: paraphrase
+  lang: en
+  expected: [jira/carry-over-tracker]
+  partial: []
+  evidence:
+    jira/carry-over-tracker: "A carry-over line in Haven's leave summary"
+  outdated: []
+  traps: [synonym]
+  distractors: [people/time-off-faq, people/haven-how-to]
+
+- id: q084
+  question: "How many days of paid leave do staff on a French contract get?"
+  overlap: paraphrase
+  lang: en
+  expected: [people/conges-payes-rtt]
+  partial: []
+  evidence:
+    people/conges-payes-rtt: "acquiert 25 jours ouvrés de congés payés, soit cinq semaines"
+  outdated: []
+  traps: [cross-lingual, near-duplicate]
+  distractors: [people/annual-leave-uk]
+
+- id: q085
+  question: "By when must carried-over leave be used in the UK, and in France?"
+  overlap: keyword
+  lang: en
+  expected: [people/annual-leave-uk, people/conges-payes-rtt]
+  partial: []
+  evidence:
+    people/annual-leave-uk: "Carried days must be used by 31 March."
+    people/conges-payes-rtt: "sont reportés automatiquement jusqu'au 31 mai de l'année suivante"
+  outdated: [people/annual-leave-uk-2022]
+  traps: [cross-lingual, outdated]
+  distractors: [jira/carry-over-tracker]
+
+- id: q086
+  question: "What's the nightly hotel limit for a work trip to the French capital?"
+  overlap: paraphrase
+  lang: en
+  expected: [finance/notes-de-frais]
+  partial: []
+  evidence:
+    finance/notes-de-frais: "L'hôtel est plafonné à 190 € la nuit à Paris."
+  outdated: []
+  traps: [cross-lingual, near-duplicate]
+  distractors: [finance/expenses]
+
+- id: q087
+  question: "A French merchant wants to refund €12,000 to a customer; who has to sign it off?"
+  overlap: paraphrase
+  lang: en
+  expected: [support/remboursements-marchands]
+  partial: [support/refunds]
+  evidence:
+    support/remboursements-marchands: "doit recevoir la validation par le niveau T2"
+  outdated: []
+  traps: [cross-lingual, near-duplicate]
+  distractors: [support/chargebacks]
+
+- id: q088
+  question: "Until what time is the Paris office open in the evening?"
+  overlap: keyword
+  lang: en
+  expected: [workplace/bureau-de-paris]
+  partial: []
+  evidence:
+    workplace/bureau-de-paris: "Le bureau est ouvert de 8 h à 20 h"
+  outdated: []
+  traps: [cross-lingual, near-duplicate]
+  distractors: [workplace/london-office]
+
+- id: q089
+  question: "Is there a top-up health insurance scheme for staff in Paris?"
+  overlap: paraphrase
+  lang: en
+  expected: [people/mutuelle-et-prevoyance]
+  partial: [people/benefits-uk]
+  evidence:
+    people/mutuelle-et-prevoyance: "La mutuelle complète les remboursements de l'assurance maladie obligatoire"
+  outdated: []
+  traps: [cross-lingual]
+  distractors: []
+
+- id: q090
+  question: "What does RTT stand for, and how do I book those days?"
+  overlap: keyword
+  lang: en
+  expected: [people/conges-payes-rtt]
+  partial: [people/haven-how-to]
+  evidence:
+    people/conges-payes-rtt: "jours de réduction du temps de travail (RTT)"
+  outdated: []
+  traps: [cross-lingual]
+  distractors: []
+
+- id: q091
+  question: "Combien de jours de RTT ai-je par an ?"
+  overlap: keyword
+  lang: fr
+  expected: [people/conges-payes-rtt]
+  partial: []
+  evidence:
+    people/conges-payes-rtt: "à temps plein bénéficie de 10 jours de RTT par an"
+  outdated: []
+  traps: []
+  distractors: [people/annual-leave-uk]
+
+- id: q092
+  question: "Où dois-je saisir mes demandes de repos pour les faire valider ?"
+  overlap: paraphrase
+  lang: fr
+  expected: [people/conges-payes-rtt]
+  partial: [people/haven-how-to]
+  evidence:
+    people/conges-payes-rtt: "Ouvrez Haven et choisissez"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q093
+  question: "À quelle heure ouvre le bureau de Paris ?"
+  overlap: keyword
+  lang: fr
+  expected: [workplace/bureau-de-paris]
+  partial: []
+  evidence:
+    workplace/bureau-de-paris: "Le bureau est ouvert de 8 h à 20 h"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [workplace/london-office]
+
+- id: q094
+  question: "À quel niveau de Maison Lanterne travaillons-nous, et faut-il une carte d'accès pour passer la porte ?"
+  overlap: paraphrase
+  lang: fr
+  expected: [workplace/bureau-de-paris]
+  partial: []
+  evidence:
+    workplace/bureau-de-paris: "Quillmoor occupe tout le 4e étage."
+  outdated: []
+  traps: []
+  distractors: [workplace/london-office]
+
+- id: q095
+  question: "Combien de temps ai-je pour me faire rembourser une dépense professionnelle ?"
+  overlap: paraphrase
+  lang: fr
+  expected: [finance/notes-de-frais]
+  partial: [finance/expenses]
+  evidence:
+    finance/notes-de-frais: "sous 60 jours à compter de la date de la dépense"
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q096
+  question: "Un marchand demande un remboursement de 15 000 € : qui doit le valider ?"
+  overlap: keyword
+  lang: fr
+  expected: [support/remboursements-marchands]
+  partial: [support/refunds]
+  evidence:
+    support/remboursements-marchands: "doit recevoir la validation par le niveau T2"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [support/chargebacks]
+
+- id: q097
+  question: "Une boutique en ligne veut rendre l'argent d'un achat d'il y a sept mois : est-ce encore possible ?"
+  overlap: paraphrase
+  lang: fr
+  expected: [support/remboursements-marchands]
+  partial: [support/refunds]
+  evidence:
+    support/remboursements-marchands: "remboursé dans les 180 jours qui suivent la date du paiement"
+  outdated: []
+  traps: [near-duplicate]
+  distractors: [support/chargebacks]
+
+- id: q098
+  question: "Faut-il un justificatif pour un taxi de 8 € pris à 22 h ?"
+  overlap: keyword
+  lang: fr
+  expected: [finance/notes-de-frais]
+  partial: [finance/expenses]
+  evidence:
+    finance/notes-de-frais: "Un justificatif est obligatoire au-delà de 10 €."
+  outdated: []
+  traps: []
+  distractors: []
+
+- id: q099
+  question: "Quel est le plafond d'hôtel par nuit à Paris, et à Londres ?"
+  overlap: keyword
+  lang: fr
+  expected: [finance/notes-de-frais, finance/expenses]
+  partial: []
+  evidence:
+    finance/notes-de-frais: "L'hôtel est plafonné à 190 € la nuit à Paris."
+    finance/expenses: "Hotels are capped at £180 a night in London"
+  outdated: []
+  traps: [cross-lingual]
+  distractors: []
+
+- id: q100
+  question: "Combien de jours de congés annuels ont les salariés au Royaume-Uni ?"
+  overlap: paraphrase
+  lang: fr
+  expected: [people/annual-leave-uk]
+  partial: []
+  evidence:
+    people/annual-leave-uk: "A full-time employee has 27 days a year plus bank holidays."
+  outdated: [people/annual-leave-uk-2022]
+  traps: [cross-lingual, outdated]
+  distractors: [people/conges-payes-rtt]
+
+- id: q101
+  question: "Les erreurs PGW-5021 grimpent après un déploiement de payout-gateway : quand et comment revenir à la version précédente ?"
+  overlap: identifier
+  lang: fr
+  expected: [payments/payout-gateway-rollback]
+  partial: [release/reverting-a-release]
+  evidence:
+    payments/payout-gateway-rollback: "PGW-5021 errors exceed 2% of batches for 5 minutes after a deploy"
+  outdated: []
+  traps: [cross-lingual, identifier, synonym]
+  distractors: [ml/model-rollback, payments/release-notes-payout-gateway-4-13]
+
+- id: q102
+  question: "Que signifie l'erreur CAU-1207 ?"
+  overlap: identifier
+  lang: fr
+  expected: [payments/card-auth-latency]
+  partial: [incidents/report-2025-09-17-card-auth-latency]
+  evidence:
+    payments/card-auth-latency: "the issuer did not answer within 3 seconds"
+  outdated: []
+  traps: [cross-lingual, identifier]
+  distractors: [ENG-115]
+
+- id: q103
+  question: "D'astreinte, en combien de temps dois-je accuser réception d'une alerte SEV1 ?"
+  overlap: paraphrase
+  lang: fr
+  expected: [incidents/on-call]
+  partial: []
+  evidence:
+    incidents/on-call: "SEV1 5 minutes Klaxon pages the secondary at 5 minutes"
+  outdated: []
+  traps: [cross-lingual, near-duplicate]
+  distractors: [support/priorities-and-slas, incidents/status-page]
+
+- id: q104
+  question: "Un client demande qu'on efface ses données de l'entrepôt : de combien de temps disposons-nous ?"
+  overlap: paraphrase
+  lang: fr
+  expected: [data/erasure-requests]
+  partial: [legal/dpa-playbook]
+  evidence:
+    data/erasure-requests: "applied in the warehouse within 30 days"
+  outdated: []
+  traps: [cross-lingual, synonym]
+  distractors: [data/retention-schedule]
+
+- id: q105
+  question: "Que veut dire DQ-031, et quel ticket a fixé le seuil ?"
+  overlap: identifier
+  lang: fr
+  expected: [data/quality-alerts, ENG-708]
+  partial: []
+  evidence:
+    data/quality-alerts: "The 25% threshold was set in ENG-18"
+    ENG-708: "more than 25% above or below the median of the 7 partitions"
+  outdated: []
+  traps: [cross-lingual, identifier]
+  distractors: []
