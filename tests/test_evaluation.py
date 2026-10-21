@@ -30,6 +30,7 @@ CLOSE = 0.02
 SIGNIFICANT = 0.05
 HALF = 0.5
 NINETEEN = 19
+TWENTY_NINE = 29
 TEN = 10
 SEVEN = 7.0
 
@@ -143,3 +144,27 @@ def test_a_small_mixed_case_matches_the_exact_two_sided_p() -> None:
     )
     exact = beyond / len(flips)
     assert paired_test([0.0] * 5, differences) == pytest.approx(exact, abs=CLOSE)
+
+
+def test_a_consistent_loss_is_significant_too() -> None:
+    """Two-sided: thirty questions each a little worse are as telling as better."""
+    assert paired_test([0.3] * 30, [0.2] * 30) < SIGNIFICANT
+
+
+def test_the_seed_makes_the_p_value_reproducible() -> None:
+    """Where sampling matters, the same seed gives the same p, another seed another."""
+    differences = [0.5, 0.25, -0.25, 0.5, 0.25]
+    p = paired_test([0.0] * 5, differences, seed=11)
+    assert paired_test([0.0] * 5, differences, seed=11) == p
+    assert paired_test([0.0] * 5, differences, seed=12) != p
+
+
+def test_ndcg_reaches_one_with_more_relevant_documents_than_ten() -> None:
+    """The ideal ranking is cut at ten too: a perfect top ten is perfect."""
+    many = Question("q", "x", expected=tuple(f"d{n}" for n in range(11)))
+    assert measure([f"d{n}" for n in range(10)], many).ndcg == pytest.approx(1.0)
+
+
+def test_the_percentile_of_thirty_is_the_twenty_ninth() -> None:
+    """0.95 x 30 = 28.5, so the nearest rank is the 29th, not the 28th."""
+    assert percentile(list(range(1, 31)), 0.95) == TWENTY_NINE

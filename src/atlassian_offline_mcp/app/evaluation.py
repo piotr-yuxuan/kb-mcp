@@ -31,6 +31,7 @@ from atlassian_offline_mcp.domain.evaluation import (
     measure,
     paired_test,
     percentile,
+    plain,
 )
 
 if TYPE_CHECKING:
@@ -77,7 +78,7 @@ def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Questio
                 item.texts("expected"),
                 item.texts("groups"),
             )
-            unknown = sorted(set(item.value) - FIELDS)
+            unknown = sorted(str(key) for key in set(item.value) - FIELDS)
             faults = {
                 f"unknown field {', '.join(unknown)}": bool(unknown),
                 f"question: at most {LONGEST_QUESTION} characters": (
@@ -85,6 +86,9 @@ def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Questio
                 ),
                 "expected: at least one ref": not expected,
                 "evidence: only for an expected ref": not set(evidence.value) <= set(expected),
+                "evidence: a phrase of a word or more": not all(
+                    plain(evidence.text(ref)) for ref in evidence.value
+                ),
                 'groups: each once, and not "all"': len(set(groups)) != len(groups)
                 or "all" in groups,
             }

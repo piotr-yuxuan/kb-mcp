@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError
+from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError, load
+from atlassian_offline_mcp.adapters.sqlite_index import reading
 from atlassian_offline_mcp.app import evaluation
 from atlassian_offline_mcp.app.evaluation import (
     EvaluationError,
@@ -36,6 +37,8 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
+    from atlassian_offline_mcp.adapters.embedding import Embedder
+
 GOLDEN = """
 - id: q1
   question: "vacation lunch"
@@ -52,6 +55,8 @@ GOLDEN = """
   expected: [PROJ-7]
 """
 REFUSED = 2
+# Seconds that loading the model takes in the test of timing: beyond any query's.
+LOADING = 1000
 
 
 @pytest.fixture
@@ -92,6 +97,11 @@ def golden(data: Path, text: str = GOLDEN) -> list:
         ),
         ("- {id: q1, question: x, expected: ['4002'], groups: [all]}", r"groups: each once"),
         ("- {id: q1, question: x, expected: ['4002'], groups: [en, en]}", r"groups: each once"),
+        ("- {id: q1, question: x, expected: ['4002'], 7: x}", r"golden\[0\]: unknown field 7"),
+        (
+            "- {id: q1, question: x, expected: ['4002'], evidence: {'4002': '**'}}",
+            r"evidence: a phrase of a word or more",
+        ),
         ("{id: q1}", "golden: expected a list"),
         ("- [unclosed", "not a golden file"),
     ],
@@ -208,3 +218,75 @@ def test_holm_adjusts_every_test_of_the_run(data: Path, monkeypatch: MonkeyPatch
     adjusted = [run.adjusted[mode] for run in runs for mode in ("semantic", "hybrid")]
     assert raw == [0.01, 0.02, 0.03, 0.04]
     assert adjusted == holm(raw) == pytest.approx([0.04, 0.06, 0.06, 0.06])
+
+
+def test_a_partial_ref_missing_from_the_index_evaluated_is_refused(data: Path) -> None:
+    """A document that only helps counts in nDCG: missing, it would lower it unseen."""
+    write(data / "docs", page("4004", "Helper"), "revert\n")
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    questions = golden(data, "- {id: q1, question: x, expected: ['4003'], partial: ['4004']}")
+    (data / "docs" / "confluence" / "ENG" / "4004-helper.md").unlink()
+    settings = Settings(None, data, model="tiny")
+    with pytest.raises(EvaluationError, match=r"q1: confluence/ENG/4004-helper\.md is not"):
+        evaluate(settings, questions, ["tiny"], ticking(), MOMENT)
+
+
+def test_loading_the_model_is_not_timed_as_a_query(data: Path, monkeypatch: MonkeyPatch) -> None:
+    """A thousand seconds of loading land on the untimed first query, not on the measures."""
+    now = [0.0]
+
+    def clock() -> float:
+        now[0] += 1.0
+        return now[0]
+
+    def slow(name: str, models: Path) -> Embedder:
+        now[0] += 1000.0
+        return load(name, models)
+
+    monkeypatch.setattr(evaluation, "Meaning", lambda models: Meaning(models, slow))
+    settings = Settings(None, data, model="tiny")
+    [run] = evaluate(settings, golden(data), ["tiny"], clock, MOMENT)
+    assert all(tail < LOADING for _, tail in run.times.values())
+
+
+def test_evaluation_leaves_the_served_index_and_builds_its_own(data: Path) -> None:
+    """The server's index stays as it was; the model's index is in <data>/eval/indexes/."""
+    before = (data / "index.sqlite").read_bytes()
+    settings = Settings(None, data, model="tiny")
+    evaluate(settings, golden(data), ["tiny"], ticking(), MOMENT)
+    assert (data / "index.sqlite").read_bytes() == before
+    with reading(data / "eval" / "indexes" / "tiny.sqlite") as reader:
+        assert reader.embedded() is not None
+
+
+def test_documents_are_measured_to_the_tenth_and_tested_on_mrr(
+    data: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Ninth by words still counts within ten; the tests compare reciprocal ranks.
+
+    Each mode is tested against lexical, question by question, on MRR@10's ranks.
+    """
+    for number in range(8):
+        write(data / "docs", page(str(4100 + number), f"Zebra {number} zebra"), "zebra\n")
+    write(data / "docs", page("4200", "Stripes"), "Some text, and zebra once.\n")
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    questions = golden(data, GOLDEN + "- {id: q4, question: zebra, expected: ['4200']}\n")
+    tested: list[tuple[list[float], list[float]]] = []
+
+    def recorded(before: list[float], after: list[float]) -> float:
+        tested.append((list(before), list(after)))
+        return 0.5
+
+    monkeypatch.setattr(evaluation, "paired_test", recorded)
+    settings = Settings(None, data, model="tiny")
+    [run] = evaluate(settings, questions, ["tiny"], ticking(), MOMENT)
+    assert run.per["lexical"]["q4"].recall == 1.0
+    assert run.per["lexical"]["q4"].reciprocal_rank == pytest.approx(1 / 9)
+    ranks = {
+        mode: [run.per[mode][each.id].reciprocal_rank for each in questions] for mode in run.per
+    }
+    assert tested[1:] == [
+        (ranks["lexical"], ranks["semantic"]),
+        (ranks["lexical"], ranks["hybrid"]),
+    ]
+    assert ranks["semantic"] != ranks["lexical"]

@@ -241,12 +241,13 @@ def both_at(rank: int) -> list[str]:
 
 
 def test_fusion_takes_k_at_60() -> None:
-    """2 / (60 + r) against 1 / 61: rank 61 in both lists beats first in one, 63 does not.
+    """2 / (60 + r) against 1 / 61: rank 61 in both lists beats first in one, 62 ties.
 
-    So k is 60: with k = 50 rank 61 would lose, with k = 100 rank 63 would win.
+    A tie goes to the path, "a" before "both". So k is 60: with k = 59 rank 61 would
+    tie and lose, with k = 61 rank 62 would win.
     """
     assert both_at(61)[0] == "both"
-    assert both_at(63)[0] != "both"
+    assert both_at(62)[0] == "a"
 
 
 def test_fusion_ties_go_to_the_newest_then_the_path() -> None:
@@ -266,3 +267,17 @@ def test_each_piece_is_embedded_with_its_title_and_heading() -> None:
     ]
     index, start, end, _ = found[1]
     assert cut[index].body[start:end].strip() == "More."
+
+
+def test_a_blank_line_ending_right_at_the_limit_ends_the_piece() -> None:
+    """The limit counts the blank line in: a piece ends after it, exactly at the limit."""
+    assert pieces("aaaa\n\nbbb\n\ncc", limit=11) == [(0, 11), (11, 13)]
+
+
+def test_a_paragraph_is_kept_whole_rather_than_cut_at_a_line_break() -> None:
+    """The blank line that fits ends the piece; the next paragraph's line break does not."""
+    text = "First paragraph.\n\nSecond paragraph, line one\nline two continues"
+    assert [text[a:b].strip() for a, b in pieces(text, limit=50)] == [
+        "First paragraph.",
+        "Second paragraph, line one\nline two continues",
+    ]
