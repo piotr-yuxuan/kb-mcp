@@ -8,12 +8,13 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.embedding import ModelError, connect, prefixes
+from atlassian_offline_mcp.adapters.embedding import ModelError, connect
 from atlassian_offline_mcp.commands._options import (
     add_embedding_options,
     add_settings_options,
     model_name,
     open_endpoint,
+    prefixes_said,
     settings_of,
 )
 from atlassian_offline_mcp.domain.settings import SettingsError
@@ -54,11 +55,8 @@ def run(arguments: argparse.Namespace) -> int:
         except ModelError as error:
             sys.stderr.write(f"not ready: {error}\n")
             return NOT_READY
-    known = (
-        "its prefixes known" if prefixes(name) else "no prefixes known: texts embedded as they are"
-    )
     sys.stdout.write(
         f"{name}: {embedder.dimensions} dimensions, from {settings.embedding_url};"
-        f" digest {embedder.digest[:SHORT] or 'not reported'}; {known}\n"
+        f" digest {embedder.digest[:SHORT] or 'not reported'}; {prefixes_said(name)}\n"
     )
     return 0

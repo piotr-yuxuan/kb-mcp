@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.embedding import KEY_VARIABLE, Endpoint, endpoint
+from atlassian_offline_mcp.adapters.embedding import KEY_VARIABLE, Endpoint, endpoint, prefixes
 from atlassian_offline_mcp.app.settings import SETTINGS_PATH, load_settings
 from atlassian_offline_mcp.domain.settings import MODEL_NAME
 
@@ -54,3 +54,8 @@ def model_name(value: str) -> str:
         message = "the name of an embedding model, such as qwen3-embedding:0.6b"
         raise argparse.ArgumentTypeError(message)
     return value
+
+
+def prefixes_said(model: str) -> str:
+    """Say whether the prefixes that a model's card asks for are known here."""
+    return "its prefixes known" if prefixes(model) else "no prefixes known: texts as they are"

@@ -240,6 +240,21 @@ def test_a_busy_endpoint_is_tried_again_after_waits() -> None:
     assert waits == [1.0]
 
 
+def test_a_limit_of_the_endpoint_is_never_the_text_s() -> None:
+    """429 is waited on and tried again; three of them fail the batch, leaving no hole."""
+    answers = Scripted()
+    embedder = tiny(answers)
+    waits: list[float] = []
+    embedder = replace(embedder, endpoint=replace(embedder.endpoint, sleep=waits.append))
+    answers.statuses = [429]
+    assert embedder.documents(["undo"])[0] is not None
+    assert waits == [1.0]
+    answers.statuses = [429, 429, 429]
+    with pytest.raises(ModelError, match="answered 429") as failed:
+        embedder.documents(["undo"])
+    assert not isinstance(failed.value, RefusedError)
+
+
 def test_three_failures_give_up_and_a_refusal_is_not_retried() -> None:
     """Three 503s: refused after waiting 1 then 4 seconds. A 400: refused at once."""
     answers = Scripted(statuses=[503, 503, 503, 400])
@@ -300,9 +315,15 @@ def test_the_key_is_sent_only_when_set_and_never_said() -> None:
 
 
 def test_a_missing_model_and_no_answer_say_what_to_run() -> None:
-    """A 404: pull the model, or mind the address. No answer: start Ollama."""
-    with pytest.raises(ModelError, match=r"ends in /v1\); with Ollama: ollama pull other"):
+    """Not in Ollama's list, or a 404: pull the model, or mind the address.
+
+    No answer: start Ollama.
+    """
+    with pytest.raises(ModelError, match=r"not in Ollama's list of models; .* ollama pull other"):
         tiny(model="other")
+    elsewhere = Scripted(tags=404)
+    with pytest.raises(ModelError, match=r"ends in /v1\); with Ollama: ollama pull other"):
+        tiny(elsewhere, "other")
 
     def down(request: httpx.Request) -> httpx.Response:
         message = "refused"
@@ -361,7 +382,12 @@ def test_the_digest_is_the_model_s_row_s() -> None:
     answers = Scripted({"tiny:latest": "aa", "tiny:small": "bb", "other:latest": "cc"})
     assert digest(scripted(answers), "tiny") == "aa"
     assert digest(scripted(answers), "tiny:small") == "bb"
-    assert digest(scripted(answers), "missing") == ""
+    for alias in ("TINY", "Tiny:Latest", "library/tiny", "registry.ollama.ai/library/tiny"):
+        assert digest(scripted(answers), alias) == "aa"
+    pulled = Scripted({"hf.co/Org/Model-GGUF:Q8_0": "ff"})
+    assert digest(scripted(pulled), "hf.co/Org/Model-GGUF:Q8_0") == "ff"
+    with pytest.raises(ModelError, match=r"not in Ollama's list of models; .* ollama pull missing"):
+        digest(scripted(answers), "missing")
 
     def twice(_: httpx.Request) -> httpx.Response:
         row = {"name": "tiny:latest", "model": "tiny:latest", "details": {}}
@@ -396,8 +422,9 @@ def test_a_model_that_ollama_serves_from_elsewhere_is_refused_unless_allowed() -
         row = {"name": "tiny:cloud", "digest": "ee", "remote_host": "https://ollama.com:443"}
         return httpx.Response(200, json={"models": [row]})
 
-    with pytest.raises(ModelError, match="from elsewhere"):
-        digest(over(cloud), "tiny:cloud")
+    for spelt in ("tiny:cloud", "TINY:CLOUD", "registry.ollama.ai/library/tiny:cloud"):
+        with pytest.raises(ModelError, match="from elsewhere"):
+            digest(over(cloud), spelt)
     allowed = endpoint(URL, None, remote_allowed=True, transport=httpx.MockTransport(cloud))
     assert digest(allowed, "tiny:cloud") == "ee"
 
@@ -427,11 +454,66 @@ def test_a_text_refused_alone_gets_no_vector_and_the_others_theirs() -> None:
     assert tiny(answers).documents([texts[5]]) == [None]
 
 
-def test_a_batch_whose_every_text_is_refused_alone_is_the_endpoint_s_fault() -> None:
-    """Every text refused, each alone: the endpoint is at fault, not the texts."""
-    texts = ["one", "two", "three"]
-    with pytest.raises(ModelError, match="for every text of a batch, each alone"):
-        tiny(Scripted(refused=set(texts))).documents(texts)
+def test_a_batch_whose_every_text_is_refused_alone_is_judged_by_the_probe() -> None:
+    """Every text refused, each alone: the endpoint is at fault when the probe fails too.
+
+    A batch of one text, as a rebuild after one edit sends, is judged the same way.
+    """
+    answers = Scripted()
+    embedder = tiny(answers)
+    embedder = replace(embedder, endpoint=replace(embedder.endpoint, sleep=lambda _: None))
+    for texts in (["one", "two", "three"], ["one"]):
+        answers.statuses = [503] * 10
+        with pytest.raises(ModelError, match="answered 503"):
+            embedder.documents(texts)
+        answers.statuses = []
+        answers.refused = set(texts)
+        assert embedder.documents(texts) == [None] * len(texts)
+        answers.refused = set()
+
+
+def test_a_document_of_another_length_than_the_probe_s_is_refused() -> None:
+    """The batch's rows are held to the probe's length, as the query's are."""
+    opened = answering(lambda _: data({"embedding": [1.0, 0.0, 0.0], "index": 0}))
+    embedder = ApiEmbedder(opened, "tiny", DIGEST, 2, Prefixes("", ""))
+    with pytest.raises(ModelError, match="not one vector of 2 per text"):
+        embedder.documents(["undo"])
+
+
+def test_an_answer_nested_too_deep_is_no_crash() -> None:
+    """A hostile answer is refused, or read as a server listing no digest; never a crash."""
+    deep = b"[" * 100_000 + b"]" * 100_000
+    with pytest.raises(ModelError, match="not embeddings"):
+        embed(answering(lambda _: httpx.Response(200, content=deep)), "tiny", ["one"], SINGLE)
+    assert digest(over(lambda _: httpx.Response(200, content=deep)), "tiny") == ""
+
+
+CARDS = [
+    (
+        "qwen3-embedding:0.6b",
+        (
+            "Instruct: Given a web search query, retrieve relevant passages that answer the"
+            " query\nQuery:"
+        ),
+        "",
+    ),
+    ("embeddinggemma:300m", "task: search result | query: ", "title: none | text: "),
+    ("embeddinggemma-2:270m", "task: search result | query: ", "title: none | text: "),
+    ("nomic-embed-text:latest", "search_query: ", "search_document: "),
+    ("nomic-embed-text-v2-moe:latest", "search_query: ", "search_document: "),
+    ("snowflake-arctic-embed2:568m", "query: ", ""),
+    ("bge-m3:567m", "", ""),
+]
+
+
+@pytest.mark.parametrize(("model", "query", "document"), CARDS)
+def test_each_family_takes_its_card_s_prefixes(model: str, query: str, document: str) -> None:
+    """Written here from each model card, not from the table: a typo there shows."""
+    answers = Scripted({model: DIGEST})
+    embedder = tiny(answers, model)
+    embedder.documents(["undo"])
+    embedder.query("revert")
+    assert answers.asked[1:] == [[f"{document}undo"], [f"{query}revert"]]
 
 
 def test_a_remote_endpoint_needs_the_flag_and_https() -> None:
@@ -514,7 +596,7 @@ def test_model_check_says_the_dimensions_and_whether_the_prefixes_are_known(
         f"{QWEN}: {DIMENSIONS} dimensions, from {url}; digest {DIGEST[:12]}; its prefixes known",
         (
             f"tiny: {DIMENSIONS} dimensions, from {url}; digest {DIGEST[:12]};"
-            " no prefixes known: texts embedded as they are"
+            " no prefixes known: texts as they are"
         ),
     ]
 
@@ -523,7 +605,7 @@ def test_model_check_says_what_to_run(home: Path, capsys: CaptureFixture[str]) -
     """A model not pulled: ``ollama pull``. Nothing answering: ``ollama serve``. Exit 1."""
     with serving(Scripted()) as url:
         assert check(home, url) == NOT_READY
-    assert f"not ready: {QWEN}: not there" in capsys.readouterr().err
+    assert f"not ready: {QWEN}: not in Ollama's list of models" in capsys.readouterr().err
     with nothing_listening() as url:
         assert check(home, url) == NOT_READY
     assert "ollama serve" in capsys.readouterr().err

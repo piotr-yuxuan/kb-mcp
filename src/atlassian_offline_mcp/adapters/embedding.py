@@ -40,8 +40,8 @@ MAX_ANSWER_BYTES = 64 * 1024 * 1024
 # Statuses worth another attempt: the endpoint busy, or failing for a while.
 RETRIED = frozenset({429, 500, 502, 503, 504})
 # Statuses that point at what was sent, or at a failure that outlived its retries: a
-# text sent alone may still embed.
-REFUSING = frozenset({400, 413, 422}) | RETRIED
+# text sent alone may still embed. A 429 is the endpoint's limit, never the text's.
+REFUSING = frozenset({400, 413, 422}) | RETRIED - {429}
 # Seconds waited before the second attempt, and before the third.
 WAITS_S = (1.0, 4.0)
 PROBE = "probe"
@@ -190,10 +190,11 @@ def send(
 ) -> tuple[int, bytes]:
     """Make a request within its bounds; give the status and body of its last answer.
 
-    Each attempt ends by its deadline, checked at every read as well as by httpx, and
-    its answer stays within MAX_ANSWER_BYTES. A transport error, a passed deadline, an
-    answer too large or a status of RETRIED is tried again, after a wait, while
-    attempts remain. Raises ModelError when no attempt got a whole answer.
+    httpx bounds each phase of an attempt by the deadline (connecting, sending, the
+    answer's first byte), and the body must end by the deadline itself, checked at every
+    read, within MAX_ANSWER_BYTES. A transport error, a passed deadline, an answer too
+    large or a status of RETRIED is tried again, after a wait, while attempts remain.
+    Raises ModelError when no attempt got a whole answer.
     """
     reason = "no attempt"
     for attempt in range(bounds.attempts):
@@ -249,7 +250,7 @@ def embed(
         items = sorted(json.loads(body)["data"], key=lambda item: item["index"])
         indexes = [item["index"] for item in items]
         vectors = np.array([item["embedding"] for item in items])
-    except (ValueError, KeyError, TypeError) as error:
+    except (ValueError, KeyError, TypeError, RecursionError) as error:
         message = f"{model}: the endpoint's answer is not embeddings ({type(error).__name__})"
         raise ModelError(message) from None
     wanted = (len(texts), dimensions or vectors.shape[-1])
@@ -268,13 +269,24 @@ def embed(
     return (vectors / norms).astype(np.float32)
 
 
+def ollama_name(name: str) -> str:
+    """Write a model's name as Ollama resolves it, to compare two.
+
+    In lower case, with its tag (``latest`` when none is given), and without the default
+    registry and namespace.
+    """
+    lower = name.lower()
+    tagged = lower if ":" in lower.rpartition("/")[2] else f"{lower}:latest"
+    return tagged.removeprefix("registry.ollama.ai/").removeprefix("library/")
+
+
 def digest(endpoint: Endpoint, model: str) -> str:
     """Give the digest that Ollama lists for a model, or "" from a server that lists none.
 
-    A name without a tag is Ollama's ``<name>:latest``; the digests of every row of the
-    name are joined, as Ollama has listed one model twice. Raises ModelError when the
-    list cannot be read, and for a model that Ollama serves from elsewhere (a cloud
-    model) unless the run allows it.
+    Names compare as Ollama resolves them; the digests of every row of the name are
+    joined, as Ollama has listed one model twice. Raises ModelError when the list
+    cannot be read, when Ollama's list lacks the model, and for a model that Ollama
+    serves from elsewhere (a cloud model) unless the run allows it.
     """
     root = str(endpoint.http.base_url).removesuffix("/").removesuffix("/v1")
     status, body = send(endpoint, "GET", f"{root}/api/tags", SINGLE)
@@ -283,13 +295,16 @@ def digest(endpoint: Endpoint, model: str) -> str:
     if status != httpx.codes.OK:
         message = f"{model}: the endpoint's list of models answered {status}"
         raise ModelError(message)
-    name = model if ":" in model else f"{model}:latest"
+    wanted = ollama_name(model)
     try:
-        rows = [row for row in json.loads(body)["models"] if row["name"] == name]
+        rows = [row for row in json.loads(body)["models"] if ollama_name(row["name"]) == wanted]
         found = "+".join(sorted(row["digest"] for row in rows))
         elsewhere = any(row.get("remote_host") for row in rows)
-    except ValueError, KeyError, TypeError, AttributeError:
+    except ValueError, KeyError, TypeError, AttributeError, RecursionError:
         return ""  # not Ollama's list: a server that reports no digest
+    if not rows:
+        message = f"{model}: not in Ollama's list of models; with Ollama: ollama pull {model}"
+        raise ModelError(message)
     if elsewhere and not endpoint.remote_allowed:
         message = (
             f"{model}: Ollama serves it from elsewhere (a cloud model), where the mirror's"
@@ -333,9 +348,10 @@ class ApiEmbedder:
     def documents(self, texts: Sequence[str]) -> list[NDArray[np.float32] | None]:
         """Embed texts to be found, BATCH at a time; None for a text the endpoint refuses.
 
-        A batch refused goes again text by text. The digest is read before and after,
-        so that no vector of other weights is given under this fingerprint. Raises
-        ModelError, also when every text of a batch is refused alone.
+        A batch refused goes again text by text. When every text is refused alone, the
+        probe tells whether the endpoint is at fault rather than the texts. The digest
+        is read before and after, so that no vector of other weights is given under this
+        fingerprint. Raises ModelError.
         """
         self.check()
         found: list[NDArray[np.float32] | None] = []
@@ -343,7 +359,7 @@ class ApiEmbedder:
             batch = [self.prefixes.document + text for text in texts[start : start + BATCH]]
             try:
                 found += list(embed(self.endpoint, self.name, batch, DOCUMENTS, self.dimensions))
-            except RefusedError as error:
+            except RefusedError:
                 alone: list[NDArray[np.float32] | None] = []
                 for text in batch:
                     try:
@@ -352,9 +368,9 @@ class ApiEmbedder:
                         )
                     except RefusedError:
                         alone.append(None)
-                if len(batch) > 1 and all(vector is None for vector in alone):
-                    message = f"{error}, for every text of a batch, each alone"
-                    raise ModelError(message) from None
+                if all(vector is None for vector in alone):
+                    probe = [self.prefixes.query + PROBE]
+                    embed(self.endpoint, self.name, probe, SINGLE, self.dimensions)
                 found += alone
         self.check()
         return found

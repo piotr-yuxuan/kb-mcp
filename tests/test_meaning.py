@@ -205,7 +205,7 @@ def test_without_vectors_meaning_falls_back_to_words_and_says_why(tmp_path: Path
 def test_a_model_gone_or_pulled_again_since_the_build_falls_back(data: Path) -> None:
     """Gone from the endpoint: pull it. Other weights under its name: index again."""
     gone = library(data, "semantic", Meaning(connector(Scripted({})))).search("vacation lunch")
-    assert "Ranked by words alone: tiny: not there" in gone
+    assert "Ranked by words alone: tiny: not in Ollama's list of models" in gone
     assert "with Ollama: ollama pull tiny" in gone
     pulled = Meaning(connector(Scripted({"tiny:latest": "d2" * 32})))
     answer = library(data, "hybrid", pulled).search("vacation lunch")
@@ -241,11 +241,17 @@ def test_a_failing_query_falls_back_to_words(data: Path) -> None:
     assert titles(answer)[0] == WORDS
 
 
-def test_a_query_refused_or_not_answered_as_embeddings_falls_back(data: Path) -> None:
-    """A 400 for the query, or an answer that is not embeddings: words, with the reason."""
+def test_a_query_refused_failing_or_not_answered_as_embeddings_falls_back(data: Path) -> None:
+    """A 400 or a 500 for the query, or an answer that is not embeddings: words, and why."""
     refused = Meaning(connector(Scripted(refused={"revert release"})))
     answer = library(data, "hybrid", refused).search("revert release")
     assert "Ranked by words alone: tiny: the endpoint answered 400" in parts(answer)[0]
+    failing = Scripted()
+    tools = library(data, "hybrid", Meaning(connector(failing)))
+    assert "Ranked by words alone" not in tools.search("revert release")
+    failing.statuses = [500]
+    answer = tools.search("revert release")
+    assert "Ranked by words alone: tiny: the endpoint answered 500" in parts(answer)[0]
     answers = Scripted()
 
     def garbled(request: httpx.Request) -> httpx.Response:
@@ -335,6 +341,19 @@ def test_a_failed_connection_stands_for_a_while_then_is_tried_again(data: Path) 
     assert connects.names == ["tiny"]
     now[0] = QUIET_S + 1.0
     connects.fail = False
+    assert titles(tools.search("holidays"))[0] == "Handbook"
+    assert connects.names == ["tiny", "tiny"]
+
+
+def test_a_rebuilt_index_connects_at_once_after_a_failure(data: Path) -> None:
+    """A failure stands for its build alone: the next build connects without waiting."""
+    now = [0.0]
+    connects = Connects(fail=True)
+    tools = library(data, "hybrid", Meaning(connects, clock=lambda: now[0]))
+    assert FAILURE in tools.search("holidays")
+    connects.fail = False
+    now[0] = 10.0
+    rebuild(data, "tiny")
     assert titles(tools.search("holidays"))[0] == "Handbook"
     assert connects.names == ["tiny", "tiny"]
 

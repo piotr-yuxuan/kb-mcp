@@ -7,12 +7,13 @@ import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.embedding import ModelError, connect, prefixes
+from atlassian_offline_mcp.adapters.embedding import ModelError, connect
 from atlassian_offline_mcp.app.indexing import Embedding, MirrorMissingError, build_index
 from atlassian_offline_mcp.commands._options import (
     add_embedding_options,
     add_settings_options,
     open_endpoint,
+    prefixes_said,
     settings_of,
 )
 from atlassian_offline_mcp.domain.settings import SettingsError
@@ -66,17 +67,17 @@ def run(arguments: argparse.Namespace) -> int:
     for path, reason in report.skipped:
         sys.stderr.write(f"skipped {path}: {reason}\n")
     for path in report.unembedded:
-        sys.stderr.write(f"not embedded: a piece of {path}, which the model refused\n")
+        sys.stderr.write(f"not embedded: a piece of {path}, which the endpoint refused\n")
     types = ", ".join(f"{name}: {count}" for name, count in sorted(report.types.items()))
     sys.stdout.write(
         f"indexed {report.types.total()} documents ({types or 'none'}),"
         f" {report.sections} sections, into {settings.index}\n"
     )
     if embedding is not None:
-        unknown = "" if prefixes(settings.model) else " (no prefixes known: texts as they are)"
         sys.stdout.write(
-            f"{report.pieces} pieces by meaning, with {settings.model}{unknown};"
-            f" {report.embedded} embedded now, the others kept\n"
+            f"{report.pieces} pieces by meaning, with {settings.model}"
+            f" ({prefixes_said(settings.model)}); {report.embedded} embedded now,"
+            " the others kept\n"
         )
     if report.skipped:
         sys.stderr.write(f"{len(report.skipped)} files skipped: the index lacks them\n")
