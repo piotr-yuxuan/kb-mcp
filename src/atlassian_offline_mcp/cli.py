@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import pkgutil
+import sys
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp import commands
@@ -24,5 +25,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     found = sorted(module.name for module in pkgutil.iter_modules(commands.__path__))
     for name in (name for name in found if not name.startswith("_")):
         importlib.import_module(f"{commands.__name__}.{name}").register(subparsers)
-    arguments = parser.parse_args(argv)
+    # Agents start the command with no arguments, which serves MCP over stdio.
+    arguments = parser.parse_args(list(sys.argv[1:] if argv is None else argv) or ["serve"])
     return int(arguments.run(arguments))
