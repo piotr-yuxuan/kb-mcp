@@ -56,12 +56,13 @@ def disable_password_saving(profile: Path) -> None:
 
 
 def sign_in(
-    site: str, profile: Path, chrome: str | None, timeout_s: float = SIGN_IN_TIMEOUT_S
+    site: str, profile: Path, chrome: str | None, *, extensions: bool = False
 ) -> list[dict[str, object]]:
     """Open the site in Chrome, wait until the user is signed in, return its cookies.
 
-    No script runs in the identity provider's pages: only once back on the site. Raises
-    SignInTimeoutError when no sign-in completes within ``timeout_s``.
+    No script runs in the identity provider's pages: only once back on the site.
+    ``extensions`` lets Chrome load extensions, in case the sign-in needs one. Raises
+    SignInTimeoutError when no sign-in completes within ``SIGN_IN_TIMEOUT_S``.
     """
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
@@ -69,11 +70,12 @@ def sign_in(
             headless=False,
             channel=None if chrome else "chrome",
             executable_path=chrome,
+            ignore_default_args=["--disable-extensions"] if extensions else None,
         )
         try:
             page = context.pages[0] if context.pages else context.new_page()
             page.goto(f"{site}/wiki/home")
-            deadline = time.monotonic() + timeout_s
+            deadline = time.monotonic() + SIGN_IN_TIMEOUT_S
             while time.monotonic() < deadline:
                 try:
                     on_site = urlsplit(page.url).hostname == urlsplit(site).hostname

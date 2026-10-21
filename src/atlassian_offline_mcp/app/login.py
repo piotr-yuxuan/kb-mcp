@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 PROFILE = "browser"
 
 
-def login(settings: Settings, site: str, chrome: str | None) -> None:
+def login(settings: Settings, site: str, chrome: str | None, *, extensions: bool) -> None:
     """Open the sign-in window, wait for the user, and save the site's cookies.
 
     The browser profile and the cookies stay under ``Settings.session``, readable by the
@@ -23,4 +23,4 @@ def login(settings: Settings, site: str, chrome: str | None) -> None:
     profile.mkdir(parents=True, exist_ok=True, mode=0o700)
     settings.session.chmod(0o700)
     disable_password_saving(profile)
-    write_cookies(settings.session / COOKIES, sign_in(site, profile, chrome))
+    write_cookies(settings.session / COOKIES, sign_in(site, profile, chrome, extensions=extensions))

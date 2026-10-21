@@ -22,6 +22,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser("login", help="sign in once, in a Chrome window")
     add_settings_options(parser)
     parser.add_argument("--chrome", help="Chrome's executable, where the chrome channel fails")
+    parser.add_argument(
+        "--keep-extensions", action="store_true", help="let Chrome load extensions, for SSO"
+    )
     parser.set_defaults(run=run)
 
 
@@ -37,7 +40,7 @@ def run(arguments: argparse.Namespace) -> int:
         return BAD_SETTINGS
     sys.stdout.write(f"Sign in to {settings.site} in the Chrome window that opens.\n")
     try:
-        login(settings, settings.site, arguments.chrome)
+        login(settings, settings.site, arguments.chrome, extensions=arguments.keep_extensions)
     except SignInTimeoutError:
         sys.stderr.write(f"no sign-in within {SIGN_IN_TIMEOUT_S} s\n")
         return NOT_SIGNED_IN
