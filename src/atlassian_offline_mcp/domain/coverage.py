@@ -10,7 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
+from atlassian_offline_mcp.domain.content import PROJECT_KEY, SPACE_KEY, RefusedError, require
 from atlassian_offline_mcp.domain.period import EPOCH, Period, PeriodError
+
+# The rule of a target's key, by source.
+KEYS = {"confluence": SPACE_KEY, "jira": PROJECT_KEY}
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -23,6 +27,13 @@ class Target:
 
     source: str  # confluence or jira
     key: str
+
+    def __post_init__(self) -> None:
+        """Refuse a source that is neither, and a key that does not look like its kind's."""
+        if self.source not in KEYS:
+            message = "source: neither confluence nor jira"
+            raise RefusedError(message)
+        require(KEYS[self.source], self.key, "key")
 
     def __str__(self) -> str:
         """Name the target as the user does: ``space ENG``, ``project PLAT``."""

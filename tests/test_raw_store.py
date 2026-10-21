@@ -13,6 +13,8 @@ from atlassian_offline_mcp.adapters import confluence_v2, jira_v3
 from atlassian_offline_mcp.adapters.fields import RepresentationError
 from atlassian_offline_mcp.adapters.raw_store import RawStore, StoreBusyError, Stored, Unreadable
 from atlassian_offline_mcp.domain.content import BlogPost, Folder, Issue, Page, Person, Space
+from atlassian_offline_mcp.domain.coverage import Coverage, Target
+from atlassian_offline_mcp.domain.deletions import Tombstone
 from tests.samples import (
     v1_user,
     v2_attachment,
@@ -330,3 +332,38 @@ def test_every_write_needs_the_lock(tmp_path: Path, write: object) -> None:
     with pytest.raises(RuntimeError, match="only inside"):
         write(store)  # type: ignore[operator]
     assert not (store.root / "confluence").exists()
+
+
+def test_coverage_and_tombstones_read_back_as_written(store: RawStore) -> None:
+    """The store's two records of runs keep what was put, in any time zone, as UTC."""
+    start = datetime(2026, 10, 15, 11, tzinfo=timezone(timedelta(hours=2)))
+    coverage = Coverage({Target("confluence", "MFS"): start, Target("jira", "PRB"): FETCHED})
+    store.put_coverage(coverage)
+    assert store.coverage() == coverage
+    stone = Tombstone("pages", "1001", "196613", FETCHED, confirmed=True)
+    store.put_tombstones([stone])
+    assert store.tombstones() == {("pages", "1001"): stone}
+
+
+def test_records_never_written_read_as_empty(tmp_path: Path) -> None:
+    """A first run has no coverage and no tombstone."""
+    store = RawStore(tmp_path / "raw")
+    assert store.coverage() == Coverage()
+    assert store.tombstones() == {}
+
+
+def test_a_record_naming_a_key_that_is_a_path_is_refused(store: RawStore) -> None:
+    """A record read back is checked like any response."""
+    (store.root / "coverage.json").write_text(
+        '[{"source": "confluence", "key": "../x", "start": "2026-10-15T09:00:00+00:00"}]',
+        "utf-8",
+    )
+    with pytest.raises(RepresentationError, match=r"coverage\.json\[0\]: key: does not match"):
+        store.coverage()
+
+
+def test_the_ids_stored_are_those_with_a_snapshot(store: RawStore) -> None:
+    """A folder left without a revision is not a stored document."""
+    store.put(Page, page_responses(1), FETCHED, {})
+    (store.root / "confluence" / "pages" / "999").mkdir()
+    assert store.stored_ids(Page) == {"196845"}

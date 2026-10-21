@@ -31,15 +31,20 @@ from atlassian_offline_mcp.domain.content import (
     Space,
     require,
 )
+from atlassian_offline_mcp.domain.coverage import Coverage, Target
+from atlassian_offline_mcp.domain.deletions import Tombstone
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping
+    from collections.abc import Callable, Iterable, Iterator, Mapping
     from datetime import datetime
 
     from atlassian_offline_mcp.domain.content import Document, Snapshot
 
 # The store's own file in a snapshot, beside the responses.
 RECORD = "store.json"
+# The store's own records of what runs covered, and of documents that answered as gone.
+COVERAGE = "coverage.json"
+TOMBSTONES = "tombstones.json"
 # The file name of a response: one safe path part, then .json.
 RESPONSE_NAME = re.compile(r"[A-Za-z0-9_-]+\.json")
 DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -389,6 +394,68 @@ class RawStore:
             except UNREADABLE as error:
                 results.append(Unreadable(f"{where}[{index}]", _reason(error)))
         return results
+
+    def stored_ids(self, kind: type[Document]) -> set[str]:
+        """Return the ids of the documents of a kind that have a stored snapshot."""
+        folders = _named(self.root / kind.source / kind.kind, IDENTIFIER)
+        return {folder.name for folder in folders if _named(folder, REVISION)}
+
+    def coverage(self) -> Coverage:
+        """Read the start of each target's covered period, none when never written."""
+        path = self.root / COVERAGE
+        if not path.exists():
+            return Coverage()
+        starts: dict[Target, datetime] = {}
+        for item in Fields.each(_decode(path), COVERAGE):
+            with item.refusals():
+                starts[Target(item.text("source"), item.text("key"))] = item.time("start")
+        return Coverage(starts)
+
+    def put_coverage(self, coverage: Coverage) -> None:
+        """Replace the record of coverage, whole."""
+        self._check_writing()
+        entries = [
+            {"source": target.source, "key": target.key, "start": start.astimezone(UTC).isoformat()}
+            for target, start in sorted(coverage.starts.items())
+        ]
+        _replace_synced(self.root / COVERAGE, _encode(entries))
+
+    def tombstones(self) -> dict[tuple[str, str], Tombstone]:
+        """Read the documents that answered as gone, by kind and id."""
+        path = self.root / TOMBSTONES
+        if not path.exists():
+            return {}
+        stones: dict[tuple[str, str], Tombstone] = {}
+        for item in Fields.each(_decode(path), TOMBSTONES):
+            with item.refusals():
+                kind, identifier = item.text("kind"), _identifier(item.text("id"), "id")
+                if kind not in {Page.kind, BlogPost.kind}:
+                    message = f"{item.path}.kind: not a kind of Confluence document"
+                    raise RepresentationError(message)
+                stone = Tombstone(
+                    kind,
+                    identifier,
+                    item.text("space"),
+                    item.time("first_gone"),
+                    confirmed=item.flag("confirmed"),
+                )
+            stones[stone.key] = stone
+        return stones
+
+    def put_tombstones(self, tombstones: Iterable[Tombstone]) -> None:
+        """Replace the record of tombstones, whole."""
+        self._check_writing()
+        entries = [
+            {
+                "kind": stone.kind,
+                "id": stone.id,
+                "space": stone.space_id,
+                "first_gone": stone.first_gone.astimezone(UTC).isoformat(),
+                "confirmed": stone.confirmed,
+            }
+            for stone in sorted(tombstones, key=lambda each: each.key)
+        ]
+        _replace_synced(self.root / TOMBSTONES, _encode(entries))
 
     def blob(self, digest: str) -> Path:
         """Return where the file with this SHA-256 is, or would be."""
