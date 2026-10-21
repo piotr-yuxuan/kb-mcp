@@ -189,11 +189,13 @@ Two more of the store's own records, each replaced whole:
   a run without `--since` starts at the covered start, so every run asks again for
   whatever failed inside the period.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
-  `put_tombstones()`: each Confluence document absent from its space's listing that
-  answered as gone (`domain.deletions.Tombstone`: 404, trashed, or moved to a space the
-  store does not keep), with the time of the first such answer, and whether a second
-  answer, at least an hour later, confirmed it. A document listed again loses its
-  tombstone. `stored_ids(kind)` gives the ids that have a snapshot, for the probes.
+  `put_tombstones()`: each Confluence document absent from its space's listing
+  (`domain.deletions.Tombstone`), pending until a probe answers, then dated by its first
+  answer of gone (404, trashed, or moved to a space the store does not keep), and
+  confirmed by a second, at least an hour later. A document listed again loses its
+  tombstone. The record is written before the space's listing is replaced, so that no
+  absent document is lost to a run that stops. `stored_ids(kind)` gives the ids that
+  have a snapshot, for the probes.
 
 ## Run reports
 
