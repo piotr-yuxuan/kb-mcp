@@ -58,7 +58,7 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
         assert reader.text(path, 0, entry.length) == BODY
         assert reader.text(path, 9, 14) == BODY[9:14]
         second = BODY.index("## ")
-        assert reader.bounds(path) == [(0, second, "Kafka"), (second, len(BODY), "Retention")]
+        assert reader.bounds(path) == [(0, second), (second, len(BODY))]
         summary = reader.summary()
     assert summary.built_at.tzinfo is not None
     assert (summary.types, summary.spaces, summary.projects) == (

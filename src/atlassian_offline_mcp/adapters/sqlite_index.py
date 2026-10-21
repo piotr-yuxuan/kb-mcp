@@ -114,8 +114,7 @@ SELECT d.* FROM documents d
 WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
 """
 BOUNDS = """
-SELECT s.start, s.heading,
-       coalesce(lead(s.start) OVER (ORDER BY s.number), d.length) AS end
+SELECT s.start, coalesce(lead(s.start) OVER (ORDER BY s.number), d.length) AS end
 FROM sections s JOIN documents d ON d.rowid = s.document
 WHERE d.path = :path
 """
@@ -193,13 +192,14 @@ class Writer:
             [(document, label) for label in front.labels],
         )
         # The title, labels and breadcrumb go with the first section alone, so that FTS5,
-        # which counts rows, counts a document's words once.
+        # which counts rows, counts a document's words once; the title's own heading is
+        # not counted again as a heading.
         about = (front.title, " ".join(front.labels), " / ".join(front.breadcrumb))
         rows = [
             (
                 self._next_section + index,
                 *(about if index == 0 else ("", "", "")),
-                section.heading,
+                "" if section.heading == front.title else section.heading,
                 section.body,
             )
             for index, section in enumerate(sections)
@@ -370,10 +370,10 @@ class Reader:
         rows = self._connection.execute(LISTING, {"kept": self.kept(filters)})
         return [entry(row) for row in rows]
 
-    def bounds(self, path: str) -> list[tuple[int, int, str]]:
-        """Give each section of a document: where it starts and ends, and its heading."""
+    def bounds(self, path: str) -> list[tuple[int, int]]:
+        """Give where each section of a document starts and ends, in order."""
         rows = self._connection.execute(BOUNDS, {"path": path})
-        return [(row["start"], row["end"], row["heading"]) for row in rows]
+        return [(row["start"], row["end"]) for row in rows]
 
     def text(self, path: str, start: int, end: int) -> str:
         """Give the characters of a document's body from ``start`` to ``end``."""
@@ -389,13 +389,18 @@ class Reader:
         """Give each value that a filter or count can take, the most used first."""
         return [(row[0], row[1]) for row in self._connection.execute(VALUES[name])]
 
+    def built_at(self) -> datetime:
+        """Say when the index was built."""
+        row = self._connection.execute("SELECT value FROM meta WHERE name = 'built_at'").fetchone()
+        return datetime.fromisoformat(row[0])
+
     def summary(self) -> Summary:
         """Say what the index holds and when it was built."""
         meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
         newest = self._connection.execute("SELECT max(fetched_at) FROM documents").fetchone()[0]
         sections = self._connection.execute("SELECT count(*) FROM sections").fetchone()[0]
         return Summary(
-            built_at=datetime.fromisoformat(meta["built_at"]),
+            built_at=self.built_at(),
             skipped=int(meta["skipped"]),
             types=dict(self.values("type")),
             spaces=dict(self.values("space")),
