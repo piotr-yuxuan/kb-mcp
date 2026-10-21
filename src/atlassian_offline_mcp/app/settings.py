@@ -27,21 +27,27 @@ class UnsafeDataDirError(SettingsError):
 def load_settings(path: Path, overrides: Mapping[str, object]) -> Settings:
     """Read the settings file, let the flags that were given override it, and check all.
 
-    The data directory is resolved (links followed, ``..`` removed) before the guard
-    judges it, and the resolved path is what every command then uses: no command can
-    reach a data directory the guard has not passed.
+    The data directory, and each place under it where data is written, is resolved
+    (links followed, ``..`` removed) before the guard judges it, and the resolved data
+    directory is what every command then uses. Links deeper inside are not followed.
     """
     try:
         values = read_settings_file(path)
     except ValueError as error:
         message = f"{path}: not a TOML file"
         raise SettingsError(message) from error
+    except OSError as error:
+        message = f"{path}: not readable ({type(error).__name__})"
+        raise SettingsError(message) from error
     given = {key: value for key, value in overrides.items() if value is not None}
     home = Path.home().resolve()
     settings = parse_settings({**values, **given}, home)
-    data_dir = settings.data_dir.resolve()
-    problem = unsafe_location(data_dir, home, git_root(data_dir))
-    if problem is not None:
-        message = f"data_dir: {problem}"
-        raise UnsafeDataDirError(message)
-    return replace(settings, data_dir=data_dir)
+    settings = replace(settings, data_dir=settings.data_dir.resolve())
+    for place in (settings.data_dir, *settings.parts):
+        resolved = place.resolve()
+        problem = unsafe_location(resolved, home, git_root(resolved))
+        if problem is not None:
+            where = "" if place == settings.data_dir else f"{place.name}: "
+            message = f"data_dir: {where}{problem}"
+            raise UnsafeDataDirError(message)
+    return settings

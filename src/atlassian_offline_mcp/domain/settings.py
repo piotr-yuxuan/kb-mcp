@@ -21,7 +21,7 @@ SYNCED_UNDER_HOME = (
     Path("Desktop"),
     Path("Documents"),
 )
-SYNCED_NAMES = ("Dropbox", "OneDrive", "Google Drive")
+SYNCED_NAMES = ("Dropbox", "OneDrive", "Google Drive", "GoogleDrive")
 
 
 class SettingsError(ValueError):
@@ -57,6 +57,16 @@ class Settings:
         """The browser profile and the saved session, never read by agents."""
         return self.data_dir / "session"
 
+    @property
+    def runs(self) -> Path:
+        """The reports of download runs, which hold counts and paths, never content."""
+        return self.data_dir / "runs"
+
+    @property
+    def parts(self) -> tuple[Path, ...]:
+        """Every place under the data directory where data is written."""
+        return (self.raw, self.docs, self.index, self.session, self.runs)
+
 
 def parse_settings(values: Mapping[str, object], home: Path) -> Settings:
     """Check settings read from a file or flags, and return them normalised.
@@ -83,7 +93,7 @@ def parse_settings(values: Mapping[str, object], home: Path) -> Settings:
         message = "site: an https address with a host name alone, such as https://x.atlassian.net"
         raise SettingsError(message)
     data_dir = values.get("data_dir", DEFAULT_DATA_DIR)
-    if not isinstance(data_dir, str) or not data_dir.strip():
+    if not isinstance(data_dir, str) or not data_dir.strip() or "\0" in data_dir:
         message = "data_dir: a path"
         raise SettingsError(message)
     path = home / data_dir[2:] if data_dir == "~" or data_dir.startswith("~/") else Path(data_dir)

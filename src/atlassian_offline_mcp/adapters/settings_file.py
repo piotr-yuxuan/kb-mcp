@@ -11,7 +11,8 @@ SETTINGS_PATH = Path("~/.config/atlassian-offline-mcp/config.toml")
 def read_settings_file(path: Path) -> dict[str, object]:
     """Read the settings file as TOML; a missing file holds no settings.
 
-    Raises ValueError (tomllib's TOMLDecodeError) for a file that is not TOML.
+    Raises ValueError for a file that is not TOML (tomllib's TOMLDecodeError) or not
+    text, and OSError for one that cannot be read, such as a folder.
     """
     path = path.expanduser()
     if not path.exists():

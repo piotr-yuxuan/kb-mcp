@@ -47,6 +47,7 @@ def test_the_default_data_directory_is_under_the_home() -> None:
         ({"site": "https://["}, "site:"),
         ({"data_dir": 3}, "data_dir:"),
         ({"data_dir": "relative/path"}, "data_dir:"),
+        ({"data_dir": "~/mirror\0"}, "data_dir:"),
         ({"spaces": "ENG"}, "spaces:"),
         ({"spaces": ["ENG", "not a key"]}, "spaces:"),
         ({"projects": ["pay"]}, "projects:"),
@@ -71,6 +72,7 @@ def test_unusable_settings_are_refused_by_name(values: dict[str, object], named:
         HOME / "documents/mirror",
         HOME / "library/cloudstorage/mirror",
         Path("/home/someone/dropbox/mirror"),
+        Path("/home/someone/GoogleDrive/mirror"),
     ],
 )
 def test_synchronised_folders_are_refused(path: Path) -> None:

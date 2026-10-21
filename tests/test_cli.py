@@ -69,6 +69,8 @@ def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture
         ("~/project/data", "inside the git working tree"),
         ("~/elsewhere/../Documents/mirror", "under ~/Documents"),
         ("~/linked/data", "inside the git working tree"),
+        ("~/work/data", "under a Dropbox folder"),
+        ("~/checkout/data", "inside the git working tree"),
     ],
 )
 def test_check_refuses_a_data_directory_that_could_leave_the_machine(
@@ -80,6 +82,10 @@ def test_check_refuses_a_data_directory_that_could_leave_the_machine(
     """
     (home / "project" / ".git").mkdir(parents=True)
     (home / "linked").symlink_to(home / "project")
+    (home / "Dropbox (Personal)" / "x").mkdir(parents=True)
+    (home / "work").symlink_to(home / "Dropbox (Personal)" / "x")
+    (home / "checkout").mkdir()
+    (home / "checkout" / ".git").write_text("gitdir: elsewhere\n", "utf-8")  # a worktree
     assert main(["check", "--config", str(home / "none.toml"), "--data-dir", data_dir]) == 1
     error = capsys.readouterr().err
     assert error.startswith("data directory refused: data_dir: ")
@@ -100,3 +106,31 @@ def test_check_refuses_a_file_that_is_not_toml(home: Path, capsys: CaptureFixtur
     config.write_text("site = ", "utf-8")
     assert main(["check", "--config", str(config)]) == BAD_SETTINGS
     assert "not a TOML file" in capsys.readouterr().err
+
+
+def test_check_refuses_a_part_of_the_data_directory_that_leads_elsewhere(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A link from <data>/docs into a synchronised folder is refused, naming docs."""
+    (home / "Dropbox" / "shared").mkdir(parents=True)
+    (home / "atlassian-offline-mcp").mkdir()
+    (home / "atlassian-offline-mcp" / "docs").symlink_to(home / "Dropbox" / "shared")
+    assert main(["check", "--config", str(home / "none.toml")]) == 1
+    assert "data_dir: docs: under a Dropbox folder" in capsys.readouterr().err
+
+
+def test_check_refuses_a_settings_file_it_cannot_read(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A folder where the settings file should be is refused, not a traceback."""
+    (home / "config.toml").mkdir()
+    assert main(["check", "--config", str(home / "config.toml")]) == BAD_SETTINGS
+    assert "not readable" in capsys.readouterr().err
+
+
+def test_a_flag_overrides_the_settings_file(home: Path, capsys: CaptureFixture[str]) -> None:
+    """--data-dir wins over the file's data_dir."""
+    config = home / "config.toml"
+    config.write_text('data_dir = "~/from-file"\n', "utf-8")
+    assert main(["check", "--config", str(config), "--data-dir", "~/from-flag"]) == 0
+    assert f"data directory: {(home / 'from-flag').resolve()}" in capsys.readouterr().out
