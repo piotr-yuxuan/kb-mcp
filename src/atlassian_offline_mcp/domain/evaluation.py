@@ -7,7 +7,8 @@ paths that answer them. Nothing here runs a search.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from statistics import fmean
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,9 @@ CUTOFF = 10
 EXPECTED, PARTIAL = 2, 1
 SAMPLES = 10_000
 SEED = 11
+# What evidence is compared without: a link's address, emphasis and code marks.
+LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+MARKS = re.compile(r"[*_`]")
 
 
 @dataclass(frozen=True)
@@ -32,7 +36,8 @@ class Question:
     text: str
     expected: tuple[str, ...]  # paths, relevance 2
     partial: tuple[str, ...] = ()  # paths, relevance 1
-    group: str | None = None  # such as the kind of wording: identifier, keyword, paraphrase
+    groups: tuple[str, ...] = ()  # such as the kind of wording, or the language
+    evidence: Mapping[str, str] = field(default_factory=dict)  # a phrase of an expected path
 
 
 @dataclass(frozen=True)
@@ -43,23 +48,36 @@ class Measures:
     reciprocal_rank: float  # of the first expected document within CUTOFF, else 0
     ndcg: float  # expected and partial documents, by their relevance, within CUTOFF
     success: float  # 1 when the first document is expected
+    # Of the expected documents with evidence found within CUTOFF, the share whose shown
+    # section holds the evidence; None when there is none such.
+    section: float | None = None
 
     @classmethod
     def mean(cls, many: Sequence[Measures]) -> Measures:
-        """Average measures over questions."""
+        """Average measures over questions; Section@10 over those that have one."""
+        sections = [each.section for each in many if each.section is not None]
         return cls(
             fmean(each.recall for each in many),
             fmean(each.reciprocal_rank for each in many),
             fmean(each.ndcg for each in many),
             fmean(each.success for each in many),
+            fmean(sections) if sections else None,
         )
 
 
-def measure(ranked: Sequence[str], question: Question) -> Measures:
+def plain(text: str) -> str:
+    """Write text as evidence is compared: links as their words, no marks, one case, spaced."""
+    return " ".join(MARKS.sub("", LINK.sub(r"\1", text)).casefold().split())
+
+
+def measure(
+    ranked: Sequence[str], question: Question, shown: Mapping[str, str] | None = None
+) -> Measures:
     """Measure one ranking against the documents of one question.
 
     nDCG takes each document's relevance as its gain, discounted by the logarithm of
-    its rank, over the best ordering of the question's documents.
+    its rank, over the best ordering of the question's documents. ``shown`` gives the
+    text of the section shown for each ranked document, for Section@10.
     """
     top = list(ranked[:CUTOFF])
     expected = set(question.expected)
@@ -68,11 +86,18 @@ def measure(ranked: Sequence[str], question: Question) -> Measures:
     found = sum(gains.get(path, 0) / math.log2(rank + 1) for rank, path in enumerate(top, 1))
     ideal = sorted(gains.values(), reverse=True)[:CUTOFF]
     best = sum(gain / math.log2(rank + 1) for rank, gain in enumerate(ideal, 1))
+    texts = shown or {}
+    held = [
+        plain(question.evidence[path]) in plain(texts.get(path, ""))
+        for path in top
+        if path in expected and path in question.evidence
+    ]
     return Measures(
         recall=len(expected.intersection(top)) / len(expected),
         reciprocal_rank=0.0 if first is None else 1 / first,
         ndcg=found / best,
         success=1.0 if top[:1] and top[0] in expected else 0.0,
+        section=fmean(held) if held else None,
     )
 
 
@@ -96,13 +121,25 @@ def paired_test(
     return (beyond + 1) / (samples + 1)
 
 
-def averages(
-    rankings: Mapping[str, Sequence[str]], questions: Sequence[Question]
-) -> dict[str | None, Measures]:
-    """Average the measures over every question (under None) and over each group."""
-    per = {question.id: measure(rankings[question.id], question) for question in questions}
-    groups: dict[str | None, list[Measures]] = {None: list(per.values())}
+def holm(pvalues: Sequence[float]) -> list[float]:
+    """Adjust p-values for testing several hypotheses at once, by Holm's step-down method.
+
+    The i-th smallest of m is multiplied by m - i + 1, kept no smaller than the one
+    before it, and capped at 1; the adjusted values come back in the given order.
+    """
+    order = sorted(range(len(pvalues)), key=lambda index: pvalues[index])
+    adjusted = [0.0] * len(pvalues)
+    floor = 0.0
+    for step, index in enumerate(order):
+        floor = max(floor, min(1.0, (len(pvalues) - step) * pvalues[index]))
+        adjusted[index] = floor
+    return adjusted
+
+
+def averages(per: Mapping[str, Measures], questions: Sequence[Question]) -> dict[str, Measures]:
+    """Average each question's measures over all of them (under "all") and per group."""
+    groups: dict[str, list[Measures]] = {"all": [per[question.id] for question in questions]}
     for question in questions:
-        if question.group is not None:
-            groups.setdefault(question.group, []).append(per[question.id])
+        for group in question.groups:
+            groups.setdefault(group, []).append(per[question.id])
     return {group: Measures.mean(each) for group, each in groups.items()}

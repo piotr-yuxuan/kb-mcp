@@ -1,0 +1,232 @@
+"""Evaluating the search strategies on golden questions, for each model pulled.
+
+Each model gets its own index, built from the mirror like any other with the vector
+store, so a second evaluation embeds nothing new. Every question is ranked by
+``Library.ranked``, as ``search`` ranks, in each mode; the measures and the paired
+tests of ``domain.evaluation`` say how the modes compare.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from dataclasses import asdict, dataclass, field
+from statistics import median
+from typing import TYPE_CHECKING
+
+import yaml
+
+from atlassian_offline_mcp.adapters.embedding import load
+from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
+from atlassian_offline_mcp.app.indexing import Embedding, build_index
+from atlassian_offline_mcp.app.meaning import Meaning
+from atlassian_offline_mcp.app.tools import Library
+from atlassian_offline_mcp.domain.evaluation import (
+    CUTOFF,
+    SAMPLES,
+    SEED,
+    Measures,
+    Question,
+    averages,
+    holm,
+    measure,
+    paired_test,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+    from datetime import datetime
+
+    from atlassian_offline_mcp.domain.settings import SearchMode, Settings
+
+MODES: tuple[SearchMode, ...] = ("lexical", "semantic", "hybrid")
+FIELDS = frozenset({"id", "question", "expected", "partial", "groups", "evidence"})
+# What a question without these fields has.
+DEFAULTS: dict[str, object] = {"partial": [], "groups": [], "evidence": {}}
+LONGEST_QUESTION = 500
+# The share of queries faster than the slow time reported: its 95th percentile.
+TAIL = 0.95
+HEADER = (
+    "| Mode | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 |"
+    " Query, median | Query, 95th |"
+)
+
+
+class GoldenError(ValueError):
+    """A golden file that cannot be used; the message names the field at fault."""
+
+
+class EvaluationError(Exception):
+    """An evaluation that would not measure what it says; the message says why."""
+
+
+def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Question]:
+    """Read golden questions from YAML, each ref resolved to the path that it names.
+
+    Every field is checked: an unknown or missing one, an id given twice, a question
+    longer than search takes, or a ref that the mirror does not hold is refused by name.
+    """
+    questions: list[Question] = []
+    try:
+        for given in Fields.each(yaml.safe_load(text), "golden"):
+            item = Fields(DEFAULTS | given.value, given.path)
+            evidence = item.object("evidence")
+            if unknown := sorted(set(item.value) - FIELDS):
+                message = f"{item.path}: unknown field {', '.join(unknown)}"
+                raise GoldenError(message)
+            if len(item.text("question")) > LONGEST_QUESTION:
+                message = f"{item.path}.question: at most {LONGEST_QUESTION} characters"
+                raise GoldenError(message)
+            questions.append(
+                Question(
+                    item.text("id"),
+                    item.text("question"),
+                    expected=tuple(path_of(ref, item, resolve) for ref in item.texts("expected")),
+                    partial=tuple(path_of(ref, item, resolve) for ref in item.texts("partial")),
+                    groups=item.texts("groups"),
+                    evidence={
+                        path_of(ref, item, resolve): evidence.text(ref) for ref in evidence.value
+                    },
+                )
+            )
+    except (yaml.YAMLError, RepresentationError) as error:
+        message = f"not a golden file: {error}"
+        raise GoldenError(message) from None
+    if len({question.id for question in questions}) != len(questions):
+        message = "golden: an id is given twice"
+        raise GoldenError(message)
+    return questions
+
+
+def path_of(ref: str, item: Fields, resolve: Callable[[str], str | None]) -> str:
+    """Resolve a golden file's ref to a mirrored path, or refuse it, naming its question."""
+    path = resolve(ref)
+    if path is None:
+        message = f"{item.path}: {ref!r} is not mirrored"
+        raise GoldenError(message)
+    return path
+
+
+@dataclass
+class Run:
+    """How one model's search ranked the golden questions, mode by mode."""
+
+    model: str
+    fingerprint: str
+    embedded: int  # texts that the model embedded for this run
+    seconds: float  # how long the index took to build, embedding included
+    per: dict[str, dict[str, Measures]] = field(default_factory=dict)  # mode, then question
+    groups: dict[str, dict[str, Measures]] = field(default_factory=dict)  # mode, then group
+    ranks: dict[str, dict[str, list[int | None]]] = field(default_factory=dict)  # mode, question
+    times: dict[str, tuple[float, float]] = field(default_factory=dict)  # median, 95th, in s
+    pvalues: dict[str, float] = field(default_factory=dict)  # mode against lexical
+    adjusted: dict[str, float] = field(default_factory=dict)  # by Holm, over the whole run
+
+
+def evaluate(
+    settings: Settings,
+    questions: Sequence[Question],
+    names: Sequence[str],
+    clock: Callable[[], float],
+    built_at: datetime,
+) -> list[Run]:
+    """Rank every question in every mode with each model named, and compare the modes.
+
+    Each model's index is ``<evaluations>/indexes/<model>.sqlite``. Raises
+    EvaluationError when a mode by meaning falls back to words, which would measure
+    words twice, and ModelError for a model that cannot be loaded.
+    """
+    runs: list[Run] = []
+    for name in names:
+        embedder = load(name, settings.models)
+        index = settings.evaluations / "indexes" / f"{name}.sqlite"
+        index.parent.mkdir(parents=True, exist_ok=True)
+        started = clock()
+        embedding = Embedding(embedder, settings.vectors)
+        report = build_index(settings.docs, index, built_at, embedding)
+        run = Run(name, embedder.fingerprint, report.embedded, clock() - started)
+        library = Library(index, settings.docs, Meaning(settings.models), "lexical")
+        for mode in MODES:
+            run.per[mode], run.ranks[mode], spent = {}, {}, []
+            for question in questions:
+                started = clock()
+                shown, note = library.ranked(question.text, mode, limit=CUTOFF)
+                spent.append(clock() - started)
+                if note:
+                    message = f"{name}, {mode}:{note}"
+                    raise EvaluationError(message)
+                paths = [each.path for each in shown]
+                texts = {each.path: each.text for each in shown}
+                run.per[mode][question.id] = measure(paths, question, texts)
+                run.ranks[mode][question.id] = [
+                    paths.index(path) + 1 if path in paths else None for path in question.expected
+                ]
+            run.groups[mode] = averages(run.per[mode], questions)
+            ordered = sorted(spent)
+            run.times[mode] = (median(spent), ordered[int(TAIL * (len(ordered) - 1))])
+            lexical = [run.per["lexical"][question.id].reciprocal_rank for question in questions]
+            moded = [run.per[mode][question.id].reciprocal_rank for question in questions]
+            run.pvalues[mode] = paired_test(lexical, moded)
+        runs.append(run)
+    tests = [(run, mode) for run in runs for mode in MODES[1:]]
+    adjusted = holm([run.pvalues[mode] for run, mode in tests])
+    for (run, mode), value in zip(tests, adjusted, strict=True):
+        run.adjusted[mode] = value
+    return runs
+
+
+def record(runs: Sequence[Run], golden: str, built_at: datetime) -> dict[str, object]:
+    """Give what a results file keeps: ids, models and numbers, never a question's text."""
+    return {
+        "golden_sha256": hashlib.sha256(golden.encode()).hexdigest(),
+        "built_at": built_at.isoformat(),
+        "test": {"kind": "paired randomisation, two-sided", "samples": SAMPLES, "seed": SEED},
+        "runs": [
+            {
+                "model": run.model,
+                "fingerprint": run.fingerprint,
+                "embedded": run.embedded,
+                "seconds": run.seconds,
+                "times": run.times,
+                "pvalues": run.pvalues,
+                "adjusted": run.adjusted,
+                "groups": {
+                    mode: {group: asdict(each) for group, each in groups.items()}
+                    for mode, groups in run.groups.items()
+                },
+                "ranks": run.ranks,
+            }
+            for run in runs
+        ],
+    }
+
+
+def table(runs: Sequence[Run]) -> str:
+    """Write the measures of each model's run as Markdown: one table, then the tests."""
+    lines: list[str] = []
+    for run in runs:
+        lines += [
+            f"## {run.model}",
+            "",
+            f"Index built in {run.seconds:.1f} s, {run.embedded} texts embedded for it.",
+            "",
+            HEADER,
+            "|---|---|---|---|---|---|---|---|---|",
+        ]
+        for mode, groups in run.groups.items():
+            median_s, tail_s = run.times[mode]
+            for group in sorted(groups, key=lambda name: (name != "all", name)):
+                each = groups[group]
+                section = "n/a" if each.section is None else f"{each.section:.3f}"
+                lines.append(
+                    f"| {mode} | {group} | {each.recall:.3f} | {each.reciprocal_rank:.3f} |"
+                    f" {each.ndcg:.3f} | {each.success:.3f} | {section} |"
+                    f" {median_s * 1000:.0f} ms | {tail_s * 1000:.0f} ms |"
+                )
+        lines.append("")
+        lines += [
+            f"MRR@10, {mode} against lexical: p = {run.pvalues[mode]:.4f},"
+            f" adjusted (Holm) {run.adjusted[mode]:.4f}"
+            for mode in MODES[1:]
+        ]
+        lines.append("")
+    return "\n".join(lines)

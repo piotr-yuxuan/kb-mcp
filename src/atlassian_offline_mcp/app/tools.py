@@ -317,6 +317,12 @@ class Library:
             header += f" Only the first {MAX_WORDS} words of the query were searched."
         return responses.answer(header, "\n".join(items[:count]), footer)
 
+    def resolve(self, ref: str) -> str | None:
+        """Find a document's path by its id, key, address or path, as read does."""
+        with self._reading() as reader:
+            found = self._find(reader, ref)
+        return None if found is None else found.path
+
     def ranked(self, query: str, mode: Mode, limit: int = SEARCH_LIMIT) -> tuple[list[Shown], str]:
         """Rank documents for a query as search does, in a mode, for an evaluation.
 

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import itertools
 import math
+from statistics import fmean
 
 import pytest
 
@@ -10,11 +12,20 @@ from atlassian_offline_mcp.domain.evaluation import (
     Measures,
     Question,
     averages,
+    holm,
     measure,
     paired_test,
 )
 
-QUESTION = Question("q1", "a question", expected=("a", "b"), partial=("c",), group="keyword")
+QUESTION = Question(
+    "q1",
+    "a question",
+    expected=("a", "b"),
+    partial=("c",),
+    groups=("keyword", "en"),
+    evidence={"a": "Pause, drain, then roll back.", "b": "ninety days"},
+)
+CLOSE = 0.02
 SIGNIFICANT = 0.05
 HALF = 0.5
 
@@ -48,13 +59,37 @@ def test_success_is_an_expected_document_first() -> None:
 
 
 def test_averages_are_overall_and_per_group() -> None:
-    """Each group averages its own questions; None holds them all."""
-    other = Question("q2", "another", expected=("z",), group="paraphrase")
-    found = averages({"q1": ["a"], "q2": ["x"]}, [QUESTION, other])
+    """Each group averages its own questions, a question counting in each of its groups."""
+    other = Question("q2", "another", expected=("z",), groups=("paraphrase", "en"))
+    per = {"q1": measure(["a"], QUESTION), "q2": measure(["x"], other)}
+    found = averages(per, [QUESTION, other])
     assert found["keyword"].success == 1.0
     assert found["paraphrase"].success == 0.0
-    overall = found[None]
-    assert overall == Measures(recall=0.25, reciprocal_rank=HALF, ndcg=overall.ndcg, success=HALF)
+    assert found["en"] == found["all"]
+    overall = found["all"]
+    expected = Measures(0.25, reciprocal_rank=HALF, ndcg=overall.ndcg, success=HALF, section=0.0)
+    assert overall == expected
+
+
+def test_section_counts_expected_documents_whose_shown_section_holds_the_evidence() -> None:
+    """Marks and links aside, case and spacing aside; documents not found do not count."""
+    shown = {
+        "a": "## Rollback\n\n**Pause**, drain,\nthen [roll back](../x.md).",
+        "b": "## Other\n\nNothing here.",
+    }
+    assert measure(["a", "b"], QUESTION, shown).section == HALF
+    assert measure(["a"], QUESTION, shown).section == 1.0
+    assert measure(["x"], QUESTION, shown).section is None
+    assert (
+        Measures.mean([measure(["x"], QUESTION, shown), measure(["a"], QUESTION, shown)]).section
+        == 1.0
+    )
+
+
+def test_holm_adjusts_by_rank_and_keeps_the_order() -> None:
+    """[0.01, 0.04, 0.03]: 3 x 0.01, 2 x 0.03, then at least that: 0.03, 0.06, 0.06."""
+    assert holm([0.01, 0.04, 0.03]) == pytest.approx([0.03, 0.06, 0.06])
+    assert holm([0.5, 0.9]) == [1.0, 1.0]
 
 
 def test_two_equal_runs_do_not_differ() -> None:
@@ -78,3 +113,16 @@ def test_a_mixed_difference_is_not_significant() -> None:
     assert paired_test(before, after) == 1.0
     noisy = [0.6, 0.4] * 14 + [0.6, 0.6]
     assert paired_test(before, noisy) > SIGNIFICANT
+
+
+def test_a_small_mixed_case_matches_the_exact_two_sided_p() -> None:
+    """Enumerating every sign of five differences gives the p that sampling approaches."""
+    differences = [0.5, 0.25, -0.25, 0.5, 0.25]
+    observed = abs(fmean(differences))
+    flips = list(itertools.product((-1, 1), repeat=len(differences)))
+    beyond = sum(
+        abs(fmean(s * d for s, d in zip(signs, differences, strict=True))) >= observed - 1e-12
+        for signs in flips
+    )
+    exact = beyond / len(flips)
+    assert paired_test([0.0] * 5, differences) == pytest.approx(exact, abs=CLOSE)
