@@ -9,8 +9,10 @@ from typing import TYPE_CHECKING
 import pytest
 
 from atlassian_offline_mcp.adapters import http
+from atlassian_offline_mcp.adapters.raw_store import RawStore
 from atlassian_offline_mcp.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.cli import main
+from atlassian_offline_mcp.commands import download as download_command
 from atlassian_offline_mcp.domain.settings import Settings
 from tests.test_download import SITE, FakeSite
 
@@ -23,6 +25,7 @@ if TYPE_CHECKING:
 REFUSED = 2
 SOME_FAILED = 1
 SIGN_IN_NEEDED = 3
+INTERRUPTED = 130
 
 
 @pytest.fixture
@@ -98,3 +101,30 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     [report] = chosen.runs.iterdir()
     assert "NOPE" not in report.read_text("utf-8")
     assert json.loads(report.read_text("utf-8"))["status"] == SOME_FAILED
+
+
+def test_ctrl_c_exits_130_and_says_where_the_counts_are(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """An interrupted run is the shell's 130, not a failure."""
+
+    def interrupted(*_: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(download_command, "download", interrupted)
+    options = ("--site", SITE, "--space", "MFS", "--since", "7d")
+    assert main(command(home, *options)) == INTERRUPTED
+    assert "interrupted; the counts so far are in" in capsys.readouterr().err
+
+
+def test_a_busy_store_exits_1_with_its_reason(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Another run writing the store: the user is told to wait for it."""
+    chosen = Settings(SITE, (home / "atlassian-offline-mcp").resolve())
+    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
+    options = ("--site", SITE, "--space", "MFS", "--since", "7d")
+    with RawStore(chosen.raw).writing():
+        assert main(command(home, *options)) == SOME_FAILED
+    assert "another run is writing the raw store" in capsys.readouterr().err

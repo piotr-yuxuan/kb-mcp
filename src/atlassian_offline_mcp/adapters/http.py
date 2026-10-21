@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+import certifi
 import httpx
 import truststore
 
@@ -29,8 +30,10 @@ MAX_WAIT_S = 60.0
 TIMEOUT_S = 30.0
 MAX_JSON_BYTES = 25 * 1024 * 1024
 INTERVAL_S = 0.2
-# GETs failing one after another, after which a run stops.
+# GETs in a row that got no answer, after which a run stops.
 MAX_FAILED_IN_A_ROW = 10
+# How many causes to follow to find a certificate error within a connection error.
+CAUSE_DEPTH = 10
 
 
 @dataclass(frozen=True)
@@ -70,30 +73,40 @@ def refuse_plain_http(request: httpx.Request) -> None:
 
 @dataclass
 class Breaker:
-    """Stop a run once GETs fail one after another, rather than fail each item slowly."""
+    """Stop a run once the site or the network stops answering, GET after GET.
+
+    Only a GET that got no answer counts: a transport error, or a throttling or gateway
+    status, once its retries are spent. Any other answer, even a refusal of one item,
+    shows the site is there, and starts the count again.
+    """
 
     limit: int
     failed: int = 0
 
-    def failure(self) -> None:
-        """Count a failed GET; raise TooManyFailuresError at the limit."""
-        self.failed += 1
+    def check(self) -> None:
+        """Raise TooManyFailuresError when the last ``limit`` GETs got no answer."""
         if self.failed >= self.limit:
             raise TooManyFailuresError
 
-    def success(self) -> None:
+    def unanswered(self) -> None:
+        """Count a GET that got no answer."""
+        self.failed += 1
+
+    def answered(self) -> None:
         """Start counting again."""
         self.failed = 0
 
 
 def client(site: str, cookies: Iterable[Mapping[str, str]]) -> httpx.Client:
     """Return an httpx client for the site, carrying cookies, verifying TLS with the OS."""
-    jar = httpx.Cookies()
+    cookie_jar = httpx.Cookies()
     for cookie in cookies:
-        jar.set(cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"])
+        cookie_jar.set(
+            cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"]
+        )
     return httpx.Client(
         base_url=site,
-        cookies=jar,
+        cookies=cookie_jar,
         follow_redirects=False,
         timeout=TIMEOUT_S,
         verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT),
@@ -150,30 +163,35 @@ class Site:
     def get(self, request: Request, max_bytes: int) -> bytes:
         """GET a body, retrying throttling, gateway and transport failures four times.
 
-        Raises SiteError for this GET, and TooManyFailuresError once ``MAX_FAILED_IN_A_ROW``
-        GETs have failed one after another.
+        Raises SiteError for this GET, and TooManyFailuresError, before trying, once
+        ``MAX_FAILED_IN_A_ROW`` GETs in a row got no answer.
         """
-        failure, wait = "", 0.0
+        self._breaker.check()
+        failure, wait, answered = "", 0.0, True
         for attempt in range(RETRIES + 1):
             if attempt:
                 self._sleep(min(wait, MAX_WAIT_S))
             try:
                 status, headers, body = self.once(request, max_bytes)
             except httpx.TransportError as error:
-                failure, wait = type(error).__name__, 2.0**attempt
+                failure, wait, answered = type(error).__name__, 2.0**attempt, False
                 continue
             except (httpx.DecodingError, httpx.InvalidURL) as error:
-                failure = type(error).__name__
+                failure, answered = type(error).__name__, True
                 break
+            answered = status not in RETRIED
             if status == HTTP_OK:
-                self._breaker.success()
+                self._breaker.answered()
                 return body
             failure = f"status {status}"
-            if status not in RETRIED:
+            if answered:
                 break
             after = headers.get("retry-after", "").strip()
             wait = float(after) if after.isascii() and after.isdigit() else 2.0**attempt
-        self._breaker.failure()
+        if answered:
+            self._breaker.answered()
+        else:
+            self._breaker.unanswered()
         raise SiteError(failure)
 
     def once(self, request: Request, max_bytes: int) -> tuple[int, httpx.Headers, bytes]:
@@ -211,3 +229,23 @@ class Site:
                 raise SignInNeededError
         message = "too many redirects"
         raise SiteError(message)
+
+
+def verified_by_public_cas(url: str) -> bool | None:
+    """Say whether the public CA bundle verifies the site, or None when nothing answers.
+
+    False means TLS is inspected on the way, which the OS trust store, used by every run,
+    already allows for.
+    """
+    context = ssl.create_default_context(cafile=certifi.where())
+    with httpx.Client(timeout=TIMEOUT_S, verify=context) as client:
+        try:
+            client.get(url)
+        except httpx.HTTPError as error:
+            cause: BaseException | None = error
+            for _ in range(CAUSE_DEPTH):
+                if cause is None or isinstance(cause, ssl.SSLCertVerificationError):
+                    break
+                cause = cause.__cause__ or cause.__context__
+            return False if isinstance(cause, ssl.SSLCertVerificationError) else None
+    return True

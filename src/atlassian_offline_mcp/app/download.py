@@ -192,14 +192,15 @@ class Download:
     def folders(self, pages: Iterable[object]) -> list[object]:
         """GET every folder above the listed pages, following folders' own parents.
 
-        A page entry that the adapter refuses is passed over here: it only loses its
-        place under a folder in the tree.
+        A page entry that the adapter refuses is counted, and passed over here: it only
+        loses its place under a folder in the tree.
         """
         wanted: list[str | None] = []
         for entry in pages:
             try:
                 page = confluence_v2.document(Fields(entry, "pages"), Page)
-            except RepresentationError:
+            except RepresentationError as error:
+                self.report.failed("confluence pages in the tree", error)
                 continue
             if isinstance(page, Page) and page.parent_type == "folder":
                 wanted.append(page.parent_id)
@@ -302,6 +303,9 @@ class Download:
                 data = self.site.file(attachment.download, self.max_file_bytes)
             except SiteError as error:
                 self.report.failed("files", error)
+                continue
+            if len(data) != attachment.size:  # a proxy's page, say, in the file's place
+                self.report.add("files failed: not the size listed")
                 continue
             blobs[attachment.id] = self.store.put_blob(data)
             self.report.add("files: downloaded")

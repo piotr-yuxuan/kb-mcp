@@ -8,7 +8,6 @@ import httpx
 import pytest
 
 from atlassian_offline_mcp.adapters.http import (
-    HTTP_OK,
     INTERVAL_S,
     MAX_FAILED_IN_A_ROW,
     RETRIES,
@@ -151,7 +150,14 @@ def test_a_lost_connection_is_retried_then_named_by_its_class() -> None:
 
 
 @pytest.mark.parametrize(
-    "path", ["https://elsewhere.example/x", "//elsewhere.example/x", "wiki/x", "/\\elsewhere"]
+    "path",
+    [
+        "https://elsewhere.example/x",
+        "//elsewhere.example/x",
+        "wiki/x",
+        "/\\elsewhere",
+        "/wiki/api/v2/spaces?cursor=\x01",
+    ],
 )
 def test_a_path_off_the_site_is_refused_before_any_request(path: str) -> None:
     """Only site-relative paths are ever asked for, whatever a response's link says."""
@@ -222,26 +228,52 @@ def test_a_retry_after_that_is_not_ascii_digits_falls_back_to_backing_off() -> N
     assert 1.0 in clock.sleeps
 
 
-def test_gets_failing_one_after_another_stop_the_run() -> None:
-    """After so many failed GETs in a row, the site, the network or the session is wrong."""
-    reader, _ = site(*[httpx.Response(404)] * MAX_FAILED_IN_A_ROW)
-    for _ in range(MAX_FAILED_IN_A_ROW - 1):
-        with pytest.raises(SiteError):
+def test_gets_unanswered_one_after_another_stop_the_run() -> None:
+    """After so many GETs without an answer, the site or the network is wrong.
+
+    The GET after the last allowed one is refused before it is sent.
+    """
+    answers = [httpx.Response(503)] * ((RETRIES + 1) * MAX_FAILED_IN_A_ROW)
+    reader, asked = site(*answers)
+    for _ in range(MAX_FAILED_IN_A_ROW):
+        with pytest.raises(SiteError, match=r"^status 503$"):
             reader.json(Request("/a"))
     with pytest.raises(TooManyFailuresError):
         reader.json(Request("/a"))
+    assert len(asked) == len(answers)
 
 
-def test_a_success_starts_the_count_of_failures_again() -> None:
-    """Failures spread among successes never stop a run."""
-    answers = [httpx.Response(404)] * (MAX_FAILED_IN_A_ROW - 1) + [httpx.Response(200, json={})]
-    reader, _ = site(*answers * 2)
-    for answer in answers * 2:
-        if answer.status_code == HTTP_OK:
-            assert reader.json(Request("/a")) == {}
-        else:
-            with pytest.raises(SiteError):
-                reader.json(Request("/a"))
+def test_an_answer_starts_the_count_of_unanswered_gets_again() -> None:
+    """Unanswered GETs spread among answered ones never stop a run."""
+    unanswered = [httpx.Response(503)] * ((RETRIES + 1) * (MAX_FAILED_IN_A_ROW - 1))
+    reader, _ = site(*unanswered, httpx.Response(404), *unanswered, httpx.Response(200, json={}))
+    for _ in range(MAX_FAILED_IN_A_ROW - 1):
+        with pytest.raises(SiteError):
+            reader.json(Request("/a"))
+    with pytest.raises(SiteError, match=r"^status 404$"):
+        reader.json(Request("/a"))
+    for _ in range(MAX_FAILED_IN_A_ROW - 1):
+        with pytest.raises(SiteError):
+            reader.json(Request("/a"))
+    assert reader.json(Request("/a")) == {}
+
+
+def test_refusals_of_one_item_never_stop_the_run() -> None:
+    """A 404 is an answer: any number of them in a row leave the site usable."""
+    refusals = [httpx.Response(404)] * (MAX_FAILED_IN_A_ROW * 2)
+    reader, _ = site(*refusals, httpx.Response(200, json={}))
+    for _ in refusals:
+        with pytest.raises(SiteError, match=r"^status 404$"):
+            reader.json(Request("/a"))
+    assert reader.json(Request("/a")) == {}
+
+
+def test_a_path_too_long_for_a_url_fails_that_get() -> None:
+    """A next link that httpx cannot make a URL of fails its one GET, unsent."""
+    reader, asked = site()
+    with pytest.raises(SiteError, match=r"^InvalidURL$"):
+        reader.json(Request("/" + "a" * 70_000))
+    assert asked == []
 
 
 def test_a_request_over_plain_http_is_refused_before_it_is_sent() -> None:

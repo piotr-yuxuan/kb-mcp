@@ -13,13 +13,14 @@ import pytest
 
 from atlassian_offline_mcp.adapters import http
 from atlassian_offline_mcp.adapters.http import MAX_FAILED_IN_A_ROW, Site, TooManyFailuresError
-from atlassian_offline_mcp.adapters.raw_store import RawStore, Stored, Unreadable
+from atlassian_offline_mcp.adapters.raw_store import RawStore, StoreBusyError, Stored, Unreadable
 from atlassian_offline_mcp.adapters.session_file import (
     COOKIES,
     for_site,
     read_cookies,
     write_cookies,
 )
+from atlassian_offline_mcp.app import download as download_module
 from atlassian_offline_mcp.app.download import (
     SIGN_IN_NEEDED,
     SOME_FAILED,
@@ -53,6 +54,7 @@ CAP = 1000
 PICTURE = b"\x89PNG picture"
 SPACE = "196613"
 OWNER_ONLY = 0o600
+HTTP_OK = 200
 
 
 def stamp(day: int, number: int = 3) -> dict[str, object]:
@@ -118,6 +120,10 @@ class FakeSite:
     html_page: str | None = None
     listing_changed: bool = False
     media_fails: bool = False
+    failing_files: int = 0
+    search_status: int = 200
+    search_changed: bool = False
+    bulk_changed: bool = False
     asked: list[httpx.URL] = field(default_factory=list)
 
     def routes(self) -> dict[str, Callable[[httpx.Request], httpx.Response]]:
@@ -161,23 +167,60 @@ class FakeSite:
                 routes[f"/wiki/api/v2/{kind}/{document_id}"] = lambda request, d=document: (
                     self.document(request, d)
                 )
-                listed = {"results": ATTACHMENTS.get(document_id, []), "_links": {}}
+                files = ATTACHMENTS.get(document_id, [])
+                if document_id == "1001" and self.failing_files:
+                    files = files + [
+                        v2_attachment(
+                            id=f"gone{index}",
+                            fileSize=1,
+                            downloadLink=f"/rest/api/content/1001/child/attachment/gone{index}",
+                        )
+                        for index in range(self.failing_files)
+                    ]
+                listed = {"results": files, "_links": {}}
                 routes[f"/wiki/api/v2/{kind}/{document_id}/attachments"] = lambda _, j=listed: (
                     httpx.Response(200, json=j)
                 )
-        return routes
+        return {**routes, **self.changes()}
+
+    def changes(self) -> dict[str, Callable[[httpx.Request], httpx.Response]]:
+        """Map the paths that the switches change to their changed answers."""
+        changes: dict[str, Callable[[httpx.Request], httpx.Response]] = {}
+        if self.html_page:
+            changes[f"/wiki/api/v2/pages/{self.html_page}"] = lambda _: httpx.Response(
+                200, content=b"<html>Maintenance</html>"
+            )
+        if self.media_fails:
+            changes["/file/abc/binary"] = lambda _: httpx.Response(500)
+        for index in range(self.failing_files):
+            path = f"/wiki/rest/api/content/1001/child/attachment/gone{index}"
+            changes[path] = lambda _: httpx.Response(404)
+        if self.search_status != HTTP_OK or self.search_changed:
+            changes["/rest/api/3/search/jql"] = self.search
+        if self.bulk_changed:
+            changes["/wiki/rest/api/user/bulk"] = lambda _: httpx.Response(
+                200, json={"results": [{"displayName": "No id"}]}
+            )
+        return changes
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         """Answer one GET, or 404 for a path the site does not have."""
         self.asked.append(request.url)
         if self.pages_fail and request.url.path.startswith("/wiki/api/v2/pages/"):
-            return httpx.Response(500)
-        if self.html_page and request.url.path == f"/wiki/api/v2/pages/{self.html_page}":
-            return httpx.Response(200, content=b"<html>Maintenance</html>")
-        if self.media_fails and request.url.path == "/file/abc/binary":
-            return httpx.Response(500)
+            return httpx.Response(503)
         route = self.routes().get(request.url.path)
         return route(request) if route else httpx.Response(404)
+
+    def search(self, _: httpx.Request) -> httpx.Response:
+        """Answer a search with a status, or with entries that lack their summary."""
+        if self.search_status != HTTP_OK:
+            return httpx.Response(self.search_status, json={"errorMessages": ["no project"]})
+        entries = []
+        for issue in ISSUES.values():
+            values = issue["fields"]
+            assert isinstance(values, dict)
+            entries.append({**issue, "fields": {k: v for k, v in values.items() if k != "summary"}})
+        return httpx.Response(200, json={"issues": entries, "isLast": True})
 
     def pages(self, request: httpx.Request) -> httpx.Response:
         """Serve the pages listing in two pages, linked by _links.next."""
@@ -412,8 +455,8 @@ def test_a_site_without_jira_still_downloads_its_spaces(tmp_path: Path) -> None:
     assert list(store.latest(Issue)) == []
 
 
-def test_a_run_stops_after_documents_fail_one_after_another(tmp_path: Path) -> None:
-    """When every document fails, the run stops instead of trying them all."""
+def test_a_run_stops_when_the_site_stops_answering(tmp_path: Path) -> None:
+    """When every document's GET goes unanswered, the run stops instead of trying all."""
     store = RawStore(tmp_path / "raw")
     fake = FakeSite(pages_fail=True, many_pages=MAX_FAILED_IN_A_ROW + 5)
     with fake.client() as client, store.writing():
@@ -422,7 +465,7 @@ def test_a_run_stops_after_documents_fail_one_after_another(tmp_path: Path) -> N
         )
         with pytest.raises(TooManyFailuresError):
             done.run(["MFS"], [])
-    assert done.report.counts["confluence pages failed: status 500"] == MAX_FAILED_IN_A_ROW - 1
+    assert done.report.counts["confluence pages failed: status 503"] == MAX_FAILED_IN_A_ROW
 
 
 def test_an_answer_that_is_not_json_fails_one_document_and_the_run_goes_on(
@@ -488,3 +531,83 @@ def test_an_expired_session_still_leaves_a_run_report(
     saved = json.loads(report.read_text("utf-8"))
     assert saved["status"] == SIGN_IN_NEEDED
     assert saved["counts"]["runs: stopped, sign-in needed"] == 1
+
+
+def test_files_failing_one_after_another_never_stop_the_run(tmp_path: Path) -> None:
+    """Raw first: the page is stored without its files, and the rest of the run goes on.
+
+    A refused file is an answer from the site; only unanswered GETs stop a run.
+    """
+    store = RawStore(tmp_path / "raw")
+    done = run(store, FakeSite(failing_files=MAX_FAILED_IN_A_ROW + 2))
+    assert done.report.counts["files failed: status 404"] == MAX_FAILED_IN_A_ROW + 2
+    stored = {item.snapshot.document.id for item in store.latest(Page) if isinstance(item, Stored)}
+    assert stored == {"1001", "1002"}
+    assert [item for item in store.latest(BlogPost) if isinstance(item, Stored)]
+    assert [item for item in store.latest(Issue) if isinstance(item, Stored)]
+
+
+def test_a_project_that_jira_refuses_is_named_for_the_user(tmp_path: Path) -> None:
+    """A JQL refused (an unknown project, say) names the key for stderr, not the report."""
+    done = run(RawStore(tmp_path / "raw"), FakeSite(search_status=400))
+    assert done.failed_targets == ["project PRB: status 400"]
+    assert done.report.counts["jira projects failed: status 400"] == 1
+    assert "PRB" not in json.dumps(done.report.counts)
+
+
+def test_a_search_entry_with_a_changed_field_is_still_fetched(tmp_path: Path) -> None:
+    """An issue is fetched on its id and update time alone, whatever else the entry lost."""
+    store = RawStore(tmp_path / "raw")
+    run(store, FakeSite(search_changed=True))
+    assert [item for item in store.latest(Issue) if isinstance(item, Stored)]
+
+
+def test_a_user_the_adapter_refuses_fails_alone(tmp_path: Path) -> None:
+    """An author without an account id is counted; the run's documents are all kept."""
+    store = RawStore(tmp_path / "raw")
+    done = run(store, FakeSite(bulk_changed=True))
+    assert done.report.counts["confluence users failed: users[0].accountId: missing"] == 1
+    assert store.users() == []
+
+
+def test_a_listing_entry_that_only_the_tree_needs_is_reported(tmp_path: Path) -> None:
+    """A page entry without its title is fetched all the same, and its path is reported."""
+    done = run(RawStore(tmp_path / "raw"), FakeSite(listing_changed=True))
+    reason = "pages.title: missing"
+    assert done.report.counts[f"confluence pages in the tree failed: {reason}"] == len(
+        ["1001", "1002"]
+    )
+
+
+def test_folders_over_the_cap_are_counted(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """The walk up the folders is bounded, and what it leaves out is said."""
+    monkeypatch.setattr(download_module, "MAX_FOLDERS", 1)
+    done = run(RawStore(tmp_path / "raw"), FakeSite())
+    assert done.report.counts["confluence folders: over the cap, left out"] == 1
+
+
+def test_a_busy_store_refuses_the_run_and_writes_no_report(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Another run writing: nothing is fetched, and no report is left."""
+    chosen = saved_session(tmp_path, monkeypatch, FakeSite())
+    with RawStore(chosen.raw).writing(), pytest.raises(StoreBusyError):
+        download(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+    assert not chosen.runs.exists()
+
+
+def test_a_file_not_of_its_listed_size_is_not_kept(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A proxy's page in a file's place is refused, so that a later run fetches it again."""
+    wrong = v2_attachment(
+        id="att9",
+        fileSize=len(PICTURE) + 1,
+        downloadLink="/rest/api/content/1001/child/attachment/att1/download",
+    )
+    monkeypatch.setitem(ATTACHMENTS, "1101", [wrong])
+    store = RawStore(tmp_path / "raw")
+    done = run(store, FakeSite())
+    assert done.report.counts["files failed: not the size listed"] == 1
+    [post] = [item for item in store.latest(BlogPost) if isinstance(item, Stored)]
+    assert post.blobs == {}
