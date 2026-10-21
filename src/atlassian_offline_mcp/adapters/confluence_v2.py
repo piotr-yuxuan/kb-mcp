@@ -10,11 +10,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
+from atlassian_offline_mcp.adapters.http import ReadPage, Request
 from atlassian_offline_mcp.domain.content import (
     SITE_PATH,
     Attachment,
     BlogPost,
     Folder,
+    Listed,
     Page,
     Person,
     Snapshot,
@@ -24,7 +26,7 @@ from atlassian_offline_mcp.domain.content import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
 # The responses that a snapshot of a page or a blog post keeps, by file name.
 # GET /wiki/api/v2/{pages|blogposts}/{id}?version=N&body-format=storage&include-labels=true
@@ -141,3 +143,93 @@ def snapshot(kind: type[Page | BlogPost], responses: Mapping[str, object]) -> Sn
         Fields(responses.get(VIEW), VIEW).object("body").object("view").text("value"),
         tuple(attachment(item) for item in Fields.each(responses.get(ATTACHMENTS), ATTACHMENTS)),
     )
+
+
+# What to GET, and how a listing goes on. A v2 listing's next page is the path that its
+# _links.next gives, query included.
+LISTING_LIMIT = "250"
+LISTED_STATUSES = {Page: "current,archived", BlogPost: "current"}
+# How many account ids one GET of users names.
+USERS_PER_REQUEST = 50
+
+
+def space_request(key: str) -> Request:
+    """GET the space with this key."""
+    return Request(f"{WIKI}/api/v2/spaces", {"keys": key})
+
+
+def listing_request(space_id: str, kind: type[Page | BlogPost]) -> Request:
+    """GET the first page of a space's pages, or blog posts, without bodies."""
+    return Request(
+        f"{WIKI}/api/v2/spaces/{space_id}/{kind.kind}",
+        {"limit": LISTING_LIMIT, "status": LISTED_STATUSES[kind]},
+    )
+
+
+def folder_request(folder_id: str) -> Request:
+    """GET a folder, for its title and parent."""
+    return Request(f"{WIKI}/api/v2/folders/{folder_id}")
+
+
+def listed(fields: Fields, kind: type[Page | BlogPost]) -> Listed:
+    """Read of a listing's entry only what decides a fetch: id, version, time."""
+    version = fields.object("version")
+    number = version.integer("number")
+    with fields.refusals():
+        return Listed(
+            kind, fields.text("id"), version_revision(number), version.time("createdAt"), number
+        )
+
+
+def snapshot_requests(document: Listed) -> dict[str, tuple[Request, ReadPage | None]]:
+    """Name the GETs whose responses make a snapshot, with the paging of a listing."""
+    return {
+        DOCUMENT: (document_request(document, "storage"), None),
+        VIEW: (document_request(document, "view"), None),
+        ATTACHMENTS: (attachments_request(document), listing_page),
+    }
+
+
+def document_request(document: Listed, body: str) -> Request:
+    """GET a page or a blog post at its version, with its body as ``storage`` or ``view``."""
+    params = {"body-format": body, "version": str(document.version)}
+    if body == "storage":
+        params["include-labels"] = "true"
+    return Request(f"{WIKI}/api/v2/{document.kind}/{document.id}", params)
+
+
+def attachments_request(document: Listed) -> Request:
+    """GET the first page of a page's, or a blog post's, attachments."""
+    return Request(
+        f"{WIKI}/api/v2/{document.kind}/{document.id}/attachments", {"limit": LISTING_LIMIT}
+    )
+
+
+def users_request(account_ids: Sequence[str]) -> Request:
+    """GET the users with these account ids, at most ``USERS_PER_REQUEST``."""
+    return Request(
+        f"{WIKI}/rest/api/user/bulk",
+        {"accountId": list(account_ids), "limit": str(USERS_PER_REQUEST)},
+    )
+
+
+def current_user_request() -> Request:
+    """GET the user whom the session signs in."""
+    return Request(f"{WIKI}/rest/api/user/current")
+
+
+def signed_in(response: Fields) -> bool:
+    """Say whether the current user is someone; an expired session reads as anonymous."""
+    return response.optional_text("accountId", absent=True) is not None
+
+
+def listing_page(response: Fields, _: Request) -> tuple[list[Fields], Request | None]:
+    """Read one page of a v2 listing: its results, and the request for the next page."""
+    links = response.optional_object("_links", absent=True)
+    following = links.optional_text("next", absent=True) if links else None
+    return response.objects("results"), None if following is None else Request(following)
+
+
+def users_page(response: Fields, _: Request) -> tuple[list[Fields], Request | None]:
+    """Read the users of a bulk GET, which names them all on one page."""
+    return response.objects("results"), None

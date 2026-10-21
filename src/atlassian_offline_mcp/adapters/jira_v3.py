@@ -11,10 +11,12 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
+from atlassian_offline_mcp.adapters.http import ReadPage, Request
 from atlassian_offline_mcp.domain.content import (
     Attachment,
     Comment,
     Issue,
+    Listed,
     Person,
     Snapshot,
     time_revision,
@@ -22,6 +24,7 @@ from atlassian_offline_mcp.domain.content import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from datetime import date
 
 # The fields that ``issue`` reads: a search that asks for them lists issues fully
 # enough to decide which to fetch, but holds no rendered body.
@@ -124,3 +127,79 @@ def snapshot(responses: Mapping[str, object]) -> Snapshot:
         tuple(attachment(item) for item in fields.object("fields").objects("attachment")),
         tuple(comment(item) for item in Fields.each(responses.get(COMMENTS), COMMENTS)),
     )
+
+
+# What to GET, and how a search and a list of comments go on.
+PAGE_SIZE = "100"
+
+
+def search_request(project: str, start: date, end: date) -> Request:
+    """GET the issues of a project updated from ``start`` until before ``end``, by date.
+
+    Jira reads these dates in the user's time zone, so a caller widens them and decides
+    on each issue's ``updated`` time. The key is quoted, as JQL needs for some keys.
+    """
+    jql = (
+        f'project = "{project}" AND updated >= "{start.isoformat()}"'
+        f' AND updated < "{end.isoformat()}" ORDER BY updated DESC'
+    )
+    return Request(
+        "/rest/api/3/search/jql", {"jql": jql, "fields": ISSUE_FIELDS, "maxResults": PAGE_SIZE}
+    )
+
+
+def search_page(response: Fields, request: Request) -> tuple[list[Fields], Request | None]:
+    """Read one page of a search: its issues, and the request for the next page."""
+    token = response.optional_text("nextPageToken", absent=True)
+    following = None
+    if token is not None and not response.flag("isLast"):
+        following = Request(request.path, {**request.params, "nextPageToken": token})
+    return response.objects("issues"), following
+
+
+def listed(fields: Fields) -> Listed:
+    """Read of a search's entry only what decides a fetch: id and update time."""
+    updated = fields.object("fields").time("updated")
+    with fields.refusals():
+        return Listed(Issue, fields.text("id"), time_revision(updated), updated)
+
+
+def snapshot_requests(issue: Listed) -> dict[str, tuple[Request, ReadPage | None]]:
+    """Name the GETs whose responses make a snapshot, with the paging of comments."""
+    return {
+        ISSUE: (issue_request(issue.id), None),
+        COMMENTS: (comments_request(issue.id), comments_page),
+    }
+
+
+def issue_request(issue_id: str) -> Request:
+    """GET an issue with its rendered fields."""
+    return Request(f"/rest/api/3/issue/{issue_id}", {"expand": "renderedFields"})
+
+
+def comments_request(issue_id: str) -> Request:
+    """GET the first page of an issue's comments, with their rendered bodies."""
+    return Request(
+        f"/rest/api/3/issue/{issue_id}/comment",
+        {"expand": "renderedBody", "maxResults": PAGE_SIZE, "startAt": "0"},
+    )
+
+
+def comments_page(response: Fields, request: Request) -> tuple[list[Fields], Request | None]:
+    """Read one page of comments, and the request for the next page, by ``startAt``."""
+    comments = response.objects("comments")
+    start = response.integer("startAt") + len(comments)
+    following = None
+    if comments and start < response.integer("total"):
+        following = Request(request.path, {**request.params, "startAt": str(start)})
+    return comments, following
+
+
+def myself_request() -> Request:
+    """GET the user whom the session signs in; Jira answers 401 to an expired session."""
+    return Request("/rest/api/3/myself")
+
+
+def signed_in(response: Fields) -> bool:
+    """Say whether the user answered is someone."""
+    return response.optional_text("accountId", absent=True) is not None
