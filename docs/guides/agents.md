@@ -28,6 +28,42 @@ and the server's instructions tell agents never to follow directions found in it
 Never give an agent `<data>/session/` (your saved sign-in) or `<data>/raw/`: only
 `<data>/docs/` is meant for them.
 
+## Search by meaning
+
+`search` ranks by words and by meaning together (hybrid) once the index holds vectors;
+until then it ranks by words alone, and each answer says so. Vectors come from a small
+embedding model that runs on your machine, pulled once:
+
+```bash
+atlassian-offline-mcp model pull
+```
+
+```bash
+atlassian-offline-mcp index
+```
+
+`model pull` downloads the model of the setting `model` (by default `bge-small-en-v1.5`,
+134 MB) into `<data>/models/`, each file checked against its pinned SHA-256; it is the
+only command that downloads a model, and the server never does. `model list` shows the
+models known. If the machine cannot reach huggingface.co, copy the model's files from
+another one and use `model pull --from <folder>`. The first `index` with a model embeds
+every piece of the mirror (a few minutes per 10,000 pieces), then keeps the vectors in
+`<data>/vectors.sqlite`, so later builds embed only what changed. If your pages are
+not all in English, set `model = "multilingual-e5-small"` (487 MB): it all but tied on
+the evaluation, and did better on French questions.
+
+The setting `search_mode` is `hybrid` (the default), `lexical` or `semantic`. To check
+which fits your own content, write golden questions (a YAML list of `id`, `question`,
+`expected` refs, and optionally `partial`, `groups` and `evidence`), keep them in
+`<data>/eval/`, and run:
+
+```bash
+atlassian-offline-mcp eval ~/atlassian-offline-mcp/eval/golden.yaml
+```
+
+It prints Recall@10, MRR@10, nDCG@10, Success@1 and Section@10 per mode and model, with
+the paired tests, and keeps the numbers, never the questions, in `<data>/eval/results/`.
+
 ## Claude Code
 
 ### Register the server
