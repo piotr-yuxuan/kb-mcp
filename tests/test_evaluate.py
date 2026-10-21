@@ -102,6 +102,14 @@ def golden(data: Path, text: str = GOLDEN) -> list:
             "- {id: q1, question: x, expected: ['4002'], evidence: {'4002': '**'}}",
             r"evidence: a phrase of a word or more",
         ),
+        (
+            "- {id: q1, question: x, expected: ['4002'], evidence: {'4002': '.'}}",
+            r"evidence: a phrase of a word or more",
+        ),
+        (
+            "- {id: q1, question: x, expected: ['4002'], evidence: {4002: a phrase}}",
+            r"evidence: refs as text, in quotes",
+        ),
         ("{id: q1}", "golden: expected a list"),
         ("- [unclosed", "not a golden file"),
     ],
@@ -262,11 +270,11 @@ def test_evaluation_leaves_the_served_index_and_builds_its_own(data: Path) -> No
 def test_documents_are_measured_to_the_tenth_and_tested_on_mrr(
     data: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Ninth by words still counts within ten; the tests compare reciprocal ranks.
+    """Tenth by words still counts within ten; the tests compare reciprocal ranks.
 
     Each mode is tested against lexical, question by question, on MRR@10's ranks.
     """
-    for number in range(8):
+    for number in range(9):
         write(data / "docs", page(str(4100 + number), f"Zebra {number} zebra"), "zebra\n")
     write(data / "docs", page("4200", "Stripes"), "Some text, and zebra once.\n")
     build_index(data / "docs", data / "index.sqlite", MOMENT)
@@ -281,7 +289,7 @@ def test_documents_are_measured_to_the_tenth_and_tested_on_mrr(
     settings = Settings(None, data, model="tiny")
     [run] = evaluate(settings, questions, ["tiny"], ticking(), MOMENT)
     assert run.per["lexical"]["q4"].recall == 1.0
-    assert run.per["lexical"]["q4"].reciprocal_rank == pytest.approx(1 / 9)
+    assert run.per["lexical"]["q4"].reciprocal_rank == pytest.approx(1 / 10)
     ranks = {
         mode: [run.per[mode][each.id].reciprocal_rank for each in questions] for mode in run.per
     }

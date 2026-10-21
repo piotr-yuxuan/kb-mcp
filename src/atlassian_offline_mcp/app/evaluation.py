@@ -33,6 +33,7 @@ from atlassian_offline_mcp.domain.evaluation import (
     percentile,
     plain,
 )
+from atlassian_offline_mcp.domain.search import WORD
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -85,9 +86,12 @@ def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Questio
                     len(item.text("question")) > LONGEST_QUESTION
                 ),
                 "expected: at least one ref": not expected,
+                "evidence: refs as text, in quotes": not all(
+                    isinstance(ref, str) for ref in evidence.value
+                ),
                 "evidence: only for an expected ref": not set(evidence.value) <= set(expected),
                 "evidence: a phrase of a word or more": not all(
-                    plain(evidence.text(ref)) for ref in evidence.value
+                    WORD.search(plain(evidence.text(ref))) for ref in evidence.value
                 ),
                 'groups: each once, and not "all"': len(set(groups)) != len(groups)
                 or "all" in groups,
