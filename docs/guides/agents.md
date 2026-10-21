@@ -68,9 +68,9 @@ than pull that model. A folder `<data>/models/` left by an earlier version can b
 deleted.
 
 The default model, `qwen3-embedding:0.6b` (639 MB), retrieves English best among the
-small models of Ollama's library compared on the MTEB leaderboard. For French content, or a
-faster cold build, set `model = "embeddinggemma:300m"` (622 MB): best on French, and
-about a quarter of the compute. Any model the endpoint serves can be named; the
+small models of Ollama's library compared on the MTEB leaderboard. For French content,
+or a faster cold build, set `model = "embeddinggemma:300m"` (622 MB): best on French,
+and about a quarter of the compute. Any model the endpoint serves can be named; the
 prefixes of `qwen3-embedding`, `embeddinggemma`, `embeddinggemma-2`,
 `nomic-embed-text`, `nomic-embed-text-v2-moe` and `snowflake-arctic-embed2` are known,
 and texts for any other model are embedded as they are.
