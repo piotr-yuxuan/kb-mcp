@@ -139,14 +139,17 @@ def test_a_long_pages_title_word_keeps_its_rarity(tmp_path: Path) -> None:
 def test_a_capped_expression_keeps_its_best_and_says_at_least(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """At its cap, an expression keeps its best documents, and the count is a bound."""
-    titled = [(page(str(196800 + n), f"Zeta {n}"), None) for n in range(3)]
+    """At its cap, an expression keeps its best documents, and the count is a bound.
+
+    The best come last in the index's own order, so that only ranking keeps them.
+    """
+    titled = [(page(str(197800 + n), f"Zeta {n}"), None) for n in range(3)]
     mentioned = [(page(str(196900 + n), f"Other {n}"), f"# Other {n}\n\nZeta.\n") for n in range(5)]
     library = built(tmp_path, titled + mentioned)
     monkeypatch.setattr(sqlite_index, "PER_EXPRESSION", 3)
     answer = library.search("zeta")
     assert parts(answer)[0].startswith("Documents found: at least 3;")
-    assert sorted(refs(answer)) == ["196800", "196801", "196802"]
+    assert sorted(refs(answer)) == ["197800", "197801", "197802"]
     assert parts(library.search("zeta", sort="updated"))[0].startswith("Documents found: 8;")
 
 
