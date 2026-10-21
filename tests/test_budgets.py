@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.app.meaning import DEPTH, Meaning
+from atlassian_offline_mcp.app.meaning import Meaning
 from atlassian_offline_mcp.app.responses import cut
 from atlassian_offline_mcp.app.responses import page as fitted
 from atlassian_offline_mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.domain.mirror import FrontMatter
 
 SIZE = 300_000
+# The documents a search by meaning gives at most, as the plan says.
+NEAREST = 100
 DOCUMENTS = 2000
 # A part of the long page: prose, accents, CJK and code, under a heading of its own.
 PROSE = (
@@ -106,7 +108,7 @@ def test_paging_by_meaning_gives_each_document_once(by_meaning: tuple[Library, s
         answer = follow(library, answer)
     assert len(found) == len(set(found))
     big = {str(300000 + number) for number in range(DOCUMENTS)}
-    assert len(found) == DEPTH if mode == "semantic" else big <= set(found)
+    assert len(found) == NEAREST if mode == "semantic" else big <= set(found)
 
 
 def test_default_answers_stay_within_the_budget(large: tuple[Library, str]) -> None:

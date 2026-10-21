@@ -17,7 +17,7 @@ import pytest
 
 from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError, load
 from atlassian_offline_mcp.app.indexing import Embedding, build_index
-from atlassian_offline_mcp.app.meaning import DEPTH, Meaning
+from atlassian_offline_mcp.app.meaning import Meaning
 from atlassian_offline_mcp.app.tools import Library
 from tests.answers import parts
 from tests.mirrors import MOMENT, fillers, issue, page, write
@@ -32,7 +32,9 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.adapters.embedding import Embedder
     from atlassian_offline_mcp.domain.settings import SearchMode
 
-DECOYS = DEPTH + 5
+# The documents a search by meaning gives at most, as the plan says.
+NEAREST = 100
+DECOYS = NEAREST + 5
 TARGET = "Holiday canteen"
 FAILURE = "tiny: does not embed (Fail)"
 MIXED = "Mixed notes"
@@ -103,9 +105,12 @@ def test_status_names_the_model_and_its_pieces(data: Path) -> None:
 
 
 def test_a_search_by_meaning_counts_the_nearest(data: Path) -> None:
-    """The count line says the documents are the nearest, at most DEPTH of them."""
+    """The count line says the documents are the nearest, at most 100 of them."""
     answer = library(data, "semantic").search("vacation lunch")
-    assert answer.startswith(f"Documents nearest in meaning: {DEPTH};")
+    assert answer.startswith(f"Documents nearest in meaning: {NEAREST};")
+    hybrid = library(data, "hybrid").search("vacation lunch")
+    # The nearest 100, of which the one page with the words is one.
+    assert hybrid.startswith(f"Documents found by words or meaning: {NEAREST};")
 
 
 def test_a_filter_applies_before_the_nearest_are_cut(data: Path) -> None:
@@ -123,10 +128,30 @@ def test_an_issue_key_comes_first_in_every_mode(data: Path, mode: SearchMode) ->
     assert titles(library(data, mode).search("PROJ-7 vacation lunch"))[0] == "Kafka upgrade"
 
 
+@pytest.mark.parametrize("mode", ["lexical", "semantic", "hybrid"])
+def test_a_document_named_is_ranked_once(data: Path, mode: SearchMode) -> None:
+    """First, and only first: the named issue is not ranked again where meaning finds it."""
+    shown, _ = library(data, mode).ranked("PROJ-7 kafka upgrade holidays", mode, limit=500)
+    paths = [each.path for each in shown]
+    assert paths[0] == "jira/PROJ/PROJ-7.md"
+    assert len(paths) == len(set(paths))
+
+
+def test_sorting_by_update_is_the_same_in_every_mode(data: Path) -> None:
+    """What changed last is a matter of dates: the documents matching the words, newest first."""
+    answers = {
+        mode: library(data, mode).search("revert", sort="updated")
+        for mode in ("lexical", "semantic", "hybrid")
+    }
+    assert answers["semantic"] == answers["lexical"] == answers["hybrid"]
+
+
 def test_hybrid_shows_the_section_that_meaning_ranks_higher(data: Path) -> None:
     """Words rank "Mixed notes" second, meaning first: its plan is shown, not its notes."""
     hybrid = hits(library(data, "hybrid").search("revert release"))
-    assert "section 3 Plan" in next(hit for hit in hybrid if MIXED in hit)
+    shown = next(hit for hit in hybrid if MIXED in hit)
+    assert "section 3 Plan" in shown
+    assert shown.endswith("> rollback deploy rollback deploy")
     lexical = hits(library(data, "lexical").search("revert release"))
     assert "section 2 Notes" in next(hit for hit in lexical if MIXED in hit)
 

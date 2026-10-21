@@ -7,7 +7,6 @@ from datetime import timedelta
 import pytest
 
 from atlassian_offline_mcp.domain.search import (
-    EMBEDDED_TITLE,
     MAX_WORDS,
     Score,
     fuse,
@@ -24,6 +23,8 @@ from atlassian_offline_mcp.domain.search import (
 from tests.mirrors import MOMENT, issue, page
 
 LIMIT = 26
+# The plan's length of a piece, in characters.
+LONGEST = 1200
 
 
 def test_each_word_is_quoted_and_stop_words_go() -> None:
@@ -218,18 +219,34 @@ def test_a_blank_line_beyond_the_limit_ends_no_piece_before_it() -> None:
     assert [text[a:b].strip() for a, b in spans] == ["one two", "three four", "five six", "seven"]
 
 
+def test_a_piece_holds_at_most_1200_characters_by_default() -> None:
+    """The plan's limit, below 512 tokens of the smaller models with the title."""
+    text = "word " * 600
+    first_start, first_end = pieces(text)[0]
+    assert LONGEST - 10 < first_end - first_start <= LONGEST
+
+
 def test_a_blank_text_has_no_piece() -> None:
     """Nothing to embed in white space alone."""
     assert pieces("") == []
     assert pieces("  \n\n\t") == []
 
 
-def test_fusion_favours_a_document_that_both_rankings_hold() -> None:
-    """Fortieth in both beats first in one: 2 / 100 is more than 1 / 61 (not so for k=10)."""
-    others = [f"x{n}" for n in range(78)]
-    one, two = ["a", *others[:38], "both"], ["b", *others[38:76], "both"]
-    updated = dict.fromkeys(["a", "b", "both", *others], MOMENT)
-    assert fuse([one, two], updated)[0] == "both"
+def both_at(rank: int) -> list[str]:
+    """Fuse two lists that each hold "both" at ``rank``, after a document of their own."""
+    others = [f"x{n}" for n in range(2 * rank)]
+    one = ["a", *others[: rank - 2], "both"]
+    two = ["b", *others[rank - 2 : 2 * rank - 4], "both"]
+    return fuse([one, two], dict.fromkeys(["a", "b", "both", *others], MOMENT))
+
+
+def test_fusion_takes_k_at_60() -> None:
+    """2 / (60 + r) against 1 / 61: rank 61 in both lists beats first in one, 63 does not.
+
+    So k is 60: with k = 50 rank 61 would lose, with k = 100 rank 63 would win.
+    """
+    assert both_at(61)[0] == "both"
+    assert both_at(63)[0] != "both"
 
 
 def test_fusion_ties_go_to_the_newest_then_the_path() -> None:
@@ -240,12 +257,12 @@ def test_fusion_ties_go_to_the_newest_then_the_path() -> None:
 
 def test_each_piece_is_embedded_with_its_title_and_heading() -> None:
     """The title, cut, then the heading unless it is the title, then the piece's text."""
-    title = "T" * (EMBEDDED_TITLE + 50)
+    title = "T" * 250
     cut = sections(f"# {title}\n\nFirst.\n\n## Second\n\nMore.\n\n## Empty\n")
     found = passages(title, cut)
     assert [(index, text) for index, _, _, text in found] == [
-        (0, f"{'T' * EMBEDDED_TITLE}\nFirst."),
-        (1, f"{'T' * EMBEDDED_TITLE}\nSecond\nMore."),
+        (0, f"{'T' * 200}\nFirst."),
+        (1, f"{'T' * 200}\nSecond\nMore."),
     ]
     index, start, end, _ = found[1]
     assert cut[index].body[start:end].strip() == "More."
