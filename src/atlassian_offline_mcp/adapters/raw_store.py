@@ -136,8 +136,11 @@ def _decode(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _reason(error: Exception) -> str:
-    # A representation error names a path; any other message could hold content.
+def reason(error: Exception) -> str:
+    """Say why a read failed: a refused field's path, or the error's class alone.
+
+    A representation error names a path; any other message could hold content.
+    """
     return str(error) if isinstance(error, RepresentationError) else type(error).__name__
 
 
@@ -307,7 +310,7 @@ class RawStore:
             try:
                 yield self._read(kind, revisions[-1])
             except UNREADABLE as error:
-                yield Unreadable(str(revisions[-1].relative_to(self.root)), _reason(error))
+                yield Unreadable(str(revisions[-1].relative_to(self.root)), reason(error))
 
     @staticmethod
     def responses(folder: Path) -> dict[str, object]:
@@ -363,7 +366,7 @@ class RawStore:
             try:
                 spaces.append(confluence_v2.space(Fields(_decode(folder / "space.json"), where)))
             except UNREADABLE as error:
-                spaces.append(Unreadable(where, _reason(error)))
+                spaces.append(Unreadable(where, reason(error)))
         return spaces
 
     def listed(
@@ -402,13 +405,13 @@ class RawStore:
         try:
             entries = Fields.each(_decode(path), where)
         except UNREADABLE as error:
-            return [Unreadable(where, _reason(error))]
+            return [Unreadable(where, reason(error))]
         results: list[T | Unreadable] = []
         for index, entry in enumerate(entries):
             try:
                 results.append(read(entry))
             except UNREADABLE as error:
-                results.append(Unreadable(f"{where}[{index}]", _reason(error)))
+                results.append(Unreadable(f"{where}[{index}]", reason(error)))
         return results
 
     def stored_ids(self, kind: type[Document]) -> set[str]:
@@ -458,11 +461,12 @@ class RawStore:
                 if kind not in {Page.kind, BlogPost.kind}:
                     message = f"{item.path}.kind: not a kind of Confluence document"
                     raise RepresentationError(message)
+                first_gone = item.time("first_gone") if item.optional_text("first_gone") else None
                 stone = Tombstone(
                     kind,
                     identifier,
                     item.text("space"),
-                    item.time("first_gone"),
+                    first_gone,
                     confirmed=item.flag("confirmed"),
                 )
             stones[stone.key] = stone
@@ -476,7 +480,9 @@ class RawStore:
                 "kind": stone.kind,
                 "id": stone.id,
                 "space": stone.space_id,
-                "first_gone": stone.first_gone.astimezone(UTC).isoformat(),
+                "first_gone": stone.first_gone.astimezone(UTC).isoformat()
+                if stone.first_gone
+                else None,
                 "confirmed": stone.confirmed,
             }
             for stone in sorted(tombstones, key=lambda each: each.key)

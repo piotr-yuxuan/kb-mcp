@@ -13,6 +13,9 @@ AGO = re.compile(r"([1-9][0-9]{0,3})(d|w|mo|y)")
 DAYS = {"d": 1, "w": 7, "mo": 30, "y": 365}
 # Before any content of Atlassian Cloud: the start of a window back to everything.
 EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
+# The longest length of time read: a hundred years, far past the epoch, never past the
+# calendar.
+MAX_DAYS = 100 * 365
 
 
 class PeriodError(ValueError):
@@ -42,7 +45,7 @@ def length(text: str, option: str) -> timedelta | Literal["all"]:
     if text == "all":
         return "all"
     ago = AGO.fullmatch(text)
-    if not ago:
+    if not ago or int(ago[1]) * DAYS[ago[2]] > MAX_DAYS:
         message = f"{option}: a number of days, weeks, months or years (7d, 2w, 6mo, 1y), or all"
         raise PeriodError(message)
     return timedelta(days=int(ago[1]) * DAYS[ago[2]])
@@ -51,7 +54,7 @@ def length(text: str, option: str) -> timedelta | Literal["all"]:
 def moment(text: str, now: datetime, option: str) -> datetime:
     """Read ``7d``, ``6mo`` and the like before now, or an ISO date (midnight UTC) or time."""
     ago = AGO.fullmatch(text)
-    if ago:
+    if ago and int(ago[1]) * DAYS[ago[2]] <= MAX_DAYS:
         return now - timedelta(days=int(ago[1]) * DAYS[ago[2]])
     try:
         parsed = datetime.fromisoformat(text)

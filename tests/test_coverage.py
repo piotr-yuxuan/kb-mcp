@@ -92,7 +92,7 @@ def test_a_run_inside_the_covered_period_keeps_it() -> None:
     assert covered().extended(SPACE, fetched) == covered()
 
 
-@pytest.mark.parametrize("text", ["6m", "0mo", "forever", "-1d"])
+@pytest.mark.parametrize("text", ["6m", "0mo", "forever", "-1d", "9999y"])
 def test_a_length_that_is_not_one_is_refused(text: str) -> None:
     """Days, weeks, months, years, or all; nothing else."""
     with pytest.raises(PeriodError, match=r"^--back: "):

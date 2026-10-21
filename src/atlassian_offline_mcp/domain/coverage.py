@@ -87,7 +87,7 @@ def window(
     if back == "all":
         start = EPOCH
     elif back is not None:
-        start = max(EPOCH, start - back)
+        start = EPOCH if back >= start - EPOCH else start - back
     return Period(start, end)
 
 

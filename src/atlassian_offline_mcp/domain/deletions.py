@@ -1,8 +1,8 @@
 """Documents that the site no longer has: when to say so, and when not to believe it.
 
-A document absent from its space's new listing is probed once a run. A first answer of
-gone makes a tombstone; a second, on a later run, confirms it, and the mirror then
-leaves the document out. Too many gone at once is more likely a lost session than a
+A document absent from its space's new listing gets a tombstone, pending until a probe
+answers. A first answer of gone dates it; a second, on a later run, confirms it, and
+the mirror then leaves the document out. Too many gone at once is more likely a lost session than a
 mass deletion, so the caller checks the session before believing it.
 """
 
@@ -37,12 +37,17 @@ class Answer(StrEnum):
 
 @dataclass(frozen=True)
 class Tombstone:
-    """A document that answered as gone: confirmed once it answers so on a later run."""
+    """A document absent from its space's listing, on its way to being believed gone.
+
+    It is pending until a probe answers gone (``first_gone`` is then that time), and
+    confirmed once a later probe, at least ``CONFIRM_AFTER`` later, answers gone again.
+    A pending one waits for a probe, however many runs that takes.
+    """
 
     kind: str  # pages or blogposts
     id: str
     space_id: str
-    first_gone: datetime
+    first_gone: datetime | None = None
     confirmed: bool = False
 
     @property
@@ -61,20 +66,21 @@ def after_probes(
 
     ``known`` are the space's tombstones before; ``absent`` maps each document missing
     from the new listing to its space; ``answers`` holds the probes made, which may be
-    fewer than the absent. A document listed again, moved or present loses its tombstone;
-    one not probed this time keeps it as it was.
+    fewer than the absent, or none. An absent document without an answer keeps its
+    tombstone, or becomes pending; one answering gone moves on a step; one listed again,
+    moved or present loses its tombstone.
     """
     kept: dict[tuple[str, str], Tombstone] = {}
-    for key, stone in known.items():
+    for key, space_id in absent.items():
+        stone = known.get(key, Tombstone(key[0], key[1], space_id))
         answer = answers.get(key)
-        if key in absent and answer is None:
+        if answer is None:
             kept[key] = stone
-        elif key in absent and answer is Answer.GONE:
+        elif answer is Answer.GONE and stone.first_gone is None:
+            kept[key] = replace(stone, first_gone=now)
+        elif answer is Answer.GONE:
             # Two answers moments apart prove little: confirmation waits a while.
             kept[key] = replace(stone, confirmed=now - stone.first_gone >= CONFIRM_AFTER)
-    for key, space_id in absent.items():
-        if key not in known and answers.get(key) is Answer.GONE:
-            kept[key] = Tombstone(key[0], key[1], space_id, now)
     return kept
 
 
@@ -96,10 +102,13 @@ def answer_of(found_space: str, status: str, listed_space: str, kept: Collection
 
 
 def probing_order(
-    absent: Collection[tuple[str, str]], known: Collection[tuple[str, str]]
+    absent: Collection[tuple[str, str]], known: Mapping[tuple[str, str], Tombstone]
 ) -> list[tuple[str, str]]:
-    """Order the absent for probing: those already tombstoned first.
+    """Order the absent for probing, leaving out those confirmed gone.
 
-    A cap on probes then never starves their confirmation.
+    Those on their way (answered gone once, or pending) come first, so that a cap on
+    probes never starves them; a confirmed one comes back by being listed again, not by
+    a probe.
     """
-    return sorted(absent, key=lambda key: (key not in known, key))
+    open_ = [key for key in absent if not (key in known and known[key].confirmed)]
+    return sorted(open_, key=lambda key: (key not in known, key))

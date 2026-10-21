@@ -77,7 +77,26 @@ def test_a_trashed_or_out_of_scope_page_is_gone_and_one_elsewhere_moved() -> Non
     assert answer_of(SPACE, "archived", SPACE, kept) is Answer.PRESENT
 
 
-def test_tombstoned_pages_are_probed_first() -> None:
-    """A cap on probes never starves a confirmation."""
-    absent = [("pages", "1"), ("pages", "2"), ("pages", "3")]
-    assert probing_order(absent, {("pages", "3")})[0] == ("pages", "3")
+def test_pages_on_their_way_are_probed_first_and_confirmed_ones_not_at_all() -> None:
+    """A cap on probes never starves a confirmation, nor is spent on settled pages."""
+    absent = [("pages", "1"), ("pages", "2"), ("pages", "3"), ("pages", "4")]
+    known = {
+        ("pages", "3"): Tombstone("pages", "3", SPACE, FIRST),
+        ("pages", "4"): Tombstone("pages", "4", SPACE, FIRST, confirmed=True),
+    }
+    assert probing_order(absent, known) == [("pages", "3"), ("pages", "1"), ("pages", "2")]
+
+
+def test_an_absent_page_without_an_answer_waits_as_pending() -> None:
+    """No answer this run (a failed probe, the cap, a silent site): it waits, not lost."""
+    kept = after_probes({}, {PAGE: SPACE}, {}, FIRST)
+    assert kept == {PAGE: Tombstone("pages", "1001", SPACE)}
+    answered = after_probes(kept, {PAGE: SPACE}, {PAGE: Answer.GONE}, LATER)
+    assert answered == {PAGE: Tombstone("pages", "1001", SPACE, LATER)}
+
+
+def test_a_confirmed_page_absent_and_unprobed_stays_confirmed() -> None:
+    """Confirmed pages are not probed again, and stay confirmed while absent."""
+    assert after_probes({PAGE: stone(confirmed=True)}, {PAGE: SPACE}, {}, LATER) == {
+        PAGE: stone(confirmed=True)
+    }

@@ -224,23 +224,27 @@ class Download:
         return True
 
     def deletions(self, space_id: str, listed: Mapping[type[Document], set[str]]) -> None:
-        """Probe the documents that the space's listing no longer names, and record those gone.
+        """Probe what the space's listing no longer names, and record what is gone.
 
-        The absent are those the last listing named and the store holds, and those already
-        tombstoned in the space; at most ``MAX_PROBES`` are probed a run. Raises
-        SignInNeededError when too many answer gone and the session no longer holds.
+        The absent are those the last listing named and the store holds, and those
+        already tombstoned in the space; those not confirmed are probed, at most
+        ``MAX_PROBES`` a space and a run, and the rest stay pending for a later run. The
+        record is written before the listing is replaced, so that no absent document is
+        lost to a run stopped after. Raises SignInNeededError when too many answer gone
+        and the session no longer holds; when the site does not answer, nothing is
+        believed, and every absent document stays pending.
         """
         known = {key: stone for key, stone in self.tombstones.items() if stone.space_id == space_id}
         absent: dict[tuple[str, str], str] = {}
         stored = 0
         for kind in KINDS:
             held = self.store.stored_ids(kind)
-            stored += len(held)
             before = {
                 each.id
                 for each in self.store.listed(space_id, kind)
                 if not isinstance(each, Unreadable)
             }
+            stored += len(before & held)
             again = {key[1] for key in known if key[0] == kind.kind}
             absent |= {
                 (kind.kind, each): space_id for each in ((before & held) | again) - listed[kind]
@@ -250,15 +254,15 @@ class Download:
         answers = {key: answer for key in order if (answer := self.probe(key, space_id, kept))}
         canary = (confluence_v2.current_user_request(), confluence_v2.signed_in)
         if too_many_gone(answers, stored) and not self.reachable("confluence", *canary):
-            return  # the site stopped answering: believe none of these answers
+            answers = {}  # the site stopped answering: believe none of these answers
         others = {
             key: stone for key, stone in self.tombstones.items() if stone.space_id != space_id
         }
         self.tombstones = {**others, **after_probes(known, absent, answers, self.now())}
+        self.store.put_tombstones(self.tombstones.values())
         self.report.add("confluence documents: probed, absent from their listing", len(answers))
-        self.report.add(
-            "confluence documents: left to probe on a later run", len(absent) - len(order)
-        )
+        waiting = sum(1 for stone in self.tombstones.values() if stone.first_gone is None)
+        self.report.add("confluence documents: absent, waiting for a probe", waiting)
 
     def probe(self, key: tuple[str, str], space_id: str, kept: set[str]) -> Answer | None:
         """GET a document absent from its listing, and say what became of it."""
@@ -459,7 +463,7 @@ class Targets:
         """Return each target's window; raise PeriodError for one with nowhere to start."""
         named = [Target("confluence", key) for key in self.spaces]
         named += [Target("jira", key) for key in self.projects]
-        end = self.until or now
+        end = min(self.until, now) if self.until else now  # never past what a run can see
         return {target: window(coverage, target, self.since, self.back, end) for target in named}
 
 
@@ -503,6 +507,9 @@ def plan(
             run.run(targets.spaces, targets.projects)
         except SignInNeededError:
             return Outcome(report, run.failed_targets, SIGN_IN_NEEDED)
+        except TooManyFailuresError:
+            report.add("runs: stopped, too many failures in a row")
+            return Outcome(report, run.failed_targets, SOME_FAILED)
     return Outcome(report, run.failed_targets, SOME_FAILED if report.failures else 0)
 
 

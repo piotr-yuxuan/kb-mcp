@@ -10,13 +10,14 @@ import httpx
 import pytest
 
 from atlassian_offline_mcp.adapters import http
+from atlassian_offline_mcp.adapters.pandoc import PandocFailedError
 from atlassian_offline_mcp.adapters.raw_store import RawStore, Stored
 from atlassian_offline_mcp.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.app.download import SIGN_IN_NEEDED, Targets, download, plan
 from atlassian_offline_mcp.app.mirror import mirror
 from atlassian_offline_mcp.cli import main
 from atlassian_offline_mcp.domain.content import Page
-from atlassian_offline_mcp.domain.coverage import Target
+from atlassian_offline_mcp.domain.coverage import Coverage, Target
 from atlassian_offline_mcp.domain.period import Period, PeriodError
 from atlassian_offline_mcp.domain.settings import Settings
 from tests.samples import v2_page, v2_space
@@ -388,3 +389,55 @@ def test_a_moved_page_takes_its_new_space_everywhere_and_leaves_the_old(tmp_path
     assert moved.parent.name == "OPS"
     assert "space: OPS" in moved.read_text("utf-8")
     assert moved.name in (docs / "confluence" / "OPS" / "_tree.md").read_text("utf-8")
+
+
+def test_a_page_whose_probe_failed_is_probed_again_on_a_later_run(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A probe answering 500 leaves the page pending; later runs probe it, and confirm."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    failing = RefreshSite(listing=without("1002"), html_page=None, gone=set())
+    failing.pages_fail = True  # every page GET answers 503: no answer to the probe
+    run(chosen, monkeypatch, failing, catch_up(["MFS"], []), SECOND)
+    [pending] = RawStore(chosen.raw).tombstones().values()
+    assert (pending.key, pending.first_gone, pending.confirmed) == (("pages", "1002"), None, False)
+    for day in (1, 2):
+        gone = RefreshSite(listing=without("1002"), gone={"1002"})
+        run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
+    [stone] = RawStore(chosen.raw).tombstones().values()
+    assert stone.confirmed
+
+
+def test_a_moved_page_whose_new_file_fails_keeps_its_old_file(tmp_path: Path) -> None:
+    """The last good copy of a moved page stays until its new file is built."""
+    store = RawStore(tmp_path / "raw")
+    docs = tmp_path / "docs"
+    responses = {
+        "document.json": v2_page(),
+        "view.json": v2_page(body={"view": {"value": "<p>v</p>", "representation": "view"}}),
+        "attachments.json": [],
+    }
+    with store.writing():
+        store.put(Page, responses, FIRST, {})
+        store.put_space(v2_space(), [v2_page()], [], [], listed_at=FIRST)
+    mirror(store, docs, SITE, identity)
+    with store.writing():
+        ops = v2_space(id=OTHER_SPACE, key="OPS", name="Ops")
+        store.put_space(ops, [v2_page(spaceId=OTHER_SPACE)], [], [], listed_at=SECOND)
+
+    def failing(html: str) -> str:
+        if "<p>v</p>" in html:
+            message = "pandoc failed"
+            raise PandocFailedError(message)
+        return html
+
+    outcome = mirror(store, docs, SITE, failing)
+    assert outcome.problems
+    assert list((docs / "confluence" / "MFS").glob("196845-*.md"))
+
+
+def test_a_window_never_ends_past_the_run() -> None:
+    """An --until in the future stops at now: coverage never claims time not yet seen."""
+    later = Targets(["MFS"], [], CAP, since=FIRST - WEEK, until=FIRST + WEEK)
+    assert later.windows(Coverage(), FIRST)[Target("confluence", "MFS")].end == FIRST
