@@ -33,18 +33,22 @@ def run(arguments: argparse.Namespace) -> int:
     """Build the index; exit 1 when a file was skipped, the model failed, or nothing built.
 
     Without the setting's model pulled, the index is built for words alone, and exit 0.
+    A model that is pulled but cannot be loaded leaves the index in place.
     """
     try:
         settings = settings_of(arguments)
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")
         return BAD_SETTINGS
-    embedding, failed = None, False
+    embedding = None
     try:
         embedding = Embedding(load(settings.model, settings.models), settings.vectors, progress)
-    except ModelError as error:
+    except NotPulledError as error:
         sys.stderr.write(f"search by meaning off: {error}\n")
-        failed = not isinstance(error, NotPulledError)
+    except (ModelError, OSError) as error:
+        # The index in place keeps its vectors rather than lose them to a broken model.
+        sys.stderr.write(f"index not built: {error}\n")
+        return 1
     try:
         report = build_index(settings.docs, settings.index, datetime.now(UTC), embedding)
     except (MirrorMissingError, OSError, ModelError) as error:
@@ -64,4 +68,4 @@ def run(arguments: argparse.Namespace) -> int:
         )
     if report.skipped:
         sys.stderr.write(f"{len(report.skipped)} files skipped: the index lacks them\n")
-    return 1 if report.skipped or failed else 0
+    return 1 if report.skipped else 0

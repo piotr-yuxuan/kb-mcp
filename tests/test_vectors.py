@@ -165,16 +165,19 @@ def test_the_command_embeds_with_the_settings_model(
     assert "; 0 embedded now, the others kept" in capsys.readouterr().out
 
 
-def test_a_model_whose_files_changed_leaves_an_index_for_words_and_fails(
+def test_a_model_whose_files_changed_leaves_the_index_in_place(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The index is still built, without vectors, and the exit says something failed."""
+    """A broken model fails the build: the index keeps its vectors, and the exit says so."""
+    assert main(["index", *config(data, "tiny")]) == 0
+    with reading(data / "index.sqlite") as reader:
+        before = reader.summary()
     graph = data / "models" / "tiny" / "model.onnx"
     content = bytearray(graph.read_bytes())
     content[-1] ^= 1
     graph.write_bytes(bytes(content))
+    write(data / "docs", page("196846", "Added since"), BODY)
     assert main(["index", *config(data, "tiny")]) == FAILED
-    assert "search by meaning off: tiny: files not as pinned" in capsys.readouterr().err
+    assert "index not built: tiny: files not as pinned" in capsys.readouterr().err
     with reading(data / "index.sqlite") as reader:
-        assert reader.embedded() is None
-        assert reader.summary().pieces == 0
+        assert reader.summary() == before
