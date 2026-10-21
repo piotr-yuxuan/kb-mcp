@@ -18,7 +18,10 @@ DEFAULT_DATA_DIR = "~/atlassian-offline-mcp"
 # adapters.embedding names the others.
 DEFAULT_MODEL = "multilingual-e5-small"
 MODEL_NAME = re.compile(r"[a-z0-9][a-z0-9.-]{0,63}")
-KNOWN_KEYS = frozenset({"site", "data_dir", "spaces", "projects", "model"})
+# How search ranks: by words, by meaning, or by both fused.
+SEARCH_MODES = ("lexical", "semantic", "hybrid")
+DEFAULT_SEARCH_MODE = "lexical"
+KNOWN_KEYS = frozenset({"site", "data_dir", "spaces", "projects", "model", "search_mode"})
 # Folders that may be synchronised to a cloud, under the home directory or by name.
 SYNCED_UNDER_HOME = (
     Path("Library/Mobile Documents"),
@@ -42,6 +45,7 @@ class Settings:
     spaces: tuple[str, ...] = ()
     projects: tuple[str, ...] = ()
     model: str = DEFAULT_MODEL
+    search_mode: str = DEFAULT_SEARCH_MODE
 
     @property
     def raw(self) -> Path:
@@ -64,6 +68,16 @@ class Settings:
         return self.data_dir / "models"
 
     @property
+    def vectors(self) -> Path:
+        """The vectors embedded so far, kept across index builds."""
+        return self.data_dir / "vectors.sqlite"
+
+    @property
+    def evaluations(self) -> Path:
+        """Golden questions, the indexes of models under evaluation, and their results."""
+        return self.data_dir / "eval"
+
+    @property
     def session(self) -> Path:
         """The browser profile and the saved session, never read by agents."""
         return self.data_dir / "session"
@@ -76,7 +90,16 @@ class Settings:
     @property
     def parts(self) -> tuple[Path, ...]:
         """Every place under the data directory where data is written."""
-        return (self.raw, self.docs, self.index, self.models, self.session, self.runs)
+        return (
+            self.raw,
+            self.docs,
+            self.index,
+            self.models,
+            self.vectors,
+            self.evaluations,
+            self.session,
+            self.runs,
+        )
 
 
 def parse_settings(values: Mapping[str, object], home: Path) -> Settings:
@@ -126,8 +149,12 @@ def parse_settings(values: Mapping[str, object], home: Path) -> Settings:
     if not isinstance(model, str) or not MODEL_NAME.fullmatch(model):
         message = "model: the name of an embedding model, such as multilingual-e5-small"
         raise SettingsError(message)
+    mode = values.get("search_mode", DEFAULT_SEARCH_MODE)
+    if mode not in SEARCH_MODES:
+        message = f"search_mode: one of {', '.join(SEARCH_MODES)}"
+        raise SettingsError(message)
     host = f"https://{parts.hostname}" if parts is not None else None
-    return Settings(host, path, tuple(spaces), tuple(projects), model)
+    return Settings(host, path, tuple(spaces), tuple(projects), model, str(mode))
 
 
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:
