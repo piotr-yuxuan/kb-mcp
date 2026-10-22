@@ -443,7 +443,16 @@ def test_a_corrupt_coverage_record_is_refused_by_the_command(
     data = (home / "atlassian-offline-mcp").resolve()
     (data / "raw").mkdir(parents=True)
     (data / "raw" / "coverage.json").write_text("[{}]", "utf-8")
-    options = ["download", "--config", str(home / "none.toml"), "--site", SITE, "--space", "MFS"]
+    options = [
+        "download",
+        "--yes",
+        "--config",
+        str(home / "none.toml"),
+        "--site",
+        SITE,
+        "--space",
+        "MFS",
+    ]
     assert main(options) == REFUSED
     assert "coverage.json[0]" in capsys.readouterr().err
 

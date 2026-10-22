@@ -1,13 +1,14 @@
-"""What a run says on stderr before it acts: its summary, the values it ignores, its command.
+"""What a run says on stderr before it acts, and whether it asks first.
 
-Pure: the entry gives it the arguments, the settings loaded and how the run reports, and
-writes what it returns.
+Its summary, the values it ignores and its command to copy. Pure: the entry gives it the
+arguments, the settings loaded and how the run reports, writes what it returns, and asks
+the question if one follows.
 """
 
 from __future__ import annotations
 
 from functools import reduce
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from atlassian_offline_mcp.cli.domain.command_line import command_line
 from atlassian_offline_mcp.config.domain.settings import SETTING_PATHS, Ignored
@@ -20,6 +21,10 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.cli.domain.command import Command
     from atlassian_offline_mcp.config.domain.settings import Loaded
     from atlassian_offline_mcp.kernel.output import Output
+
+# What follows what a run says before it acts: the run, a question first, or a refusal,
+# since no one could answer one.
+type Then = Literal["run", "ask", "refuse"]
 
 
 def setting_line(loaded: Loaded, setting: str, *, detailed: bool) -> str:
@@ -43,8 +48,8 @@ def before(
     loaded: Loaded,
     output: Output,
     absolute: Callable[[Path], Path],
-) -> str:
-    """Give what a run writes on stderr before it acts, in lines.
+) -> tuple[str, Then]:
+    """Give what a run writes on stderr before it acts, in lines, and what follows.
 
     A command that writes begins with its summary: its name, each setting it reads and
     its value, in detail its layer too, then the lines of its ``described``. Every
@@ -53,11 +58,22 @@ def before(
     layer gave, those that the run does not apply, by its ``unapplied``, and in detail
     those of the settings that the command never reads. Each names its setting, if any,
     and its layer, never its value. A command that writes ends with the command to copy,
-    its paths made ``absolute``. -q leaves all this out.
+    its paths made ``absolute``.
+
+    A command that only reads runs, as does one given --yes, or --dry-run where it takes
+    one. Another asks when stdin and stderr are both terminals, where someone can
+    answer; else it is refused. -q leaves all this out, unless a question follows.
     """
-    if output.quiet:
-        return ""
     command: Command = arguments.command
+    then: Then
+    if not command.writes or arguments.yes or (command.dry_run and arguments.dry_run):
+        then = "run"
+    elif output.stdin_terminal and output.stderr_terminal:
+        then = "ask"
+    else:
+        then = "refuse"
+    if output.quiet and then != "ask":
+        return "", then
     detailed = output.summary == "detailed"
     values = {
         ".".join(path): reduce(getattr, path, loaded.settings)
@@ -85,7 +101,7 @@ def before(
         for each in ignored
     )
     if not command.writes:
-        return noted
+        return noted, then
     described = command.described(arguments, values) if command.described else ()
     return (
         f"{command.name}, with these settings:\n"
@@ -95,4 +111,4 @@ def before(
         + "".join(f"  {line}\n" for line in described)
         + noted
         + command_line(arguments, values, loaded.layers, absolute)
-    )
+    ), then

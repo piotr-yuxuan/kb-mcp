@@ -160,10 +160,10 @@ def test_the_command_embeds_with_the_settings_model(
     """``index`` names the model and what it embedded; the next run embeds nothing."""
     detailed = ["--summary", "detailed"]
     with serving(Scripted()) as url:
-        assert main(["index", *config(data, "tiny", url), *detailed]) == 0
+        assert main(["index", "--yes", *config(data, "tiny", url), *detailed]) == 0
         out = capsys.readouterr().out
         assert "pieces by meaning, with tiny (no prefixes known: texts as they are);" in out
-        assert main(["index", *config(data, "tiny", url), *detailed]) == 0
+        assert main(["index", "--yes", *config(data, "tiny", url), *detailed]) == 0
     assert "; 0 embedded now, the others kept" in capsys.readouterr().out
 
 
@@ -172,12 +172,12 @@ def test_the_command_in_short_counts_the_pieces_and_those_embedded_now(
 ) -> None:
     """After the documents and sections: every piece the first time, none the next."""
     with serving(Scripted()) as url:
-        assert main(["index", *config(data, "tiny", url)]) == 0
+        assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
         *_, pieces, embedded = capsys.readouterr().out.splitlines()
         assert pieces.startswith("pieces: ")
         assert pieces != "pieces: 0"
         assert embedded == f"embedded now: {pieces.removeprefix('pieces: ')}"
-        assert main(["index", *config(data, "tiny", url)]) == 0
+        assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
     assert capsys.readouterr().out.endswith(f"{pieces}\nembedded now: 0\n")
 
 
@@ -186,13 +186,13 @@ def test_an_endpoint_that_stops_answering_leaves_the_index_in_place(
 ) -> None:
     """Ollama not started: the build fails, the index keeps its vectors, and the exit says why."""
     with serving(Scripted()) as url:
-        assert main(["index", *config(data, "tiny", url)]) == 0
+        assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
     with reading(data / "index.sqlite") as reader:
         before = reader.summary()
     write(data / "docs", page("196846", "Added since"), BODY)
     capsys.readouterr()
     with nothing_listening() as url:
-        assert main(["index", *config(data, "tiny", url)]) == FAILED
+        assert main(["index", "--yes", *config(data, "tiny", url)]) == FAILED
     err = capsys.readouterr().err
     assert "index not built: no answer from the embedding endpoint" in err
     assert "ollama serve" in err
@@ -208,13 +208,13 @@ def test_a_piece_the_model_refuses_is_named_and_asked_again(
     refused = "Rollback\nRelease\nThe deploy of the seller service."
     answers = Scripted(refused={refused})
     with serving(answers) as url:
-        assert main(["index", *config(data, "tiny", url)]) == FAILED
+        assert main(["index", "--yes", *config(data, "tiny", url)]) == FAILED
         err = capsys.readouterr().err
         assert "not embedded: a piece of confluence/ENG/196845-rollback.md" in err
         with reading(data / "index.sqlite") as reader:
             assert len(reader.pieces().documents) == reader.summary().sections - 1
         asked = sum(refused in each for each in answers.asked)
-        assert main(["index", *config(data, "tiny", url)]) == FAILED
+        assert main(["index", "--yes", *config(data, "tiny", url)]) == FAILED
         assert sum(refused in each for each in answers.asked) > asked
 
 

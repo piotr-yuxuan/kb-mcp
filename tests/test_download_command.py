@@ -40,7 +40,7 @@ def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
 
 def command(home: Path, *options: str) -> list[str]:
     """Return the arguments of a download with no settings file."""
-    return ["download", "--config", str(home / "none.toml"), *options]
+    return ["download", "--yes", "--config", str(home / "none.toml"), *options]
 
 
 @pytest.fixture

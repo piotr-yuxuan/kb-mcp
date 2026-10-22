@@ -48,7 +48,15 @@ def fake_pandoc(folder: Path, script: str) -> Path:
 
 def arguments(home: Path, *extra: str) -> list[str]:
     """Return the command line of ``mirror`` with a scratch settings file and data."""
-    return ["mirror", "--config", str(home / "none.toml"), "--data-dir", str(home / "data"), *extra]
+    return [
+        "mirror",
+        "--yes",
+        "--config",
+        str(home / "none.toml"),
+        "--data-dir",
+        str(home / "data"),
+        *extra,
+    ]
 
 
 def test_without_pandoc_the_mirror_names_it_and_writes_nothing(

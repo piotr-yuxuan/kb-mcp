@@ -10,6 +10,7 @@ from atlassian_offline_mcp.cli.options._common import (
     SIGN_IN,
     add_output_options,
     add_settings_options,
+    add_yes_option,
     email_without_token,
 )
 from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
@@ -40,6 +41,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     actions, flags = add_settings_options(parser)
     add_output_options(parser)
+    add_yes_option(parser)
     space = parser.add_argument(
         "--space", action="append", type=key_of("space"), help="a space key; repeat for more"
     )
@@ -75,6 +77,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             },
             actions=(*actions, space, project, since, back, until, largest),
             writes=True,
+            dry_run=True,
             unapplied=email_without_token,
         )
     )

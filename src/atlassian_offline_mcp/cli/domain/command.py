@@ -33,7 +33,8 @@ class Command:
     ``actions`` are the options and positionals as ``add_argument`` returned them, those
     of the output aside: each flag among them is named by its option, and the command to
     copy carries them. A command that ``writes`` under the data directory shows its
-    summary and that command before it acts.
+    summary and that command, then asks before it acts, unless given --yes, which it
+    then takes, or --dry-run, if it takes one (``dry_run``).
 
     ``unapplied``, if any, names what the run does not apply of the settings it reads,
     such as the model of an index built by words alone; ``described``, if any, gives the
@@ -47,6 +48,7 @@ class Command:
     flags: Mapping[str, str] = field(default_factory=dict)
     actions: tuple[argparse.Action, ...] = ()
     writes: bool = False
+    dry_run: bool = False
     unapplied: Unapplied | None = None
     described: Described | None = None
 

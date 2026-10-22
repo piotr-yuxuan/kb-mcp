@@ -55,7 +55,7 @@ def test_the_command_says_what_to_do_on_stderr_and_its_result_on_stdout(
     """
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(login_command, "login", lambda *_, **__: None)
-    options = ["login", "--config", str(tmp_path / "none.toml"), "--site", SITE]
+    options = ["login", "--yes", "--config", str(tmp_path / "none.toml"), "--site", SITE]
     assert main([*options, "--summary", summary]) == 0
     out, err = capsys.readouterr()
     assert out == SIGNED_IN

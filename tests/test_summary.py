@@ -88,7 +88,7 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
     monkeypatch.setattr(login_command, "login", lambda *_, **__: None)
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
     monkeypatch.setenv(CREDENTIAL, SECRETS[CREDENTIAL])
-    assert main(["login", "--config", str(home / "none.toml"), "--site", SITE]) == 0
+    assert main(["login", "--yes", "--config", str(home / "none.toml"), "--site", SITE]) == 0
     out, err = capsys.readouterr()
     ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
     assert ignored == [
@@ -98,7 +98,7 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
     assert SECRETS[CREDENTIAL] not in out + err
 
 
-@pytest.mark.parametrize("command", [["doctor"], ["download", "--space", "ENG"]])
+@pytest.mark.parametrize("command", [["doctor"], ["download", "--yes", "--space", "ENG"]])
 def test_an_email_without_a_token_is_ignored(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], command: list[str]
 ) -> None:
@@ -124,7 +124,7 @@ def test_an_index_by_words_alone_ignores_the_model_and_the_endpoint_given(
     config = home / "config.toml"
     config.write_text('model = "tiny"\n', "utf-8")
     monkeypatch.setenv(KEY, SECRETS[KEY])
-    assert main(["index", "--config", str(config), "--data-dir", str(home / "data")]) == 0
+    assert main(["index", "--yes", "--config", str(config), "--data-dir", str(home / "data")]) == 0
     out, err = capsys.readouterr()
     ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
     assert ignored == [
@@ -229,7 +229,7 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     config.write_text(f'site = "{SITE}"\nmodel = "tiny"\n', "utf-8")
     monkeypatch.setenv(UNKNOWN, "1")
     data = (home / "data").resolve()
-    options = ["mirror", "--config", str(config), "--data-dir", str(data)]
+    options = ["mirror", "--yes", "--config", str(config), "--data-dir", str(data)]
     command = (
         "atlassian-offline-mcp mirror \\\n"
         f"  --config {shlex.quote(str(config))} \\\n"
@@ -266,7 +266,9 @@ def test_a_command_s_described_lines_end_its_summary(
     def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
         return (f"mirrors {settings['site']}", f"as {arguments.command.name}")
 
-    arguments = parser().parse_args(["mirror", "--config", str(home / "none.toml"), "--site", SITE])
+    arguments = parser().parse_args(
+        ["mirror", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
+    )
     arguments.command = dataclasses.replace(arguments.command, described=described)
     assert enter(arguments) == 0
     summary = capsys.readouterr().err.split("atlassian-offline-mcp mirror")[0]
@@ -304,7 +306,7 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     }
     for variable, value in given.items():
         monkeypatch.setenv(variable, value)
-    output = ["-v", "--summary", "detailed", "--format", "json"]
+    output = ["--yes", "-v", "--summary", "detailed", "--format", "json"]
     main([name, "--config", str(config), *output, *OWN_OPTIONS[name]])
     err = capsys.readouterr().err
     assert not any(secret in err for secret in SECRETS.values())
@@ -320,7 +322,7 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     config.unlink()
     for variable in given:
         monkeypatch.delenv(variable)
-    main(argv[1:])
+    main([*argv[1:], "--yes"])
     (first_arguments, first), (second_arguments, second) = runs
     command = first_arguments.command
     for setting in set(command.flags.values()) & set(command.reads):

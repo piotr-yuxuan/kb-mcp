@@ -9,6 +9,7 @@ from atlassian_offline_mcp.cli.options._common import (
     SIGN_IN,
     add_output_options,
     add_settings_options,
+    add_yes_option,
 )
 
 if TYPE_CHECKING:
@@ -28,6 +29,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser("login", help="sign in once, in a Chrome window")
     actions, flags = add_settings_options(parser)
     add_output_options(parser)
+    add_yes_option(parser)
     chrome = parser.add_argument(
         "--chrome", help="Chrome's executable, where the chrome channel fails"
     )

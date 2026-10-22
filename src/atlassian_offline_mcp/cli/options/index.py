@@ -9,6 +9,7 @@ from atlassian_offline_mcp.cli.options._common import (
     add_embedding_options,
     add_output_options,
     add_settings_options,
+    add_yes_option,
 )
 
 if TYPE_CHECKING:
@@ -32,6 +33,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser("index", help="build the search index from the mirror")
     actions, flags = add_settings_options(parser)
     add_output_options(parser)
+    add_yes_option(parser)
     remote = add_embedding_options(parser)
     parser.set_defaults(
         command=Command(

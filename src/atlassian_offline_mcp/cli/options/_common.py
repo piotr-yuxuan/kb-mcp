@@ -74,6 +74,13 @@ def add_output_options(parser: argparse.ArgumentParser, *, result: bool = True) 
         )
 
 
+def add_yes_option(parser: argparse.ArgumentParser) -> None:
+    """Add -y and --yes, for a command that writes: it runs without the question."""
+    parser.add_argument(
+        "-y", "--yes", action="store_true", help="run without asking first, as a script does"
+    )
+
+
 def add_settings_options(
     parser: argparse.ArgumentParser,
 ) -> tuple[tuple[argparse.Action, ...], dict[str, str]]:

@@ -12,6 +12,7 @@ from atlassian_offline_mcp.cli.options._common import (
     add_embedding_options,
     add_output_options,
     add_settings_options,
+    add_yes_option,
     model_name,
 )
 
@@ -26,6 +27,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     actions, flags = add_settings_options(parser)
     add_output_options(parser)
+    add_yes_option(parser)
     remote = add_embedding_options(parser)
     golden = parser.add_argument("golden", type=Path, help="a YAML file of golden questions")
     golden.completer = FilesCompleter(["yaml", "yml"])

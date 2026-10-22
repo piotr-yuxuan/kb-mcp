@@ -46,7 +46,7 @@ def index(
     """
     config = data.parent / "config.toml"
     config.write_text(settings, encoding="utf-8")
-    status = main(["index", "--config", str(config), "--data-dir", str(data)])
+    status = main(["index", "--yes", "--config", str(config), "--data-dir", str(data)])
     out, err = capsys.readouterr()
     return status, out, err
 
@@ -93,7 +93,7 @@ def test_by_words_alone_the_command_shows_documents_and_sections(
     config = data.parent / "config.toml"
     config.write_text('search_mode = "lexical"\n', encoding="utf-8")
     options = ["--config", str(config), "--data-dir", str(data), "--summary", summary]
-    assert main(["index", *options]) == 0
+    assert main(["index", "--yes", *options]) == 0
     assert capsys.readouterr().out == shown.format(index=(data / "index.sqlite").resolve())
 
 
@@ -105,7 +105,7 @@ def test_the_command_gives_its_report_index_and_model_as_json(
     config = data.parent / "config.toml"
     config.write_text('search_mode = "lexical"\n', encoding="utf-8")
     options = ["--config", str(config), "--data-dir", str(data), "--format", "json"]
-    assert main(["index", *options]) == 0
+    assert main(["index", "--yes", *options]) == 0
     document = json.loads(capsys.readouterr().out)
     assert document["report"]["types"] == {"page": 1}
     assert document["index"] == str((data / "index.sqlite").resolve())
@@ -204,7 +204,7 @@ def test_by_meaning_an_endpoint_elsewhere_needs_the_flag_and_https(
         encoding="utf-8",
     )
     options = ["--config", str(config), "--data-dir", str(data), "--allow-remote-embeddings"]
-    assert main(["index", *options]) == BAD_SETTINGS
+    assert main(["index", "--yes", *options]) == BAD_SETTINGS
     assert "over https only" in capsys.readouterr().err
     assert not (data / "index.sqlite").exists()
 
@@ -212,7 +212,9 @@ def test_by_meaning_an_endpoint_elsewhere_needs_the_flag_and_https(
 def test_refused_settings_exit_2(data: Path, capsys: CaptureFixture[str]) -> None:
     """A data directory in a synchronised folder is refused before anything is built."""
     dropbox = data.parent / "home" / "Dropbox" / "data"
-    status = main(["index", "--config", str(data / "none.toml"), "--data-dir", str(dropbox)])
+    status = main(
+        ["index", "--yes", "--config", str(data / "none.toml"), "--data-dir", str(dropbox)]
+    )
     assert status == BAD_SETTINGS
     assert (
         "settings refused: data_dir (--data-dir): under a Dropbox folder" in capsys.readouterr().err

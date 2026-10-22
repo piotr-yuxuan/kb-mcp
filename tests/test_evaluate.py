@@ -157,7 +157,7 @@ def test_the_command_keeps_numbers_and_ids_but_no_question(
     """``eval`` prints its tables, and its results file holds no question's text."""
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     with serving(Scripted()) as url:
-        assert main(["eval", str(data / "golden.yaml"), *options(data, url)]) == 0
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data, url)]) == 0
         out = capsys.readouterr().out
         assert "## tiny" in out
         [results] = (data / "eval" / "results").glob("*.json")
@@ -165,7 +165,7 @@ def test_the_command_keeps_numbers_and_ids_but_no_question(
         assert "vacation" not in kept
         assert "release" not in kept
         assert json.loads(kept)["runs"][0]["ranks"]["semantic"]["q1"] == [1]
-        assert main(["eval", str(data / "golden.yaml"), *options(data, url)]) == 0
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data, url)]) == 0
     second = max((data / "eval" / "results").glob("*.json"))
     assert json.loads(second.read_text(encoding="utf-8"))["runs"][0]["embedded"] == 0
 
@@ -176,7 +176,7 @@ def test_the_command_in_short_shows_each_mode_on_all_questions_then_the_results_
     """Under the model's name, the table's rows of the group all alone; nothing of the tests."""
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     with serving(Scripted()) as url:
-        assert main(["eval", str(data / "golden.yaml"), *options(data, url)]) == 0
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data, url)]) == 0
     [results] = (data / "eval" / "results").glob("*.json")
     lines = capsys.readouterr().out.splitlines()
     assert lines[:3] == ["## tiny", "", HEADER]
@@ -192,7 +192,7 @@ def test_the_command_in_detail_shows_every_group_how_the_index_was_built_and_the
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     with serving(Scripted()) as url:
         options_given = [*options(data, url), "--summary", "detailed"]
-        assert main(["eval", str(data / "golden.yaml"), *options_given]) == 0
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options_given]) == 0
     [results] = (data / "eval" / "results").glob("*.json")
     out = capsys.readouterr().out
     assert "Index built in " in out
@@ -208,7 +208,7 @@ def test_the_command_gives_each_model_s_run_and_the_results_file_as_json(
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     with serving(Scripted()) as url:
         options_given = [*options(data, url), "--format", "json"]
-        assert main(["eval", str(data / "golden.yaml"), *options_given]) == 0
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options_given]) == 0
     [results] = (data / "eval" / "results").glob("*.json")
     out = capsys.readouterr().out
     assert "vacation" not in out
@@ -223,7 +223,7 @@ def test_the_command_gives_each_model_s_run_and_the_results_file_as_json(
 def test_a_refused_golden_file_exits_2(data: Path, capsys: CaptureFixture[str]) -> None:
     """The command names the fault and evaluates nothing."""
     (data / "golden.yaml").write_text("- {id: q1}", encoding="utf-8")
-    assert main(["eval", str(data / "golden.yaml"), *options(data)]) == REFUSED
+    assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data)]) == REFUSED
     assert "golden[0].expected: missing" in capsys.readouterr().err
     assert not (data / "eval").exists()
 
@@ -234,7 +234,7 @@ def test_an_endpoint_elsewhere_without_the_flag_exits_2(
     """``eval`` always embeds: an endpoint off this machine needs the run's word."""
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     remote = options(data, "https://embeddings.example/v1")
-    assert main(["eval", str(data / "golden.yaml"), *remote]) == REFUSED
+    assert main(["eval", "--yes", str(data / "golden.yaml"), *remote]) == REFUSED
     assert "refused: embedding_url: not an address of this machine" in capsys.readouterr().err
     assert not (data / "eval").exists()
 

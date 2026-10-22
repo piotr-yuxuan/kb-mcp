@@ -47,10 +47,10 @@ Each context but the kernel holds the same layers, as sub-packages, from the top
 | Layer | What it holds |
 |---|---|
 | `main` | The entry point: the parser, built from every declaration (in `cli` only) |
-| `commands` | One run per subcommand, with its result as text, and `_shared`, the entry that loads the settings, runs the chosen one and writes its result (in `cli` only) |
+| `commands` | One run per subcommand, with its result as text, and `_shared`, the entry that loads the settings, says what it ignores, asks before a run that writes, runs the chosen one and writes its result (in `cli` only) |
 | `options` | One light declaration per subcommand: its help, its options and the run it names (in `cli` only) |
 | `app` | Use cases: they combine effects and rules, and know nothing of the command line |
-| `adapters` | Effects: the network, the browser, files, SQLite, subprocesses |
+| `adapters` | Effects: the network, the browser, files, SQLite, subprocesses, the terminal |
 | `domain` | Pure rules: decisions and conversions with no I/O, time or environment |
 
 A context holds only the layers it needs; `mcp` has only `app`.
