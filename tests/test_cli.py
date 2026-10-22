@@ -429,7 +429,7 @@ def test_check_as_json_gives_settings_layers_and_ignored_values_secrets_masked(
 
 
 def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture[str]) -> None:
-    """Valid settings and a safe directory exit 0 and are shown."""
+    """Valid settings and a safe directory exit 0; in short, the settings given are shown."""
     config = home / "config.toml"
     config.write_text(
         'site = "https://example.atlassian.net"\n[sources.confluence]\nspaces = ["ENG"]\n',
@@ -437,9 +437,52 @@ def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture
     )
     assert main(["check", "--config", str(config)]) == 0
     out = capsys.readouterr().out
-    assert "site: https://example.atlassian.net" in out
-    assert "spaces: ENG" in out
-    assert f"data directory: {(home / 'atlassian-offline-mcp').resolve()}" in out
+    assert out == "site: https://example.atlassian.net\nsources.confluence.spaces: ENG\n"
+    assert main(["check", "--config", str(config), "--summary", "detailed"]) == 0
+    data = (home / "atlassian-offline-mcp").resolve()
+    assert f"data_dir: {data} [default]\n" in capsys.readouterr().out
+
+
+def test_check_in_short_shows_each_setting_given_and_its_value(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """From any layer, by its path; a secret said to be set; the settings at defaults left out."""
+    config = home / "config.toml"
+    config.write_text('site = "https://file.example.invalid"\nsearch_mode = "hybrid"\n', "utf-8")
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES", '["ENG", "OPS"]')
+    for name, value in SECRETS.items():
+        monkeypatch.setenv(name, value)
+    assert main(["check", "--config", str(config), "--data-dir", "~/from-flag"]) == 0
+    assert capsys.readouterr().out == (
+        "site: https://file.example.invalid\n"
+        "api_token: set\n"
+        f"data_dir: {(home / 'from-flag').resolve()}\n"
+        "search_mode: hybrid\n"
+        "embedding_api_key: set\n"
+        "sources.confluence.spaces: ENG, OPS\n"
+    )
+
+
+def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The settings at defaults too, unset ones said to be so; a secret never shown."""
+    monkeypatch.setenv(*next(iter(SECRETS.items())))
+    assert main(["check", "--config", str(home / "none.toml"), "--summary", "detailed"]) == 0
+    out = capsys.readouterr().out
+    assert out == (
+        "site: (not set) [default]\n"
+        "email: (not set) [default]\n"
+        "api_token: set [ATLASSIAN_OFFLINE_MCP_API_TOKEN]\n"
+        f"data_dir: {(home / 'atlassian-offline-mcp').resolve()} [default]\n"
+        "model: qwen3-embedding:0.6b [default]\n"
+        "search_mode: lexical [default]\n"
+        "embedding_url: http://127.0.0.1:11434/v1 [default]\n"
+        "embedding_api_key: not set [default]\n"
+        "sources.confluence.spaces: (none) [default]\n"
+        "sources.jira.projects: (none) [default]\n"
+    )
+    assert not any(secret in out for secret in SECRETS.values())
 
 
 @pytest.mark.parametrize(
@@ -528,8 +571,8 @@ def test_check_runs_with_variables_that_name_no_setting_or_are_empty(
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS", '["X"]')
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SPACES", '["X"]')
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "")
-    assert main(["check", "--config", str(home / "none.toml")]) == 0
-    assert "site: (not set)" in capsys.readouterr().out
+    assert main(["check", "--config", str(home / "none.toml"), "--summary", "detailed"]) == 0
+    assert "site: (not set) [default]\n" in capsys.readouterr().out
 
 
 def test_check_refuses_a_file_that_is_not_toml(home: Path, capsys: CaptureFixture[str]) -> None:
@@ -575,12 +618,13 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The file, then its variable, then the flag: each wins in turn, and check names it."""
-    assert main(["check", "--config", str(home / "none.toml")]) == 0
+    detailed = ["--summary", "detailed"]
+    assert main(["check", "--config", str(home / "none.toml"), *detailed]) == 0
     out = capsys.readouterr().out
     assert "site: (not set) [default]\n" in out
-    assert f"data directory: {(home / 'atlassian-offline-mcp').resolve()} [default]\n" in out
-    assert "spaces: (none) [default]\n" in out
-    assert "projects: (none) [default]\n" in out
+    assert f"data_dir: {(home / 'atlassian-offline-mcp').resolve()} [default]\n" in out
+    assert "sources.confluence.spaces: (none) [default]\n" in out
+    assert "sources.jira.projects: (none) [default]\n" in out
 
     config = home / "config.toml"
     config.write_text(
@@ -588,30 +632,32 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
         '[sources.confluence]\nspaces = ["ENG"]\n[sources.jira]\nprojects = ["PLAT"]\n',
         "utf-8",
     )
-    assert main(["check", "--config", str(config)]) == 0
+    assert main(["check", "--config", str(config), *detailed]) == 0
     out = capsys.readouterr().out
     assert "site: https://file.example.invalid [config.toml]\n" in out
-    assert f"data directory: {(home / 'from-file').resolve()} [config.toml]\n" in out
-    assert "spaces: ENG [config.toml]\n" in out
-    assert "projects: PLAT [config.toml]\n" in out
+    assert f"data_dir: {(home / 'from-file').resolve()} [config.toml]\n" in out
+    assert "sources.confluence.spaces: ENG [config.toml]\n" in out
+    assert "sources.jira.projects: PLAT [config.toml]\n" in out
 
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "https://variable.example.invalid")
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_DATA_DIR", "~/from-variable")
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES", '["OPS"]')
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB", "PAY"]')
-    assert main(["check", "--config", str(config)]) == 0
+    assert main(["check", "--config", str(config), *detailed]) == 0
     out = capsys.readouterr().out
     assert "site: https://variable.example.invalid [ATLASSIAN_OFFLINE_MCP_SITE]\n" in out
     data = (home / "from-variable").resolve()
-    assert f"data directory: {data} [ATLASSIAN_OFFLINE_MCP_DATA_DIR]\n" in out
-    assert "spaces: OPS [ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES]\n" in out
-    assert "projects: PRB, PAY [ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS]\n" in out
+    assert f"data_dir: {data} [ATLASSIAN_OFFLINE_MCP_DATA_DIR]\n" in out
+    spaces = "sources.confluence.spaces: OPS [ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES]"
+    assert f"{spaces}\n" in out
+    projects = "sources.jira.projects: PRB, PAY [ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS]"
+    assert f"{projects}\n" in out
 
     flag = ["--site", "https://flag.example.invalid", "--data-dir", "~/from-flag"]
-    assert main(["check", "--config", str(config), *flag]) == 0
+    assert main(["check", "--config", str(config), *flag, *detailed]) == 0
     out = capsys.readouterr().out
     assert "site: https://flag.example.invalid [--site]\n" in out
-    assert f"data directory: {(home / 'from-flag').resolve()} [--data-dir]\n" in out
+    assert f"data_dir: {(home / 'from-flag').resolve()} [--data-dir]\n" in out
 
 
 def test_check_reads_no_generic_atlassian_name(
@@ -619,7 +665,7 @@ def test_check_reads_no_generic_atlassian_name(
 ) -> None:
     """ATLASSIAN_SITE is another tool's: the site stays unset."""
     monkeypatch.setenv("ATLASSIAN_SITE", "https://other.example.invalid")
-    assert main(["check", "--config", str(home / "none.toml")]) == 0
+    assert main(["check", "--config", str(home / "none.toml"), "--summary", "detailed"]) == 0
     assert "site: (not set) [default]\n" in capsys.readouterr().out
 
 
@@ -628,4 +674,4 @@ def test_a_flag_overrides_the_settings_file(home: Path, capsys: CaptureFixture[s
     config = home / "config.toml"
     config.write_text('data_dir = "~/from-file"\n', "utf-8")
     assert main(["check", "--config", str(config), "--data-dir", "~/from-flag"]) == 0
-    assert f"data directory: {(home / 'from-flag').resolve()}" in capsys.readouterr().out
+    assert capsys.readouterr().out == f"data_dir: {(home / 'from-flag').resolve()}\n"
