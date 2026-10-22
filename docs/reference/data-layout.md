@@ -317,7 +317,11 @@ Owned by `index` (006). `<data>/index.sqlite` is built from the documents of
 is then renamed into place. Its schema is defined in 006's plan; schema 3 (011) adds the
 table `pieces` (each piece of a section's body, its span and its vector) and the meta
 rows `build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the
-last three empty for an index built without a model. An index of another schema is
+last three empty for an index built without a model. Plan 019 adds the meta row
+`chunking`, how the pieces were cut (one of `kernel.chunking`'s names), empty without a
+model; an index without the row, 011's or 018's, was cut by `sections`. A piece keeps
+the section that holds its middle and a span relative to that section's body, so that
+a window across sections needs no other schema. An index of another schema is
 refused with the command that rebuilds it. The MCP server opens it read-only, never
 writes, and reopens it when the file is replaced; it searches by meaning with the model
 that the index names, and only while the endpoint's fingerprint for it is the index's.
