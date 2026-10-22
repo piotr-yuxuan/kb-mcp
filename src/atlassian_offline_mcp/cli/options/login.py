@@ -41,6 +41,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             reads=("site", *SIGN_IN, "data_dir"),
             flags=flags,
             actions=(*actions, chrome, extensions),
+            writes=True,
             unapplied=in_the_browser,
         )
     )

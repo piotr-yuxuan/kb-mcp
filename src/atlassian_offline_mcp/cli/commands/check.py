@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from functools import reduce
 from typing import TYPE_CHECKING
 
+from atlassian_offline_mcp.cli.domain.summary import setting_line
 from atlassian_offline_mcp.config.domain.settings import DEFAULT_LAYER, SETTING_PATHS
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 
@@ -33,15 +33,7 @@ def text(loaded: Loaded, summary: Summary) -> str:
     lines = []
     for path, kind in SETTING_PATHS.items():
         setting = ".".join(path)
-        layer = loaded.layer(setting)
-        if kind == "table" or (summary == "short" and layer == DEFAULT_LAYER):
+        if kind == "table" or (summary == "short" and loaded.layer(setting) == DEFAULT_LAYER):
             continue
-        value = reduce(getattr, path, loaded.settings)
-        if kind == "secret":
-            shown = "not set" if value is None else "set"
-        elif kind == "list":
-            shown = ", ".join(value) or "(none)"
-        else:
-            shown = "(not set)" if value is None else str(value)
-        lines.append(f"{setting}: {shown}" + ("" if summary == "short" else f" [{layer}]"))
+        lines.append(setting_line(loaded, setting, detailed=summary == "detailed"))
     return "".join(f"{line}\n" for line in lines)

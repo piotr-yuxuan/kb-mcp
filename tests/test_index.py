@@ -57,7 +57,8 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
     path = write(data / "docs", front, BODY)
     write(data / "docs", issue("PROJ-1", "An issue"))
     status, out, err = index(data, capsys)
-    assert (status, err) == (0, "")
+    assert status == 0
+    assert "skipped" not in err
     assert out.startswith("documents: 2\n")
     with reading(data / "index.sqlite") as reader:
         assert reader.embedded() is None

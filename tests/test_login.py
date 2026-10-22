@@ -49,14 +49,19 @@ def test_only_the_site_cookies_of_the_browser_are_saved(
 def test_the_command_says_what_to_do_on_stderr_and_its_result_on_stdout(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], summary: str
 ) -> None:
-    """The instruction is a message; the result, the same in each detail, or one document."""
+    """The instruction is a message, after the summary; the result, the same in each detail.
+
+    As JSON, the result is one document.
+    """
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(login_command, "login", lambda *_, **__: None)
     options = ["login", "--config", str(tmp_path / "none.toml"), "--site", SITE]
     assert main([*options, "--summary", summary]) == 0
-    assert capsys.readouterr() == (SIGNED_IN, INSTRUCTION)
+    out, err = capsys.readouterr()
+    assert out == SIGNED_IN
+    assert err.endswith(INSTRUCTION)
     assert main([*options, "--format", "json"]) == 0
     out, err = capsys.readouterr()
-    assert err == INSTRUCTION
+    assert err.endswith(INSTRUCTION)
     session = (tmp_path / "atlassian-offline-mcp" / "session").resolve()
     assert json.loads(out) == {"site": SITE, "session": str(session)}

@@ -74,6 +74,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
                 "project": "sources.jira.projects",
             },
             actions=(*actions, space, project, since, back, until, largest),
+            writes=True,
             unapplied=email_without_token,
         )
     )

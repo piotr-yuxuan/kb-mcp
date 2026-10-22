@@ -23,5 +23,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             reads=("site", "data_dir"),
             flags=flags,
             actions=actions,
+            writes=True,
         )
     )

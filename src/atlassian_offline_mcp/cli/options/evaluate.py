@@ -42,5 +42,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             reads=("data_dir", "model", "embedding_url", "embedding_api_key"),
             flags=flags,
             actions=(*actions, remote, golden, models),
+            writes=True,
         )
     )

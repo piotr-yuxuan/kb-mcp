@@ -1,25 +1,37 @@
-"""What a run says on stderr before it acts: the values that it ignores, in a scratch home."""
+"""What a run says on stderr before it acts, in a scratch home.
+
+The values that it ignores; for a command that writes, its summary and the command to copy.
+"""
 
 from __future__ import annotations
 
+import dataclasses
+import importlib
 import json
 import os
 import select
+import shlex
 import subprocess
 import sys
+from functools import reduce
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 from atlassian_offline_mcp.cli.commands import login as login_command
-from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.cli.commands._shared import enter
+from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.cli.options.index import by_words_alone
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    import argparse
+    from collections.abc import Mapping
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
+
+    from atlassian_offline_mcp.config.domain.settings import Loaded
 
 SITE = "https://sandbox.example.invalid"
 # The variables of the email, the API token and the embedding endpoint's key.
@@ -29,6 +41,19 @@ KEY = "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY"
 SECRETS = {CREDENTIAL: "token-sentinel-4d1c", KEY: "key-sentinel-9a7e"}
 UNKNOWN = "ATLASSIAN_OFFLINE_MCP_UNKNOWN"
 WAIT = 30  # seconds for the server to answer and stop
+# The modules that run the commands that write, by plan 015.
+WRITING = ("download", "evaluate", "index", "login", "mirror")
+# Each command that writes, with options of its own, as given on its command line.
+OWN_OPTIONS = {
+    "download": ["--space", "ENG", "--space", "OPS", "--since", "7d", "--max-file-mb", "5"],
+    "mirror": [],
+    "index": ["--allow-remote-embeddings"],
+    "eval": ["golden.yaml", "--model", "tiny", "--model", "qwen3-embedding:0.6b"],
+    "login": ["--chrome", "chrome", "--keep-extensions"],
+}
+# What the command to copy never carries, by plan 015: the output's options and the
+# question's.
+EXCLUDED = {"--yes", "-y", "--dry-run", "-q", "-v", "-vv", "--log-level", "--format", "--summary"}
 
 
 @pytest.fixture
@@ -40,6 +65,22 @@ def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     return scratch
 
 
+@pytest.fixture
+def runs(monkeypatch: MonkeyPatch) -> list[tuple[argparse.Namespace, Loaded]]:
+    """Make each command that writes record what its run was given, and do nothing."""
+    recorded: list[tuple[argparse.Namespace, Loaded]] = []
+
+    def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[int, None]:
+        recorded.append((arguments, loaded))
+        return 0, None
+
+    for module in WRITING:
+        monkeypatch.setattr(
+            importlib.import_module(f"atlassian_offline_mcp.cli.commands.{module}"), "run", run
+        )
+    return recorded
+
+
 def test_login_says_that_it_ignores_the_email_and_the_token(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
@@ -49,10 +90,12 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
     monkeypatch.setenv(CREDENTIAL, SECRETS[CREDENTIAL])
     assert main(["login", "--config", str(home / "none.toml"), "--site", SITE]) == 0
     out, err = capsys.readouterr()
-    assert f"ignored: email ({EMAIL}): login signs in in a browser\n" in err
-    assert f"ignored: api_token ({CREDENTIAL}): login signs in in a browser\n" in err
+    ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
+    assert ignored == [
+        f"ignored: email ({EMAIL}): login signs in in a browser",
+        f"ignored: api_token ({CREDENTIAL}): login signs in in a browser",
+    ]
     assert SECRETS[CREDENTIAL] not in out + err
-    assert "someone@example.invalid" not in out + err
 
 
 @pytest.mark.parametrize("command", [["doctor"], ["download", "--space", "ENG"]])
@@ -83,9 +126,11 @@ def test_an_index_by_words_alone_ignores_the_model_and_the_endpoint_given(
     monkeypatch.setenv(KEY, SECRETS[KEY])
     assert main(["index", "--config", str(config), "--data-dir", str(home / "data")]) == 0
     out, err = capsys.readouterr()
-    assert "ignored: model (config.toml): the lexical mode embeds nothing\n" in err
-    assert f"ignored: embedding_api_key ({KEY}): the lexical mode embeds nothing\n" in err
-    assert "embedding_url" not in err
+    ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
+    assert ignored == [
+        "ignored: model (config.toml): the lexical mode embeds nothing",
+        f"ignored: embedding_api_key ({KEY}): the lexical mode embeds nothing",
+    ]
     assert SECRETS[KEY] not in out + err
 
 
@@ -171,3 +216,124 @@ def test_serve_says_what_it_ignores_on_stderr_and_answers_its_first_line(home: P
     assert "serverInfo" in first["result"]
     assert all(json.loads(line)["jsonrpc"] == "2.0" for line in rest.splitlines())
     assert f"ignored: {UNKNOWN}: names no setting\n" in err
+
+
+def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_command(
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    runs: list[tuple[argparse.Namespace, Loaded]],
+) -> None:
+    """The settings it reads and their values, in detail their layers; -q says nothing."""
+    config = home / "config.toml"
+    config.write_text(f'site = "{SITE}"\nmodel = "tiny"\n', "utf-8")
+    monkeypatch.setenv(UNKNOWN, "1")
+    data = (home / "data").resolve()
+    options = ["mirror", "--config", str(config), "--data-dir", str(data)]
+    command = (
+        "atlassian-offline-mcp mirror \\\n"
+        f"  --config {shlex.quote(str(config))} \\\n"
+        f"  --data-dir {shlex.quote(str(data))} \\\n"
+        f"  --site {SITE}\n"
+    )
+    assert main(options) == 0
+    assert capsys.readouterr().err == (
+        "mirror, with these settings:\n"
+        f"  site: {SITE}\n"
+        f"  data_dir: {data}\n"
+        f"ignored: {UNKNOWN}: names no setting\n"
+        f"{command}"
+    )
+    assert main([*options, "--summary", "detailed"]) == 0
+    assert capsys.readouterr().err == (
+        "mirror, with these settings:\n"
+        f"  site: {SITE} [config.toml]\n"
+        f"  data_dir: {data} [--data-dir]\n"
+        f"ignored: {UNKNOWN}: names no setting\n"
+        "ignored: model (config.toml): not read by mirror\n"
+        f"{command}"
+    )
+    assert main([*options, "-q"]) == 0
+    assert capsys.readouterr().err == ""
+    assert len(runs) == len(["short", "detailed", "quiet"])
+
+
+def test_a_command_s_described_lines_end_its_summary(
+    home: Path, capsys: CaptureFixture[str], runs: list[tuple[argparse.Namespace, Loaded]]
+) -> None:
+    """They are its own function's, of the arguments and the settings' values by path."""
+
+    def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
+        return (f"mirrors {settings['site']}", f"as {arguments.command.name}")
+
+    arguments = parser().parse_args(["mirror", "--config", str(home / "none.toml"), "--site", SITE])
+    arguments.command = dataclasses.replace(arguments.command, described=described)
+    assert enter(arguments) == 0
+    summary = capsys.readouterr().err.split("atlassian-offline-mcp mirror")[0]
+    assert summary.endswith(
+        f"  data_dir: {(home / 'atlassian-offline-mcp').resolve()}\n  mirrors {SITE}\n  as mirror\n"
+    )
+    assert len(runs) == 1
+
+
+@pytest.mark.parametrize("name", sorted(OWN_OPTIONS))
+def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
+    name: str,
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    runs: list[tuple[argparse.Namespace, Loaded]],
+) -> None:
+    """Split by shlex and run with no settings' variable nor file, it gives the same values.
+
+    The settings come from the file (site, projects), the environment (data_dir) and the
+    flags (spaces); each that the command reads and a flag sets is carried, whatever its
+    layer. Another option is carried when not at its default. The output's options are
+    not, nor the email, the secrets, nor the model, which no flag sets; ``eval``'s
+    --model, an option of its own, is.
+    """
+    monkeypatch.chdir(home)
+    config = home / "config.toml"
+    config.write_text(
+        f'site = "{SITE}"\nmodel = "tiny"\n[sources.jira]\nprojects = ["PRB"]\n', "utf-8"
+    )
+    given = {
+        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": "~/from-variable",
+        EMAIL: "someone@example.invalid",
+        **SECRETS,
+    }
+    for variable, value in given.items():
+        monkeypatch.setenv(variable, value)
+    output = ["-v", "--summary", "detailed", "--format", "json"]
+    main([name, "--config", str(config), *output, *OWN_OPTIONS[name]])
+    err = capsys.readouterr().err
+    assert not any(secret in err for secret in SECRETS.values())
+    copied = err[err.index(f"atlassian-offline-mcp {name} ") :]
+    *continued, last = copied.splitlines()
+    assert all(line.endswith(" \\") for line in continued)
+    assert not last.endswith("\\")
+    assert "someone@example.invalid" not in copied
+    # The shell removes a backslash and the newline after it, then splits as shlex does.
+    argv = shlex.split(copied.replace("\\\n", ""))
+    assert argv[:2] == ["atlassian-offline-mcp", name]
+    assert not EXCLUDED & set(argv)
+    config.unlink()
+    for variable in given:
+        monkeypatch.delenv(variable)
+    main(argv[1:])
+    (first_arguments, first), (second_arguments, second) = runs
+    command = first_arguments.command
+    for setting in set(command.flags.values()) & set(command.reads):
+        path = setting.split(".")
+        assert reduce(getattr, path, second.settings) == reduce(getattr, path, first.settings)
+    for action in command.actions:
+        if action.dest in command.flags:
+            continue
+        was, is_now = (getattr(each, action.dest) for each in (first_arguments, second_arguments))
+        if was == action.default:
+            assert not set(action.option_strings) & set(argv)
+        if isinstance(was, Path):
+            was, is_now = was.absolute(), is_now.absolute()
+        assert is_now == was
+    # The file's model, which no flag sets, is left to the settings of the run to come.
+    assert second.settings.model != first.settings.model
