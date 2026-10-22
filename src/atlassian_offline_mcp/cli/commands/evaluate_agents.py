@@ -203,7 +203,10 @@ def text(result: object, summary: Summary) -> str:
         case Results():
             counted = ", ".join(f"{name} {count}" for name, count in result.counted.items())
             lines = [
-                f"runs: {counted or 'none'}; questions out of the tests: {result.left_out}",
+                (
+                    f"runs: {counted or 'none'}; questions in the tests: {result.pairs}, out of"
+                    f" them: {result.left_out}"
+                ),
                 *(
                     f"{name}, B with ask against A without: {each.difference:+.3f}"
                     f" [{each.interval[0]:+.3f}, {each.interval[1]:+.3f}], p = {each.pvalue:.4f},"

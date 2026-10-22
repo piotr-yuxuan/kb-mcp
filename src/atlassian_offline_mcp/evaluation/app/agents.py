@@ -22,10 +22,10 @@ import time
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from atlassian_offline_mcp.config.adapters.settings_file import git_root
 from atlassian_offline_mcp.config.domain.settings import unsafe_location
@@ -257,6 +257,32 @@ def readied(directory: Path) -> Runs:
         raise AgentsError(message) from None
 
 
+class Logged(BaseModel):
+    """A call as the bridge logs it: tool, arguments, tokens answered, seconds, status.
+
+    The tokens are the answer's, estimated as the server's budgets count them.
+    """
+
+    model_config = OWN
+
+    tool: str
+    arguments: dict[str, object]
+    tokens: int = Field(ge=0)
+    seconds: float = Field(ge=0)
+    status: Literal["answered", "refused", "timeout", "failed"]
+
+
+def logged(directory: Path, run: Run) -> list[Logged]:
+    """Read a run's calls as the bridge logged them; refuse a line not as it writes them."""
+    log = directory / "calls" / f"{run.id}.jsonl"
+    lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+    try:
+        return [Logged.model_validate_json(line) for line in lines]
+    except ValidationError as error:
+        message = f"calls/{run.id}.jsonl: {refusal(error)}"
+        raise AgentsError(message) from None
+
+
 @contextmanager
 def locked(directory: Path, run: Run) -> Iterator[None]:
     """Hold a run's lock, so that its calls and its answer go one at a time."""
@@ -295,8 +321,7 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
         raise AgentsError(message)
     log = directory / "calls" / f"{run.id}.jsonl"
     with locked(directory, run):
-        made = len(log.read_text(encoding="utf-8").splitlines()) if log.exists() else 0
-        if made >= runs.calls:
+        if len(logged(directory, run)) >= runs.calls:
             message = f"calls: this run's {runs.calls} are spent; give your answer now"
             raise AgentsError(message)
         started = time.monotonic()
@@ -308,15 +333,15 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
             done = Called("timeout", f"no answer within {runs.call_s:g} seconds")
         except ServerError as error:
             done = Called("failed", str(error))
-        line = {
-            "tool": tool,
-            "arguments": arguments,
-            "tokens": tokens(done.text),
-            "seconds": time.monotonic() - started,
-            "status": done.status,
-        }
+        line = Logged(
+            tool=tool,
+            arguments=arguments,
+            tokens=tokens(done.text),
+            seconds=time.monotonic() - started,
+            status=done.status,
+        )
         with log.open("a", encoding="utf-8") as kept:
-            kept.write(json.dumps(line, ensure_ascii=False) + "\n")
+            kept.write(line.model_dump_json() + "\n")
     return done
 
 
@@ -379,28 +404,26 @@ def judged(
     Without a harness file, the run is pending. ``failed`` or ``invalid``, or a call
     that timed out or whose server failed, gives no result. Returned without an answer
     accepted is the agent's failure; with one, it is graded. Raises AgentsError for a
-    harness file not as the orchestrator writes it, naming the run and the field.
+    harness file, a call log or an answer not as written, naming the file and the field.
     """
     harness_file = directory / "harness" / f"{run.id}.json"
-    log = directory / "calls" / f"{run.id}.jsonl"
     kept = directory / "answers" / f"{run.id}.json"
-    harness = None
-    if harness_file.exists():
-        try:
-            harness = Harness.model_validate_json(harness_file.read_text(encoding="utf-8"))
-        except ValidationError as error:
-            message = f"harness/{run.id}.json: {refusal(error)}"
-            raise AgentsError(message) from None
-    lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
-    calls = [json.loads(line) for line in lines]
-    statuses = (each["status"] for each in calls)
-    broken = next((status for status in statuses if status in {"timeout", "failed"}), "")
+    named = harness_file  # the file being read, for a refusal
+    try:
+        harness = (
+            Harness.model_validate_json(harness_file.read_text(encoding="utf-8"))
+            if harness_file.exists()
+            else None
+        )
+        named = kept
+        answer = Answer.model_validate_json(kept.read_text("utf-8")) if kept.exists() else None
+    except ValidationError as error:
+        message = f"{named.parent.name}/{named.name}: {refusal(error)}"
+        raise AgentsError(message) from None
+    calls = logged(directory, run)
+    broken = next((each.status for each in calls if each.status in {"timeout", "failed"}), "")
     returned = harness is not None and harness.status == "returned"
-    graded = (
-        grade(Answer.model_validate_json(kept.read_text("utf-8")), question, resolve, body)
-        if returned and kept.exists() and not broken
-        else None
-    )
+    graded = grade(answer, question, resolve, body) if returned and answer and not broken else None
     if harness is None:
         result, reason = "pending", ""
     elif not returned:
@@ -417,9 +440,9 @@ def judged(
         surface=run.surface,
         result=result,
         reason=reason,
-        calls=dict(Counter(each["tool"] for each in calls)),
-        handed=sum(each["tokens"] for each in calls),
-        seconds=sum(each["seconds"] for each in calls),
+        calls=dict(Counter(each.tool for each in calls)),
+        handed=sum(each.tokens for each in calls),
+        seconds=sum(each.seconds for each in calls),
         model=harness.model if harness else None,
         model_tokens=harness.tokens if harness else None,
         graded=graded,
@@ -436,6 +459,7 @@ class Results:
     verdict: Verdict
     counted: dict[str, int]  # runs by result
     left_out: int  # questions out of the tests, a run of theirs without a result
+    pairs: int  # questions in the tests, both their runs graded
 
 
 def concluded(directory: Path, runs: Runs, outcomes: Sequence[Outcome]) -> Results:
@@ -472,6 +496,7 @@ def concluded(directory: Path, runs: Runs, outcomes: Sequence[Outcome]) -> Resul
         verdict,
         dict(Counter(outcome.result for outcome in outcomes)),
         settled - len(pairs),
+        len(pairs),
     )
     kept = {
         "golden_sha256": runs.golden_sha256,

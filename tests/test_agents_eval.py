@@ -24,6 +24,7 @@ from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
 from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.evaluation.adapters.mcp_client import Answered
 from atlassian_offline_mcp.evaluation.app import agents
 from atlassian_offline_mcp.mcp.app.tools import Library
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
@@ -68,6 +69,8 @@ CALLS = 12
 SENTINEL = "answer-sentinel-5c1e"
 MODEL = "claude-haiku-test"
 VALID = {"found": True, "answer": "Seven days.", "sources": ["196845"]}
+# A call as the bridge logs it.
+LOGGED = '{"tool": "search", "arguments": {}, "tokens": 9, "seconds": 1.0, "status": "answered"}\n'
 # The command line of eval-agents, as a prompt names it.
 PROGRAM = [sys.executable, "-m", "atlassian_offline_mcp", "eval-agents"]
 
@@ -268,7 +271,7 @@ def test_a_refused_call_exits_2_and_starts_no_server(
     assert prepared(world, out, "--sample", "1") == 0
     run = case.run or first(out, "A")
     (out / "calls").mkdir()
-    (out / "calls" / f"{run}.jsonl").write_text('{"status": "answered"}\n' * case.spent, "utf-8")
+    (out / "calls" / f"{run}.jsonl").write_text(LOGGED * case.spent, "utf-8")
 
     def no_server(*_: object) -> None:
         message = "a server was started"
@@ -293,7 +296,7 @@ def test_two_calls_at_once_at_the_twelfth_give_one_answer(world: World) -> None:
     assert prepared(world, out, "--sample", "1") == 0
     run = first(out, "A")
     (out / "calls").mkdir()
-    (out / "calls" / f"{run}.jsonl").write_text('{"status": "answered"}\n' * (CALLS - 1), "utf-8")
+    (out / "calls" / f"{run}.jsonl").write_text(LOGGED * (CALLS - 1), "utf-8")
     calling = bridged(out, run, "search", {"query": "kafka"})
     with ThreadPoolExecutor(2) as pool:
         statuses = sorted(pool.map(lambda _: main(calling), range(2)))
@@ -544,3 +547,69 @@ def test_grade_exits_1_past_twice_the_estimates(world: World, capsys: CaptureFix
     assert main(["eval-agents", "grade", str(out), "--yes"]) == FAILED
     assert "past 2 times the estimates" in capsys.readouterr().err
     assert (out / "results.json").exists()
+
+
+@pytest.mark.parametrize("given", [[], ["--data-dir", "DATA", "--allow-remote-embeddings"]])
+def test_each_call_starts_the_server_that_prepare_named(
+    world: World, monkeypatch: MonkeyPatch, given: list[str]
+) -> None:
+    """The settings file, the data directory and 018's flag, as prepare was given them."""
+    out = world.root / "runs"
+    options = [str(world.data) if each == "DATA" else each for each in given]
+    assert prepared(world, out, "--sample", "1", *options) == 0
+    started: list[list[str]] = []
+
+    def recorded(server: list[str], *_: object) -> Answered:
+        started.append(server)
+        return Answered("an answer", refused=False)
+
+    monkeypatch.setattr(agents, "called", recorded)
+    run = runs_of(out)[0]
+    assert main(bridged(out, run["id"], "search", {"query": "kafka"})) == 0
+    config = str((world.home / ".config" / "atlassian-offline-mcp" / "config.toml").absolute())
+    serve = [*PROGRAM[:3], "serve", "--config", config, *options]
+    assert started == [[*serve, "--tools", ",".join(run["tools"])]]
+
+
+@pytest.mark.parametrize(
+    ("place", "written", "named"),
+    [
+        ("calls", '{"tool": "search"}\n', "calls/{run}.jsonl: arguments: Field required"),
+        (
+            "calls",
+            '{"tool": "search", "arguments": {}, "tokens": 1, "seconds\n',
+            "calls/{run}.jsonl:",
+        ),
+        ("answers", '{"found": true}', "answers/{run}.json: answer: Field required"),
+    ],
+)
+def test_a_call_log_or_an_answer_not_as_written_exits_2_naming_it(
+    world: World, capsys: CaptureFixture[str], place: str, written: str, named: str
+) -> None:
+    """The agents can write the directory: grade refuses what its own steps never wrote."""
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    run = runs_of(out)[0]["id"]
+    harness(out, run, status="returned")
+    (out / place).mkdir(exist_ok=True)
+    name = f"{run}.jsonl" if place == "calls" else f"{run}.json"
+    (out / place / name).write_text(written, "utf-8")
+    capsys.readouterr()
+    assert main(["eval-agents", "grade", str(out), "--yes"]) == REFUSED
+    assert named.format(run=run) in capsys.readouterr().err
+
+
+def test_grade_exits_1_past_twice_the_tokens_handed_over(
+    world: World, capsys: CaptureFixture[str]
+) -> None:
+    """Calls that handed over past twice the estimate: the runs stop."""
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    (out / "calls").mkdir()
+    for run in runs_of(out):
+        harness(out, run["id"], status="returned")
+        line = json.loads(LOGGED) | {"tokens": 10**6}
+        (out / "calls" / f"{run['id']}.jsonl").write_text(json.dumps(line) + "\n", "utf-8")
+    capsys.readouterr()
+    assert main(["eval-agents", "grade", str(out), "--yes"]) == FAILED
+    assert "2,000,000 tokens handed over" in capsys.readouterr().err
