@@ -31,7 +31,8 @@ Some choices are not obvious:
 - **No `store/`.** Each store belongs to the context whose model it keeps: the raw store
   to `sources`, the Markdown files to `mirror`, the index and the vectors to `search`.
 - **`kernel/` is small**, and holds only what contexts that cannot import one another
-  share. It has no layers.
+  share. It has no layers. Its `fields` reads JSON already decoded and does no I/O, so
+  pure rules may use it; still, only the adapter of a representation reads a response.
 - **`evaluation/` is a context of its own**, above `mcp`, since it measures what agents
   get through `Library.ranked`; inside `search` it would make a cycle.
 - **`site_html.py` is in `mirror/adapters/`**, beside its only user. It is still an
@@ -60,7 +61,7 @@ A context holds only the layers it needs; `mcp` has only `app`.
 | | What it protects |
 |---|---|
 | A | Contexts use those below them, never those above. It is exhaustive: a new top-level package breaks it until it is placed in the order |
-| B | Within each context, the layers' order. It is exhaustive too: a module outside a layer breaks it. Each source under `sources/` is a context of its own, so `sources/` holds source packages only |
+| B | Within each context, the layers' order. It is exhaustive too: a module outside a layer breaks it. Each source under `sources/` is a context of its own; a module put directly in `sources/` is outside every layer contract, which nothing checks, so none goes there |
 | C | Pure rules, in any context (and the kernel), use no effect and no use case |
 | D | Effects, in any context, use no use case |
 | E | Search, the server and the evaluation read the mirror, never a source: the index is built from the mirror alone |
