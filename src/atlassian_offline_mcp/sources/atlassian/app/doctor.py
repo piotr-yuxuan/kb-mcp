@@ -7,10 +7,10 @@ import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters import confluence_v2, http, jira_v3
-from atlassian_offline_mcp.adapters.http import SignInNeededError, Site, SiteError
-from atlassian_offline_mcp.adapters.session_file import COOKIES, read_cookies
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
+from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, http, jira_v3
+from atlassian_offline_mcp.sources.atlassian.adapters.http import SignInNeededError, Site, SiteError
+from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, read_cookies
 
 if TYPE_CHECKING:
     from atlassian_offline_mcp.config.domain.settings import Settings

@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 from playwright.sync_api import Error, sync_playwright
 
-from atlassian_offline_mcp.adapters import confluence_v2, jira_v3
+from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 
 if TYPE_CHECKING:
     from pathlib import Path

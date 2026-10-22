@@ -8,13 +8,19 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.raw_store import StoreBusyError
-from atlassian_offline_mcp.app.download import SIGN_IN_NEEDED, SOME_FAILED, Targets, download, plan
 from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
 from atlassian_offline_mcp.config.domain.settings import SettingsError
-from atlassian_offline_mcp.domain.period import PeriodError, length, moment
 from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
 from atlassian_offline_mcp.kernel.fields import RepresentationError
+from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
+from atlassian_offline_mcp.sources.atlassian.app.download import (
+    SIGN_IN_NEEDED,
+    SOME_FAILED,
+    Targets,
+    download,
+    plan,
+)
+from atlassian_offline_mcp.sources.atlassian.domain.period import PeriodError, length, moment
 
 if TYPE_CHECKING:
     from collections.abc import Callable

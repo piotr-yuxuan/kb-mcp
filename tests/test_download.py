@@ -11,26 +11,35 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from atlassian_offline_mcp.adapters import http
-from atlassian_offline_mcp.adapters.http import MAX_FAILED_IN_A_ROW, Site, TooManyFailuresError
-from atlassian_offline_mcp.adapters.raw_store import RawStore, StoreBusyError, Stored, Unreadable
-from atlassian_offline_mcp.adapters.session_file import (
+from atlassian_offline_mcp.config.domain.settings import Settings
+from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
+from atlassian_offline_mcp.sources.atlassian.adapters import http
+from atlassian_offline_mcp.sources.atlassian.adapters.http import (
+    MAX_FAILED_IN_A_ROW,
+    Site,
+    TooManyFailuresError,
+)
+from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import (
+    RawStore,
+    StoreBusyError,
+    Stored,
+    Unreadable,
+)
+from atlassian_offline_mcp.sources.atlassian.adapters.session_file import (
     COOKIES,
     for_site,
     read_cookies,
     write_cookies,
 )
-from atlassian_offline_mcp.app import download as download_module
-from atlassian_offline_mcp.app.download import (
+from atlassian_offline_mcp.sources.atlassian.app import download as download_module
+from atlassian_offline_mcp.sources.atlassian.app.download import (
     SIGN_IN_NEEDED,
     SOME_FAILED,
     Download,
     Targets,
     download,
 )
-from atlassian_offline_mcp.config.domain.settings import Settings
-from atlassian_offline_mcp.domain.period import period
-from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
+from atlassian_offline_mcp.sources.atlassian.domain.period import period
 from tests.samples import (
     v1_user,
     v2_attachment,

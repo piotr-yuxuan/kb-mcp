@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.http import ReadPage, Request
 from atlassian_offline_mcp.kernel.content import (
     IDENTIFIER,
     SITE_PATH,
@@ -25,6 +24,7 @@ from atlassian_offline_mcp.kernel.content import (
     version_revision,
 )
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
+from atlassian_offline_mcp.sources.atlassian.adapters.http import ReadPage, Request
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence

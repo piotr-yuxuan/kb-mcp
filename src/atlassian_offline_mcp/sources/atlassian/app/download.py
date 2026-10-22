@@ -11,22 +11,28 @@ from itertools import batched
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
 
-from atlassian_offline_mcp.adapters import confluence_v2, http, jira_v3
-from atlassian_offline_mcp.adapters.http import (
+from atlassian_offline_mcp.kernel.content import IDENTIFIER, BlogPost, Issue, Page
+from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
+from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, http, jira_v3
+from atlassian_offline_mcp.sources.atlassian.adapters.http import (
     SignInNeededError,
     Site,
     SiteError,
     TooManyFailuresError,
 )
-from atlassian_offline_mcp.adapters.raw_store import REPRESENTATIONS, RawStore, Unreadable
-from atlassian_offline_mcp.adapters.session_file import (
+from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import (
+    REPRESENTATIONS,
+    RawStore,
+    Unreadable,
+)
+from atlassian_offline_mcp.sources.atlassian.adapters.session_file import (
     COOKIES,
     for_site,
     read_cookies,
     write_cookies,
 )
-from atlassian_offline_mcp.domain.coverage import Coverage, Target, window
-from atlassian_offline_mcp.domain.deletions import (
+from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target, window
+from atlassian_offline_mcp.sources.atlassian.domain.deletions import (
     Answer,
     Tombstone,
     after_probes,
@@ -34,18 +40,16 @@ from atlassian_offline_mcp.domain.deletions import (
     probing_order,
     too_many_gone,
 )
-from atlassian_offline_mcp.domain.files import skip_reason
-from atlassian_offline_mcp.domain.period import EPOCH, Period
-from atlassian_offline_mcp.kernel.content import IDENTIFIER, BlogPost, Issue, Page
-from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
+from atlassian_offline_mcp.sources.atlassian.domain.files import skip_reason
+from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, Period
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
     from datetime import datetime
 
-    from atlassian_offline_mcp.adapters.http import ReadPage, Request
     from atlassian_offline_mcp.config.domain.settings import Settings
     from atlassian_offline_mcp.kernel.content import Attachment, Document, Listed
+    from atlassian_offline_mcp.sources.atlassian.adapters.http import ReadPage, Request
 
     type SnapshotRequests = Callable[[Listed], dict[str, tuple[Request, ReadPage | None]]]
 

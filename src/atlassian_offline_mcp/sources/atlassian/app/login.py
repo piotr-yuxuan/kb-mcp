@@ -5,8 +5,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
-from atlassian_offline_mcp.adapters.browser import disable_password_saving, sign_in
-from atlassian_offline_mcp.adapters.session_file import COOKIES, for_site, write_cookies
+from atlassian_offline_mcp.sources.atlassian.adapters.browser import (
+    disable_password_saving,
+    sign_in,
+)
+from atlassian_offline_mcp.sources.atlassian.adapters.session_file import (
+    COOKIES,
+    for_site,
+    write_cookies,
+)
 
 if TYPE_CHECKING:
     from atlassian_offline_mcp.config.domain.settings import Settings

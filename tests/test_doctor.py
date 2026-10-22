@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.adapters import http
-from atlassian_offline_mcp.app.doctor import FAILED, SIGN_IN, WELL, doctor
 from atlassian_offline_mcp.cli import main
 from atlassian_offline_mcp.config.domain.settings import Settings
+from atlassian_offline_mcp.sources.atlassian.adapters import http
+from atlassian_offline_mcp.sources.atlassian.app.doctor import FAILED, SIGN_IN, WELL, doctor
 
 if TYPE_CHECKING:
     from pathlib import Path

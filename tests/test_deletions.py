@@ -6,7 +6,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from atlassian_offline_mcp.domain.deletions import (
+from atlassian_offline_mcp.kernel.content import RefusedError
+from atlassian_offline_mcp.sources.atlassian.domain.deletions import (
     Answer,
     Tombstone,
     after_probes,
@@ -14,7 +15,6 @@ from atlassian_offline_mcp.domain.deletions import (
     probing_order,
     too_many_gone,
 )
-from atlassian_offline_mcp.kernel.content import RefusedError
 
 FIRST = datetime(2026, 11, 1, tzinfo=UTC)
 LATER = datetime(2026, 11, 2, tzinfo=UTC)

@@ -64,9 +64,9 @@ source_modules = [
   "atlassian_offline_mcp.commands.model",
 ]
 forbidden_modules = [
-  "atlassian_offline_mcp.adapters.http",
-  "atlassian_offline_mcp.adapters.browser",
-  "atlassian_offline_mcp.adapters.session_file",
+  "atlassian_offline_mcp.sources.atlassian.adapters.http",
+  "atlassian_offline_mcp.sources.atlassian.adapters.browser",
+  "atlassian_offline_mcp.sources.atlassian.adapters.session_file",
 ]
 
 [[tool.importlinter.contracts]]

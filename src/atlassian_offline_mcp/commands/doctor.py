@@ -5,9 +5,9 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.app.doctor import FAILED, SIGN_IN, doctor
 from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
 from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.sources.atlassian.app.doctor import FAILED, SIGN_IN, doctor
 
 if TYPE_CHECKING:
     import argparse

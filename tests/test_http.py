@@ -7,7 +7,7 @@ import json
 import httpx
 import pytest
 
-from atlassian_offline_mcp.adapters.http import (
+from atlassian_offline_mcp.sources.atlassian.adapters.http import (
     INTERVAL_S,
     MAX_FAILED_IN_A_ROW,
     RETRIES,

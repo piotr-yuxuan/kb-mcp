@@ -27,12 +27,12 @@ from pathlib import Path
 
 import httpx
 
-from atlassian_offline_mcp.adapters import http
-from atlassian_offline_mcp.adapters.http import Site
-from atlassian_offline_mcp.adapters.raw_store import RawStore, Stored
-from atlassian_offline_mcp.app.download import Download
-from atlassian_offline_mcp.domain.period import period
 from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
+from atlassian_offline_mcp.sources.atlassian.adapters import http
+from atlassian_offline_mcp.sources.atlassian.adapters.http import Site
+from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, Stored
+from atlassian_offline_mcp.sources.atlassian.app.download import Download
+from atlassian_offline_mcp.sources.atlassian.domain.period import period
 
 MEBIBYTE = 1024 * 1024
 

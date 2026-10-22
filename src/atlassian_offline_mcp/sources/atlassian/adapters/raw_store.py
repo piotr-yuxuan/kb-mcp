@@ -16,10 +16,6 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters import confluence_v2, jira_v3
-from atlassian_offline_mcp.domain.coverage import Coverage, Target
-from atlassian_offline_mcp.domain.deletions import Tombstone
-from atlassian_offline_mcp.domain.period import Period, PeriodError
 from atlassian_offline_mcp.kernel.content import (
     IDENTIFIER,
     REVISION,
@@ -34,6 +30,10 @@ from atlassian_offline_mcp.kernel.content import (
     require,
 )
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
+from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
+from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target
+from atlassian_offline_mcp.sources.atlassian.domain.deletions import Tombstone
+from atlassian_offline_mcp.sources.atlassian.domain.period import Period, PeriodError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Mapping
