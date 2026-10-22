@@ -17,7 +17,7 @@ Each context may use those below it, never those above:
 | `mcp` | The tools agents call (`Library`), and answers within their budgets |
 | `search` | The index of the mirror, by words and by meaning, and ranking |
 | `mirror` | The raw store's newest snapshots as Markdown, with their front matter |
-| `sources` | Where documents come from: today `atlassian/`, Confluence and Jira, with the session and the raw store |
+| `sources` | Where documents come from: today `atlassian/`, Confluence and Jira, with the sign-in (the saved session or an API token) and the raw store |
 | `config` | The settings, their file, and the guard on where data lives |
 | `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses, how a run reports, whether an endpoint is this machine |
 
@@ -47,8 +47,8 @@ Each context but the kernel holds the same layers, as sub-packages, from the top
 | Layer | What it holds |
 |---|---|
 | `main` | The entry point: the parser, built from every declaration (in `cli` only) |
-| `commands` | One run per subcommand, with its result as text, and `_shared`, the entry that loads the settings, says what it ignores, asks before a run that writes, runs the chosen one and writes its result (in `cli` only) |
-| `options` | One light declaration per subcommand: its help, its options and the run it names (in `cli` only) |
+| `commands` | One run per subcommand, with its result as text; `_shared`, the entry that loads the settings, refuses what it can before anything is asked, says what it ignores, asks before a run that writes, runs the chosen one and writes its result; `_embedding`, which the runs that embed share (in `cli` only) |
+| `options` | One light declaration per subcommand: its help, its options, the run it names, the settings it reads, whether it writes, and the pure checks that refuse a run before anything is asked (in `cli` only) |
 | `app` | Use cases: they combine effects and rules, and know nothing of the command line |
 | `adapters` | Effects: the network, the browser, files, SQLite, subprocesses, the terminal |
 | `domain` | Pure rules: decisions and conversions with no I/O, time or environment |

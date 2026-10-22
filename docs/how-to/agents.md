@@ -15,13 +15,17 @@ files.
   ```
 
   Build the index again after each `mirror`; a running server reads the new index from
-  its next call on. `status` tells when the index was built.
+  its next call on. `status` tells when the index was built. `mirror`, `index` and
+  `eval` write under the data directory, so each first says what it will do and asks
+  `Proceed? [y/N]`; `--yes` runs it without the question, as a script needs.
 - The server is the command with no arguments. It speaks MCP over stdio, reads only
   `<data>/index.sqlite` and the mirror, and writes nothing; its one network connection,
   when it searches by meaning, is to the embedding endpoint on this machine (below). It
   takes its settings, the data directory included, from
-  `~/.config/atlassian-offline-mcp/config.toml`; `<data>` is `~/atlassian-offline-mcp`
-  unless that file says otherwise.
+  `~/.config/atlassian-offline-mcp/config.toml` and the variables
+  `ATLASSIAN_OFFLINE_MCP_…`; `<data>` is `~/atlassian-offline-mcp` unless they say
+  otherwise. It never asks, since its stdin is the protocol's, and says on stderr which
+  values it ignores.
 
 The server has four tools, all read-only: `search`, `read`, `browse` and `status`. Every
 answer marks the text it copies from Confluence and Jira as untrusted reference data,
@@ -84,7 +88,7 @@ and texts for any other model are embedded as they are.
 Any other OpenAI-compatible server works the same way (LM Studio, llama.cpp's server,
 vLLM, a hosted API): set `embedding_url` to its base address, the one that ends before
 `/embeddings`, and, if it needs a key, put the key in the environment variable
-`ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY` (never in the settings file). Such a server
+`ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY` (the settings file refuses it). Such a server
 lists no digest as Ollama does, so the vectors follow the model's name alone: after
 changing the weights behind a name, delete `<data>/vectors.sqlite` and run `index`.
 

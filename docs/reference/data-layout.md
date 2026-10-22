@@ -14,9 +14,9 @@ from `config.app.settings.load_settings`, which merges the settings file, the
 environment and the flags given, then resolves the data directory and each of the places
 below (links followed, `..` removed), judges each resolved path with names compared
 regardless of case, and raises `UnsafeDataDirError` when one is refused. Links deeper
-inside those places are not followed. Every command loads its settings that way, in its entry;
-`config.domain.settings.settings_of`, which builds them from the layers, checks no
-location and is not for commands.
+inside those places are not followed. Every command loads its settings that way, in its
+entry; `config.domain.settings.settings_of`, which builds them from the layers, checks
+no location and is not for commands.
 
 | Path | `Settings` | Written by | Read by |
 |---|---|---|---|
@@ -25,7 +25,7 @@ location and is not for commands.
 | `<data>/index.sqlite` | `index` | `index` (006) | the MCP server (006) |
 | `<data>/vectors.sqlite` | `vectors` | `index`, `eval` (011) | `index`, `eval` (011) |
 | `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011) |
-| `<data>/session/` | `session` | `login` (004) | the carriers of 004 only |
+| `<data>/session/` | `session` | `login` (004) | a run signed in by the saved session (004, 015) |
 | `<data>/runs/` | `runs` | `download` (004) | the user, and `doctor` (004) |
 
 No code builds these paths otherwise.
@@ -330,3 +330,9 @@ A `<data>/models/` folder left by plan 011 is read by nothing.
 Owned by `login` (004). `<data>/session/` has mode `0700`; it holds the browser profile
 of the sign-in window and the saved session cookies (mode `0600`). Agents are never
 given access to it: only `<data>/docs/` is shared with them.
+
+`sources.atlassian.adapters.sign_in` chooses how a run signs in (015): by an API token
+when the setting `api_token` is set, else by the saved session, whose cookies a run
+writes back as the site renews them. A run signed in by a token reads and writes nothing
+under `<data>/session/`, and keeps nothing of the token, which the environment gives to
+each run and no file under `<data>` holds.
