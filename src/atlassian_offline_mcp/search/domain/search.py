@@ -2,7 +2,7 @@
 
 How a query becomes expressions for the index, how a body is cut into sections, and in
 which order a space or a project is browsed. Nothing here reads a file or the index:
-``adapters.sqlite_index`` runs the expressions and returns these types.
+``search.adapters.sqlite_index`` runs the expressions and returns these types.
 """
 
 from __future__ import annotations

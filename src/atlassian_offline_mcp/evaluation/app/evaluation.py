@@ -3,7 +3,7 @@
 Each model gets its own index, built from the mirror like any other with the vector
 store, so a second evaluation embeds nothing new. Every question is ranked by
 ``Library.ranked``, as ``search`` ranks, in each mode; the measures and the paired
-tests of ``domain.evaluation`` say how the modes compare.
+tests of ``evaluation.domain.evaluation`` say how the modes compare.
 """
 
 from __future__ import annotations

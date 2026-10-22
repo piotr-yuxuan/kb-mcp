@@ -1,7 +1,8 @@
 """``serve``: the MCP server over stdio, answering from the index and the embedding endpoint.
 
-This module alone knows the MCP SDK. The tools are the methods of ``app.tools.Library``,
-registered as they are, so that their signatures are the tools' schemas.
+This module alone knows the MCP SDK. The tools are the methods of
+``mcp.app.tools.Library``, registered as they are, so that their signatures are the
+tools' schemas.
 """
 
 from __future__ import annotations

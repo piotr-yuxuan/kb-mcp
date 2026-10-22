@@ -224,7 +224,7 @@ the same way, as the comparison with plan 011's model below was made:
 ```python
 import json, math, statistics, sys
 
-from atlassian_offline_mcp.domain.evaluation import paired_test
+from atlassian_offline_mcp.evaluation.domain.evaluation import paired_test
 
 
 def reciprocal(ranks):  # MRR@10 of one question: 1 over its best rank, else 0
