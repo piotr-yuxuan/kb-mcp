@@ -99,10 +99,11 @@ def windows(front: FrontMatter, cut: Sequence[Section]) -> Cut:
     """Cut a document's whole body into windows, each embedded with the title.
 
     A window holds WINDOW characters and starts STEP after the last one's start, so that
-    two in a row overlap. One that does not reach the body's end stops instead at its
-    last white space within its last TENTH, when it has one there. The first starts at
-    the body's first character that is not white space; the last leaves only white space
-    after it.
+    two in a row overlap; when only white space lies from there to the last one's end, it
+    starts at the next character that is not white space. One that does not reach the
+    body's end stops instead at its last white space within its last TENTH or just past
+    it, when it has one there. The first starts at the body's first character that is not
+    white space, the last leaves only white space after it, and none is blank.
     """
     body = "".join(section.text for section in cut)
     starts = [section.start for section in cut]
@@ -120,7 +121,10 @@ def windows(front: FrontMatter, cut: Sequence[Section]) -> Cut:
         lines = (front.title[:EMBEDDED_TITLE], body[start:end].strip())
         text = "\n".join(line for line in lines if line)
         found.append((index, start - offset, end - offset, text))
-        start = start + STEP if NOT_SPACE.search(body, end) else len(body)
+        following = NOT_SPACE.search(body, end)
+        if following is None:
+            break
+        start = start + STEP if NOT_SPACE.search(body, start + STEP, end) else following.start()
     return found
 
 
@@ -131,8 +135,9 @@ def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = PIECE
     the title, the breadcrumb joined by " / ", the section's heading path, each cut to
     EMBEDDED_TITLE or EMBEDDED_PATH characters, and the piece, one per line; an empty
     line is left out. A section's heading path joins by " > " its heading and those it
-    sits under: the nearest heading before it with fewer #, that one's own, and so on;
-    a heading that is the title is left out of it, the title being said first.
+    sits under: the nearest heading before it with fewer #, that one's own, and so on.
+    The title, which the mirror writes first as a heading of level 1, escaped as
+    Markdown, is left out of every path, since it is said first.
     """
     place = " / ".join(front.breadcrumb)[:EMBEDDED_PATH]
     above: list[tuple[int, str]] = []  # the headings that the next one may sit under
@@ -142,8 +147,8 @@ def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = PIECE
         level = len(heading[1]) if heading else 0
         while above and above[-1][0] >= level:
             above.pop()
-        above.append((level, section.heading))
-        path = " > ".join(words for _, words in above if words and words != front.title)
+        above.append((level, "" if section.start == 0 and level == 1 else section.heading))
+        path = " > ".join(words for _, words in above if words)
         context = (front.title[:EMBEDDED_TITLE], place, path[:EMBEDDED_PATH])
         found += [
             (index, start, end, "\n".join(line for line in lines if line))

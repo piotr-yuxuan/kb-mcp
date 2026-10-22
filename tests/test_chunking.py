@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import functools
 import itertools
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 import numpy as np
 import pytest
 
-from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
+from atlassian_offline_mcp.kernel.chunking import CHUNKINGS, Chunking
 from atlassian_offline_mcp.search.domain.chunking import CHUNKERS, passages
 from atlassian_offline_mcp.search.domain.search import sections
 from tests.mirrors import page
@@ -38,7 +38,7 @@ LONG_WORD = 0.05
 HEADING = 0.2
 SPACE = 0.3
 ENDS = ("\n\n", "\n", " ")
-SPACES = ("\n", "\n\n", "  \n\t\n", " ", "\r\n")
+SPACES = ("\n", "\n\n", "  \n\t\n", " ", "\r\n", " " * 1500, "\n" * 1100)
 LETTERS = list("abcdefghijklmnopqrstuvwxyzéàç0123456789-.,")
 TITLE = "Payout rollback"
 FRONT = page("196845", TITLE, breadcrumb=("Handbook", "Payments"))
@@ -98,8 +98,9 @@ def run_around(body: str, at: int) -> int:
 
 
 def test_every_chunking_named_has_its_cut_and_unit() -> None:
-    """The table holds the kernel's names, no more, the control first."""
+    """The table holds the kernel's names, no more, the control first, each named once."""
     assert set(CHUNKERS) == set(CHUNKINGS)
+    assert get_args(Chunking.__value__) == CHUNKINGS
     assert CHUNKINGS[0] == "sections"
 
 
@@ -116,6 +117,25 @@ def test_a_window_stops_at_its_last_space_and_the_next_starts_960_after() -> Non
     cut = sections(body)
     spans = [absolute(cut, *piece[:3]) for piece in CHUNKERS["windows"].cut(FRONT, cut)]
     assert spans == [(0, 1199), (STEP, 2000)]
+
+
+@pytest.mark.parametrize(
+    ("body", "spans"),
+    [
+        # A white space just past 1,200 characters ends the window at its whole length.
+        ("x" * 1150 + " " + "y" * 49 + " " + "z" * 100, [(0, WINDOW), (STEP, 1301)]),
+        # Nothing but white space after a window: no other.
+        ("x" * 1100 + " " * 200, [(0, WINDOW)]),
+        # White space alone from the next start to the window's end: past it.
+        ("a" + " " * 5000 + "b", [(0, WINDOW), (5001, 5002)]),
+    ],
+)
+def test_a_window_ends_at_white_space_and_none_is_blank(
+    body: str, spans: list[tuple[int, int]]
+) -> None:
+    """Hand-computed cases of the white space that ends windows and that they skip."""
+    cut = sections(body)
+    assert [absolute(cut, *piece[:3]) for piece in CHUNKERS["windows"].cut(FRONT, cut)] == spans
 
 
 def test_a_word_longer_than_the_last_tenth_is_cut_at_the_window_s_length() -> None:
@@ -150,11 +170,15 @@ def test_windows_hold_at_most_1200_characters_and_overlap_as_the_plan_says() -> 
         assert not body[spans[-1][1] if spans else 0 :].strip()
         for (start, end), (index, *_, text) in zip(spans, windows, strict=True):
             assert end - start <= WINDOW
+            assert body[start:end].strip()
             assert bounds(cut[index])[0] <= (start + end) // 2 < bounds(cut[index])[1]
             assert text == "\n".join(line for line in (TITLE, body[start:end].strip()) if line)
         for (start, end), (following, _) in itertools.pairwise(spans):
-            assert following == start + STEP
-            assert end - following in (OVERLAP_WITH_SHORT_WORDS if short_words else OVERLAP)
+            # Past white space alone, the next window starts at the next word.
+            skips = not body[start + STEP : end].strip()
+            assert following == (len(body) - len(body[end:].lstrip()) if skips else start + STEP)
+            overlaps = OVERLAP_WITH_SHORT_WORDS if short_words else OVERLAP
+            assert skips or end - following in overlaps
             assert body[end].isspace() or run_around(body, end) > TENTH
 
 
@@ -231,6 +255,14 @@ def test_the_title_the_breadcrumb_and_the_path_are_each_cut() -> None:
     texts = [text for *_, text in CHUNKERS["small-to-big"].cut(front, cut)]
     lines = ("T" * CONTEXT, f"{'B' * 150} / {'C' * (CONTEXT - 153)}")
     assert texts == ["\n".join((*lines, "Intro.")), "\n".join((*lines, "H" * CONTEXT, "More."))]
+
+
+def test_the_title_is_left_out_of_the_path_however_the_mirror_escaped_it() -> None:
+    """The body's first heading, of level 1, is the title as pandoc writes Markdown."""
+    title = "[RFC] Q&A *plans*"
+    cut = sections("# \\[RFC\\] Q&A \\*plans\\*\n\nIntro.\n\n## Steps\n\nMore.\n")
+    texts = [text for *_, text in CHUNKERS["section-paths"].cut(page("1", title), cut)]
+    assert texts == [f"{title}\nIntro.", f"{title}\nSteps\nMore."]
 
 
 def test_a_heading_that_is_the_title_is_left_out_of_the_path() -> None:
