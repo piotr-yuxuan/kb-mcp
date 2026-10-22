@@ -77,17 +77,6 @@ def chosen(
     return tuple(taken), left
 
 
-def unchosen(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
-    """Refuse a source included but not configured, or a run left with no source."""
-    taken, left = chosen(arguments, settings)
-    for source in SOURCES:
-        if source.name in (arguments.include or ()) and left.get(source.name) == "not configured":
-            return f"--include {source.name}: not configured; set {source.settings[0]}"
-    if not taken:
-        return "nothing to sync: no source is configured and chosen"
-    return None
-
-
 def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
     """Say each source taken, with its settings, each left out and why, and the options ignored.
 
@@ -108,24 +97,6 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
         if getattr(arguments, dest) is not None and ignoring:
             lines.append(f"{option}: ignored by {', '.join(ignoring)}")
     return tuple(lines)
-
-
-def not_applied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
-    """Name the settings that a run does not apply, and why.
-
-    Those of each source left out, and the site's and its sign-in's when no Atlassian
-    source is taken.
-    """
-    taken, left = chosen(arguments, settings)
-    unused = {
-        setting: f"{source.name} {left[source.name]}"
-        for source in SOURCES
-        if source.name in left
-        for setting in source.settings
-    }
-    if not any(source.step == "atlassian" for source in taken):
-        unused |= dict.fromkeys(SITE_SETTINGS, "no Atlassian source in this sync")
-    return unused
 
 
 def exit_status(outcomes: Iterable[Outcome]) -> ExitStatus:

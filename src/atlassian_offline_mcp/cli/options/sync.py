@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.domain.command import Command
-from atlassian_offline_mcp.cli.domain.sync import chosen, described, not_applied, unchosen
+from atlassian_offline_mcp.cli.domain.sync import SITE_SETTINGS, SOURCES, chosen, described
 from atlassian_offline_mcp.cli.options._common import (
     SIGN_IN,
     add_output_options,
@@ -30,8 +30,13 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
     site, an API token without its email, or an option of the period that does not read.
     The period's options are not read when no source uses them.
     """
-    taken, _ = chosen(arguments, settings)
-    faults = [unchosen(arguments, settings)]
+    taken, left = chosen(arguments, settings)
+    unready = [
+        f"--include {source.name}: not configured; set {source.settings[0]}"
+        for source in SOURCES
+        if source.name in (arguments.include or ()) and left.get(source.name) == "not configured"
+    ]
+    faults = [*unready, None if taken else "nothing to sync: no source is configured and chosen"]
     if any(source.step == "atlassian" for source in taken):
         faults += [
             site_not_set(arguments, settings),
@@ -47,8 +52,16 @@ def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
     The settings of the sources left out, the site's when no Atlassian source is taken,
     and else an email without an API token.
     """
-    unused = not_applied(arguments, settings)
-    return unused if "site" in unused else unused | email_without_token(arguments, settings)
+    taken, left = chosen(arguments, settings)
+    unused = {
+        setting: f"{source.name} {left[source.name]}"
+        for source in SOURCES
+        if source.name in left
+        for setting in source.settings
+    }
+    if any(source.step == "atlassian" for source in taken):
+        return unused | email_without_token(arguments, settings)
+    return unused | dict.fromkeys(SITE_SETTINGS, "no Atlassian source in this sync")
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
