@@ -29,5 +29,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             flags=flags,
             actions=actions,
             writes=True,
+            programs=("pandoc",),
         )
     )

@@ -44,7 +44,8 @@ class Command:
     lines that the summary ends with; ``refused``, if any, says why the run cannot go
     on, such as a download without a site, which exits 2 before the summary. Each lives
     in the command's own declaration and names no type of ``config``, so that declaring
-    the command stays light.
+    the command stays light. ``programs`` names those that the run needs on PATH, such
+    as pandoc, without which it is refused alike.
     """
 
     name: str
@@ -57,6 +58,7 @@ class Command:
     unapplied: Unapplied | None = None
     described: Described | None = None
     refused: Refused | None = None
+    programs: tuple[str, ...] = ()
 
     def setting_flags(self) -> dict[str, tuple[str, str]]:
         """Map the ``dest`` of each flag among the actions to its option and its setting.

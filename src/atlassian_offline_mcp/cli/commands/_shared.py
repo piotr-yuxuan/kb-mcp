@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import shutil
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -26,15 +27,16 @@ def enter(arguments: argparse.Namespace) -> int:
     """Load the settings, with the flags given, run the chosen subcommand, write its result.
 
     Refused settings exit 2 before the run is imported, as does what the command refuses
-    of them and of its arguments; else the values ignored go to stderr, after the summary
-    of a command that writes and before the command to copy. Such a command then asks,
-    unless told not to, and is refused where no one can answer: declined, it exits 1,
-    refused, 2, both before the run is imported. The run gets the settings loaded, with
-    each one's layer, a flag's being its option; one that reads no setting gets None, and
-    nothing is said. It returns its status, then its result, or None when it has none to
-    write, such as ``serve``, whose output is the protocol. The result goes to stdout as
-    one JSON document, secrets masked, or as its module's ``text`` writes it, unless -q.
-    The run's status is returned.
+    of them and of its arguments, or a program that it needs missing from PATH; else the
+    values ignored go to stderr, after the summary of a command that writes and before
+    the command to copy. Such a command then asks, unless told not to, and is refused
+    where no one can answer: declined, it exits 1, refused, 2, both before the run is
+    imported. The run gets the settings loaded, with each one's layer, a flag's being its
+    option; one that reads no setting gets None, and nothing is said. It returns its
+    status, then its result, or None when it has none to write, such as ``serve``, whose
+    output is the protocol. The result goes to stdout as one JSON document, secrets
+    masked, or as its module's ``text`` writes it, unless -q. The run's status is
+    returned.
     """
     command: Command = arguments.command
     output = Output(
@@ -56,6 +58,10 @@ def enter(arguments: argparse.Namespace) -> int:
             sys.stderr.write(f"settings refused: {error}\n")
             return ExitStatus.REFUSED
         refusal = command.refused(arguments, values_of(loaded)) if command.refused else None
+        refusal = refusal or next(
+            (f"{name}: not found on PATH" for name in command.programs if not shutil.which(name)),
+            None,
+        )
         if refusal is not None:
             sys.stderr.write(f"refused: {refusal}\n")
             return ExitStatus.REFUSED

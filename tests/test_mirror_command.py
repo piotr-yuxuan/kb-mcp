@@ -62,12 +62,12 @@ def arguments(home: Path, *extra: str) -> list[str]:
 def test_without_pandoc_the_mirror_names_it_and_writes_nothing(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Exit 1, a message naming pandoc, and no mirror."""
+    """Refused before anything is asked, exit 2, naming pandoc; and no mirror."""
     empty = home / "bin"
     empty.mkdir()
     monkeypatch.setenv("PATH", str(empty))
-    assert main(arguments(home)) == SOME_FAILED
-    assert "pandoc" in capsys.readouterr().err
+    assert main(arguments(home)) == BAD_SETTINGS
+    assert "refused: pandoc: not found on PATH" in capsys.readouterr().err
     assert not (home / "data" / "docs").exists()
 
 

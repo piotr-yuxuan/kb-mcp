@@ -66,6 +66,7 @@ REFUSED_FIRST = [
     (["index"], BY_MEANING | ELSEWHERE, "embedding_url: not an address of this machine"),
     (["index", "--allow-remote-embeddings"], BY_MEANING | IN_CLEAR, "over https only"),
     (["eval", "golden.yaml"], ELSEWHERE, "embedding_url: not an address of this machine"),
+    (["mirror"], {"PATH": ""}, "pandoc: not found on PATH"),
 ]
 
 
