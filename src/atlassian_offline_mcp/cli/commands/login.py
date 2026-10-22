@@ -6,6 +6,8 @@ import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import structlog
+
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.sources.atlassian.adapters.browser import SignInFailedError
 from atlassian_offline_mcp.sources.atlassian.app.login import login
@@ -29,8 +31,8 @@ class SignedIn:
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, SignedIn | None]:
     """Sign in to the site, which the declaration requires; exit 3 when no sign-in completes.
 
-    What to do in the window goes to stderr, with the messages, so that stdout holds
-    the result alone.
+    What to do in the window goes to stderr, a line for the user, so that stdout holds
+    the result alone; a sign-in that does not complete is an error.
     """
     settings = loaded.settings
     site = str(settings.site)
@@ -38,7 +40,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sign
     try:
         login(settings, site, arguments.chrome, extensions=arguments.keep_extensions)
     except SignInFailedError as error:
-        sys.stderr.write(f"not signed in: {error}\n")
+        structlog.get_logger().error("login.not_signed_in", reason=str(error))
         return ExitStatus.SIGN_IN_AGAIN, None
     return ExitStatus.OK, SignedIn(site, settings.session)
 

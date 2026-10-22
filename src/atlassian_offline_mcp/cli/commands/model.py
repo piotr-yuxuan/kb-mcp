@@ -5,9 +5,10 @@ It never downloads a model: with Ollama, ``ollama pull`` does.
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+import structlog
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint, prefixes_said
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
@@ -37,14 +38,14 @@ class Ready:
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ready | None]:
-    """Check; exit 1 when the endpoint or the model is not ready."""
+    """Check; exit 1 when the endpoint or the model is not ready, an error."""
     settings = loaded.settings
     name = arguments.name or settings.model
     with open_endpoint(arguments, settings) as opened:
         try:
             embedder = connect(opened, name)
         except ModelError as error:
-            sys.stderr.write(f"not ready: {error}\n")
+            structlog.get_logger().error("model.not_ready", reason=str(error))
             return ExitStatus.FAILED, None
     return ExitStatus.OK, Ready(name, embedder.dimensions, settings.embedding_url, embedder.digest)
 

@@ -55,6 +55,7 @@ from tests.endpoint import (
     serving,
     tiny,
 )
+from tests.test_cli import logged_as
 from tests.test_observed import said
 
 if TYPE_CHECKING:
@@ -693,13 +694,24 @@ def test_model_check_says_the_same_in_detail_and_gives_one_document(
 
 
 def test_model_check_says_what_to_run(home: Path, capsys: CaptureFixture[str]) -> None:
-    """A model not pulled: ``ollama pull``. Nothing answering: ``ollama serve``. Exit 1."""
+    """A model not pulled: ``ollama pull``. Nothing answering: ``ollama serve``. Exit 1.
+
+    Each is the error model.not_ready, which the runs' log files hold too.
+    """
     with serving(Scripted()) as url:
         assert check(home, url) == NOT_READY
-    assert f"not ready: {QWEN}: not in Ollama's list of models" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert ("error", "model.not_ready") in said(err)
+    assert f"{QWEN}: not in Ollama's list of models" in err
     with nothing_listening() as url:
         assert check(home, url) == NOT_READY
-    assert "ollama serve" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert ("error", "model.not_ready") in said(err)
+    assert "ollama serve" in err
+    pulled, served = logged_as(home, "model.not_ready")
+    assert {pulled["level"], served["level"]} == {"error"}
+    assert str(pulled["reason"]).startswith(f"{QWEN}: not in Ollama's list of models")
+    assert "ollama serve" in str(served["reason"])
 
 
 def test_model_check_refuses_an_endpoint_elsewhere_without_the_flag(

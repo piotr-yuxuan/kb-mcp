@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+
+import structlog
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
 from atlassian_offline_mcp.evaluation.app.evaluation import (
@@ -45,7 +46,7 @@ class Evaluated:
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Evaluated | None]:
-    """Evaluate; exit 1 when something failed, 2 for a refused golden file.
+    """Evaluate; exit 1 when something failed, 2 for a refused golden file, each an error.
 
     The results, ids and numbers only, go to ``<data>/eval/results/<UTC time>.json``.
     """
@@ -54,7 +55,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
         golden = arguments.golden.read_text(encoding="utf-8")
         questions = read_golden(golden, Library(settings.index, settings.docs).resolve)
     except (GoldenError, OSError, UnanswerableError) as error:
-        sys.stderr.write(f"refused: {error}\n")
+        structlog.get_logger().error("eval.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     built_at = datetime.now(UTC)
     try:
@@ -62,7 +63,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
             embedders = [connect(opened, name) for name in arguments.model or [settings.model]]
             runs = evaluate(settings, questions, embedders, time.perf_counter, built_at)
     except (ModelError, EvaluationError) as error:
-        sys.stderr.write(f"not evaluated: {error}\n")
+        structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}.json"
     results.parent.mkdir(parents=True, exist_ok=True)
