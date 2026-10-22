@@ -14,6 +14,7 @@ import ipaddress
 import json
 from dataclasses import dataclass, field
 from functools import reduce
+from operator import getitem
 from pathlib import Path
 from types import NoneType
 from typing import (
@@ -36,7 +37,7 @@ from atlassian_offline_mcp.kernel.content import MODEL_NAME, PROJECT_KEY, SPACE_
 
 if TYPE_CHECKING:
     import re
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
 
     from pydantic_settings import PydanticBaseSettingsSource
 
@@ -205,12 +206,16 @@ class Settings(BaseSettings):
 
     The loader builds it from the layers' merge (``settings_of``), with the home that
     ``~`` stands for: its paths are absolute, its default data directory included. It
-    reads nothing of its own; its configuration names the prefix and the nesting of its
-    variables. The loader then resolves the data directory.
+    reads nothing of its own: the loader reads its variables by pydantic-settings'
+    ``EnvSettingsSource``, with the prefix and the nesting of its configuration, an empty
+    variable ignored. The loader then resolves the data directory.
     """
 
     model_config = SettingsConfigDict(
-        **TABLE, env_prefix="ATLASSIAN_OFFLINE_MCP_", env_nested_delimiter="__"
+        **TABLE,
+        env_prefix="ATLASSIAN_OFFLINE_MCP_",
+        env_nested_delimiter="__",
+        env_ignore_empty=True,
     )
 
     site: Site | None = Field(
@@ -461,31 +466,59 @@ def file_entries(values: Mapping[str, object], layer: str) -> list[Entry]:
     return entries
 
 
-def environment_entries(environ: Mapping[str, str]) -> tuple[list[Entry], list[Ignored]]:
+# How the environment writes a table and a list: in JSON, as an object and an array.
+JSON_TYPES: dict[Kind, type] = {"table": dict, "list": list}
+
+
+def environment_entries(
+    environ: Mapping[str, str], parse: Callable[[], Mapping[str, object]]
+) -> tuple[list[Entry], list[Ignored]]:
     """Give the settings' variables of an environment as entries, and those ignored.
 
-    A variable of the prefix that names no setting, at any depth, or that is empty, is
-    ignored, since other tools and versions share the environment. A table or a list is
-    written in JSON: else SettingsError names the variable, never its value. Variables
-    come in the order of their names, so that a table's own, deeper, come after it.
+    Each variable of the prefix is first scanned by the settings' paths, without regard
+    to case, as pydantic-settings reads it. One that names no setting, at any depth, or
+    that is empty, is ignored, since other tools and versions share the environment. A
+    table is a JSON object, a list a JSON array: else SettingsError names the variable,
+    never its value, where pydantic-settings would name none. So it does for two
+    variables of one setting, or of a table and of a path inside it: pydantic-settings
+    would merge them, below the top by the environment's order, and no value would name
+    its variable. Then ``parse``, pydantic-settings' ``EnvSettingsSource(Settings)`` of
+    this environment, reads them, and each value read is an entry of its variable.
     """
-    named = {variable(path): path for path in SETTING_PATHS}
-    entries: list[Entry] = []
+    scanned: list[tuple[tuple[str, ...], str]] = []
     ignored: list[Ignored] = []
-    for name in sorted(name for name in environ if name.startswith(PREFIX)):
-        path = named.get(name)
-        if path is None or not environ[name]:
-            setting = None if path is None else ".".join(path)
+    for name in sorted(name for name in environ if name.lower().startswith(PREFIX.lower())):
+        path = tuple(name.lower().removeprefix(PREFIX.lower()).split(NESTING))
+        kind = SETTING_PATHS.get(path)
+        if kind is None or not environ[name]:
+            setting = None if kind is None else ".".join(path)
             ignored.append(Ignored(setting, name, "empty" if setting else "names no setting"))
+        if not environ[name]:
             continue
-        value: object = environ[name]
-        if SETTING_PATHS[path] in {"table", "list"}:
+        if kind in JSON_TYPES:
             try:
                 value = json.loads(environ[name])
             except ValueError:
-                message = f"{name}: not JSON, in which a {SETTING_PATHS[path]} is written"
-                raise SettingsError(message) from None
-        entries.extend(entries_of(value, path, name))
+                value = None
+            if not isinstance(value, JSON_TYPES[kind]):
+                message = f"{name}: not a {kind} in JSON"
+                raise SettingsError(message)
+        scanned.append((path, name))
+    for path, name in scanned:
+        inner = [
+            other for deeper, other in scanned if other != name and deeper[: len(path)] == path
+        ]
+        if path in SETTING_PATHS and inner:
+            setting = ".".join(path)
+            message = f"{name}, {inner[0]}: both set {setting}, which one variable alone may set"
+            raise SettingsError(message)
+    found = parse()
+    entries = [
+        entry
+        for path, name in scanned
+        if path in SETTING_PATHS
+        for entry in entries_of(reduce(getitem, path, found), path, name)
+    ]
     return entries, ignored
 
 

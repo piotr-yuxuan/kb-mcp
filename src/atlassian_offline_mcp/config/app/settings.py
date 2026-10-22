@@ -5,10 +5,13 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
+from pydantic_settings import EnvSettingsSource
+
 from atlassian_offline_mcp.config.adapters.settings_file import git_root, read_settings_file
 from atlassian_offline_mcp.config.domain.settings import (
     Entry,
     Loaded,
+    Settings,
     SettingsError,
     environment_entries,
     file_entries,
@@ -48,7 +51,7 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
     except OSError as error:
         message = f"{path}: not readable ({type(error).__name__})"
         raise SettingsError(message) from error
-    environment, unread = environment_entries(os.environ)
+    environment, unread = environment_entries(os.environ, EnvSettingsSource(Settings))
     loaded = settings_of(
         [
             *file_entries(values, path.name),

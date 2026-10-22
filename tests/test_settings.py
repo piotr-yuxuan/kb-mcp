@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 
 import pytest
 from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model
+from pydantic_settings import EnvSettingsSource
 
 from atlassian_offline_mcp.config.app.settings import load_settings
 from atlassian_offline_mcp.config.domain.settings import (
@@ -390,22 +391,132 @@ def test_a_list_from_the_environment_replaces_the_file_s_whole(
     assert loaded.layers["sources.jira.projects"] == "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS"
 
 
-def test_a_table_from_the_environment_is_json_and_its_deeper_variables_win(
+def test_each_setting_s_variable_gives_its_value_and_names_its_layer(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A table's variable holds JSON; a variable of a setting inside it is stronger.
-
-    The deeper is set first: the environment's order is not the strength.
-    """
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
-    monkeypatch.setenv(
-        "ATLASSIAN_OFFLINE_MCP_SOURCES",
-        '{"confluence": {"spaces": ["ENG"]}, "jira": {"projects": ["PLAT"]}}',
+    """Every setting that is no table has a variable: the prefix, then its path."""
+    given = {
+        "ATLASSIAN_OFFLINE_MCP_SITE": "https://variable.example.invalid",
+        "ATLASSIAN_OFFLINE_MCP_EMAIL": "someone@example.invalid",
+        "ATLASSIAN_OFFLINE_MCP_API_TOKEN": SENTINEL,
+        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": "~/from-variable",
+        "ATLASSIAN_OFFLINE_MCP_MODEL": "bge-m3",
+        "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "hybrid",
+        "ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": "http://127.0.0.1:8080/v1",
+        "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY": f"{SENTINEL}-key",
+        "ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES": '["ENG"]',
+        "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS": '["PRB", "PAY"]',
+    }
+    for name, value in given.items():
+        monkeypatch.setenv(name, value)
+    loaded = loaded_from(tmp_path, "")
+    settings = loaded.settings
+    assert (settings.site, settings.email, settings.model, settings.search_mode) == (
+        "https://variable.example.invalid",
+        "someone@example.invalid",
+        "bge-m3",
+        "hybrid",
     )
+    assert settings.data_dir == (tmp_path / "home" / "from-variable").resolve()
+    assert settings.embedding_url == "http://127.0.0.1:8080/v1"
+    assert settings.api_token is not None
+    assert settings.api_token.get_secret_value() == SENTINEL
+    assert settings.embedding_api_key is not None
+    assert settings.embedding_api_key.get_secret_value() == f"{SENTINEL}-key"
+    assert settings.sources.confluence.spaces == ("ENG",)
+    assert settings.sources.jira.projects == ("PRB", "PAY")
+    assert loaded.layers == {
+        name.removeprefix("ATLASSIAN_OFFLINE_MCP_").lower().replace("__", "."): name
+        for name in given
+    }
+    assert loaded.ignored == ()
+
+
+def test_a_table_from_the_environment_is_a_json_object(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """At the top or below it; each value it gives names its variable."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES", '{"confluence": {"spaces": ["ENG"]}}')
     loaded = loaded_from(tmp_path, "")
     assert loaded.settings.sources.confluence.spaces == ("ENG",)
-    assert loaded.settings.sources.jira.projects == ("PRB",)
     assert loaded.layers["sources.confluence.spaces"] == "ATLASSIAN_OFFLINE_MCP_SOURCES"
+    monkeypatch.delenv("ATLASSIAN_OFFLINE_MCP_SOURCES")
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", '{"projects": ["PRB"]}')
+    loaded = loaded_from(tmp_path, "")
+    assert loaded.settings.sources.jira.projects == ("PRB",)
+    assert loaded.layers["sources.jira.projects"] == "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA"
+
+
+def test_an_empty_table_from_the_environment_replaces_the_file_s_values_under_it(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """``{}`` leaves the table's settings at their defaults, the file's recorded as replaced."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", "{}")
+    loaded = loaded_from(tmp_path, '[sources.jira]\nprojects = ["PLAT"]\n')
+    assert loaded.settings.sources.jira.projects == ()
+    assert loaded.ignored == (
+        Ignored("sources.jira.projects", FILE, "replaced by ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("outer", "inner"),
+    [
+        (
+            ("ATLASSIAN_OFFLINE_MCP_SOURCES", f'{{"jira": {{"projects": ["{SENTINEL}"]}}}}'),
+            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]'),
+        ),
+        (
+            ("ATLASSIAN_OFFLINE_MCP_SOURCES", "{}"),
+            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", f'{{"projects": ["{SENTINEL}"]}}'),
+        ),
+        (
+            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", '{"projects": ["PLAT"]}'),
+            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", f'["{SENTINEL}"]'),
+        ),
+        (
+            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", "{}"),
+            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS", f'["{SENTINEL}"]'),
+        ),
+        (
+            ("ATLASSIAN_OFFLINE_MCP_SITE", f"https://{SENTINEL}.example.invalid"),
+            ("atlassian_offline_mcp_site", "https://other.example.invalid"),
+        ),
+    ],
+)
+@pytest.mark.parametrize("inner_first", [True, False])
+def test_two_variables_of_one_setting_or_of_a_table_and_inside_it_are_refused(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    outer: tuple[str, str],
+    inner: tuple[str, str],
+    *,
+    inner_first: bool,
+) -> None:
+    """pydantic-settings merges them, by the environment's order below the top.
+
+    No value of the merge could name the variable that gave it: both are named, in
+    either order, never what they hold.
+    """
+    for name, value in [inner, outer] if inner_first else [outer, inner]:
+        monkeypatch.setenv(name, value)
+    with pytest.raises(SettingsError) as refused:
+        loaded_from(tmp_path, "")
+    named, _, _ = str(refused.value).partition(": ")
+    assert set(named.split(", ")) == {outer[0], inner[0]}
+    assert SENTINEL not in str(refused.value)
+
+
+def test_a_variable_is_read_without_regard_to_case_and_named_as_written(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """As pydantic-settings reads it: the layer is the variable's own name."""
+    monkeypatch.setenv("atlassian_offline_mcp_site", "https://lower.example.invalid")
+    monkeypatch.setenv("Atlassian_Offline_Mcp_Spaces", '["X"]')
+    loaded = loaded_from(tmp_path, "")
+    assert loaded.settings.site == "https://lower.example.invalid"
+    assert loaded.layers == {"site": "atlassian_offline_mcp_site"}
+    assert loaded.ignored == (Ignored(None, "Atlassian_Offline_Mcp_Spaces", "names no setting"),)
 
 
 def test_the_generic_atlassian_names_are_not_read(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
@@ -436,7 +547,7 @@ def test_secrets_come_from_the_environment_and_are_never_shown(
     assert settings.embedding_api_key is not None
     assert settings.embedding_api_key.get_secret_value() == f"{SENTINEL}-key"
     assert SENTINEL not in f"{settings!r} {settings} {loaded!r}"
-    entries, _ = environment_entries(os.environ)
+    entries, _ = environment_entries(os.environ, EnvSettingsSource(Settings))
     assert SENTINEL not in f"{entries!r} {entries}"
 
 
@@ -456,15 +567,29 @@ def test_a_secret_in_the_file_is_refused_by_name_never_by_value(
     assert str(refused.value) == f"{key} ({FILE}): a secret, read from {variable} alone"
 
 
-def test_a_list_not_in_json_is_refused_by_its_variable_never_its_value(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", "PLAT,PRB"),
+        ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '{"PLAT": "PRB"}'),
+        ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", '["PLAT", "PRB"]'),
+        ("ATLASSIAN_OFFLINE_MCP_SOURCES", "null"),
+    ],
+)
+def test_a_list_or_a_table_not_in_json_is_refused_by_its_variable_never_its_value(
+    tmp_path: Path, monkeypatch: MonkeyPatch, name: str, value: str
 ) -> None:
-    """PLAT,PRB is not JSON: the variable is named, what it holds is not."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", "PLAT,PRB")
+    """PLAT,PRB is not JSON, nor an object a list, nor null a table: the variable is named.
+
+    pydantic-settings would refuse PLAT,PRB naming no variable, and drop a table's null
+    unread.
+    """
+    monkeypatch.setenv(name, value)
     with pytest.raises(SettingsError) as refused:
         loaded_from(tmp_path, "")
-    assert "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS" in str(refused.value)
+    assert str(refused.value).startswith(f"{name}: ")
     assert "PLAT" not in str(refused.value)
+    assert value not in str(refused.value)
 
 
 @pytest.mark.parametrize(

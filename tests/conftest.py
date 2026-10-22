@@ -47,6 +47,9 @@ sys.addaudithook(guard)
 
 @pytest.fixture(autouse=True)
 def settings_environment(monkeypatch: MonkeyPatch) -> None:
-    """Remove the variables that the settings read, so that none of the user's reaches a test."""
-    for name in [name for name in os.environ if name.startswith(PREFIX)]:
+    """Remove the variables that the settings read, so that none of the user's reaches a test.
+
+    pydantic-settings reads them without regard to case.
+    """
+    for name in [name for name in os.environ if name.lower().startswith(PREFIX.lower())]:
         monkeypatch.delenv(name)
