@@ -23,11 +23,11 @@ from atlassian_offline_mcp.config.domain.settings import (
     SettingsError,
     environment_entries,
     file_entries,
-    loopback,
     setting_paths,
     settings_of,
     unsafe_location,
 )
+from atlassian_offline_mcp.kernel.endpoint import loopback
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch

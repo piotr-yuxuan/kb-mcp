@@ -19,7 +19,7 @@ Each context may use those below it, never those above:
 | `mirror` | The raw store's newest snapshots as Markdown, with their front matter |
 | `sources` | Where documents come from: today `atlassian/`, Confluence and Jira, with the session and the raw store |
 | `config` | The settings, their file, and the guard on where data lives |
-| `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses, how a run reports |
+| `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses, how a run reports, whether an endpoint is this machine |
 
 The order follows what each needs: `eval` ranks through the `Library` of `mcp`, which
 ranks with `search`, which indexes the mirror's front matter; the mirror reads the raw
