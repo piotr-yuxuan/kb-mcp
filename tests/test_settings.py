@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from ipaddress import IPv4Address
 from pathlib import Path
@@ -18,6 +19,7 @@ from atlassian_offline_mcp.config.domain.settings import (
     Loaded,
     Settings,
     SettingsError,
+    environment_entries,
     file_entries,
     loopback,
     settings_of,
@@ -375,15 +377,22 @@ def test_the_generic_atlassian_names_are_not_read(tmp_path: Path, monkeypatch: M
 def test_secrets_come_from_the_environment_and_are_never_shown(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The token and the embedding key are read, and their text is not in the settings'."""
+    """The token and the embedding key are read, and their text is in no representation.
+
+    Neither the settings, nor what the loader gives, nor the environment's entries,
+    which hold them before they are masked, show them.
+    """
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_API_TOKEN", SENTINEL)
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY", f"{SENTINEL}-key")
-    settings = loaded_from(tmp_path, "").settings
+    loaded = loaded_from(tmp_path, "")
+    settings = loaded.settings
     assert settings.api_token is not None
     assert settings.api_token.get_secret_value() == SENTINEL
     assert settings.embedding_api_key is not None
     assert settings.embedding_api_key.get_secret_value() == f"{SENTINEL}-key"
-    assert SENTINEL not in f"{settings!r} {settings}"
+    assert SENTINEL not in f"{settings!r} {settings} {loaded!r}"
+    entries, _ = environment_entries(os.environ)
+    assert SENTINEL not in f"{entries!r} {entries}"
 
 
 @pytest.mark.parametrize(

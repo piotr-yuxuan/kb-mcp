@@ -333,10 +333,13 @@ def variable(path: tuple[str, ...]) -> str:
 
 @dataclass(frozen=True)
 class Entry:
-    """A value that a layer gives a setting: the setting's path, the value, the layer."""
+    """A value that a layer gives a setting: the setting's path, the value, the layer.
+
+    Its representation leaves the value out, which may be a secret not yet masked.
+    """
 
     path: tuple[str, ...]
-    value: object
+    value: object = field(repr=False)
     layer: str
 
 
