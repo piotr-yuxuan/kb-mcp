@@ -20,7 +20,8 @@ from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.mirror.adapters import markdown
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
-from atlassian_offline_mcp.search.domain.search import Embedded, passages, sections
+from atlassian_offline_mcp.search.domain.chunking import passages
+from atlassian_offline_mcp.search.domain.search import Embedded, sections
 
 if TYPE_CHECKING:
     from datetime import datetime
