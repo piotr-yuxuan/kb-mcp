@@ -35,7 +35,10 @@ ADDRESS = "someone@example.invalid"
 SENTINEL = "token-sentinel-4d1c"
 AUTHORISATION = f"Basic {base64.b64encode(f'{ADDRESS}:{SENTINEL}'.encode()).decode()}"
 HOST = httpx.URL(SITE).host
+REFUSED = 2
 SIGN_IN_NEEDED = 3
+# What a command that signs in says of a token given without its email.
+WITHOUT_EMAIL = "email: not set; an API token signs in with its account's email"
 
 
 @pytest.fixture
@@ -151,6 +154,17 @@ def test_the_doctor_refused_by_the_site_exits_3_naming_the_variables(
     out = capsys.readouterr().out
     for name in ("confluence", "jira"):
         assert f"{name}: refused: check {EMAIL} and {CREDENTIAL}\n" in out
+
+
+def test_the_doctor_refuses_a_token_without_its_email_and_asks_nothing(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Exit 2 naming the email, as a download does, before any request."""
+    monkeypatch.delenv(EMAIL)
+    sent = served(monkeypatch, FakeSite().handle)
+    assert main(["doctor", "--config", str(home / "none.toml"), "--site", SITE]) == REFUSED
+    assert capsys.readouterr() == ("", f"refused: {WITHOUT_EMAIL}\n")
+    assert sent == []
 
 
 @pytest.mark.parametrize("email", [ADDRESS, None])

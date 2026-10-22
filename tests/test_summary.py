@@ -122,6 +122,31 @@ def test_an_email_without_a_token_is_ignored(
     assert SECRETS[CREDENTIAL] not in err
 
 
+@pytest.mark.parametrize(
+    ("variables", "sign_in"),
+    [
+        ({}, "the session saved by login"),
+        ({EMAIL: "someone@example.invalid", **SECRETS}, "an API token"),
+    ],
+)
+@pytest.mark.usefixtures("runs")
+def test_a_download_s_summary_says_how_it_signs_in(
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    variables: dict[str, str],
+    sign_in: str,
+) -> None:
+    """By the token when one is set, else by the session saved; and never the token itself."""
+    for variable, value in variables.items():
+        monkeypatch.setenv(variable, value)
+    options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--space", "ENG"]
+    assert main(["download", *options]) == 0
+    err = capsys.readouterr().err
+    assert f"\n  sign-in: {sign_in}\n" in err.split("atlassian-offline-mcp download")[0]
+    assert not any(secret in err for secret in SECRETS.values())
+
+
 def test_an_index_by_words_alone_ignores_the_model_and_the_endpoint_given(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:

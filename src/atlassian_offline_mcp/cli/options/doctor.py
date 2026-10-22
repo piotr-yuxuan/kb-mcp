@@ -10,6 +10,7 @@ from atlassian_offline_mcp.cli.options._common import (
     add_output_options,
     add_settings_options,
     email_without_token,
+    token_without_email,
 )
 
 if TYPE_CHECKING:
@@ -29,5 +30,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             flags=flags,
             actions=actions,
             unapplied=email_without_token,
+            refused=token_without_email,
         )
     )

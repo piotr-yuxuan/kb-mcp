@@ -53,6 +53,8 @@ WRITING = {
 ELSEWHERE = {"ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": "https://embeddings.example/v1"}
 IN_CLEAR = {"ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": "http://embeddings.example/v1"}
 BY_MEANING = {"ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "hybrid"}
+# An API token, which signs in with its account's email, given without it.
+WITHOUT_EMAIL = {"ATLASSIAN_OFFLINE_MCP_API_TOKEN": "token-sentinel-4d1c"}
 # What plan 015 refuses without the network, before anything is asked: a command that
 # writes and its arguments, the variables set, and what the refusal names.
 REFUSED_FIRST = [
@@ -62,6 +64,8 @@ REFUSED_FIRST = [
     (["download", *WRITING["download"][0], "--since", "yesterday"], {}, "--since"),
     (["download", *WRITING["download"][0], "--until", "soon"], {}, "--until"),
     (["download", *WRITING["download"][0], "--back", "7x"], {}, "--back"),
+    (["download", *WRITING["download"][0]], WITHOUT_EMAIL, "email: not set"),
+    (["download", *WRITING["download"][0], "--dry-run"], WITHOUT_EMAIL, "email: not set"),
     (["login"], {}, "site: not set"),
     (["index"], BY_MEANING | ELSEWHERE, "embedding_url: not an address of this machine"),
     (["index", "--allow-remote-embeddings"], BY_MEANING | IN_CLEAR, "over https only"),

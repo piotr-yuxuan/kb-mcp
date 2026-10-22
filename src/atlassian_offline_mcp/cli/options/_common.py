@@ -125,6 +125,21 @@ def email_without_token(
     return {"email": "without an API token, the browser's session signs in"}
 
 
+def token_without_email(
+    _arguments: argparse.Namespace, settings: Mapping[str, object]
+) -> str | None:
+    """Refuse an API token without the email of its account, with which it signs in."""
+    if settings["api_token"] is None or settings["email"] is not None:
+        return None
+    return "email: not set; an API token signs in with its account's email"
+
+
+def signed_in_by(_arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
+    """Say how the run signs in: by the API token when one is set, else by the saved session."""
+    by = "an API token" if settings["api_token"] is not None else "the session saved by login"
+    return (f"sign-in: {by}",)
+
+
 def site_not_set(_arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
     """Refuse a run that reaches the site when none is set."""
     if settings["site"] is not None:
