@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.sources.atlassian.app.doctor import FAILED, SIGN_IN, doctor
+from atlassian_offline_mcp.sources.atlassian.app.doctor import FAILED, SIGN_IN, WELL, doctor
 
 if TYPE_CHECKING:
     import argparse
@@ -24,6 +24,10 @@ def run(_arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus,
     return ExitStatus.FAILED if FAILED in states else ExitStatus.OK, verdicts
 
 
-def text(verdicts: list[Verdict], _summary: Summary) -> str:
-    """Write each check's verdict."""
-    return "".join(f"{verdict.name}: {verdict.found}\n" for verdict in verdicts)
+def text(verdicts: list[Verdict], summary: Summary) -> str:
+    """Write the verdicts of the checks not well, in detail every one, then how many are well."""
+    shown = [verdict for verdict in verdicts if summary == "detailed" or verdict.state != WELL]
+    well = sum(verdict.state == WELL for verdict in verdicts)
+    return "".join(f"{verdict.name}: {verdict.found}\n" for verdict in shown) + (
+        f"{well} of {len(verdicts)} checks well\n"
+    )

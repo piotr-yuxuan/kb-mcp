@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -68,3 +69,46 @@ def test_a_check_that_fails_makes_the_doctor_exit_1(
     """Without a site, the doctor cannot pass."""
     monkeypatch.setenv("HOME", str(tmp_path))
     assert main(["doctor", "--config", str(tmp_path / "none.toml")]) == SOME_FAILED
+
+
+@pytest.mark.parametrize(
+    ("summary", "named"),
+    [
+        ("short", ["pandoc", "site"]),
+        ("detailed", ["python", "pandoc", "data directory", "site"]),
+    ],
+)
+def test_the_doctor_shows_the_checks_not_well_or_in_detail_every_one(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    summary: str,
+    named: list[str],
+) -> None:
+    """Without pandoc nor a site: those two in short, all four in detail, then the count well."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", str(tmp_path))
+    options = ["doctor", "--config", str(tmp_path / "none.toml"), "--summary", summary]
+    assert main(options) == SOME_FAILED
+    *verdicts, count = capsys.readouterr().out.splitlines()
+    assert [verdict.split(": ")[0] for verdict in verdicts] == named
+    assert "pandoc: not found on PATH" in verdicts
+    assert count == "2 of 4 checks well"
+
+
+def test_the_doctor_gives_every_verdict_as_json(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """One document: each check's name, what it found, and its state."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", str(tmp_path))
+    options = ["doctor", "--config", str(tmp_path / "none.toml"), "--format", "json"]
+    assert main(options) == SOME_FAILED
+    verdicts = json.loads(capsys.readouterr().out)
+    assert [(verdict["name"], verdict["state"]) for verdict in verdicts] == [
+        ("python", WELL),
+        ("pandoc", FAILED),
+        ("data directory", WELL),
+        ("site", FAILED),
+    ]
+    assert verdicts[1]["found"] == "not found on PATH"
