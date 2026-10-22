@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tomllib
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -14,11 +16,11 @@ from atlassian_offline_mcp.cli.main import main
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
+ROOT = Path(__file__).parents[1]
 # The exit status for settings refused before acting, an unsafe data directory included.
 BAD_SETTINGS = 2
 # What a run may import and declaring the command must not, by plan 015: --help and each
@@ -115,14 +117,31 @@ def test_refused_settings_exit_before_the_run_is_imported(
     assert "unknown setting: sight" in capsys.readouterr().err
 
 
+def test_the_version_is_the_project_s(capsys: CaptureFixture[str]) -> None:
+    """--version prints the program's name and the version that the project declares."""
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]
+    with pytest.raises(SystemExit) as stopped:
+        main(["--version"])
+    assert stopped.value.code == 0
+    assert capsys.readouterr().out == f"atlassian-offline-mcp {project['version']}\n"
+
+
 def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> None:
-    """--help, and a subcommand's, build the whole parser and import no run.
+    """--version, --help and a subcommand's build the whole parser and import no run.
 
     ``-X importtime`` names each module that the child imports, so a package it does not
     name never reached ``sys.modules``.
     """
     environment = {"HOME": str(home), "PATH": os.environ["PATH"]}
     children = (
+        subprocess.run(
+            [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "--version"],
+            capture_output=True,
+            text=True,
+            env=environment,
+            cwd=home,
+            check=False,
+        ),
         subprocess.run(
             [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "--help"],
             capture_output=True,
@@ -150,7 +169,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
     )
     for child in children:
         assert child.returncode == 0
-        assert child.stdout.startswith("usage: atlassian-offline-mcp")
+        assert "atlassian-offline-mcp" in child.stdout
         imported = {
             line.rsplit("|", 1)[-1].strip().split(".")[0]
             for line in child.stderr.splitlines()
