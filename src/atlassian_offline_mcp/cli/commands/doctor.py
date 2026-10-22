@@ -7,14 +7,11 @@ from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.commands._options import add_settings_options, settings_of
 from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.sources.atlassian.app.doctor import FAILED, SIGN_IN, doctor
 
 if TYPE_CHECKING:
     import argparse
-
-SOME_FAILED = 1
-BAD_SETTINGS = 2
-NOT_SIGNED_IN = 3
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -24,17 +21,17 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.set_defaults(run=run)
 
 
-def run(arguments: argparse.Namespace) -> int:
+def run(arguments: argparse.Namespace) -> ExitStatus:
     """Print each check's verdict; exit 1 if one fails, 2 for settings, 3 to sign in again."""
     try:
         settings = settings_of(arguments)
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")
-        return BAD_SETTINGS
+        return ExitStatus.REFUSED
     verdicts = doctor(settings)
     for verdict in verdicts:
         sys.stdout.write(f"{verdict.name}: {verdict.found}\n")
     states = {verdict.state for verdict in verdicts}
     if SIGN_IN in states:
-        return NOT_SIGNED_IN
-    return SOME_FAILED if FAILED in states else 0
+        return ExitStatus.SIGN_IN_AGAIN
+    return ExitStatus.FAILED if FAILED in states else ExitStatus.OK

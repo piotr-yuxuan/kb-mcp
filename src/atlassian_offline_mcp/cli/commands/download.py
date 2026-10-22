@@ -11,15 +11,10 @@ from typing import TYPE_CHECKING
 from atlassian_offline_mcp.cli.commands._options import add_settings_options, settings_of
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
-from atlassian_offline_mcp.sources.atlassian.app.download import (
-    SIGN_IN_NEEDED,
-    SOME_FAILED,
-    Targets,
-    download,
-    plan,
-)
+from atlassian_offline_mcp.sources.atlassian.app.download import Targets, download, plan
 from atlassian_offline_mcp.sources.atlassian.domain.period import PeriodError, length, moment
 
 if TYPE_CHECKING:
@@ -27,9 +22,6 @@ if TYPE_CHECKING:
 
     from atlassian_offline_mcp.config.domain.settings import Settings
 
-BAD_ARGUMENTS = 2
-# The shell's own status for a run stopped by Ctrl-C.
-INTERRUPTED = 130
 MEBIBYTE = 1024 * 1024
 DEFAULT_MAX_FILE_MB = 50
 
@@ -101,7 +93,7 @@ def targets_of(arguments: argparse.Namespace, settings: Settings, now: datetime)
     )
 
 
-def run(arguments: argparse.Namespace) -> int:
+def run(arguments: argparse.Namespace) -> ExitStatus:
     """Download; exit 0, 1 when something failed, 2 for bad input, 3 to sign in again.
 
     Spaces and projects not named on the command line come from the settings; without
@@ -114,17 +106,17 @@ def run(arguments: argparse.Namespace) -> int:
         outcome = act(settings, targets, lambda: datetime.now(UTC), time.sleep)
     except (SettingsError, PeriodError, RefusedOptionsError, RepresentationError) as error:
         sys.stderr.write(f"refused: {error}\n")
-        return BAD_ARGUMENTS
+        return ExitStatus.REFUSED
     except StoreBusyError:
         sys.stderr.write("another run is writing the raw store; try again once it ends\n")
-        return SOME_FAILED
+        return ExitStatus.FAILED
     except KeyboardInterrupt:
         sys.stderr.write(f"interrupted; the counts so far are in {settings.runs}\n")
-        return INTERRUPTED
+        return ExitStatus.INTERRUPTED
     for what, number in sorted(outcome.report.counts.items()):
         sys.stdout.write(f"{what}: {number}\n")
     for target in outcome.failed_targets:
         sys.stderr.write(f"{target}\n")
-    if outcome.status == SIGN_IN_NEEDED:
+    if outcome.status == ExitStatus.SIGN_IN_AGAIN:
         sys.stderr.write("sign-in needed: run atlassian-offline-mcp login\n")
-    return outcome.status or 0
+    return outcome.status or ExitStatus.OK

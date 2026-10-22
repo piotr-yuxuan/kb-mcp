@@ -17,16 +17,11 @@ from atlassian_offline_mcp.mirror.app.mirror import mirror
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, Stored
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
-from atlassian_offline_mcp.sources.atlassian.app.download import (
-    SIGN_IN_NEEDED,
-    Targets,
-    download,
-    plan,
-)
+from atlassian_offline_mcp.sources.atlassian.app.download import Targets, download, plan
 from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target
 from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, Period, PeriodError
 from tests.samples import v2_page, v2_space
-from tests.test_download import CAP, PAGES, SITE, SPACE, FakeSite, stamp
+from tests.test_download import CAP, PAGES, SIGN_IN_NEEDED, SITE, SPACE, FakeSite, stamp
 
 if TYPE_CHECKING:
     from collections.abc import Callable

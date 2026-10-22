@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
 
 from atlassian_offline_mcp.kernel.content import IDENTIFIER, BlogPost, Issue, Page
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
 from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, http, jira_v3
 from atlassian_offline_mcp.sources.atlassian.adapters.http import (
@@ -65,9 +66,6 @@ KINDS: tuple[type[Page | BlogPost], ...] = (Page, BlogPost)
 # Jira reads JQL dates in the user's time zone, up to 14 hours off UTC, and a date
 # stands for its midnight: two days on each side always cover the period.
 JQL_MARGIN = timedelta(days=2)
-# Exit statuses, beyond 0 for a run without failure.
-SOME_FAILED = 1
-SIGN_IN_NEEDED = 3
 
 # How each kind of document is read from its listing, and which GETs make its snapshot.
 LISTED: dict[type[Document], Callable[[Fields], Listed]] = {
@@ -497,7 +495,7 @@ class Outcome:
 
     report: Report
     failed_targets: list[str]
-    status: int | None
+    status: ExitStatus | None
 
 
 def plan(
@@ -515,7 +513,7 @@ def plan(
     try:
         cookies = read_cookies(settings.session / COOKIES)
     except OSError, ValueError:
-        return Outcome(report, [], SIGN_IN_NEEDED)
+        return Outcome(report, [], ExitStatus.SIGN_IN_AGAIN)
     with http.client(str(settings.site), cookies) as client:
         run = Download(
             Site(client, sleep=sleep),
@@ -530,11 +528,13 @@ def plan(
         try:
             run.run(targets.spaces, targets.projects)
         except SignInNeededError:
-            return Outcome(report, run.failed_targets, SIGN_IN_NEEDED)
+            return Outcome(report, run.failed_targets, ExitStatus.SIGN_IN_AGAIN)
         except TooManyFailuresError:
             report.add("runs: stopped, too many failures in a row")
-            return Outcome(report, run.failed_targets, SOME_FAILED)
-    return Outcome(report, run.failed_targets, SOME_FAILED if report.failures else 0)
+            return Outcome(report, run.failed_targets, ExitStatus.FAILED)
+    return Outcome(
+        report, run.failed_targets, ExitStatus.FAILED if report.failures else ExitStatus.OK
+    )
 
 
 def download(
@@ -546,11 +546,11 @@ def download(
     """Run a download with the saved session, and save its report, even when stopped.
 
     Each target is fetched over its window; the coverage of every target listed whole
-    grows, and the tombstones found are kept, even when the run stops. The status is 0
-    when nothing failed, ``SOME_FAILED`` when something did, and ``SIGN_IN_NEEDED`` when
-    the session no longer holds or none was saved. Raises PeriodError for a target with
-    nowhere to start, and StoreBusyError when another run writes, both before anything
-    is written.
+    grows, and the tombstones found are kept, even when the run stops. The status is
+    ``OK`` when nothing failed, ``FAILED`` when something did, and ``SIGN_IN_AGAIN``
+    when the session no longer holds or none was saved. Raises PeriodError for a target
+    with nowhere to start, and StoreBusyError when another run writes, both before
+    anything is written.
     """
     report, failed_targets, status = Report(), [], None
     store, started = RawStore(settings.raw), now()
@@ -559,7 +559,7 @@ def download(
     try:
         cookies = read_cookies(settings.session / COOKIES)
     except OSError, ValueError:
-        cookies, status = None, SIGN_IN_NEEDED
+        cookies, status = None, ExitStatus.SIGN_IN_AGAIN
     site = str(settings.site)
     with store.writing():
         try:
@@ -579,11 +579,11 @@ def download(
                     failed_targets = run.failed_targets
                     try:
                         run.run(targets.spaces, targets.projects)
-                        status = SOME_FAILED if report.failures else 0
+                        status = ExitStatus.FAILED if report.failures else ExitStatus.OK
                     except SignInNeededError:
-                        status = SIGN_IN_NEEDED
+                        status = ExitStatus.SIGN_IN_AGAIN
                     except TooManyFailuresError:
-                        status = SOME_FAILED
+                        status = ExitStatus.FAILED
                         report.add("runs: stopped, too many failures in a row")
                     finally:
                         host = urlsplit(site).hostname or ""
@@ -595,7 +595,7 @@ def download(
         finally:
             if status is None:
                 report.add("runs: interrupted")
-            elif status == SIGN_IN_NEEDED:
+            elif status == ExitStatus.SIGN_IN_AGAIN:
                 report.add("runs: stopped, sign-in needed")
             settings.runs.mkdir(parents=True, exist_ok=True)
             stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")

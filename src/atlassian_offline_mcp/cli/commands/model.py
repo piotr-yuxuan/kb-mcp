@@ -17,13 +17,12 @@ from atlassian_offline_mcp.cli.commands._options import (
     settings_of,
 )
 from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
 
 if TYPE_CHECKING:
     import argparse
 
-NOT_READY = 1
-BAD_SETTINGS = 2
 # Characters of a digest shown, as Ollama shows them.
 SHORT = 12
 
@@ -40,23 +39,23 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.set_defaults(run=run)
 
 
-def run(arguments: argparse.Namespace) -> int:
+def run(arguments: argparse.Namespace) -> ExitStatus:
     """Check; exit 1 when the endpoint or the model is not ready, 2 for refused settings."""
     try:
         settings = settings_of(arguments)
         opened = open_endpoint(arguments, settings)
     except SettingsError as error:
         sys.stderr.write(f"refused: {error}\n")
-        return BAD_SETTINGS
+        return ExitStatus.REFUSED
     name = arguments.name or settings.model
     with opened:
         try:
             embedder = connect(opened, name)
         except ModelError as error:
             sys.stderr.write(f"not ready: {error}\n")
-            return NOT_READY
+            return ExitStatus.FAILED
     sys.stdout.write(
         f"{name}: {embedder.dimensions} dimensions, from {settings.embedding_url};"
         f" digest {embedder.digest[:SHORT] or 'not reported'}; {prefixes_said(name)}\n"
     )
-    return 0
+    return ExitStatus.OK

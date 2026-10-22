@@ -12,6 +12,7 @@ from atlassian_offline_mcp.config.app.settings import (
     load_settings,
 )
 from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 
 if TYPE_CHECKING:
     import argparse
@@ -25,20 +26,20 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.set_defaults(run=run)
 
 
-def run(arguments: argparse.Namespace) -> int:
-    """Print the effective settings; exit 2 for bad settings, 1 for a refused directory."""
+def run(arguments: argparse.Namespace) -> ExitStatus:
+    """Print the effective settings; exit 2 for bad settings or a refused directory."""
     try:
         settings = load_settings(arguments.config, {"data_dir": arguments.data_dir})
     except UnsafeDataDirError as error:
         sys.stderr.write(f"data directory refused: {error}\n")
-        return 1
+        return ExitStatus.REFUSED
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")
-        return 2
+        return ExitStatus.REFUSED
     sys.stdout.write(
         f"site: {settings.site or '(not set)'}\n"
         f"data directory: {settings.data_dir}\n"
         f"spaces: {', '.join(settings.spaces) or '(none)'}\n"
         f"projects: {', '.join(settings.projects) or '(none)'}\n"
     )
-    return 0
+    return ExitStatus.OK

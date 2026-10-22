@@ -25,14 +25,13 @@ from atlassian_offline_mcp.evaluation.app.evaluation import (
     record,
     table,
 )
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
 
 if TYPE_CHECKING:
     import argparse
 
-SOME_FAILED = 1
-BAD_ARGUMENTS = 2
 STAMP = "%Y%m%dT%H%M%SZ"
 
 
@@ -53,7 +52,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.set_defaults(run=run)
 
 
-def run(arguments: argparse.Namespace) -> int:
+def run(arguments: argparse.Namespace) -> ExitStatus:
     """Evaluate; exit 1 when something failed, 2 for bad settings or a refused golden file.
 
     The tables go to standard output, and the results, ids and numbers only, to
@@ -66,7 +65,7 @@ def run(arguments: argparse.Namespace) -> int:
         opened = open_endpoint(arguments, settings)
     except (SettingsError, GoldenError, OSError, UnanswerableError) as error:
         sys.stderr.write(f"refused: {error}\n")
-        return BAD_ARGUMENTS
+        return ExitStatus.REFUSED
     built_at = datetime.now(UTC)
     try:
         with opened:
@@ -74,9 +73,9 @@ def run(arguments: argparse.Namespace) -> int:
             runs = evaluate(settings, questions, embedders, time.perf_counter, built_at)
     except (ModelError, EvaluationError) as error:
         sys.stderr.write(f"not evaluated: {error}\n")
-        return SOME_FAILED
+        return ExitStatus.FAILED
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}.json"
     results.parent.mkdir(parents=True, exist_ok=True)
     results.write_text(json.dumps(record(runs, golden, built_at), indent=1), encoding="utf-8")
     sys.stdout.write(f"{table(runs)}\nResults: {results}\n")
-    return 0
+    return ExitStatus.OK

@@ -7,15 +7,13 @@ from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.commands._options import add_settings_options, settings_of
 from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from atlassian_offline_mcp.mirror.app.mirror import mirror
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 
 if TYPE_CHECKING:
     import argparse
-
-SOME_FAILED = 1
-BAD_SETTINGS = 2
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -25,7 +23,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.set_defaults(run=run)
 
 
-def run(arguments: argparse.Namespace) -> int:
+def run(arguments: argparse.Namespace) -> ExitStatus:
     """Mirror; exit 0, 1 when pandoc is missing or something was not mirrored, 2 for bad settings.
 
     Counts go to standard output; what was not mirrored goes to standard error, by its
@@ -35,12 +33,12 @@ def run(arguments: argparse.Namespace) -> int:
         settings = settings_of(arguments)
     except SettingsError as error:
         sys.stderr.write(f"refused: {error}\n")
-        return BAD_SETTINGS
+        return ExitStatus.REFUSED
     try:
         pandoc = Pandoc.find()
     except PandocMissingError as error:
         sys.stderr.write(f"{error}\n")
-        return SOME_FAILED
+        return ExitStatus.FAILED
     outcome = mirror(RawStore(settings.raw), settings.docs, settings.site, pandoc.markdown)
     sys.stdout.write(
         f"documents: {outcome.documents}\n"
@@ -54,4 +52,4 @@ def run(arguments: argparse.Namespace) -> int:
         sys.stderr.write(f"not mirrored: {problem.where}: {problem.reason}\n")
     if outcome.problems:
         sys.stderr.write("nothing was removed, since something was not mirrored\n")
-    return SOME_FAILED if outcome.problems else 0
+    return ExitStatus.FAILED if outcome.problems else ExitStatus.OK

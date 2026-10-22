@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-# The exit status for settings that cannot be used, apart from a refused directory (1).
+# The exit status for settings refused before acting, an unsafe data directory included.
 BAD_SETTINGS = 2
 
 
@@ -76,7 +76,7 @@ def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture
 def test_check_refuses_a_data_directory_that_could_leave_the_machine(
     home: Path, data_dir: str, reason: str, capsys: CaptureFixture[str]
 ) -> None:
-    """A synchronised folder or a git working tree exits 1, naming the reason.
+    """A synchronised folder or a git working tree exits 2, naming the reason.
 
     The path is judged once resolved, so neither ``..`` nor a link hides where it leads.
     """
@@ -86,7 +86,9 @@ def test_check_refuses_a_data_directory_that_could_leave_the_machine(
     (home / "work").symlink_to(home / "Dropbox (Personal)" / "x")
     (home / "checkout").mkdir()
     (home / "checkout" / ".git").write_text("gitdir: elsewhere\n", "utf-8")  # a worktree
-    assert main(["check", "--config", str(home / "none.toml"), "--data-dir", data_dir]) == 1
+    assert (
+        main(["check", "--config", str(home / "none.toml"), "--data-dir", data_dir]) == BAD_SETTINGS
+    )
     error = capsys.readouterr().err
     assert error.startswith("data directory refused: data_dir: ")
     assert reason in error
@@ -115,7 +117,7 @@ def test_check_refuses_a_part_of_the_data_directory_that_leads_elsewhere(
     (home / "Dropbox" / "shared").mkdir(parents=True)
     (home / "atlassian-offline-mcp").mkdir()
     (home / "atlassian-offline-mcp" / "docs").symlink_to(home / "Dropbox" / "shared")
-    assert main(["check", "--config", str(home / "none.toml")]) == 1
+    assert main(["check", "--config", str(home / "none.toml")]) == BAD_SETTINGS
     assert "data_dir: docs: under a Dropbox folder" in capsys.readouterr().err
 
 
@@ -126,7 +128,7 @@ def test_check_refuses_a_raw_store_that_leads_into_a_git_tree(
     (home / "project" / ".git").mkdir(parents=True)
     (home / "atlassian-offline-mcp").mkdir()
     (home / "atlassian-offline-mcp" / "raw").symlink_to(home / "project")
-    assert main(["check", "--config", str(home / "none.toml")]) == 1
+    assert main(["check", "--config", str(home / "none.toml")]) == BAD_SETTINGS
     assert "data_dir: raw: inside the git working tree" in capsys.readouterr().err
 
 

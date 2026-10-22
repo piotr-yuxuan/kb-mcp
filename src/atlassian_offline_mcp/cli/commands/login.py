@@ -7,14 +7,12 @@ from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.commands._options import add_settings_options, settings_of
 from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.sources.atlassian.adapters.browser import SignInFailedError
 from atlassian_offline_mcp.sources.atlassian.app.login import login
 
 if TYPE_CHECKING:
     import argparse
-
-BAD_SETTINGS = 2
-NOT_SIGNED_IN = 3
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -28,21 +26,21 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.set_defaults(run=run)
 
 
-def run(arguments: argparse.Namespace) -> int:
+def run(arguments: argparse.Namespace) -> ExitStatus:
     """Sign in; exit 2 for bad settings, 3 when no sign-in completes."""
     try:
         settings = settings_of(arguments)
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")
-        return BAD_SETTINGS
+        return ExitStatus.REFUSED
     if settings.site is None:
         sys.stderr.write("settings refused: site: not set; add it to the settings or pass --site\n")
-        return BAD_SETTINGS
+        return ExitStatus.REFUSED
     sys.stdout.write(f"Sign in to {settings.site} in the Chrome window that opens.\n")
     try:
         login(settings, settings.site, arguments.chrome, extensions=arguments.keep_extensions)
     except SignInFailedError as error:
         sys.stderr.write(f"not signed in: {error}\n")
-        return NOT_SIGNED_IN
+        return ExitStatus.SIGN_IN_AGAIN
     sys.stdout.write("Signed in; the session is saved.\n")
-    return 0
+    return ExitStatus.OK

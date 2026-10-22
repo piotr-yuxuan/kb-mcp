@@ -15,13 +15,13 @@ from atlassian_offline_mcp.cli.commands._options import (
     settings_of,
 )
 from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
 from atlassian_offline_mcp.search.app.indexing import Embedding, MirrorMissingError, build_index
 
 if TYPE_CHECKING:
     import argparse
 
-BAD_SETTINGS = 2
 WORDS_ALONE = 'or set search_mode = "lexical" to index by words alone'
 
 
@@ -38,7 +38,7 @@ def progress(done: int, total: int) -> None:
     sys.stderr.write(f"embedded {done} of {total} pieces\n")
 
 
-def run(arguments: argparse.Namespace) -> int:
+def run(arguments: argparse.Namespace) -> ExitStatus:
     """Build the index; exit 1 when a file or a piece was left out, or nothing was built.
 
     By words alone in the lexical mode, which never calls the embedding endpoint. In the
@@ -50,7 +50,7 @@ def run(arguments: argparse.Namespace) -> int:
         opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")
-        return BAD_SETTINGS
+        return ExitStatus.REFUSED
     with opened or contextlib.nullcontext():
         try:
             embedder = None if opened is None else connect(opened, settings.model)
@@ -60,10 +60,10 @@ def run(arguments: argparse.Namespace) -> int:
             report = build_index(settings.docs, settings.index, datetime.now(UTC), embedding)
         except ModelError as error:
             sys.stderr.write(f"index not built: {error}; {WORDS_ALONE}\n")
-            return 1
+            return ExitStatus.FAILED
         except (MirrorMissingError, OSError) as error:
             sys.stderr.write(f"index not built: {error}\n")
-            return 1
+            return ExitStatus.FAILED
     for path, reason in report.skipped:
         sys.stderr.write(f"skipped {path}: {reason}\n")
     for path in report.unembedded:
@@ -81,4 +81,4 @@ def run(arguments: argparse.Namespace) -> int:
         )
     if report.skipped:
         sys.stderr.write(f"{len(report.skipped)} files skipped: the index lacks them\n")
-    return 1 if report.skipped or report.unembedded else 0
+    return ExitStatus.FAILED if report.skipped or report.unembedded else ExitStatus.OK
