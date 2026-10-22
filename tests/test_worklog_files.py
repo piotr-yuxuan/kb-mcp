@@ -112,6 +112,22 @@ def test_a_folder_is_read_by_its_own_path_before_any_link(
     assert not [path for path in paths(listing) if path.startswith(f"{link}/")]
 
 
+@pytest.mark.parametrize("backwards", [False, True])
+def test_the_order_of_a_folder_s_listing_changes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, backwards: bool
+) -> None:
+    """Whatever order the file system lists entries in, the own path wins over a link."""
+    root = tmp_path / "todo"
+    write(root, "transcripts/z/d/1.org")
+    (root / "transcripts/a").mkdir()
+    (root / "transcripts/a/link").symlink_to("../z/d")
+    listing = Path.iterdir
+    monkeypatch.setattr(
+        Path, "iterdir", lambda path: iter(sorted(listing(path), reverse=backwards))
+    )
+    assert paths(files.listed(root, archives=True)) == ["transcripts/z/d/1.org"]
+
+
 def test_without_archives_a_link_to_an_archived_folder_is_left_out(worklog: Path) -> None:
     """Archived by what it links to, too: an archived day is not read as a current one."""
     shortcut = worklog / "transcripts/current/shortcut"

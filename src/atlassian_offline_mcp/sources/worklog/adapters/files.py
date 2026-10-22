@@ -67,8 +67,7 @@ def listed(folder: Path, *, archives: bool) -> Listing:
     if not root.is_dir():
         return Listing(root, (), 0, (Problem(".", "not a folder"),))
     problems: list[Problem] = []
-    found: list[PurePosixPath] = []
-    html = 0
+    found: list[PurePosixPath] = []  # every file found, of any kind
     seen = {root}
     archive = PurePosixPath(TODO_ARCHIVE)
     # Archived by its path, or by what it links to.
@@ -101,16 +100,19 @@ def listed(folder: Path, *, archives: bool) -> Listing:
         elif real.is_dir() and relative.parts[0] == TRANSCRIPTS:
             seen.add(real)
             try:
-                queue.extend((crossed + each.is_symlink(), each) for each in path.iterdir())
-                heapq.heapify(queue)
+                for each in path.iterdir():
+                    heapq.heappush(queue, (crossed + each.is_symlink(), each))
             except OSError as error:
                 problems.append(Problem(str(relative), f"not read ({type(error).__name__})"))
-        elif relative.suffix == HTML:
-            html += 1
-        elif real.is_file() and (relative.suffix == ORG or relative == archive):
+        elif real.is_file():
             found.append(relative)
+    # Of the files found, the HTML transcripts are counted; todo.org, todo.org_archive and
+    # the org transcripts are read.
+    html = sum(1 for path in found if path.parts[0] == TRANSCRIPTS and path.suffix == HTML)
     others = sorted(path for path in found if path.parts[0] != TRANSCRIPTS)
-    transcripts = sorted(path for path in found if path.parts[0] == TRANSCRIPTS)
+    transcripts = sorted(
+        path for path in found if path.parts[0] == TRANSCRIPTS and path.suffix == ORG
+    )
     if len(transcripts) > TRANSCRIPT_COUNT:
         problems.append(Problem(TRANSCRIPTS, f"over {TRANSCRIPT_COUNT} transcripts"))
     paths = (*others, *transcripts[:TRANSCRIPT_COUNT])
