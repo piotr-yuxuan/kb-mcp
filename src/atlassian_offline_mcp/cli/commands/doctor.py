@@ -10,13 +10,14 @@ from atlassian_offline_mcp.sources.atlassian.app.doctor import FAILED, SIGN_IN, 
 if TYPE_CHECKING:
     import argparse
 
-    from atlassian_offline_mcp.config.domain.settings import Settings
+    from atlassian_offline_mcp.config.domain.settings import Loaded
     from atlassian_offline_mcp.kernel.output import Summary
     from atlassian_offline_mcp.sources.atlassian.app.doctor import Verdict
 
 
-def run(_arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, list[Verdict]]:
+def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, list[Verdict]]:
     """Give each check's verdict; exit 1 if one fails, 3 to sign in again."""
+    settings = loaded.settings
     verdicts = doctor(settings)
     states = {verdict.state for verdict in verdicts}
     if SIGN_IN in states:

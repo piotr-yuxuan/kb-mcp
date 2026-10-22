@@ -24,18 +24,23 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser(
         "eval", help="measure lexical, semantic and hybrid search on golden questions"
     )
-    flags = add_settings_options(parser)
+    actions, flags = add_settings_options(parser)
     add_output_options(parser)
-    add_embedding_options(parser)
-    parser.add_argument(
-        "golden", type=Path, help="a YAML file of golden questions"
-    ).completer = FilesCompleter(["yaml", "yml"])
-    parser.add_argument(
+    remote = add_embedding_options(parser)
+    golden = parser.add_argument("golden", type=Path, help="a YAML file of golden questions")
+    golden.completer = FilesCompleter(["yaml", "yml"])
+    models = parser.add_argument(
         "--model",
         action="append",
         type=model_name,
         help="a model to evaluate, as the endpoint names it; by default, the setting",
     )
     parser.set_defaults(
-        command=Command("eval", "atlassian_offline_mcp.cli.commands.evaluate", flags)
+        command=Command(
+            "eval",
+            "atlassian_offline_mcp.cli.commands.evaluate",
+            reads=("data_dir", "model", "embedding_url", "embedding_api_key"),
+            flags=flags,
+            actions=(*actions, remote, golden, models),
+        )
     )

@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable
 
-    from atlassian_offline_mcp.config.domain.settings import Settings
+    from atlassian_offline_mcp.config.domain.settings import Loaded
 
 NAME = "atlassian-offline-mcp"
 # Clients send these with every request, and Claude Code keeps 2,048 characters of
@@ -66,12 +66,13 @@ def refusing(method: Callable[..., str]) -> Callable[..., str]:
     return tool
 
 
-def run(arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, None]:
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None]:
     """Serve until the client closes stdin; exit 2 when the settings are refused.
 
     The lexical mode never opens the embedding endpoint. The protocol is the output:
     no result is given.
     """
+    settings = loaded.settings
     try:
         opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
     except SettingsError as error:

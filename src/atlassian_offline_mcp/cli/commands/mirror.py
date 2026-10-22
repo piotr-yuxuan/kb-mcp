@@ -13,17 +13,18 @@ from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 if TYPE_CHECKING:
     import argparse
 
-    from atlassian_offline_mcp.config.domain.settings import Settings
+    from atlassian_offline_mcp.config.domain.settings import Loaded
     from atlassian_offline_mcp.kernel.output import Summary
     from atlassian_offline_mcp.mirror.app.mirror import Outcome
 
 
-def run(_arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, Outcome | None]:
+def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outcome | None]:
     """Mirror; exit 0, or 1 when pandoc is missing or something was not mirrored.
 
     What was not mirrored goes to standard error, by its place in the raw store and the
     reason, never its content. The outcome is given, None without pandoc.
     """
+    settings = loaded.settings
     try:
         pandoc = Pandoc.find()
     except PandocMissingError as error:

@@ -14,8 +14,14 @@ if TYPE_CHECKING:
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``doctor`` to the command."""
     parser = subparsers.add_parser("doctor", help="check the machine and the saved session")
-    flags = add_settings_options(parser)
+    actions, flags = add_settings_options(parser)
     add_output_options(parser)
     parser.set_defaults(
-        command=Command("doctor", "atlassian_offline_mcp.cli.commands.doctor", flags)
+        command=Command(
+            "doctor",
+            "atlassian_offline_mcp.cli.commands.doctor",
+            reads=("site", "data_dir"),
+            flags=flags,
+            actions=actions,
+        )
     )

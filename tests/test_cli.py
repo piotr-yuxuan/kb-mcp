@@ -17,6 +17,7 @@ import pytest
 
 from atlassian_offline_mcp.cli import commands, options
 from atlassian_offline_mcp.cli.main import main, parser
+from atlassian_offline_mcp.config.domain.settings import SETTING_PATHS
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -59,10 +60,18 @@ from atlassian_offline_mcp.cli.options._common import add_output_options
 
 def register(subparsers):
     parser = subparsers.add_parser("extra", help="a command added by a module pair")
-    parser.add_argument("--config", type=Path)
-    parser.add_argument("--data-dir")
+    config = parser.add_argument("--config", type=Path)
+    where = parser.add_argument("--where", dest="data_dir")
     add_output_options(parser)
-    parser.set_defaults(command=Command("extra", "extra_run", {"data_dir": "data_dir"}))
+    parser.set_defaults(
+        command=Command(
+            "extra",
+            "extra_run",
+            reads=("data_dir",),
+            flags={"data_dir": "data_dir"},
+            actions=(config, where),
+        )
+    )
 """
 
 
@@ -80,6 +89,8 @@ class Declaring(argparse.ArgumentParser):
         return declared
 
 
+# Every setting but a table, by its path, its names joined by dots.
+SETTINGS = {".".join(path) for path, kind in SETTING_PATHS.items() if kind != "table"}
 # Every subcommand that the command declares, by the name it is typed by.
 SUBCOMMANDS = parser(Declaring).subcommands
 # What a subcommand needs besides its options to be parsed: its positional arguments.
@@ -123,12 +134,15 @@ def extra(tmp_path: Path, monkeypatch: MonkeyPatch) -> Iterator[Path]:
 def test_a_module_pair_makes_a_subcommand(
     home: Path, extra: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """--help offers the declared subcommand, and its run gets the settings its flags set."""
+    """--help offers the declared subcommand, and its run gets the settings its flags set.
+
+    A flag's layer is its option, whatever its ``dest``.
+    """
     (extra / "extra_run.py").write_text(
-        "def run(arguments, settings):\n"
-        "    return 0, settings.data_dir\n"
-        "def text(data_dir, summary):\n"
-        "    return f'ran in {data_dir}\\n'\n",
+        "def run(arguments, loaded):\n"
+        "    return 0, (loaded.settings.data_dir, loaded.layer('data_dir'))\n"
+        "def text(given, summary):\n"
+        "    return f'ran in {given[0]} [{given[1]}]\\n'\n",
         "utf-8",
     )
     with pytest.raises(SystemExit) as stopped:
@@ -138,8 +152,8 @@ def test_a_module_pair_makes_a_subcommand(
     assert "check" in out
     assert "a command added by a module pair" in out
     data = home / "data"
-    assert main(["extra", "--config", str(home / "none.toml"), "--data-dir", str(data)]) == 0
-    assert capsys.readouterr().out == f"ran in {data.resolve()}\n"
+    assert main(["extra", "--config", str(home / "none.toml"), "--where", str(data)]) == 0
+    assert capsys.readouterr().out == f"ran in {data.resolve()} [--where]\n"
 
 
 @pytest.mark.parametrize("name", sorted(SUBCOMMANDS))
@@ -156,6 +170,26 @@ def test_each_subcommand_s_command_carries_its_name_and_a_run_that_imports(name:
     assert package == commands.__name__
     assert callable(importlib.import_module(command.run).run)
     assert callable(importlib.import_module(f"{options.__name__}.{module}").register)
+
+
+@pytest.mark.parametrize("name", sorted(SUBCOMMANDS))
+def test_each_subcommand_reads_settings_by_their_paths_and_declares_each_flag(name: str) -> None:
+    """What it reads and what its flags set are settings; each flag is one of its options.
+
+    A misspelt path would read nothing, and a flag missing from its actions would
+    override nothing.
+    """
+    command = SUBCOMMANDS[name].get_default("command")
+    assert set(command.reads) <= SETTINGS
+    assert set(command.flags.values()) <= SETTINGS
+    named = command.setting_flags()
+    assert set(named) == set(command.flags)
+    assert all(option.startswith("--") for option, _ in named.values())
+
+
+def test_check_reads_every_setting() -> None:
+    """It shows them all, so a setting added to the model must be added to its reads."""
+    assert set(SUBCOMMANDS["check"].get_default("command").reads) == SETTINGS
 
 
 def test_refused_settings_exit_before_the_run_is_imported(

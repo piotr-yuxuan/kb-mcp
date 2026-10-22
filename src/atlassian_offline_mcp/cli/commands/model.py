@@ -17,7 +17,7 @@ from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
 if TYPE_CHECKING:
     import argparse
 
-    from atlassian_offline_mcp.config.domain.settings import Settings
+    from atlassian_offline_mcp.config.domain.settings import Loaded
     from atlassian_offline_mcp.kernel.output import Summary
 
 # Characters of a digest shown, as Ollama shows them.
@@ -37,8 +37,9 @@ class Ready:
     digest: str
 
 
-def run(arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, Ready | None]:
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ready | None]:
     """Check; exit 1 when the endpoint or the model is not ready, 2 for refused settings."""
+    settings = loaded.settings
     try:
         opened = open_endpoint(arguments, settings)
     except SettingsError as error:

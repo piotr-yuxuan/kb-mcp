@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import argparse
     from pathlib import Path
 
-    from atlassian_offline_mcp.config.domain.settings import Settings
+    from atlassian_offline_mcp.config.domain.settings import Loaded
     from atlassian_offline_mcp.kernel.output import Summary
 
 
@@ -26,12 +26,13 @@ class SignedIn:
     session: Path
 
 
-def run(arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, SignedIn | None]:
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, SignedIn | None]:
     """Sign in; exit 2 without a site, 3 when no sign-in completes.
 
     What to do in the window goes to stderr, with the messages, so that stdout holds
     the result alone.
     """
+    settings = loaded.settings
     if settings.site is None:
         sys.stderr.write("settings refused: site: not set; add it to the settings or pass --site\n")
         return ExitStatus.REFUSED, None

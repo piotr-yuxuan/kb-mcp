@@ -16,7 +16,7 @@ from atlassian_offline_mcp.sources.atlassian.domain.period import PeriodError, l
 if TYPE_CHECKING:
     import argparse
 
-    from atlassian_offline_mcp.config.domain.settings import Settings
+    from atlassian_offline_mcp.config.domain.settings import Loaded, Settings
     from atlassian_offline_mcp.kernel.output import Summary
     from atlassian_offline_mcp.sources.atlassian.app.download import Outcome
 
@@ -55,13 +55,14 @@ def targets_of(arguments: argparse.Namespace, settings: Settings, now: datetime)
     )
 
 
-def run(arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, Outcome | None]:
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outcome | None]:
     """Download; exit 0, 1 when something failed, 2 for bad input, 3 to sign in again.
 
     Spaces and projects not named on the command line come from the settings; without
     --since, each catches up from the start of what earlier runs covered. The outcome
     is given once a run ends, None when none could start or one was stopped.
     """
+    settings = loaded.settings
     try:
         targets = targets_of(arguments, settings, datetime.now(UTC))
         act = plan if arguments.plan else download

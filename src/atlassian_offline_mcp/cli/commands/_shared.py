@@ -23,11 +23,11 @@ if TYPE_CHECKING:
 def enter(arguments: argparse.Namespace) -> int:
     """Load the settings, with the flags given, run the chosen subcommand, write its result.
 
-    Refused settings exit 2 before the run is imported. A subcommand that reads no
-    settings gets None. A flag's layer is its option, named after its ``dest``. The run
-    returns its status, then its result, or None when it has none to write, such as
-    ``serve``, whose output is the protocol. The result goes to stdout as one JSON
-    document, secrets masked, or as its module's ``text`` writes it, unless -q. The
+    Refused settings exit 2 before the run is imported. The run gets the settings loaded,
+    with each one's layer, a flag's being its option; one that reads no setting gets
+    None. It returns its status, then its result, or None when it has none to write,
+    such as ``serve``, whose output is the protocol. The result goes to stdout as one
+    JSON document, secrets masked, or as its module's ``text`` writes it, unless -q. The
     run's status is returned.
     """
     command: Command = arguments.command
@@ -38,20 +38,19 @@ def enter(arguments: argparse.Namespace) -> int:
         stdin_terminal=sys.stdin.isatty(),
         stderr_terminal=sys.stderr.isatty(),
     )
-    settings = None
-    if command.reads_settings:
+    loaded = None
+    if command.reads:
         flags = {
-            f"--{dest.replace('_', '-')}": (setting, getattr(arguments, dest))
-            for dest, setting in command.flags.items()
+            option: (setting, getattr(arguments, dest))
+            for dest, (option, setting) in command.setting_flags().items()
         }
         try:
             loaded = load_settings(arguments.config, flags, Path.home().resolve())
         except SettingsError as error:
             sys.stderr.write(f"settings refused: {error}\n")
             return ExitStatus.REFUSED
-        settings = loaded if command.with_layers else loaded.settings
     module = importlib.import_module(command.run)
-    status, result = module.run(arguments, settings)
+    status, result = module.run(arguments, loaded)
     if result is not None and output.format == "json":
         sys.stdout.write(f"{to_json(result, indent=2, inf_nan_mode='null').decode()}\n")
     elif result is not None and not output.quiet:

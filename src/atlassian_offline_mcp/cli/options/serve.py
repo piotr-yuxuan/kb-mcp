@@ -18,7 +18,15 @@ if TYPE_CHECKING:
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``serve`` to the command."""
     parser = subparsers.add_parser("serve", help="serve the mirror over MCP on stdio")
-    flags = add_settings_options(parser)
+    actions, flags = add_settings_options(parser)
     add_output_options(parser, result=False)
-    add_embedding_options(parser)
-    parser.set_defaults(command=Command("serve", "atlassian_offline_mcp.cli.commands.serve", flags))
+    remote = add_embedding_options(parser)
+    parser.set_defaults(
+        command=Command(
+            "serve",
+            "atlassian_offline_mcp.cli.commands.serve",
+            reads=("data_dir", "search_mode", "embedding_url", "embedding_api_key"),
+            flags=flags,
+            actions=(*actions, remote),
+        )
+    )

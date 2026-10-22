@@ -18,7 +18,15 @@ if TYPE_CHECKING:
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``index`` to the command."""
     parser = subparsers.add_parser("index", help="build the search index from the mirror")
-    flags = add_settings_options(parser)
+    actions, flags = add_settings_options(parser)
     add_output_options(parser)
-    add_embedding_options(parser)
-    parser.set_defaults(command=Command("index", "atlassian_offline_mcp.cli.commands.index", flags))
+    remote = add_embedding_options(parser)
+    parser.set_defaults(
+        command=Command(
+            "index",
+            "atlassian_offline_mcp.cli.commands.index",
+            reads=("data_dir", "model", "search_mode", "embedding_url", "embedding_api_key"),
+            flags=flags,
+            actions=(*actions, remote),
+        )
+    )

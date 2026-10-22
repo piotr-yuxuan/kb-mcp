@@ -69,21 +69,26 @@ def add_output_options(parser: argparse.ArgumentParser, *, result: bool = True) 
         )
 
 
-def add_settings_options(parser: argparse.ArgumentParser) -> dict[str, str]:
-    """Add --config, --data-dir and --site; return the setting that each flag overrides."""
-    parser.add_argument(
+def add_settings_options(
+    parser: argparse.ArgumentParser,
+) -> tuple[tuple[argparse.Action, ...], dict[str, str]]:
+    """Add --config, --data-dir and --site; return their actions, and each flag's setting."""
+    config = parser.add_argument(
         "--config", type=Path, default=SETTINGS_PATH, help="the settings file"
-    ).completer = FilesCompleter(["toml"])
-    parser.add_argument(
-        "--data-dir", help="the data directory, overriding the settings"
-    ).completer = DirectoriesCompleter()
-    parser.add_argument("--site", help="the site, as https://<name>.atlassian.net")
-    return {"data_dir": "data_dir", "site": "site"}
+    )
+    config.completer = FilesCompleter(["toml"])
+    data_dir = parser.add_argument("--data-dir", help="the data directory, overriding the settings")
+    data_dir.completer = DirectoriesCompleter()
+    site = parser.add_argument("--site", help="the site, as https://<name>.atlassian.net")
+    return (config, data_dir, site), {"data_dir": "data_dir", "site": "site"}
 
 
-def add_embedding_options(parser: argparse.ArgumentParser) -> None:
-    """Add --allow-remote-embeddings: never a setting, so that it is given on every run."""
-    parser.add_argument(
+def add_embedding_options(parser: argparse.ArgumentParser) -> argparse.Action:
+    """Add --allow-remote-embeddings, never a setting, so that it is given on every run.
+
+    Return its action.
+    """
+    return parser.add_argument(
         "--allow-remote-embeddings",
         action="store_true",
         help="let this run send the mirror's text to an embedding endpoint off this machine",

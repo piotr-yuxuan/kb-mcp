@@ -33,26 +33,35 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser(
         "download", help="download what changed in a period, with its files"
     )
-    flags = add_settings_options(parser)
+    actions, flags = add_settings_options(parser)
     add_output_options(parser)
-    parser.add_argument(
+    space = parser.add_argument(
         "--space", action="append", type=key_of("space"), help="a space key; repeat for more"
     )
-    parser.add_argument(
+    project = parser.add_argument(
         "--project", action="append", type=key_of("project"), help="a project key; repeat"
     )
-    parser.add_argument(
+    since = parser.add_argument(
         "--since", help="7d, 6mo, or an ISO date; by default, the start of what is covered"
     )
-    parser.add_argument("--back", help="reach this much further back (6mo, 1y), or all")
-    parser.add_argument("--until", help="an ISO date or time, excluded; by default, now")
+    back = parser.add_argument("--back", help="reach this much further back (6mo, 1y), or all")
+    until = parser.add_argument("--until", help="an ISO date or time, excluded; by default, now")
     parser.add_argument(
         "--plan", action="store_true", help="say what a run would fetch, and fetch nothing"
     )
-    parser.add_argument(
+    largest = parser.add_argument(
         "--max-file-mb", type=int, default=DEFAULT_MAX_FILE_MB, help="the largest file kept"
     )
-    flags = {**flags, "space": "sources.confluence.spaces", "project": "sources.jira.projects"}
     parser.set_defaults(
-        command=Command("download", "atlassian_offline_mcp.cli.commands.download", flags)
+        command=Command(
+            "download",
+            "atlassian_offline_mcp.cli.commands.download",
+            reads=("site", "data_dir", "sources.confluence.spaces", "sources.jira.projects"),
+            flags={
+                **flags,
+                "space": "sources.confluence.spaces",
+                "project": "sources.jira.projects",
+            },
+            actions=(*actions, space, project, since, back, until, largest),
+        )
     )

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     import argparse
     from pathlib import Path
 
-    from atlassian_offline_mcp.config.domain.settings import Settings
+    from atlassian_offline_mcp.config.domain.settings import Loaded
     from atlassian_offline_mcp.kernel.output import Summary
     from atlassian_offline_mcp.search.app.indexing import Report
 
@@ -39,13 +39,14 @@ def progress(done: int, total: int) -> None:
     sys.stderr.write(f"embedded {done} of {total} pieces\n")
 
 
-def run(arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, Indexed | None]:
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Indexed | None]:
     """Build the index; exit 1 when a file or a piece was left out, or nothing was built.
 
     By words alone in the lexical mode, which never calls the embedding endpoint. In the
     other modes the endpoint must answer with the setting's model; when it does not,
     the index in place stays, with its vectors, and nothing is given.
     """
+    settings = loaded.settings
     try:
         opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
     except SettingsError as error:

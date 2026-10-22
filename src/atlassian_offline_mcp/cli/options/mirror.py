@@ -14,8 +14,14 @@ if TYPE_CHECKING:
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``mirror`` to the command."""
     parser = subparsers.add_parser("mirror", help="write the Markdown mirror from the raw store")
-    flags = add_settings_options(parser)
+    actions, flags = add_settings_options(parser)
     add_output_options(parser)
     parser.set_defaults(
-        command=Command("mirror", "atlassian_offline_mcp.cli.commands.mirror", flags)
+        command=Command(
+            "mirror",
+            "atlassian_offline_mcp.cli.commands.mirror",
+            reads=("site", "data_dir"),
+            flags=flags,
+            actions=actions,
+        )
     )

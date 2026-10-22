@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     import argparse
     from pathlib import Path
 
-    from atlassian_offline_mcp.config.domain.settings import Settings
+    from atlassian_offline_mcp.config.domain.settings import Loaded
     from atlassian_offline_mcp.evaluation.app.evaluation import Run
     from atlassian_offline_mcp.kernel.output import Summary
 
@@ -45,11 +45,12 @@ class Evaluated:
     results: Path
 
 
-def run(arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, Evaluated | None]:
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Evaluated | None]:
     """Evaluate; exit 1 when something failed, 2 for bad settings or a refused golden file.
 
     The results, ids and numbers only, go to ``<data>/eval/results/<UTC time>.json``.
     """
+    settings = loaded.settings
     try:
         golden = arguments.golden.read_text(encoding="utf-8")
         questions = read_golden(golden, Library(settings.index, settings.docs).resolve)

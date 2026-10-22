@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    import argparse
     from collections.abc import Mapping
 
 # The program's name, as pyproject.toml names its script.
@@ -18,17 +19,29 @@ class Command:
 
     ``name`` is the subcommand as typed, which its run's module need not match: ``eval``
     is run by ``cli.commands.evaluate``. ``run`` names the module whose
-    ``run(arguments, settings)`` runs it, imported only once it is chosen. ``flags``
-    maps each option that overrides a setting, by the option's ``dest``, to that
-    setting's path, its names joined by dots
-    (``sources.confluence.spaces``). Without ``reads_settings``, the run gets ``None``
-    for its settings, and so runs whatever the settings file holds. With
-    ``with_layers``, it gets the settings with the layer of each and the values ignored
-    (``config.domain.settings.Loaded``) rather than the settings alone.
+    ``run(arguments, loaded)`` runs it, imported only once it is chosen. ``reads`` names
+    each setting that the run reads, by its path, its names joined by dots
+    (``sources.confluence.spaces``); a command that reads none gets ``None`` for its
+    settings, and so runs whatever the settings file holds. ``flags`` maps each option
+    that overrides a setting, by the option's ``dest``, to that setting's path.
+    ``actions`` are the options and positionals as ``add_argument`` returned them, those
+    of the output aside: each flag among them is named by its option.
     """
 
     name: str
     run: str
+    reads: tuple[str, ...] = ()
     flags: Mapping[str, str] = field(default_factory=dict)
-    reads_settings: bool = True
-    with_layers: bool = False
+    actions: tuple[argparse.Action, ...] = ()
+
+    def setting_flags(self) -> dict[str, tuple[str, str]]:
+        """Map the ``dest`` of each flag among the actions to its option and its setting.
+
+        The option is the action's longest, such as ``--data-dir``, which names the
+        flag's layer.
+        """
+        return {
+            action.dest: (max(action.option_strings, key=len), self.flags[action.dest])
+            for action in self.actions
+            if action.dest in self.flags
+        }

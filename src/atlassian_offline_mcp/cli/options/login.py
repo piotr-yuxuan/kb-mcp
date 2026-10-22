@@ -14,10 +14,20 @@ if TYPE_CHECKING:
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``login`` to the command."""
     parser = subparsers.add_parser("login", help="sign in once, in a Chrome window")
-    flags = add_settings_options(parser)
+    actions, flags = add_settings_options(parser)
     add_output_options(parser)
-    parser.add_argument("--chrome", help="Chrome's executable, where the chrome channel fails")
-    parser.add_argument(
+    chrome = parser.add_argument(
+        "--chrome", help="Chrome's executable, where the chrome channel fails"
+    )
+    extensions = parser.add_argument(
         "--keep-extensions", action="store_true", help="let Chrome load extensions, for SSO"
     )
-    parser.set_defaults(command=Command("login", "atlassian_offline_mcp.cli.commands.login", flags))
+    parser.set_defaults(
+        command=Command(
+            "login",
+            "atlassian_offline_mcp.cli.commands.login",
+            reads=("site", "data_dir"),
+            flags=flags,
+            actions=(*actions, chrome, extensions),
+        )
+    )
