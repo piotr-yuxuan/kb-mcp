@@ -27,8 +27,8 @@ BASH = re.compile(r"^```bash\n(.*?)^```", re.MULTILINE | re.DOTALL)
 # The program's name as a word of its own, not part of a path or of another name.
 PROGRAM = re.compile(r"(?<![\w/.~-])atlassian-offline-mcp(?![\w/.-])")
 # What ends the arguments of a command: a quote, as around the command that sops runs, a
-# parenthesis, a pipe, a list.
-END = re.compile(r"['\")|;&]")
+# parenthesis, a pipe, a list, a redirection.
+END = re.compile(r"['\")|;&>]")
 
 
 @pytest.mark.parametrize("page", PAGES)

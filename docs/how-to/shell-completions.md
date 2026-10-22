@@ -20,7 +20,20 @@ where it is. After an upgrade, the same `uv tool install --force .` replaces it.
 ## 2. Load the completion
 
 `atlassian-offline-mcp completion` prints the code that completes the command, one
-script for both shells. In bash, add this line to `~/.bashrc`:
+script for both shells. Write it once where your shell loads completions when first
+needed, and again after each upgrade. In bash, with bash-completion:
+
+```bash
+mkdir -p ~/.local/share/bash-completion/completions
+atlassian-offline-mcp completion > ~/.local/share/bash-completion/completions/atlassian-offline-mcp
+```
+
+In zsh, write it to a file named `_atlassian-offline-mcp` in a folder of `$fpath`,
+before `compinit` runs. Then open a new shell.
+
+Or load it at each start of a shell, which is simpler, but runs the command each time,
+for about a fifth of a second, as it loads the code that reads the settings. In bash,
+add this line to `~/.bashrc`:
 
 ```bash
 eval "$(atlassian-offline-mcp completion)"
@@ -32,12 +45,6 @@ In zsh, add it to `~/.zshrc` after `compinit`, which starts zsh's completion sys
 autoload -Uz compinit && compinit
 eval "$(atlassian-offline-mcp completion)"
 ```
-
-Then open a new shell. The line runs the command once at each start of a shell. To
-spare that run, write the script once where your shell loads completions when first
-needed, and again after each upgrade: for bash with bash-completion, to
-`~/.local/share/bash-completion/completions/atlassian-offline-mcp`; for zsh, to a file
-named `_atlassian-offline-mcp` in a folder of `$fpath`, before `compinit` runs.
 
 argcomplete's own `register-python-argcomplete` and its global completion are not
 needed, and `uv tool install` puts neither on your `PATH`: the command prints the
