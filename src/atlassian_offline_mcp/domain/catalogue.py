@@ -15,15 +15,15 @@ from functools import cached_property
 from html import escape
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.domain.content import BlogPost, ConfluenceDocument, Folder, Issue, Page
 from atlassian_offline_mcp.domain.mirror import FrontMatter
 from atlassian_offline_mcp.domain.mirror_layout import NONE, one_line
+from atlassian_offline_mcp.kernel.content import BlogPost, ConfluenceDocument, Folder, Issue, Page
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from datetime import datetime
 
-    from atlassian_offline_mcp.domain.content import Person, Space
+    from atlassian_offline_mcp.kernel.content import Person, Space
 
 # The front matter's type of each kind of document.
 TYPES: dict[type[ConfluenceDocument | Issue], str] = {

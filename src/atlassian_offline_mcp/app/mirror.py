@@ -26,13 +26,6 @@ from atlassian_offline_mcp.adapters.raw_store import (
 )
 from atlassian_offline_mcp.adapters.site_html import Context, MarkupError, Mirrored, normalise
 from atlassian_offline_mcp.domain.catalogue import Catalogue, front_matter
-from atlassian_offline_mcp.domain.content import (
-    BlogPost,
-    ConfluenceDocument,
-    Issue,
-    Page,
-    RefusedError,
-)
 from atlassian_offline_mcp.domain.mirror_layout import (
     asset_path,
     confluence_path,
@@ -41,13 +34,20 @@ from atlassian_offline_mcp.domain.mirror_layout import (
     tree_path,
 )
 from atlassian_offline_mcp.domain.period import EPOCH
+from atlassian_offline_mcp.kernel.content import (
+    BlogPost,
+    ConfluenceDocument,
+    Issue,
+    Page,
+    RefusedError,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
     from datetime import datetime
     from pathlib import Path, PurePosixPath
 
-    from atlassian_offline_mcp.domain.content import Folder
+    from atlassian_offline_mcp.kernel.content import Folder
 
 KINDS: tuple[type[Page | BlogPost | Issue], ...] = (Page, BlogPost, Issue)
 # A comment's headings sit under its own third-level heading.

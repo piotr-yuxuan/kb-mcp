@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from atlassian_offline_mcp.adapters import confluence_v2, jira_v3
-from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
-from atlassian_offline_mcp.domain.content import BlogPost, Folder, Page, Person
+from atlassian_offline_mcp.kernel.content import BlogPost, Folder, Page, Person
+from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
 from tests.samples import (
     ATTACHMENT_SIZE,
     PAGE_VERSION,

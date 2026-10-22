@@ -7,9 +7,9 @@ from datetime import date
 import httpx
 
 from atlassian_offline_mcp.adapters import confluence_v2, jira_v3
-from atlassian_offline_mcp.adapters.fields import Fields
 from atlassian_offline_mcp.adapters.http import Request
-from atlassian_offline_mcp.domain.content import BlogPost, Page
+from atlassian_offline_mcp.kernel.content import BlogPost, Page
+from atlassian_offline_mcp.kernel.fields import Fields
 from tests.samples import v2_page
 
 NEXT = "/wiki/api/v2/spaces/196613/pages?limit=250&cursor=abc"

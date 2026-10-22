@@ -13,12 +13,12 @@ from html import escape
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.domain.content import BlogPost
+from atlassian_offline_mcp.kernel.content import BlogPost
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from atlassian_offline_mcp.domain.content import ConfluenceDocument, Issue
+    from atlassian_offline_mcp.kernel.content import ConfluenceDocument, Issue
 
 ASSETS = PurePosixPath("assets")
 TREE = "_tree.md"

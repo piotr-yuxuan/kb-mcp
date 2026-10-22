@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.domain.content import (
+from atlassian_offline_mcp.kernel.content import (
     IDENTIFIER,
     ISSUE_KEY,
     PROJECT_KEY,

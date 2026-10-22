@@ -7,7 +7,6 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from atlassian_offline_mcp.domain.content import BlogPost, Issue, Page
 from atlassian_offline_mcp.domain.mirror_layout import (
     asset_path,
     confluence_path,
@@ -18,6 +17,7 @@ from atlassian_offline_mcp.domain.mirror_layout import (
     tree_path,
     visible,
 )
+from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
 
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 DIGEST = "e" * 64

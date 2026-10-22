@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
 
 from atlassian_offline_mcp.adapters import confluence_v2, http, jira_v3
-from atlassian_offline_mcp.adapters.fields import Fields, RepresentationError
 from atlassian_offline_mcp.adapters.http import (
     SignInNeededError,
     Site,
@@ -26,7 +25,6 @@ from atlassian_offline_mcp.adapters.session_file import (
     read_cookies,
     write_cookies,
 )
-from atlassian_offline_mcp.domain.content import IDENTIFIER, BlogPost, Issue, Page
 from atlassian_offline_mcp.domain.coverage import Coverage, Target, window
 from atlassian_offline_mcp.domain.deletions import (
     Answer,
@@ -38,14 +36,16 @@ from atlassian_offline_mcp.domain.deletions import (
 )
 from atlassian_offline_mcp.domain.files import skip_reason
 from atlassian_offline_mcp.domain.period import EPOCH, Period
+from atlassian_offline_mcp.kernel.content import IDENTIFIER, BlogPost, Issue, Page
+from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
     from datetime import datetime
 
     from atlassian_offline_mcp.adapters.http import ReadPage, Request
-    from atlassian_offline_mcp.domain.content import Attachment, Document, Listed
     from atlassian_offline_mcp.domain.settings import Settings
+    from atlassian_offline_mcp.kernel.content import Attachment, Document, Listed
 
     type SnapshotRequests = Callable[[Listed], dict[str, tuple[Request, ReadPage | None]]]
 

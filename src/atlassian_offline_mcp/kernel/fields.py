@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
-from atlassian_offline_mcp.domain.content import RefusedError
+from atlassian_offline_mcp.kernel.content import RefusedError
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

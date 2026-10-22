@@ -13,8 +13,8 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.adapters.markdown import dump
-from atlassian_offline_mcp.domain.content import time_revision
 from atlassian_offline_mcp.domain.mirror import FrontMatter
+from atlassian_offline_mcp.kernel.content import time_revision
 
 if TYPE_CHECKING:
     from pathlib import Path

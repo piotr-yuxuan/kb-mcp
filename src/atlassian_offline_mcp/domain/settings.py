@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
 
-from atlassian_offline_mcp.domain.content import PROJECT_KEY, SPACE_KEY
+from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping

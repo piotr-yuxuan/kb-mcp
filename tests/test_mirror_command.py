@@ -13,7 +13,7 @@ from atlassian_offline_mcp.adapters import confluence_v2
 from atlassian_offline_mcp.adapters.pandoc import Pandoc, PandocFailedError
 from atlassian_offline_mcp.adapters.raw_store import RawStore
 from atlassian_offline_mcp.cli import main
-from atlassian_offline_mcp.domain.content import Page
+from atlassian_offline_mcp.kernel.content import Page
 from tests.samples import v2_page, v2_view
 
 if TYPE_CHECKING:

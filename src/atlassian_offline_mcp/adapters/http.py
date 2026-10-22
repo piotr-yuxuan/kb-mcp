@@ -12,12 +12,12 @@ import certifi
 import httpx
 import truststore
 
-from atlassian_offline_mcp.domain.content import SITE_PATH
+from atlassian_offline_mcp.kernel.content import SITE_PATH
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
-    from atlassian_offline_mcp.adapters.fields import Fields
+    from atlassian_offline_mcp.kernel.fields import Fields
 
 # Atlassian serves attached files from these hosts, after a redirect from the site.
 MEDIA_HOSTS = ("media.atlassian.com", "media-cdn.atlassian.com")

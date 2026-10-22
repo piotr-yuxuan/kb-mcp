@@ -10,12 +10,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from atlassian_offline_mcp.adapters import confluence_v2, jira_v3
-from atlassian_offline_mcp.adapters.fields import RepresentationError
 from atlassian_offline_mcp.adapters.raw_store import RawStore, StoreBusyError, Stored, Unreadable
-from atlassian_offline_mcp.domain.content import BlogPost, Folder, Issue, Page, Person, Space
 from atlassian_offline_mcp.domain.coverage import Coverage, Target
 from atlassian_offline_mcp.domain.deletions import Tombstone
 from atlassian_offline_mcp.domain.period import Period
+from atlassian_offline_mcp.kernel.content import BlogPost, Folder, Issue, Page, Person, Space
+from atlassian_offline_mcp.kernel.fields import RepresentationError
 from tests.samples import (
     v1_user,
     v2_attachment,

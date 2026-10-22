@@ -28,9 +28,9 @@ from atlassian_offline_mcp.app.download import (
     Targets,
     download,
 )
-from atlassian_offline_mcp.domain.content import BlogPost, Issue, Page
 from atlassian_offline_mcp.domain.period import period
 from atlassian_offline_mcp.domain.settings import Settings
+from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
 from tests.samples import (
     v1_user,
     v2_attachment,

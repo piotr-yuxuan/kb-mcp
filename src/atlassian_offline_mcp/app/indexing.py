@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.adapters import markdown, sqlite_index, vector_store
-from atlassian_offline_mcp.adapters.fields import RepresentationError
 from atlassian_offline_mcp.domain.search import Embedded, passages, sections
+from atlassian_offline_mcp.kernel.fields import RepresentationError
 
 if TYPE_CHECKING:
     from collections.abc import Callable

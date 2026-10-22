@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta, timezone
 import pytest
 
 from atlassian_offline_mcp.domain.catalogue import Catalogue, front_matter
-from atlassian_offline_mcp.domain.content import (
+from atlassian_offline_mcp.kernel.content import (
     BlogPost,
     Folder,
     Issue,

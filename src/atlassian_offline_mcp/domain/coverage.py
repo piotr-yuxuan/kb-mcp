@@ -9,8 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
-from atlassian_offline_mcp.domain.content import PROJECT_KEY, SPACE_KEY, RefusedError, require
 from atlassian_offline_mcp.domain.period import EPOCH, Period, PeriodError
+from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY, RefusedError, require
 
 # The rule of a target's key, by source.
 KEYS = {"confluence": SPACE_KEY, "jira": PROJECT_KEY}

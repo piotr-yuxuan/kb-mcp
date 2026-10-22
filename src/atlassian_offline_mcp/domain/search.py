@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from atlassian_offline_mcp.domain.content import ISSUE_KEY
+from atlassian_offline_mcp.kernel.content import ISSUE_KEY
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping, Sequence

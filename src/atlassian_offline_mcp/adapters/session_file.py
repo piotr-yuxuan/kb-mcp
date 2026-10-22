@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.fields import Fields
+from atlassian_offline_mcp.kernel.fields import Fields
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping

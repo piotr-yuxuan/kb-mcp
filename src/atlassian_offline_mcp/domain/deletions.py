@@ -13,7 +13,7 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.domain.content import RefusedError
+from atlassian_offline_mcp.kernel.content import RefusedError
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
