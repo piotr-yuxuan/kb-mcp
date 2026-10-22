@@ -16,7 +16,7 @@ from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Mapping
 
     from atlassian_offline_mcp.kernel.content import SourceName
 
@@ -28,7 +28,8 @@ type Outcome = Literal["done", "failed", "sign in", "interrupted", "not run"]
 PERIOD = {"since": "--since", "back": "--back", "until": "--until", "max_file_mb": "--max-file-mb"}
 # The settings that the Atlassian sources share: the site and its sign-in.
 SITE_SETTINGS = ("site", "email", "api_token")
-# How the run ends, by the first of these outcomes that a step had, else done.
+# How the run ends, by the first of these outcomes that it had, else OK: interrupted, then
+# to sign in again, then failed.
 RANKED: tuple[tuple[Outcome, ExitStatus], ...] = (
     ("interrupted", ExitStatus.INTERRUPTED),
     ("sign in", ExitStatus.SIGN_IN_AGAIN),
@@ -97,9 +98,3 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
         if getattr(arguments, dest) is not None and ignoring:
             lines.append(f"{option}: ignored by {', '.join(ignoring)}")
     return tuple(lines)
-
-
-def exit_status(outcomes: Iterable[Outcome]) -> ExitStatus:
-    """Rank how the steps ended: interrupted, then to sign in, then failed, else done."""
-    seen = set(outcomes)
-    return next((status for outcome, status in RANKED if outcome in seen), ExitStatus.OK)

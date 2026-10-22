@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from atlassian_offline_mcp.cli.app import sync as sync_app
-from atlassian_offline_mcp.cli.app.sync import Atlassian, Context, Worklog, sync
+from atlassian_offline_mcp.cli.app.sync import Atlassian, Context, Row, Worklog, sync
 from atlassian_offline_mcp.cli.domain.sync import chosen
 from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.config.domain.settings import Settings
@@ -36,6 +36,7 @@ from tests.test_worklog_mirror import FIXTURE, Counting, settle, snapshot
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Callable
     from datetime import datetime
 
     from _pytest.capture import CaptureFixture
@@ -420,3 +421,67 @@ def test_the_text_gives_a_row_per_step_then_its_counts(
         "  HTML left out: 1\n"
         "  problems: 0\n"
     )
+
+
+def interrupting(*_: object) -> None:
+    """Stop a step as Ctrl-C would."""
+    raise KeyboardInterrupt
+
+
+def test_ctrl_c_in_the_mirror_marks_it_interrupted_and_the_work_log_not_run(
+    tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The download done, the mirror interrupted, the work log not run: exit 130."""
+    monkeypatch.setattr(sync_app, "download", lambda *_: Outcome(Report(), [], ExitStatus.OK))
+    monkeypatch.setattr(sync_app, "mirror", interrupting)
+    settings = chosen_settings(tmp_path, worklog)
+    steps = [
+        Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
+        Worklog(worklog, archives=True),
+    ]
+    said: list[str] = []
+    synced = sync(context(settings, said, FIRST), steps)
+    assert [(row.step, row.outcome) for row in synced.steps] == [
+        ("download", "done"),
+        ("mirror", "interrupted"),
+        ("worklog", "not run"),
+    ]
+    assert synced.exit_status == ExitStatus.INTERRUPTED
+    assert "interrupted; no later step runs\n" in said
+
+
+def test_ctrl_c_once_every_step_ended_still_exits_130(
+    tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Every row kept as it ended, and the run interrupted."""
+
+    def ended_then_stopped(_context: Context, _step: Worklog, add: Callable[[Row], None]) -> None:
+        add(Row("worklog", "done", None))
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(sync_app, "worklog", ended_then_stopped)
+    settings = chosen_settings(tmp_path, worklog)
+    synced = sync(context(settings, [], FIRST), [Worklog(worklog, archives=True)])
+    assert [(row.step, row.outcome) for row in synced.steps] == [("worklog", "done")]
+    assert synced.exit_status == ExitStatus.INTERRUPTED
+
+
+def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
+    tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """No session saved and a mirror problem exit 3; Ctrl-C after them exits 130."""
+    problem = mirror_app.Problem("confluence/pages/1001/000001", "pandoc: exit status 9")
+    monkeypatch.setattr(
+        sync_app,
+        "mirror",
+        lambda *_: mirror_app.Outcome(0, Changes(0, 0, 0), Counter(), (problem,)),
+    )
+    settings = Settings(data_dir=tmp_path / "data", site=SITE)
+    atlassian = Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK))
+    synced = sync(context(settings, [], FIRST), [atlassian, Worklog(worklog, archives=True)])
+    assert [row.outcome for row in synced.steps] == ["sign in", "failed", "done"]
+    assert synced.exit_status == ExitStatus.SIGN_IN_AGAIN
+    monkeypatch.setattr(sync_app, "worklog", interrupting)
+    synced = sync(context(settings, [], FIRST), [atlassian, Worklog(worklog, archives=True)])
+    assert [row.outcome for row in synced.steps] == ["sign in", "failed", "interrupted"]
+    assert synced.exit_status == ExitStatus.INTERRUPTED

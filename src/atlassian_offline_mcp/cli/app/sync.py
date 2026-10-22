@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
 
-from atlassian_offline_mcp.cli.domain.sync import exit_status
+from atlassian_offline_mcp.cli.domain.sync import RANKED
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
 from atlassian_offline_mcp.mirror.app.mirror import mirror
@@ -30,7 +30,8 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc
     from atlassian_offline_mcp.sources.atlassian.app.download import Targets
 
-# How a download or its plan ended, by its status; a status of none is a run stopped.
+# How a download or its plan ended, by its status. A stopped download returns none: Ctrl-C
+# leaves it as KeyboardInterrupt.
 DOWNLOADED: dict[ExitStatus | None, Outcome] = {
     ExitStatus.OK: "done",
     ExitStatus.FAILED: "failed",
@@ -106,7 +107,7 @@ def atlassian(context: Context, step: Atlassian, add: Callable[[Row], None]) -> 
             context.say(f"{target}\n")
         if fetched.status == ExitStatus.SIGN_IN_AGAIN:
             context.say(f"sign-in needed: {sign_in(context.settings).again}\n")
-        add(Row("download", DOWNLOADED.get(fetched.status, "failed"), fetched))
+        add(Row("download", DOWNLOADED[fetched.status], fetched))
     if context.dry_run:
         add(Row("mirror", "not run", None))
         return
@@ -142,7 +143,9 @@ def sync(context: Context, steps: Sequence[Atlassian | Worklog]) -> Synced:
 
     Raises ``SyncRefusedError`` for a work log that is not a folder, and PeriodError for
     a target with nowhere to start, both before the first step. Ctrl-C ends the step it
-    stops as interrupted, and each later one as not run.
+    stops as interrupted, and each later one as not run; the run is interrupted even
+    when Ctrl-C comes once every step has ended. The status is the first of
+    ``RANKED``'s outcomes that the run had, else OK.
     """
     for step in steps:
         if isinstance(step, Atlassian):
@@ -151,6 +154,7 @@ def sync(context: Context, steps: Sequence[Atlassian | Worklog]) -> Synced:
             message = "sources.worklog.path: not a folder"
             raise SyncRefusedError(message)
     rows: list[Row] = []
+    outcomes: set[Outcome] = set()
     try:
         for step in steps:
             if isinstance(step, Atlassian):
@@ -159,8 +163,14 @@ def sync(context: Context, steps: Sequence[Atlassian | Worklog]) -> Synced:
                 worklog(context, step, rows.append)
     except KeyboardInterrupt:
         context.say("interrupted; no later step runs\n")
+        outcomes.add("interrupted")
         planned = [row for step in steps for row in step.rows]
         stopped = len(rows)
-        rows.extend(Row(name, "not run", None) for name in planned[stopped:])
-        rows[stopped] = Row(planned[stopped], "interrupted", None)
-    return Synced(exit_status(row.outcome for row in rows), tuple(rows))
+        rows.extend(
+            Row(name, "interrupted" if index == stopped else "not run", None)
+            for index, name in enumerate(planned)
+            if index >= stopped
+        )
+    outcomes.update(row.outcome for row in rows)
+    status = next((status for outcome, status in RANKED if outcome in outcomes), ExitStatus.OK)
+    return Synced(status, tuple(rows))
