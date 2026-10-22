@@ -10,8 +10,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.app import evaluation
-from atlassian_offline_mcp.app.evaluation import (
+from atlassian_offline_mcp.cli import main
+from atlassian_offline_mcp.config.domain.settings import Settings
+from atlassian_offline_mcp.evaluation.app import evaluation
+from atlassian_offline_mcp.evaluation.app.evaluation import (
     EvaluationError,
     GoldenError,
     evaluate,
@@ -19,9 +21,7 @@ from atlassian_offline_mcp.app.evaluation import (
     record,
     table,
 )
-from atlassian_offline_mcp.cli import main
-from atlassian_offline_mcp.config.domain.settings import Settings
-from atlassian_offline_mcp.domain.evaluation import holm
+from atlassian_offline_mcp.evaluation.domain.evaluation import holm
 from atlassian_offline_mcp.mcp.app.tools import Library
 from atlassian_offline_mcp.search.adapters.embedding import ModelError
 from atlassian_offline_mcp.search.adapters.sqlite_index import reading

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from atlassian_offline_mcp.domain.evaluation import (
+from atlassian_offline_mcp.evaluation.domain.evaluation import (
     CUTOFF,
     SAMPLES,
     SEED,

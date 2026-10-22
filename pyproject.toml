@@ -45,8 +45,6 @@ type = "layers"
 layers = [
   "atlassian_offline_mcp.cli",
   "atlassian_offline_mcp.commands",
-  "atlassian_offline_mcp.app",
-  "atlassian_offline_mcp.domain",
 ]
 
 [[tool.importlinter.contracts]]
@@ -56,7 +54,7 @@ source_modules = [
   "atlassian_offline_mcp.mcp.app.tools",
   "atlassian_offline_mcp.search.app.meaning",
   "atlassian_offline_mcp.search.app.indexing",
-  "atlassian_offline_mcp.app.evaluation",
+  "atlassian_offline_mcp.evaluation.app.evaluation",
   "atlassian_offline_mcp.commands.serve",
   "atlassian_offline_mcp.commands.index",
   "atlassian_offline_mcp.commands.evaluate",
@@ -71,6 +69,6 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 name = "Use cases and commands reach the network through the adapters alone"
 type = "forbidden"
-source_modules = ["atlassian_offline_mcp.app", "atlassian_offline_mcp.commands"]
+source_modules = ["atlassian_offline_mcp.commands"]
 forbidden_modules = ["httpx"]
 allow_indirect_imports = true
