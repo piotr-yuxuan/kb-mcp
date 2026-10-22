@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from structlog.testing import capture_logs
 
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
@@ -307,6 +308,29 @@ def test_a_space_is_listed_whole_with_its_folders_and_authors(tmp_path: Path) ->
     ]
     assert sorted(folder.id for folder in store.folders(SPACE)) == ["2001", "2002"]  # type: ignore[union-attr]
     assert [user.display_name for user in store.users()] == ["A Person"]  # type: ignore[union-attr]
+
+
+def test_a_run_reports_its_targets_their_listings_documents_and_probes(tmp_path: Path) -> None:
+    """Each task's last event progress, as it ends: the space's, its probes, the project's.
+
+    The space's pages are listed in two pages, its blog posts in one; it lists three
+    pages and a post. Nothing was stored before, so nothing is probed. The search reads
+    one page of two issues.
+    """
+    with capture_logs() as events:
+        run(RawStore(tmp_path / "raw"), FakeSite())
+    assert [
+        (event["task"], event["done"], event["total"])
+        for event in events
+        if event["event"] == "progress"
+    ] == [
+        ("listing", 3, None),
+        ("documents", 4, 4),
+        ("probes", 0, 0),
+        ("listing", 1, None),
+        ("documents", 2, 2),
+        ("targets", 2, 2),
+    ]
 
 
 def test_a_second_run_fetches_no_document_again(tmp_path: Path) -> None:

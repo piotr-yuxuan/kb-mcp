@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal
 from atlassian_offline_mcp.kernel.content import IDENTIFIER, BlogPost, Issue, Page
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
+from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 from atlassian_offline_mcp.sources.atlassian.adapters.http import (
     SignInNeededError,
@@ -136,7 +137,8 @@ class Download:
 
         Raises SignInNeededError, before anything is written, when the session no longer
         holds. A source that does not answer at all (a site without Jira) is counted as a
-        failure, and its targets skipped.
+        failure, and its targets skipped. The task ``targets`` reports those of the
+        sources that answer, each by its key.
         """
         confluence = bool(spaces) and self.reachable(
             "confluence", confluence_v2.current_user_request(), confluence_v2.signed_in
@@ -144,16 +146,19 @@ class Download:
         jira = bool(projects) and self.reachable(
             "jira", jira_v3.myself_request(), jira_v3.signed_in
         )
-        for key in spaces if confluence else ():
-            target = Target("confluence", key)
-            if self.space(key, self.windows.get(target, self.period)):
-                self.covered.append(target)
-        if not self.plan:
-            self.probe_absent()
-        for key in projects if jira else ():
-            target = Target("jira", key)
-            if self.project(key, self.windows.get(target, self.period)):
-                self.covered.append(target)
+        answered_spaces = spaces if confluence else ()
+        answered_projects = projects if jira else ()
+        with task("targets", len(answered_spaces) + len(answered_projects)) as targets:
+            for key in targets.each(answered_spaces, str):
+                target = Target("confluence", key)
+                if self.space(key, self.windows.get(target, self.period)):
+                    self.covered.append(target)
+            if not self.plan:
+                self.probe_absent()
+            for key in targets.each(answered_projects, str):
+                target = Target("jira", key)
+                if self.project(key, self.windows.get(target, self.period)):
+                    self.covered.append(target)
         if not self.plan:
             self.users()
 
@@ -171,12 +176,18 @@ class Download:
             raise SignInNeededError
         return True
 
-    def collect(self, request: Request, read_page: ReadPage) -> list[object]:
-        """Follow a paged listing to its end, and return every result as received."""
+    def collect(
+        self, request: Request, read_page: ReadPage, paged: Callable[[], None] = lambda: None
+    ) -> list[object]:
+        """Follow a paged listing to its end, and return every result as received.
+
+        ``paged`` hears of each page read.
+        """
         results: list[object] = []
         for _ in range(MAX_PAGES):
             page, following = read_page(Fields(self.site.json(request), "response"), request)
             results += [item.value for item in page]
+            paged()
             if following is None:
                 return results
             request = following
@@ -197,7 +208,9 @@ class Download:
     def space(self, key: str, period: Period) -> bool:
         """List a space whole, store its listings, and fetch what changed in the period.
 
-        Return whether the space was listed whole.
+        The task ``listing`` reports the pages of its listings read, and the task
+        ``documents`` the documents it lists, each by its id. Return whether the space
+        was listed whole.
         """
         try:
             found = self.collect(confluence_v2.space_request(key), confluence_v2.listing_page)
@@ -208,8 +221,9 @@ class Download:
                 return False
             page_listing = confluence_v2.listing_request(space.id, Page)
             post_listing = confluence_v2.listing_request(space.id, BlogPost)
-            pages = self.collect(page_listing, confluence_v2.listing_page)
-            posts = self.collect(post_listing, confluence_v2.listing_page)
+            with task("listing") as listing:
+                pages = self.collect(page_listing, confluence_v2.listing_page, listing.advance)
+                posts = self.collect(post_listing, confluence_v2.listing_page, listing.advance)
         except (RepresentationError, SiteError) as error:
             self.failed_targets.append(f"space {key}: {error}")
             self.report.failed("confluence spaces", error)
@@ -225,8 +239,9 @@ class Download:
             self.track(space.id, listed)
             folders = self.folders(pages)
             self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
-        for document in documents:
-            self.consider(document, period)
+        with task("documents", len(documents)) as considered:
+            for document in considered.each(documents, lambda listed: listed.id):
+                self.consider(document, period)
         return True
 
     def track(self, space_id: str, listed: Mapping[type[Document], set[str]]) -> None:
@@ -259,7 +274,8 @@ class Download:
         on their way first; the rest stay pending. A document answering from another
         space is followed there once that space's stored listing names it, and stays
         pending until then. Raises SignInNeededError when too many answer gone and the
-        session no longer holds; when the site does not answer, nothing is believed.
+        session no longer holds; when the site does not answer, nothing is believed. The
+        task ``probes`` reports a space's probes, each by its document's id.
         """
         canary = (confluence_v2.current_user_request(), confluence_v2.signed_in)
         kept = {each.id for each in self.store.spaces() if not isinstance(each, Unreadable)}
@@ -267,7 +283,12 @@ class Download:
             known = {k: s for k, s in self.tombstones.items() if s.space_id == space_id}
             # By the tombstones as they stood before this run: those on their way first.
             order = probing_order(absent, before)[:MAX_PROBES]
-            answers = {k: a for k in order if (a := self.probe(k, kept))}
+            with task("probes", len(order)) as probes:
+                answers = {
+                    k: a
+                    for k in probes.each(order, lambda key: key[1])
+                    if (a := self.probe(k, kept))
+                }
             if too_many_gone(answers, stored) and not self.reachable("confluence", *canary):
                 answers = {}  # the site stopped answering: believe none of these answers
             now = after_probes(known, absent, answers, self.now())
@@ -333,20 +354,26 @@ class Download:
     def project(self, key: str, period: Period) -> bool:
         """Search a project's issues updated in the period, and fetch what changed.
 
-        Return whether the search was read whole.
+        The task ``listing`` reports the pages of the search read, and the task
+        ``documents`` the issues found, each by its id. Return whether the search was
+        read whole.
         """
         start = (period.start - JQL_MARGIN).date()
         end = (period.end + JQL_MARGIN).date()
         try:
-            entries = self.collect(jira_v3.search_request(key, start, end), jira_v3.search_page)
+            with task("listing") as listing:
+                search = jira_v3.search_request(key, start, end)
+                entries = self.collect(search, jira_v3.search_page, listing.advance)
         except (RepresentationError, SiteError) as error:
             self.failed_targets.append(f"project {key}: {error}")
             self.report.failed("jira projects", error)
             return False
         if self.plan:
             self.count_files(entries, period)
-        for issue in self.documents(Issue, entries):
-            self.consider(issue, period)
+        issues = self.documents(Issue, entries)
+        with task("documents", len(issues)) as considered:
+            for issue in considered.each(issues, lambda listed: listed.id):
+                self.consider(issue, period)
         return True
 
     def count_files(self, entries: Iterable[object], period: Period) -> None:
