@@ -242,6 +242,20 @@ def test_bars_are_drawn_while_a_task_runs_and_the_last_to_end_takes_them_away() 
     assert out.endswith("\x1b[?25h")
 
 
+def test_a_task_begun_once_the_bars_are_gone_brings_them_back() -> None:
+    """As index's texts to embed after its files: each is drawn, the cursor hidden for each."""
+    console = Console(file=io.StringIO(), force_terminal=True, color_system=None, width=100)
+    tasks = ("files", "texts to embed")
+    with progress.drawn(Bars(console, shown=True)):
+        for what in tasks:
+            with progress.task(what, 1) as running:
+                running.advance()
+    out = written(console)
+    for what in tasks:
+        assert re.search(rf"{what} [━╸╺ ]+ 1/1 ", out)
+    assert out.count("\x1b[?25l") == out.count("\x1b[?25h") == len(tasks)
+
+
 def test_bars_not_shown_draw_nothing() -> None:
     """As piped, or with -q: the task runs, and the console is left as it was."""
     console = Console(file=io.StringIO(), force_terminal=True, width=100)
