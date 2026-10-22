@@ -23,8 +23,9 @@ if TYPE_CHECKING:
 
 MEBIBYTE = 1024 * 1024
 # The counts that a short summary shows: the documents fetched, or to fetch, of each kind,
-# and the files downloaded, or to download.
+# and the files downloaded, or to download; then how a run stopped, if it did.
 SHORT_COUNTS = (": fetched", ": to fetch", "files: downloaded", "files: to download")
+STOPPED = "runs: "
 
 
 def targets_of(arguments: argparse.Namespace, settings: Settings, now: datetime) -> Targets:
@@ -73,12 +74,13 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
 def text(outcome: Outcome, summary: Summary) -> str:
     """Write the documents fetched by kind and the files, or those a dry run would; then failures.
 
-    In detail, every count of what the run did, or would do, comes before the failures.
+    Short also says how a run stopped, if it did; detailed gives every count of what the
+    run did, or would do. The failures come last.
     """
     shown = [
         (what, number)
         for what, number in sorted(outcome.report.counts.items())
-        if summary == "detailed" or what.endswith(SHORT_COUNTS)
+        if summary == "detailed" or what.endswith(SHORT_COUNTS) or what.startswith(STOPPED)
     ]
     return "".join(f"{what}: {number}\n" for what, number in shown) + (
         f"failures: {outcome.report.failures}\n"

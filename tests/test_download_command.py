@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections import Counter
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,9 +12,11 @@ import pytest
 from atlassian_offline_mcp.cli.commands import download as download_command
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report
 from tests.test_download import SITE, FakeSite
 
 if TYPE_CHECKING:
@@ -87,6 +90,23 @@ def test_a_download_in_detail_shows_every_count_then_the_failures(
         "files failed: status 404: 1",
     } <= set(counts)
     assert failures == "failures: 1"
+
+
+def test_a_stopped_download_says_why_in_short(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Too many failures in a row stop a run: short says so, else it reads as a whole run."""
+    counts = {
+        "confluence pages: fetched": 3,
+        "confluence pages failed: status 503": 5,
+        "runs: stopped, too many failures in a row": 1,
+    }
+    stopped = Outcome(Report(Counter(counts)), [], ExitStatus.FAILED)
+    monkeypatch.setattr(download_command, "download", lambda *_: stopped)
+    assert main(command(home, "--site", SITE, "--space", "MFS")) == SOME_FAILED
+    assert capsys.readouterr().out == (
+        "confluence pages: fetched: 3\nruns: stopped, too many failures in a row: 1\nfailures: 5\n"
+    )
 
 
 def test_a_dry_run_shows_what_it_would_fetch(
