@@ -257,9 +257,10 @@ def embeddings(
     """Embed texts with a model, each to a unit vector, in the order given.
 
     ``dimensions``, when not 0, is the length that every vector must have. The tokens are
-    the answer's ``usage.prompt_tokens``, None when it gives none or null; any other
-    value there but an integer of 0 or more refuses the answer. Raises RefusedError when
-    the answer points at what was sent, and ModelError otherwise.
+    the answer's ``usage.prompt_tokens``, None when it gives none or null; a ``usage``
+    that is not an object, or any value there but an integer of 0 or more, refuses the
+    answer. Raises RefusedError when the answer points at what was sent, and ModelError
+    otherwise.
     The embedding is a span ``embeddings <model>`` that holds its attempts, and its
     duration is measured, as the GenAI conventions have them.
     """
@@ -290,8 +291,7 @@ def embeddings(
             items = sorted(answer["data"], key=lambda item: item["index"])
             indexes = [item["index"] for item in items]
             vectors = np.array([item["embedding"] for item in items])
-            tokens = (answer.get("usage") or {}).get("prompt_tokens")
-        except (ValueError, KeyError, TypeError, AttributeError, RecursionError) as error:
+        except (ValueError, KeyError, TypeError, RecursionError) as error:
             message = f"{model}: the endpoint's answer is not embeddings ({type(error).__name__})"
             raise ModelError(message) from None
         wanted = (len(texts), dimensions or vectors.shape[-1])
@@ -303,8 +303,12 @@ def embeddings(
         ):
             message = f"{model}: the endpoint's answer is not one vector of {wanted[1]} per text"
             raise ModelError(message)
-        if tokens is not None and (type(tokens) is not int or tokens < 0):
-            message = f"{model}: the endpoint's usage.prompt_tokens is not a count of tokens"
+        usage = answer.get("usage")  # an object, since its "data" was read
+        tokens = usage.get("prompt_tokens") if type(usage) is dict else None
+        if (usage is not None and type(usage) is not dict) or (
+            tokens is not None and (type(tokens) is not int or tokens < 0)
+        ):
+            message = f"{model}: the endpoint's usage is not a count of tokens"
             raise ModelError(message)
         norms = np.linalg.norm(vectors, axis=1, keepdims=True)
         if not np.all(np.isfinite(norms) & (norms > 0)):
@@ -381,9 +385,8 @@ class ApiEmbedder:
 
     @property
     def tokens(self) -> int | None:
-        """Sum the tokens that the endpoint counted for ``documents``; None if it counted none."""
-        counts = [count for count in self.counted if count is not None]
-        return sum(counts) if counts else None
+        """Sum the tokens counted for ``documents`` so far; None unless every answer counted."""
+        return None if not self.counted or None in self.counted else sum(self.counted)
 
     @property
     def fingerprint(self) -> str:
