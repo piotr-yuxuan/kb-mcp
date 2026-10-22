@@ -67,6 +67,6 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
         problem = unsafe_location(resolved, home, git_root(resolved))
         if problem is not None:
             where = "" if place == settings.data_dir else f"{place.name}: "
-            message = f"data_dir: {where}{problem}"
+            message = f"data_dir ({loaded.layer('data_dir')}): {where}{problem}"
             raise UnsafeDataDirError(message)
     return Loaded(settings, loaded.layers, (*unread, *loaded.ignored))

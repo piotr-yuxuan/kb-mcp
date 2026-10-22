@@ -336,7 +336,7 @@ def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture
 def test_check_refuses_a_data_directory_that_could_leave_the_machine(
     home: Path, data_dir: str, reason: str, capsys: CaptureFixture[str]
 ) -> None:
-    """A synchronised folder or a git working tree exits 2, naming the setting and why.
+    """A synchronised folder or a git working tree exits 2, naming the setting, its layer, why.
 
     The path is judged once resolved, so neither ``..`` nor a link hides where it leads.
     """
@@ -350,8 +350,23 @@ def test_check_refuses_a_data_directory_that_could_leave_the_machine(
         main(["check", "--config", str(home / "none.toml"), "--data-dir", data_dir]) == BAD_SETTINGS
     )
     error = capsys.readouterr().err
-    assert "data_dir" in error
+    assert "data_dir (--data-dir): " in error
     assert reason in error
+
+
+def test_check_names_the_layer_of_a_refused_data_directory(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The file's data directory, then the variable's, each refused naming its layer."""
+    config = home / "config.toml"
+    config.write_text('data_dir = "~/Dropbox/from-file"\n', "utf-8")
+    assert main(["check", "--config", str(config)]) == BAD_SETTINGS
+    assert "data_dir (config.toml): under a Dropbox folder" in capsys.readouterr().err
+
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_DATA_DIR", "~/Documents/from-variable")
+    assert main(["check", "--config", str(config)]) == BAD_SETTINGS
+    error = capsys.readouterr().err
+    assert "data_dir (ATLASSIAN_OFFLINE_MCP_DATA_DIR): under ~/Documents" in error
 
 
 def test_check_refuses_bad_settings_by_name(home: Path, capsys: CaptureFixture[str]) -> None:
@@ -412,7 +427,7 @@ def test_check_refuses_a_part_of_the_data_directory_that_leads_elsewhere(
     (home / "atlassian-offline-mcp").mkdir()
     (home / "atlassian-offline-mcp" / "docs").symlink_to(home / "Dropbox" / "shared")
     assert main(["check", "--config", str(home / "none.toml")]) == BAD_SETTINGS
-    assert "data_dir: docs: under a Dropbox folder" in capsys.readouterr().err
+    assert "data_dir (default): docs: under a Dropbox folder" in capsys.readouterr().err
 
 
 def test_check_refuses_a_raw_store_that_leads_into_a_git_tree(
@@ -423,7 +438,7 @@ def test_check_refuses_a_raw_store_that_leads_into_a_git_tree(
     (home / "atlassian-offline-mcp").mkdir()
     (home / "atlassian-offline-mcp" / "raw").symlink_to(home / "project")
     assert main(["check", "--config", str(home / "none.toml")]) == BAD_SETTINGS
-    assert "data_dir: raw: inside the git working tree" in capsys.readouterr().err
+    assert "data_dir (default): raw: inside the git working tree" in capsys.readouterr().err
 
 
 def test_check_refuses_a_settings_file_it_cannot_read(

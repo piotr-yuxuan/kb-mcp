@@ -175,7 +175,9 @@ def test_refused_settings_exit_before_serving(tmp_path: Path, capsys: CaptureFix
     dropbox = tmp_path / "Dropbox" / "data"
     config = str(tmp_path / "none.toml")
     assert main(["serve", "--config", config, "--data-dir", str(dropbox)]) == BAD_SETTINGS
-    assert "settings refused: data_dir: under a Dropbox folder" in capsys.readouterr().err
+    assert (
+        "settings refused: data_dir (--data-dir): under a Dropbox folder" in capsys.readouterr().err
+    )
 
 
 def test_a_hybrid_search_answers_by_meaning_over_stdio_offline(tmp_path: Path) -> None:

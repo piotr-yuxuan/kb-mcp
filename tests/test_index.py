@@ -178,7 +178,9 @@ def test_refused_settings_exit_2(data: Path, capsys: CaptureFixture[str]) -> Non
     dropbox = data.parent / "home" / "Dropbox" / "data"
     status = main(["index", "--config", str(data / "none.toml"), "--data-dir", str(dropbox)])
     assert status == BAD_SETTINGS
-    assert "settings refused: data_dir: under a Dropbox folder" in capsys.readouterr().err
+    assert (
+        "settings refused: data_dir (--data-dir): under a Dropbox folder" in capsys.readouterr().err
+    )
 
 
 def test_reading_opens_read_only(data: Path, monkeypatch: MonkeyPatch) -> None:
