@@ -243,13 +243,23 @@ def send(
     raise ModelError(message)
 
 
-def embed(
+@dataclass(frozen=True)
+class Embeddings:
+    """What the endpoint gave for texts: a unit vector each, and the tokens it counted."""
+
+    vectors: Vectors
+    tokens: int | None  # the answer's usage.prompt_tokens, None when it says none
+
+
+def embeddings(
     endpoint: Endpoint, model: str, texts: Sequence[str], bounds: Bounds, dimensions: int = 0
-) -> Vectors:
+) -> Embeddings:
     """Embed texts with a model, each to a unit vector, in the order given.
 
-    ``dimensions``, when not 0, is the length that every vector must have. Raises
-    RefusedError when the answer points at what was sent, and ModelError otherwise.
+    ``dimensions``, when not 0, is the length that every vector must have. The tokens are
+    the answer's ``usage.prompt_tokens``, None when it gives none or null; any other
+    value there but an integer of 0 or more refuses the answer. Raises RefusedError when
+    the answer points at what was sent, and ModelError otherwise.
     The embedding is a span ``embeddings <model>`` that holds its attempts, and its
     duration is measured, as the GenAI conventions have them.
     """
@@ -276,10 +286,12 @@ def embed(
             message = f"{model}: the endpoint answered {status}"
             raise (RefusedError if status in REFUSING else ModelError)(message)
         try:
-            items = sorted(json.loads(body)["data"], key=lambda item: item["index"])
+            answer = json.loads(body)
+            items = sorted(answer["data"], key=lambda item: item["index"])
             indexes = [item["index"] for item in items]
             vectors = np.array([item["embedding"] for item in items])
-        except (ValueError, KeyError, TypeError, RecursionError) as error:
+            tokens = (answer.get("usage") or {}).get("prompt_tokens")
+        except (ValueError, KeyError, TypeError, AttributeError, RecursionError) as error:
             message = f"{model}: the endpoint's answer is not embeddings ({type(error).__name__})"
             raise ModelError(message) from None
         wanted = (len(texts), dimensions or vectors.shape[-1])
@@ -291,11 +303,21 @@ def embed(
         ):
             message = f"{model}: the endpoint's answer is not one vector of {wanted[1]} per text"
             raise ModelError(message)
+        if tokens is not None and (type(tokens) is not int or tokens < 0):
+            message = f"{model}: the endpoint's usage.prompt_tokens is not a count of tokens"
+            raise ModelError(message)
         norms = np.linalg.norm(vectors, axis=1, keepdims=True)
         if not np.all(np.isfinite(norms) & (norms > 0)):
             message = f"{model}: the endpoint gave a vector of no length, or not of numbers"
             raise ModelError(message)
-        return (vectors / norms).astype(np.float32)
+        return Embeddings((vectors / norms).astype(np.float32), tokens)
+
+
+def embed(
+    endpoint: Endpoint, model: str, texts: Sequence[str], bounds: Bounds, dimensions: int = 0
+) -> Vectors:
+    """Embed texts with a model, each to a unit vector, as ``embeddings`` does; no tokens."""
+    return embeddings(endpoint, model, texts, bounds, dimensions).vectors
 
 
 def ollama_name(name: str) -> str:
@@ -354,6 +376,14 @@ class ApiEmbedder:
     digest: str
     dimensions: int
     prefixes: Prefixes
+    # The tokens that the endpoint counted in each answer to ``documents``, if it did.
+    counted: list[int | None] = field(default_factory=list, init=False, compare=False)
+
+    @property
+    def tokens(self) -> int | None:
+        """Sum the tokens that the endpoint counted for ``documents``; None if it counted none."""
+        counts = [count for count in self.counted if count is not None]
+        return sum(counts) if counts else None
 
     @property
     def fingerprint(self) -> str:
@@ -389,14 +419,18 @@ class ApiEmbedder:
         for start in range(0, len(texts), BATCH):
             batch = [self.prefixes.document + text for text in texts[start : start + BATCH]]
             try:
-                found += list(embed(self.endpoint, self.name, batch, DOCUMENTS, self.dimensions))
+                answer = embeddings(self.endpoint, self.name, batch, DOCUMENTS, self.dimensions)
+                found += list(answer.vectors)
+                self.counted.append(answer.tokens)
             except RefusedError:
                 alone: list[NDArray[np.float32] | None] = []
                 for text in batch:
                     try:
-                        alone.append(
-                            embed(self.endpoint, self.name, [text], SINGLE, self.dimensions)[0]
+                        answer = embeddings(
+                            self.endpoint, self.name, [text], SINGLE, self.dimensions
                         )
+                        alone.append(answer.vectors[0])
+                        self.counted.append(answer.tokens)
                     except RefusedError:
                         alone.append(None)
                 if all(vector is None for vector in alone):
