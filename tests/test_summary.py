@@ -98,11 +98,17 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
     assert SECRETS[CREDENTIAL] not in out + err
 
 
-@pytest.mark.parametrize("command", [["doctor"], ["download", "--yes", "--space", "ENG"]])
+@pytest.mark.parametrize(
+    "command", [["doctor"], ["download", "--yes", "--site", SITE, "--space", "ENG"]]
+)
+@pytest.mark.usefixtures("runs")
 def test_an_email_without_a_token_is_ignored(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], command: list[str]
 ) -> None:
-    """Without a token the browser's session signs in; with one, the email is not ignored."""
+    """Without a token the browser's session signs in; with one, the email is not ignored.
+
+    The download's run is left out: what is ignored is said before it.
+    """
     monkeypatch.setenv("PATH", str(home))
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
     options = [*command, "--config", str(home / "none.toml")]

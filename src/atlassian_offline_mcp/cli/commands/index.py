@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint, prefixes_said
-from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
 from atlassian_offline_mcp.search.app.indexing import Embedding, MirrorMissingError, build_index
@@ -47,11 +46,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Inde
     the index in place stays, with its vectors, and nothing is given.
     """
     settings = loaded.settings
-    try:
-        opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
-    except SettingsError as error:
-        sys.stderr.write(f"settings refused: {error}\n")
-        return ExitStatus.REFUSED, None
+    opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
     with opened or contextlib.nullcontext():
         try:
             embedder = None if opened is None else connect(opened, settings.model)

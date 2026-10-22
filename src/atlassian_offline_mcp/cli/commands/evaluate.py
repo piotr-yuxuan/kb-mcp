@@ -10,7 +10,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
-from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.evaluation.app.evaluation import (
     DIVIDER,
     HEADER,
@@ -46,7 +45,7 @@ class Evaluated:
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Evaluated | None]:
-    """Evaluate; exit 1 when something failed, 2 for bad settings or a refused golden file.
+    """Evaluate; exit 1 when something failed, 2 for a refused golden file.
 
     The results, ids and numbers only, go to ``<data>/eval/results/<UTC time>.json``.
     """
@@ -54,13 +53,12 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
     try:
         golden = arguments.golden.read_text(encoding="utf-8")
         questions = read_golden(golden, Library(settings.index, settings.docs).resolve)
-        opened = open_endpoint(arguments, settings)
-    except (SettingsError, GoldenError, OSError, UnanswerableError) as error:
+    except (GoldenError, OSError, UnanswerableError) as error:
         sys.stderr.write(f"refused: {error}\n")
         return ExitStatus.REFUSED, None
     built_at = datetime.now(UTC)
     try:
-        with opened:
+        with open_endpoint(arguments, settings) as opened:
             embedders = [connect(opened, name) for name in arguments.model or [settings.model]]
             runs = evaluate(settings, questions, embedders, time.perf_counter, built_at)
     except (ModelError, EvaluationError) as error:

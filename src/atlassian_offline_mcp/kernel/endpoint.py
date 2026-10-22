@@ -42,3 +42,21 @@ def loopback(url: str) -> bool:
         return ipaddress.ip_address(endpoint_host(url) or "").is_loopback
     except ValueError:
         return False
+
+
+def refused_endpoint(url: str, *, remote_allowed: bool) -> str | None:
+    """Say why a run may not send the mirror's text to an endpoint, or None when it may.
+
+    An address that is not a literal one of this machine needs the run's word,
+    ``remote_allowed``, and https even then.
+    """
+    if loopback(url):
+        return None
+    if not remote_allowed:
+        return (
+            "embedding_url: not an address of this machine, where the mirror's text would"
+            " go; write 127.0.0.1 for this one, or pass --allow-remote-embeddings"
+        )
+    if not url.startswith("https://"):
+        return "embedding_url: an endpoint off this machine is reached over https only"
+    return None

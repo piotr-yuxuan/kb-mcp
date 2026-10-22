@@ -13,6 +13,7 @@ from atlassian_offline_mcp.cli.options._common import (
     add_output_options,
     add_settings_options,
     add_yes_option,
+    endpoint_elsewhere,
     model_name,
 )
 
@@ -45,5 +46,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             flags=flags,
             actions=(*actions, remote, golden, models),
             writes=True,
+            refused=endpoint_elsewhere,
         )
     )

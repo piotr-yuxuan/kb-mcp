@@ -9,6 +9,7 @@ from atlassian_offline_mcp.cli.options._common import (
     add_embedding_options,
     add_output_options,
     add_settings_options,
+    endpoint_by_meaning,
 )
 
 if TYPE_CHECKING:
@@ -28,5 +29,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             reads=("data_dir", "search_mode", "embedding_url", "embedding_api_key"),
             flags=flags,
             actions=(*actions, remote),
+            refused=endpoint_by_meaning,
         )
     )

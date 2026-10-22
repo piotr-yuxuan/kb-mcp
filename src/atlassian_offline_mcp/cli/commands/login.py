@@ -27,22 +27,20 @@ class SignedIn:
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, SignedIn | None]:
-    """Sign in; exit 2 without a site, 3 when no sign-in completes.
+    """Sign in to the site, which the declaration requires; exit 3 when no sign-in completes.
 
     What to do in the window goes to stderr, with the messages, so that stdout holds
     the result alone.
     """
     settings = loaded.settings
-    if settings.site is None:
-        sys.stderr.write("settings refused: site: not set; add it to the settings or pass --site\n")
-        return ExitStatus.REFUSED, None
-    sys.stderr.write(f"Sign in to {settings.site} in the Chrome window that opens.\n")
+    site = str(settings.site)
+    sys.stderr.write(f"Sign in to {site} in the Chrome window that opens.\n")
     try:
-        login(settings, settings.site, arguments.chrome, extensions=arguments.keep_extensions)
+        login(settings, site, arguments.chrome, extensions=arguments.keep_extensions)
     except SignInFailedError as error:
         sys.stderr.write(f"not signed in: {error}\n")
         return ExitStatus.SIGN_IN_AGAIN, None
-    return ExitStatus.OK, SignedIn(settings.site, settings.session)
+    return ExitStatus.OK, SignedIn(site, settings.session)
 
 
 def text(_signed_in: SignedIn, _summary: Summary) -> str:

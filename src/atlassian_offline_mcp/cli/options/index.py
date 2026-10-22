@@ -10,6 +10,7 @@ from atlassian_offline_mcp.cli.options._common import (
     add_output_options,
     add_settings_options,
     add_yes_option,
+    endpoint_by_meaning,
 )
 
 if TYPE_CHECKING:
@@ -44,5 +45,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             actions=(*actions, remote),
             writes=True,
             unapplied=by_words_alone,
+            refused=endpoint_by_meaning,
         )
     )

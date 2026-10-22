@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import contextlib
 import functools
-import sys
 from typing import TYPE_CHECKING
 
 from mcp.server.mcpserver import MCPServer
@@ -17,7 +16,6 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
-from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.search.adapters.embedding import connect
@@ -67,17 +65,13 @@ def refusing(method: Callable[..., str]) -> Callable[..., str]:
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None]:
-    """Serve until the client closes stdin; exit 2 when the settings are refused.
+    """Serve until the client closes stdin.
 
     The lexical mode never opens the embedding endpoint. The protocol is the output:
     no result is given.
     """
     settings = loaded.settings
-    try:
-        opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
-    except SettingsError as error:
-        sys.stderr.write(f"settings refused: {error}\n")
-        return ExitStatus.REFUSED, None
+    opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
     with opened or contextlib.nullcontext():
         meaning = None if opened is None else Meaning(functools.partial(connect, opened))
         library = Library(settings.index, settings.docs, meaning, settings.search_mode)

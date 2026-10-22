@@ -197,7 +197,7 @@ def test_by_meaning_an_endpoint_elsewhere_needs_the_flag_and_https(
     remote = 'search_mode = "hybrid"\nembedding_url = "https://embeddings.example/v1"\n'
     status, _, err = index(data, capsys, remote)
     assert status == BAD_SETTINGS
-    assert "settings refused: embedding_url: not an address of this machine" in err
+    assert "refused: embedding_url: not an address of this machine" in err
     config = data.parent / "config.toml"
     config.write_text(
         'search_mode = "hybrid"\nembedding_url = "http://embeddings.example/v1"\n',

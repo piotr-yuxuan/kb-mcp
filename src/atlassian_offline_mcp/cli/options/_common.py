@@ -10,6 +10,7 @@ from argcomplete.completers import DirectoriesCompleter, FilesCompleter
 
 from atlassian_offline_mcp.config.adapters.settings_file import SETTINGS_PATH
 from atlassian_offline_mcp.kernel.content import MODEL_NAME
+from atlassian_offline_mcp.kernel.endpoint import refused_endpoint
 from atlassian_offline_mcp.kernel.output import FORMATS, LEVELS, SUMMARIES
 
 if TYPE_CHECKING:
@@ -122,3 +123,26 @@ def email_without_token(
     if settings["api_token"] is not None:
         return {}
     return {"email": "without an API token, the browser's session signs in"}
+
+
+def site_not_set(_arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
+    """Refuse a run that reaches the site when none is set."""
+    if settings["site"] is not None:
+        return None
+    return "site: not set; add it to the settings or pass --site"
+
+
+def endpoint_elsewhere(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
+    """Refuse an embedding endpoint off this machine without the run's word, or over http."""
+    return refused_endpoint(
+        str(settings["embedding_url"]), remote_allowed=arguments.allow_remote_embeddings
+    )
+
+
+def endpoint_by_meaning(
+    arguments: argparse.Namespace, settings: Mapping[str, object]
+) -> str | None:
+    """Refuse the endpoint as ``endpoint_elsewhere`` does, unless the lexical mode embeds none."""
+    if settings["search_mode"] == "lexical":
+        return None
+    return endpoint_elsewhere(arguments, settings)

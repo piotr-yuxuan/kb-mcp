@@ -26,28 +26,14 @@ MEBIBYTE = 1024 * 1024
 SHORT_COUNTS = (": fetched", ": to fetch", "files: downloaded", "files: to download")
 
 
-class RefusedOptionsError(ValueError):
-    """Options that cannot make a run; the message names the option or setting."""
-
-
 def targets_of(arguments: argparse.Namespace, settings: Settings, now: datetime) -> Targets:
-    """Read what a run downloads from the options and the settings; refuse what cannot run.
+    """Read what a run downloads from the options and the settings, checked before the run.
 
     --space and --project are settings' flags, which replace the settings' lists.
-    Raises RefusedOptionsError or PeriodError, naming the option at fault.
     """
-    spaces = list(settings.sources.confluence.spaces)
-    projects = list(settings.sources.jira.projects)
-    for problem, refused in (
-        ("site: not set; add it to the settings or pass --site", settings.site is None),
-        ("nothing to download: name a --space or a --project", not (spaces or projects)),
-        ("--max-file-mb: at least 1", arguments.max_file_mb < 1),
-    ):
-        if refused:
-            raise RefusedOptionsError(problem)
     return Targets(
-        spaces,
-        projects,
+        list(settings.sources.confluence.spaces),
+        list(settings.sources.jira.projects),
         arguments.max_file_mb * MEBIBYTE,
         since=moment(arguments.since, now, "--since") if arguments.since else None,
         back=length(arguments.back, "--back") if arguments.back else None,
@@ -67,7 +53,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
         targets = targets_of(arguments, settings, datetime.now(UTC))
         act = plan if arguments.dry_run else download
         outcome = act(settings, targets, lambda: datetime.now(UTC), time.sleep)
-    except (PeriodError, RefusedOptionsError, RepresentationError) as error:
+    except (PeriodError, RepresentationError) as error:
         sys.stderr.write(f"refused: {error}\n")
         return ExitStatus.REFUSED, None
     except StoreBusyError:

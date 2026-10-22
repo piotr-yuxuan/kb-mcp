@@ -9,6 +9,7 @@ from atlassian_offline_mcp.cli.options._common import (
     add_embedding_options,
     add_output_options,
     add_settings_options,
+    endpoint_elsewhere,
     model_name,
 )
 
@@ -33,5 +34,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             reads=("model", "embedding_url", "embedding_api_key"),
             flags=flags,
             actions=(*actions, remote, action, name),
+            refused=endpoint_elsewhere,
         )
     )

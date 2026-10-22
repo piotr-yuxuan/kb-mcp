@@ -10,6 +10,7 @@ from atlassian_offline_mcp.cli.options._common import (
     add_output_options,
     add_settings_options,
     add_yes_option,
+    site_not_set,
 )
 
 if TYPE_CHECKING:
@@ -45,5 +46,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             actions=(*actions, chrome, extensions),
             writes=True,
             unapplied=in_the_browser,
+            refused=site_not_set,
         )
     )

@@ -27,6 +27,15 @@ if TYPE_CHECKING:
 type Then = Literal["run", "ask", "refuse"]
 
 
+def values_of(loaded: Loaded) -> dict[str, object]:
+    """Give every setting's value by its path joined by dots, as a command's functions take them."""
+    return {
+        ".".join(path): reduce(getattr, path, loaded.settings)
+        for path, kind in SETTING_PATHS.items()
+        if kind != "table"
+    }
+
+
 def setting_line(loaded: Loaded, setting: str, *, detailed: bool) -> str:
     """Write a setting, by its path joined by dots, and its value; in detail, its layer too.
 
@@ -75,11 +84,7 @@ def before(
     if output.quiet and then != "ask":
         return "", then
     detailed = output.summary == "detailed"
-    values = {
-        ".".join(path): reduce(getattr, path, loaded.settings)
-        for path, kind in SETTING_PATHS.items()
-        if kind != "table"
-    }
+    values = values_of(loaded)
     unapplied = command.unapplied(arguments, values) if command.unapplied else {}
     ignored = [
         *loaded.ignored,

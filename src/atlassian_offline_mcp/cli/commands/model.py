@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint, prefixes_said
-from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
 
@@ -38,15 +37,10 @@ class Ready:
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ready | None]:
-    """Check; exit 1 when the endpoint or the model is not ready, 2 for refused settings."""
+    """Check; exit 1 when the endpoint or the model is not ready."""
     settings = loaded.settings
-    try:
-        opened = open_endpoint(arguments, settings)
-    except SettingsError as error:
-        sys.stderr.write(f"refused: {error}\n")
-        return ExitStatus.REFUSED, None
     name = arguments.name or settings.model
-    with opened:
+    with open_endpoint(arguments, settings) as opened:
         try:
             embedder = connect(opened, name)
         except ModelError as error:

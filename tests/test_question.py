@@ -40,15 +40,33 @@ INTERRUPTED = 130
 QUESTION = "Proceed? [y/N] "
 REFUSAL = "refused: no terminal to ask on; pass --yes to run without the question\n"
 WAIT = 30  # seconds for the child to ask, or to end
-# Each command that writes, by plan 015: what it needs besides options to be parsed, and
-# the module that runs it.
+# Each command that writes, by plan 015: what it needs besides options to be parsed and
+# to pass its declaration's checks, and the module that runs it.
 WRITING = {
-    "download": ([], "download"),
+    "download": (["--site", SITE, "--space", "MFS"], "download"),
     "eval": (["golden.yaml"], "evaluate"),
     "index": ([], "index"),
-    "login": ([], "login"),
+    "login": (["--site", SITE], "login"),
     "mirror": ([], "mirror"),
 }
+# An embedding endpoint off this machine, over https and over http.
+ELSEWHERE = {"ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": "https://embeddings.example/v1"}
+IN_CLEAR = {"ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": "http://embeddings.example/v1"}
+BY_MEANING = {"ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "hybrid"}
+# What plan 015 refuses without the network, before anything is asked: a command that
+# writes and its arguments, the variables set, and what the refusal names.
+REFUSED_FIRST = [
+    (["download", "--space", "MFS"], {}, "site: not set"),
+    (["download", "--site", SITE], {}, "nothing to download"),
+    (["download", *WRITING["download"][0], "--max-file-mb", "0"], {}, "--max-file-mb"),
+    (["download", *WRITING["download"][0], "--since", "yesterday"], {}, "--since"),
+    (["download", *WRITING["download"][0], "--until", "soon"], {}, "--until"),
+    (["download", *WRITING["download"][0], "--back", "7x"], {}, "--back"),
+    (["login"], {}, "site: not set"),
+    (["index"], BY_MEANING | ELSEWHERE, "embedding_url: not an address of this machine"),
+    (["index", "--allow-remote-embeddings"], BY_MEANING | IN_CLEAR, "over https only"),
+    (["eval", "golden.yaml"], ELSEWHERE, "embedding_url: not an address of this machine"),
+]
 
 
 class Terminal(io.StringIO):
@@ -273,6 +291,35 @@ def test_a_download_declined_or_refused_asks_the_site_nothing(
     status = main(["download", "--config", str(home / "none.toml"), *options])
     assert status == (DECLINED if terminal else REFUSED)
     assert fake.asked == []
+    assert tree(home) == before
+
+
+@pytest.mark.parametrize("refusal", REFUSED_FIRST)
+def test_what_needs_no_network_is_refused_before_anything_is_asked(
+    refusal: tuple[list[str], dict[str, str], str],
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    runs: list[tuple[argparse.Namespace, Loaded]],
+) -> None:
+    """On terminals, a yes waiting: exit 2 naming the fault, and no summary nor question.
+
+    stdin is left unread, the run is never reached, and the data is as it was.
+    """
+    arguments, variables, named = refusal
+    for variable, value in variables.items():
+        monkeypatch.setenv(variable, value)
+    (home / "data").mkdir()
+    before = tree(home)
+    stdin, stderr = Terminal("y\n"), Terminal()
+    given(monkeypatch, stdin, stderr)
+    name, *more = arguments
+    data = ["--config", str(home / "none.toml"), "--data-dir", str(home / "data")]
+    assert main([name, *data, *more]) == REFUSED
+    [said] = stderr.getvalue().splitlines()
+    assert said.startswith("refused: ")
+    assert named in said
+    assert stdin.read() == "y\n"
+    assert runs == []
     assert tree(home) == before
 
 

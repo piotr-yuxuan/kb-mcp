@@ -23,7 +23,7 @@ import numpy as np
 import truststore
 
 from atlassian_offline_mcp.config.domain.settings import SettingsError
-from atlassian_offline_mcp.kernel.endpoint import loopback
+from atlassian_offline_mcp.kernel.endpoint import loopback, refused_endpoint
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -169,16 +169,10 @@ def endpoint(
     environment's proxies are ignored, since one would carry the text away; redirects
     are never followed. ``transport`` replaces the network, for tests.
     """
+    refusal = refused_endpoint(url, remote_allowed=remote_allowed)
+    if refusal is not None:
+        raise SettingsError(refusal)
     here = loopback(url)
-    if not here and not remote_allowed:
-        message = (
-            "embedding_url: not an address of this machine, where the mirror's text would"
-            " go; write 127.0.0.1 for this one, or pass --allow-remote-embeddings"
-        )
-        raise SettingsError(message)
-    if not here and not url.startswith("https://"):
-        message = "embedding_url: an endpoint off this machine is reached over https only"
-        raise SettingsError(message)
     http = httpx.Client(
         base_url=url,
         headers={"Authorization": f"Bearer {key}"} if key else {},

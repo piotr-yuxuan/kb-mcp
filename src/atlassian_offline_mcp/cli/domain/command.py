@@ -17,6 +17,9 @@ type Unapplied = Callable[[argparse.Namespace, Mapping[str, object]], Mapping[st
 # What a run will do, in lines of the summary written before it acts: a pure function of
 # the same.
 type Described = Callable[[argparse.Namespace, Mapping[str, object]], tuple[str, ...]]
+# Why a run cannot go on, said before anything is asked, or None when it can: a pure
+# function of the same.
+type Refused = Callable[[argparse.Namespace, Mapping[str, object]], str | None]
 
 
 @dataclass(frozen=True)
@@ -38,8 +41,10 @@ class Command:
 
     ``unapplied``, if any, names what the run does not apply of the settings it reads,
     such as the model of an index built by words alone; ``described``, if any, gives the
-    lines that the summary ends with. Each lives in the command's own declaration and
-    names no type of ``config``, so that declaring the command stays light.
+    lines that the summary ends with; ``refused``, if any, says why the run cannot go
+    on, such as a download without a site, which exits 2 before the summary. Each lives
+    in the command's own declaration and names no type of ``config``, so that declaring
+    the command stays light.
     """
 
     name: str
@@ -51,6 +56,7 @@ class Command:
     dry_run: bool = False
     unapplied: Unapplied | None = None
     described: Described | None = None
+    refused: Refused | None = None
 
     def setting_flags(self) -> dict[str, tuple[str, str]]:
         """Map the ``dest`` of each flag among the actions to its option and its setting.

@@ -12,11 +12,13 @@ from atlassian_offline_mcp.cli.options._common import (
     add_settings_options,
     add_yes_option,
     email_without_token,
+    site_not_set,
 )
 from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
+from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, PeriodError, length, moment
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
 DEFAULT_MAX_FILE_MB = 50
 
@@ -32,6 +34,30 @@ def key_of(pattern_name: str) -> Callable[[str], str]:
         return text
 
     return check
+
+
+def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
+    """Refuse what no download can run with, before anything is asked: the first found.
+
+    No site; no space nor project; a largest file under 1 MB; an option of the period
+    that does not read. Whether one reads does not depend on when the run starts, so
+    the epoch stands for it.
+    """
+    named = settings["sources.confluence.spaces"] or settings["sources.jira.projects"]
+    faults = [
+        site_not_set(arguments, settings),
+        None if named else "nothing to download: name a --space or a --project",
+        None if arguments.max_file_mb >= 1 else "--max-file-mb: at least 1",
+    ]
+    try:
+        for option, text in (("--since", arguments.since), ("--until", arguments.until)):
+            if text is not None:
+                moment(text, EPOCH, option)
+        if arguments.back is not None:
+            length(arguments.back, "--back")
+    except PeriodError as error:
+        faults.append(str(error))
+    return next((fault for fault in faults if fault is not None), None)
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -79,5 +105,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             writes=True,
             dry_run=True,
             unapplied=email_without_token,
+            refused=refused,
         )
     )
