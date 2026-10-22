@@ -90,6 +90,28 @@ def test_without_archives_the_archive_file_and_folder_are_not_listed(worklog: Pa
     ]
 
 
+@pytest.mark.parametrize(
+    ("link", "target", "own"),
+    [
+        (
+            "transcripts/archive/latest",
+            "../current/2026-10-20 Tue",
+            "transcripts/current/2026-10-20 Tue/1.org",
+        ),
+        ("transcripts/a/link", "../misc", "transcripts/misc/a.org"),
+    ],
+)
+def test_a_folder_is_read_by_its_own_path_before_any_link(
+    worklog: Path, link: str, target: str, own: str
+) -> None:
+    """A link in a folder that sorts first takes nothing from the folder it names."""
+    (worklog / link).parent.mkdir(parents=True, exist_ok=True)
+    (worklog / link).symlink_to(target)
+    listing = files.listed(worklog, archives=True)
+    assert own in paths(listing)
+    assert not [path for path in paths(listing) if path.startswith(f"{link}/")]
+
+
 def test_links_are_followed_inside_the_work_log_alone(tmp_path: Path, worklog: Path) -> None:
     """A link to a file or a folder inside is read; one out is named; a loop ends."""
     outside = write(tmp_path, "elsewhere/secret.org", CONTENT)
@@ -178,10 +200,15 @@ def test_a_file_off_the_rules_is_named_without_its_content(
     assert CONTENT not in str(raised.value)
 
 
+@pytest.mark.parametrize("error", [ValueError, OverflowError])
 def test_a_time_of_change_out_of_range_is_a_reason(
-    worklog: Path, monkeypatch: pytest.MonkeyPatch
+    worklog: Path, monkeypatch: pytest.MonkeyPatch, error: type[Exception]
 ) -> None:
-    """A modification time that no datetime holds is named, not a crash."""
+    """A modification time that no datetime holds is named, not a crash.
+
+    Python raises ValueError for a year past 9999 here, OverflowError past the C time;
+    a file system may not store such a time, so the refusal is simulated.
+    """
 
     class Far(datetime):
         """A datetime whose times of change are all out of range."""
@@ -190,10 +217,10 @@ def test_a_time_of_change_out_of_range_is_a_reason(
         def fromtimestamp(cls, timestamp: float, tz: object = None) -> Far:
             """Refuse every time, as for a year past 9999."""
             message = f"year out of range: {timestamp} {tz}"
-            raise OverflowError(message)
+            raise error(message)
 
     monkeypatch.setattr(files, "datetime", Far)
-    with pytest.raises(files.UnreadableError, match=r"^not read \(OverflowError\)$"):
+    with pytest.raises(files.UnreadableError, match=rf"^not read \({error.__name__}\)$"):
         files.source(worklog, PurePosixPath("todo.org"))
 
 

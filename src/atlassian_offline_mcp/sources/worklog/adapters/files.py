@@ -10,6 +10,7 @@ named by its path, never by its content.
 
 from __future__ import annotations
 
+import heapq
 import stat
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -70,9 +71,14 @@ def listed(folder: Path, *, archives: bool) -> Listing:
     html = 0
     seen = {root}
     archive = PurePosixPath(TODO_ARCHIVE)
-    stack = [root / name for name in (TODO, TODO_ARCHIVE, TRANSCRIPTS)]
-    while stack:
-        path = stack.pop()
+    # Paths that cross fewer links come first, then in path order: a folder is read by
+    # its own path before any link to it, wherever the link is.
+    queue = [
+        (int(path.is_symlink()), path) for path in (root / TODO, root / archive, root / TRANSCRIPTS)
+    ]
+    heapq.heapify(queue)
+    while queue:
+        crossed, path = heapq.heappop(queue)
         relative = PurePosixPath(path.relative_to(root).as_posix())
         archived = relative == archive or relative.parts[:2] == (TRANSCRIPTS, ARCHIVED)
         real = path.resolve()
@@ -89,9 +95,8 @@ def listed(folder: Path, *, archives: bool) -> Listing:
         elif real.is_dir() and relative.parts[0] == TRANSCRIPTS:
             seen.add(real)
             try:
-                # Popped in path order, a folder's own entries before its links.
-                inside = sorted(path.iterdir(), key=lambda each: (each.is_symlink(), each))
-                stack.extend(reversed(inside))
+                queue.extend((crossed + each.is_symlink(), each) for each in path.iterdir())
+                heapq.heapify(queue)
             except OSError as error:
                 problems.append(Problem(str(relative), f"not read ({type(error).__name__})"))
         elif relative.suffix == HTML:

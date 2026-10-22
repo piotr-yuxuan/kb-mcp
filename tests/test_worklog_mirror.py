@@ -461,6 +461,20 @@ def test_files_off_the_rules_are_named_by_path_and_a_link_inside_is_read(
     )
 
 
+def test_a_link_into_the_archive_leaves_a_live_transcript_as_it_is(run: Run) -> None:
+    """Its id, labels and folders are its own path's, archives on or off."""
+    latest = run.root / "transcripts/archive/latest"
+    latest.symlink_to("../current/2026-10-20 Tue")
+    for archives in (True, False):
+        run(archives=archives)
+        matter = run.by_title("Payments stand-up").matter
+        assert (matter.id, matter.labels, matter.breadcrumb[1]) == (
+            "t-20261020-1",
+            ("standup",),
+            "current",
+        )
+
+
 def test_the_mirror_and_the_work_log_leave_each_other_s_files(run: Run) -> None:
     """Each step removes only what it owns."""
     run()
