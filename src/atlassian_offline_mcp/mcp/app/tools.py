@@ -444,6 +444,11 @@ class Library:
             for entry, passage in self._asked(question, None, None, mode)[1]
         ]
 
+    def key_of(self, kind: Literal["space", "project"], key: str) -> str:
+        """Give a space's or a project's key as the index holds it; refuse one it lacks."""
+        with self._reading() as reader:
+            return canonical(reader, kind, key) or ""
+
     def resolve(self, ref: str) -> str | None:
         """Find a document's path by its id, key, address or path, as read does."""
         with self._reading() as reader:

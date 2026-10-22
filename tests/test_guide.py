@@ -29,7 +29,7 @@ def test_every_registration_starts_the_console_script() -> None:
 
 
 def test_the_allowed_tools_are_those_the_server_registers() -> None:
-    """Claude Code's allow list names the four tools, as Claude Code names them."""
+    """Claude Code's allow list names the five tools, as Claude Code names them."""
     allowed = [
         snippet["permissions"]["allow"]
         for snippet in SNIPPETS

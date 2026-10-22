@@ -27,7 +27,8 @@ files.
   otherwise. It never asks, since its stdin is the protocol's, and says on stderr which
   values it ignores.
 
-The server has four tools, all read-only: `search`, `read`, `browse` and `status`. Every
+The server has five tools, all read-only: `ask`, `search`, `read`, `browse` and `status`
+(`serve --tools` serves some of them). Every
 answer marks the text it copies from Confluence and Jira as untrusted reference data,
 and the server's instructions tell agents never to follow directions found in it.
 
@@ -166,15 +167,16 @@ project's server):
 If Claude Code does not find the command, give its absolute path, as `which
 atlassian-offline-mcp` prints it.
 
-### Allow the four tools
+### Allow the five tools
 
 Claude Code names a server's tools `mcp__<server>__<tool>`. In `~/.claude/settings.json`,
-allow each of the four by name, so that no prompt interrupts a search:
+allow each of the five by name, so that no prompt interrupts a search:
 
 ```json
 {
   "permissions": {
     "allow": [
+      "mcp__atlassian-offline-mcp__ask",
       "mcp__atlassian-offline-mcp__search",
       "mcp__atlassian-offline-mcp__read",
       "mcp__atlassian-offline-mcp__browse",
@@ -185,7 +187,7 @@ allow each of the four by name, so that no prompt interrupts a search:
 ```
 
 The wildcard `mcp__atlassian-offline-mcp__*` would also allow any tool a later version
-adds; the list keeps to these four. `/permissions` shows each rule and where it comes
+adds; the list keeps to these five. `/permissions` shows each rule and where it comes
 from.
 
 ### Give read-only access to the files
@@ -228,10 +230,10 @@ workspace's `.vscode/mcp.json`:
 }
 ```
 
-### Allow the four tools
+### Allow the five tools
 
 Run "Chat: Manage Tool Approval" from the Command Palette, open `atlassian-offline-mcp`,
-and pre-approve `search`, `read`, `browse` and `status`, or all of the server's tools
+and pre-approve `ask`, `search`, `read`, `browse` and `status`, or all of the server's tools
 with its own box. The first time a tool asks, its dialog also offers to allow it always.
 "Chat: Reset Tool Confirmations" withdraws every approval. Leave the global
 auto-approval off: it would approve every tool of every server.

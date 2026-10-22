@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from tests.conftest import InMemory
 
 BAD_SETTINGS = 2
-STANDING = 1500  # estimated tokens of the instructions and the tool listing together
+STANDING = 2200  # estimated tokens of the instructions and the tool listing together
 WAIT = 30  # seconds for one answer of the server
 # Run the command as its console script does, killing it on any use of the network but
 # a connection to the port of this machine that the first argument names, if any.
@@ -101,6 +101,7 @@ def test_a_client_calls_every_tool_over_stdio(home: Path) -> None:
             standing = instructions + json.dumps(sent)
             assert estimate(standing) <= STANDING
             calls = [
+                ("ask", {"question": "kafka retention"}),
                 ("search", {"query": "kafka retention"}),
                 ("read", {"ref": "PROJ-7"}),
                 ("browse", {"space": "ENG"}),
