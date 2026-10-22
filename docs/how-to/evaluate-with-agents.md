@@ -65,7 +65,8 @@ atlassian-offline-mcp eval-agents grade pilot --yes
 ```
 
 `grade` reads the call logs, the answers and the harness files, refuses one not as
-written above (naming the run and the field), and grades each answer: citation recall
+its steps or the above write it, naming the file and the field (repair or remove that
+file, and mark its run `invalid`, before grading again), and grades each answer: citation recall
 and precision, quotes grounded in the documents that their refs name, and evidence
 quoted. A run succeeds when its answer says the base holds it, every quote is grounded,
 and each expected document's evidence is within a quote. A run returned without an

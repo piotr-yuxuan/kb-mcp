@@ -475,6 +475,7 @@ def test_a_scripted_agent_reads_its_prompt_runs_its_bridge_and_is_graded(
     results = json.loads(capsys.readouterr().out)
     outcomes = {each["run"]: each for each in results["outcomes"]}
     assert {each["result"] for each in outcomes.values()} == {"success"}
+    assert (results["pairs"], results["left_out"]) == (len(("q", "q")), 0)
     assert {name: each["calls"] for name, each in outcomes.items()} == {
         run["id"]: {"ask": 1} if run["surface"] == "B" else {"search": 1, "read": 1}
         for run in runs_of(out)
@@ -519,7 +520,7 @@ def test_runs_that_failed_broke_a_rule_or_lost_their_server_give_no_result(
         ("no result", "a call timeout"),
     ]
     assert results["counted"] == {"failure": 1, "no result": 3}
-    assert results["left_out"] == len(("q", "q"))
+    assert (results["pairs"], results["left_out"]) == (0, len(("q", "q")))
 
 
 def test_a_harness_file_not_as_written_exits_2_naming_run_and_field(

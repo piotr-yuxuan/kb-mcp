@@ -415,15 +415,20 @@ def judged(
             if harness_file.exists()
             else None
         )
+        returned = harness is not None and harness.status == "returned"
         named = kept
-        answer = Answer.model_validate_json(kept.read_text("utf-8")) if kept.exists() else None
+        # A run that did not return is judged without its answer, which is not read.
+        answer = (
+            Answer.model_validate_json(kept.read_text("utf-8"))
+            if returned and kept.exists()
+            else None
+        )
     except ValidationError as error:
         message = f"{named.parent.name}/{named.name}: {refusal(error)}"
         raise AgentsError(message) from None
     calls = logged(directory, run)
     broken = next((each.status for each in calls if each.status in {"timeout", "failed"}), "")
-    returned = harness is not None and harness.status == "returned"
-    graded = grade(answer, question, resolve, body) if returned and answer and not broken else None
+    graded = grade(answer, question, resolve, body) if answer and not broken else None
     if harness is None:
         result, reason = "pending", ""
     elif not returned:
