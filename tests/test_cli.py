@@ -90,7 +90,7 @@ def test_check_refuses_a_data_directory_that_could_leave_the_machine(
         main(["check", "--config", str(home / "none.toml"), "--data-dir", data_dir]) == BAD_SETTINGS
     )
     error = capsys.readouterr().err
-    assert error.startswith("data directory refused: data_dir: ")
+    assert error.startswith("settings refused: data_dir: ")
     assert reason in error
 
 

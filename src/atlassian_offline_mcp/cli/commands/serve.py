@@ -16,12 +16,9 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 
-from atlassian_offline_mcp.cli.commands._options import (
-    add_embedding_options,
-    add_settings_options,
-    open_endpoint,
-    settings_of,
-)
+from atlassian_offline_mcp.cli.commands._options import add_embedding_options, add_settings_options
+from atlassian_offline_mcp.cli.commands._shared import open_endpoint
+from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
@@ -31,6 +28,8 @@ from atlassian_offline_mcp.search.app.meaning import Meaning
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable
+
+    from atlassian_offline_mcp.config.domain.settings import Settings
 
 NAME = "atlassian-offline-mcp"
 # Clients send these with every request, and Claude Code keeps 2,048 characters of
@@ -55,9 +54,9 @@ READ_ONLY = ToolAnnotations(
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``serve`` to the command."""
     parser = subparsers.add_parser("serve", help="serve the mirror over MCP on stdio")
-    add_settings_options(parser)
+    flags = add_settings_options(parser)
     add_embedding_options(parser)
-    parser.set_defaults(run=run)
+    parser.set_defaults(command=Command(__name__, flags))
 
 
 def refusing(method: Callable[..., str]) -> Callable[..., str]:
@@ -77,13 +76,12 @@ def refusing(method: Callable[..., str]) -> Callable[..., str]:
     return tool
 
 
-def run(arguments: argparse.Namespace) -> ExitStatus:
+def run(arguments: argparse.Namespace, settings: Settings) -> ExitStatus:
     """Serve until the client closes stdin; exit 2 when the settings are refused.
 
     The lexical mode never opens the embedding endpoint.
     """
     try:
-        settings = settings_of(arguments)
         opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")

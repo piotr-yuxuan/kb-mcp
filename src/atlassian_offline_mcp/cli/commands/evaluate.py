@@ -13,9 +13,9 @@ from atlassian_offline_mcp.cli.commands._options import (
     add_embedding_options,
     add_settings_options,
     model_name,
-    open_endpoint,
-    settings_of,
 )
+from atlassian_offline_mcp.cli.commands._shared import open_endpoint
+from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.evaluation.app.evaluation import (
     EvaluationError,
@@ -32,6 +32,8 @@ from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
 if TYPE_CHECKING:
     import argparse
 
+    from atlassian_offline_mcp.config.domain.settings import Settings
+
 STAMP = "%Y%m%dT%H%M%SZ"
 
 
@@ -40,7 +42,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser(
         "eval", help="measure lexical, semantic and hybrid search on golden questions"
     )
-    add_settings_options(parser)
+    flags = add_settings_options(parser)
     add_embedding_options(parser)
     parser.add_argument("golden", type=Path, help="a YAML file of golden questions")
     parser.add_argument(
@@ -49,17 +51,16 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         type=model_name,
         help="a model to evaluate, as the endpoint names it; by default, the setting",
     )
-    parser.set_defaults(run=run)
+    parser.set_defaults(command=Command(__name__, flags))
 
 
-def run(arguments: argparse.Namespace) -> ExitStatus:
+def run(arguments: argparse.Namespace, settings: Settings) -> ExitStatus:
     """Evaluate; exit 1 when something failed, 2 for bad settings or a refused golden file.
 
     The tables go to standard output, and the results, ids and numbers only, to
     ``<data>/eval/results/<UTC time>.json``.
     """
     try:
-        settings = settings_of(arguments)
         golden = arguments.golden.read_text(encoding="utf-8")
         questions = read_golden(golden, Library(settings.index, settings.docs).resolve)
         opened = open_endpoint(arguments, settings)

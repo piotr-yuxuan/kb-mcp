@@ -7,13 +7,9 @@ import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.cli.commands._options import (
-    add_embedding_options,
-    add_settings_options,
-    open_endpoint,
-    prefixes_said,
-    settings_of,
-)
+from atlassian_offline_mcp.cli.commands._options import add_embedding_options, add_settings_options
+from atlassian_offline_mcp.cli.commands._shared import open_endpoint, prefixes_said
+from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
@@ -22,15 +18,17 @@ from atlassian_offline_mcp.search.app.indexing import Embedding, MirrorMissingEr
 if TYPE_CHECKING:
     import argparse
 
+    from atlassian_offline_mcp.config.domain.settings import Settings
+
 WORDS_ALONE = 'or set search_mode = "lexical" to index by words alone'
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``index`` to the command."""
     parser = subparsers.add_parser("index", help="build the search index from the mirror")
-    add_settings_options(parser)
+    flags = add_settings_options(parser)
     add_embedding_options(parser)
-    parser.set_defaults(run=run)
+    parser.set_defaults(command=Command(__name__, flags))
 
 
 def progress(done: int, total: int) -> None:
@@ -38,7 +36,7 @@ def progress(done: int, total: int) -> None:
     sys.stderr.write(f"embedded {done} of {total} pieces\n")
 
 
-def run(arguments: argparse.Namespace) -> ExitStatus:
+def run(arguments: argparse.Namespace, settings: Settings) -> ExitStatus:
     """Build the index; exit 1 when a file or a piece was left out, or nothing was built.
 
     By words alone in the lexical mode, which never calls the embedding endpoint. In the
@@ -46,7 +44,6 @@ def run(arguments: argparse.Namespace) -> ExitStatus:
     the index in place stays, with its vectors.
     """
     try:
-        settings = settings_of(arguments)
         opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")

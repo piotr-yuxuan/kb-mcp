@@ -8,8 +8,8 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.cli.commands._options import add_settings_options, settings_of
-from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.cli.commands._options import add_settings_options
+from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.fields import RepresentationError
@@ -44,7 +44,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser(
         "download", help="download what changed in a period, with its files"
     )
-    add_settings_options(parser)
+    flags = add_settings_options(parser)
     parser.add_argument(
         "--space", action="append", type=key_of("space"), help="a space key; repeat for more"
     )
@@ -62,7 +62,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument(
         "--max-file-mb", type=int, default=DEFAULT_MAX_FILE_MB, help="the largest file kept"
     )
-    parser.set_defaults(run=run)
+    parser.set_defaults(command=Command(__name__, flags))
 
 
 class RefusedOptionsError(ValueError):
@@ -93,18 +93,17 @@ def targets_of(arguments: argparse.Namespace, settings: Settings, now: datetime)
     )
 
 
-def run(arguments: argparse.Namespace) -> ExitStatus:
+def run(arguments: argparse.Namespace, settings: Settings) -> ExitStatus:
     """Download; exit 0, 1 when something failed, 2 for bad input, 3 to sign in again.
 
     Spaces and projects not named on the command line come from the settings; without
     --since, each catches up from the start of what earlier runs covered.
     """
     try:
-        settings = settings_of(arguments)
         targets = targets_of(arguments, settings, datetime.now(UTC))
         act = plan if arguments.plan else download
         outcome = act(settings, targets, lambda: datetime.now(UTC), time.sleep)
-    except (SettingsError, PeriodError, RefusedOptionsError, RepresentationError) as error:
+    except (PeriodError, RefusedOptionsError, RepresentationError) as error:
         sys.stderr.write(f"refused: {error}\n")
         return ExitStatus.REFUSED
     except StoreBusyError:
