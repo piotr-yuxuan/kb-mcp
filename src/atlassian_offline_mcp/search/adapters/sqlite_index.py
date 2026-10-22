@@ -16,7 +16,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -35,6 +35,7 @@ from atlassian_offline_mcp.search.domain.search import (
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
+    from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.search.domain.search import Section
 
 # 1 from plan 006; 3 from plan 011, with vectors and a build id.
@@ -292,6 +293,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
                     ("model", embedded.model if embedded else ""),
                     ("fingerprint", embedded.fingerprint if embedded else ""),
                     ("dimensions", str(embedded.dimensions) if embedded else ""),
+                    ("chunking", embedded.chunking if embedded else ""),
                 ],
             )
             connection.commit()
@@ -452,7 +454,9 @@ class Reader:
         meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
         if not meta["model"]:
             return None
-        return Embedded(meta["model"], meta["fingerprint"], int(meta["dimensions"]))
+        # Indexes of 011 and 018 have no chunking: their pieces were cut by sections.
+        chunking = cast("Chunking", meta.get("chunking", "sections"))
+        return Embedded(meta["model"], meta["fingerprint"], int(meta["dimensions"]), chunking)
 
     def pieces(self) -> Pieces:
         """Read every piece's vector, with where the piece is: what meaning searches."""
@@ -484,6 +488,7 @@ class Reader:
         newest = self._connection.execute("SELECT max(fetched_at) FROM documents").fetchone()[0]
         sections = self._connection.execute("SELECT count(*) FROM sections").fetchone()[0]
         pieces = self._connection.execute("SELECT count(*) FROM pieces").fetchone()[0]
+        embedded = self.embedded()
         return Summary(
             built_at=self.built_at(),
             skipped=int(meta["skipped"]),
@@ -494,6 +499,7 @@ class Reader:
             newest_fetch=None if newest is None else datetime.fromisoformat(newest),
             model=meta["model"] or None,
             pieces=pieces,
+            chunking=embedded.chunking if embedded else None,
         )
 
 

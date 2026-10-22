@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+    from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 WORD = re.compile(r"[^\W_]+")
@@ -278,15 +279,17 @@ class Summary:
     newest_fetch: datetime | None
     model: str | None = None  # the model of the vectors, if any
     pieces: int = 0
+    chunking: Chunking | None = None  # how the pieces were cut, if there are vectors
 
 
 @dataclass(frozen=True)
 class Embedded:
-    """The model that embedded an index's pieces, as the index records it."""
+    """The model that embedded an index's pieces, and how they were cut, as the index records it."""
 
     model: str
     fingerprint: str
     dimensions: int
+    chunking: Chunking = "sections"
 
 
 @dataclass(frozen=True, eq=False)

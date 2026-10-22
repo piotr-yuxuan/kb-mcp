@@ -217,7 +217,7 @@ def status(summary: Summary, docs: Path) -> str:
         f"built: {stamp(summary.built_at)}",
         f"documents: {counts(summary.types)}; sections: {summary.sections}",
         (
-            f"search by meaning: {summary.model}, {summary.pieces} pieces"
+            f"search by meaning: {summary.model}, {summary.pieces} pieces cut by {summary.chunking}"
             if summary.model
             else "search by meaning: off, the index holds no vectors"
         ),

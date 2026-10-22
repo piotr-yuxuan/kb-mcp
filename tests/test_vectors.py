@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
+import sqlite3
+from contextlib import closing
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -10,6 +13,7 @@ import numpy as np
 import pytest
 
 from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.adapters.embedding import ModelError
 from atlassian_offline_mcp.search.adapters.sqlite_index import reading
@@ -28,11 +32,15 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from numpy.typing import NDArray
 
+    from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.search.adapters.embedding import ApiEmbedder
 
 BODY = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
 FILLER_PAGES = 5
 FAILED = 1
+# The windows of the body of 2,562 characters below: starting at 0, 960 and 1,920.
+WINDOWS = 3
+RELEASE = 2  # the number of its section "Release", after 30 characters of the first
 
 
 @dataclass
@@ -266,3 +274,68 @@ def test_two_runs_share_the_store_at_once(tmp_path: Path) -> None:
         assert second.get(["a"]) == {"a": b"1234"}
         second.put({"b": b"5678"})
         assert first.get(["a", "b"]) == {"a": b"1234", "b": b"5678"}
+
+
+def chunked(data: Path, embedder: Counting, chunking: Chunking) -> None:
+    """Build the data directory's index with an embedder, cutting by ``chunking``."""
+    embedding = Embedding(embedder, data / "v.db", chunking=chunking)
+    build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
+
+
+def test_the_index_and_its_status_name_its_chunking(data: Path) -> None:
+    """The meta row says how the pieces were cut, sections unless told; so does status."""
+    build(data, counting())
+    with reading(data / "index.sqlite") as reader:
+        assert reader.embedded() == Embedded("tiny", tiny().fingerprint, DIMENSIONS, "sections")
+    chunked(data, counting(), "windows")
+    with reading(data / "index.sqlite") as reader:
+        assert reader.embedded() == Embedded("tiny", tiny().fingerprint, DIMENSIONS, "windows")
+        said = responses.status(reader.summary(), data / "docs")
+    assert re.search(r"search by meaning: tiny, \d+ pieces cut by windows\n", said)
+
+
+def test_an_index_built_before_the_row_reads_as_cut_by_sections(data: Path) -> None:
+    """Indexes of 011 and 018 name no chunking: theirs is sections."""
+    build(data, counting())
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        connection.execute("DELETE FROM meta WHERE name = 'chunking'")
+        connection.commit()
+    with reading(data / "index.sqlite") as reader:
+        assert reader.embedded() == Embedded("tiny", tiny().fingerprint, DIMENSIONS, "sections")
+        assert reader.summary().chunking == "sections"
+
+
+def test_a_window_belongs_to_the_section_of_its_middle_and_spans_the_body(data: Path) -> None:
+    """A window across sections: its section holds its middle, its span reads the body."""
+    body = "# Rollback\n\nUndo the payout.\n\n## Release\n\n" + "The deploy goes out. " * 120
+    write(data / "docs", page("196845", "Rollback"), body)
+    embedder = counting()
+    chunked(data, embedder, "windows")
+    path = "confluence/ENG/196845-rollback.md"
+    with reading(data / "index.sqlite") as reader:
+        pieces = reader.pieces()
+        bounds = reader.bounds(path)
+        mine = [index for index, each in enumerate(pieces.documents) if pieces.paths[each] == path]
+        assert len(mine) == WINDOWS
+        for index in mine:
+            start, end = pieces.offsets[index], pieces.ends[index]
+            first, last = bounds[pieces.sections[index] - 1]
+            assert first <= (start + end) // 2 < last
+            assert reader.text(path, start, end) == body[start:end]
+            assert f"Rollback\n{body[start:end].strip()}" in embedder.texts
+    assert pieces.offsets[mine[0]] == 0
+    assert pieces.sections[mine[0]] == RELEASE
+
+
+def test_a_text_that_chunkings_share_is_embedded_once(data: Path) -> None:
+    """A rebuild by sections after one by windows embeds nothing: the store kept them."""
+    build(data, counting())
+    windows = counting()
+    chunked(data, windows, "windows")
+    assert windows.texts
+    again = counting()
+    report = build_index(
+        data / "docs", data / "index.sqlite", MOMENT, Embedding(again, data / "v.db")
+    )
+    assert again.texts == []
+    assert report.embedded == 0
