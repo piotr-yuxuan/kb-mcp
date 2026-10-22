@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from atlassian_offline_mcp.cli import main
+from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.kernel.content import Page
 from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError

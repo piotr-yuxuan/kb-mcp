@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.cli import main
-from atlassian_offline_mcp.commands import download as download_command
+from atlassian_offline_mcp.cli.commands import download as download_command
+from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore

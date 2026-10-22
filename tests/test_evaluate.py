@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.cli import main
+from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.evaluation.app import evaluation
 from atlassian_offline_mcp.evaluation.app.evaluation import (

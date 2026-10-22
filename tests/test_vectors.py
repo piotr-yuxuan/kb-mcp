@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-from atlassian_offline_mcp.cli import main
+from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.adapters.embedding import ModelError
 from atlassian_offline_mcp.search.adapters.sqlite_index import reading

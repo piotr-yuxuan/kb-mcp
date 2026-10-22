@@ -15,7 +15,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 
-from atlassian_offline_mcp.commands._options import (
+from atlassian_offline_mcp.cli.commands._options import (
     add_embedding_options,
     add_settings_options,
     open_endpoint,

@@ -8,7 +8,7 @@ import pkgutil
 import sys
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp import commands
+from atlassian_offline_mcp.cli import commands
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
