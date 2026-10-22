@@ -61,7 +61,7 @@ A context holds only the layers it needs; `mcp` has only `app`.
 | | What it protects |
 |---|---|
 | A | Contexts use those below them, never those above. It is exhaustive: a new top-level package breaks it until it is placed in the order |
-| B | Within each context, the layers' order. It is exhaustive too: a module outside a layer breaks it. Each source under `sources/` is a context of its own; a module put directly in `sources/` is outside every layer contract, which nothing checks, so none goes there |
+| B | Within each context, the layers' order. It is exhaustive too: a module outside a layer breaks it. Each source under `sources/` is a context of its own; a module put directly in `sources/` is outside B: A still orders it with `sources`, but no contract checks its layer or its use of `httpx`, so none goes there |
 | C | Pure rules, in any context (and the kernel), use no effect and no use case |
 | D | Effects, in any context, use no use case |
 | E | Search, the server and the evaluation read the mirror, never a source: the index is built from the mirror alone |
