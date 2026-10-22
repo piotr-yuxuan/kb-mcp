@@ -30,8 +30,8 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc
     from atlassian_offline_mcp.sources.atlassian.app.download import Targets
 
-# How a download or its plan ended, by its status. A stopped download returns none: Ctrl-C
-# leaves it as KeyboardInterrupt.
+# How a download or its plan ended, by its status. A download that Ctrl-C stops raises
+# KeyboardInterrupt, so its status is never none here.
 DOWNLOADED: dict[ExitStatus | None, Outcome] = {
     ExitStatus.OK: "done",
     ExitStatus.FAILED: "failed",
@@ -168,8 +168,7 @@ def sync(context: Context, steps: Sequence[Atlassian | Worklog]) -> Synced:
         stopped = len(rows)
         rows.extend(
             Row(name, "interrupted" if index == stopped else "not run", None)
-            for index, name in enumerate(planned)
-            if index >= stopped
+            for index, name in enumerate(planned[stopped:], stopped)
         )
     outcomes.update(row.outcome for row in rows)
     status = next((status for outcome, status in RANKED if outcome in outcomes), ExitStatus.OK)
