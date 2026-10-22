@@ -8,7 +8,7 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.cli.commands._shared import open_endpoint
+from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.evaluation.app.evaluation import (
     EvaluationError,

@@ -7,7 +7,7 @@ import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.cli.commands._shared import open_endpoint, prefixes_said
+from atlassian_offline_mcp.cli.commands._embedding import open_endpoint, prefixes_said
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect

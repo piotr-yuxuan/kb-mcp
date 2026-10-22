@@ -16,7 +16,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 
-from atlassian_offline_mcp.cli.commands._shared import open_endpoint
+from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError

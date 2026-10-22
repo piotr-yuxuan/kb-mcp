@@ -45,6 +45,9 @@ RUNS_PACKAGES = frozenset(
         "yaml",
     }
 )
+# What other runs import and ``completion`` must not, by plan 015: a command loads only
+# its own code, and shells run this one at each start. The entry loads pydantic for all.
+OTHER_RUNS_PACKAGES = frozenset({"httpx", "mcp", "numpy", "playwright"})
 # A subcommand's declaration, which names its run, a module of its own.
 DECLARED = """
 from pathlib import Path
@@ -164,7 +167,7 @@ def test_the_version_is_the_project_s(capsys: CaptureFixture[str]) -> None:
 
 
 def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> None:
-    """--version, --help, a subcommand's and a completion import no run.
+    """--version, --help, a subcommand's and a completion import no run; ``completion`` its own.
 
     Each builds the whole parser. ``-X importtime`` names each module that the child
     imports, so a package it does not name never reached ``sys.modules``.
@@ -178,53 +181,77 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
         "_ARGCOMPLETE_STDOUT_FILENAME": str(home / "completions"),
     }
     children = (
-        subprocess.run(
-            [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "--version"],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            env=environment,
-            cwd=home,
-            check=False,
+        (
+            subprocess.run(
+                [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "--version"],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                env=environment,
+                cwd=home,
+                check=False,
+            ),
+            RUNS_PACKAGES,
         ),
-        subprocess.run(
-            [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "--help"],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            env=environment,
-            cwd=home,
-            check=False,
+        (
+            subprocess.run(
+                [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "--help"],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                env=environment,
+                cwd=home,
+                check=False,
+            ),
+            RUNS_PACKAGES,
         ),
-        subprocess.run(
-            [
-                sys.executable,
-                "-X",
-                "importtime",
-                "-m",
-                "atlassian_offline_mcp",
-                "download",
-                "--help",
-            ],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            env=environment,
-            cwd=home,
-            check=False,
+        (
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-X",
+                    "importtime",
+                    "-m",
+                    "atlassian_offline_mcp",
+                    "download",
+                    "--help",
+                ],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                env=environment,
+                cwd=home,
+                check=False,
+            ),
+            RUNS_PACKAGES,
         ),
-        subprocess.run(
-            [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp"],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            env={**environment, **completing},
-            cwd=home,
-            check=False,
+        (
+            subprocess.run(
+                [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp"],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                env={**environment, **completing},
+                cwd=home,
+                check=False,
+            ),
+            RUNS_PACKAGES,
+        ),
+        (
+            subprocess.run(
+                [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "completion"],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                env=environment,
+                cwd=home,
+                check=False,
+            ),
+            OTHER_RUNS_PACKAGES,
         ),
     )
     assert (home / "completions").read_text("utf-8").strip() == "--space"
-    for child in children:
+    for child, refused in children:
         assert child.returncode == 0
         imported = {
             line.rsplit("|", 1)[-1].strip().split(".")[0]
@@ -232,7 +259,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
             if line.startswith("import time:")
         }
         assert {"argparse", "atlassian_offline_mcp"} <= imported
-        assert not imported & RUNS_PACKAGES
+        assert not imported & refused
 
 
 @pytest.mark.parametrize(

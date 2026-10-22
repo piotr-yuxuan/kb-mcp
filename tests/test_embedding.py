@@ -20,7 +20,7 @@ import httpx
 import numpy as np
 import pytest
 
-from atlassian_offline_mcp.cli.commands._shared import open_endpoint
+from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import (
     DEFAULT_EMBEDDING_URL,
