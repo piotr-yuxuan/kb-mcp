@@ -42,10 +42,13 @@ decided.
 ### How the numbers were read
 
 The leaderboard's site is a front end over an API, which returns each model's scores
-by task type:
+by task type (about a megabyte of JSON per benchmark). This prints each model's
+Retrieval score on the English benchmark; `MTEB(Multilingual,%20v2)` gives the
+multilingual one, and adding `?languages=fra-Latn` keeps only the tasks with French
+data:
 
 ```bash
-curl -s 'https://mteb-leaderboard-backend.hf.space/v1/benchmarks/MTEB(eng,%20v2)/scores'
+curl -s 'https://mteb-leaderboard-backend.hf.space/v1/benchmarks/MTEB(eng,%20v2)/scores' | python3 -c 'import json, sys; [print(row["model"]["name"], row["scoresByTaskType"].get("Retrieval")) for row in json.load(sys.stdin)["rows"]]'
 ```
 
 On 2026-10-21, for the candidates that Ollama's library offers (Retrieval scores, out
@@ -166,9 +169,11 @@ the difference between its MRR@10 in one mode and in the other. Under the hypoth
 that the modes are alike, each difference is as likely to be positive as negative.
 The **randomisation test** flips the signs of the differences at random, 10,000 times,
 and counts how often the mean of the flipped differences is at least as far from zero
-as the mean observed; that share is the p-value. Smucker, Allan and Carterette
-([2007](https://doi.org/10.1145/1321440.1321528)) found this test reliable for
-retrieval experiments, where the t-test's assumptions often fail.
+as the mean observed; that share is the p-value. On retrieval experiments, Smucker,
+Allan and Carterette ([2007](https://doi.org/10.1145/1321440.1321528)) found the
+randomisation test, the bootstrap and the paired t-test in close agreement, and the
+Wilcoxon and sign tests unreliable; the randomisation test assumes the least about how
+the differences are distributed.
 
 A worked example, with four questions:
 
@@ -197,25 +202,66 @@ keep each no smaller than the one before, cap at 1. In plan 018's run, p = 0.152
 ### Effect size, significance and power
 
 A p-value says how surprising a difference would be if there were none, not how large
-it is. So `eval` reports both: the difference in MRR@10, and its adjusted p. Counting
-the questions that each mode wins helps too: in plan 018's run, hybrid did better than
-lexical on 32 questions, worse on 14, and the same on 59.
+it is. `eval` reports each mode's MRR@10, so their difference, and its adjusted p; read
+both. Counting the questions that each mode wins helps too: in plan 018's run, hybrid
+did better than lexical on 32 questions, worse on 14, and the same on 59.
 
 **Power** is the chance that a test detects a real difference. It grows with the
-number of questions and falls with the spread of the per-question differences. With a
-spread s and n questions, a two-sided test at 0.05 detects about four times out of five
-a difference of 2.8 s / √n. In our runs s was 0.24 to 0.43, so with 105 questions the
+number of questions and falls with the spread s of the per-question differences (their
+standard deviation). With n questions, a two-sided test at 0.05 detects about four
+times out of five a difference of 2.8 s / √n (1.96 for the test, plus 0.84 for the
+four times in five). In our runs s was 0.24 to 0.43, so with 105 questions the
 detectable difference in MRR@10 was **0.065 to 0.12**. Plan 011's hybrid gain with its
 model, 0.067, was at that edge, and significant; plan 018's, 0.039, was below it, and
 not. "Not significant" means "not shown", not "no difference".
 
+`eval` does not print the counts or the spread, but its results file holds what they
+need: for each model, mode and question, the ranks of the question's expected documents
+within the first ten (`null` beyond). This prints them for hybrid against lexical, with
+the test that `eval` runs; two results files of the same golden file compare two models
+the same way, as the comparison with plan 011's model below was made:
+
+```python
+import json, math, statistics, sys
+
+from atlassian_offline_mcp.domain.evaluation import paired_test
+
+
+def reciprocal(ranks):  # MRR@10 of one question: 1 over its best rank, else 0
+    found = [rank for rank in ranks if rank is not None]
+    return 1 / min(found) if found else 0.0
+
+
+run = json.load(open(sys.argv[1]))["runs"][0]
+ids = sorted(run["ranks"]["lexical"])
+before = [reciprocal(run["ranks"]["lexical"][each]) for each in ids]
+after = [reciprocal(run["ranks"]["hybrid"][each]) for each in ids]
+differences = [b - a for a, b in zip(before, after)]
+spread = statistics.stdev(differences)
+print(
+    "difference",
+    statistics.fmean(differences),
+    "better",
+    sum(d > 0 for d in differences),
+    "worse",
+    sum(d < 0 for d in differences),
+    "p",
+    paired_test(before, after),
+    "detectable",
+    2.8 * spread / math.sqrt(len(differences)),
+)
+```
+
+Run it with `uv run python <script> <data>/eval/results/<time>.json`.
+
 ### Deciding before measuring
 
-Plan 011 wrote its rule for the default mode before any run, and plan 018 kept it:
-hybrid becomes, or stays, the default only if it beats lexical on MRR@10 with an
-adjusted p < 0.05, loses at most 0.02 of MRR@10 on the identifier and keyword groups
-(questions that agents send as keywords and names, where words are strong), and
-answers within 200 ms at the 95th percentile. Writing the bar first keeps the decision
+Plan 011 wrote its rule for the default mode before any run: hybrid becomes the
+default only if it beats lexical on MRR@10 with an adjusted p < 0.05, and loses at most
+0.02 of MRR@10 on the identifier and keyword groups (questions that agents send as
+keywords and names, where words are strong). It set apart a speed gate for choosing
+the model, queries within 200 ms at the 95th percentile among them. Plan 018 wrote,
+again before its run, one bar of all three for keeping hybrid the default. Writing the bar first keeps the decision
 from bending to the numbers once they are known: a set that favours meaning (39
 paraphrases, written so that words cannot find their answers) would otherwise tempt a
 reading in meaning's favour.
@@ -274,21 +320,24 @@ MRR@10 against lexical: semantic +0.054 (p = 0.197, adjusted 0.305), hybrid +0.0
 (p = 0.153, adjusted 0.305).
 
 Against the bar, hybrid failed on all three counts: its gain was not significant; it
-lost 0.060 on identifier questions (keyword: 0.019, within the bar); and its 95th
+lost 0.061 on identifier questions (keyword: 0.019, within the bar); and its 95th
 percentile was 212 ms on this CPU. **Words became the default again**, by the user's
 word on that rule; `search_mode = "hybrid"` turns meaning on.
 
-Against plan 011's bge-small, question by question on the same set: semantic +0.020
-(p = 0.57; 31 questions better, 31 worse), hybrid -0.028 (p = 0.28; 16 better, 24
-worse). Neither is significant.
+Against plan 011's bge-small, question by question on the same set (from the two
+results files, with the script above): semantic +0.020 (p = 0.57; 31 questions better,
+31 worse), hybrid -0.028 (p = 0.28; 16 better, 24 worse). Neither is significant. Plan
+011's results file is kept on the development laptop only, and its in-process model is
+gone, so this comparison cannot be run again from the repository.
 
 ### What these runs show, and what they do not
 
 - **Meaning finds more.** In every run, search by meaning raised recall (from 0.78 to
   between 0.81 and 0.87) and lifted paraphrase questions most (MRR@10 from 0.24 to 0.49
   with Qwen3).
-  Qwen3 also did far better on French (0.74 against 0.45), where the leaderboard put it
-  behind EmbeddingGemma: 15 questions are too few to read much into either.
+  With Qwen3, searching by meaning also did far better than words on French (0.74
+  against 0.45). This run did not test EmbeddingGemma, which the leaderboard puts ahead
+  of Qwen3 on French; and 15 questions are too few to read much into either way.
 - **Fusion is not free.** Reciprocal rank fusion
   ([Cormack, Clarke and Büttcher, 2009](https://doi.org/10.1145/1571941.1572114))
   weighs the two rankings equally. With Qwen3, whose ranking was weaker than words' on
@@ -315,10 +364,12 @@ worse). Neither is significant.
 ### The sandbox run
 
 With the sandbox's credentials (the project's own test site) and pandoc installed,
-from a checkout, into a data directory outside any synchronised folder or git tree:
+from a checkout, into a data directory outside any synchronised folder or git tree. The
+corpus's pages are in the space `QM`, its tickets in the project `ENG`, its ideas in
+`PRB`; plan 011's mirror also held the 13 probe pages of plan 001 in `MFS`:
 
 ```bash
-sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'uv run python spikes/sandbox_download.py --data <data> --since 1y --space QM --project PRB'
+sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'uv run python spikes/sandbox_download.py --data <data> --since 1y --space MFS --space QM --project ENG --project PRB'
 ```
 
 ```bash
@@ -328,6 +379,10 @@ uv run atlassian-offline-mcp mirror --data-dir <data>
 ```bash
 uv run atlassian-offline-mcp index --data-dir <data>
 ```
+
+`index` should report 1,474 documents (263 pages and 1,211 issues), as in plans 011 and
+018; without `ENG`, 31 questions name tickets that the mirror lacks, which `eval`
+refuses by name.
 
 ```bash
 uv run python spikes/golden_refs.py --data <data> --out <data>/eval/sandbox.yaml
