@@ -6,14 +6,15 @@ import os
 import re
 from ipaddress import IPv4Address
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated, Literal
 
 import pytest
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model
 
 from atlassian_offline_mcp.config.app.settings import load_settings
 from atlassian_offline_mcp.config.domain.settings import (
     SETTING_PATHS,
+    ConfluenceSource,
     Entry,
     Ignored,
     Loaded,
@@ -22,6 +23,7 @@ from atlassian_offline_mcp.config.domain.settings import (
     environment_entries,
     file_entries,
     loopback,
+    setting_paths,
     settings_of,
     unsafe_location,
 )
@@ -121,6 +123,45 @@ def test_every_setting_is_described() -> None:
         for name in path[:-1]:
             model = model.model_fields[name].annotation
         assert model.model_fields[path[-1]].description, path
+
+
+def test_each_setting_is_read_from_the_environment_by_its_kind() -> None:
+    """Tables and lists are JSON; the token and the embedding key are the secrets."""
+    assert {path: kind for path, kind in SETTING_PATHS.items() if kind != "value"} == {
+        ("api_token",): "secret",
+        ("embedding_api_key",): "secret",
+        ("sources",): "table",
+        ("sources", "confluence"): "table",
+        ("sources", "confluence", "spaces"): "list",
+        ("sources", "jira"): "table",
+        ("sources", "jira", "projects"): "list",
+    }
+
+
+@pytest.mark.parametrize(
+    ("annotation", "kind"),
+    [
+        (tuple[str, ...] | None, "list"),
+        (Annotated[SecretStr, Field(min_length=1)] | None, "secret"),
+        (Literal["a", "b"] | None, "value"),
+        (Annotated[Path, Field(description="a path")], "value"),
+    ],
+)
+def test_a_setting_s_kind_is_seen_through_none_and_annotated(annotation: object, kind: str) -> None:
+    """A setting that may be None, or carries rules, is read as its type is."""
+    model = create_model("Table", setting=(annotation, None))
+    assert setting_paths(model) == {("setting",): kind}
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [list[str], frozenset[str], dict[str, str], ConfluenceSource | None, SecretStr | int],
+)
+def test_a_setting_of_a_type_that_has_no_kind_is_refused(annotation: object) -> None:
+    """Read as text, a list would not be parsed as JSON, and a secret taken from the file."""
+    model = create_model("Table", setting=(annotation, None))
+    with pytest.raises(TypeError, match="a type that has no kind"):
+        setting_paths(model)
 
 
 @pytest.mark.parametrize(

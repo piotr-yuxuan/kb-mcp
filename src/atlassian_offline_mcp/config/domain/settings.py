@@ -14,7 +14,8 @@ import ipaddress
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal, get_args, get_origin
+from types import NoneType
+from typing import TYPE_CHECKING, Annotated, Literal, TypeAliasType, Union, get_args, get_origin
 from urllib.parse import urlsplit
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr, ValidationError
@@ -299,6 +300,33 @@ class Settings(BaseModel):
 
 # What a setting is: a table of settings, a list, a secret, or another value.
 type Kind = Literal["table", "list", "secret", "value"]
+# The types of a setting that is another value, which the environment gives as text.
+VALUE_TYPES = (str, bool, int, Path)
+
+
+def kind_of(annotation: object) -> Kind:
+    """Give the kind of a setting that is no table by its type; refuse a type of no kind.
+
+    An alias, ``Annotated`` and ``| None`` are looked through: ``Site | None`` is a
+    value. Another type, such as ``list[str]`` or a table that may be None, raises
+    TypeError, so that the environment never reads a setting by the wrong kind.
+    """
+    if isinstance(annotation, TypeAliasType):
+        return kind_of(annotation.__value__)
+    origin, arguments = get_origin(annotation), get_args(annotation)
+    if origin is Annotated:
+        return kind_of(arguments[0])
+    others = [argument for argument in arguments if argument is not NoneType]
+    if origin is Union and len(others) == 1:
+        return kind_of(others[0])
+    if origin is tuple:
+        return "list"
+    if annotation is SecretStr:
+        return "secret"
+    if origin is Literal or annotation in VALUE_TYPES:
+        return "value"
+    message = f"a setting of a type that has no kind: {annotation}"
+    raise TypeError(message)
 
 
 def setting_paths(
@@ -307,7 +335,8 @@ def setting_paths(
     """Give the path of each setting of a model, at any depth, and its kind.
 
     A table is a model of its own, whose settings follow it. The environment gives a
-    table or a list in JSON, and it alone gives a secret.
+    table or a list in JSON, and it alone gives a secret. Raises TypeError for a setting
+    of a type that ``kind_of`` knows no kind for.
     """
     paths: dict[tuple[str, ...], Kind] = {}
     for name, info in model.model_fields.items():
@@ -316,10 +345,8 @@ def setting_paths(
         if isinstance(annotation, type) and issubclass(annotation, BaseModel):
             paths[path] = "table"
             paths.update(setting_paths(annotation, path))
-        elif get_origin(annotation) is tuple:
-            paths[path] = "list"
         else:
-            paths[path] = "secret" if SecretStr in get_args(annotation) else "value"
+            paths[path] = kind_of(annotation)
     return paths
 
 
