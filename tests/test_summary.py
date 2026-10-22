@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from atlassian_offline_mcp.cli.commands import login as login_command
+from atlassian_offline_mcp.cli.commands import model as model_command
 from atlassian_offline_mcp.cli.commands._shared import enter
 from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.cli.options.index import by_words_alone
@@ -169,6 +170,32 @@ def test_an_index_by_words_alone_ignores_the_model_and_the_endpoint_given(
 def test_an_index_by_meaning_applies_its_model_and_endpoint(mode: str) -> None:
     """Outside the lexical mode the index embeds, with the model at the endpoint."""
     assert by_words_alone(None, {"search_mode": mode}) == {}
+
+
+@pytest.mark.parametrize(
+    ("given", "why"),
+    [
+        ((["eval", "--yes", "golden.yaml"], ["--model", "other:1b"]), "replaced by --model"),
+        ((["model", "check"], ["other:1b"]), "replaced by the model named"),
+    ],
+)
+@pytest.mark.usefixtures("runs")
+def test_a_model_named_on_the_command_line_replaces_the_setting(
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    given: tuple[list[str], list[str]],
+    why: str,
+) -> None:
+    """The run uses ``eval``'s --model and ``model check``'s name; without them, the setting."""
+    monkeypatch.setattr(model_command, "run", lambda *_: (0, None))
+    config = home / "config.toml"
+    config.write_text('model = "tiny"\n', "utf-8")
+    command, named = given
+    assert main([*command, "--config", str(config)]) == 0
+    assert "ignored" not in capsys.readouterr().err
+    assert main([*command, *named, "--config", str(config)]) == 0
+    assert f"ignored: model (config.toml): {why}\n" in capsys.readouterr().err
 
 
 def test_settings_that_the_command_never_reads_are_ignored_in_detail_alone(

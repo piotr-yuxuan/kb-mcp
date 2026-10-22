@@ -19,6 +19,12 @@ from atlassian_offline_mcp.cli.options._common import (
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Mapping
+
+
+def models_named(arguments: argparse.Namespace, _settings: Mapping[str, object]) -> dict[str, str]:
+    """Evaluate the models that --model names, if any, in place of the setting."""
+    return {"model": "replaced by --model"} if arguments.model else {}
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -51,6 +57,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             flags=flags,
             actions=(*actions, remote, golden, models),
             writes=True,
+            unapplied=models_named,
             refused=endpoint_elsewhere,
         )
     )

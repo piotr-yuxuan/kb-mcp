@@ -15,6 +15,12 @@ from atlassian_offline_mcp.cli.options._common import (
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Mapping
+
+
+def model_named(arguments: argparse.Namespace, _settings: Mapping[str, object]) -> dict[str, str]:
+    """Check the model named on the command line, if any, in place of the setting."""
+    return {"model": "replaced by the model named"} if arguments.name else {}
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -41,6 +47,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             reads=("model", "embedding_url", "embedding_api_key"),
             flags=flags,
             actions=(*actions, remote, action, name),
+            unapplied=model_named,
             refused=endpoint_elsewhere,
         )
     )
