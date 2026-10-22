@@ -112,6 +112,18 @@ def test_a_folder_is_read_by_its_own_path_before_any_link(
     assert not [path for path in paths(listing) if path.startswith(f"{link}/")]
 
 
+def test_without_archives_a_link_to_an_archived_folder_is_left_out(worklog: Path) -> None:
+    """Archived by what it links to, too: an archived day is not read as a current one."""
+    shortcut = worklog / "transcripts/current/shortcut"
+    shortcut.symlink_to("../archive/2026/2026-09/2026-09-15 Tue")
+    (worklog / "transcripts/current/plan.org").symlink_to("../../todo.org_archive")
+    assert paths(files.listed(worklog, archives=False)) == [
+        "todo.org",
+        "transcripts/current/2026-10-20 Tue/1.org",
+        "transcripts/misc/a.org",
+    ]
+
+
 def test_links_are_followed_inside_the_work_log_alone(tmp_path: Path, worklog: Path) -> None:
     """A link to a file or a folder inside is read; one out is named; a loop ends."""
     outside = write(tmp_path, "elsewhere/secret.org", CONTENT)

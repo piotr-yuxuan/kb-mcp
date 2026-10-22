@@ -71,6 +71,8 @@ def listed(folder: Path, *, archives: bool) -> Listing:
     html = 0
     seen = {root}
     archive = PurePosixPath(TODO_ARCHIVE)
+    # Archived by its path, or by what it links to.
+    archived_paths = ((root / archive).resolve(), (root / TRANSCRIPTS / ARCHIVED).resolve())
     # Paths that cross fewer links come first, then in path order: a folder is read by
     # its own path before any link to it, wherever the link is.
     queue = [
@@ -80,8 +82,12 @@ def listed(folder: Path, *, archives: bool) -> Listing:
     while queue:
         crossed, path = heapq.heappop(queue)
         relative = PurePosixPath(path.relative_to(root).as_posix())
-        archived = relative == archive or relative.parts[:2] == (TRANSCRIPTS, ARCHIVED)
         real = path.resolve()
+        archived = (
+            relative == archive
+            or relative.parts[:2] == (TRANSCRIPTS, ARCHIVED)
+            or any(real.is_relative_to(each) for each in archived_paths)
+        )
         if (
             path.name.startswith((".", "#"))
             or path.name.endswith("~")
