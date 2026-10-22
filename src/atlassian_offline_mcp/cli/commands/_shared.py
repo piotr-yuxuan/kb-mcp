@@ -23,7 +23,8 @@ def enter(arguments: argparse.Namespace) -> int:
     """Load the settings, with the flags given, then run the chosen subcommand.
 
     Refused settings exit 2 before the run is imported; else the run's status is
-    returned. A subcommand that reads no settings gets None.
+    returned. A subcommand that reads no settings gets None. A flag's layer is its
+    option, named after its ``dest``.
     """
     command: Command = arguments.command
     settings = None
@@ -33,10 +34,11 @@ def enter(arguments: argparse.Namespace) -> int:
             for dest, setting in command.flags.items()
         }
         try:
-            settings = load_settings(arguments.config, flags, Path.home().resolve()).settings
+            loaded = load_settings(arguments.config, flags, Path.home().resolve())
         except SettingsError as error:
             sys.stderr.write(f"settings refused: {error}\n")
             return ExitStatus.REFUSED
+        settings = loaded if command.with_layers else loaded.settings
     return int(importlib.import_module(command.run).run(arguments, settings))
 
 

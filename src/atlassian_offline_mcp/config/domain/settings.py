@@ -366,6 +366,10 @@ class Loaded:
     layers: Mapping[str, str] = field(default_factory=dict)
     ignored: tuple[Ignored, ...] = ()
 
+    def layer(self, setting: str) -> str:
+        """Name the layer that gave a setting, by its path joined by dots, or default."""
+        return self.layers.get(setting, DEFAULT_LAYER)
+
 
 def entries_of(value: object, path: tuple[str, ...], layer: str) -> list[Entry]:
     """Give a value that a layer read at a path as entries: a table's, one per value in it."""
