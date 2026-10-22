@@ -167,6 +167,21 @@ class Sources(BaseModel):
     jira: JiraSource = Field(default_factory=JiraSource, description="Jira, on the site.")
 
 
+class Logs(BaseModel):
+    """Where each run writes its log file."""
+
+    model_config = TABLE
+
+    dir: LocalPath | None = Field(
+        default=None,
+        description=(
+            "The folder of each run's log file, ~ being the home directory: by default the"
+            " user's log folder, where the platform keeps them; never under a synchronised"
+            " folder, nor inside a git working tree."
+        ),
+    )
+
+
 class Settings(BaseSettings):
     """What every command needs to know: the site, the data directory, the defaults.
 
@@ -174,7 +189,8 @@ class Settings(BaseSettings):
     ``~`` stands for: its paths are absolute, its default data directory included. It
     reads nothing of its own: the loader reads its variables by pydantic-settings'
     ``EnvSettingsSource``, with the prefix and the nesting of its configuration, an empty
-    variable ignored. The loader then resolves the data directory.
+    variable ignored. The loader then resolves the data directory, and the log folder,
+    which is the platform's for the user when none is set.
     """
 
     model_config = SettingsConfigDict(
@@ -227,6 +243,7 @@ class Settings(BaseSettings):
     sources: Sources = Field(
         default_factory=Sources, description="The sources of the mirror, each a table."
     )
+    logs: Logs = Field(default_factory=Logs, description="The log file of each run.")
 
     @classmethod
     @override

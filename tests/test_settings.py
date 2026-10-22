@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from ipaddress import IPv4Address
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
@@ -12,7 +13,7 @@ import pytest
 from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model
 from pydantic_settings import EnvSettingsSource
 
-from atlassian_offline_mcp.config.app.settings import load_settings
+from atlassian_offline_mcp.config.app.settings import UnsafeDataDirError, load_settings
 from atlassian_offline_mcp.config.domain.settings import (
     SETTING_PATHS,
     ConfluenceSource,
@@ -41,6 +42,17 @@ SENTINEL = "sentinel-0c1e5a"
 def from_file(values: dict[str, object]) -> Settings:
     """Build the settings from a settings file's values alone."""
     return settings_of(file_entries(values, FILE), HOME).settings
+
+
+def user_log_folder(home: Path) -> Path:
+    """Give the user's log folder under a home, where the platform keeps it, by plan 016.
+
+    On Linux, without ``XDG_STATE_HOME``, as platformdirs places it.
+    """
+    return {
+        "darwin": home / "Library" / "Logs" / "atlassian-offline-mcp",
+        "linux": home / ".local" / "state" / "atlassian-offline-mcp" / "log",
+    }[sys.platform]
 
 
 def test_settings_are_normalised() -> None:
@@ -129,12 +141,14 @@ def test_every_setting_is_described() -> None:
 def test_each_setting_is_read_by_its_kind() -> None:
     """Tables and lists are JSON; the token and the embedding key are the secrets.
 
-    The data directory is a path, in which ``~`` is the home.
+    The data directory and the log folder are paths, in which ``~`` is the home.
     """
     assert {path: kind for path, kind in SETTING_PATHS.items() if kind != "value"} == {
         ("api_token",): "secret",
         ("data_dir",): "path",
         ("embedding_api_key",): "secret",
+        ("logs",): "table",
+        ("logs", "dir"): "path",
         ("sources",): "table",
         ("sources", "confluence"): "table",
         ("sources", "confluence", "spaces"): "list",
@@ -209,6 +223,8 @@ def test_a_setting_of_a_type_that_has_no_kind_is_refused(annotation: object) -> 
         ({"embedding_url": "http:///v1"}, "embedding_url (config.toml):"),
         ({"embedding_url": 11434}, "embedding_url (config.toml):"),
         ({"search_mode": "fuzzy"}, "search_mode (config.toml):"),
+        ({"logs": {"dir": "relative/logs"}}, "logs.dir (config.toml): an absolute path"),
+        ({"logs": "~/logs"}, "logs (config.toml):"),
     ],
 )
 def test_unusable_settings_are_refused_by_name_and_layer(
@@ -384,6 +400,38 @@ def loaded_from(
     return load_settings(config, flags or {}, home)
 
 
+def test_the_log_folder_is_the_user_s_unless_one_is_set(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """By default where the platform keeps the user's logs, an empty table too; else as set.
+
+    ``~`` in the one set is the home.
+    """
+    home = (tmp_path / "home").resolve()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    by_default = loaded_from(tmp_path, "")
+    assert by_default.settings.logs.dir == user_log_folder(home)
+    assert by_default.layer("logs.dir") == "default"
+    empty = loaded_from(tmp_path, "[logs]\n")
+    assert empty.settings.logs.dir == user_log_folder(home)
+    assert empty.layer("logs.dir") == FILE
+    assert loaded_from(tmp_path, '[logs]\ndir = "~/logs"\n').settings.logs.dir == home / "logs"
+
+
+def test_the_user_s_log_folder_passes_the_guard_too(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A home inside a git working tree holds it: refused, naming the default layer."""
+    (tmp_path / "repository" / ".git").mkdir(parents=True)
+    home = (tmp_path / "repository" / "home").resolve()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    elsewhere = {"--data-dir": ("data_dir", str(tmp_path / "data"))}
+    with pytest.raises(UnsafeDataDirError, match=r"^logs\.dir \(default\): inside the git"):
+        load_settings(tmp_path / FILE, elsewhere, home)
+
+
 def test_each_layer_wins_over_the_weaker_and_the_weaker_is_ignored(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
@@ -441,6 +489,7 @@ def test_each_setting_s_variable_gives_its_value_and_names_its_layer(
         "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY": f"{SENTINEL}-key",
         "ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES": '["ENG"]',
         "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS": '["PRB", "PAY"]',
+        "ATLASSIAN_OFFLINE_MCP_LOGS__DIR": "~/logs",
     }
     for name, value in given.items():
         monkeypatch.setenv(name, value)
@@ -460,6 +509,7 @@ def test_each_setting_s_variable_gives_its_value_and_names_its_layer(
     assert settings.embedding_api_key.get_secret_value() == f"{SENTINEL}-key"
     assert settings.sources.confluence.spaces == ("ENG",)
     assert settings.sources.jira.projects == ("PRB", "PAY")
+    assert settings.logs.dir == (tmp_path / "home" / "logs").resolve()
     assert loaded.layers == {
         name.removeprefix("ATLASSIAN_OFFLINE_MCP_").lower().replace("__", "."): name
         for name in given

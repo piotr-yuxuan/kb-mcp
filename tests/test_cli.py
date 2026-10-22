@@ -22,6 +22,7 @@ from atlassian_offline_mcp.config.domain.settings import SETTING_PATHS
 from atlassian_offline_mcp.kernel.exit_status import MEANINGS, ExitStatus
 from atlassian_offline_mcp.kernel.output import Output
 from tests.test_question import read_until
+from tests.test_settings import user_log_folder
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -113,10 +114,14 @@ SECRETS = {
 
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
-    """Give each test a scratch home directory, so that none reads or writes the user's."""
+    """Give each test a scratch home directory, so that none reads or writes the user's.
+
+    The user's log folder is under it, as ``XDG_STATE_HOME`` is removed.
+    """
     scratch = tmp_path / "home"
     scratch.mkdir()
     monkeypatch.setenv("HOME", str(scratch))
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     return scratch
 
 
@@ -601,6 +606,7 @@ def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
         "embedding_api_key: not set [default]\n"
         "sources.confluence.spaces: (none) [default]\n"
         "sources.jira.projects: (none) [default]\n"
+        f"logs.dir: {user_log_folder(home.resolve())} [default]\n"
     )
     assert not any(secret in out for secret in SECRETS.values())
 
@@ -651,6 +657,38 @@ def test_check_names_the_layer_of_a_refused_data_directory(
     assert main(["check", "--config", str(config)]) == BAD_SETTINGS
     error = capsys.readouterr().err
     assert "data_dir (ATLASSIAN_OFFLINE_MCP_DATA_DIR): under ~/Documents" in error
+
+
+@pytest.mark.parametrize("name", ["check", "index"])
+@pytest.mark.parametrize(
+    "refused",
+    [
+        ("~/Dropbox/logs", "under a Dropbox folder"),
+        ("~/project/logs", "inside the git working tree"),
+    ],
+)
+def test_check_and_index_refuse_a_log_folder_that_could_leave_the_machine(
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    name: str,
+    refused: tuple[str, str],
+) -> None:
+    """Logs hold titles and queries: the data directory's guard exits 2, naming logs.dir.
+
+    From the file, then from its variable, each named as the layer.
+    """
+    folder, reason = refused
+    (home / "project" / ".git").mkdir(parents=True)
+    config = home / "config.toml"
+    config.write_text(f'[logs]\ndir = "{folder}"\n', "utf-8")
+    assert main([name, "--config", str(config)]) == BAD_SETTINGS
+    assert f"settings refused: logs.dir (config.toml): {reason}" in capsys.readouterr().err
+
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_LOGS__DIR", folder)
+    assert main([name, "--config", str(home / "none.toml")]) == BAD_SETTINGS
+    error = capsys.readouterr().err
+    assert f"settings refused: logs.dir (ATLASSIAN_OFFLINE_MCP_LOGS__DIR): {reason}" in error
 
 
 def test_check_refuses_bad_settings_by_name(home: Path, capsys: CaptureFixture[str]) -> None:
