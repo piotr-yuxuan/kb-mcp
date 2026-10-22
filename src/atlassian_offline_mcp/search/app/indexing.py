@@ -54,6 +54,7 @@ class Report:
     pieces: int = 0  # pieces with a vector
     embedded: int = 0  # texts that the model embedded, the store lacking them
     unembedded: list[str] = field(default_factory=list)  # paths with a piece refused
+    characters: int = 0  # of the texts that the pieces embed, whatever the store held
 
 
 @dataclass(frozen=True)
@@ -137,6 +138,7 @@ def build_index(
                 kept = [(*piece[:3], found[piece[3]]) for piece in pending if piece[3] in found]
                 writer.add_pieces(kept)
             report.pieces = len(kept)
+            report.characters = sum(len(text) for text in texts.values())
             report.unembedded = sorted({piece[4] for piece in pending if piece[3] not in found})
             PIECES.add(len(kept), {"aom.outcome": "indexed"})
             PIECES.add(len(pending) - len(kept), {"aom.outcome": "refused"})

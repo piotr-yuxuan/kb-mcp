@@ -1,7 +1,8 @@
 """How well a ranking answers golden questions, and whether one ranking beats another.
 
 Pure: rankings come in as lists of document paths, best first, and questions name the
-paths that answer them. Nothing here runs a search.
+paths that answer them; so do the passages that ask quotes, with their texts. Nothing
+here runs a search. ``default_chunking`` holds plan 019's rule for the default chunking.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 # Measures look at the first CUTOFF documents of a ranking.
 CUTOFF = 10
@@ -27,6 +28,14 @@ SEED = 11
 # pipes of a table's cells, which plain text renders as spaces.
 LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 MARKS = re.compile(r"[*_`|]")
+# Plan 019's rule: the chunking that a challenger must beat; the level of its adjusted
+# p-value on Evidence@ask; the MRR@10 it may lose; how many times the control's tokens
+# it may cost; and within how much Evidence@ask two are taken as equal.
+CONTROL = "sections"
+ALPHA = 0.05
+MRR_LOSS = 0.02
+COST = 3
+TIE = 0.01
 
 
 @dataclass(frozen=True)
@@ -71,6 +80,43 @@ class Measures:
         )
 
 
+@dataclass(frozen=True)
+class Quoted:
+    """How ask's first answer serves one question, or many on average."""
+
+    found: float  # Found@ask: the share of the expected documents among its passages
+    # Evidence@ask: of the expected documents with evidence, the share whose evidence
+    # their passage holds; None when none has evidence.
+    evidence: float | None
+
+    @classmethod
+    def mean(cls, many: Sequence[Quoted]) -> Quoted:
+        """Average over questions; Evidence@ask over those that have evidence."""
+        evidence = [each.evidence for each in many if each.evidence is not None]
+        return cls(fmean(each.found for each in many), fmean(evidence) if evidence else None)
+
+
+@dataclass(frozen=True)
+class Scored:
+    """What a chunking scored in hybrid mode, question by question, and what it costs."""
+
+    reciprocal_ranks: tuple[float, ...]  # MRR@10 of each question
+    evidence: tuple[float, ...]  # Evidence@ask of each question with evidence
+    tokens: int  # of the texts that its index embeds, at the characters of a token
+
+
+@dataclass(frozen=True)
+class Choice:
+    """The default chunking that the rule gives, and the tests that it read.
+
+    Each test is a challenger's against the control, on ``mrr`` or ``evidence``.
+    """
+
+    chunking: str
+    pvalues: dict[str, dict[str, float]]
+    adjusted: dict[str, dict[str, float]]  # by Holm, over every test
+
+
 def plain(text: str) -> str:
     """Write text as evidence is compared: links as their words, no marks, one case, spaced."""
     return " ".join(MARKS.sub("", LINK.sub(r"\1", text)).casefold().split())
@@ -105,6 +151,58 @@ def measure(
         success=1.0 if top[:1] and top[0] in expected else 0.0,
         section=fmean(held) if held else None,
     )
+
+
+def quoting(passages: Sequence[tuple[str, str]], question: Question) -> Quoted:
+    """Measure the passages of ask's first answer, each a path and its text, for a question."""
+    texts = dict(passages)
+    held = [
+        plain(phrase) in plain(texts.get(path, ""))
+        for path, phrase in question.evidence.items()
+        if path in question.expected
+    ]
+    found = sum(path in texts for path in question.expected) / len(question.expected)
+    return Quoted(found, fmean(held) if held else None)
+
+
+def default_chunking(scored: Mapping[str, Scored]) -> Choice:
+    """Choose the default chunking among those scored, the control among them, by the rule.
+
+    A challenger qualifies when it beats the control on Evidence@ask, with a p-value
+    below ALPHA once adjusted by Holm over every test of every challenger, on MRR@10
+    and on Evidence@ask; loses at most MRR_LOSS of MRR@10; and costs at most COST times
+    the control's tokens. The best Evidence@ask wins, and within TIE of it the cheapest;
+    else the control stays.
+    """
+    control = scored[CONTROL]
+    pvalues = {
+        name: {
+            "mrr": paired_test(control.reciprocal_ranks, each.reciprocal_ranks),
+            "evidence": paired_test(control.evidence, each.evidence),
+        }
+        for name, each in scored.items()
+        if name != CONTROL
+    }
+    tests = [(name, measure) for name, tested in pvalues.items() for measure in tested]
+    adjusted: dict[str, dict[str, float]] = {name: {} for name in pvalues}
+    for (name, measure), value in zip(
+        tests, holm([pvalues[name][measure] for name, measure in tests]), strict=True
+    ):
+        adjusted[name][measure] = value
+    evidence = {name: fmean(each.evidence or (0.0,)) for name, each in scored.items()}
+    mrr = {name: fmean(each.reciprocal_ranks or (0.0,)) for name, each in scored.items()}
+    qualified = [
+        name
+        for name in adjusted
+        if evidence[name] > evidence[CONTROL]
+        and adjusted[name]["evidence"] < ALPHA
+        and mrr[CONTROL] - mrr[name] <= MRR_LOSS
+        and scored[name].tokens <= COST * control.tokens
+    ]
+    best = max((evidence[name] for name in qualified), default=0.0)
+    close = [name for name in qualified if best - evidence[name] <= TIE]
+    chosen = min(close, key=lambda name: scored[name].tokens, default=CONTROL)
+    return Choice(chosen, pvalues, adjusted)
 
 
 def paired_test(
@@ -148,10 +246,12 @@ def holm(pvalues: Sequence[float]) -> list[float]:
     return adjusted
 
 
-def averages(per: Mapping[str, Measures], questions: Sequence[Question]) -> dict[str, Measures]:
+def averages[M](
+    per: Mapping[str, M], questions: Sequence[Question], mean: Callable[[Sequence[M]], M]
+) -> dict[str, M]:
     """Average each question's measures over all of them (under "all") and per group."""
-    groups: dict[str, list[Measures]] = {"all": [per[question.id] for question in questions]}
+    groups: dict[str, list[M]] = {"all": [per[question.id] for question in questions]}
     for question in questions:
         for group in question.groups:
             groups.setdefault(group, []).append(per[question.id])
-    return {group: Measures.mean(each) for group, each in groups.items()}
+    return {group: mean(each) for group, each in groups.items()}

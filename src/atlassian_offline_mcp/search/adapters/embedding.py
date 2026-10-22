@@ -144,6 +144,11 @@ class Embedder(Protocol):
         """The length of each vector."""
         ...
 
+    @property
+    def tokens(self) -> int | None:
+        """The tokens counted for the texts of ``documents`` so far, None if not all were."""
+        ...
+
     def documents(self, texts: Sequence[str]) -> list[NDArray[np.float32] | None]:
         """Embed texts to be found: a vector for each, or None for one the model refuses."""
         ...

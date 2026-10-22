@@ -11,11 +11,15 @@ import pytest
 from atlassian_offline_mcp.evaluation.domain.evaluation import (
     Measures,
     Question,
+    Quoted,
+    Scored,
     averages,
+    default_chunking,
     holm,
     measure,
     paired_test,
     percentile,
+    quoting,
 )
 
 QUESTION = Question(
@@ -67,7 +71,7 @@ def test_averages_are_overall_and_per_group() -> None:
     """Each group averages its own questions, a question counting in each of its groups."""
     other = Question("q2", "another", expected=("z",), groups=("paraphrase", "en"))
     per = {"q1": measure(["a"], QUESTION), "q2": measure(["x"], other)}
-    found = averages(per, [QUESTION, other])
+    found = averages(per, [QUESTION, other], Measures.mean)
     assert found["keyword"].success == 1.0
     assert found["paraphrase"].success == 0.0
     assert found["en"] == found["all"]
@@ -168,3 +172,74 @@ def test_ndcg_reaches_one_with_more_relevant_documents_than_ten() -> None:
 def test_the_percentile_of_thirty_is_the_twenty_ninth() -> None:
     """0.95 x 30 = 28.5, so the nearest rank is the 29th, not the 28th."""
     assert percentile(list(range(1, 31)), 0.95) == TWENTY_NINE
+
+
+def test_found_and_evidence_at_ask_are_shares_of_the_expected_documents() -> None:
+    """Worked by hand: half found, evidence held; all found, none held; none, no evidence."""
+    first = Question("q1", "x", expected=("a", "b"), evidence={"a": "Rollback pause"})
+    second = Question("q2", "y", expected=("a",), evidence={"a": "drain"})
+    third = Question("q3", "z", expected=("z",))
+    shown = [("a", "## Rollback\n\n**Rollback** pause, then go on."), ("c", "drain")]
+    measured = [
+        quoting(shown, first),
+        quoting([("a", "nothing to see")], second),
+        quoting([], third),
+    ]
+    assert measured == [Quoted(0.5, 1.0), Quoted(1.0, 0.0), Quoted(0.0, None)]
+    assert Quoted.mean(measured) == Quoted(0.5, 0.5)
+
+
+QUESTIONS = 20
+TOKENS = 1000
+ALPHA_LEVEL = 0.05  # the plan's level for an adjusted p-value
+
+
+def scored(
+    evidence: float, mrr: float, tokens: int = TOKENS, *, last: float | None = None
+) -> Scored:
+    """Score a chunking on QUESTIONS questions, all alike unless ``last`` sets the last one."""
+    each = (evidence,) * (QUESTIONS - 1) + ((evidence if last is None else last),)
+    return Scored((mrr,) * QUESTIONS, each, tokens)
+
+
+def test_a_challenger_better_on_evidence_and_no_worse_otherwise_becomes_the_default() -> None:
+    """Evidence@ask from 0 to 1 on every question: significant once adjusted over its two."""
+    choice = default_chunking({"sections": scored(0.0, 0.5), "windows": scored(1.0, 0.5)})
+    assert choice.chunking == "windows"
+    assert choice.adjusted["windows"]["evidence"] < ALPHA_LEVEL
+    assert set(choice.pvalues["windows"]) == {"mrr", "evidence"}
+
+
+def test_the_control_stays_against_a_challenger_that_loses_0_03_of_mrr() -> None:
+    """It wins Evidence@ask, but MRR@10 may fall by 0.02 at most."""
+    choice = default_chunking({"sections": scored(0.0, 0.5), "windows": scored(1.0, 0.47)})
+    assert choice.chunking == "sections"
+
+
+def test_a_challenger_at_3_1_times_the_tokens_is_left_out() -> None:
+    """Three times the control's tokens at most: the costlier one is out, the other chosen."""
+    choice = default_chunking(
+        {
+            "sections": scored(0.0, 0.5),
+            "small-to-big": scored(1.0, 0.5, int(3.1 * TOKENS)),
+            "windows": scored(0.9, 0.5, 3 * TOKENS),
+        }
+    )
+    assert choice.chunking == "windows"
+
+
+def test_of_two_within_0_01_of_evidence_the_cheaper_wins() -> None:
+    """1.0 against 0.995: as good, so the one that embeds less is chosen."""
+    choice = default_chunking(
+        {
+            "sections": scored(0.0, 0.5),
+            "section-paths": scored(1.0, 0.5, 2 * TOKENS),
+            "windows": scored(1.0, 0.5, int(1.5 * TOKENS), last=0.9),
+        }
+    )
+    assert choice.chunking == "windows"
+    tested = {"mrr", "evidence"}
+    assert {name: set(each) for name, each in choice.adjusted.items()} == {
+        "section-paths": tested,
+        "windows": tested,
+    }
