@@ -6,9 +6,11 @@ import json
 import re
 from datetime import UTC, datetime
 from itertools import count
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+import yaml
 
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
@@ -22,7 +24,7 @@ from atlassian_offline_mcp.evaluation.app.evaluation import (
     record,
     table,
 )
-from atlassian_offline_mcp.evaluation.domain.evaluation import holm
+from atlassian_offline_mcp.evaluation.domain.evaluation import Question, holm
 from atlassian_offline_mcp.mcp.app.tools import Library
 from atlassian_offline_mcp.search.adapters.embedding import ModelError
 from atlassian_offline_mcp.search.adapters.sqlite_index import reading
@@ -33,7 +35,6 @@ from tests.mirrors import MOMENT, fillers, issue, page, write
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
@@ -56,6 +57,8 @@ GOLDEN = """
   expected: [PROJ-7]
 """
 REFUSED = 2
+# Plan 002's golden set, whose keys a golden file takes as refs.
+SANDBOX_SET = Path(__file__).parents[1] / "sandbox" / "golden.yaml"
 # Seconds that connecting takes in the test of timing: beyond any query's.
 LOADING = 1000
 
@@ -119,12 +122,58 @@ def golden(data: Path, text: str = GOLDEN) -> list:
         ),
         ("{id: q1}", "golden: expected a list"),
         ("- [unclosed", "not a golden file"),
+        ("- {id: 1, question: x, expected: ['4002']}", r"golden\[0\]\.id: expected a string"),
+        ("- 3", r"golden\[0\]: expected an object"),
+        (
+            "- {id: q1, question: x, expected: ['4002'], partial: null}",
+            r"golden\[0\]\.partial: expected a list",
+        ),
+        (
+            "- {id: q1, question: x, expected: ['4002'], evidence: {'4002': 3}}",
+            r"golden\[0\]\.evidence\.4002: expected a string",
+        ),
+        ("- {id: q1}", r"golden\[0\]\.question: missing; golden\[0\]\.expected: missing"),
     ],
 )
 def test_a_golden_file_is_refused_by_name(data: Path, text: str, named: str) -> None:
     """Each fault names where it is; nothing is half-read."""
     with pytest.raises(GoldenError, match=named):
         golden(data, text)
+
+
+def test_the_sandbox_s_golden_set_reads_as_written() -> None:
+    """Plan 002's set as a golden file, its overlap and language as groups, reads whole.
+
+    Each question keeps its id, its text, its groups, and its refs and evidence, each
+    ref as the path that the mirror gives it.
+    """
+
+    def path(ref: str) -> str:
+        return f"mirror/{ref}.md"
+
+    items = yaml.safe_load(SANDBOX_SET.read_text("utf-8"))
+    written = [
+        {
+            "id": item["id"],
+            "question": item["question"],
+            "expected": item["expected"],
+            "partial": item["partial"],
+            "groups": [item["overlap"], item["lang"]],
+            "evidence": item["evidence"],
+        }
+        for item in items
+    ]
+    assert read_golden(yaml.safe_dump(written, allow_unicode=True), path) == [
+        Question(
+            item["id"],
+            item["question"],
+            expected=tuple(path(ref) for ref in item["expected"]),
+            partial=tuple(path(ref) for ref in item["partial"]),
+            groups=(item["overlap"], item["lang"]),
+            evidence={path(ref): phrase for ref, phrase in item["evidence"].items()},
+        )
+        for item in items
+    ]
 
 
 def test_refs_resolve_as_read_takes_them(data: Path) -> None:
