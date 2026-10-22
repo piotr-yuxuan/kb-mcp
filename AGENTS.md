@@ -17,8 +17,9 @@ Follow the `workflow:plans` skill with these parameters:
   - `uv run --with-requirements sandbox/seed_corpus.py --with pytest pytest sandbox`,
     which needs pandoc on `PATH`.
 - The design and the shared contracts are in `docs/work/README.md` and
-  `docs/reference/data-layout.md`. Only the adapter of a representation reads its JSON,
-  and only one module knows the site's HTML.
+  `docs/reference/data-layout.md`; where code goes, in `docs/explanation/code-layout.md`.
+  Only the adapter of a representation reads its JSON, and only one module knows the
+  site's HTML.
 - At most three review rounds.
 
 ## Sandbox credentials

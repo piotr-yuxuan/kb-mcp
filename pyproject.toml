@@ -19,11 +19,11 @@ dependencies = [
 ]
 
 [project.scripts]
-atlassian-offline-mcp = "atlassian_offline_mcp.cli:main"
+atlassian-offline-mcp = "atlassian_offline_mcp.cli.main:main"
 
 [dependency-groups]
 dev = [
-  "import-linter>=2,<3",
+  "import-linter>=2.15,<3",
   "pytest>=9,<10",
   "ruff>=0.16,<0.17",
 ]
@@ -40,38 +40,57 @@ root_package = "atlassian_offline_mcp"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Layers: commands use cases, which use adapters, which use pure rules"
+name = "Contexts use those below them, never those above"
 type = "layers"
-layers = [
-  "atlassian_offline_mcp.cli",
-  "atlassian_offline_mcp.commands",
-  "atlassian_offline_mcp.app",
-  "atlassian_offline_mcp.adapters",
-  "atlassian_offline_mcp.domain",
-]
+containers = ["atlassian_offline_mcp"]
+layers = ["cli", "evaluation", "mcp", "search", "mirror", "sources", "config", "kernel"]
+exhaustive = true
+exhaustive_ignores = ["__main__"]
 
 [[tool.importlinter.contracts]]
-name = "The server, the index and the evaluation never reach the site, its browser or its session"
+name = "Within each context: entry, commands, use cases, effects, pure rules"
+type = "layers"
+containers = [
+  "atlassian_offline_mcp.cli",
+  "atlassian_offline_mcp.evaluation",
+  "atlassian_offline_mcp.mcp",
+  "atlassian_offline_mcp.search",
+  "atlassian_offline_mcp.mirror",
+  "atlassian_offline_mcp.sources.*",
+  "atlassian_offline_mcp.config",
+]
+layers = ["(main)", "(commands)", "(app)", "(adapters)", "(domain)"]
+exhaustive = true
+
+[[tool.importlinter.contracts]]
+name = "Pure rules, in any context, use no effect and no use case"
+type = "forbidden"
+source_modules = ["atlassian_offline_mcp.kernel", "atlassian_offline_mcp.**.domain"]
+forbidden_modules = ["atlassian_offline_mcp.**.adapters", "atlassian_offline_mcp.**.app"]
+
+[[tool.importlinter.contracts]]
+name = "Effects, in any context, use no use case"
+type = "forbidden"
+source_modules = ["atlassian_offline_mcp.**.adapters"]
+forbidden_modules = ["atlassian_offline_mcp.**.app"]
+
+[[tool.importlinter.contracts]]
+name = "Search, the server and the evaluation read the mirror, never a source"
 type = "forbidden"
 source_modules = [
-  "atlassian_offline_mcp.app.tools",
-  "atlassian_offline_mcp.app.meaning",
-  "atlassian_offline_mcp.app.indexing",
-  "atlassian_offline_mcp.app.evaluation",
-  "atlassian_offline_mcp.commands.serve",
-  "atlassian_offline_mcp.commands.index",
-  "atlassian_offline_mcp.commands.evaluate",
-  "atlassian_offline_mcp.commands.model",
+  "atlassian_offline_mcp.search",
+  "atlassian_offline_mcp.mcp",
+  "atlassian_offline_mcp.evaluation",
+  "atlassian_offline_mcp.cli.commands.serve",
+  "atlassian_offline_mcp.cli.commands.index",
+  "atlassian_offline_mcp.cli.commands.evaluate",
+  "atlassian_offline_mcp.cli.commands.model",
 ]
-forbidden_modules = [
-  "atlassian_offline_mcp.adapters.http",
-  "atlassian_offline_mcp.adapters.browser",
-  "atlassian_offline_mcp.adapters.session_file",
-]
+forbidden_modules = ["atlassian_offline_mcp.sources"]
 
 [[tool.importlinter.contracts]]
-name = "Use cases and commands reach the network through the adapters alone"
+name = "Use cases and commands reach the network through effects only"
 type = "forbidden"
-source_modules = ["atlassian_offline_mcp.app", "atlassian_offline_mcp.commands"]
+source_modules = ["atlassian_offline_mcp.**.app", "atlassian_offline_mcp.cli.commands"]
 forbidden_modules = ["httpx"]
 allow_indirect_imports = true

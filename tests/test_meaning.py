@@ -16,12 +16,12 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from atlassian_offline_mcp.adapters.embedding import ModelError, connect, endpoint
-from atlassian_offline_mcp.adapters.sqlite_index import reading
-from atlassian_offline_mcp.app.indexing import Embedding, build_index
-from atlassian_offline_mcp.app.meaning import Meaning, Nearest
-from atlassian_offline_mcp.app.tools import Library
-from atlassian_offline_mcp.domain.search import Filters, Score
+from atlassian_offline_mcp.mcp.app.tools import Library
+from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect, endpoint
+from atlassian_offline_mcp.search.adapters.sqlite_index import reading
+from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
+from atlassian_offline_mcp.search.app.meaning import Meaning, Nearest
+from atlassian_offline_mcp.search.domain.search import Filters, Score
 from tests.answers import parts
 from tests.endpoint import DIGEST, URL, Scripted, connector, scripted, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
@@ -31,9 +31,9 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from atlassian_offline_mcp.adapters.embedding import Embedder
-    from atlassian_offline_mcp.adapters.sqlite_index import Reader
-    from atlassian_offline_mcp.domain.settings import SearchMode
+    from atlassian_offline_mcp.config.domain.settings import SearchMode
+    from atlassian_offline_mcp.search.adapters.embedding import Embedder
+    from atlassian_offline_mcp.search.adapters.sqlite_index import Reader
 
 # Where "Mixed notes" comes by words for "4002 revert release": after the issue and
 # the page holding both words.

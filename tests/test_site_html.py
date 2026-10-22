@@ -12,8 +12,13 @@ from urllib.parse import quote
 
 import pytest
 
-from atlassian_offline_mcp.adapters.pandoc import Pandoc
-from atlassian_offline_mcp.adapters.site_html import Context, MarkupError, Mirrored, normalise
+from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc
+from atlassian_offline_mcp.mirror.adapters.site_html import (
+    Context,
+    MarkupError,
+    Mirrored,
+    normalise,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "sandbox"
 SITE = "https://site.example.invalid"

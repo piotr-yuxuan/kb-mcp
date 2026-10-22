@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from atlassian_offline_mcp.domain.settings import (
+from atlassian_offline_mcp.config.domain.settings import (
     Settings,
     SettingsError,
     loopback,

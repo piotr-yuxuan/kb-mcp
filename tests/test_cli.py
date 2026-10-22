@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp import commands
-from atlassian_offline_mcp.cli import main
+from atlassian_offline_mcp.cli import commands
+from atlassian_offline_mcp.cli.main import main
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -10,7 +10,7 @@ from pathlib import Path
 from tests.answers import TOOLS
 
 ROOT = Path(__file__).resolve().parent.parent
-GUIDE = (ROOT / "docs" / "guides" / "agents.md").read_text(encoding="utf-8")
+GUIDE = (ROOT / "docs" / "how-to" / "agents.md").read_text(encoding="utf-8")
 SNIPPETS = [json.loads(text) for text in re.findall(r"```json\n(.*?)```", GUIDE, re.DOTALL)]
 SERVER = "atlassian-offline-mcp"  # the name each client knows the server by
 

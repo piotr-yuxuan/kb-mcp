@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.adapters import sqlite_index
-from atlassian_offline_mcp.app.tools import UnanswerableError
+from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
+from atlassian_offline_mcp.search.adapters import sqlite_index
 from tests.answers import built, continuation, follow, parts
 from tests.mirrors import FILLERS, LOREM, MOMENT, issue, location, page
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.app.tools import Library
+    from atlassian_offline_mcp.mcp.app.tools import Library
 
 NEWER = MOMENT + timedelta(days=1)
 HIT = re.compile(r"^\d+\. .*\n {3}(\S+) \|", re.MULTILINE)

@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Self
 import pytest
 from playwright.sync_api import Error
 
-from atlassian_offline_mcp.adapters import browser
-from atlassian_offline_mcp.adapters.browser import SignInFailedError, sign_in
+from atlassian_offline_mcp.sources.atlassian.adapters import browser
+from atlassian_offline_mcp.sources.atlassian.adapters.browser import SignInFailedError, sign_in
 
 if TYPE_CHECKING:
     from pathlib import Path

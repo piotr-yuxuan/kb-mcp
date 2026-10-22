@@ -6,8 +6,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from atlassian_offline_mcp.domain.coverage import Coverage, Target, window
-from atlassian_offline_mcp.domain.period import EPOCH, Period, PeriodError, length
+from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target, window
+from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, Period, PeriodError, length
 
 NOW = datetime(2026, 11, 1, 9, tzinfo=UTC)
 COVERED = datetime(2026, 10, 15, 9, tzinfo=UTC)

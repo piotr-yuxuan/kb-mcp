@@ -9,17 +9,22 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from atlassian_offline_mcp.adapters import http
-from atlassian_offline_mcp.adapters.pandoc import PandocFailedError
-from atlassian_offline_mcp.adapters.raw_store import RawStore, Stored
-from atlassian_offline_mcp.adapters.session_file import COOKIES, write_cookies
-from atlassian_offline_mcp.app.download import SIGN_IN_NEEDED, Targets, download, plan
-from atlassian_offline_mcp.app.mirror import mirror
-from atlassian_offline_mcp.cli import main
-from atlassian_offline_mcp.domain.content import Page
-from atlassian_offline_mcp.domain.coverage import Coverage, Target
-from atlassian_offline_mcp.domain.period import EPOCH, Period, PeriodError
-from atlassian_offline_mcp.domain.settings import Settings
+from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.config.domain.settings import Settings
+from atlassian_offline_mcp.kernel.content import Page
+from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
+from atlassian_offline_mcp.mirror.app.mirror import mirror
+from atlassian_offline_mcp.sources.atlassian.adapters import http
+from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, Stored
+from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from atlassian_offline_mcp.sources.atlassian.app.download import (
+    SIGN_IN_NEEDED,
+    Targets,
+    download,
+    plan,
+)
+from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target
+from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, Period, PeriodError
 from tests.samples import v2_page, v2_space
 from tests.test_download import CAP, PAGES, SITE, SPACE, FakeSite, stamp
 
@@ -303,7 +308,7 @@ def test_a_page_on_its_way_is_probed_before_one_newly_absent(
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
     gone = RefreshSite(listing=without("1002"), gone={"1002"})
     run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND)
-    monkeypatch.setattr("atlassian_offline_mcp.app.download.MAX_PROBES", 1)
+    monkeypatch.setattr("atlassian_offline_mcp.sources.atlassian.app.download.MAX_PROBES", 1)
     both = RefreshSite(listing={"1003": PAGES["1003"]}, gone={"1001", "1002"})
     run(chosen, monkeypatch, both, catch_up(["MFS"], []), SECOND + timedelta(days=1))
     stones = RawStore(chosen.raw).tombstones()

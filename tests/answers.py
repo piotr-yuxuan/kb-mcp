@@ -11,17 +11,17 @@ import math
 import re
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.app.indexing import Embedding, build_index
-from atlassian_offline_mcp.app.meaning import Meaning
-from atlassian_offline_mcp.app.tools import Library
+from atlassian_offline_mcp.mcp.app.tools import Library
+from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
+from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.endpoint import connector, tiny
 from tests.mirrors import MOMENT, fillers, write
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from atlassian_offline_mcp.domain.mirror import FrontMatter
-    from atlassian_offline_mcp.domain.settings import SearchMode
+    from atlassian_offline_mcp.config.domain.settings import SearchMode
+    from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 OPENING = re.compile(r'<untrusted-reference-data boundary="([0-9a-f]{16})">\n')
 BUDGET = 4_000

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from atlassian_offline_mcp.domain.period import PeriodError, period
+from atlassian_offline_mcp.sources.atlassian.domain.period import PeriodError, period
 
 NOW = datetime(2026, 10, 22, 9, 30, tzinfo=UTC)
 

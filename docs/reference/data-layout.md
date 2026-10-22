@@ -10,11 +10,12 @@ fixed.
 `<data>` is the setting `data_dir`, by default `~/atlassian-offline-mcp`. It is never
 under a synchronised folder (iCloud, `~/Library/CloudStorage`, Dropbox, OneDrive, Google
 Drive, `~/Desktop`, `~/Documents`) and never inside a git working tree. Settings come
-from `app.settings.load_settings`, which resolves the data directory and each of the
-places below (links followed, `..` removed), judges each resolved path with names
+from `config.app.settings.load_settings`, which resolves the data directory and each of
+the places below (links followed, `..` removed), judges each resolved path with names
 compared regardless of case, and raises `UnsafeDataDirError` when one is refused. Links
 deeper inside those places are not followed. Every command loads its settings that way;
-`domain.settings.parse_settings` alone checks no location and is not for commands.
+`config.domain.settings.parse_settings` alone checks no location and is not for
+commands.
 
 | Path | `Settings` | Written by | Read by |
 |---|---|---|---|
@@ -32,29 +33,30 @@ No code builds these paths otherwise.
 
 The site's responses and its HTML change without notice. So that a change stays local:
 
-- **One vocabulary.** `domain.content` names what the mirror holds: `Space`, `Folder`,
+- **One vocabulary.** `kernel.content` names what the mirror holds: `Space`, `Folder`,
   `Page` and `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment`, `Comment`,
-  `Person`, and `Snapshot`, a document at one revision with its rendered body.
-  `Listed` is what a listing says of a document (its type, id, revision, update time
-  and Confluence version), read apart from the rest of the entry, so that an entry
-  whose other fields have changed still lets the document be fetched.
-  `domain.mirror.FrontMatter` names what the mirror says of each document. A document
-  knows where it is stored (`source`, `kind`) and names its state (`revision`). Every
-  layer above the adapters works with these types alone.
-- **One module per representation.** `adapters.confluence_v2` and `adapters.jira_v3` hold
-  all that the code knows of those JSON responses: field names, which response holds
-  what, and the file names a snapshot uses. The API paths, query parameters and paging
-  that 004 needs go into the same modules. `adapters.markdown` alone writes and reads
-  front matter. No other code indexes into a response or a front matter.
-- **Strict reading.** Adapters read through `adapters.fields.Fields`. Every field must be
+  `Person`, and `Snapshot`, a document at one revision with its rendered body. `Listed`
+  is what a listing says of a document (its type, id, revision, update time and
+  Confluence version), read apart from the rest of the entry, so that an entry whose
+  other fields have changed still lets the document be fetched.
+  `mirror.domain.mirror.FrontMatter` names what the mirror says of each document. A
+  document knows where it is stored (`source`, `kind`) and names its state (`revision`).
+  Every layer above the adapters works with these types alone.
+- **One module per representation.** `sources.atlassian.adapters.confluence_v2` and
+  `sources.atlassian.adapters.jira_v3` hold all that the code knows of those JSON
+  responses: field names, which response holds what, and the file names a snapshot uses.
+  The API paths, query parameters and paging that 004 needs go into the same modules.
+  `mirror.adapters.markdown` alone writes and reads front matter. No other code indexes
+  into a response or a front matter.
+- **Strict reading.** Adapters read through `kernel.fields.Fields`. Every field must be
   present: a missing field, a wrong type or a time without an offset raises
   `RepresentationError` with the field's path, such as
   `document.json.version.number: expected an integer`. The `optional_` readers also
   accept null, and accept absence only where the documented response may leave the field
   out (labels in a listing, an issue's `parent`). A value that a domain type refuses
-  (`domain.content.RefusedError`) is reported the same way, through `Fields.refusals`, as
-  `page: id: does not match <rule>`. Messages never hold the value, so reports can print
-  them.
+  (`kernel.content.RefusedError`) is reported the same way, through `Fields.refusals`,
+  as `page: id: does not match <rule>`. Messages never hold the value, so reports can
+  print them.
 - **Raw first.** The raw store keeps responses exactly as received, reading only what
   names their folder. A response whose other fields have changed is therefore kept; it
   reads as `Unreadable` until its adapter is fixed, and then `mirror` reads it again
@@ -68,10 +70,10 @@ The site's responses and its HTML change without notice. So that a change stays 
 
 ## The raw store
 
-Owned by `adapters.raw_store.RawStore`; nothing else reads or writes under
-`<data>/raw/`. One run at a time writes, inside `RawStore.writing()`, which holds a lock
-on `<data>/raw/.lock` and raises `StoreBusyError` when another run holds it; every
-method that writes refuses to run outside it.
+Owned by `sources.atlassian.adapters.raw_store.RawStore`; nothing else reads or writes
+under `<data>/raw/`. One run at a time writes, inside `RawStore.writing()`, which holds
+a lock on `<data>/raw/.lock` and raises `StoreBusyError` when another run holds it;
+every method that writes refuses to run outside it.
 
 ### Snapshots
 
@@ -93,8 +95,9 @@ A snapshot is one document at one revision:
   ids, revisions and response files that match their rules. Hidden leftovers of a crash,
   Finder's `.DS_Store`, AppleDouble `._` files and copies are skipped.
 
-Files of a Confluence snapshot, named by constants of `adapters.confluence_v2`, both
-GETs pinned to the version the listing gave (`version=N`):
+Files of a Confluence snapshot, named by constants of
+`sources.atlassian.adapters.confluence_v2`, both GETs pinned to the version the listing
+gave (`version=N`):
 
 | File | Content |
 |---|---|
@@ -105,7 +108,7 @@ GETs pinned to the version the listing gave (`version=N`):
 `confluence_v2.identity` refuses a view of another page or version than the document,
 so a page edited between the two GETs is never stored as one snapshot.
 
-Files of a Jira snapshot, named by constants of `adapters.jira_v3`:
+Files of a Jira snapshot, named by constants of `sources.atlassian.adapters.jira_v3`:
 
 | File | Content |
 |---|---|
@@ -185,22 +188,24 @@ Attached files: `<data>/raw/blobs/<sha256[:2]>/<sha256>`, written once, by
 Two more of the store's own records, each replaced whole:
 
 - `<data>/raw/coverage.json`, read by `coverage()` and written by `put_coverage()`: for
-  each target (a space key or a project key, `domain.coverage.Target`), the one period
-  over which every document updated is stored (`domain.coverage.Coverage`). A run that
-  listed a target whole joins its window to that period when the two overlap or touch;
-  a run without `--since` starts at the covered start, so every run asks again for
-  whatever failed inside the period.
+  each target (a space key or a project key,
+  `sources.atlassian.domain.coverage.Target`), the one period over which every document
+  updated is stored (`sources.atlassian.domain.coverage.Coverage`). A run that listed a
+  target whole joins its window to that period when the two overlap or touch; a run
+  without `--since` starts at the covered start, so every run asks again for whatever
+  failed inside the period.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
   `put_tombstones()`: each Confluence document absent from its space's listing
-  (`domain.deletions.Tombstone`), pending until a probe answers, then dated by its first
-  answer of gone (404, trashed, or moved to a space the store does not keep), and
-  confirmed by a second, at least an hour later. A document found in a kept space whose
-  stored listing names it has moved, and loses its tombstone, as does one listed again;
-  one found in a kept space whose listing does not name it goes back to pending. The absent are found from the last listing read by id alone
+  (`sources.atlassian.domain.deletions.Tombstone`), pending until a probe answers, then
+  dated by its first answer of gone (404, trashed, or moved to a space the store does
+  not keep), and confirmed by a second, at least an hour later. A document found in a
+  kept space whose stored listing names it has moved, and loses its tombstone, as does
+  one listed again; one found in a kept space whose listing does not name it goes back
+  to pending. The absent are found from the last listing read by id alone
   (`listed_ids(space_id, kind)`), so that an entry the adapter would refuse is still
-  followed, and the ids that have a snapshot (`stored_ids(kind)`); the record is
-  written before the space's listing is replaced, so that no absent document is lost to
-  a run that stops, and they are probed once every space of the run is listed.
+  followed, and the ids that have a snapshot (`stored_ids(kind)`); the record is written
+  before the space's listing is replaced, so that no absent document is lost to a run
+  that stops, and they are probed once every space of the run is listed.
 
 ## Run reports
 
@@ -221,9 +226,9 @@ ran.
 <data>/docs/assets/<sha256>.<ext>                    an attached file
 ```
 
-- The documents are exactly the files that `adapters.markdown.documents(docs)` yields:
-  those of the first, second and fourth patterns, except names beginning with `_` or
-  `.`. `_tree.md` has no front matter, and nothing under `assets/` is a document.
+- The documents are exactly the files that `mirror.adapters.markdown.documents(docs)`
+  yields: those of the first, second and fourth patterns, except names beginning with
+  `_` or `.`. `_tree.md` has no front matter, and nothing under `assets/` is a document.
 - `<SPACE>` is the space key, `<PROJECT>` the project key, `<KEY>` the issue key.
 - `<slug>`: the title decomposed (Unicode NFKD) and lowered, its combining marks dropped
   (`Crème` gives `creme`), keeping ASCII letters and digits; every run of other
@@ -237,14 +242,14 @@ ran.
   mirrored file, or naming the page as "not yet mirrored" when its body was not
   downloaded.
 
-Each document starts with front matter written by `adapters.markdown.dump` and read by
-`adapters.markdown.load`, from a `domain.mirror.FrontMatter`; nothing else writes or
-reads it. Its keys come in this order, all always present (`null` when unknown or not
-applicable), and a key that one source alone has is `null` for the other and never
-for its own. Every text is one line, with no line break of any kind; times are in UTC,
-written as quoted strings to the second; strings that YAML 1.1 could read as another
-type (`'000003'`, `'Yes'`) are quoted; `load` refuses any other key, order or type, by
-name.
+Each document starts with front matter written by `mirror.adapters.markdown.dump` and
+read by `mirror.adapters.markdown.load`, from a `mirror.domain.mirror.FrontMatter`;
+nothing else writes or reads it. Its keys come in this order, all always present (`null`
+when unknown or not applicable), and a key that one source alone has is `null` for the
+other and never for its own. Every text is one line, with no line break of any kind;
+times are in UTC, written as quoted strings to the second; strings that YAML 1.1 could
+read as another type (`'000003'`, `'Yes'`) are quoted; `load` refuses any other key,
+order or type, by name.
 
 | Key | Type | Value |
 |---|---|---|
@@ -293,19 +298,18 @@ instructions.
 ## The index
 
 Owned by `index` (006). `<data>/index.sqlite` is built from the documents of
-`<data>/docs/` alone, read with `adapters.markdown`, into a temporary file that is then
-renamed into place. Its schema is defined in 006's plan; schema 3 (011) adds the table
-`pieces` (each piece of a section's body, its span and its vector) and the meta rows
-`build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the last
-three empty for an index built without a model. An index of another schema is refused
-with the command that rebuilds it. The
-MCP server opens it read-only, never writes, and reopens it when the file is replaced;
-it searches by meaning with the model that the index names, and only while the
-endpoint's fingerprint for it is the index's.
+`<data>/docs/` alone, read with `mirror.adapters.markdown`, into a temporary file that
+is then renamed into place. Its schema is defined in 006's plan; schema 3 (011) adds the
+table `pieces` (each piece of a section's body, its span and its vector) and the meta
+rows `build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the
+last three empty for an index built without a model. An index of another schema is
+refused with the command that rebuilds it. The MCP server opens it read-only, never
+writes, and reopens it when the file is replaced; it searches by meaning with the model
+that the index names, and only while the endpoint's fingerprint for it is the index's.
 
 ### Models and vectors
 
-No model runs in this program (plan 018): `adapters.embedding` alone asks an
+No model runs in this program (plan 018): `search.adapters.embedding` alone asks an
 OpenAI-compatible endpoint, the setting `embedding_url` (by default Ollama's
 `http://127.0.0.1:11434/v1`), and refuses one that is not a literal loopback address
 unless the command is given `--allow-remote-embeddings`. A model's fingerprint is the
