@@ -410,6 +410,9 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     config.unlink()
     for variable in given:
         monkeypatch.delenv(variable)
+    elsewhere = home / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
     main([*argv[1:], "--yes"])
     (first_arguments, first), (second_arguments, second) = runs
     command = first_arguments.command
@@ -422,8 +425,27 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
         was, is_now = (getattr(each, action.dest) for each in (first_arguments, second_arguments))
         if was == action.default:
             assert not set(action.option_strings) & set(argv)
-        if isinstance(was, Path):
-            was, is_now = was.absolute(), is_now.absolute()
+        if isinstance(was, Path):  # given under the home, the first run's directory
+            was = home / was
         assert is_now == was
     # The file's model, which no flag sets, is left to the settings of the run to come.
     assert second.settings.model != first.settings.model
+
+
+@pytest.mark.usefixtures("runs")
+def test_the_command_to_copy_carries_each_path_absolute(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """A path given relative would point elsewhere once the command runs from elsewhere.
+
+    The settings take the data directory absolute alone.
+    """
+    monkeypatch.chdir(home)
+    paths = {"--config": "cfg/c.toml", "--chrome": "bin/chrome"}
+    given = [item for option, path in paths.items() for item in (option, path)]
+    assert main(["login", "--yes", "--site", SITE, *given]) == 0
+    err = capsys.readouterr().err
+    argv = shlex.split(err[err.index("atlassian-offline-mcp login") :].replace("\\\n", ""))
+    assert {option: argv[argv.index(option) + 1] for option in paths} == {
+        option: str(home.absolute() / path) for option, path in paths.items()
+    }

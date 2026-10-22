@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.domain.command import Command
@@ -39,7 +40,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     add_output_options(parser)
     add_yes_option(parser)
     chrome = parser.add_argument(
-        "--chrome", help="Chrome's executable, where the chrome channel fails"
+        "--chrome", type=Path, help="Chrome's executable, where the chrome channel fails"
     )
     extensions = parser.add_argument(
         "--keep-extensions", action="store_true", help="let Chrome load extensions, for SSO"
