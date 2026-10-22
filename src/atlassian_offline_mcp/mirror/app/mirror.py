@@ -28,7 +28,7 @@ from atlassian_offline_mcp.kernel.content import (
     RefusedError,
 )
 from atlassian_offline_mcp.mirror.adapters.markdown import TIME, dump
-from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes, sync
+from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes, owned, sync
 from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
 from atlassian_offline_mcp.mirror.adapters.site_html import (
     Context,
@@ -333,7 +333,7 @@ def mirror(
     # A moved document's old file goes once its new one is built, never before.
     gone = [old for old, new in retired.items() if new is None or new in wanted]
     with TRACER.start_as_current_span("mirror.write"):
-        changes = sync(docs, wanted, remove=not problems, retired=gone)
+        changes = sync(docs, wanted, owned, remove=not problems, retired=gone)
     log.info(
         "mirror.written",
         written=changes.written,
