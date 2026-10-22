@@ -11,8 +11,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import ClassVar
+from typing import ClassVar, Literal
 
+# The sources of the mirror, as sync's --include and --exclude name them.
+type SourceName = Literal["confluence", "jira", "worklog"]
+SOURCE_NAMES: tuple[SourceName, ...] = ("confluence", "jira", "worklog")
 # An id names a folder of the raw store, so it must be one safe path part.
 IDENTIFIER = re.compile(r"[A-Za-z0-9_-]+")
 # A Confluence space key; a personal space's key begins with a tilde.

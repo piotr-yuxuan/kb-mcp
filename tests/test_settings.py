@@ -13,6 +13,7 @@ import pytest
 from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model
 from pydantic_settings import EnvSettingsSource
 
+from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.app.settings import UnsafeDataDirError, load_settings
 from atlassian_offline_mcp.config.domain.settings import (
     SETTING_PATHS,
@@ -29,6 +30,7 @@ from atlassian_offline_mcp.config.domain.settings import (
     unsafe_location,
 )
 from atlassian_offline_mcp.kernel.endpoint import loopback
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
@@ -141,7 +143,8 @@ def test_every_setting_is_described() -> None:
 def test_each_setting_is_read_by_its_kind() -> None:
     """Tables and lists are JSON; the token and the embedding key are the secrets.
 
-    The data directory and the log folder are paths, in which ``~`` is the home.
+    The data directory, the log folder and the work log's folder are paths, in which
+    ``~`` is the home.
     """
     assert {path: kind for path, kind in SETTING_PATHS.items() if kind != "value"} == {
         ("api_token",): "secret",
@@ -155,6 +158,8 @@ def test_each_setting_is_read_by_its_kind() -> None:
         ("sources", "confluence", "spaces"): "list",
         ("sources", "jira"): "table",
         ("sources", "jira", "projects"): "list",
+        ("sources", "worklog"): "table",
+        ("sources", "worklog", "path"): "path",
     }
 
 
@@ -191,7 +196,7 @@ def test_a_setting_of_a_type_that_has_no_kind_is_refused(annotation: object) -> 
         ({"sources": {"jira": {"projets": ["PLAT"]}}}, "sources.jira.projets (config.toml):"),
         ({"sources": {"worklog": {"spaces": []}}}, "sources.worklog.spaces (config.toml):"),
         ({"unknown": {}}, "unknown (config.toml): not a setting"),
-        ({"sources": {"worklog": {}}}, "sources.worklog (config.toml): not a setting"),
+        ({"sources": {"gitlab": {}}}, "sources.gitlab (config.toml): not a setting"),
         ({"site": "http://x.atlassian.net"}, "site (config.toml):"),
         ({"site": "https://user@x.atlassian.net"}, "site (config.toml):"),
         ({"site": "https://x.atlassian.net/wiki"}, "site (config.toml):"),
@@ -306,6 +311,8 @@ def test_an_empty_table_gives_each_setting_under_it_and_none_other() -> None:
         "site": FILE,
         "sources.confluence.spaces": "stronger",
         "sources.jira.projects": "stronger",
+        "sources.worklog.path": "stronger",
+        "sources.worklog.archives": "stronger",
     }
     assert loaded.ignored == (Ignored("sources.confluence.spaces", FILE, "replaced by stronger"),)
     assert loaded.replaced == {"sources.confluence.spaces"}
@@ -977,3 +984,66 @@ def test_an_address_with_a_user_part_is_neither_a_setting_nor_loopback() -> None
     assert not loopback(url)
     with pytest.raises(SettingsError, match="embedding_url"):
         from_file({"embedding_url": url})
+
+
+ARCHIVES = "ATLASSIAN_OFFLINE_MCP_SOURCES__WORKLOG__ARCHIVES"
+
+
+def check_work_log(
+    tmp_path: Path, monkeypatch: MonkeyPatch, table: str, environment: dict[str, str]
+) -> int:
+    """Run check with a settings file holding plan 015's shape and this work-log table."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    config = tmp_path / "config.toml"
+    config.write_text(
+        'site = "https://x.atlassian.net"\n'
+        '[sources.confluence]\nspaces = ["MFS"]\n'
+        '[sources.jira]\nprojects = ["PRB"]\n'
+        f"[sources.worklog]\n{table}\n",
+        "utf-8",
+    )
+    return main(["check", "--config", str(config)])
+
+
+def test_the_work_log_s_table_passes_check_which_lists_both_keys(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The folder under ~ is the home's; archives as written."""
+    assert check_work_log(tmp_path, monkeypatch, 'path = "~/todo"\narchives = false', {}) == 0
+    out = capsys.readouterr().out
+    assert f"sources.worklog.path: {tmp_path / 'home' / 'todo'}\n" in out
+    assert "sources.worklog.archives: False\n" in out
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ('path = "todo"', {}, "sources.worklog.path (config.toml): an absolute path"),
+        ('folder = "~/todo"', {}, "sources.worklog.folder (config.toml): not a setting"),
+        ('path = "~/todo"', {ARCHIVES: "maybe"}, f"sources.worklog.archives ({ARCHIVES}):"),
+    ],
+)
+def test_a_work_log_table_off_its_rules_exits_2_by_name(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    case: tuple[str, dict[str, str], str],
+) -> None:
+    """A relative folder, an unknown key, an archives that is no boolean: never the value."""
+    table, environment, named = case
+    assert check_work_log(tmp_path, monkeypatch, table, environment) == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    assert named in err
+    assert "maybe" not in err
+
+
+def test_archives_false_in_the_environment_turns_archives_off(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The variable is stronger than the file, as for every setting."""
+    assert check_work_log(tmp_path, monkeypatch, 'path = "~/todo"', {ARCHIVES: "false"}) == 0
+    assert "sources.worklog.archives: False\n" in capsys.readouterr().out

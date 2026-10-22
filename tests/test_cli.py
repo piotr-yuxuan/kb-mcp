@@ -628,6 +628,8 @@ def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
         "embedding_api_key: not set [default]\n"
         "sources.confluence.spaces: (none) [default]\n"
         "sources.jira.projects: (none) [default]\n"
+        "sources.worklog.path: (not set) [default]\n"
+        "sources.worklog.archives: True [default]\n"
         f"logs.dir: {user_log_folder(home.resolve())} [default]\n"
         "telemetry.endpoint: (not set) [default]\n"
     )
