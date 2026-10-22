@@ -75,7 +75,7 @@ def add_output_options(parser: argparse.ArgumentParser, *, result: bool = True) 
         help="say errors alone, and write no result as text",
     )
     levels.add_argument(
-        "-v", dest="level", action=Verbose, nargs=0, help="say more: info with -v, debug with -vv"
+        "-v", dest="level", action=Verbose, nargs=0, help="the level info, or debug with -vv"
     )
     levels.add_argument(
         "--log-level",

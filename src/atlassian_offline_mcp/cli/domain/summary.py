@@ -72,7 +72,9 @@ def before(
 
     A command that only reads runs, as does one given --yes, or --dry-run where it takes
     one. Another asks when stdin and stderr are both terminals, where someone can
-    answer; else it is refused. -q leaves all this out, unless a question follows.
+    answer; else it is refused. -q leaves all this out, unless a question follows; at
+    the level error, from -q or --log-level, the values ignored, which are warnings, are
+    left out alike.
     """
     command: Command = arguments.command
     then: Then
@@ -100,11 +102,12 @@ def before(
             if detailed and setting not in command.reads and setting not in unapplied
         ),
     ]
+    warned = ignored if output.level != "error" or then == "ask" else []
     noted = "".join(
         f"ignored: {each.layer}: {each.why}\n"
         if each.setting is None
         else f"ignored: {each.setting} ({each.layer}): {each.why}\n"
-        for each in ignored
+        for each in warned
     )
     if not command.writes:
         return noted, then

@@ -20,6 +20,7 @@ from atlassian_offline_mcp.cli import commands, options
 from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.config.domain.settings import SETTING_PATHS
 from atlassian_offline_mcp.kernel.exit_status import MEANINGS, ExitStatus
+from atlassian_offline_mcp.kernel.output import Output
 from tests.test_question import read_until
 
 if TYPE_CHECKING:
@@ -27,6 +28,8 @@ if TYPE_CHECKING:
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
+
+    from atlassian_offline_mcp.kernel.output import Level
 
 ROOT = Path(__file__).parents[1]
 # The exit status for what is refused before acting: options, and settings, an unsafe data
@@ -430,6 +433,13 @@ def test_every_subcommand_takes_the_level_its_options_name(
 ) -> None:
     """Warning by default, info with -v, debug from -vv on, error with -q, else as named."""
     assert parser().parse_args([name, *given, *POSITIONALS.get(name, [])]).level == level
+
+
+@pytest.mark.parametrize("level", ["debug", "info", "warning"])
+def test_quiet_is_at_the_level_error_alone(level: Level) -> None:
+    """-q sets the level error, so that a run quiet at another level is a mistake."""
+    with pytest.raises(ValueError, match="-q sets the level error"):
+        Output(level, "short", "text", quiet=True, stdin_terminal=False, stderr_terminal=False)
 
 
 @pytest.mark.parametrize(

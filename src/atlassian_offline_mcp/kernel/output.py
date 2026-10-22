@@ -26,9 +26,9 @@ class Output:
 
     ``level`` is the least severe of what it says on stderr, and leaves stdout alone;
     ``summary`` and ``format`` say how its result is written on stdout. ``quiet``, from
-    -q alone, leaves a result as text unwritten, and what is said before a run that asks
-    nothing. ``stdin_terminal`` and ``stderr_terminal`` say whether someone can read a
-    question there and answer it.
+    -q alone, which sets the level error, leaves a result as text unwritten, and what is
+    said before a run that asks nothing. ``stdin_terminal`` and ``stderr_terminal`` say
+    whether someone can read a question there and answer it.
     """
 
     level: Level
@@ -37,3 +37,12 @@ class Output:
     quiet: bool
     stdin_terminal: bool
     stderr_terminal: bool
+
+    def __post_init__(self) -> None:
+        """Refuse ``quiet`` at a level other than error, which -q sets.
+
+        Raises ValueError.
+        """
+        if self.quiet and self.level != "error":
+            message = f"quiet at the level {self.level}: -q sets the level error"
+            raise ValueError(message)

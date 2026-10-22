@@ -259,14 +259,21 @@ def test_yes_or_a_dry_run_runs_without_reading_stdin(
     assert getattr(runs[0][0], "dry_run", False) is (skip == "--dry-run")
 
 
+@pytest.mark.parametrize("level", [[], ["-q"], ["--log-level", "error"]])
 def test_a_yes_variable_skips_nothing_and_is_said_to_be_ignored(
-    home: Path, monkeypatch: MonkeyPatch, runs: list[tuple[argparse.Namespace, Loaded]]
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    runs: list[tuple[argparse.Namespace, Loaded]],
+    level: list[str],
 ) -> None:
-    """Only the flag skips the question: the variable names no setting."""
+    """Only the flag skips the question: the variable names no setting.
+
+    Before a question, the values ignored are said at any level.
+    """
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_YES", "1")
     asked = Terminal()
     given(monkeypatch, Terminal("n\n"), asked)
-    assert main(command_line(home, "mirror")) == DECLINED
+    assert main(command_line(home, "mirror", *level)) == DECLINED
     assert "ignored: ATLASSIAN_OFFLINE_MCP_YES: names no setting\n" in asked.getvalue()
     assert QUESTION in asked.getvalue()
     given(monkeypatch, io.StringIO(), io.StringIO())

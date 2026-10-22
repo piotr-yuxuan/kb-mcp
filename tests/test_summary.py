@@ -327,17 +327,28 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
 
 
 @pytest.mark.usefixtures("runs")
-def test_the_level_error_says_the_summary_and_the_command_as_the_default_does(
-    home: Path, capsys: CaptureFixture[str]
+def test_the_level_error_leaves_out_the_values_ignored_alone(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Only -q leaves them out: a level is of what is said, not of what the run is."""
+    """They are warnings; the summary and the command are what the run is, said still.
+
+    Only -q leaves those out. A command that only reads then says nothing.
+    """
+    monkeypatch.setenv(UNKNOWN, "1")
+    warning = f"ignored: {UNKNOWN}: names no setting\n"
     options = ["index", "--yes", "--config", str(home / "none.toml")]
     assert main(options) == 0
     said = capsys.readouterr().err
     assert said.startswith("index, with these settings:\n")
     assert "atlassian-offline-mcp index \\\n" in said
+    assert warning in said
     assert main([*options, "--log-level", "error"]) == 0
-    assert capsys.readouterr().err == said
+    assert capsys.readouterr().err == said.replace(warning, "")
+    checked = ["check", "--config", str(home / "none.toml")]
+    assert main(checked) == 0
+    assert capsys.readouterr().err == warning
+    assert main([*checked, "--log-level", "error"]) == 0
+    assert capsys.readouterr().err == ""
 
 
 def test_a_command_s_described_lines_end_its_summary(
