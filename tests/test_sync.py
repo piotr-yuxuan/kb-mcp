@@ -19,9 +19,10 @@ import pytest
 
 from atlassian_offline_mcp.cli.app import sync as sync_app
 from atlassian_offline_mcp.cli.app.sync import Atlassian, Context, Row, Worklog, sync
-from atlassian_offline_mcp.cli.domain.sync import chosen
+from atlassian_offline_mcp.cli.domain.sync import SOURCES, chosen
 from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.config.domain.settings import Settings
+from atlassian_offline_mcp.kernel.content import SOURCE_NAMES
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes
 from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc
@@ -421,6 +422,101 @@ def test_the_text_gives_a_row_per_step_then_its_counts(
         "  HTML left out: 1\n"
         "  problems: 0\n"
     )
+
+
+def test_the_sources_are_the_names_that_the_options_offer() -> None:
+    """--include and --exclude offer the kernel's names; sync's records bear the same."""
+    assert tuple(source.name for source in SOURCES) == SOURCE_NAMES
+
+
+def test_a_dry_run_of_the_site_plans_and_writes_nothing(
+    home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
+) -> None:
+    """The download planned, the mirror not run; the data folder holds the session alone."""
+    config = settings_file(home, None, atlassian=True)
+    given = ("--dry-run", "--since", "2026-10-02", "--format", "json")
+    assert main(command(home, config, *given)) == ExitStatus.OK
+    rows = json.loads(capsys.readouterr().out)["steps"]
+    assert [(row["step"], row["outcome"]) for row in rows] == [
+        ("download", "done"),
+        ("mirror", "not run"),
+    ]
+    assert "confluence pages: to fetch" in rows[0]["result"]["report"]["counts"]
+    assert sorted(path.name for path in (home / "data").iterdir()) == ["session"]
+    assert signed_in.asked
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (("--exclude", "worklog"), ["download", "mirror"], True),
+        (("--exclude", "confluence"), ["download", "mirror", "worklog"], False),
+        (("--include", "worklog"), ["worklog"], False),
+    ],
+)
+def test_the_sources_chosen_are_the_steps_run(
+    home: Path,
+    worklog: Path,
+    signed_in: FakeSite,
+    capsys: CaptureFixture[str],
+    case: tuple[tuple[str, ...], list[str], bool],
+) -> None:
+    """Excluded or not included: no step, no request, no file of it."""
+    given, steps, confluence = case
+    config = settings_file(home, worklog, atlassian=True)
+    main(command(home, config, "--yes", "--since", "2026-10-02", "--format", "json", *given))
+    rows = json.loads(capsys.readouterr().out)["steps"]
+    assert [row["step"] for row in rows] == steps
+    assert any("/wiki/" in url.path for url in signed_in.asked) is confluence
+    assert (home / "data" / "docs" / "worklog").exists() is ("worklog" in steps)
+
+
+def test_archives_off_leaves_the_archived_documents_out_of_a_sync(
+    home: Path, worklog: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The archive file's entry, the ARCHIVE entry and the archived transcript: 13 left."""
+    config = settings_file(home, worklog)
+    config.write_text(config.read_text("utf-8") + "archives = false\n", "utf-8")
+    assert main(command(home, config, "--yes", "--format", "json")) == 0
+    result = json.loads(capsys.readouterr().out)["steps"][0]["result"]
+    assert result["documents"] == WORKLOG_DOCUMENTS - len(["vendor", "old incident", "1.org"])
+    labels = [
+        line for path in (home / "data").rglob("*.md") for line in path.read_text("utf-8").split()
+    ]
+    assert "ARCHIVE" not in labels
+
+
+def test_the_settings_of_sources_left_out_are_said_not_applied(
+    home: Path, worklog: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Their values, given by the file, are ignored by name and layer, saying why."""
+    config = settings_file(home, worklog, atlassian=True)
+    assert main(command(home, config, "--yes", "--include", "worklog")) == 0
+    said = capsys.readouterr().err
+    assert "ignored: site (config.toml): no Atlassian source in this sync\n" in said
+    assert "ignored: sources.jira.projects (config.toml): jira not included\n" in said
+
+
+def test_a_work_log_that_is_a_file_is_refused_as_not_a_folder(
+    home: Path, tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A regular file named as the folder: exit 2."""
+    (tmp_path / "todo.org").write_text("* x\n", "utf-8")
+    config = settings_file(home, tmp_path / "todo.org")
+    assert main(command(home, config, "--yes")) == ExitStatus.REFUSED
+    assert "sources.worklog.path: not a folder" in capsys.readouterr().err
+
+
+def test_the_text_of_a_full_sync_gives_each_command_s_counts_under_its_row(
+    home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
+) -> None:
+    """Download's counts, as download writes them, indented under its row."""
+    config = settings_file(home, worklog, atlassian=True)
+    assert main(command(home, config, "--yes", "--since", "2026-10-02")) == ExitStatus.FAILED
+    out = capsys.readouterr().out
+    assert out.startswith("download: failed\n  confluence blogposts: fetched: 1\n")
+    assert "  failures: 1\nmirror: done\n  documents: " in out
+    assert signed_in.asked
 
 
 def interrupting(*_: object) -> None:
