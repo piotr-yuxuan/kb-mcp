@@ -57,7 +57,9 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
     """Mirror the work log under ``folder`` into ``docs/worklog/``, with ``pandoc``.
 
     Without ``archives``, the archive file, ``transcripts/archive/`` and the subtrees
-    tagged ARCHIVE are left out, and so their files removed.
+    tagged ARCHIVE are left out, and so their files removed. Raises
+    ``PandocFailedError`` when pandoc gives no version, before any file is written: no
+    revision can be named without it.
     """
     listing = files.listed(folder, archives=archives)
     problems = [Problem(each.path, each.reason) for each in listing.problems]

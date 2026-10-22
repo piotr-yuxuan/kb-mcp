@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,8 +30,10 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 FIXTURE = Path(__file__).parent / "fixtures" / "worklog"
-MODIFIED = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
-LATER = datetime(2026, 10, 22, 15, 0, tzinfo=UTC)
+# The fixture's time: in every zone from UTC-12 to UTC+14, its wall clock falls between
+# the fixture's last past event (the 19th) and its first plan (the 23rd).
+MODIFIED = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
+LATER = datetime(2026, 10, 22, 9, 0, tzinfo=UTC)
 NOT_UTF8 = b"* Emacs \xff\xfe never read\n"
 HASHED = re.compile(r"t-[0-9a-f]{16}")
 DAY = "transcripts/current/2026-10-20 Tue"
@@ -248,6 +251,15 @@ def test_ids_of_undated_or_unruly_transcripts_are_digests(run: Run) -> None:
     assert run.by_title("Payments stand-up").matter.id == "t-20261020-1"
 
 
+def test_an_edited_undated_entry_keeps_its_creation(run: Run) -> None:
+    """Created stays the existing file's; updated is the new time of its org file."""
+    run()
+    run.edit("todo.org", "Nothing dated here yet.", "Nothing dated here, still.")
+    run()
+    matter = run.by_title("Tidy the runbooks folder").matter
+    assert (matter.created, matter.updated, matter.fetched_at) == (MODIFIED, LATER, LATER)
+
+
 def test_an_edit_elsewhere_leaves_an_undated_entry_and_its_file(run: Run) -> None:
     """Its revision holds, so its file keeps its bytes, dates and time."""
     run()
@@ -392,8 +404,20 @@ def test_an_unchanged_work_log_runs_pandoc_for_its_version_alone(run: Run) -> No
     assert run.runs[-1] == [VERSION, ORG]
 
 
-def test_the_work_log_is_read_and_never_written(run: Run) -> None:
-    """Every byte and time of the folder stay; .git and hidden folders are not read."""
+def test_the_work_log_is_read_and_never_written(run: Run, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every byte and time of the folder stay; .git is not read, and git never started."""
+    started: list[str] = []
+
+    class OnlyPandoc(subprocess.Popen[str]):
+        """A process that may be pandoc alone."""
+
+        def __init__(self, arguments: Sequence[str], *rest: object, **options: object) -> None:
+            """Note the program, refuse any but pandoc, then start it."""
+            started.append(Path(arguments[0]).name)
+            assert started[-1] == "pandoc"
+            super().__init__(arguments, *rest, **options)
+
+    monkeypatch.setattr(subprocess, "Popen", OnlyPandoc)
     (run.root / ".git" / "objects").mkdir(parents=True)
     (run.root / ".git" / "HEAD").write_text("ref: refs/heads/main\n", "utf-8")
     (run.root / "transcripts" / ".git").mkdir()
@@ -404,6 +428,7 @@ def test_the_work_log_is_read_and_never_written(run: Run) -> None:
     run()
     assert snapshot(run.root) == before
     assert outcome.problems == ()
+    assert set(started) == {"pandoc"}
 
 
 def test_files_off_the_rules_are_named_by_path_and_a_link_inside_is_read(
@@ -411,6 +436,8 @@ def test_files_off_the_rules_are_named_by_path_and_a_link_inside_is_read(
 ) -> None:
     """Over 32 MiB, linking out, not UTF-8: by path, without content; nothing removed."""
     run()
+    mirrored = run.docs / run.by_title("Notes on the ledger").path
+    (run.root / "transcripts/current/2026-10-21 Wed/notes on x.org").write_bytes(b"* Caf\xe9\n")
     outside = tmp_path / "elsewhere.org"
     outside.write_text("* Outside words\n", "utf-8")
     (run.root / "transcripts/misc/out.org").symlink_to(outside)
@@ -421,10 +448,13 @@ def test_files_off_the_rules_are_named_by_path_and_a_link_inside_is_read(
     outcome = run()
     reasons = {problem.where: problem.reason for problem in outcome.problems}
     assert reasons == {
+        "transcripts/current/2026-10-21 Wed/notes on x.org": "not UTF-8",
         "transcripts/misc/out.org": "links outside the work log",
         "transcripts/misc/latin.org": "not UTF-8",
         "transcripts/misc/big.org": "not a file of at most 32 MiB",
     }
+    assert all("secret" not in reason and "Caf" not in reason for reason in reasons.values())
+    assert mirrored.exists()  # its last good copy stays while a problem is reported
     inside = [each for each in run.files() if each.matter.title == "WAITING Notes"]
     assert sorted(each.matter.breadcrumb for each in inside) == [("transcripts", "misc")] * len(
         {"a.org", "inside.org"}
