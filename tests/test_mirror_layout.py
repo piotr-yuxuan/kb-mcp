@@ -17,6 +17,7 @@ from atlassian_offline_mcp.mirror.domain.mirror_layout import (
     slug,
     tree_path,
     visible,
+    worklog_path,
 )
 
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
@@ -80,6 +81,31 @@ def test_documents_are_placed_by_space_project_and_key() -> None:
     )
     assert issue_path(issue) == PurePosixPath("jira/PRB/PRB-1.md")
     assert tree_path("MFS") == PurePosixPath("confluence/MFS/_tree.md")
+
+
+@pytest.mark.parametrize(
+    ("document_type", "identifier", "title", "expected"),
+    [
+        (
+            "entry",
+            "e-0123456789abcdef-2",
+            "Retrospective notes",
+            "entries/e-0123456789abcdef-2-retrospective-notes.md",
+        ),
+        (
+            "transcript",
+            "t-20261020-1",
+            "Transcript, 2026-10-20 Tue, 1",
+            "transcripts/t-20261020-1-transcript-2026-10-20-tue-1.md",
+        ),
+        ("entry", "e-0123456789abcdef", "", "entries/e-0123456789abcdef.md"),
+    ],
+)
+def test_work_log_documents_are_placed_by_type_id_and_title(
+    document_type: str, identifier: str, title: str, expected: str
+) -> None:
+    """<data>/docs/worklog/{entries,transcripts}/<id>-<slug>.md, as plan 017 says."""
+    assert worklog_path(document_type, identifier, title) == PurePosixPath("worklog", expected)
 
 
 def test_an_empty_slug_leaves_the_id_alone() -> None:

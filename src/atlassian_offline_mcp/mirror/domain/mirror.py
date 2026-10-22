@@ -12,6 +12,8 @@ from atlassian_offline_mcp.kernel.content import (
     PROJECT_KEY,
     REVISION,
     SPACE_KEY,
+    WORKLOG_ID,
+    WORKLOG_REVISION,
     RefusedError,
     require,
 )
@@ -19,7 +21,13 @@ from atlassian_offline_mcp.kernel.content import (
 if TYPE_CHECKING:
     from datetime import datetime
 
-TYPES = {"page": "confluence", "blogpost": "confluence", "issue": "jira"}
+TYPES = {
+    "page": "confluence",
+    "blogpost": "confluence",
+    "issue": "jira",
+    "entry": "worklog",
+    "transcript": "worklog",
+}
 # Keys that one source alone has, always.
 ONLY = {
     "space": "confluence",
@@ -27,6 +35,12 @@ ONLY = {
     "key": "jira",
     "project": "jira",
     "issue_type": "jira",
+}
+# The rules of each source's ids and revisions.
+PATTERNS = {
+    "confluence": (IDENTIFIER, REVISION),
+    "jira": (IDENTIFIER, REVISION),
+    "worklog": (WORKLOG_ID, WORKLOG_REVISION),
 }
 
 
@@ -71,11 +85,12 @@ class FrontMatter:
             if (getattr(self, name) is not None) != (self.source == source):
                 message = f"{name}: only and always for {source}"
                 raise RefusedError(message)
-        if self.source == "confluence" and self.assignee is not None:
+        if self.assignee is not None and self.source != "jira":
             message = "assignee: only for jira"
             raise RefusedError(message)
-        require(IDENTIFIER, self.id, "id")
-        require(REVISION, self.revision, "revision")
+        identifier, revision = PATTERNS[self.source]
+        require(identifier, self.id, "id")
+        require(revision, self.revision, "revision")
         for value, pattern, name in (
             (self.key, ISSUE_KEY, "key"),
             (self.space, SPACE_KEY, "space"),

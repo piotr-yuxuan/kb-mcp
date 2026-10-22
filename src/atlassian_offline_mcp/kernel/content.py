@@ -27,6 +27,13 @@ MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
 SITE_PATH = re.compile(r"/(?![/\\])[^\s\\\x00-\x1f\x7f]*")
 # A revision's name: a Confluence version, or a Jira update time in UTC.
 REVISION = re.compile(r"[0-9]{6}|[0-9]{8}T[0-9]{6}\.[0-9]{6}Z")
+# A work-log document's id: an entry's digest, numbered from the second entry of one
+# digest; a transcript's day and name, or its digest.
+WORKLOG_ID = re.compile(
+    r"e-[0-9a-f]{16}(?:-[0-9]+)?|t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})"
+)
+# A work-log document's revision: a digest of what pandoc converts, and how.
+WORKLOG_REVISION = re.compile(r"[0-9a-f]{16}")
 
 
 class RefusedError(ValueError):

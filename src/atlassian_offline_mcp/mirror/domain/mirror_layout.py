@@ -22,6 +22,11 @@ if TYPE_CHECKING:
 
 ASSETS = PurePosixPath("assets")
 TREE = "_tree.md"
+# The work log's folders, by the type of their documents.
+WORKLOG = {
+    "entry": PurePosixPath("worklog/entries"),
+    "transcript": PurePosixPath("worklog/transcripts"),
+}
 SLUG_LENGTH = 60
 EXTENSION = re.compile(r"[a-z0-9]{1,8}")
 # The name of an asset: the file's SHA-256, then its extension if it has one.
@@ -63,6 +68,12 @@ def confluence_path(document: ConfluenceDocument, space: str) -> PurePosixPath:
 def issue_path(issue: Issue) -> PurePosixPath:
     """Return where an issue is mirrored."""
     return PurePosixPath("jira", issue.project, f"{issue.key}.md")
+
+
+def worklog_path(document_type: str, identifier: str, title: str) -> PurePosixPath:
+    """Return where a document of the work log, of this type, id and title, is mirrored."""
+    name = "-".join(part for part in (identifier, slug(title)) if part)
+    return WORKLOG[document_type] / f"{name}.md"
 
 
 def tree_path(space: str) -> PurePosixPath:

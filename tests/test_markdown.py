@@ -62,6 +62,29 @@ PAGE = FrontMatter(
 )
 
 
+ENTRY = FrontMatter(
+    source="worklog",
+    type="entry",
+    id="e-0123456789abcdef-2",
+    key=None,
+    title="Retrospective notes",
+    space=None,
+    project=None,
+    status="WAITING",
+    issue_type=None,
+    labels=("review", "ARCHIVE"),
+    author=None,
+    assignee=None,
+    created=MOMENT,
+    updated=MOMENT,
+    version=None,
+    revision="0123456789abcdef",
+    url=None,
+    breadcrumb=("todo.org_archive",),
+    fetched_at=MOMENT,
+)
+
+
 def test_front_matter_has_the_layout_keys_in_order() -> None:
     """The file starts with the documented keys, in the documented order."""
     text = dump(PAGE, "# Yes\n")
@@ -102,6 +125,42 @@ def test_front_matter_with_other_keys_is_refused(old: str, new: str) -> None:
     """A missing, extra or moved key is not the mirror's front matter."""
     with pytest.raises(RepresentationError, match="exactly the mirror's keys"):
         load(dump(PAGE, "").replace(old, new), "page.md")
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {},
+        {"type": "transcript", "id": "t-20261020-1"},
+        {"type": "transcript", "id": "t-0123456789abcdef"},
+        {"id": "e-0123456789abcdef"},
+    ],
+)
+def test_work_log_front_matter_reads_back_as_written(changes: dict[str, object]) -> None:
+    """An entry or a transcript, its id and revision of the work log's rules."""
+    written = replace(ENTRY, **changes)
+    front_matter, _ = load(dump(written, "# Notes\n"), "entry.md")
+    second = MOMENT.replace(microsecond=0)
+    assert front_matter == replace(written, created=second, updated=second, fetched_at=second)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"type": "page"},
+        {"id": "196845"},
+        {"id": "e-0123456789ABCDEF"},
+        {"id": "t-20261020-" + "a" * 65},
+        {"revision": "000003"},
+        {"space": "MFS"},
+        {"assignee": "Someone"},
+        {"version": 3},
+    ],
+)
+def test_work_log_front_matter_off_its_rules_is_refused(changes: dict[str, object]) -> None:
+    """Another source's type, id, revision or keys are refused."""
+    with pytest.raises(RefusedError):
+        replace(ENTRY, **changes)
 
 
 def test_a_file_without_front_matter_is_refused() -> None:
