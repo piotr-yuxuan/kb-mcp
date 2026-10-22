@@ -14,7 +14,7 @@ import os
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TextIO, override
 
 import platformdirs
 import structlog
@@ -38,6 +38,44 @@ SHARED = (
 )
 # Libraries that name each request at INFO or DEBUG, with its query: from WARNING only.
 QUIET = ("httpx", "httpcore", "urllib3", "requests")
+# The most that a run's file holds of lines, in bytes, before the line log.capped.
+CAP = 256 * 2**20
+
+
+class CappedFile(logging.StreamHandler[TextIO]):
+    """Write each record as a line to a stream, until the lines would pass ``cap`` bytes.
+
+    The line that would pass the cap is replaced by one of its own, the event
+    ``log.capped``, and nothing is written after it.
+    """
+
+    def __init__(self, stream: TextIO, cap: int) -> None:
+        """Write to ``stream``, in UTF-8, which its owner closes."""
+        super().__init__(stream)
+        self.room = cap
+
+    @override
+    def emit(self, record: logging.LogRecord) -> None:
+        """Write the record's line, unless the cap was reached already."""
+        if self.room >= 0:
+            super().emit(record)
+
+    @override
+    def format(self, record: logging.LogRecord) -> str:
+        """Format the record, its line counted against the room left; past it, the cap's."""
+        line = super().format(record)
+        self.room -= len(f"{line}{self.terminator}".encode())
+        if self.room >= 0:
+            return line
+        capped = logging.makeLogRecord(
+            {
+                "name": __name__,
+                "levelno": logging.WARNING,
+                "levelname": "WARNING",
+                "msg": "log.capped",
+            }
+        )
+        return super().format(capped)
 
 
 def default_log_folder() -> Path:
@@ -66,7 +104,7 @@ def route_through_logging() -> None:
 
 
 @contextmanager
-def log_file(folder: Path, command: str, run: str, now: datetime) -> Iterator[Path]:
+def log_file(folder: Path, command: str, run: str, now: datetime, cap: int = CAP) -> Iterator[Path]:
     """Write every event and record, from DEBUG, as JSON lines into the run's own file.
 
     The run of ``command``, whose id is ``run``, starts at ``now``. Within, the file is a
@@ -76,7 +114,8 @@ def log_file(folder: Path, command: str, run: str, now: datetime) -> Iterator[Pa
     the user may have chosen it. Before the file is opened, the log files in ``folder``
     whose run started over 30 days before ``now`` are removed. Each line adds ``run``
     and ``command``, which replace an event's own of these names, and a traceback shows
-    no frame's locals. Raises OSError when ``folder`` cannot be made or written.
+    no frame's locals. Past ``cap`` bytes of lines, a line ``log.capped`` ends the file.
+    Raises OSError when ``folder`` cannot be made or written.
     """
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     for old in folder.iterdir():
@@ -84,7 +123,7 @@ def log_file(folder: Path, command: str, run: str, now: datetime) -> Iterator[Pa
             old.unlink(missing_ok=True)
     path = folder / log_file_name(command, now, os.getpid())
     with open(path, "a", encoding="utf-8", opener=partial(os.open, mode=0o600)) as stream:
-        handler = logging.StreamHandler(stream)
+        handler = CappedFile(stream, cap)
         handler.setFormatter(
             structlog.stdlib.ProcessorFormatter(
                 foreign_pre_chain=SHARED,

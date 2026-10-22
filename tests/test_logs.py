@@ -1,8 +1,9 @@
-"""A run's log file: JSON lines from DEBUG, the user's alone, kept 30 days."""
+"""A run's log file: JSON lines from DEBUG, the user's alone, capped, kept 30 days."""
 
 from __future__ import annotations
 
 import base64
+import inspect
 import json
 import logging
 import os
@@ -200,6 +201,34 @@ def test_a_run_first_removes_the_log_files_past_30_days_and_leaves_the_rest(
         (folder / file_name).write_text("{}\n", encoding="utf-8")
     with log_file(folder, "check", RUN, NOW) as path:
         assert {file.name for file in folder.iterdir()} == {*kept, path.name}
+
+
+def test_past_the_cap_a_line_log_capped_ends_the_file(tmp_path: Path) -> None:
+    """The earliest lines, whole, as many as fit in the cap; then log.capped; then none."""
+    cap = 100_000
+    with log_file(tmp_path, "download", RUN, NOW, cap=cap) as path:
+        for count in range(1000):
+            structlog.get_logger().debug("download.document", count=f"{count:03}")
+        logging.getLogger("some.library").warning("after the cap")
+    written = path.read_text(encoding="utf-8").splitlines()
+    *documents, capped = map(json.loads, written)
+    assert (capped["level"], capped["event"], capped["run"], capped["command"]) == (
+        "warning",
+        "log.capped",
+        RUN,
+        "download",
+    )
+    assert documents
+    assert [line["count"] for line in documents] == [
+        f"{count:03}" for count in range(len(documents))
+    ]
+    sizes = [len(f"{line}\n".encode()) for line in written[:-1]]
+    assert sum(sizes) <= cap < sum(sizes) + max(sizes)
+
+
+def test_the_cap_is_256_mib_unless_another_is_given() -> None:
+    """256 MiB, where a first download of 20,000 documents writes about 40 MB."""
+    assert inspect.signature(log_file).parameters["cap"].default == 256 * 2**20
 
 
 def test_the_default_folder_is_the_platform_s_log_folder_for_the_user(
