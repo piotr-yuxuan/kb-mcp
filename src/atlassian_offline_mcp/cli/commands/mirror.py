@@ -19,9 +19,11 @@ if TYPE_CHECKING:
 
 
 def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outcome | None]:
-    """Mirror; exit 0, or 1 when pandoc is missing or something was not mirrored.
+    """Mirror; exit 0, or 1 when something was not mirrored or pandoc went missing.
 
-    What was not mirrored goes to standard error, by its place in the raw store and the
+    The entry refuses a run without pandoc on PATH, exit 2, before anything is asked:
+    this run finds it again for its path, and exits 1 only if it went in between. What
+    was not mirrored goes to standard error, by its place in the raw store and the
     reason, never its content. The outcome is given, None without pandoc.
     """
     settings = loaded.settings
