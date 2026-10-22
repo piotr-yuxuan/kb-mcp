@@ -454,22 +454,36 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The file, then its variable, then the flag: each wins in turn, and check names it."""
+    assert main(["check", "--config", str(home / "none.toml")]) == 0
+    out = capsys.readouterr().out
+    assert "site: (not set) [default]\n" in out
+    assert f"data directory: {(home / 'atlassian-offline-mcp').resolve()} [default]\n" in out
+    assert "spaces: (none) [default]\n" in out
+    assert "projects: (none) [default]\n" in out
+
     config = home / "config.toml"
     config.write_text(
-        'site = "https://file.example.invalid"\n[sources.jira]\nprojects = ["PLAT"]\n', "utf-8"
+        'site = "https://file.example.invalid"\ndata_dir = "~/from-file"\n'
+        '[sources.confluence]\nspaces = ["ENG"]\n[sources.jira]\nprojects = ["PLAT"]\n',
+        "utf-8",
     )
     assert main(["check", "--config", str(config)]) == 0
     out = capsys.readouterr().out
     assert "site: https://file.example.invalid [config.toml]\n" in out
+    assert f"data directory: {(home / 'from-file').resolve()} [config.toml]\n" in out
+    assert "spaces: ENG [config.toml]\n" in out
     assert "projects: PLAT [config.toml]\n" in out
-    assert "spaces: (none) [default]\n" in out
-    assert f"data directory: {(home / 'atlassian-offline-mcp').resolve()} [default]\n" in out
 
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "https://variable.example.invalid")
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_DATA_DIR", "~/from-variable")
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES", '["OPS"]')
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB", "PAY"]')
     assert main(["check", "--config", str(config)]) == 0
     out = capsys.readouterr().out
     assert "site: https://variable.example.invalid [ATLASSIAN_OFFLINE_MCP_SITE]\n" in out
+    data = (home / "from-variable").resolve()
+    assert f"data directory: {data} [ATLASSIAN_OFFLINE_MCP_DATA_DIR]\n" in out
+    assert "spaces: OPS [ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES]\n" in out
     assert "projects: PRB, PAY [ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS]\n" in out
 
     flag = ["--site", "https://flag.example.invalid", "--data-dir", "~/from-flag"]

@@ -8,18 +8,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from atlassian_offline_mcp.config.app.settings import load_settings
 from atlassian_offline_mcp.config.domain.settings import (
-    ConfluenceSource,
+    SETTING_PATHS,
     Entry,
     Ignored,
-    JiraSource,
     Loaded,
     Settings,
     SettingsError,
-    Sources,
     file_entries,
     loopback,
     settings_of,
@@ -115,9 +113,12 @@ def test_no_settings_hold_a_path_under_the_tilde_without_a_home() -> None:
 
 
 def test_every_setting_is_described() -> None:
-    """Plan 020 writes the settings' reference from these descriptions."""
-    for model in (Settings, Sources, ConfluenceSource, JiraSource):
-        assert all(info.description for info in model.model_fields.values()), model
+    """Plan 020 writes the settings' reference from these descriptions, at every depth."""
+    for path in SETTING_PATHS:
+        model: type[BaseModel] = Settings
+        for name in path[:-1]:
+            model = model.model_fields[name].annotation
+        assert model.model_fields[path[-1]].description, path
 
 
 @pytest.mark.parametrize(
@@ -196,6 +197,12 @@ def test_a_refusal_never_holds_the_value() -> None:
     with pytest.raises(SettingsError) as refused:
         from_file({"site": "https://secret-host.example.invalid/wiki"})
     assert "secret-host" not in str(refused.value)
+
+
+def test_the_layer_of_a_path_that_names_no_setting_is_refused() -> None:
+    """A misspelt path would otherwise name the default layer, silently."""
+    with pytest.raises(KeyError):
+        Loaded(from_file({})).layer("sources.confluence.spacez")
 
 
 def test_a_stronger_layer_replaces_a_weaker_one_and_the_weaker_is_ignored() -> None:
@@ -332,12 +339,15 @@ def test_a_list_from_the_environment_replaces_the_file_s_whole(
 def test_a_table_from_the_environment_is_json_and_its_deeper_variables_win(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A table's variable holds JSON; a variable of a setting inside it is stronger."""
+    """A table's variable holds JSON; a variable of a setting inside it is stronger.
+
+    The deeper is set first: the environment's order is not the strength.
+    """
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
     monkeypatch.setenv(
         "ATLASSIAN_OFFLINE_MCP_SOURCES",
         '{"confluence": {"spaces": ["ENG"]}, "jira": {"projects": ["PLAT"]}}',
     )
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
     loaded = loaded_from(tmp_path, "")
     assert loaded.settings.sources.confluence.spaces == ("ENG",)
     assert loaded.settings.sources.jira.projects == ("PRB",)

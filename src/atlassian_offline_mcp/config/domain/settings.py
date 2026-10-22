@@ -358,7 +358,12 @@ class Loaded:
     ignored: tuple[Ignored, ...] = ()
 
     def layer(self, setting: str) -> str:
-        """Name the layer that gave a setting, by its path joined by dots, or default."""
+        """Name the layer that gave a setting, by its path joined by dots, or default.
+
+        Raises KeyError for a path that names no setting, such as a misspelt one.
+        """
+        if tuple(setting.split(".")) not in SETTING_PATHS:
+            raise KeyError(setting)
         return self.layers.get(setting, DEFAULT_LAYER)
 
 
