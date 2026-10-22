@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ipaddress import IPv4Address
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from atlassian_offline_mcp.domain.settings import (
     Settings,
     SettingsError,
+    loopback,
     parse_settings,
     unsafe_location,
 )
@@ -24,8 +26,9 @@ def test_settings_are_normalised() -> None:
             "data_dir": "~/mirror",
             "spaces": ["ENG", "~5f1a2b"],
             "projects": ["PAY"],
-            "model": "bge-small-en-v1.5",
+            "model": "hf.co/Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0",
             "search_mode": "hybrid",
+            "embedding_url": "http://127.0.0.1:8080/v1/",
         },
         HOME,
     )
@@ -34,11 +37,23 @@ def test_settings_are_normalised() -> None:
         HOME / "mirror",
         ("ENG", "~5f1a2b"),
         ("PAY",),
-        "bge-small-en-v1.5",
+        "hf.co/Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0",
         "hybrid",
+        "http://127.0.0.1:8080/v1",
     )
     mirror = HOME / "mirror"
-    assert {mirror / "models", mirror / "vectors.sqlite", mirror / "eval"} <= set(settings.parts)
+    assert {mirror / "vectors.sqlite", mirror / "eval"} <= set(settings.parts)
+    assert mirror / "models" not in settings.parts
+
+
+def test_the_default_embeddings_come_from_ollama_on_this_machine() -> None:
+    """Ollama's own address, and the model that plan 018 chose; search by words."""
+    settings = parse_settings({}, HOME)
+    assert (settings.embedding_url, settings.model, settings.search_mode) == (
+        "http://127.0.0.1:11434/v1",
+        "qwen3-embedding:0.6b",
+        "lexical",
+    )
 
 
 def test_the_default_data_directory_is_under_the_home() -> None:
@@ -62,6 +77,17 @@ def test_the_default_data_directory_is_under_the_home() -> None:
         ({"projects": ["pay"]}, "projects:"),
         ({"model": "../elsewhere"}, "model:"),
         ({"model": ["bge-small-en-v1.5"]}, "model:"),
+        ({"model": "qwen3 embedding"}, "model:"),
+        ({"model": "a" * 129}, "model: the name of an embedding model, such as qwen3-embedding"),
+        ({"embedding_url": "http://user@127.0.0.1:11434/v1"}, "embedding_url:"),
+        ({"embedding_url": "http://127.0.0.1:11434/v1?key=1"}, "embedding_url:"),
+        ({"embedding_url": "http://127.0.0.1:11434/v1#here"}, "embedding_url:"),
+        ({"embedding_url": "http://127.0.0.1:port/v1"}, "embedding_url:"),
+        ({"embedding_url": "http://127.0.0.1:0/v1"}, "embedding_url:"),
+        ({"embedding_url": "http://[::1/v1"}, "embedding_url:"),
+        ({"embedding_url": "ftp://127.0.0.1/v1"}, "embedding_url:"),
+        ({"embedding_url": "http:///v1"}, "embedding_url:"),
+        ({"embedding_url": 11434}, "embedding_url: an http or https address with a host"),
         ({"search_mode": "fuzzy"}, "search_mode: one of lexical, semantic, hybrid"),
     ],
 )
@@ -104,3 +130,38 @@ def test_a_git_working_tree_is_refused() -> None:
 def test_a_plain_folder_under_the_home_is_accepted() -> None:
     """The default place passes."""
     assert unsafe_location(HOME / "atlassian-offline-mcp", HOME, git_root=None) is None
+
+
+@pytest.mark.parametrize(
+    "url", ["http://127.0.0.1:11434/v1", "http://127.1.2.3/v1", "https://[::1]:8443/v1"]
+)
+def test_a_literal_address_of_this_machine_is_loopback(url: str) -> None:
+    """127.0.0.0/8 and ::1, written as addresses."""
+    assert loopback(url)
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "localhost",
+        "LOCALHOST",
+        "localhost.",
+        str(IPv4Address(0)),  # 0.0.0.0, which some systems route to this machine
+        "10.0.0.1",
+        "2130706433",
+        "0x7f.1",
+        "127.0.0.1.example.com",
+        "example.com",
+    ],
+)
+def test_any_other_host_is_not_loopback(host: str) -> None:
+    """A name may resolve anywhere; any other address is another machine."""
+    assert not loopback(f"http://{host}:11434/v1")
+
+
+def test_an_address_with_a_user_part_is_neither_a_setting_nor_loopback() -> None:
+    """``127.0.0.1@example.com`` is example.com, with a user named 127.0.0.1."""
+    url = "http://127.0.0.1@example.com/v1"
+    assert not loopback(url)
+    with pytest.raises(SettingsError, match="embedding_url:"):
+        parse_settings({"embedding_url": url}, HOME)

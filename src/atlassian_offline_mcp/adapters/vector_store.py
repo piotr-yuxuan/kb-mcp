@@ -67,25 +67,32 @@ class VectorStore:
     def vectors(
         self,
         texts: Mapping[str, str],
-        embed: Callable[[Sequence[str]], NDArray[np.float32]],
+        embed: Callable[[Sequence[str]], Sequence[NDArray[np.float32] | None]],
         progress: Callable[[int, int], None],
     ) -> tuple[dict[str, bytes], int]:
         """Give the vector of each text, by key, embedding and keeping those the store lacks.
 
         Texts are embedded BATCH at a time, those of like length together, each batch
         committed before the next; ``progress`` hears how many of the missing are done.
-        Also return how many texts were embedded.
+        A text that ``embed`` gives None for has no vector, here or in the store, so the
+        next build asks again. Also return how many texts were embedded.
         """
         found = self.get(texts)
         missing = sorted((each for each in texts if each not in found), key=lambda k: len(texts[k]))
+        embedded = 0
         for start in range(0, len(missing), BATCH):
             chosen = missing[start : start + BATCH]
             vectors = embed([texts[each] for each in chosen])
-            batch = {each: as_bytes(vector) for each, vector in zip(chosen, vectors, strict=True)}
+            batch = {
+                each: as_bytes(vector)
+                for each, vector in zip(chosen, vectors, strict=True)
+                if vector is not None
+            }
             self.put(batch)
             found |= batch
+            embedded += len(batch)
             progress(start + len(chosen), len(missing))
-        return found, len(missing)
+        return found, embedded
 
 
 @contextmanager

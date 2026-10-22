@@ -36,9 +36,16 @@ def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     return tmp_path / "data"
 
 
-def index(data: Path, capsys: CaptureFixture[str]) -> tuple[int, str, str]:
-    """Run ``index`` on the data directory; return its exit status, stdout and stderr."""
-    status = main(["index", "--config", str(data / "none.toml"), "--data-dir", str(data)])
+def index(
+    data: Path, capsys: CaptureFixture[str], settings: str = 'search_mode = "lexical"\n'
+) -> tuple[int, str, str]:
+    """Run ``index`` on the data directory, by words alone unless the settings say otherwise.
+
+    Return its exit status, stdout and stderr.
+    """
+    config = data.parent / "config.toml"
+    config.write_text(settings, encoding="utf-8")
+    status = main(["index", "--config", str(config), "--data-dir", str(data)])
     out, err = capsys.readouterr()
     return status, out, err
 
@@ -49,11 +56,10 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
     path = write(data / "docs", front, BODY)
     write(data / "docs", issue("PROJ-1", "An issue"))
     status, out, err = index(data, capsys)
-    assert status == 0
-    off = "search by meaning off: bge-small-en-v1.5: not pulled; atlassian-offline-mcp model"
-    assert err.startswith(off)
+    assert (status, err) == (0, "")
     assert "indexed 2 documents (issue: 1, page: 1)" in out
     with reading(data / "index.sqlite") as reader:
+        assert reader.embedded() is None
         (entry,) = reader.entries(paths=[path])
         assert entry.front == front
         assert (entry.length, entry.sections) == (len(BODY), 2)
@@ -136,6 +142,35 @@ def test_no_mirror_is_a_failure(data: Path, capsys: CaptureFixture[str]) -> None
     assert status == 1
     assert "no mirror at" in err
     assert list(data.iterdir()) == []
+
+
+def test_by_words_alone_no_endpoint_is_asked_even_one_elsewhere(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The lexical mode never opens the endpoint, so an address off this machine is no matter."""
+    write(data / "docs", page("196845", "Kafka"))
+    remote = 'search_mode = "lexical"\nembedding_url = "https://embeddings.example/v1"\n'
+    assert index(data, capsys, remote)[0] == 0
+
+
+def test_by_meaning_an_endpoint_elsewhere_needs_the_flag_and_https(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Hybrid, an endpoint off this machine: refused without the flag, and over http with it."""
+    write(data / "docs", page("196845", "Kafka"))
+    remote = 'search_mode = "hybrid"\nembedding_url = "https://embeddings.example/v1"\n'
+    status, _, err = index(data, capsys, remote)
+    assert status == BAD_SETTINGS
+    assert "settings refused: embedding_url: not an address of this machine" in err
+    config = data.parent / "config.toml"
+    config.write_text(
+        'search_mode = "hybrid"\nembedding_url = "http://embeddings.example/v1"\n',
+        encoding="utf-8",
+    )
+    options = ["--config", str(config), "--data-dir", str(data), "--allow-remote-embeddings"]
+    assert main(["index", *options]) == BAD_SETTINGS
+    assert "over https only" in capsys.readouterr().err
+    assert not (data / "index.sqlite").exists()
 
 
 def test_refused_settings_exit_2(data: Path, capsys: CaptureFixture[str]) -> None:

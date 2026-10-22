@@ -2,25 +2,34 @@
 
 from __future__ import annotations
 
+import contextlib
 import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.embedding import ModelError, NotPulledError, load
+from atlassian_offline_mcp.adapters.embedding import ModelError, connect
 from atlassian_offline_mcp.app.indexing import Embedding, MirrorMissingError, build_index
-from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
+from atlassian_offline_mcp.commands._options import (
+    add_embedding_options,
+    add_settings_options,
+    open_endpoint,
+    prefixes_said,
+    settings_of,
+)
 from atlassian_offline_mcp.domain.settings import SettingsError
 
 if TYPE_CHECKING:
     import argparse
 
 BAD_SETTINGS = 2
+WORDS_ALONE = 'or set search_mode = "lexical" to index by words alone'
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``index`` to the command."""
     parser = subparsers.add_parser("index", help="build the search index from the mirror")
     add_settings_options(parser)
+    add_embedding_options(parser)
     parser.set_defaults(run=run)
 
 
@@ -30,32 +39,35 @@ def progress(done: int, total: int) -> None:
 
 
 def run(arguments: argparse.Namespace) -> int:
-    """Build the index; exit 1 when a file was skipped, the model failed, or nothing built.
+    """Build the index; exit 1 when a file or a piece was left out, or nothing was built.
 
-    Without the setting's model pulled, the index is built for words alone, and exit 0.
-    A model that is pulled but cannot be loaded leaves the index in place.
+    By words alone in the lexical mode, which never calls the embedding endpoint. In the
+    other modes the endpoint must answer with the setting's model; when it does not,
+    the index in place stays, with its vectors.
     """
     try:
         settings = settings_of(arguments)
+        opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")
         return BAD_SETTINGS
-    embedding = None
-    try:
-        embedding = Embedding(load(settings.model, settings.models), settings.vectors, progress)
-    except NotPulledError as error:
-        sys.stderr.write(f"search by meaning off: {error}\n")
-    except (ModelError, OSError) as error:
-        # The index in place keeps its vectors rather than lose them to a broken model.
-        sys.stderr.write(f"index not built: {error}\n")
-        return 1
-    try:
-        report = build_index(settings.docs, settings.index, datetime.now(UTC), embedding)
-    except (MirrorMissingError, OSError, ModelError) as error:
-        sys.stderr.write(f"index not built: {error}\n")
-        return 1
+    with opened or contextlib.nullcontext():
+        try:
+            embedder = None if opened is None else connect(opened, settings.model)
+            embedding = (
+                None if embedder is None else Embedding(embedder, settings.vectors, progress)
+            )
+            report = build_index(settings.docs, settings.index, datetime.now(UTC), embedding)
+        except ModelError as error:
+            sys.stderr.write(f"index not built: {error}; {WORDS_ALONE}\n")
+            return 1
+        except (MirrorMissingError, OSError) as error:
+            sys.stderr.write(f"index not built: {error}\n")
+            return 1
     for path, reason in report.skipped:
         sys.stderr.write(f"skipped {path}: {reason}\n")
+    for path in report.unembedded:
+        sys.stderr.write(f"not embedded: a piece of {path}, which the endpoint refused\n")
     types = ", ".join(f"{name}: {count}" for name, count in sorted(report.types.items()))
     sys.stdout.write(
         f"indexed {report.types.total()} documents ({types or 'none'}),"
@@ -63,9 +75,10 @@ def run(arguments: argparse.Namespace) -> int:
     )
     if embedding is not None:
         sys.stdout.write(
-            f"{report.pieces} pieces by meaning, with {settings.model};"
-            f" {report.embedded} embedded now, the others kept\n"
+            f"{report.pieces} pieces by meaning, with {settings.model}"
+            f" ({prefixes_said(settings.model)}); {report.embedded} embedded now,"
+            " the others kept\n"
         )
     if report.skipped:
         sys.stderr.write(f"{len(report.skipped)} files skipped: the index lacks them\n")
-    return 1 if report.skipped else 0
+    return 1 if report.skipped or report.unembedded else 0

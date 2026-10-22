@@ -17,10 +17,11 @@ files.
   Build the index again after each `mirror`; a running server reads the new index from
   its next call on. `status` tells when the index was built.
 - The server is the command with no arguments. It speaks MCP over stdio, reads only
-  `<data>/index.sqlite` and the model that index names under `<data>/models/`, writes
-  nothing and opens no network connection. It takes its
-  settings, the data directory included, from `~/.config/atlassian-offline-mcp/config.toml`;
-  `<data>` is `~/atlassian-offline-mcp` unless that file says otherwise.
+  `<data>/index.sqlite` and the mirror, and writes nothing; its one network connection,
+  when it searches by meaning, is to the embedding endpoint on this machine (below). It
+  takes its settings, the data directory included, from
+  `~/.config/atlassian-offline-mcp/config.toml`; `<data>` is `~/atlassian-offline-mcp`
+  unless that file says otherwise.
 
 The server has four tools, all read-only: `search`, `read`, `browse` and `status`. Every
 answer marks the text it copies from Confluence and Jira as untrusted reference data,
@@ -31,30 +32,80 @@ Never give an agent `<data>/session/` (your saved sign-in) or `<data>/raw/`: onl
 
 ## Search by meaning
 
-`search` ranks by words and by meaning together (hybrid) once the index holds vectors;
-until then it ranks by words alone, and each answer says so. Vectors come from a small
-embedding model that runs on your machine, pulled once:
+`search` ranks by words unless the setting `search_mode` says otherwise: `hybrid`
+fuses words and meaning, `semantic` ranks by meaning alone, and `lexical`, the default,
+needs nothing more. On plan 002's sandbox questions, hybrid search with the default
+model did not beat words significantly and did worse on identifiers, so words stay
+the default until your own questions say otherwise (see
+[evaluating search](../explanation/search-evaluation.md)). Meaning comes from an
+embedding model that this program does not run itself: it asks any OpenAI-compatible
+embeddings API, by default [Ollama](https://ollama.com) on this machine. To search by
+meaning, install Ollama on the host, not in a container (a container on macOS cannot
+use the Mac's GPU), start it (the Ollama app, `brew services start ollama`, or
+`ollama serve`), set `search_mode = "hybrid"`, then pull the model, check it and build
+the index:
 
 ```bash
-atlassian-offline-mcp model pull
+ollama pull qwen3-embedding:0.6b
+```
+
+```bash
+atlassian-offline-mcp model check
 ```
 
 ```bash
 atlassian-offline-mcp index
 ```
 
-`model pull` downloads the model of the setting `model` (by default `bge-small-en-v1.5`,
-134 MB) into `<data>/models/`, each file checked against its pinned SHA-256; it is the
-only command that downloads a model, and the server never does. `model list` shows the
-models known. If the machine cannot reach huggingface.co, copy the model's files from
-another one and use `model pull --from <folder>`. The first `index` with a model embeds
-every piece of the mirror (a few minutes per 10,000 pieces), then keeps the vectors in
-`<data>/vectors.sqlite`, so later builds embed only what changed. If your pages are
-not all in English, set `model = "multilingual-e5-small"` (487 MB): it all but tied on
-the evaluation, and did better on French questions.
+`model check` connects to the endpoint and says the model's dimensions, its digest and
+whether its prefixes are known, or what to run when something is missing; it never
+downloads a model. The first `index` with a model embeds every piece of the mirror,
+then keeps the vectors in `<data>/vectors.sqlite`, so later builds embed only what
+changed. Run `index` again after `ollama pull` of a new version of the model: its
+vectors change. Until then a server started after the pull says that the index is
+stale and answers by words, while one already running goes on with the new weights
+against the old vectors until the index is rebuilt. When the endpoint does not
+answer, `index` fails and leaves the index in place; the server answers by words,
+saying why, and tries again 30 seconds later. Ollama unloads a model five minutes
+after its last use, so the first search after a pause waits for it to load;
+`OLLAMA_KEEP_ALIVE` (for instance `1h`) keeps it longer. An index built by an earlier
+version names a model of its own, which Ollama does not have: run `index`, rather
+than pull that model. A folder `<data>/models/` left by an earlier version can be
+deleted.
 
-The setting `search_mode` is `hybrid` (the default), `lexical` or `semantic`. To check
-which fits your own content, write golden questions and keep them in `<data>/eval/`: a
+The default model, `qwen3-embedding:0.6b` (639 MB), retrieves English best among the
+small models of Ollama's library compared on the MTEB leaderboard. For French content,
+or a faster cold build, set `model = "embeddinggemma:300m"` (622 MB): best on French,
+and about a quarter of the compute. Any model the endpoint serves can be named; the
+prefixes of `qwen3-embedding`, `embeddinggemma`, `embeddinggemma-2`,
+`nomic-embed-text`, `nomic-embed-text-v2-moe` and `snowflake-arctic-embed2` are known,
+and texts for any other model are embedded as they are.
+
+Any other OpenAI-compatible server works the same way (LM Studio, llama.cpp's server,
+vLLM, a hosted API): set `embedding_url` to its base address, the one that ends before
+`/embeddings`, and, if it needs a key, put the key in the environment variable
+`ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY` (never in the settings file). Such a server
+lists no digest as Ollama does, so the vectors follow the model's name alone: after
+changing the weights behind a name, delete `<data>/vectors.sqlite` and run `index`.
+
+```toml
+search_mode = "hybrid"
+model = "qwen3-embedding:0.6b"
+embedding_url = "http://127.0.0.1:11434/v1"
+```
+
+The text sent to the endpoint is your company's content, so the endpoint must be on
+this machine: a literal loopback address, `127.0.0.1` or `[::1]` (not a name, not even
+`localhost`, which resolves as the system says). Any other address is refused unless
+the command is given `--allow-remote-embeddings`, on every run, and then only over
+https; for the MCP server, that means registering it as `atlassian-offline-mcp serve
+--allow-remote-embeddings`. A model that Ollama serves from its cloud (such as a
+`:cloud` tag) is refused the same way, since Ollama would forward the text. A tunnel or
+a forwarded port to another machine defeats the check: do not point `embedding_url` at
+one. By words alone, the default, no endpoint is asked at all.
+
+To check which mode, and which model, fits your own content, write golden questions
+and keep them in `<data>/eval/`: a
 YAML list where each question has an `id`, the `question`, the `expected` refs that
 answer it (page ids, issue keys, or mirror paths, as `read` takes them), and optionally
 `partial` refs that help, `groups` to break the measures down, and `evidence`, a phrase
@@ -77,6 +128,10 @@ atlassian-offline-mcp eval ~/atlassian-offline-mcp/eval/golden.yaml
 
 It prints Recall@10, MRR@10, nDCG@10, Success@1 and Section@10 per mode and model, with
 the paired tests, and keeps the numbers, never the questions, in `<data>/eval/results/`.
+It measures the setting's model, or each one named with `--model`, all served by the
+endpoint, whatever the setting `search_mode`. [Evaluating
+search](../explanation/search-evaluation.md) explains each measure, the tests, and how
+the defaults were chosen.
 
 ## Claude Code
 
@@ -200,7 +255,7 @@ an edit would not last.
 
 ## Sources
 
-Checked on 2026-10-21:
+Checked on 2026-10-21 and 2026-10-22:
 
 - Claude Code: [MCP](https://code.claude.com/docs/en/mcp.md),
   [permissions](https://code.claude.com/docs/en/permissions.md),
@@ -209,3 +264,9 @@ Checked on 2026-10-21:
   [MCP configuration](https://code.visualstudio.com/docs/agents/reference/mcp-configuration),
   [approvals](https://code.visualstudio.com/docs/agents/approvals),
   [read-only files](https://code.visualstudio.com/updates/v1_79).
+- Ollama: [OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility),
+  [embeddings](https://docs.ollama.com/capabilities/embeddings),
+  [list models](https://docs.ollama.com/api/tags),
+  [qwen3-embedding](https://ollama.com/library/qwen3-embedding),
+  [embeddinggemma](https://ollama.com/library/embeddinggemma); the
+  [MTEB leaderboard](https://huggingface.co/spaces/mteb/leaderboard).

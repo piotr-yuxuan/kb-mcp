@@ -1,4 +1,4 @@
-"""``serve``: the MCP server over stdio, answering from the index alone.
+"""``serve``: the MCP server over stdio, answering from the index and the embedding endpoint.
 
 This module alone knows the MCP SDK. The tools are the methods of ``app.tools.Library``,
 registered as they are, so that their signatures are the tools' schemas.
@@ -6,6 +6,7 @@ registered as they are, so that their signatures are the tools' schemas.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import sys
 from typing import TYPE_CHECKING
@@ -14,9 +15,15 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 
+from atlassian_offline_mcp.adapters.embedding import connect
 from atlassian_offline_mcp.app.meaning import Meaning
 from atlassian_offline_mcp.app.tools import Library, UnanswerableError
-from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
+from atlassian_offline_mcp.commands._options import (
+    add_embedding_options,
+    add_settings_options,
+    open_endpoint,
+    settings_of,
+)
 from atlassian_offline_mcp.domain.settings import SettingsError
 
 if TYPE_CHECKING:
@@ -48,6 +55,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     """Add ``serve`` to the command."""
     parser = subparsers.add_parser("serve", help="serve the mirror over MCP on stdio")
     add_settings_options(parser)
+    add_embedding_options(parser)
     parser.set_defaults(run=run)
 
 
@@ -69,16 +77,21 @@ def refusing(method: Callable[..., str]) -> Callable[..., str]:
 
 
 def run(arguments: argparse.Namespace) -> int:
-    """Serve until the client closes stdin; exit 2 when the settings are refused."""
+    """Serve until the client closes stdin; exit 2 when the settings are refused.
+
+    The lexical mode never opens the embedding endpoint.
+    """
     try:
         settings = settings_of(arguments)
+        opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")
         return BAD_SETTINGS
-    meaning = Meaning(settings.models)
-    library = Library(settings.index, settings.docs, meaning, settings.search_mode)
-    server = MCPServer(NAME, instructions=INSTRUCTIONS, log_level="WARNING")
-    for method in (library.search, library.read, library.browse, library.status):
-        server.add_tool(refusing(method), structured_output=False, annotations=READ_ONLY)
-    server.run("stdio")
+    with opened or contextlib.nullcontext():
+        meaning = None if opened is None else Meaning(functools.partial(connect, opened))
+        library = Library(settings.index, settings.docs, meaning, settings.search_mode)
+        server = MCPServer(NAME, instructions=INSTRUCTIONS, log_level="WARNING")
+        for method in (library.search, library.read, library.browse, library.status):
+            server.add_tool(refusing(method), structured_output=False, annotations=READ_ONLY)
+        server.run("stdio")
     return 0

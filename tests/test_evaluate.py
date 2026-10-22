@@ -1,4 +1,4 @@
-"""Evaluating the strategies on golden questions, with the tiny model (plan 011)."""
+"""Evaluating the strategies on golden questions, with the tiny model (plans 011, 018)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.adapters.embedding import CATALOGUE, ModelError, load
+from atlassian_offline_mcp.adapters.embedding import ModelError
 from atlassian_offline_mcp.adapters.sqlite_index import reading
 from atlassian_offline_mcp.app import evaluation
 from atlassian_offline_mcp.app.evaluation import (
@@ -27,8 +27,8 @@ from atlassian_offline_mcp.app.tools import Library
 from atlassian_offline_mcp.cli import main
 from atlassian_offline_mcp.domain.evaluation import holm
 from atlassian_offline_mcp.domain.settings import Settings
+from tests.endpoint import DIGEST, Scripted, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
-from tests.tiny_model import registered, tiny
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -55,13 +55,13 @@ GOLDEN = """
   expected: [PROJ-7]
 """
 REFUSED = 2
-# Seconds that loading the model takes in the test of timing: beyond any query's.
+# Seconds that connecting takes in the test of timing: beyond any query's.
 LOADING = 1000
 
 
 @pytest.fixture
 def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
-    """Give a data directory with a mirror, its index, and the tiny model pulled."""
+    """Give a data directory with a mirror and its index."""
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -71,8 +71,14 @@ def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     write(docs, page("4003", "Words"), "revert release\n")
     write(docs, issue("PROJ-7", "Kafka upgrade"))
     build_index(docs, tmp_path / "data" / "index.sqlite", MOMENT)
-    registered(tmp_path / "data" / "models", monkeypatch)
     return tmp_path / "data"
+
+
+def options(data: Path, url: str = "http://127.0.0.1:11434/v1") -> list[str]:
+    """Write settings naming the tiny model and an endpoint; give the options to read them."""
+    config = data.parent / "config.toml"
+    config.write_text(f'model = "tiny"\nembedding_url = "{url}"\n', encoding="utf-8")
+    return ["--config", str(config), "--data-dir", str(data)]
 
 
 def golden(data: Path, text: str = GOLDEN) -> list:
@@ -133,7 +139,7 @@ def test_meaning_answers_the_paraphrase_that_words_miss(data: Path) -> None:
     """Measured as search ranks: the paraphrase found by meaning only; the key first in all."""
     settings = Settings(None, data, model="tiny")
     ticks = count()
-    [run] = evaluate(settings, golden(data), ["tiny"], lambda: float(next(ticks)), MOMENT)
+    [run] = evaluate(settings, golden(data), [tiny()], lambda: float(next(ticks)), MOMENT)
     assert run.per["lexical"]["q1"].reciprocal_rank == 0.0
     assert run.per["semantic"]["q1"].reciprocal_rank == 1.0
     assert run.per["hybrid"]["q1"].section == 1.0
@@ -149,16 +155,16 @@ def test_the_command_keeps_numbers_and_ids_but_no_question(
 ) -> None:
     """``eval`` prints its tables, and its results file holds no question's text."""
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
-    options = ["--config", str(data / "none.toml"), "--data-dir", str(data)]
-    assert main(["eval", str(data / "golden.yaml"), *options]) == 0
-    out = capsys.readouterr().out
-    assert "## tiny" in out
-    [results] = (data / "eval" / "results").glob("*.json")
-    kept = results.read_text(encoding="utf-8")
-    assert "vacation" not in kept
-    assert "release" not in kept
-    assert json.loads(kept)["runs"][0]["ranks"]["semantic"]["q1"] == [1]
-    assert main(["eval", str(data / "golden.yaml"), *options]) == 0
+    with serving(Scripted()) as url:
+        assert main(["eval", str(data / "golden.yaml"), *options(data, url)]) == 0
+        out = capsys.readouterr().out
+        assert "## tiny" in out
+        [results] = (data / "eval" / "results").glob("*.json")
+        kept = results.read_text(encoding="utf-8")
+        assert "vacation" not in kept
+        assert "release" not in kept
+        assert json.loads(kept)["runs"][0]["ranks"]["semantic"]["q1"] == [1]
+        assert main(["eval", str(data / "golden.yaml"), *options(data, url)]) == 0
     second = max((data / "eval" / "results").glob("*.json"))
     assert json.loads(second.read_text(encoding="utf-8"))["runs"][0]["embedded"] == 0
 
@@ -166,9 +172,19 @@ def test_the_command_keeps_numbers_and_ids_but_no_question(
 def test_a_refused_golden_file_exits_2(data: Path, capsys: CaptureFixture[str]) -> None:
     """The command names the fault and evaluates nothing."""
     (data / "golden.yaml").write_text("- {id: q1}", encoding="utf-8")
-    options = ["--config", str(data / "none.toml"), "--data-dir", str(data)]
-    assert main(["eval", str(data / "golden.yaml"), *options]) == REFUSED
+    assert main(["eval", str(data / "golden.yaml"), *options(data)]) == REFUSED
     assert "golden[0].expected: missing" in capsys.readouterr().err
+    assert not (data / "eval").exists()
+
+
+def test_an_endpoint_elsewhere_without_the_flag_exits_2(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """``eval`` always embeds: an endpoint off this machine needs the run's word."""
+    (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
+    remote = options(data, "https://embeddings.example/v1")
+    assert main(["eval", str(data / "golden.yaml"), *remote]) == REFUSED
+    assert "refused: embedding_url: not an address of this machine" in capsys.readouterr().err
     assert not (data / "eval").exists()
 
 
@@ -195,20 +211,20 @@ def test_a_ref_missing_from_the_index_evaluated_is_refused(data: Path) -> None:
     (data / "docs" / "confluence" / "ENG" / "4003-words.md").unlink()
     settings = Settings(None, data, model="tiny")
     with pytest.raises(EvaluationError, match=r"tiny: q2: confluence/ENG/4003-words\.md is not"):
-        evaluate(settings, questions, ["tiny"], ticking(), MOMENT)
+        evaluate(settings, questions, [tiny()], ticking(), MOMENT)
 
 
 def test_a_mode_by_meaning_that_falls_back_is_refused(data: Path, monkeypatch: MonkeyPatch) -> None:
     """Measuring words twice under another name would mislead: the run stops, naming why."""
 
-    def broken(name: str, models: Path) -> object:
-        message = f"{name}: does not load (Fail) {models.name}"
+    def broken(name: str) -> Embedder:
+        message = f"{name}: no answer from the embedding endpoint (ConnectError)"
         raise ModelError(message)
 
-    monkeypatch.setattr(evaluation, "Meaning", lambda models: Meaning(models, broken))
+    monkeypatch.setattr(evaluation, "Meaning", lambda _connect: Meaning(broken))
     settings = Settings(None, data, model="tiny")
     with pytest.raises(EvaluationError, match="tiny, semantic: Ranked by words alone"):
-        evaluate(settings, golden(data), ["tiny"], ticking(), MOMENT)
+        evaluate(settings, golden(data), [tiny()], ticking(), MOMENT)
 
 
 def test_holm_adjusts_every_test_of_the_run(data: Path, monkeypatch: MonkeyPatch) -> None:
@@ -217,11 +233,12 @@ def test_holm_adjusts_every_test_of_the_run(data: Path, monkeypatch: MonkeyPatch
     The tests' p-values are set, small and distinct, so that adjusting per model (0.02,
     0.04, 0.06, 0.06) differs from adjusting the run (0.04, 0.06, 0.06, 0.06).
     """
-    monkeypatch.setitem(CATALOGUE, "tiny2", tiny(data / "models", name="tiny2"))
+    answers = Scripted({"tiny:latest": DIGEST, "tiny2:latest": DIGEST})
     given = iter([1.0, 0.01, 0.02, 1.0, 0.03, 0.04])  # lexical, semantic, hybrid, twice
     monkeypatch.setattr(evaluation, "paired_test", lambda *_: next(given))
     settings = Settings(None, data, model="tiny")
-    runs = evaluate(settings, golden(data), ["tiny", "tiny2"], ticking(), MOMENT)
+    embedders = [tiny(answers), tiny(answers, "tiny2")]
+    runs = evaluate(settings, golden(data), embedders, ticking(), MOMENT)
     raw = [run.pvalues[mode] for run in runs for mode in ("semantic", "hybrid")]
     adjusted = [run.adjusted[mode] for run in runs for mode in ("semantic", "hybrid")]
     assert raw == [0.01, 0.02, 0.03, 0.04]
@@ -236,34 +253,46 @@ def test_a_partial_ref_missing_from_the_index_evaluated_is_refused(data: Path) -
     (data / "docs" / "confluence" / "ENG" / "4004-helper.md").unlink()
     settings = Settings(None, data, model="tiny")
     with pytest.raises(EvaluationError, match=r"q1: confluence/ENG/4004-helper\.md is not"):
-        evaluate(settings, questions, ["tiny"], ticking(), MOMENT)
+        evaluate(settings, questions, [tiny()], ticking(), MOMENT)
 
 
-def test_loading_the_model_is_not_timed_as_a_query(data: Path, monkeypatch: MonkeyPatch) -> None:
-    """A thousand seconds of loading land on the untimed first query, not on the measures."""
+def test_the_first_search_by_meaning_is_not_timed_as_a_query(
+    data: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A thousand seconds of connecting land on the untimed first query, not the measures."""
     now = [0.0]
 
     def clock() -> float:
         now[0] += 1.0
         return now[0]
 
-    def slow(name: str, models: Path) -> Embedder:
+    def slow(name: str) -> Embedder:
         now[0] += 1000.0
-        return load(name, models)
+        return tiny(model=name)
 
-    monkeypatch.setattr(evaluation, "Meaning", lambda models: Meaning(models, slow))
+    monkeypatch.setattr(evaluation, "Meaning", lambda _connect: Meaning(slow))
     settings = Settings(None, data, model="tiny")
-    [run] = evaluate(settings, golden(data), ["tiny"], clock, MOMENT)
+    [run] = evaluate(settings, golden(data), [tiny()], clock, MOMENT)
     assert all(tail < LOADING for _, tail in run.times.values())
 
 
 def test_evaluation_leaves_the_served_index_and_builds_its_own(data: Path) -> None:
-    """The server's index stays as it was; the model's index is in <data>/eval/indexes/."""
+    """The server's index stays as it was; the model's index is in <data>/eval/indexes/.
+
+    Its name's ``:`` and ``/`` are written ``_``, so that it stays one file there.
+    """
     before = (data / "index.sqlite").read_bytes()
     settings = Settings(None, data, model="tiny")
-    evaluate(settings, golden(data), ["tiny"], ticking(), MOMENT)
+    answers = Scripted({"tiny:latest": DIGEST, "hf.co/someone/tiny:latest": DIGEST})
+    embedders = [tiny(answers, "tiny:latest"), tiny(answers, "hf.co/someone/tiny")]
+    evaluate(settings, golden(data), embedders, ticking(), MOMENT)
     assert (data / "index.sqlite").read_bytes() == before
-    with reading(data / "eval" / "indexes" / "tiny.sqlite") as reader:
+    indexes = data / "eval" / "indexes"
+    assert sorted(path.name for path in indexes.iterdir()) == [
+        "hf.co_someone_tiny.sqlite",
+        "tiny_latest.sqlite",
+    ]
+    with reading(indexes / "tiny_latest.sqlite") as reader:
         assert reader.embedded() is not None
 
 
@@ -287,7 +316,7 @@ def test_documents_are_measured_to_the_tenth_and_tested_on_mrr(
 
     monkeypatch.setattr(evaluation, "paired_test", recorded)
     settings = Settings(None, data, model="tiny")
-    [run] = evaluate(settings, questions, ["tiny"], ticking(), MOMENT)
+    [run] = evaluate(settings, questions, [tiny()], ticking(), MOMENT)
     assert run.per["lexical"]["q4"].recall == 1.0
     assert run.per["lexical"]["q4"].reciprocal_rank == pytest.approx(1 / 10)
     ranks = {

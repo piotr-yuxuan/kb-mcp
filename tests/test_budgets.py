@@ -13,11 +13,10 @@ from atlassian_offline_mcp.app.responses import cut
 from atlassian_offline_mcp.app.responses import page as fitted
 from atlassian_offline_mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
+from tests.endpoint import connector
 from tests.mirrors import page
-from tests.tiny_model import registered
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
 
     from _pytest.tempdir import TempPathFactory
@@ -68,20 +67,18 @@ def large(tmp_path_factory: TempPathFactory) -> tuple[Library, str]:
 
 
 @pytest.fixture(scope="module")
-def with_vectors(tmp_path_factory: TempPathFactory) -> Iterator[Path]:
+def with_vectors(tmp_path_factory: TempPathFactory) -> Path:
     """Index the large mirror with the tiny model's vectors, once; give its folder."""
     root = tmp_path_factory.mktemp("meaning")
-    with pytest.MonkeyPatch.context() as patch:
-        registered(root / "models", patch)
-        built(root, large_documents(), "tiny")
-        yield root
+    built(root, large_documents(), "tiny")
+    return root
 
 
 @pytest.fixture(params=["semantic", "hybrid"])
 def by_meaning(with_vectors: Path, request: pytest.FixtureRequest) -> tuple[Library, str]:
     """Serve the large mirror, searched by meaning or by both."""
     root = with_vectors
-    meaning = Meaning(root / "models")
+    meaning = Meaning(connector())
     return Library(root / "index.sqlite", root / "docs", meaning, request.param), request.param
 
 
@@ -103,11 +100,11 @@ def test_answers_by_meaning_keep_to_the_same_budgets(
 def test_a_note_on_falling_back_leaves_the_answer_within_budget(with_vectors: Path) -> None:
     """However long the reason given in the header, the hits make room for it."""
 
-    def broken(name: str, models: Path) -> Embedder:
-        message = f"{name}: does not load " + "(a long reason) " * 200 + str(models.name)
+    def broken(name: str) -> Embedder:
+        message = f"{name}: does not answer " + "(a long reason) " * 200
         raise ModelError(message)
 
-    meaning = Meaning(with_vectors / "models", broken)
+    meaning = Meaning(broken)
     library = Library(with_vectors / "index.sqlite", with_vectors / "docs", meaning, "hybrid")
     for limit, ceiling in ((SEARCH_LIMIT, BUDGET), (50, CEILING)):
         answer = library.search("gamma", limit=limit)

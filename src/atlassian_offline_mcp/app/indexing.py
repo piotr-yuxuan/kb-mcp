@@ -1,7 +1,8 @@
 """Build the search index from the Markdown mirror, and from nothing else.
 
 With an embedding, each piece of each section also gets its vector: from the vector
-store when it holds the piece's text, else from the model, then kept there.
+store when it holds the piece's text, else from the model, then kept there. A piece
+whose text the model refuses has no vector, and its document is named.
 """
 
 from __future__ import annotations
@@ -33,8 +34,9 @@ class Report:
     types: Counter[str] = field(default_factory=Counter)  # documents indexed per type
     sections: int = 0
     skipped: list[tuple[str, str]] = field(default_factory=list)  # each path and reason
-    pieces: int = 0
+    pieces: int = 0  # pieces with a vector
     embedded: int = 0  # texts that the model embedded, the store lacking them
+    unembedded: list[str] = field(default_factory=list)  # paths with a piece refused
 
 
 @dataclass(frozen=True)
@@ -54,7 +56,8 @@ def build_index(
     A file that cannot be read, that ``markdown.load`` refuses, or whose document is
     there already is skipped, and named in the report with a reason that holds no
     content. The index replaces the old one only once complete. Raises ModelError when
-    the embedding fails; the old index then stays.
+    the embedding fails; the old index then stays. A piece whose text the model refuses
+    is left without a vector, and its document named in the report.
     """
     if not docs.is_dir():
         message = f"no mirror at {docs}: build it with `atlassian-offline-mcp mirror`"
@@ -62,7 +65,8 @@ def build_index(
     report = Report()
     model = embedding.embedder if embedding else None
     embedded = Embedded(model.name, model.fingerprint, model.dimensions) if model else None
-    pending: list[tuple[int, int, int, str]] = []  # each piece's section, span and key
+    pending: list[tuple[int, int, int, str, str]] = []  # each piece's section, span,
+    # key and document
     texts: dict[str, str] = {}  # what each key's vector embeds
     with sqlite_index.building(index, built_at, embedded) as writer:
         for file in markdown.documents(docs):
@@ -84,7 +88,7 @@ def build_index(
                 report.sections += len(cut)
                 for number, start, end, text in passages(front.title, cut) if model else ():
                     key = vector_store.key(model.fingerprint, text)
-                    pending.append((first + number, start, end, key))
+                    pending.append((first + number, start, end, key, path))
                     texts[key] = text
                 continue
             writer.skip()
@@ -94,6 +98,8 @@ def build_index(
                 found, report.embedded = store.vectors(
                     texts, embedding.embedder.documents, embedding.progress
                 )
-            writer.add_pieces((*piece[:3], found[piece[3]]) for piece in pending)
-            report.pieces = len(pending)
+            kept = [(*piece[:3], found[piece[3]]) for piece in pending if piece[3] in found]
+            writer.add_pieces(kept)
+            report.pieces = len(kept)
+            report.unembedded = sorted({piece[4] for piece in pending if piece[3] not in found})
     return report
