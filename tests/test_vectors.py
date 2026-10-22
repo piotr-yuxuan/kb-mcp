@@ -328,7 +328,15 @@ def test_a_window_belongs_to_the_section_of_its_middle_and_spans_the_body(data: 
 
 
 def test_a_text_that_chunkings_share_is_embedded_once(data: Path) -> None:
-    """A rebuild by sections after one by windows embeds nothing: the store kept them."""
+    """Without a breadcrumb or nested headings, section-paths embeds what sections did."""
+    build(data, counting())
+    paths = counting()
+    chunked(data, paths, "section-paths")
+    assert paths.texts == []
+
+
+def test_a_sections_rebuild_after_a_windows_one_embeds_nothing(data: Path) -> None:
+    """The store keeps the vectors of every chunking built: none is embedded again."""
     build(data, counting())
     windows = counting()
     chunked(data, windows, "windows")
