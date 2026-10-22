@@ -61,7 +61,8 @@ def before(
     """Give what a run writes on stderr before it acts, in lines, and what follows.
 
     A command that writes begins with its summary: its name, each setting it reads and
-    its value, in detail its layer too, then the lines of its ``described``. Every
+    its value, in detail its layer too, and why the run does not apply it, by its
+    ``unapplied``, whatever its layer; then the lines of its ``described``. Every
     command then gives each value ignored: those that a stronger layer replaced and the
     variables that name no setting or are empty, as loaded; then, of the values that a
     layer gave, those that the run does not apply, by its ``unapplied``, and in detail
@@ -119,7 +120,10 @@ def before(
     return (
         f"{command.name}, with these settings:\n"
         + "".join(
-            f"  {setting_line(loaded, setting, detailed=detailed)}\n" for setting in command.reads
+            f"  {setting_line(loaded, setting, detailed=detailed)}"
+            + (f" (not applied: {unapplied[setting]})" if setting in unapplied else "")
+            + "\n"
+            for setting in command.reads
         )
         + "".join(f"  {line}\n" for line in described)
         + noted

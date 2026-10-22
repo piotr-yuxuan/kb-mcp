@@ -26,6 +26,7 @@ from atlassian_offline_mcp.cli.domain.command_line import command_line
 from atlassian_offline_mcp.cli.domain.summary import values_of
 from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.cli.options.index import by_words_alone
+from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL
 
 if TYPE_CHECKING:
     import argparse
@@ -206,6 +207,31 @@ def test_a_model_named_on_the_command_line_replaces_the_setting(
     assert "ignored" not in capsys.readouterr().err
     assert main([*command, *named, "--config", str(config)]) == 0
     assert f"ignored: model (config.toml): {why}\n" in capsys.readouterr().err
+
+
+@pytest.mark.usefixtures("runs")
+def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_layer(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """At its default too, where no value is said to be ignored.
+
+    ``eval``'s --model replaces the model; an index by words alone embeds nothing.
+    """
+    monkeypatch.chdir(home)
+    (home / "golden.yaml").write_text("", "utf-8")
+    none = str(home / "none.toml")
+    assert main(["eval", "--yes", "golden.yaml", "--config", none, "--model", "other:1b"]) == 0
+    err = capsys.readouterr().err
+    assert f"\n  model: {DEFAULT_MODEL} (not applied: replaced by --model)\n" in err
+    assert "ignored: " not in err
+    assert main(["index", "--yes", "--config", none]) == 0
+    summary = capsys.readouterr().err.split("atlassian-offline-mcp index")[0]
+    marked = [
+        line.strip().partition(": ")[0]
+        for line in summary.splitlines()
+        if line.endswith(" (not applied: the lexical mode embeds nothing)")
+    ]
+    assert marked == ["model", "embedding_url", "embedding_api_key"]
 
 
 def test_settings_that_the_command_never_reads_are_ignored_in_detail_alone(
