@@ -5,11 +5,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.config.adapters.settings_file import (
-    SETTINGS_PATH,
-    git_root,
-    read_settings_file,
-)
+from atlassian_offline_mcp.config.adapters.settings_file import git_root, read_settings_file
 from atlassian_offline_mcp.config.domain.settings import (
     Entry,
     Loaded,
@@ -24,7 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
-__all__ = ["SETTINGS_PATH", "UnsafeDataDirError", "load_settings"]
+__all__ = ["UnsafeDataDirError", "load_settings"]
 
 
 class UnsafeDataDirError(SettingsError):
