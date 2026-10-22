@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from lxml.etree import ErrorTypes, LxmlError
 from lxml.html import Element, HtmlElement, HTMLParser, document_fromstring, tostring
 
-from atlassian_offline_mcp.domain.mirror_layout import one_line, visible
+from atlassian_offline_mcp.mirror.domain.mirror_layout import one_line, visible
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

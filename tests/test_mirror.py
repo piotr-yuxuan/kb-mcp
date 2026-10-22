@@ -16,11 +16,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.adapters.markdown import load
-from atlassian_offline_mcp.adapters.pandoc import Pandoc, PandocFailedError
-from atlassian_offline_mcp.app.mirror import Outcome, mirror
-from atlassian_offline_mcp.domain.mirror import FrontMatter
 from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
+from atlassian_offline_mcp.mirror.adapters.markdown import load
+from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
+from atlassian_offline_mcp.mirror.app.mirror import Outcome, mirror
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from tests.samples import (

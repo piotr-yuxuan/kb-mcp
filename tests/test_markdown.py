@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.adapters.markdown import documents, dump, load
-from atlassian_offline_mcp.domain.mirror import FrontMatter
 from atlassian_offline_mcp.kernel.content import RefusedError
 from atlassian_offline_mcp.kernel.fields import RepresentationError
+from atlassian_offline_mcp.mirror.adapters.markdown import documents, dump, load
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 if TYPE_CHECKING:
     from pathlib import Path

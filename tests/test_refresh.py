@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from atlassian_offline_mcp.adapters.pandoc import PandocFailedError
-from atlassian_offline_mcp.app.mirror import mirror
 from atlassian_offline_mcp.cli import main
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.kernel.content import Page
+from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
+from atlassian_offline_mcp.mirror.app.mirror import mirror
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, Stored
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies

@@ -5,10 +5,10 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.pandoc import Pandoc, PandocMissingError
-from atlassian_offline_mcp.app.mirror import mirror
 from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
 from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
+from atlassian_offline_mcp.mirror.app.mirror import mirror
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 
 if TYPE_CHECKING:

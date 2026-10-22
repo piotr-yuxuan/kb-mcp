@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from atlassian_offline_mcp.domain.catalogue import Catalogue, front_matter
 from atlassian_offline_mcp.kernel.content import (
     BlogPost,
     Folder,
@@ -17,6 +16,7 @@ from atlassian_offline_mcp.kernel.content import (
     RefusedError,
     Space,
 )
+from atlassian_offline_mcp.mirror.domain.catalogue import Catalogue, front_matter
 
 PARIS = timezone(timedelta(hours=2))
 MOMENT = datetime(2026, 10, 20, 23, 52, 41, 371000, tzinfo=PARIS)

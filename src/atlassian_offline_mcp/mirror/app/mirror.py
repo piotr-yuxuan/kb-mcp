@@ -14,24 +14,29 @@ from dataclasses import dataclass, replace
 from datetime import UTC
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.markdown import TIME, dump
-from atlassian_offline_mcp.adapters.mirror_files import Changes, sync
-from atlassian_offline_mcp.adapters.pandoc import PandocFailedError
-from atlassian_offline_mcp.adapters.site_html import Context, MarkupError, Mirrored, normalise
-from atlassian_offline_mcp.domain.catalogue import Catalogue, front_matter
-from atlassian_offline_mcp.domain.mirror_layout import (
-    asset_path,
-    confluence_path,
-    document_html,
-    issue_path,
-    tree_path,
-)
 from atlassian_offline_mcp.kernel.content import (
     BlogPost,
     ConfluenceDocument,
     Issue,
     Page,
     RefusedError,
+)
+from atlassian_offline_mcp.mirror.adapters.markdown import TIME, dump
+from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes, sync
+from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
+from atlassian_offline_mcp.mirror.adapters.site_html import (
+    Context,
+    MarkupError,
+    Mirrored,
+    normalise,
+)
+from atlassian_offline_mcp.mirror.domain.catalogue import Catalogue, front_matter
+from atlassian_offline_mcp.mirror.domain.mirror_layout import (
+    asset_path,
+    confluence_path,
+    document_html,
+    issue_path,
+    tree_path,
 )
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import (
     UNREADABLE,

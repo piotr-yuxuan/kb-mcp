@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from atlassian_offline_mcp.config.domain.settings import SearchMode
-    from atlassian_offline_mcp.domain.mirror import FrontMatter
+    from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 OPENING = re.compile(r'<untrusted-reference-data boundary="([0-9a-f]{16})">\n')
 BUDGET = 4_000

@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.markdown import documents
-from atlassian_offline_mcp.domain.mirror_layout import ASSET_NAME, ASSETS, TREE
+from atlassian_offline_mcp.mirror.adapters.markdown import documents
+from atlassian_offline_mcp.mirror.domain.mirror_layout import ASSET_NAME, ASSETS, TREE
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping

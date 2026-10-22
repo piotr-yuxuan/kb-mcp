@@ -15,9 +15,9 @@ from functools import cached_property
 from html import escape
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.domain.mirror import FrontMatter
-from atlassian_offline_mcp.domain.mirror_layout import NONE, one_line
 from atlassian_offline_mcp.kernel.content import BlogPost, ConfluenceDocument, Folder, Issue, Page
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+from atlassian_offline_mcp.mirror.domain.mirror_layout import NONE, one_line
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence

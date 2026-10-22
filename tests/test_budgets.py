@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from _pytest.tempdir import TempPathFactory
 
     from atlassian_offline_mcp.adapters.embedding import Embedder
-    from atlassian_offline_mcp.domain.mirror import FrontMatter
+    from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 SIZE = 300_000
 # The documents a search by meaning gives at most, as the plan says.

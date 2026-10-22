@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from atlassian_offline_mcp.domain.mirror import FrontMatter
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

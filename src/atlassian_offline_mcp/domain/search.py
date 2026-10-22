@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from atlassian_offline_mcp.domain.mirror import FrontMatter
+    from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 WORD = re.compile(r"[^\W_]+")
 MAX_WORDS = 10
