@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic_core import to_json
+from pydantic_core import to_json, to_jsonable_python
 
 from atlassian_offline_mcp.cli.adapters.question import ask
 from atlassian_offline_mcp.cli.domain.summary import before, values_of
@@ -16,14 +16,16 @@ from atlassian_offline_mcp.config.app.settings import load_settings
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.output import Output
+from atlassian_offline_mcp.observability.app.observed import observed
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Sequence
 
     from atlassian_offline_mcp.cli.domain.command import Command
 
 
-def enter(arguments: argparse.Namespace) -> int:
+def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
     """Load the settings, with the flags given, run the chosen subcommand, write its result.
 
     Refused settings exit 2 before the run is imported, as does what the command refuses
@@ -37,6 +39,12 @@ def enter(arguments: argparse.Namespace) -> int:
     result, or None when it has none to write, such as ``serve``, whose output is the
     protocol. The result goes to stdout as one JSON document, secrets masked, or as its
     module's ``text`` writes it, unless -q. The run's status is returned.
+
+    From the run's import to its result written, the run is ``observed``: its logs go to
+    stderr at its level and to its log file, in the settings' log folder, none for a run
+    that reads no settings, and its start names the arguments ``given`` and the settings
+    as one JSON document, secrets masked. An exception that the run lets through, or
+    Ctrl-C, ends it with the status that ``observed`` gives.
     """
     command: Command = arguments.command
     output = Output(
@@ -79,10 +87,21 @@ def enter(arguments: argparse.Namespace) -> int:
         stopped = ask(then, sys.stdin, sys.stderr)
         if stopped is not None:
             return stopped
-    module = importlib.import_module(command.run)
-    status, result = module.run(arguments, loaded)
-    if result is not None and output.format == "json":
-        sys.stdout.write(f"{to_json(result, indent=2, inf_nan_mode='null').decode()}\n")
-    elif result is not None and not output.quiet:
-        sys.stdout.write(module.text(result, output.summary))
-    return int(status)
+    with observed(
+        output,
+        None if loaded is None else loaded.settings.logs.dir,
+        None if loaded is None else loaded.settings.telemetry.endpoint,
+        command.name,
+        {
+            "arguments": list(given),
+            "settings": None if loaded is None else to_jsonable_python(loaded),
+        },
+    ) as run:
+        module = importlib.import_module(command.run)
+        status, result = module.run(arguments, loaded)
+        if result is not None and output.format == "json":
+            sys.stdout.write(f"{to_json(result, indent=2, inf_nan_mode='null').decode()}\n")
+        elif result is not None and not output.quiet:
+            sys.stdout.write(module.text(result, output.summary))
+        run.status = int(status)
+    return run.status

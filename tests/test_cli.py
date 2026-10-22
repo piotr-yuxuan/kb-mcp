@@ -7,6 +7,8 @@ import importlib
 import json
 import os
 import pty
+import re
+import stat
 import subprocess
 import sys
 import tomllib
@@ -21,6 +23,7 @@ from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.config.domain.settings import SETTING_PATHS
 from atlassian_offline_mcp.kernel.exit_status import MEANINGS, ExitStatus
 from atlassian_offline_mcp.kernel.output import Output
+from tests.test_observed import said as said_on
 from tests.test_question import read_until
 from tests.test_settings import user_log_folder
 
@@ -507,10 +510,10 @@ def test_a_level_leaves_check_s_listing_as_the_default_writes_it(
     site = "https://loud.example.invalid"
     options = ["check", "--config", str(home / "none.toml"), "--site", site]
     assert main(options) == 0
-    default = capsys.readouterr()
-    assert default.out == f"site: {site}\n"
+    default = capsys.readouterr().out
+    assert default == f"site: {site}\n"
     assert main([*options, *level]) == 0
-    assert capsys.readouterr() == default
+    assert capsys.readouterr().out == default
 
 
 def test_check_as_json_gives_settings_layers_and_ignored_values_secrets_masked(
@@ -975,3 +978,252 @@ def test_a_flag_overrides_the_settings_file(home: Path, capsys: CaptureFixture[s
     config.write_text('data_dir = "~/from-file"\n', "utf-8")
     assert main(["check", "--config", str(config), "--data-dir", "~/from-flag"]) == 0
     assert capsys.readouterr().out == f"data_dir: {(home / 'from-flag').resolve()}\n"
+
+
+# The site that the runs below are given, by --site.
+SITE = "https://logged.example.invalid"
+# Each line of a run's log file holds these fields, by plan 016.
+LOG_FIELDS = {"timestamp", "level", "event", "logger", "run", "command"}
+# A run that says something at each level, then ends.
+SAYING = """
+import structlog
+
+def run(arguments, loaded):
+    for level in ("debug", "info", "warning", "error"):
+        getattr(structlog.get_logger(), level)(f"extra.{level}")
+    return 0, None
+"""
+
+
+def the_log_file(home: Path) -> Path:
+    """Give the one log file in the user's log folder under a scratch home."""
+    (path,) = user_log_folder(home.resolve()).iterdir()
+    return path
+
+
+def logged(path: Path) -> list[dict[str, object]]:
+    """Read a log file's lines, each a JSON object."""
+    return [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+
+
+def test_check_writes_one_log_file_at_the_platform_s_default_from_run_start_to_run_end(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The user's alone, in their log folder; run.start says the settings as check's JSON.
+
+    The secrets that check masks are redacted there, by their names.
+    """
+    for name, value in SECRETS.items():
+        monkeypatch.setenv(name, value)
+    given = ["check", "--config", str(home / "none.toml"), "--site", SITE, "--format", "json"]
+    assert main(given) == 0
+    document = json.loads(capsys.readouterr().out)
+    path = the_log_file(home)
+    assert re.fullmatch(rf"check-[0-9]{{8}}T[0-9]{{6}}Z-{os.getpid()}\.jsonl", path.name)
+    assert stat.S_IMODE(path.parent.stat().st_mode) == stat.S_IRWXU
+    assert stat.S_IMODE(path.stat().st_mode) == stat.S_IRUSR | stat.S_IWUSR
+    assert not any(secret in path.read_text("utf-8") for secret in SECRETS.values())
+    start, end = logged(path)
+    for line in (start, end):
+        assert line.keys() >= LOG_FIELDS
+        assert line["command"] == "check"
+        assert re.fullmatch("[0-9a-f]{16}", str(line["run"]))
+    assert start["run"] == end["run"]
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]
+    for secret in ("api_token", "embedding_api_key"):  # by their names, at any depth
+        document["settings"][secret] = document["layers"][secret] = "[redacted]"
+    assert {key: start[key] for key in ("level", "event", "version", "arguments")} == {
+        "level": "info",
+        "event": "run.start",
+        "version": project["version"],
+        "arguments": given,
+    }
+    assert start["settings"] == document
+    assert (start["log_file"], start["telemetry"]) == (str(path), None)
+    assert (end["level"], end["event"], end["status"]) == ("info", "run.end", 0)
+    assert isinstance(end["seconds"], float)
+    assert end["seconds"] >= 0
+
+
+def test_help_version_completions_and_completion_write_no_log_file(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """None of them is a run: no log folder is even made under the scratch home."""
+    for asked in (["--help"], ["--version"], ["check", "--help"]):
+        with pytest.raises(SystemExit) as stopped:
+            main(asked)
+        assert stopped.value.code == 0
+    assert main(["completion"]) == 0
+    capsys.readouterr()
+    typed = "atlassian-offline-mcp check --"
+    child = subprocess.run(
+        [sys.executable, "-m", "atlassian_offline_mcp"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env={
+            "HOME": str(home),
+            "PATH": os.environ["PATH"],
+            "_ARGCOMPLETE": "1",
+            "COMP_LINE": typed,
+            "COMP_POINT": str(len(typed)),
+            "_ARGCOMPLETE_STDOUT_FILENAME": str(home / "completions"),
+        },
+        cwd=home,
+        check=False,
+    )
+    assert child.returncode == 0
+    assert "--config" in (home / "completions").read_text("utf-8")
+    assert not user_log_folder(home.resolve()).exists()
+
+
+@pytest.mark.parametrize(
+    ("level", "said"),
+    [
+        ([], []),
+        (["-v"], [("info", "run.start"), ("info", "run.end")]),
+        (["-vv"], [("info", "run.start"), ("info", "run.end")]),
+        (["-q"], []),
+    ],
+)
+def test_check_s_stderr_holds_its_level_s_lines_and_stdout_its_listing(
+    home: Path, capsys: CaptureFixture[str], level: list[str], said: list[tuple[str, str]]
+) -> None:
+    """Uncoloured, piped; stdout alike at every level but -q, which empties it.
+
+    The file holds the run from DEBUG, whatever the level.
+    """
+    assert main(["check", "--config", str(home / "none.toml"), "--site", SITE, *level]) == 0
+    out, err = capsys.readouterr()
+    assert out == ("" if level == ["-q"] else f"site: {SITE}\n")
+    assert said_on(err) == said
+    assert "\x1b" not in err
+    assert [line["event"] for line in logged(the_log_file(home))] == ["run.start", "run.end"]
+
+
+def test_quiet_leaves_check_s_json_document_as_it_is(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """-q is of stderr and of a result as text: a document is the same with it as without."""
+    given = ["check", "--config", str(home / "none.toml"), "--site", SITE, "--format", "json"]
+    assert main(given) == 0
+    document = capsys.readouterr().out
+    assert main([*given, "-q"]) == 0
+    assert capsys.readouterr() == (document, "")
+
+
+@pytest.mark.parametrize(
+    ("level", "shown"),
+    [
+        ([], ("warning", "error")),
+        (["-v"], ("info", "warning", "error")),
+        (["-vv"], ("debug", "info", "warning", "error")),
+        (["-q"], ("error",)),
+        (["--log-level", "debug"], ("debug", "info", "warning", "error")),
+        (["--log-level", "info"], ("info", "warning", "error")),
+        (["--log-level", "warning"], ("warning", "error")),
+        (["--log-level", "error"], ("error",)),
+    ],
+)
+def test_stderr_shows_what_is_of_the_level_or_above_and_the_file_all(
+    home: Path,
+    extra: Path,
+    capsys: CaptureFixture[str],
+    level: list[str],
+    shown: tuple[str, ...],
+) -> None:
+    """Warning by default, info with -v, debug with -vv, error with -q, else as named."""
+    (extra / "extra_run.py").write_text(SAYING, "utf-8")
+    assert main(["extra", "--config", str(home / "none.toml"), *level]) == 0
+    expected = [(each, f"extra.{each}") for each in shown]
+    if "info" in shown:
+        expected = [("info", "run.start"), *expected, ("info", "run.end")]
+    assert said_on(capsys.readouterr().err) == expected
+    assert [line["event"] for line in logged(the_log_file(home))] == [
+        "run.start",
+        *(f"extra.{each}" for each in ("debug", "info", "warning", "error")),
+        "run.end",
+    ]
+
+
+def test_an_unwritable_log_folder_gives_one_warning_and_no_file(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The run goes on, exit 0, its listing unchanged; the warning names the folder."""
+    (home / "a-file").write_text("", "utf-8")
+    config = home / "config.toml"
+    config.write_text('[logs]\ndir = "~/a-file/logs"\n', "utf-8")
+    assert main(["check", "--config", str(config)]) == 0
+    out, err = capsys.readouterr()
+    assert out == f"logs.dir: {home.resolve() / 'a-file' / 'logs'}\n"
+    (warning,) = err.splitlines()
+    assert said_on(warning) == [("warning", "log.unwritable")]
+    assert str(home.resolve() / "a-file" / "logs") in warning
+    assert (home / "a-file").is_file()
+
+
+@pytest.mark.parametrize(
+    ("raised", "ending"),
+    [
+        ("ValueError('the run broke')", (ExitStatus.FAILED, "error", "run.failed")),
+        ("KeyboardInterrupt()", (ExitStatus.INTERRUPTED, "warning", "run.interrupted")),
+    ],
+)
+def test_a_run_that_fails_or_is_interrupted_says_so_and_exits_with_its_status(
+    home: Path,
+    extra: Path,
+    capsys: CaptureFixture[str],
+    raised: str,
+    ending: tuple[ExitStatus, str, str],
+) -> None:
+    """On stderr and in the file, its last line; a traceback shows no frame's locals."""
+    status, *said = ending
+    sentinel = "local-sentinel-5b2c"
+    (extra / "extra_run.py").write_text(
+        f"def run(arguments, loaded):\n    held = {sentinel!r}\n    raise {raised}\n", "utf-8"
+    )
+    assert main(["extra", "--config", str(home / "none.toml")]) == status
+    _, err = capsys.readouterr()
+    assert said_on(err) == [tuple(said)]
+    path = the_log_file(home)
+    *_, last = logged(path)
+    assert [last["level"], last["event"]] == said
+    assert isinstance(last["seconds"], float)
+    assert sentinel not in err
+    assert sentinel not in path.read_text("utf-8")
+    assert ("Traceback (most recent call last):" in err) is (status == ExitStatus.FAILED)
+
+
+@pytest.mark.parametrize(("variables", "coloured"), [({"NO_COLOR": "1"}, False), ({}, True)])
+def test_stderr_on_a_terminal_is_coloured_unless_no_color(
+    home: Path, variables: dict[str, str], *, coloured: bool
+) -> None:
+    """A child's -v lines on a pseudo-terminal have escape bytes, none under NO_COLOR.
+
+    Stdout, piped, holds the listing alone.
+    """
+    controller, terminal = pty.openpty()
+    with subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "atlassian_offline_mcp",
+            "check",
+            "-v",
+            "--site",
+            "https://a.invalid",
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=terminal,
+        env={"HOME": str(home), "PATH": os.environ["PATH"], **variables},
+        cwd=home,
+    ) as child:
+        os.close(terminal)
+        said = read_until(controller, b"run.end")
+        out, _ = child.communicate()
+    os.close(controller)
+    assert child.returncode == 0
+    assert out == b"site: https://a.invalid\n"
+    assert b"run.start" in said
+    assert (b"\x1b" in said) is coloured

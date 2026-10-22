@@ -7,9 +7,11 @@ import inspect
 import json
 import logging
 import os
+import pwd
 import stat
 import sys
 from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -23,7 +25,6 @@ from atlassian_offline_mcp.observability.adapters.logs import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
 
@@ -243,3 +244,10 @@ def test_the_default_folder_is_the_platform_s_log_folder_for_the_user(
         "linux": tmp_path / ".local" / "state" / "atlassian-offline-mcp" / "log",
     }
     assert default_log_folder() == expected[sys.platform]
+
+
+def test_each_test_s_log_folder_is_under_a_scratch_home() -> None:
+    """So a full test run leaves the user's log folder as it was, as plan 016 requires."""
+    home = Path(os.environ["HOME"])
+    assert home != Path(pwd.getpwuid(os.getuid()).pw_dir)
+    assert default_log_folder().is_relative_to(home)

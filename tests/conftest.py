@@ -1,9 +1,10 @@
-"""Every test runs without the network, and without the settings' own environment.
+"""Every test runs without the network, the settings' own environment or the user's home.
 
 An audit hook refuses any connection, and any name looked up, other than a loopback
 address and a port in ``tests.endpoint.REACHABLE``, so that no test reaches the network,
 or a real Ollama on this machine, by mistake. The settings' variables of the user's
 environment, and OpenTelemetry's, are removed for each test, which sets those it needs.
+Each test has a scratch home, so that a run's log file goes to a scratch log folder.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from tests.endpoint import REACHABLE
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
+    from _pytest.tmpdir import TempPathFactory
 
 PREFIX = "ATLASSIAN_OFFLINE_MCP_"
 # OpenTelemetry's variables, two of which the settings read, and its SDK others.
@@ -60,3 +62,14 @@ def settings_environment(monkeypatch: MonkeyPatch) -> None:
         if name.lower().startswith(PREFIX.lower()) or name.startswith(OTEL)
     ]:
         monkeypatch.delenv(name)
+
+
+@pytest.fixture(autouse=True)
+def scratch_home(tmp_path_factory: TempPathFactory, monkeypatch: MonkeyPatch) -> None:
+    """Give each test a home of its own, so that no run writes the user's log folder.
+
+    The platform's log folder is under the home: ``~/Library/Logs`` on macOS, and on
+    Linux ``~/.local/state`` once ``XDG_STATE_HOME`` is removed.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)

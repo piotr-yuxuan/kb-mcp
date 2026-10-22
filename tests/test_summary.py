@@ -27,6 +27,7 @@ from atlassian_offline_mcp.cli.domain.summary import values_of
 from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.cli.options.index import by_words_alone
 from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL
+from atlassian_offline_mcp.observability.app.observed import early
 
 if TYPE_CHECKING:
     import argparse
@@ -385,11 +386,11 @@ def test_a_command_s_described_lines_end_its_summary(
     def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
         return (f"mirrors {settings['site']}", f"as {arguments.command.name}")
 
-    arguments = parser().parse_args(
-        ["mirror", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
-    )
+    given = ["mirror", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
+    arguments = parser().parse_args(given)
     arguments.command = dataclasses.replace(arguments.command, described=described)
-    assert enter(arguments) == 0
+    with early():
+        assert enter(arguments, given) == 0
     summary = capsys.readouterr().err.split("atlassian-offline-mcp mirror")[0]
     assert summary.endswith(
         f"  data_dir: {(home / 'atlassian-offline-mcp').resolve()}\n  mirrors {SITE}\n  as mirror\n"

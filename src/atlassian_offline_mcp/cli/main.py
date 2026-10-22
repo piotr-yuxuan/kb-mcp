@@ -2,9 +2,9 @@
 """The ``atlassian-offline-mcp`` command: it declares every subcommand and runs one.
 
 The parser is built from ``cli.options`` alone, which is light, so that ``--help`` and
-shell completion, which runs the command at every Tab, start fast; the entry and the
-chosen run are imported once the arguments are parsed. The first line lets
-argcomplete's global completion find the command.
+shell completion, which runs the command at every Tab, start fast; what observes the run,
+the entry and the chosen run are imported once the arguments are parsed. The first line
+lets argcomplete's global completion find the command.
 """
 
 from __future__ import annotations
@@ -26,6 +26,8 @@ if TYPE_CHECKING:
 
 # The entry that loads the settings and runs the chosen subcommand.
 ENTRY = "atlassian_offline_mcp.cli.commands._shared"
+# What observes a run: its logs, from the start on stderr, never on stdout.
+OBSERVED = "atlassian_offline_mcp.observability.app.observed"
 
 
 class Version(argparse.Action):
@@ -87,10 +89,14 @@ def parser(
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse the arguments, run the chosen subcommand, and return its exit status.
 
-    When the shell asks for completions, argcomplete answers them and exits instead.
+    When the shell asks for completions, argcomplete answers them and exits instead, as
+    --help and --version do. Else, from then on, events and records go to stderr from
+    WARNING, never to stdout, until the run's settings are read.
     """
     program = parser()
     argcomplete.autocomplete(program)
     # Agents start the command with no arguments, which serves MCP over stdio.
-    arguments = program.parse_args(list(sys.argv[1:] if argv is None else argv) or ["serve"])
-    return importlib.import_module(ENTRY).enter(arguments)
+    given = list(sys.argv[1:] if argv is None else argv) or ["serve"]
+    arguments = program.parse_args(given)
+    with importlib.import_module(OBSERVED).early():
+        return importlib.import_module(ENTRY).enter(arguments, given)
