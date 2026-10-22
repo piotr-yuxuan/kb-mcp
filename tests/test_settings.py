@@ -47,11 +47,12 @@ def test_settings_are_normalised() -> None:
 
 
 def test_the_default_embeddings_come_from_ollama_on_this_machine() -> None:
-    """Ollama's own address, and the model that plan 018 chose."""
+    """Ollama's own address, and the model that plan 018 chose; search by words."""
     settings = parse_settings({}, HOME)
-    assert (settings.embedding_url, settings.model) == (
+    assert (settings.embedding_url, settings.model, settings.search_mode) == (
         "http://127.0.0.1:11434/v1",
         "qwen3-embedding:0.6b",
+        "lexical",
     )
 
 

@@ -24,8 +24,10 @@ DEFAULT_EMBEDDING_URL = "http://127.0.0.1:11434/v1"
 # How search ranks: by words, by meaning, or by both fused.
 type SearchMode = Literal["lexical", "semantic", "hybrid"]
 SEARCH_MODES: tuple[SearchMode, ...] = ("lexical", "semantic", "hybrid")
-# Plan 011's evaluation found hybrid better than lexical, and no worse on identifiers.
-DEFAULT_SEARCH_MODE: SearchMode = "hybrid"
+# Plan 011 found hybrid better than lexical with its in-process model; with the model of
+# plan 018, hybrid neither beat lexical significantly nor held identifiers, so by the bar
+# set before that run, and the user's word, words stay the default.
+DEFAULT_SEARCH_MODE: SearchMode = "lexical"
 KNOWN_KEYS = frozenset(
     {"site", "data_dir", "spaces", "projects", "model", "search_mode", "embedding_url"}
 )

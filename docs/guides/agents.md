@@ -32,12 +32,18 @@ Never give an agent `<data>/session/` (your saved sign-in) or `<data>/raw/`: onl
 
 ## Search by meaning
 
-`search` ranks by words and by meaning together (hybrid, the default). Meaning comes
-from an embedding model that this program does not run itself: it asks any
-OpenAI-compatible embeddings API, by default [Ollama](https://ollama.com) on this
-machine. Install Ollama on the host, not in a container (a container on macOS cannot
+`search` ranks by words unless the setting `search_mode` says otherwise: `hybrid`
+fuses words and meaning, `semantic` ranks by meaning alone, and `lexical`, the default,
+needs nothing more. On plan 002's sandbox questions, hybrid search with the default
+model did not beat words significantly and did worse on identifiers, so words stay
+the default until your own questions say otherwise (see
+[evaluating search](../explanation/search-evaluation.md)). Meaning comes from an
+embedding model that this program does not run itself: it asks any OpenAI-compatible
+embeddings API, by default [Ollama](https://ollama.com) on this machine. To search by
+meaning, install Ollama on the host, not in a container (a container on macOS cannot
 use the Mac's GPU), start it (the Ollama app, `brew services start ollama`, or
-`ollama serve`), then pull the model, check it and build the index:
+`ollama serve`), set `search_mode = "hybrid"`, then pull the model, check it and build
+the index:
 
 ```bash
 ollama pull qwen3-embedding:0.6b
@@ -83,6 +89,7 @@ lists no digest as Ollama does, so the vectors follow the model's name alone: af
 changing the weights behind a name, delete `<data>/vectors.sqlite` and run `index`.
 
 ```toml
+search_mode = "hybrid"
 model = "qwen3-embedding:0.6b"
 embedding_url = "http://127.0.0.1:11434/v1"
 ```
@@ -95,10 +102,10 @@ https; for the MCP server, that means registering it as `atlassian-offline-mcp s
 --allow-remote-embeddings`. A model that Ollama serves from its cloud (such as a
 `:cloud` tag) is refused the same way, since Ollama would forward the text. A tunnel or
 a forwarded port to another machine defeats the check: do not point `embedding_url` at
-one. To search by words alone, without any endpoint, set `search_mode = "lexical"`.
+one. By words alone, the default, no endpoint is asked at all.
 
-The setting `search_mode` is `hybrid` (the default), `lexical` or `semantic`. To check
-which fits your own content, write golden questions and keep them in `<data>/eval/`: a
+To check which mode, and which model, fits your own content, write golden questions
+and keep them in `<data>/eval/`: a
 YAML list where each question has an `id`, the `question`, the `expected` refs that
 answer it (page ids, issue keys, or mirror paths, as `read` takes them), and optionally
 `partial` refs that help, `groups` to break the measures down, and `evidence`, a phrase
@@ -122,7 +129,9 @@ atlassian-offline-mcp eval ~/atlassian-offline-mcp/eval/golden.yaml
 It prints Recall@10, MRR@10, nDCG@10, Success@1 and Section@10 per mode and model, with
 the paired tests, and keeps the numbers, never the questions, in `<data>/eval/results/`.
 It measures the setting's model, or each one named with `--model`, all served by the
-endpoint.
+endpoint, whatever the setting `search_mode`. [Evaluating
+search](../explanation/search-evaluation.md) explains each measure, the tests, and how
+the defaults were chosen.
 
 ## Claude Code
 

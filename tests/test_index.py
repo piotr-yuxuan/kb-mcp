@@ -158,11 +158,15 @@ def test_by_meaning_an_endpoint_elsewhere_needs_the_flag_and_https(
 ) -> None:
     """Hybrid, an endpoint off this machine: refused without the flag, and over http with it."""
     write(data / "docs", page("196845", "Kafka"))
-    status, _, err = index(data, capsys, 'embedding_url = "https://embeddings.example/v1"\n')
+    remote = 'search_mode = "hybrid"\nembedding_url = "https://embeddings.example/v1"\n'
+    status, _, err = index(data, capsys, remote)
     assert status == BAD_SETTINGS
     assert "settings refused: embedding_url: not an address of this machine" in err
     config = data.parent / "config.toml"
-    config.write_text('embedding_url = "http://embeddings.example/v1"\n', encoding="utf-8")
+    config.write_text(
+        'search_mode = "hybrid"\nembedding_url = "http://embeddings.example/v1"\n',
+        encoding="utf-8",
+    )
     options = ["--config", str(config), "--data-dir", str(data), "--allow-remote-embeddings"]
     assert main(["index", *options]) == BAD_SETTINGS
     assert "over https only" in capsys.readouterr().err

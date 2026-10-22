@@ -148,7 +148,8 @@ def config(data: Path, model: str, url: str) -> list[str]:
     """Write settings naming a model and an endpoint; give the options that point at them."""
     settings = data.parent / "config.toml"
     settings.write_text(
-        f"model = {json.dumps(model)}\nembedding_url = {json.dumps(url)}\n", encoding="utf-8"
+        f'model = {json.dumps(model)}\nembedding_url = {json.dumps(url)}\nsearch_mode = "hybrid"\n',
+        encoding="utf-8",
     )
     return ["--config", str(settings), "--data-dir", str(data)]
 
