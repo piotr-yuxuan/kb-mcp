@@ -46,17 +46,24 @@ Each context but the kernel holds the same layers, as sub-packages, from the top
 
 | Layer | What it holds |
 |---|---|
-| `main` | The entry point (in `cli` only) |
-| `commands` | One module per subcommand (in `cli` only) |
+| `main` | The entry point: the parser, built from every declaration (in `cli` only) |
+| `commands` | One run per subcommand, and `_shared`, the entry that loads the settings and runs the chosen one (in `cli` only) |
+| `options` | One light declaration per subcommand: its help, its options and the run it names (in `cli` only) |
 | `app` | Use cases: they combine effects and rules, and know nothing of the command line |
 | `adapters` | Effects: the network, the browser, files, SQLite, subprocesses |
 | `domain` | Pure rules: decisions and conversions with no I/O, time or environment |
 
 A context holds only the layers it needs; `mcp` has only `app`.
 
+A subcommand is a pair of modules: `cli/options/<name>.py` declares it, and the module
+of `cli/commands/` that its declaration names runs it. `--help` builds the whole parser,
+so it imports every declaration; `main` imports the entry and the chosen run, by name,
+only once the arguments are parsed. So a declaration stays light: contract G keeps the
+packages that runs need out of `cli.main` and `cli.options`.
+
 ## The contracts
 
-`pyproject.toml` declares six contracts:
+`pyproject.toml` declares seven contracts:
 
 | | What it protects |
 |---|---|
@@ -66,9 +73,13 @@ A context holds only the layers it needs; `mcp` has only `app`.
 | D | Effects, in any context, use no use case |
 | E | Search, the server and the evaluation read the mirror, never a source: the index is built from the mirror alone |
 | F | Use cases and commands reach the network through effects only (no `httpx`) |
+| G | Declaring the command, `cli.main` and `cli.options`, imports none of the packages that runs need: the MCP SDK, Playwright, httpx, NumPy, lxml, PyYAML, Pydantic, Rich, OpenTelemetry, and plan 016's structlog and platformdirs |
 
 A orders the contexts, which B, applied per context, does not; C and D carry the order
 of the layers across contexts, which B cannot. All but F count indirect imports too.
+None sees an import by name, as `main` makes of the entry and the run: a test of
+`tests/test_cli.py` checks, in a fresh interpreter, that `--help` imports none of G's
+packages.
 
 ## Where a new module goes
 

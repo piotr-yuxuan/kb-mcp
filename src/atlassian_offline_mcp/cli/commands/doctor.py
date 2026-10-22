@@ -5,8 +5,6 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.cli.commands._options import add_settings_options
-from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.sources.atlassian.app.doctor import FAILED, SIGN_IN, doctor
 
@@ -14,13 +12,6 @@ if TYPE_CHECKING:
     import argparse
 
     from atlassian_offline_mcp.config.domain.settings import Settings
-
-
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add ``doctor`` to the command."""
-    parser = subparsers.add_parser("doctor", help="check the machine and the saved session")
-    flags = add_settings_options(parser)
-    parser.set_defaults(command=Command(__name__, flags))
 
 
 def run(_arguments: argparse.Namespace, settings: Settings) -> ExitStatus:

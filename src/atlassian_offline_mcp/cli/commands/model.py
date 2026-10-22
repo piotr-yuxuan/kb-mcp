@@ -8,13 +8,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.cli.commands._options import (
-    add_embedding_options,
-    add_settings_options,
-    model_name,
-)
 from atlassian_offline_mcp.cli.commands._shared import open_endpoint, prefixes_said
-from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
@@ -26,18 +20,6 @@ if TYPE_CHECKING:
 
 # Characters of a digest shown, as Ollama shows them.
 SHORT = 12
-
-
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add ``model`` to the command."""
-    parser = subparsers.add_parser("model", help="check the embedding model and its endpoint")
-    flags = add_settings_options(parser)
-    add_embedding_options(parser)
-    parser.add_argument("action", choices=("check",))
-    parser.add_argument(
-        "name", nargs="?", type=model_name, help="the model to check; by default, the setting"
-    )
-    parser.set_defaults(command=Command(__name__, flags))
 
 
 def run(arguments: argparse.Namespace, settings: Settings) -> ExitStatus:

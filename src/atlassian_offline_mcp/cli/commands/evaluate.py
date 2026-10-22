@@ -6,16 +6,9 @@ import json
 import sys
 import time
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.cli.commands._options import (
-    add_embedding_options,
-    add_settings_options,
-    model_name,
-)
 from atlassian_offline_mcp.cli.commands._shared import open_endpoint
-from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.evaluation.app.evaluation import (
     EvaluationError,
@@ -35,23 +28,6 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.config.domain.settings import Settings
 
 STAMP = "%Y%m%dT%H%M%SZ"
-
-
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add ``eval`` to the command."""
-    parser = subparsers.add_parser(
-        "eval", help="measure lexical, semantic and hybrid search on golden questions"
-    )
-    flags = add_settings_options(parser)
-    add_embedding_options(parser)
-    parser.add_argument("golden", type=Path, help="a YAML file of golden questions")
-    parser.add_argument(
-        "--model",
-        action="append",
-        type=model_name,
-        help="a model to evaluate, as the endpoint names it; by default, the setting",
-    )
-    parser.set_defaults(command=Command(__name__, flags))
 
 
 def run(arguments: argparse.Namespace, settings: Settings) -> ExitStatus:

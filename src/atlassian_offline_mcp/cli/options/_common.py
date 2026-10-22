@@ -1,11 +1,11 @@
-"""Options that every command taking settings shares."""
+"""Options that commands share, declared without importing what runs them."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-from atlassian_offline_mcp.config.app.settings import SETTINGS_PATH
+from atlassian_offline_mcp.config.adapters.settings_file import SETTINGS_PATH
 from atlassian_offline_mcp.kernel.content import MODEL_NAME
 
 

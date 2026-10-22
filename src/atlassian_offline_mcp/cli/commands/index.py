@@ -7,9 +7,7 @@ import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.cli.commands._options import add_embedding_options, add_settings_options
 from atlassian_offline_mcp.cli.commands._shared import open_endpoint, prefixes_said
-from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
@@ -21,14 +19,6 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.config.domain.settings import Settings
 
 WORDS_ALONE = 'or set search_mode = "lexical" to index by words alone'
-
-
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add ``index`` to the command."""
-    parser = subparsers.add_parser("index", help="build the search index from the mirror")
-    flags = add_settings_options(parser)
-    add_embedding_options(parser)
-    parser.set_defaults(command=Command(__name__, flags))
 
 
 def progress(done: int, total: int) -> None:

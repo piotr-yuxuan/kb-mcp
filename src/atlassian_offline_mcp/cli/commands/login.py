@@ -5,8 +5,6 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.cli.commands._options import add_settings_options
-from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.sources.atlassian.adapters.browser import SignInFailedError
 from atlassian_offline_mcp.sources.atlassian.app.login import login
@@ -15,17 +13,6 @@ if TYPE_CHECKING:
     import argparse
 
     from atlassian_offline_mcp.config.domain.settings import Settings
-
-
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add ``login`` to the command."""
-    parser = subparsers.add_parser("login", help="sign in once, in a Chrome window")
-    flags = add_settings_options(parser)
-    parser.add_argument("--chrome", help="Chrome's executable, where the chrome channel fails")
-    parser.add_argument(
-        "--keep-extensions", action="store_true", help="let Chrome load extensions, for SSO"
-    )
-    parser.set_defaults(command=Command(__name__, flags))
 
 
 def run(arguments: argparse.Namespace, settings: Settings) -> ExitStatus:

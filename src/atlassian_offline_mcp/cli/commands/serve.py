@@ -16,9 +16,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 
-from atlassian_offline_mcp.cli.commands._options import add_embedding_options, add_settings_options
 from atlassian_offline_mcp.cli.commands._shared import open_endpoint
-from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
@@ -49,14 +47,6 @@ INSTRUCTIONS = (
 READ_ONLY = ToolAnnotations(
     read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
 )
-
-
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add ``serve`` to the command."""
-    parser = subparsers.add_parser("serve", help="serve the mirror over MCP on stdio")
-    flags = add_settings_options(parser)
-    add_embedding_options(parser)
-    parser.set_defaults(command=Command(__name__, flags))
 
 
 def refusing(method: Callable[..., str]) -> Callable[..., str]:
