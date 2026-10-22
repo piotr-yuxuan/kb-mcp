@@ -108,7 +108,9 @@ POSITIONALS = {"eval": ["golden.yaml"], "eval-agents": ["grade", "runs"], "model
 # The subcommands whose output is their own, by plan 015: the protocol, a script.
 OWN_OUTPUT = {"serve", "completion"}
 # The subcommands that write under the data directory, and so ask first, by plan 015.
-WRITING = {"download", "eval", "eval-agents", "index", "login", "mirror"}
+WRITING = {"download", "eval", "eval-agents", "index", "login", "mirror", "sync"}
+# The subcommands that take --dry-run, by plans 015 and 017.
+DRY_RUN = {"download", "sync"}
 SECRETS = {
     "ATLASSIAN_OFFLINE_MCP_API_TOKEN": "token-sentinel-4d1c",
     "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY": "key-sentinel-9a7e",
@@ -204,13 +206,13 @@ def test_each_subcommand_reads_settings_by_their_paths_and_declares_each_flag(na
 
 
 @pytest.mark.parametrize("name", sorted(SUBCOMMANDS))
-def test_the_commands_that_write_take_yes_and_download_alone_a_dry_run(name: str) -> None:
-    """They ask first, as plan 015 lists them; check, doctor, model and serve never do."""
+def test_the_commands_that_write_take_yes_and_download_and_sync_a_dry_run(name: str) -> None:
+    """They ask first, as plans 015 and 017 list them; check, doctor, model, serve never do."""
     command = SUBCOMMANDS[name].get_default("command")
     arguments = parser().parse_args([name, *POSITIONALS.get(name, [])])
     assert command.writes is (name in WRITING)
     assert hasattr(arguments, "yes") is command.writes
-    assert command.dry_run is (name == "download")
+    assert command.dry_run is (name in DRY_RUN)
     assert hasattr(arguments, "dry_run") is command.dry_run
 
 

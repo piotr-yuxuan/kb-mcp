@@ -1,0 +1,117 @@
+"""``sync``: bring the configured sources up to date, each step in turn."""
+
+from __future__ import annotations
+
+import sys
+import time
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+from atlassian_offline_mcp.cli.app.sync import (
+    Atlassian,
+    Context,
+    SyncRefusedError,
+    Worklog,
+    sync,
+)
+from atlassian_offline_mcp.cli.commands import download as download_command
+from atlassian_offline_mcp.cli.commands import mirror as mirror_command
+from atlassian_offline_mcp.cli.commands.download import targets_of
+from atlassian_offline_mcp.cli.domain.summary import values_of
+from atlassian_offline_mcp.cli.domain.sync import chosen
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
+from atlassian_offline_mcp.kernel.fields import RepresentationError
+from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
+from atlassian_offline_mcp.mirror.app.worklog import Planned
+from atlassian_offline_mcp.sources.atlassian.domain.period import PeriodError
+
+if TYPE_CHECKING:
+    import argparse
+    from collections.abc import Callable
+
+    from atlassian_offline_mcp.cli.app.sync import Synced
+    from atlassian_offline_mcp.config.domain.settings import Loaded
+    from atlassian_offline_mcp.kernel.output import Summary
+    from atlassian_offline_mcp.mirror.app.worklog import Outcome
+
+
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Synced | None]:
+    """Sync the sources chosen; exit 0, 1, 3 or 130 as the steps rank, 2 when refused.
+
+    The entry refused what it could before asking. A target with nowhere to start, or a
+    work log that is not a folder, is refused here, before any step runs. Each step's
+    problems go to standard error as it runs, by place and reason, never content.
+    """
+    settings = loaded.settings
+    taken, _ = chosen(arguments, values_of(loaded))
+    names = {source.name for source in taken}
+    sources = settings.sources
+    spaces = sources.confluence.spaces if "confluence" in names else ()
+    projects = sources.jira.projects if "jira" in names else ()
+    folder = sources.worklog.path if "worklog" in names else None
+    try:
+        context = Context(
+            settings,
+            Pandoc.find(),
+            lambda: datetime.now(UTC),
+            time.sleep,
+            sys.stderr.write,
+            dry_run=arguments.dry_run,
+        )
+        steps: list[Atlassian | Worklog] = []
+        if spaces or projects:
+            steps.append(Atlassian(targets_of(arguments, spaces, projects, context.now())))
+        if folder is not None:
+            steps.append(Worklog(folder, sources.worklog.archives))
+        synced = sync(context, steps)
+    except (PeriodError, RepresentationError, SyncRefusedError) as error:
+        sys.stderr.write(f"refused: {error}\n")
+        return ExitStatus.REFUSED, None
+    except PandocMissingError as error:
+        sys.stderr.write(f"{error}\n")
+        return ExitStatus.FAILED, None
+    return synced.exit_status, synced
+
+
+def worklog_text(result: Outcome | Planned, summary: Summary) -> str:
+    """Write the work log's counts: of documents, files, HTML transcripts left out, problems.
+
+    A dry run's are those it would convert and remove. In detail, each warning comes
+    before the problems.
+    """
+    if isinstance(result, Planned):
+        counts = [("to convert", result.to_convert), ("files to remove", result.to_remove)]
+    else:
+        changes = result.changes
+        counts = [
+            ("files written", changes.written),
+            ("files unchanged", changes.unchanged),
+            ("files removed", changes.removed),
+        ]
+    warnings = result.warnings if summary == "detailed" else ()
+    return (
+        f"documents: {result.documents}\n"
+        + "".join(f"{what}: {number}\n" for what, number in counts)
+        + f"HTML left out: {result.html}\n"
+        + "".join(f"warning: {warning}\n" for warning in warnings)
+        + f"problems: {len(result.problems)}\n"
+    )
+
+
+# How each step's result is written, as its own command writes it.
+TEXTS: dict[str, Callable[..., str]] = {
+    "download": download_command.text,
+    "mirror": mirror_command.text,
+    "worklog": worklog_text,
+}
+
+
+def text(synced: Synced, summary: Summary) -> str:
+    """Write a row per step, how it ended, then its result as its command writes it."""
+    written: list[str] = []
+    for row in synced.steps:
+        written.append(f"{row.step}: {row.outcome}\n")
+        if row.result is not None:
+            shown = TEXTS[row.step](row.result, summary).splitlines()
+            written.extend(f"  {line}\n" for line in shown)
+    return "".join(written)
