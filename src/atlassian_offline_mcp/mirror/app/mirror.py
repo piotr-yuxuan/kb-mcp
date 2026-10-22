@@ -38,6 +38,7 @@ from atlassian_offline_mcp.mirror.domain.mirror_layout import (
     issue_path,
     tree_path,
 )
+from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import (
     UNREADABLE,
     RawStore,
@@ -259,20 +260,24 @@ def document_file(
 def mirror(
     store: RawStore, docs: Path, site: str | None, markdown: Callable[[str], str]
 ) -> Outcome:
-    """Mirror the raw store into ``docs``, with ``markdown`` writing HTML as Markdown."""
+    """Mirror the raw store into ``docs``, with ``markdown`` writing HTML as Markdown.
+
+    The task ``documents`` reports the documents' files built, each by its path.
+    """
     problems: list[Problem] = []
     catalogue, damaged, times = read_catalogue(store, problems)
     placed, retired = place(store, catalogue, times, problems)
     mirrored, assets = index(placed, store, site)
     wanted: dict[PurePosixPath, bytes | Path] = {**assets}
     unsupported: Counter[str] = Counter()
-    for each in placed:
-        context = Context(each.handle, each.path, mirrored, unsupported=unsupported)
-        try:
-            wanted[each.path] = document_file(each, catalogue, context, markdown)
-        except DOCUMENT_ERRORS as error:
-            reason = str(error) if isinstance(error, NAMED_ERRORS) else type(error).__name__
-            problems.append(Problem(where(store, each.stored), reason))
+    with task("documents", len(placed)) as built:
+        for each in built.each(placed, lambda one: str(one.path)):
+            context = Context(each.handle, each.path, mirrored, unsupported=unsupported)
+            try:
+                wanted[each.path] = document_file(each, catalogue, context, markdown)
+            except DOCUMENT_ERRORS as error:
+                reason = str(error) if isinstance(error, NAMED_ERRORS) else type(error).__name__
+                problems.append(Problem(where(store, each.stored), reason))
     for space in catalogue.spaces.values():
         tree = tree_path(space.key)
         # Only the files built: a page whose file failed is not yet mirrored.

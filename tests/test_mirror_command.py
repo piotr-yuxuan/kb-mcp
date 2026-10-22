@@ -147,6 +147,23 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
     )
 
 
+def test_the_command_reports_the_documents_it_builds(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Two pages: the run's log file ends the task documents with both done."""
+    store = RawStore(home / "data" / "raw")
+    listed = [listing_page("100", "Home", None, None), listing_page("101", "Away", None, None)]
+    with store.writing():
+        store.put_space(v2_space(id=SPACE_ID), listed, [], [])
+        store.put(Page, page_responses("100", "Home", 1, "<p>Home.</p>", []), FETCHED, {})
+        store.put(Page, page_responses("101", "Away", 1, "<p>Away.</p>", []), FETCHED, {})
+    assert main(arguments(home)) == 0
+    assert capsys.readouterr().out.startswith("documents: 2\n")
+    assert [
+        (line["task"], line["done"], line["total"]) for line in logged_as(home, "progress")
+    ] == [("documents", 2, 2)]
+
+
 def test_pandoc_runs_sandboxed_on_its_standard_input(home: Path, monkeypatch: MonkeyPatch) -> None:
     """The pandoc on PATH gets --sandbox, the HTML on its input, and its output is kept."""
     folder = fake_pandoc(home / "bin", f'printf "%s\\n" "$@" > "{home}/arguments"; cat')
