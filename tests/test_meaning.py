@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from atlassian_offline_mcp.app.tools import Library
+from atlassian_offline_mcp.mcp.app.tools import Library
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect, endpoint
 from atlassian_offline_mcp.search.adapters.sqlite_index import reading
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index

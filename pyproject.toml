@@ -53,7 +53,7 @@ layers = [
 name = "The server, the index and the evaluation never reach the site, its browser or its session"
 type = "forbidden"
 source_modules = [
-  "atlassian_offline_mcp.app.tools",
+  "atlassian_offline_mcp.mcp.app.tools",
   "atlassian_offline_mcp.search.app.meaning",
   "atlassian_offline_mcp.search.app.indexing",
   "atlassian_offline_mcp.app.evaluation",

@@ -17,7 +17,6 @@ from atlassian_offline_mcp.app.evaluation import (
     record,
     table,
 )
-from atlassian_offline_mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.commands._options import (
     add_embedding_options,
     add_settings_options,
@@ -26,6 +25,7 @@ from atlassian_offline_mcp.commands._options import (
     settings_of,
 )
 from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
 
 if TYPE_CHECKING:

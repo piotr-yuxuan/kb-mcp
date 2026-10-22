@@ -11,7 +11,7 @@ import math
 import re
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.app.tools import Library
+from atlassian_offline_mcp.mcp.app.tools import Library
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.endpoint import connector, tiny
