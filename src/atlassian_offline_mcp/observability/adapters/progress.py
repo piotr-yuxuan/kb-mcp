@@ -23,7 +23,7 @@ from atlassian_offline_mcp.observability.domain.time_remaining import remaining
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
 
-# The most seconds between two events progress of a task, but its last.
+# The fewest seconds between two events progress of a task, but before its last.
 HEARTBEAT = 10.0
 
 

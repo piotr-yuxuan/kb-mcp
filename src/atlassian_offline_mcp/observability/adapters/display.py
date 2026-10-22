@@ -109,7 +109,7 @@ class TaskBar(Bar):
 
     @override
     def close(self) -> None:
-        """Draw the task's line a last time, whole, then take it away; the last, the bars."""
+        """Draw the task's line once more, then take it away, and the bars with the last."""
         self.progress.refresh()
         self.progress.remove_task(self.id)
         if not self.progress.task_ids:
