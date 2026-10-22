@@ -39,8 +39,9 @@ class Command:
     summary and that command, then asks before it acts, unless given --yes, which it
     then takes, or --dry-run, if it takes one (``dry_run``).
 
-    ``unapplied``, if any, names what the run does not apply of the settings it reads,
-    such as the model of an index built by words alone; ``described``, if any, gives the
+    ``unapplied``, if any, names what the run does not apply of the settings given, and
+    why, such as the model of an index built by words alone, or the API token that
+    ``login`` never reads, so that it is said once; ``described``, if any, gives the
     lines that the summary ends with; ``refused``, if any, says why the run cannot go
     on, such as a download without a site, which exits 2 before the summary. Each lives
     in the command's own declaration and names no type of ``config``, so that declaring

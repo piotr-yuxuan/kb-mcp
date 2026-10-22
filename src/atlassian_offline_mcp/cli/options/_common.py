@@ -20,8 +20,7 @@ if TYPE_CHECKING:
 
 # The level of each -v given, from none: warning, then info, then debug.
 VERBOSITY: tuple[Level, ...] = ("warning", "info", "debug")
-# The settings of a sign-in by API token: a command that signs in reads them, if only
-# to say that they go unused.
+# The settings of a sign-in by API token, which the commands that reach the site read.
 SIGN_IN = ("email", "api_token")
 
 

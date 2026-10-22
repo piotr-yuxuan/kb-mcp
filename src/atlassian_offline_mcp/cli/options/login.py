@@ -48,7 +48,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         command=Command(
             "login",
             "atlassian_offline_mcp.cli.commands.login",
-            reads=("site", *SIGN_IN, "data_dir"),
+            reads=("site", "data_dir"),
             flags=flags,
             actions=(*actions, chrome, extensions),
             writes=True,

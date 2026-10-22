@@ -65,9 +65,9 @@ def before(
     command then gives each value ignored: those that a stronger layer replaced and the
     variables that name no setting or are empty, as loaded; then, of the values that a
     layer gave, those that the run does not apply, by its ``unapplied``, and in detail
-    those of the settings that the command never reads. Each names its setting, if any,
-    and its layer, never its value. A command that writes ends with the command to copy,
-    its paths made ``absolute``.
+    those of the settings that the command never reads, unless ``unapplied`` said why.
+    Each names its setting, if any, and its layer, never its value. A command that
+    writes ends with the command to copy, its paths made ``absolute``.
 
     A command that only reads runs, as does one given --yes, or --dry-run where it takes
     one. Another asks when stdin and stderr are both terminals, where someone can
@@ -96,7 +96,7 @@ def before(
         *(
             Ignored(setting, layer, f"not read by {command.name}")
             for setting, layer in loaded.layers.items()
-            if detailed and setting not in command.reads
+            if detailed and setting not in command.reads and setting not in unapplied
         ),
     ]
     noted = "".join(

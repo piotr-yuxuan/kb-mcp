@@ -82,20 +82,26 @@ def runs(monkeypatch: MonkeyPatch) -> list[tuple[argparse.Namespace, Loaded]]:
     return recorded
 
 
+@pytest.mark.parametrize("summary", ["short", "detailed"])
 def test_login_says_that_it_ignores_the_email_and_the_token(
-    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], summary: str
 ) -> None:
-    """It signs in in a browser: each is named with its layer, never with its value."""
+    """It signs in in a browser: each is named once with its layer, never with its value.
+
+    Neither is among the settings that its summary shows.
+    """
     monkeypatch.setattr(login_command, "login", lambda *_, **__: None)
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
     monkeypatch.setenv(CREDENTIAL, SECRETS[CREDENTIAL])
-    assert main(["login", "--yes", "--config", str(home / "none.toml"), "--site", SITE]) == 0
+    options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--summary", summary]
+    assert main(["login", *options]) == 0
     out, err = capsys.readouterr()
     ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
     assert ignored == [
         f"ignored: email ({EMAIL}): login signs in in a browser",
         f"ignored: api_token ({CREDENTIAL}): login signs in in a browser",
     ]
+    assert "someone@example.invalid" not in out + err
     assert SECRETS[CREDENTIAL] not in out + err
 
 
