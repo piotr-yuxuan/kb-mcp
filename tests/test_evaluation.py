@@ -243,3 +243,17 @@ def test_of_two_within_0_01_of_evidence_the_cheaper_wins() -> None:
         "section-paths": tested,
         "windows": tested,
     }
+
+
+def test_a_gain_on_one_question_alone_is_no_reason_to_change() -> None:
+    """Higher on average, by one question of twenty: not significant once adjusted."""
+    choice = default_chunking({"sections": scored(0.0, 0.5), "windows": scored(0.0, 0.5, last=1.0)})
+    assert choice.chunking == "sections"
+    assert choice.adjusted["windows"]["evidence"] >= ALPHA_LEVEL
+
+
+def test_a_challenger_significantly_worse_on_evidence_never_qualifies() -> None:
+    """Different on every question, the wrong way: the control stays."""
+    choice = default_chunking({"sections": scored(1.0, 0.5), "windows": scored(0.0, 0.5)})
+    assert choice.adjusted["windows"]["evidence"] < ALPHA_LEVEL
+    assert choice.chunking == "sections"

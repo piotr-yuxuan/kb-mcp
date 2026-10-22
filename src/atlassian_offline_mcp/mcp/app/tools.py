@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -23,7 +24,7 @@ from opentelemetry import metrics, trace
 from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.meaning import Nearest
-from atlassian_offline_mcp.search.domain.chunking import CHUNKERS, UNIT
+from atlassian_offline_mcp.search.domain.chunking import CHUNKERS, UNIT, around
 from atlassian_offline_mcp.search.domain.search import (
     MAX_WORDS,
     Filters,
@@ -181,12 +182,16 @@ def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -
     """Give the passage that ask quotes of each document, verbatim, in the order given.
 
     A document ranked by meaning gives the unit of its best piece, by the index's
-    chunking; one ranked by words, its best section for the question's words, or its
-    first, cut after its last line break within UNIT characters if longer, when that
-    break falls in their second half.
+    chunking. One ranked by words gives its best section for the question's words, or
+    its first: whole up to UNIT characters, else UNIT of it centred on the first of the
+    words that it holds, by ``around``, then cut to whole lines where a line break falls
+    in the half that the cut shortens.
     """
     embedded = reader.embedded()
     unit = CHUNKERS[embedded.chunking].unit if embedded else None
+    words = re.compile(
+        "|".join(rf"(?<!\w){re.escape(word)}(?!\w)" for word in planned.words), re.IGNORECASE
+    )
     found = []
     for path in paths:
         bounds = reader.bounds(path)
@@ -198,8 +203,12 @@ def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -
             best = reader.passage(path, planned.match) if planned.words else None
             number = best.number if best else 1
             first, last = bounds[number - 1]
-            text = reader.text(path, first, min(last, first + UNIT))
-            text = text if last - first <= UNIT else text[: text.rfind("\n", UNIT // 2) + 1 or UNIT]
+            section = reader.text(path, first, last)
+            hit = first + next((each.start() for each in words.finditer(section)), 0)
+            start, end = around((hit, hit + 1), (first, last))
+            text = section[start - first : end - first]
+            text = text if end == last else text[: text.rfind("\n", UNIT // 2) + 1 or UNIT]
+            text = text if start == first else text[text.find("\n", 0, UNIT // 2) + 1 :]
         found.append(Passage(number, reader.heading(path, number), text))
     return found
 

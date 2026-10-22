@@ -40,10 +40,18 @@ RETENTION = (
 LONG = "# Brokers\n\n## Sizing\n\n" + "broker sizing note, kept here\n" * 150
 # A section whose only line breaks are in its first lines: cut at 2,400 characters.
 PARAGRAPH = "# Pools\n\n## Pooling\n\n" + "pool sizing words " * 250
+# A long section whose question's words are in its last line alone.
+TAIL = (
+    "# Rules\n\n## Crossings\n\n"
+    + "a line of other matters here\n" * 140
+    + "zebracrossing quota met\n"
+)
 # One short section, near "vacation lunch" by meaning.
 HOLIDAY = "# Holiday canteen\n\nLeave for a meal.\n"
 UNIT = 2400
 ENOUGH = 40  # documents holding a word, more than one answer quotes
+GAMMA = "gamma notes " * 40  # so that fewer than 20 of their passages fit one answer
+ASK_DOCUMENTS = 20  # the documents that one answer quotes, at most
 
 
 def passages(answer: str) -> list[dict[str, str]]:
@@ -67,8 +75,9 @@ def words(tmp_path_factory: TempPathFactory) -> Library:
         (page("196846", "Brokers"), LONG),
         (issue("PROJ-7", "Upgrade the brokers"), "# Upgrade the brokers\n\nPlanned.\n"),
         (page("196847", "Pools"), PARAGRAPH),
+        (page("196848", "Rules"), TAIL),
         *(
-            (page(str(700000 + number), f"Gamma {number}"), f"# Gamma {number}\n\ngamma notes\n")
+            (page(str(700000 + number), f"Gamma {number}"), f"# Gamma {number}\n\n{GAMMA}\n")
             for number in range(ENOUGH)
         ),
     ]
@@ -107,6 +116,15 @@ def test_a_long_paragraph_is_cut_at_2400_characters(words: Library) -> None:
     assert first["text"] == PARAGRAPH[PARAGRAPH.index("## Pooling") :][:UNIT]
 
 
+def test_a_long_section_is_quoted_about_the_question_s_words(words: Library) -> None:
+    """The words in its last line: 2,400 characters of its end, from a line's start."""
+    (first, *_) = passages(words.ask("zebracrossing quota"))
+    section = TAIL[TAIL.index("## Crossings") :]
+    end = section[-UNIT:]
+    assert first["text"] == end[end.index("\n") + 1 :]
+    assert first["text"].endswith("zebracrossing quota met\n")
+
+
 def test_an_answer_is_one_block_within_the_budget_and_goes_on(words: Library) -> None:
     """At most 4,000 estimated tokens; following the calls gives each document once."""
     answer: str | None = words.ask("gamma notes")
@@ -120,6 +138,15 @@ def test_an_answer_is_one_block_within_the_budget_and_goes_on(words: Library) ->
     first = words.ask("gamma notes")
     assert continuation(first) is not None
     assert first.startswith(f"Documents found: {ENOUGH}; 1 to ")
+
+
+def test_what_eval_measures_is_what_ask_s_first_answer_quotes(words: Library) -> None:
+    """The same documents and texts, those that fit the budget, fewer than 20 here."""
+    shown = words.quoted("gamma notes", "lexical")
+    quoted = passages(words.ask("gamma notes"))
+    assert [each.path for each in shown] == [words.resolve(each["ref"]) for each in quoted]
+    assert [each.text for each in shown] == [each["text"] for each in quoted]
+    assert len(shown) < ASK_DOCUMENTS
 
 
 def test_an_issue_key_in_the_question_puts_its_issue_first(words: Library) -> None:

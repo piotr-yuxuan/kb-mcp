@@ -30,7 +30,8 @@ A passage is a line of its number, title, ref, section, heading and dates; a lin
 the site's address (or the mirror's path) and the `read(ref=..., section=N)` call that
 opens its section; then its text, verbatim. By meaning, the text is the unit of the
 index's chunking (see [chunking](../explanation/chunking.md)); by words, the section
-that holds the question's words best, cut after a line break within 2,400 characters.
+that holds the question's words best, whole up to 2,400 characters, else 2,400 of it
+centred on the first of the question's words that it holds, cut to whole lines.
 The setting `search_mode` gives the mode; without vectors, `ask` answers by words and
 says why.
 
