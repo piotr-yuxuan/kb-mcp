@@ -63,7 +63,10 @@ def add_output_options(parser: argparse.ArgumentParser, *, result: bool = True) 
         "--log-level",
         dest="level",
         choices=LEVELS,
-        help="say what is of this level or above; warning by default",
+        help=(
+            "say what is of this level or above; warning by default; error, as -q, also"
+            " writes no result as text"
+        ),
     )
     if result:
         parser.add_argument(
