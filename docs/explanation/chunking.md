@@ -4,7 +4,7 @@ An index by meaning holds a vector per piece of each document, and a search by m
 finds the pieces nearest the question. How documents are cut into pieces, and what text
 each vector stands for, is the chunking: the setting `chunking`, which `index` cuts by
 and records in the index, so that `search`, `ask` and `status` follow the index, not the
-setting. Plan 019 compared four, on plan 002's sandbox questions, and chose the default
+setting. Plan 019 compares four, on plan 002's sandbox questions, and chooses the default
 by a rule set before the run.
 
 ## The four chunkings
@@ -64,6 +64,41 @@ of MRR@10, and costs at most three times `sections`' tokens; the best Evidence@a
 and within 0.01 the cheaper; else `sections` stays. Three times, because
 `small-to-big` repeats each piece's context, about 2.1 times `sections`' tokens; only a
 cold build three times as long is refused. The work set should decide again.
+
+## When pages change
+
+`index` rebuilds the whole index from the mirror each time, but embeds only the texts
+that `<data>/vectors.sqlite` lacks: vectors are kept by model and text, never by page.
+So what a change costs is the number of texts it makes new, and that depends on the
+chunking:
+
+- **A cut that shifts re-embeds more than what changed.** `sections`, `section-paths`
+  and `small-to-big` cut each section on its own, so an edit re-embeds the pieces of
+  the section it touches. `windows` cut the whole body at fixed steps: an edit shifts
+  every window after it, which are all new texts.
+- **A name in the embedded text re-embeds everything under it.** A title that changes
+  re-embeds every piece of the page, by any chunking; a heading renamed re-embeds the
+  pieces under it by `section-paths` and `small-to-big`, whose texts carry the heading
+  path, its section's alone by `sections`, and the windows after it by `windows`.
+- **`small-to-big`'s unit costs nothing to embed**: the section that `ask` returns is
+  read from the index when asked, never embedded.
+- **A text that two chunkings share is embedded once**, and what an evaluation embeds
+  for the chunkings not in use stays in `vectors.sqlite`, which only grows: deleting it
+  costs a full embedding of the chunking in use, and nothing else.
+
+Counted on the sandbox's mirror, offline, with the tests' scripted model (the counts
+depend on the cuts alone, not on the model), after editing one page of 17 sections,
+`code-review-guidelines`:
+
+| Chunking | Pieces of the mirror | A sentence added mid-section | A heading renamed, its body empty, two sections under it |
+|---|---|---|---|
+| `sections` | 6,729 | 1 | 0 |
+| `windows` | 2,974 | 7 | 13 |
+| `section-paths` | 6,729 | 1 | 2 |
+| `small-to-big` | 9,149 | 2 | 4 |
+
+A vector stays in the store when its text leaves the mirror, and is read by nothing; an
+index never holds a vector whose text the mirror no longer has, since it is rebuilt.
 
 ## Not compared
 
