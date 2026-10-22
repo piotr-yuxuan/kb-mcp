@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import ipaddress
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
 
-from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
+from atlassian_offline_mcp.kernel.content import MODEL_NAME, PROJECT_KEY, SPACE_KEY
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -18,7 +17,6 @@ DEFAULT_DATA_DIR = "~/atlassian-offline-mcp"
 # The embedding model that indexes by meaning, as the endpoint names it. Chosen by plan
 # 018 from published retrieval scores: the best in English, French not needed for now.
 DEFAULT_MODEL = "qwen3-embedding:0.6b"
-MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
 # The OpenAI-compatible API that embeds: Ollama on this machine, where it listens.
 DEFAULT_EMBEDDING_URL = "http://127.0.0.1:11434/v1"
 # How search ranks: by words, by meaning, or by both fused.

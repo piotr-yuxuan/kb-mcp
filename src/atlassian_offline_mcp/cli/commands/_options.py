@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.config.app.settings import SETTINGS_PATH, load_settings
-from atlassian_offline_mcp.config.domain.settings import MODEL_NAME
+from atlassian_offline_mcp.kernel.content import MODEL_NAME
 from atlassian_offline_mcp.search.adapters.embedding import (
     KEY_VARIABLE,
     Endpoint,
