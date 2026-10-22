@@ -69,11 +69,12 @@ def listed(folder: Path, *, archives: bool) -> Listing:
     found: list[PurePosixPath] = []
     html = 0
     seen = {root}
+    archive = PurePosixPath(TODO_ARCHIVE)
     stack = [root / name for name in (TODO, TODO_ARCHIVE, TRANSCRIPTS)]
     while stack:
         path = stack.pop()
         relative = PurePosixPath(path.relative_to(root).as_posix())
-        archived = relative.name == TODO_ARCHIVE or relative.parts[:2] == (TRANSCRIPTS, ARCHIVED)
+        archived = relative == archive or relative.parts[:2] == (TRANSCRIPTS, ARCHIVED)
         real = path.resolve()
         if (
             path.name.startswith((".", "#"))
@@ -88,12 +89,14 @@ def listed(folder: Path, *, archives: bool) -> Listing:
         elif real.is_dir() and relative.parts[0] == TRANSCRIPTS:
             seen.add(real)
             try:
-                stack.extend(sorted(path.iterdir(), reverse=True))  # popped in path order
+                # Popped in path order, a folder's own entries before its links.
+                inside = sorted(path.iterdir(), key=lambda each: (each.is_symlink(), each))
+                stack.extend(reversed(inside))
             except OSError as error:
                 problems.append(Problem(str(relative), f"not read ({type(error).__name__})"))
         elif relative.suffix == HTML:
             html += 1
-        elif real.is_file() and (relative.suffix == ORG or relative.name == TODO_ARCHIVE):
+        elif real.is_file() and (relative.suffix == ORG or relative == archive):
             found.append(relative)
     others = sorted(path for path in found if path.parts[0] != TRANSCRIPTS)
     transcripts = sorted(path for path in found if path.parts[0] == TRANSCRIPTS)
@@ -107,17 +110,18 @@ def source(root: Path, relative: PurePosixPath) -> Source:
     """Read one org file that ``listed`` found under ``root``.
 
     Raises ``UnreadableError`` for a file that is not regular, is over 32 MiB, is not
-    UTF-8, or cannot be read.
+    UTF-8, or cannot be read, its time of change included.
     """
     path = root / relative
     data = b""
     try:
         status = path.stat()
+        modified = datetime.fromtimestamp(status.st_mtime, UTC).astimezone()
         regular = stat.S_ISREG(status.st_mode) and status.st_size <= FILE_BYTES
         if regular:
             with path.open("rb") as file:
                 data = file.read(FILE_BYTES + 1)
-    except OSError as error:
+    except (OSError, OverflowError, ValueError) as error:
         message = f"not read ({type(error).__name__})"
         raise UnreadableError(message) from None
     if not regular or len(data) > FILE_BYTES:
@@ -128,5 +132,4 @@ def source(root: Path, relative: PurePosixPath) -> Source:
     except UnicodeDecodeError:
         message = "not UTF-8"
         raise UnreadableError(message) from None
-    modified = datetime.fromtimestamp(status.st_mtime, UTC).astimezone()
     return Source(relative, text, modified)

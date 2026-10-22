@@ -49,6 +49,8 @@ def worklog(tmp_path: Path) -> Path:
         "transcripts/archive/2026/2026-09/2026-09-15 Tue/1.org",
         "transcripts/misc/a.org",
         "notes.org",  # not a file of the work log
+        "transcripts/todo.org_archive",  # nor an archive file below the root
+        "transcripts/x/todo.org_archive",
         "transcripts/current/2026-10-20 Tue/audio.m4a",
     ):
         write(root, relative)
@@ -99,8 +101,8 @@ def test_links_are_followed_inside_the_work_log_alone(tmp_path: Path, worklog: P
     (transcripts / "misc/loop").symlink_to(transcripts)
     listing = files.listed(worklog, archives=True)
     assert "transcripts/linked.org" in paths(listing)
-    twice = {"transcripts/linked folder/a.org", "transcripts/misc/a.org"}
-    assert len(twice & set(paths(listing))) == 1  # one folder, listed once
+    assert "transcripts/misc/a.org" in paths(listing)  # the folder itself, before its link
+    assert "transcripts/linked folder/a.org" not in paths(listing)
     assert sorted(listing.problems, key=lambda problem: problem.path) == [
         files.Problem("transcripts/out folder", "links outside the work log"),
         files.Problem("transcripts/out.org", "links outside the work log"),
@@ -174,6 +176,25 @@ def test_a_file_off_the_rules_is_named_without_its_content(
         files.source(worklog, PurePosixPath("todo.org"))
     assert str(raised.value) == reason
     assert CONTENT not in str(raised.value)
+
+
+def test_a_time_of_change_out_of_range_is_a_reason(
+    worklog: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A modification time that no datetime holds is named, not a crash."""
+
+    class Far(datetime):
+        """A datetime whose times of change are all out of range."""
+
+        @classmethod
+        def fromtimestamp(cls, timestamp: float, tz: object = None) -> Far:
+            """Refuse every time, as for a year past 9999."""
+            message = f"year out of range: {timestamp} {tz}"
+            raise OverflowError(message)
+
+    monkeypatch.setattr(files, "datetime", Far)
+    with pytest.raises(files.UnreadableError, match=r"^not read \(OverflowError\)$"):
+        files.source(worklog, PurePosixPath("todo.org"))
 
 
 def test_a_file_of_exactly_32_mib_is_read(worklog: Path) -> None:
