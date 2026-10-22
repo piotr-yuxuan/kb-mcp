@@ -47,6 +47,24 @@ TAIL = (
     + "zebracrossing quota met\n"
 )
 FILLER = "a line of other matters here\n" * 140
+LINE = "a line of other matters here\n"
+# The question's rarest word twice: early, alone within 1,200 characters though the
+# other word is 2,000 before it and 2,000 after; late, the other word 1,000 before it,
+# 500 from the end.
+SCORED = (
+    "# Falcons\n\n## Log\n\nledger at the top\n"
+    + LINE * 69
+    + "falcon early\n"
+    + LINE * 69
+    + "ledger near the early one\n"
+    + LINE * 207
+    + "ledger in the middle\n"
+    + LINE * 103
+    + "ledger before the end\n"
+    + LINE * 35
+    + "falcon late\n"
+    + LINE * 17
+)
 # Long sections whose question's words are found as the index finds them: capitalised,
 # between underscores, with accents, and both words together late, one alone early.
 FOUND = {
@@ -85,6 +103,7 @@ def words(tmp_path_factory: TempPathFactory) -> Library:
         (issue("PROJ-7", "Upgrade the brokers"), "# Upgrade the brokers\n\nPlanned.\n"),
         (page("196847", "Pools"), PARAGRAPH),
         (page("196848", "Rules"), TAIL),
+        (page("196853", "Falcons"), SCORED),
         *(
             (
                 page(ref, title),
@@ -156,6 +175,19 @@ def test_the_question_s_words_are_found_as_the_index_finds_them(words: Library, 
     assert first["ref"] == ref
     assert first["text"].endswith(tail)
     assert len(first["text"]) <= UNIT
+
+
+def test_the_rarest_word_s_occurrence_with_most_words_about_it_is_the_centre(
+    words: Library,
+) -> None:
+    """Of the rarest word's two, the late one, near the other word: the section's end.
+
+    The passage is the section's last 2,400 characters, from a line's start.
+    """
+    (first, *_) = passages(words.ask("falcon ledger"))
+    end = SCORED[SCORED.index("## Log") :][-UNIT:]
+    assert first["text"] == end[end.index("\n") + 1 :]
+    assert "ledger before the end" in first["text"]
 
 
 def test_an_answer_quotes_20_documents_at_most_however_short(words: Library) -> None:

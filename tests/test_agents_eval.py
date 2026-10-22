@@ -614,3 +614,20 @@ def test_grade_exits_1_past_twice_the_tokens_handed_over(
     capsys.readouterr()
     assert main(["eval-agents", "grade", str(out), "--yes"]) == FAILED
     assert "2,000,000 tokens handed over" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("status", ["failed", "invalid"])
+def test_the_answer_of_a_run_without_a_result_is_not_read(
+    world: World, capsys: CaptureFixture[str], status: str
+) -> None:
+    """Junk where the answer of a run failed or invalid would be: grading goes on."""
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    run = runs_of(out)[0]["id"]
+    harness(out, run, status=status)
+    (out / "answers").mkdir()
+    (out / "answers" / f"{run}.json").write_text("not an answer", "utf-8")
+    capsys.readouterr()
+    assert main(["eval-agents", "--format", "json", "grade", str(out), "--yes"]) == 0
+    outcomes = json.loads(capsys.readouterr().out)["outcomes"]
+    assert (outcomes[0]["result"], outcomes[0]["reason"]) == ("no result", status)

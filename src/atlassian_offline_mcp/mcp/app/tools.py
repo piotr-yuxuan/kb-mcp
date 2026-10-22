@@ -181,7 +181,12 @@ def passage_of(reader: Reader, entry: Entry, ranked: Ranking, planned: Plan) -> 
 
 
 def folded(text: str) -> str:
-    """Write a text without its accents, character for character, as the index compares."""
+    """Write a text without its accents, character for character, as the index compares.
+
+    Each character is the first of its decomposition, so that offsets hold: a text
+    written decomposed keeps its marks, and a Hangul syllable becomes its first jamo,
+    where the index differs; a passage then falls back to its section's start.
+    """
     return "".join(unicodedata.normalize("NFD", char)[0] for char in text)
 
 
