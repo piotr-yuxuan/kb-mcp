@@ -56,10 +56,11 @@ Each context but the kernel holds the same layers, as sub-packages, from the top
 A context holds only the layers it needs; `mcp` has only `app`.
 
 A subcommand is a pair of modules: `cli/options/<name>.py` declares it, and the module
-of `cli/commands/` that its declaration names runs it. `--help` builds the whole parser,
-so it imports every declaration; `main` imports the entry and the chosen run, by name,
-only once the arguments are parsed. So a declaration stays light: contract G keeps the
-packages that runs need out of `cli.main` and `cli.options`.
+of `cli/commands/` that its declaration names runs it. `--help`, and shell completion at
+every Tab, build the whole parser, so they import every declaration; `main` imports the
+entry and the chosen run, by name, only once the arguments are parsed. So a declaration
+stays light: contract G keeps the packages that runs need out of `cli.main` and
+`cli.options`.
 
 ## The contracts
 
@@ -78,8 +79,8 @@ packages that runs need out of `cli.main` and `cli.options`.
 A orders the contexts, which B, applied per context, does not; C and D carry the order
 of the layers across contexts, which B cannot. All but F count indirect imports too.
 None sees an import by name, as `main` makes of the entry and the run: a test of
-`tests/test_cli.py` checks, in a fresh interpreter, that `--help` imports none of G's
-packages.
+`tests/test_cli.py` checks, in a fresh interpreter, that `--help` and a completion
+import none of G's packages.
 
 ## Where a new module goes
 

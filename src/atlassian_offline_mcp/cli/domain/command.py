@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+# The program's name, as pyproject.toml names its script.
+PROGRAM = "atlassian-offline-mcp"
+
 
 @dataclass(frozen=True)
 class Command:
@@ -15,8 +18,10 @@ class Command:
 
     ``run`` names the module whose ``run(arguments, settings)`` runs it, imported only
     once it is chosen. ``flags`` maps each option that overrides a setting, by the
-    option's ``dest``, to that setting's name.
+    option's ``dest``, to that setting's name. Without ``reads_settings``, the run gets
+    ``None`` for its settings, and so runs whatever the settings file holds.
     """
 
     run: str
     flags: Mapping[str, str] = field(default_factory=dict)
+    reads_settings: bool = True

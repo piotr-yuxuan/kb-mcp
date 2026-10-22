@@ -9,6 +9,7 @@ import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import argcomplete
 import pytest
 
 from atlassian_offline_mcp.cli import options
@@ -127,15 +128,23 @@ def test_the_version_is_the_project_s(capsys: CaptureFixture[str]) -> None:
 
 
 def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> None:
-    """--version, --help and a subcommand's build the whole parser and import no run.
+    """--version, --help, a subcommand's and a completion import no run.
 
-    ``-X importtime`` names each module that the child imports, so a package it does not
-    name never reached ``sys.modules``.
+    Each builds the whole parser. ``-X importtime`` names each module that the child
+    imports, so a package it does not name never reached ``sys.modules``.
     """
     environment = {"HOME": str(home), "PATH": os.environ["PATH"]}
+    typed = "atlassian-offline-mcp download --sp"
+    completing = {
+        "_ARGCOMPLETE": "1",
+        "COMP_LINE": typed,
+        "COMP_POINT": str(len(typed)),
+        "_ARGCOMPLETE_STDOUT_FILENAME": str(home / "completions"),
+    }
     children = (
         subprocess.run(
             [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "--version"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             env=environment,
@@ -144,6 +153,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
         ),
         subprocess.run(
             [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "--help"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             env=environment,
@@ -160,16 +170,26 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
                 "download",
                 "--help",
             ],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             env=environment,
             cwd=home,
             check=False,
         ),
+        subprocess.run(
+            [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env={**environment, **completing},
+            cwd=home,
+            check=False,
+        ),
     )
+    assert (home / "completions").read_text("utf-8").strip() == "--space"
     for child in children:
         assert child.returncode == 0
-        assert "atlassian-offline-mcp" in child.stdout
         imported = {
             line.rsplit("|", 1)[-1].strip().split(".")[0]
             for line in child.stderr.splitlines()
@@ -177,6 +197,48 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
         }
         assert {"argparse", "atlassian_offline_mcp"} <= imported
         assert not imported & RUNS_PACKAGES
+
+
+@pytest.mark.parametrize(
+    ("line", "offered"), [("dow", {"download"}), ("download --sp", {"--space"})]
+)
+def test_the_shell_completes_the_command_line(home: Path, line: str, offered: set[str]) -> None:
+    """A child called as the shell code calls it offers what may follow the line.
+
+    That is argcomplete's protocol: the line and the cursor in the environment, the
+    completions, separated by vertical tabs, in the file it names.
+    """
+    typed = f"atlassian-offline-mcp {line}"
+    environment = {
+        "HOME": str(home),
+        "PATH": os.environ["PATH"],
+        "_ARGCOMPLETE": "1",
+        "COMP_LINE": typed,
+        "COMP_POINT": str(len(typed)),
+        "_ARGCOMPLETE_STDOUT_FILENAME": str(home / "completions"),
+    }
+    child = subprocess.run(
+        [sys.executable, "-m", "atlassian_offline_mcp"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env=environment,
+        cwd=home,
+        check=False,
+    )
+    assert child.returncode == 0
+    completions = (home / "completions").read_text("utf-8").split("\v")
+    assert {completion.strip() for completion in completions} == offered
+
+
+def test_completion_prints_the_shell_code_whatever_the_settings(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """``completion`` prints argcomplete's code for bash and zsh, and reads no settings."""
+    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
+    (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text("site = ", "utf-8")
+    assert main(["completion"]) == 0
+    assert capsys.readouterr().out == argcomplete.shellcode(["atlassian-offline-mcp"])
 
 
 def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture[str]) -> None:

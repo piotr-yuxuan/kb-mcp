@@ -5,14 +5,20 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from argcomplete.completers import DirectoriesCompleter, FilesCompleter
+
 from atlassian_offline_mcp.config.adapters.settings_file import SETTINGS_PATH
 from atlassian_offline_mcp.kernel.content import MODEL_NAME
 
 
 def add_settings_options(parser: argparse.ArgumentParser) -> dict[str, str]:
     """Add --config, --data-dir and --site; return the setting that each flag overrides."""
-    parser.add_argument("--config", type=Path, default=SETTINGS_PATH, help="the settings file")
-    parser.add_argument("--data-dir", help="the data directory, overriding the settings")
+    parser.add_argument(
+        "--config", type=Path, default=SETTINGS_PATH, help="the settings file"
+    ).completer = FilesCompleter(["toml"])
+    parser.add_argument(
+        "--data-dir", help="the data directory, overriding the settings"
+    ).completer = DirectoriesCompleter()
     parser.add_argument("--site", help="the site, as https://<name>.atlassian.net")
     return {"data_dir": "data_dir", "site": "site"}
 

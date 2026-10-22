@@ -28,15 +28,17 @@ def enter(arguments: argparse.Namespace) -> int:
     """Load the settings, with the flags given, then run the chosen subcommand.
 
     Refused settings exit 2 before the run is imported; else the run's status is
-    returned.
+    returned. A subcommand that reads no settings gets None.
     """
     command: Command = arguments.command
-    given = {setting: getattr(arguments, dest) for dest, setting in command.flags.items()}
-    try:
-        settings = load_settings(arguments.config, given)
-    except SettingsError as error:
-        sys.stderr.write(f"settings refused: {error}\n")
-        return ExitStatus.REFUSED
+    settings = None
+    if command.reads_settings:
+        given = {setting: getattr(arguments, dest) for dest, setting in command.flags.items()}
+        try:
+            settings = load_settings(arguments.config, given)
+        except SettingsError as error:
+            sys.stderr.write(f"settings refused: {error}\n")
+            return ExitStatus.REFUSED
     return int(importlib.import_module(command.run).run(arguments, settings))
 
 

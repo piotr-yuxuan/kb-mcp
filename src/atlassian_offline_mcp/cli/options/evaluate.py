@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from argcomplete.completers import FilesCompleter
+
 from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.cli.options._common import (
     add_embedding_options,
@@ -23,7 +25,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     flags = add_settings_options(parser)
     add_embedding_options(parser)
-    parser.add_argument("golden", type=Path, help="a YAML file of golden questions")
+    parser.add_argument(
+        "golden", type=Path, help="a YAML file of golden questions"
+    ).completer = FilesCompleter(["yaml", "yml"])
     parser.add_argument(
         "--model",
         action="append",

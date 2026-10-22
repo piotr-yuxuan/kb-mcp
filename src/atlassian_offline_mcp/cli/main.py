@@ -1,7 +1,10 @@
+# PYTHON_ARGCOMPLETE_OK
 """The ``atlassian-offline-mcp`` command: it declares every subcommand and runs one.
 
-The parser is built from ``cli.options`` alone, which is light, so that ``--help``
-starts fast; the entry and the chosen run are imported once the arguments are parsed.
+The parser is built from ``cli.options`` alone, which is light, so that ``--help`` and
+shell completion, which runs the command at every Tab, start fast; the entry and the
+chosen run are imported once the arguments are parsed. The first line lets
+argcomplete's global completion find the command.
 """
 
 from __future__ import annotations
@@ -12,7 +15,10 @@ import pkgutil
 import sys
 from typing import TYPE_CHECKING, override
 
+import argcomplete
+
 from atlassian_offline_mcp.cli import options
+from atlassian_offline_mcp.cli.domain.command import PROGRAM
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -46,7 +52,7 @@ def parser(
 ) -> argparse.ArgumentParser:
     """Return the command's parser, of this class, with every subcommand declared."""
     program = parser_class(
-        prog="atlassian-offline-mcp",
+        prog=PROGRAM,
         description="An offline mirror of Confluence and Jira Cloud, served over MCP.",
     )
     program.add_argument(
@@ -61,7 +67,12 @@ def parser(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Parse the arguments, run the chosen subcommand, and return its exit status."""
+    """Parse the arguments, run the chosen subcommand, and return its exit status.
+
+    When the shell asks for completions, argcomplete answers them and exits instead.
+    """
+    program = parser()
+    argcomplete.autocomplete(program)
     # Agents start the command with no arguments, which serves MCP over stdio.
-    arguments = parser().parse_args(list(sys.argv[1:] if argv is None else argv) or ["serve"])
+    arguments = program.parse_args(list(sys.argv[1:] if argv is None else argv) or ["serve"])
     return importlib.import_module(ENTRY).enter(arguments)
