@@ -19,7 +19,14 @@ if TYPE_CHECKING:
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``doctor`` to the command."""
-    parser = subparsers.add_parser("doctor", help="check the machine and the saved session")
+    parser = subparsers.add_parser(
+        "doctor",
+        help="check the machine and the sign-in",
+        epilog=(
+            "With --format json: a list of verdicts, each a check's name, what it found, and"
+            " its state: well, failed, or sign in."
+        ),
+    )
     actions, flags = add_settings_options(parser)
     add_output_options(parser)
     parser.set_defaults(

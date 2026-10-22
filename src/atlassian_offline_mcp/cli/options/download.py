@@ -66,7 +66,13 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``download`` to the command."""
     parser = subparsers.add_parser(
-        "download", help="download what changed in a period, with its files"
+        "download",
+        help="download what changed in a period, with its files",
+        epilog=(
+            "With --format json: report, the counts of what the run did, or with --dry-run"
+            " would do; failed_targets, the spaces and projects that failed; status, the"
+            " exit status."
+        ),
     )
     actions, flags = add_settings_options(parser)
     add_output_options(parser)

@@ -27,7 +27,14 @@ def in_the_browser(
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``login`` to the command."""
-    parser = subparsers.add_parser("login", help="sign in once, in a Chrome window")
+    parser = subparsers.add_parser(
+        "login",
+        help="sign in once, in a Chrome window",
+        epilog=(
+            "With --format json: site, the site signed in to; session, the folder that"
+            " keeps the session."
+        ),
+    )
     actions, flags = add_settings_options(parser)
     add_output_options(parser)
     add_yes_option(parser)

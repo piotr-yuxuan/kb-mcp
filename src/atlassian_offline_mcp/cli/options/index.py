@@ -31,7 +31,16 @@ def by_words_alone(
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``index`` to the command."""
-    parser = subparsers.add_parser("index", help="build the search index from the mirror")
+    parser = subparsers.add_parser(
+        "index",
+        help="build the search index from the mirror",
+        epilog=(
+            "With --format json: report, the documents by type, the sections, the files"
+            " skipped, the pieces by meaning, the texts embedded now and the files with a"
+            " piece refused; index, its path; model, the one that embedded, null by words"
+            " alone."
+        ),
+    )
     actions, flags = add_settings_options(parser)
     add_output_options(parser)
     add_yes_option(parser)

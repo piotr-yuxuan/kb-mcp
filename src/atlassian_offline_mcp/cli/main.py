@@ -19,6 +19,7 @@ import argcomplete
 
 from atlassian_offline_mcp.cli import options
 from atlassian_offline_mcp.cli.domain.command import PROGRAM
+from atlassian_offline_mcp.kernel.exit_status import MEANINGS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -50,7 +51,11 @@ class Version(argparse.Action):
 def parser(
     parser_class: type[argparse.ArgumentParser] = argparse.ArgumentParser,
 ) -> argparse.ArgumentParser:
-    """Return the command's parser, of this class, with every subcommand declared."""
+    """Return the command's parser, of this class, with every subcommand declared.
+
+    Its help ends with who asks before acting, the subcommands whose declaration says
+    they write, and every exit status with what it means.
+    """
     program = parser_class(
         prog=PROGRAM,
         description="An offline mirror of Confluence and Jira Cloud, served over MCP.",
@@ -63,6 +68,19 @@ def parser(
     found = sorted(module.name for module in pkgutil.iter_modules(options.__path__))
     for name in (name for name in found if not name.startswith("_")):
         importlib.import_module(f"{options.__name__}.{name}").register(subparsers)
+    writing = ", ".join(
+        name
+        for name, declared in subparsers.choices.items()
+        if declared.get_default("command").writes
+    )
+    program.epilog = (
+        f"The commands that write under the data directory ({writing}) first say what they"
+        " will do, with the command to copy, then ask; --yes, or --dry-run where taken,"
+        " runs them without asking, and with no terminal to ask on, they are refused. Exit"
+        " statuses: "
+        + "; ".join(f"{status.value} {meaning}" for status, meaning in MEANINGS.items())
+        + "."
+    )
     return program
 
 

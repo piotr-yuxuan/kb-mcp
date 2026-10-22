@@ -19,7 +19,14 @@ if TYPE_CHECKING:
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``model`` to the command."""
-    parser = subparsers.add_parser("model", help="check the embedding model and its endpoint")
+    parser = subparsers.add_parser(
+        "model",
+        help="check the embedding model and its endpoint",
+        epilog=(
+            "With --format json: name and dimensions, the model's; url, the endpoint;"
+            " digest, the model's, empty when the endpoint reports none."
+        ),
+    )
     actions, flags = add_settings_options(parser)
     add_output_options(parser)
     remote = add_embedding_options(parser)

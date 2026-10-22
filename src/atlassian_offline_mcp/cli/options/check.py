@@ -27,7 +27,14 @@ EVERY_SETTING = (
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``check`` to the command."""
-    parser = subparsers.add_parser("check", help="validate the settings and the data directory")
+    parser = subparsers.add_parser(
+        "check",
+        help="validate the settings and the data directory",
+        epilog=(
+            "With --format json: settings, secrets masked; layers, the layer of each setting"
+            " that one gave; ignored, each value ignored, with its setting, layer and why."
+        ),
+    )
     actions, flags = add_settings_options(parser)
     add_output_options(parser)
     parser.set_defaults(

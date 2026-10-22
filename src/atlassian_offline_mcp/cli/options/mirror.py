@@ -17,7 +17,15 @@ if TYPE_CHECKING:
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``mirror`` to the command."""
-    parser = subparsers.add_parser("mirror", help="write the Markdown mirror from the raw store")
+    parser = subparsers.add_parser(
+        "mirror",
+        help="write the Markdown mirror from the raw store",
+        epilog=(
+            "With --format json: documents, how many are mirrored; changes, the files"
+            " written, unchanged and removed; unsupported, what the mirror does not show, by"
+            " name; problems, each by its place and why."
+        ),
+    )
     actions, flags = add_settings_options(parser)
     add_output_options(parser)
     add_yes_option(parser)

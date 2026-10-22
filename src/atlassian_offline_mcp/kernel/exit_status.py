@@ -6,14 +6,23 @@ from enum import IntEnum
 
 
 class ExitStatus(IntEnum):
-    """How a run ended, as the shell reads it."""
+    """How a run ended, as the shell reads it; ``MEANINGS`` says what each means."""
 
     OK = 0
-    # Something failed: a document, a file, a check or the endpoint.
     FAILED = 1
-    # Settings, options or input refused before anything was done.
     REFUSED = 2
-    # No session saved, or it no longer holds.
     SIGN_IN_AGAIN = 3
-    # The shell's own status for a run stopped by Ctrl-C.
     INTERRUPTED = 130
+
+
+# What each status means, as the program's --help lists them.
+MEANINGS = {
+    ExitStatus.OK: "done",
+    ExitStatus.FAILED: "something failed (a document, a file, a check, the endpoint), or the"
+    " question was declined",
+    ExitStatus.REFUSED: "refused before acting: settings, options or input, or no terminal to"
+    " ask on",
+    ExitStatus.SIGN_IN_AGAIN: "sign in again: no session saved, it no longer holds, or the"
+    " site refused the API token",
+    ExitStatus.INTERRUPTED: "stopped by Ctrl-C",
+}

@@ -6,6 +6,7 @@ import argparse
 import importlib
 import json
 import os
+import pty
 import subprocess
 import sys
 import tomllib
@@ -18,6 +19,8 @@ import pytest
 from atlassian_offline_mcp.cli import commands, options
 from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.config.domain.settings import SETTING_PATHS
+from atlassian_offline_mcp.kernel.exit_status import MEANINGS, ExitStatus
+from tests.test_question import read_until
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -223,6 +226,49 @@ def test_the_version_is_the_project_s(capsys: CaptureFixture[str]) -> None:
         main(["--version"])
     assert stopped.value.code == 0
     assert capsys.readouterr().out == f"atlassian-offline-mcp {project['version']}\n"
+
+
+def test_the_help_says_who_asks_and_what_each_exit_status_means() -> None:
+    """The commands that write ask first, by name; every status of the one enum is listed.
+
+    The help is read with its lines joined, as its width follows the terminal's.
+    """
+    said = " ".join(parser().format_help().split())
+    assert f"write under the data directory ({', '.join(sorted(WRITING))})" in said
+    assert "then ask" in said
+    for status in ExitStatus:
+        assert f"{status.value} {MEANINGS[status]}" in said
+
+
+@pytest.mark.parametrize("name", sorted(set(SUBCOMMANDS) - OWN_OUTPUT))
+def test_the_help_of_each_subcommand_with_a_result_says_what_its_json_holds(name: str) -> None:
+    """Plan 020 writes the reference of the commands from their help."""
+    assert "With --format json:" in SUBCOMMANDS[name].format_help()
+
+
+@pytest.mark.parametrize(("variables", "coloured"), [({"NO_COLOR": "1"}, False), ({}, True)])
+def test_the_help_on_a_terminal_has_no_colour_under_no_color(
+    home: Path, variables: dict[str, str], *, coloured: bool
+) -> None:
+    """On a pseudo-terminal, --help has no escape byte under NO_COLOR, which argparse honours.
+
+    Without it, the same child's help is coloured: the terminal would show colour.
+    """
+    controller, terminal = pty.openpty()
+    with subprocess.Popen(
+        [sys.executable, "-m", "atlassian_offline_mcp", "--help"],
+        stdin=subprocess.DEVNULL,
+        stdout=terminal,
+        stderr=terminal,
+        env={"HOME": str(home), "PATH": os.environ["PATH"], **variables},
+        cwd=home,
+    ) as child:
+        os.close(terminal)
+        said = read_until(controller, b"\0")
+    os.close(controller)
+    assert child.returncode == 0
+    assert b"Exit statuses" in said
+    assert (b"\x1b" in said) is coloured
 
 
 def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> None:

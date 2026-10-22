@@ -24,7 +24,12 @@ if TYPE_CHECKING:
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``eval`` to the command."""
     parser = subparsers.add_parser(
-        "eval", help="measure lexical, semantic and hybrid search on golden questions"
+        "eval",
+        help="measure lexical, semantic and hybrid search on golden questions",
+        epilog=(
+            "With --format json: runs, each model's measures by mode, question and group,"
+            " with its ranks, times and tests; results, the file that keeps them."
+        ),
     )
     actions, flags = add_settings_options(parser)
     add_output_options(parser)
