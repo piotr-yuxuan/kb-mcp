@@ -11,6 +11,7 @@ import os
 import re
 import socket
 import threading
+from argparse import Namespace
 from contextlib import suppress
 from dataclasses import replace
 from typing import TYPE_CHECKING
@@ -19,8 +20,13 @@ import httpx
 import numpy as np
 import pytest
 
+from atlassian_offline_mcp.cli.commands._shared import open_endpoint
 from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import DEFAULT_EMBEDDING_URL, SettingsError
+from atlassian_offline_mcp.config.domain.settings import (
+    DEFAULT_EMBEDDING_URL,
+    Settings,
+    SettingsError,
+)
 from atlassian_offline_mcp.search.adapters import embedding
 from atlassian_offline_mcp.search.adapters.embedding import (
     BATCH,
@@ -320,6 +326,17 @@ def test_the_key_is_sent_only_when_set_and_never_said() -> None:
             embed(opened, "tiny", ["undo"], SINGLE)
         assert "a-secret-key" not in str(refused.value)
     assert headers == ["Bearer a-secret-key", None]
+
+
+def test_a_run_opens_the_endpoint_with_the_key_of_its_secret_setting(tmp_path: Path) -> None:
+    """The key is the setting's, which the environment alone gives, as a bearer token."""
+    settings = Settings(data_dir=tmp_path, embedding_api_key="a-secret-key")
+    with open_endpoint(Namespace(allow_remote_embeddings=False), settings) as opened:
+        assert opened.http.headers["Authorization"] == "Bearer a-secret-key"
+    with open_endpoint(
+        Namespace(allow_remote_embeddings=False), Settings(data_dir=tmp_path)
+    ) as opened:
+        assert "Authorization" not in opened.http.headers
 
 
 def test_a_missing_model_and_no_answer_say_what_to_run() -> None:

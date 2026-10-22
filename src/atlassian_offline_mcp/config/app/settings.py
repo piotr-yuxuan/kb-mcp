@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.config.adapters.settings_file import (
@@ -13,6 +14,7 @@ from atlassian_offline_mcp.config.domain.settings import (
     Entry,
     Loaded,
     SettingsError,
+    environment_entries,
     file_entries,
     settings_of,
     unsafe_location,
@@ -30,11 +32,13 @@ class UnsafeDataDirError(SettingsError):
 
 
 def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Path) -> Loaded:
-    """Read the settings file, let the flags given override it, and check all.
+    """Read the settings file, the environment and the flags given, each stronger, and check.
 
     ``flags`` maps each flag, such as ``--site``, to the setting it overrides, by its
     path joined by dots, and its value, None when it was not given. The file's layer is
-    its name. ``~`` in the data directory is ``home``, which must be resolved.
+    its name, a variable's its name. ``~`` in the data directory is ``home``, which must
+    be resolved. What was ignored is each variable that names no setting or is empty,
+    then each value replaced.
 
     The data directory, and each place under it where data is written, is resolved
     (links followed, ``..`` removed) before the guard judges it, and the resolved data
@@ -48,9 +52,11 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
     except OSError as error:
         message = f"{path}: not readable ({type(error).__name__})"
         raise SettingsError(message) from error
+    environment, unread = environment_entries(os.environ)
     loaded = settings_of(
         [
             *file_entries(values, path.name),
+            *environment,
             *(
                 Entry(tuple(setting.split(".")), value, flag)
                 for flag, (setting, value) in flags.items()
@@ -69,4 +75,4 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
             where = "" if place == settings.data_dir else f"{place.name}: "
             message = f"data_dir: {where}{problem}"
             raise UnsafeDataDirError(message)
-    return Loaded(settings, loaded.layers, loaded.ignored)
+    return Loaded(settings, loaded.layers, (*unread, *loaded.ignored))

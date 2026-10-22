@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,12 +10,7 @@ from typing import TYPE_CHECKING
 from atlassian_offline_mcp.config.app.settings import load_settings
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.search.adapters.embedding import (
-    KEY_VARIABLE,
-    Endpoint,
-    endpoint,
-    prefixes,
-)
+from atlassian_offline_mcp.search.adapters.embedding import Endpoint, endpoint, prefixes
 
 if TYPE_CHECKING:
     import argparse
@@ -49,11 +43,12 @@ def enter(arguments: argparse.Namespace) -> int:
 def open_endpoint(arguments: argparse.Namespace, settings: Settings) -> Endpoint:
     """Open the setting's embedding endpoint as this run allows; raise SettingsError if not.
 
-    The API key, if any, comes from the environment, never from the settings.
+    The API key, if any, is the secret setting, which the environment alone gives.
     """
+    key = settings.embedding_api_key
     return endpoint(
         settings.embedding_url,
-        os.environ.get(KEY_VARIABLE),
+        key.get_secret_value() if key else None,
         remote_allowed=arguments.allow_remote_embeddings,
     )
 

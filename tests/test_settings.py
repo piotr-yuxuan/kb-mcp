@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from ipaddress import IPv4Address
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -14,6 +15,7 @@ from atlassian_offline_mcp.config.domain.settings import (
     Entry,
     Ignored,
     JiraSource,
+    Loaded,
     Settings,
     SettingsError,
     Sources,
@@ -23,8 +25,13 @@ from atlassian_offline_mcp.config.domain.settings import (
     unsafe_location,
 )
 
+if TYPE_CHECKING:
+    from _pytest.monkeypatch import MonkeyPatch
+
 HOME = Path("/home/someone")
 FILE = "config.toml"
+# Values that no output may hold, as a secret or a value given.
+SENTINEL = "sentinel-0c1e5a"
 
 
 def from_file(values: dict[str, object]) -> Settings:
@@ -227,6 +234,156 @@ def test_the_loader_takes_the_file_then_the_flags_and_makes_the_home_s_path(
     assert set(loaded.ignored) == {
         Ignored("data_dir", "work.toml", "replaced by --data-dir"),
         Ignored("sources.jira.projects", "work.toml", "replaced by --project"),
+    }
+
+
+def loaded_from(
+    tmp_path: Path, text: str, flags: dict[str, tuple[str, object]] | None = None
+) -> Loaded:
+    """Load the settings from a settings file of this text, the environment and flags."""
+    home = (tmp_path / "home").resolve()
+    config = tmp_path / FILE
+    config.write_text(text, "utf-8")
+    return load_settings(config, flags or {}, home)
+
+
+def test_each_layer_wins_over_the_weaker_and_the_weaker_is_ignored(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The file, then the variable, then the flag: each wins and names its layer.
+
+    The value replaced is recorded as ignored, with what replaced it.
+    """
+    text = 'site = "https://file.example.invalid"\n'
+    from_the_file = loaded_from(tmp_path, text)
+    assert from_the_file.settings.site == "https://file.example.invalid"
+    assert from_the_file.layers["site"] == FILE
+    assert from_the_file.ignored == ()
+
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "https://variable.example.invalid")
+    from_the_variable = loaded_from(tmp_path, text)
+    assert from_the_variable.settings.site == "https://variable.example.invalid"
+    assert from_the_variable.layers["site"] == "ATLASSIAN_OFFLINE_MCP_SITE"
+    assert from_the_variable.ignored == (
+        Ignored("site", FILE, "replaced by ATLASSIAN_OFFLINE_MCP_SITE"),
+    )
+
+    from_the_flag = loaded_from(
+        tmp_path, text, {"--site": ("site", "https://flag.example.invalid")}
+    )
+    assert from_the_flag.settings.site == "https://flag.example.invalid"
+    assert from_the_flag.layers["site"] == "--site"
+    assert set(from_the_flag.ignored) == {
+        Ignored("site", FILE, "replaced by ATLASSIAN_OFFLINE_MCP_SITE"),
+        Ignored("site", "ATLASSIAN_OFFLINE_MCP_SITE", "replaced by --site"),
+    }
+
+
+def test_a_list_from_the_environment_replaces_the_file_s_whole(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The variable's projects are all the projects, in JSON."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
+    loaded = loaded_from(tmp_path, '[sources.jira]\nprojects = ["PLAT", "PAY"]\n')
+    assert loaded.settings.sources.jira.projects == ("PRB",)
+    assert loaded.layers["sources.jira.projects"] == "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS"
+
+
+def test_a_table_from_the_environment_is_json_and_its_deeper_variables_win(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A table's variable holds JSON; a variable of a setting inside it is stronger."""
+    monkeypatch.setenv(
+        "ATLASSIAN_OFFLINE_MCP_SOURCES",
+        '{"confluence": {"spaces": ["ENG"]}, "jira": {"projects": ["PLAT"]}}',
+    )
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
+    loaded = loaded_from(tmp_path, "")
+    assert loaded.settings.sources.confluence.spaces == ("ENG",)
+    assert loaded.settings.sources.jira.projects == ("PRB",)
+    assert loaded.layers["sources.confluence.spaces"] == "ATLASSIAN_OFFLINE_MCP_SOURCES"
+
+
+def test_the_generic_atlassian_names_are_not_read(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """One prefix alone: a token exported for another tool never switches the sign-in."""
+    monkeypatch.setenv("ATLASSIAN_SITE", "https://other.example.invalid")
+    monkeypatch.setenv("ATLASSIAN_EMAIL", "someone@example.invalid")
+    monkeypatch.setenv("ATLASSIAN_API_TOKEN", SENTINEL)
+    loaded = loaded_from(tmp_path, "")
+    settings = loaded.settings
+    assert (settings.site, settings.email, settings.api_token) == (None, None, None)
+    assert loaded.ignored == ()
+
+
+def test_secrets_come_from_the_environment_and_are_never_shown(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The token and the embedding key are read, and their text is not in the settings'."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_API_TOKEN", SENTINEL)
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY", f"{SENTINEL}-key")
+    settings = loaded_from(tmp_path, "").settings
+    assert settings.api_token is not None
+    assert settings.api_token.get_secret_value() == SENTINEL
+    assert settings.embedding_api_key is not None
+    assert settings.embedding_api_key.get_secret_value() == f"{SENTINEL}-key"
+    assert SENTINEL not in f"{settings!r} {settings}"
+
+
+@pytest.mark.parametrize(
+    ("key", "variable"),
+    [
+        ("api_token", "ATLASSIAN_OFFLINE_MCP_API_TOKEN"),
+        ("embedding_api_key", "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY"),
+    ],
+)
+def test_a_secret_in_the_file_is_refused_by_name_never_by_value(
+    tmp_path: Path, key: str, variable: str
+) -> None:
+    """A secret would sit in a file other tools read: it is refused, naming its variable."""
+    with pytest.raises(SettingsError) as refused:
+        loaded_from(tmp_path, f'{key} = "{SENTINEL}"\n')
+    assert str(refused.value) == f"{key} ({FILE}): a secret, read from {variable} alone"
+
+
+def test_a_list_not_in_json_is_refused_by_its_variable_never_its_value(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """PLAT,PRB is not JSON: the variable is named, what it holds is not."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", "PLAT,PRB")
+    with pytest.raises(SettingsError) as refused:
+        loaded_from(tmp_path, "")
+    assert "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS" in str(refused.value)
+    assert "PLAT" not in str(refused.value)
+
+
+def test_a_bad_value_from_the_environment_is_refused_naming_its_variable(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The layer of a refused value is the variable that gave it, never what it held."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES", f'{{"worklog": "{SENTINEL}"}}')
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", SENTINEL)
+    with pytest.raises(SettingsError) as refused:
+        loaded_from(tmp_path, "")
+    message = str(refused.value)
+    assert "sources.worklog (ATLASSIAN_OFFLINE_MCP_SOURCES):" in message
+    assert "search_mode (ATLASSIAN_OFFLINE_MCP_SEARCH_MODE):" in message
+    assert SENTINEL not in message
+
+
+def test_variables_naming_no_setting_or_empty_are_ignored(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Other tools and versions share the environment: such a variable is ignored, and said."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS", '["X"]')
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SPACES", '["X"]')
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "")
+    loaded = loaded_from(tmp_path, 'site = "https://file.example.invalid"\n')
+    assert loaded.settings.site == "https://file.example.invalid"
+    assert loaded.settings.sources.jira.projects == ()
+    assert set(loaded.ignored) == {
+        Ignored(None, "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS", "names no setting"),
+        Ignored(None, "ATLASSIAN_OFFLINE_MCP_SPACES", "names no setting"),
+        Ignored("site", "ATLASSIAN_OFFLINE_MCP_SITE", "empty"),
     }
 
 

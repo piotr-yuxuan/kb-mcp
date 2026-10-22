@@ -296,6 +296,40 @@ def test_check_refuses_bad_settings_by_name(home: Path, capsys: CaptureFixture[s
     assert "sight (config.toml): not a setting" in capsys.readouterr().err
 
 
+def test_check_refuses_a_list_variable_not_in_json_by_its_name(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """A list from the environment is JSON: the variable is named, never what it holds."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", "PLAT,PRB")
+    assert main(["check", "--config", str(home / "none.toml")]) == BAD_SETTINGS
+    error = capsys.readouterr().err
+    assert error.startswith("settings refused: ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS")
+    assert "PLAT" not in error
+
+
+def test_check_refuses_a_secret_in_the_settings_file(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The API token is read from the environment alone."""
+    config = home / "config.toml"
+    config.write_text('api_token = "not-to-be-shown"\n', "utf-8")
+    assert main(["check", "--config", str(config)]) == BAD_SETTINGS
+    error = capsys.readouterr().err
+    assert "api_token (config.toml): a secret" in error
+    assert "not-to-be-shown" not in error
+
+
+def test_check_runs_with_variables_that_name_no_setting_or_are_empty(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """A misspelt, a former or an empty variable is ignored, not refused."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS", '["X"]')
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SPACES", '["X"]')
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "")
+    assert main(["check", "--config", str(home / "none.toml")]) == 0
+    assert "site: (not set)" in capsys.readouterr().out
+
+
 def test_check_refuses_a_file_that_is_not_toml(home: Path, capsys: CaptureFixture[str]) -> None:
     """A broken settings file is refused rather than ignored."""
     config = home / "config.toml"

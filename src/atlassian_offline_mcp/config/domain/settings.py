@@ -1,21 +1,23 @@
 """Settings: the site, where data lives, and what to download when no flag says.
 
-They come in layers, each stronger than the last: the settings file, then the flags
-given. Each layer gives entries, a value at a setting's path; ``settings_of`` merges
-them, a stronger value replacing a weaker one whole, a list included, and builds
-``Settings``, whose fields hold every rule of a value. Where data may live is judged by
-``unsafe_location``, once the loader has resolved the data directory.
+They come in layers, each stronger than the last: the settings file, the environment,
+then the flags given. Each layer gives entries, a value at a setting's path;
+``settings_of`` merges them, a stronger value replacing a weaker one whole, a list
+included, and builds ``Settings``, whose fields hold every rule of a value. Secrets come
+from the environment alone. Where data may live is judged by ``unsafe_location``, once
+the loader has resolved the data directory.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal, get_origin, override
+from typing import TYPE_CHECKING, Annotated, Literal, get_args, get_origin, override
 from urllib.parse import urlsplit
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr, ValidationError
 from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -39,6 +41,9 @@ type SearchMode = Literal["lexical", "semantic", "hybrid"]
 # plan 018, hybrid neither beat lexical significantly nor held identifiers, so by the bar
 # set before that run, and the user's word, words stay the default.
 DEFAULT_SEARCH_MODE: SearchMode = "lexical"
+# Each setting's environment variable: the prefix, then its path in capitals, joined.
+PREFIX = "ATLASSIAN_OFFLINE_MCP_"
+NESTING = "__"
 # The layer of a setting that no layer gives.
 DEFAULT_LAYER = "default"
 # The settings that the file held at its top before plan 015, and their tables now.
@@ -192,16 +197,22 @@ class Settings(BaseSettings):
         frozen=True,
         extra="forbid",
         hide_input_in_errors=True,
-        env_prefix="ATLASSIAN_OFFLINE_MCP_",
-        env_nested_delimiter="__",
+        env_prefix=PREFIX,
+        env_nested_delimiter=NESTING,
     )
 
     site: Site | None = Field(
         default=None,
-        description="The Atlassian site, for Confluence and Jira alike: https://<name>.atlassian.net.",
+        description=(
+            "The Atlassian site, for Confluence and Jira alike: https://<name>.atlassian.net."
+        ),
     )
     email: str | None = Field(
         default=None, description="The email address of the Atlassian account that signs in."
+    )
+    api_token: SecretStr | None = Field(
+        default=None,
+        description="The Atlassian account's API token, a secret: from the environment alone.",
     )
     data_dir: DataDir = Field(
         default=Path(DEFAULT_DATA_DIR),
@@ -221,6 +232,13 @@ class Settings(BaseSettings):
     embedding_url: EmbeddingUrl = Field(
         default=DEFAULT_EMBEDDING_URL,
         description="The OpenAI-compatible API that embeds, up to /embeddings, excluded.",
+    )
+    embedding_api_key: SecretStr | None = Field(
+        default=None,
+        description=(
+            "The embedding endpoint's API key, if it needs one, a secret: from the environment"
+            " alone."
+        ),
     )
     sources: Sources = Field(
         default_factory=Sources, description="The sources of the mirror, each a table."
@@ -288,8 +306,8 @@ class Settings(BaseSettings):
         )
 
 
-# What a setting is: a table of settings, a list, or a value.
-type Kind = Literal["table", "list", "value"]
+# What a setting is: a table of settings, a list, a secret, or another value.
+type Kind = Literal["table", "list", "secret", "value"]
 
 
 def setting_paths(
@@ -297,7 +315,8 @@ def setting_paths(
 ) -> dict[tuple[str, ...], Kind]:
     """Give the path of each setting of a model, at any depth, and its kind.
 
-    A table is a model of its own, whose settings follow it.
+    A table is a model of its own, whose settings follow it. The environment gives a
+    table or a list in JSON, and it alone gives a secret.
     """
     paths: dict[tuple[str, ...], Kind] = {}
     for name, info in model.model_fields.items():
@@ -306,12 +325,19 @@ def setting_paths(
         if isinstance(annotation, type) and issubclass(annotation, BaseModel):
             paths[path] = "table"
             paths.update(setting_paths(annotation, path))
+        elif get_origin(annotation) is tuple:
+            paths[path] = "list"
         else:
-            paths[path] = "list" if get_origin(annotation) is tuple else "value"
+            paths[path] = "secret" if SecretStr in get_args(annotation) else "value"
     return paths
 
 
 SETTING_PATHS = setting_paths(Settings)
+
+
+def variable(path: tuple[str, ...]) -> str:
+    """Name the environment variable of the setting at a path."""
+    return f"{PREFIX}{NESTING.join(path).upper()}"
 
 
 @dataclass(frozen=True)
@@ -353,7 +379,7 @@ def entries_of(value: object, path: tuple[str, ...], layer: str) -> list[Entry]:
 
 
 def file_entries(values: Mapping[str, object], layer: str) -> list[Entry]:
-    """Give the settings file's values as entries; refuse a moved setting or an unknown one."""
+    """Give the settings file's values as entries; refuse a moved or unknown one, a secret."""
     entries = entries_of(dict(values), (), layer)
     for entry in entries:
         setting = ".".join(entry.path)
@@ -363,7 +389,38 @@ def file_entries(values: Mapping[str, object], layer: str) -> list[Entry]:
         if entry.path not in SETTING_PATHS:
             message = f"{setting} ({layer}): not a setting"
             raise SettingsError(message)
+        if SETTING_PATHS[entry.path] == "secret":
+            message = f"{setting} ({layer}): a secret, read from {variable(entry.path)} alone"
+            raise SettingsError(message)
     return entries
+
+
+def environment_entries(environ: Mapping[str, str]) -> tuple[list[Entry], list[Ignored]]:
+    """Give the settings' variables of an environment as entries, and those ignored.
+
+    A variable of the prefix that names no setting, at any depth, or that is empty, is
+    ignored, since other tools and versions share the environment. A table or a list is
+    written in JSON: else SettingsError names the variable, never its value. Variables
+    come in the order of their names, so that a table's own, deeper, come after it.
+    """
+    named = {variable(path): path for path in SETTING_PATHS}
+    entries: list[Entry] = []
+    ignored: list[Ignored] = []
+    for name in sorted(name for name in environ if name.startswith(PREFIX)):
+        path = named.get(name)
+        if path is None or not environ[name]:
+            setting = None if path is None else ".".join(path)
+            ignored.append(Ignored(setting, name, "empty" if setting else "names no setting"))
+            continue
+        value: object = environ[name]
+        if SETTING_PATHS[path] in {"table", "list"}:
+            try:
+                value = json.loads(environ[name])
+            except ValueError:
+                message = f"{name}: not JSON, in which a {SETTING_PATHS[path]} is written"
+                raise SettingsError(message) from None
+        entries.extend(entries_of(value, path, name))
+    return entries, ignored
 
 
 def settings_of(entries: Iterable[Entry]) -> Loaded:
