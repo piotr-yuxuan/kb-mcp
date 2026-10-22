@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
 from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.domain.search import (
@@ -153,6 +154,8 @@ SELECT s.start, s.head || s.body AS text FROM sections s JOIN documents d ON d.r
 WHERE d.path = :path AND s.start < :end AND s.start + length(s.head) + length(s.body) > :start
 ORDER BY s.number
 """
+# What ``reading`` checks before it reads an index.
+META = "SELECT name, value FROM meta WHERE name IN ('schema', 'chunking')"
 # Each value that a filter can take, with how many documents have it, the most used first.
 VALUES = {
     "source": "SELECT source, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
@@ -518,10 +521,11 @@ def reading(path: Path) -> Iterator[Reader]:
     try:
         connection.row_factory = sqlite3.Row
         try:
-            row = connection.execute("SELECT value FROM meta WHERE name = 'schema'").fetchone()
+            meta = dict(connection.execute(META).fetchall())
         except sqlite3.DatabaseError:
-            row = None
-        if row is None or row[0] != SCHEMA:
+            meta = {}
+        # A chunking that this version lacks would be cut as no table says.
+        if meta.get("schema") != SCHEMA or meta.get("chunking", "") not in {"", *CHUNKINGS}:
             message = f"{path} is not an index that this version reads: {hint}"
             raise UnavailableIndexError(message)
         yield Reader(connection)

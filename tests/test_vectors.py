@@ -18,7 +18,7 @@ from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
 from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.adapters.embedding import ModelError
-from atlassian_offline_mcp.search.adapters.sqlite_index import reading
+from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.domain.search import Embedded
 from tests.endpoint import DIMENSIONS, Scripted, nothing_listening, serving, tiny
@@ -379,3 +379,14 @@ def test_the_environment_s_chunking_replaces_the_file_s(
         embedded = reader.embedded()
     assert embedded is not None
     assert embedded.chunking == "windows"
+
+
+def test_an_index_cut_by_a_chunking_this_version_lacks_is_refused(data: Path) -> None:
+    """Its pieces could be quoted by no unit known here: rebuilt, it is read again."""
+    build(data, counting())
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        connection.execute("UPDATE meta SET value = 'paragraphs' WHERE name = 'chunking'")
+        connection.commit()
+    refused = pytest.raises(UnavailableIndexError, match="not an index that this version reads")
+    with refused, reading(data / "index.sqlite"):
+        pass

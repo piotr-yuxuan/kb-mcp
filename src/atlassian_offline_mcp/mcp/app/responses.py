@@ -155,6 +155,21 @@ def hit(number: int, entry: Entry, passage: Passage, opening: str) -> str:
     return "\n".join(lines)
 
 
+def excerpt(number: int, entry: Entry, passage: Passage, opening: str) -> str:
+    """Write one passage that ask quotes: what and where it is, then its text, verbatim.
+
+    ``passage`` holds the text whole, where a search's holds a snippet.
+    """
+    front = entry.front
+    heading = f": {short(passage.heading)}" if passage.heading else ""
+    about = (
+        f"{number}. {short(front.title)} | {front.key or front.id} | section"
+        f" {passage.number}{heading} | updated {stamp(front.updated)}"
+        f" | mirrored {front.fetched_at:%Y-%m-%d}"
+    )
+    return f"{about}\n{short(front.url or entry.path)} | {opening}\n{passage.snippet}"
+
+
 def metadata(entry: Entry, *, whole: bool) -> str:
     """Write a document's front matter as one-line ``key: value`` lines.
 
