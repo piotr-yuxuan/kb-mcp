@@ -144,9 +144,10 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "Only observability and the command use Rich and requests"
+name = "Only observability and the command use Rich and requests, never progress"
 type = "forbidden"
 source_modules = [
+  "atlassian_offline_mcp.observability.adapters.progress",
   "atlassian_offline_mcp.evaluation",
   "atlassian_offline_mcp.mcp",
   "atlassian_offline_mcp.search",
