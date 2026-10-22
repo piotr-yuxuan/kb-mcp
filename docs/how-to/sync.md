@@ -50,7 +50,8 @@ The steps, in order:
 Each step runs even when an earlier one failed, since the next reads what is on disk:
 the work log is mirrored when the site asks to sign in again. Ctrl-C stops the run, and
 no later step starts. Building the index is not yet a step: run
-`atlassian-offline-mcp index` after `sync`.
+`atlassian-offline-mcp index` after `sync`. It indexes Confluence and Jira; the work
+log's files are not yet indexed nor served.
 
 ## 3. Choose among the sources
 
@@ -59,11 +60,12 @@ atlassian-offline-mcp sync --include worklog
 atlassian-offline-mcp sync --exclude worklog --since 7d
 ```
 
-`--include` takes the sources named alone, `--exclude` all but those; each repeats, and
-takes `confluence`, `jira` or `worklog`. A source included without its table, or a run
-left with none, is refused, saying why. The work log reads no period: an option of the
-period given while it runs is said to be ignored by it (`--since: ignored by worklog`),
-and settings that no source taken uses are said not applied, never refused.
+`--include` takes the sources named alone, `--exclude` all but those, never both in one
+run; each repeats, and takes `confluence`, `jira` or `worklog`. A source included
+without its table, or a run left with none, is refused, saying why. The work log reads
+no period: an option of the period given while it runs is said to be ignored by it
+(`--since: ignored by worklog`), and settings that no source taken uses are said not
+applied, never refused.
 
 ## 4. Look before running
 

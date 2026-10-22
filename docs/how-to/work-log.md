@@ -1,8 +1,10 @@
 # Mirror the work log
 
-Your work log, a folder of org files, can be searched by agents beside Confluence and
-Jira. It is read in place, never written, and never through git: its folder may be a git
-repository or under a synchronised folder, as the data directory may not be.
+Your work log, a folder of org files, is mirrored as Markdown beside Confluence and Jira,
+under `<data>/docs/worklog/`. The index and the server do not read it yet: searching it
+comes with the second phase of plan 017. It is read in place, never written, and never
+through git: its folder may be a git repository or under a synchronised folder, as the
+data directory may not be.
 
 ## 1. Point to the folder
 
