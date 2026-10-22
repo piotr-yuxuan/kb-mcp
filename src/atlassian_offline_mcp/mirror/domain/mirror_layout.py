@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 ASSETS = PurePosixPath("assets")
 TREE = "_tree.md"
 # The work log's folders, by the type of their documents.
-WORKLOG = {
+WORKLOG_FOLDERS = {
     "entry": PurePosixPath("worklog/entries"),
     "transcript": PurePosixPath("worklog/transcripts"),
 }
@@ -73,7 +73,7 @@ def issue_path(issue: Issue) -> PurePosixPath:
 def worklog_path(document_type: str, identifier: str, title: str) -> PurePosixPath:
     """Return where a document of the work log, of this type, id and title, is mirrored."""
     name = "-".join(part for part in (identifier, slug(title)) if part)
-    return WORKLOG[document_type] / f"{name}.md"
+    return WORKLOG_FOLDERS[document_type] / f"{name}.md"
 
 
 def tree_path(space: str) -> PurePosixPath:

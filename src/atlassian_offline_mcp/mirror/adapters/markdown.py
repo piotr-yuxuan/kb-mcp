@@ -14,6 +14,7 @@ import yaml
 
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
 from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+from atlassian_offline_mcp.mirror.domain.mirror_layout import WORKLOG_FOLDERS
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -26,7 +27,7 @@ CLOSING = "\n---\n"
 # The documents of the mirror, relative to <data>/docs, by the step that writes them;
 # names beginning with _ or . are not documents, and nothing under assets/ is.
 DOCUMENTS = ("confluence/*/*.md", "confluence/*/blog/*.md", "jira/*/*.md")
-WORKLOG = ("worklog/entries/*.md", "worklog/transcripts/*.md")
+WORKLOG = tuple(f"{folder}/*.md" for folder in WORKLOG_FOLDERS.values())
 
 
 def dump(front_matter: FrontMatter, body: str) -> str:
