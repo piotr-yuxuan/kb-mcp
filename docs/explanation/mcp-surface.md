@@ -29,13 +29,13 @@ the same from run to run. Every tool is annotated read-only, idempotent and clos
 the world, and none has an output schema: answers are text, which every client passes
 to the model.
 
-**A standing cost kept low.** The instructions and the tool listing travel with every
+**A standing cost kept low**, a practice of this project's own. The instructions and the tool listing travel with every
 request. Older versions of Claude Code keep 2,048 characters of a server's
 instructions, so they stay within that, the key words first; with the listing, they
 stay within 2,200 estimated tokens, measured by the tests over stdio. `filters` stay on
 `ask`, so that a question about one space takes one call.
 
-**Answers within a budget, and continued.** Every answer fits 4,000 estimated tokens at
+**Answers within a budget, and continued**, plan 006's own practice. Every answer fits 4,000 estimated tokens at
 its defaults, and ends with the call that continues it when cut: an agent never needs
 to guess an offset.
 
@@ -54,7 +54,7 @@ only their values as the index holds them enter it, so that nothing typed reache
 model unchecked; a refused one is JSON-RPC error -32602, naming it. A prompt is listed
 only when its tools are served.
 
-**Resources later.** MCP resources would let a client attach a document whole; no
+**Resources later**, plan 019's choice. MCP resources would let a client attach a document whole; no
 client this project serves needs them yet, so none is offered.
 
 ## Whether `ask` helps agents
@@ -80,9 +80,12 @@ The limits of that measure:
   answers exactly, but not Claude Code's own tool search and choice among native tools.
   Native MCP, by a project's `.mcp.json` that the user approves, or `claude -p` with a
   token, is a later option.
-- **A subagent could read the mirror itself.** The prompt forbids it, the bridge logs
-  every call, and where the harness keeps the transcript, a run that did more than
-  read its prompt and run the bridge is marked invalid and gives no result.
+- **A subagent could read the mirror itself, or write the runs' directory.** The prompt
+  forbids both, the bridge logs every call, and where the harness keeps the
+  transcript, a run that did more than read its prompt and run the bridge and the
+  answer command is marked invalid and gives no result. `grade` refuses a call log or
+  an answer that its own steps did not write, but `runs.json`, which holds the bound
+  and what grades each question, is the transcript's to guard.
 - **One corpus.** The sandbox is small, invented, and written with its questions; the
   work set should decide again.
 
