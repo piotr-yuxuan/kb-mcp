@@ -125,10 +125,14 @@ def test_every_setting_is_described() -> None:
         assert model.model_fields[path[-1]].description, path
 
 
-def test_each_setting_is_read_from_the_environment_by_its_kind() -> None:
-    """Tables and lists are JSON; the token and the embedding key are the secrets."""
+def test_each_setting_is_read_by_its_kind() -> None:
+    """Tables and lists are JSON; the token and the embedding key are the secrets.
+
+    The data directory is a path, in which ``~`` is the home.
+    """
     assert {path: kind for path, kind in SETTING_PATHS.items() if kind != "value"} == {
         ("api_token",): "secret",
+        ("data_dir",): "path",
         ("embedding_api_key",): "secret",
         ("sources",): "table",
         ("sources", "confluence"): "table",
@@ -144,7 +148,7 @@ def test_each_setting_is_read_from_the_environment_by_its_kind() -> None:
         (tuple[str, ...] | None, "list"),
         (Annotated[SecretStr, Field(min_length=1)] | None, "secret"),
         (Literal["a", "b"] | None, "value"),
-        (Annotated[Path, Field(description="a path")], "value"),
+        (Annotated[Path, Field(description="a path")], "path"),
     ],
 )
 def test_a_setting_s_kind_is_seen_through_none_and_annotated(annotation: object, kind: str) -> None:
@@ -231,12 +235,12 @@ def test_the_old_lists_at_the_top_of_the_file_are_refused_with_their_new_place(
     assert str(refused.value) == f"{key} ({FILE}): moved, as {key} under {table}"
 
 
-@pytest.mark.parametrize("key", ["_cli_parse_args", "_env_file", "unknown"])
+@pytest.mark.parametrize("key", ["_cli_parse_args", "_env_file", "SITE", "unknown"])
 def test_the_model_refuses_a_key_that_names_no_setting_whatever_its_layer(key: str) -> None:
     """A key that names no setting is refused, from any layer, never taken as an option.
 
-    pydantic-settings' models took ``_cli_parse_args`` as one, which parsed sys.argv,
-    and ``_env_file``, which read the file named.
+    pydantic-settings' model takes ``_cli_parse_args`` as one, which parses sys.argv,
+    ``_env_file``, which reads the file named, and ``SITE`` as ``site``.
     """
     with pytest.raises(SettingsError, match=re.escape(f"{key} (a layer):")):
         settings_of([Entry((key,), "/etc/passwd", "a layer")], HOME)
@@ -463,17 +467,30 @@ def test_a_list_not_in_json_is_refused_by_its_variable_never_its_value(
     assert "PLAT" not in str(refused.value)
 
 
+@pytest.mark.parametrize(
+    ("variable", "value", "named"),
+    [
+        (
+            "ATLASSIAN_OFFLINE_MCP_SOURCES",
+            f'{{"worklog": "{SENTINEL}"}}',
+            "sources.worklog (ATLASSIAN_OFFLINE_MCP_SOURCES):",
+        ),
+        (
+            "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE",
+            SENTINEL,
+            "search_mode (ATLASSIAN_OFFLINE_MCP_SEARCH_MODE):",
+        ),
+    ],
+)
 def test_a_bad_value_from_the_environment_is_refused_naming_its_variable(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+    tmp_path: Path, monkeypatch: MonkeyPatch, variable: str, value: str, named: str
 ) -> None:
     """The layer of a refused value is the variable that gave it, never what it held."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES", f'{{"worklog": "{SENTINEL}"}}')
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", SENTINEL)
+    monkeypatch.setenv(variable, value)
     with pytest.raises(SettingsError) as refused:
         loaded_from(tmp_path, "")
     message = str(refused.value)
-    assert "sources.worklog (ATLASSIAN_OFFLINE_MCP_SOURCES):" in message
-    assert "search_mode (ATLASSIAN_OFFLINE_MCP_SEARCH_MODE):" in message
+    assert named in message
     assert SENTINEL not in message
 
 

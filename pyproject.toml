@@ -16,6 +16,7 @@ dependencies = [
   "pillow>=13,<14",
   "playwright>=1.64,<2",
   "pydantic>=2.14,<3",
+  "pydantic-settings>=2.15,<3",
   "pyyaml>=6,<7",
   "truststore>=0.10,<1",
 ]

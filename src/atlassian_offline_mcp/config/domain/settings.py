@@ -13,13 +13,24 @@ from __future__ import annotations
 import ipaddress
 import json
 from dataclasses import dataclass, field
+from functools import reduce
 from pathlib import Path
 from types import NoneType
-from typing import TYPE_CHECKING, Annotated, Literal, TypeAliasType, Union, get_args, get_origin
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Literal,
+    TypeAliasType,
+    Union,
+    get_args,
+    get_origin,
+    override,
+)
 from urllib.parse import urlsplit
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr, ValidationError
 from pydantic_core import PydanticCustomError
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from atlassian_offline_mcp.kernel.content import MODEL_NAME, PROJECT_KEY, SPACE_KEY
 
@@ -27,7 +38,7 @@ if TYPE_CHECKING:
     import re
     from collections.abc import Iterable, Mapping
 
-    from pydantic import ValidationInfo
+    from pydantic_settings import PydanticBaseSettingsSource
 
 DEFAULT_DATA_DIR = "~/atlassian-offline-mcp"
 # The embedding model that indexes by meaning, as the endpoint names it. Chosen by plan
@@ -41,9 +52,6 @@ type SearchMode = Literal["lexical", "semantic", "hybrid"]
 # plan 018, hybrid neither beat lexical significantly nor held identifiers, so by the bar
 # set before that run, and the user's word, words stay the default.
 DEFAULT_SEARCH_MODE: SearchMode = "lexical"
-# Each setting's environment variable: the prefix, then its path in capitals, joined.
-PREFIX = "ATLASSIAN_OFFLINE_MCP_"
-NESTING = "__"
 # The layer of a setting that no layer gives.
 DEFAULT_LAYER = "default"
 # The settings that the file held at its top before plan 015, and their tables now.
@@ -135,16 +143,13 @@ def endpoint_address(value: str) -> str:
     return value.rstrip("/")
 
 
-def local_path(path: Path, info: ValidationInfo) -> Path:
-    """Accept an absolute path, or one under ``~``, made the home that validation is given.
+def local_path(path: Path) -> Path:
+    """Accept an absolute path; refuse another, which would lie below the current directory.
 
-    The home comes in the validation's context, as ``settings_of`` gives it: without
-    one, a path under ``~`` is refused, so that no settings hold a path relative to the
-    current directory.
+    ``settings_of`` makes ``~`` the home before the model sees a path, a default's
+    included, since no validation context reaches pydantic-settings' ``__init__``: built
+    without it, the settings refuse a path under ``~``.
     """
-    home = (info.context or {}).get("home")
-    if home is not None and path.parts[:1] == ("~",):
-        path = home.joinpath(*path.parts[1:])
     if "\0" in str(path) or not path.is_absolute():
         message = "an absolute path, or one under ~"
         raise PydanticCustomError(RULE, message)
@@ -152,7 +157,7 @@ def local_path(path: Path, info: ValidationInfo) -> Path:
 
 
 Site = Annotated[str, AfterValidator(site_address)]
-# A path on this machine, such as the data directory.
+# A path on this machine, such as the data directory: absolute.
 LocalPath = Annotated[Path, AfterValidator(local_path)]
 SpaceKey = Annotated[str, matching(SPACE_KEY, "a space key, such as ENG or ~5f1a2b")]
 ProjectKey = Annotated[str, matching(PROJECT_KEY, "a project key, such as PLAT")]
@@ -195,15 +200,18 @@ class Sources(BaseModel):
     jira: JiraSource = Field(default_factory=JiraSource, description="Jira, on the site.")
 
 
-class Settings(BaseModel):
+class Settings(BaseSettings):
     """What every command needs to know: the site, the data directory, the defaults.
 
     The loader builds it from the layers' merge (``settings_of``), with the home that
-    ``~`` stands for: its paths are absolute, its default data directory included. The
-    loader then resolves the data directory.
+    ``~`` stands for: its paths are absolute, its default data directory included. It
+    reads nothing of its own; its configuration names the prefix and the nesting of its
+    variables. The loader then resolves the data directory.
     """
 
-    model_config = TABLE
+    model_config = SettingsConfigDict(
+        **TABLE, env_prefix="ATLASSIAN_OFFLINE_MCP_", env_nested_delimiter="__"
+    )
 
     site: Site | None = Field(
         default=None,
@@ -248,6 +256,19 @@ class Settings(BaseModel):
     sources: Sources = Field(
         default_factory=Sources, description="The sources of the mirror, each a table."
     )
+
+    @classmethod
+    @override
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Take the values given alone: the loader reads the layers and merges them."""
+        return (init_settings,)
 
     @property
     def raw(self) -> Path:
@@ -298,10 +319,20 @@ class Settings(BaseModel):
         )
 
 
-# What a setting is: a table of settings, a list, a secret, or another value.
-type Kind = Literal["table", "list", "secret", "value"]
-# The types of a setting that is another value, which the environment gives as text.
-VALUE_TYPES = (str, bool, int, Path)
+# Each setting's environment variable: the prefix, then its path in capitals, joined.
+PREFIX = Settings.model_config["env_prefix"]
+NESTING = Settings.model_config["env_nested_delimiter"]
+# What a setting is: a table of settings, a list, a secret, a path, or another value.
+type Kind = Literal["table", "list", "secret", "path", "value"]
+# The kind of a setting of each type, other than a table, a list or a choice, that the
+# environment gives as text.
+TEXT_KINDS: dict[object, Kind] = {
+    SecretStr: "secret",
+    Path: "path",
+    str: "value",
+    bool: "value",
+    int: "value",
+}
 
 
 def kind_of(annotation: object) -> Kind:
@@ -321,10 +352,10 @@ def kind_of(annotation: object) -> Kind:
         return kind_of(others[0])
     if origin is tuple:
         return "list"
-    if annotation is SecretStr:
-        return "secret"
-    if origin is Literal or annotation in VALUE_TYPES:
+    if origin is Literal:
         return "value"
+    if annotation in TEXT_KINDS:
+        return TEXT_KINDS[annotation]
     message = f"a setting of a type that has no kind: {annotation}"
     raise TypeError(message)
 
@@ -335,8 +366,8 @@ def setting_paths(
     """Give the path of each setting of a model, at any depth, and its kind.
 
     A table is a model of its own, whose settings follow it. The environment gives a
-    table or a list in JSON, and it alone gives a secret. Raises TypeError for a setting
-    of a type that ``kind_of`` knows no kind for.
+    table or a list in JSON, and it alone gives a secret; ``~`` in a path is the home.
+    Raises TypeError for a setting of a type that ``kind_of`` knows no kind for.
     """
     paths: dict[tuple[str, ...], Kind] = {}
     for name, info in model.model_fields.items():
@@ -458,17 +489,30 @@ def environment_entries(environ: Mapping[str, str]) -> tuple[list[Entry], list[I
     return entries, ignored
 
 
+# Each path setting at its default, an entry of the weakest layer, so that ``settings_of``
+# makes ``~`` the home in it as in a path given.
+PATH_DEFAULTS = [
+    Entry(path, reduce(getattr, path, Settings.model_construct()), DEFAULT_LAYER)
+    for path, kind in SETTING_PATHS.items()
+    if kind == "path"
+]
+
+
 def settings_of(entries: Iterable[Entry], home: Path) -> Loaded:
     """Merge the layers' entries, weakest first, and build the settings from them.
 
     An entry replaces any earlier one at its path, above it or below it, whole: a list is
     never joined to another. ``~`` in a path, a default's included, is ``home``. Raises
     SettingsError naming each setting refused and the layers that gave it, never its
-    value.
+    value: first an entry whose path names no setting, which ``BaseSettings`` could take
+    as an argument of its own, such as ``_env_file``.
     """
     kept: dict[tuple[str, ...], Entry] = {}
     replaced: list[Ignored] = []
-    for entry in entries:
+    for entry in [*PATH_DEFAULTS, *entries]:
+        if entry.path not in SETTING_PATHS:
+            message = f"{'.'.join(entry.path)} ({entry.layer}): not a setting"
+            raise SettingsError(message)
         for path in [
             path
             for path in kept
@@ -482,10 +526,19 @@ def settings_of(entries: Iterable[Entry], home: Path) -> Loaded:
         table = values
         for name in path[:-1]:
             table = table.setdefault(name, {})
-        table[path[-1]] = entry.value
-    layers = {".".join(path): entry.layer for path, entry in kept.items()}
+        value = entry.value
+        if (
+            SETTING_PATHS[path] == "path"
+            and isinstance(value, str | Path)
+            and Path(value).parts[:1] == ("~",)
+        ):
+            value = home.joinpath(*Path(value).parts[1:])
+        table[path[-1]] = value
+    layers = {
+        ".".join(path): entry.layer for path, entry in kept.items() if entry.layer != DEFAULT_LAYER
+    }
     try:
-        settings = Settings.model_validate(values, context={"home": home})
+        settings = Settings.model_validate(values)
     except ValidationError as error:
         problems = []
         for problem in error.errors(include_input=False):
@@ -498,7 +551,9 @@ def settings_of(entries: Iterable[Entry], home: Path) -> Loaded:
             named = ", ".join(sorted(given)) or DEFAULT_LAYER
             problems.append(f"{where} ({named}): {problem['msg']}")
         raise SettingsError("; ".join(problems)) from None
-    return Loaded(settings, layers, tuple(replaced))
+    return Loaded(
+        settings, layers, tuple(ignored for ignored in replaced if ignored.layer != DEFAULT_LAYER)
+    )
 
 
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:
