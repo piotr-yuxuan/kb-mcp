@@ -46,6 +46,15 @@ TAIL = (
     + "a line of other matters here\n" * 140
     + "zebracrossing quota met\n"
 )
+FILLER = "a line of other matters here\n" * 140
+# Long sections whose question's words are found as the index finds them: capitalised,
+# between underscores, with accents, and both words together late, one alone early.
+FOUND = {
+    "196849": ("Capitals", "Pelicancrossing Quorum reached\n", "pelicancrossing quorum"),
+    "196850": ("Keys", "set max_poll_records to 500\n", "max poll records"),
+    "196851": ("Accents", "le résumé du plan trimestriel\n", "resume"),
+    "196852": ("Together", "the yakshaving tariff applies\n", "yakshaving tariff"),
+}
 # One short section, near "vacation lunch" by meaning.
 HOLIDAY = "# Holiday canteen\n\nLeave for a meal.\n"
 UNIT = 2400
@@ -76,6 +85,20 @@ def words(tmp_path_factory: TempPathFactory) -> Library:
         (issue("PROJ-7", "Upgrade the brokers"), "# Upgrade the brokers\n\nPlanned.\n"),
         (page("196847", "Pools"), PARAGRAPH),
         (page("196848", "Rules"), TAIL),
+        *(
+            (
+                page(ref, title),
+                f"# {title}\n\n## Log\n\n"
+                + ("tariff once\n" if ref == "196852" else "")
+                + FILLER
+                + tail,
+            )
+            for ref, (title, tail, _) in FOUND.items()
+        ),
+        *(
+            (page(str(800000 + number), f"Delta {number}"), f"# Delta {number}\n\ndelta\n")
+            for number in range(ENOUGH)
+        ),
         *(
             (page(str(700000 + number), f"Gamma {number}"), f"# Gamma {number}\n\n{GAMMA}\n")
             for number in range(ENOUGH)
@@ -123,6 +146,23 @@ def test_a_long_section_is_quoted_about_the_question_s_words(words: Library) -> 
     end = section[-UNIT:]
     assert first["text"] == end[end.index("\n") + 1 :]
     assert first["text"].endswith("zebracrossing quota met\n")
+
+
+@pytest.mark.parametrize("ref", sorted(FOUND))
+def test_the_question_s_words_are_found_as_the_index_finds_them(words: Library, ref: str) -> None:
+    """Whatever their case or accents, between underscores, both words where they meet."""
+    _, tail, question = FOUND[ref]
+    (first, *_) = passages(words.ask(question))
+    assert first["ref"] == ref
+    assert first["text"].endswith(tail)
+    assert len(first["text"]) <= UNIT
+
+
+def test_an_answer_quotes_20_documents_at_most_however_short(words: Library) -> None:
+    """Forty documents of a line each: twenty, then the call that continues."""
+    answer = words.ask("delta")
+    assert len(passages(answer)) == ASK_DOCUMENTS
+    assert continuation(answer) is not None
 
 
 def test_an_answer_is_one_block_within_the_budget_and_goes_on(words: Library) -> None:

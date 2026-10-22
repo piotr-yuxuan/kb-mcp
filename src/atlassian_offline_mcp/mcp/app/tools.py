@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -178,20 +179,26 @@ def passage_of(reader: Reader, entry: Entry, ranked: Ranking, planned: Plan) -> 
     return passage or Passage(1, "", lead.partition("\n")[2])
 
 
+def folded(text: str) -> str:
+    """Write a text without its accents, character for character, as the index compares."""
+    return "".join(unicodedata.normalize("NFD", char)[0] for char in text)
+
+
 def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -> list[Passage]:
     """Give the passage that ask quotes of each document, verbatim, in the order given.
 
     A document ranked by meaning gives the unit of its best piece, by the index's
     chunking. One ranked by words gives its best section for the question's words, or
-    its first: whole up to UNIT characters, else UNIT of it centred on the first of the
-    words that it holds, by ``around``, then cut to whole lines where a line break falls
-    in the half that the cut shortens.
+    its first: whole up to UNIT characters, else UNIT of it about the occurrence of a
+    word with the most distinct words within UNIT / 2 of it, by ``around``, then cut to
+    whole lines where a line break falls in the half that the cut shortens. Words are
+    found as the index finds them: without regard to case or accents, between
+    characters that are no letter nor digit.
     """
     embedded = reader.embedded()
     unit = CHUNKERS[embedded.chunking].unit if embedded else None
-    words = re.compile(
-        "|".join(rf"(?<!\w){re.escape(word)}(?!\w)" for word in planned.words), re.IGNORECASE
-    )
+    alone = (rf"(?<![^\W_]){re.escape(folded(word))}(?![^\W_])" for word in planned.words)
+    words = re.compile("|".join(alone), re.IGNORECASE)
     found = []
     for path in paths:
         bounds = reader.bounds(path)
@@ -204,7 +211,12 @@ def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -
             number = best.number if best else 1
             first, last = bounds[number - 1]
             section = reader.text(path, first, last)
-            hit = first + next((each.start() for each in words.finditer(section)), 0)
+            hits = [(each.start(), each[0].casefold()) for each in words.finditer(folded(section))]
+            hit = first + max(
+                (at for at, _ in hits),
+                key=lambda at: len({word for near, word in hits if abs(near - at) <= UNIT // 2}),
+                default=0,
+            )
             start, end = around((hit, hit + 1), (first, last))
             text = section[start - first : end - first]
             text = text if end == last else text[: text.rfind("\n", UNIT // 2) + 1 or UNIT]
