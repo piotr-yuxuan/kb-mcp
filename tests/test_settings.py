@@ -494,10 +494,6 @@ def test_an_empty_table_from_the_environment_replaces_the_file_s_values_under_it
             ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", f'["{SENTINEL}"]'),
         ),
         (
-            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", "{}"),
-            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS", f'["{SENTINEL}"]'),
-        ),
-        (
             ("ATLASSIAN_OFFLINE_MCP_SITE", f"https://{SENTINEL}.example.invalid"),
             ("atlassian_offline_mcp_site", "https://other.example.invalid"),
         ),
@@ -524,6 +520,60 @@ def test_two_variables_of_one_setting_or_of_a_table_and_inside_it_are_refused(
     named, _, _ = str(refused.value).partition(": ")
     assert set(named.split(", ")) == {outer[0], inner[0]}
     assert SENTINEL not in str(refused.value)
+
+
+@pytest.mark.parametrize(
+    ("given", "unknown"),
+    [
+        (
+            ("ATLASSIAN_OFFLINE_MCP_SOURCES", '{"jira": {"projects": ["PRB"]}}'),
+            "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS",
+        ),
+        (
+            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", '{"projects": ["PRB"]}'),
+            "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS",
+        ),
+        (
+            ("ATLASSIAN_OFFLINE_MCP_SOURCES", '{"jira": {"projects": ["PRB"]}}'),
+            "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS__0",
+        ),
+        (
+            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]'),
+            "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS__0",
+        ),
+    ],
+)
+@pytest.mark.parametrize("unknown_first", [True, False])
+def test_a_variable_naming_no_setting_inside_another_s_setting_is_ignored_alone(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    given: tuple[str, str],
+    unknown: str,
+    *,
+    unknown_first: bool,
+) -> None:
+    """The other gives its value whole, in either order; this one is ignored, as alone.
+
+    pydantic-settings would merge it into the other's table or list.
+    """
+    named = (unknown, f'["{SENTINEL}"]')
+    for name, value in [named, given] if unknown_first else [given, named]:
+        monkeypatch.setenv(name, value)
+    loaded = loaded_from(tmp_path, "")
+    assert loaded.settings.sources.jira.projects == ("PRB",)
+    assert loaded.layers == {"sources.jira.projects": given[0]}
+    assert loaded.ignored == (Ignored(None, unknown, "names no setting"),)
+
+
+def test_a_variable_naming_no_setting_below_a_value_is_ignored_alone(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A value has nothing below it: the site is the variable's, the other is ignored."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "https://variable.example.invalid")
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE__X", "1")
+    loaded = loaded_from(tmp_path, "")
+    assert loaded.settings.site == "https://variable.example.invalid"
+    assert loaded.ignored == (Ignored(None, "ATLASSIAN_OFFLINE_MCP_SITE__X", "names no setting"),)
 
 
 def test_a_variable_is_read_without_regard_to_case_and_named_as_written(

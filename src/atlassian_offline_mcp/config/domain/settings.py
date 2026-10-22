@@ -464,9 +464,12 @@ def environment_entries(
     variables of one setting, or of a table and of a path inside it: pydantic-settings
     would merge them, below the top by the environment's order, and no value would name
     its variable. Then ``parse``, pydantic-settings' ``EnvSettingsSource(Settings)`` of
-    this environment, reads them, and each value read is an entry of its variable.
+    this environment, reads them, and each value read is an entry of its variable; a
+    table or a list is the JSON that the scan decoded, its keys as written, since the
+    source merges into it the variables below it, those that name no setting included.
     """
     scanned: list[tuple[tuple[str, ...], str]] = []
+    decoded: dict[str, object] = {}
     ignored: list[Ignored] = []
     for name in sorted(name for name in environ if name.lower().startswith(PREFIX.lower())):
         path = tuple(name.lower().removeprefix(PREFIX.lower()).split(NESTING))
@@ -474,14 +477,13 @@ def environment_entries(
         if kind is None or not environ[name]:
             setting = None if kind is None else ".".join(path)
             ignored.append(Ignored(setting, name, "empty" if setting else "names no setting"))
-        if not environ[name]:
             continue
         if kind in JSON_TYPES:
             try:
-                value = json.loads(environ[name])
+                decoded[name] = json.loads(environ[name])
             except ValueError:
-                value = None
-            if not isinstance(value, JSON_TYPES[kind]):
+                decoded[name] = None
+            if not isinstance(decoded[name], JSON_TYPES[kind]):
                 message = f"{name}: not a {kind} in JSON"
                 raise SettingsError(message)
         scanned.append((path, name))
@@ -489,7 +491,7 @@ def environment_entries(
         inner = [
             other for deeper, other in scanned if other != name and deeper[: len(path)] == path
         ]
-        if path in SETTING_PATHS and inner:
+        if inner:
             setting = ".".join(path)
             message = f"{name}, {inner[0]}: both set {setting}, which one variable alone may set"
             raise SettingsError(message)
@@ -497,8 +499,9 @@ def environment_entries(
     entries = [
         entry
         for path, name in scanned
-        if path in SETTING_PATHS
-        for entry in entries_of(reduce(getitem, path, found), path, name)
+        for entry in entries_of(
+            decoded[name] if name in decoded else reduce(getitem, path, found), path, name
+        )
     ]
     return entries, ignored
 
