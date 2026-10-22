@@ -12,10 +12,15 @@ import pytest
 
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.kernel.content import Page
-from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
+from atlassian_offline_mcp.mirror.adapters.pandoc import (
+    Pandoc,
+    PandocFailedError,
+    PandocMissingError,
+)
 from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from tests.samples import v2_page, v2_space, v2_view
+from tests.test_cli import logged_as
 from tests.test_mirror import FETCHED, SPACE_ID, listing_page, page_responses
 from tests.test_observed import said
 
@@ -71,6 +76,29 @@ def test_without_pandoc_the_mirror_names_it_and_writes_nothing(
     err = capsys.readouterr().err
     assert said(err) == [("error", "run.refused")]
     assert "pandoc: not found on PATH" in err
+    assert not (home / "data" / "docs").exists()
+
+
+def test_pandoc_gone_once_the_run_starts_fails_it_with_an_error(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """On PATH for the entry, gone for the run: exit 1, the error mirror.pandoc_missing.
+
+    The run's log file holds it with its reason, and no mirror is written.
+    """
+    monkeypatch.setenv("PATH", str(fake_pandoc(home / "bin", "cat")))
+    message = "pandoc: not found on PATH; install pandoc 3"
+
+    def gone() -> Pandoc:
+        raise PandocMissingError(message)
+
+    monkeypatch.setattr(Pandoc, "find", gone)
+    assert main(arguments(home)) == SOME_FAILED
+    err = capsys.readouterr().err
+    assert ("error", "mirror.pandoc_missing") in said(err)
+    assert message in err
+    (missing,) = logged_as(home, "mirror.pandoc_missing")
+    assert (missing["level"], missing["reason"]) == ("error", message)
     assert not (home / "data" / "docs").exists()
 
 
@@ -141,7 +169,11 @@ def test_a_pandoc_failure_names_its_status_and_no_content(
 def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """A page whose space is not listed is reported by its place in the store."""
+    """A page whose space is not listed is reported by its place in the store.
+
+    Each such page is the warning mirror.not_mirrored, then mirror.nothing_removed warns
+    that nothing was removed; the run's log file holds both.
+    """
     store = RawStore(home / "data" / "raw")
     stamp = {"number": 1, "createdAt": "2026-10-20T21:52:41Z"}
     responses = {
@@ -155,8 +187,19 @@ def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
     captured = capsys.readouterr()
     assert "documents: 0\n" in captured.out
     assert "problems: 1\n" in captured.out
-    assert "not mirrored: confluence/pages/196845/000001: space not listed\n" in captured.err
-    assert "nothing was removed" in captured.err
+    warnings = said(captured.err)
+    assert ("warning", "mirror.not_mirrored") in warnings
+    assert ("warning", "mirror.nothing_removed") in warnings
+    assert "confluence/pages/196845/000001" in captured.err
+    assert "space not listed" in captured.err
+    (problem,) = logged_as(home, "mirror.not_mirrored")
+    assert {key: problem[key] for key in ("level", "where", "reason")} == {
+        "level": "warning",
+        "where": "confluence/pages/196845/000001",
+        "reason": "space not listed",
+    }
+    (kept,) = logged_as(home, "mirror.nothing_removed")
+    assert (kept["level"], kept["problems"]) == ("warning", 1)
     assert main(arguments(home, "--format", "json")) == SOME_FAILED
     document = json.loads(capsys.readouterr().out)
     assert document["documents"] == 0
