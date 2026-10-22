@@ -62,7 +62,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "import-linter", specifier = ">=2,<3" },
+    { name = "import-linter", specifier = ">=2.15,<3" },
     { name = "pytest", specifier = ">=9,<10" },
     { name = "ruff", specifier = ">=0.16,<0.17" },
 ]
