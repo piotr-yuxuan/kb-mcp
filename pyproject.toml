@@ -87,7 +87,13 @@ exhaustive = true
 name = "Pure rules, in any context, use no effect and no use case"
 type = "forbidden"
 source_modules = ["atlassian_offline_mcp.kernel", "atlassian_offline_mcp.**.domain"]
-forbidden_modules = ["atlassian_offline_mcp.**.adapters", "atlassian_offline_mcp.**.app"]
+forbidden_modules = [
+  "atlassian_offline_mcp.**.adapters",
+  "atlassian_offline_mcp.**.app",
+  "opentelemetry",
+  "rich",
+  "structlog",
+]
 
 [[tool.importlinter.contracts]]
 name = "Effects, in any context, use no use case"
@@ -131,7 +137,22 @@ forbidden_modules = [
   "pydantic",
   "pydantic_core",
   "pydantic_settings",
+  "requests",
   "rich",
   "structlog",
   "yaml",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Only observability and the command use Rich and requests"
+type = "forbidden"
+source_modules = [
+  "atlassian_offline_mcp.evaluation",
+  "atlassian_offline_mcp.mcp",
+  "atlassian_offline_mcp.search",
+  "atlassian_offline_mcp.mirror",
+  "atlassian_offline_mcp.sources",
+  "atlassian_offline_mcp.config",
+  "atlassian_offline_mcp.kernel",
+]
+forbidden_modules = ["requests", "rich"]

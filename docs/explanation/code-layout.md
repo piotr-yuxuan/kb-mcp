@@ -68,23 +68,27 @@ stays light: contract G keeps the packages that runs need out of `cli.main` and
 
 ## The contracts
 
-`pyproject.toml` declares seven contracts:
+`pyproject.toml` declares eight contracts:
 
 | | What it protects |
 |---|---|
 | A | Contexts use those below them, never those above. It is exhaustive: a new top-level package breaks it until it is placed in the order |
 | B | Within each context, the layers' order. It is exhaustive too: a module outside a layer breaks it. Each source under `sources/` is a context of its own; a module put directly in `sources/` is outside B: A still orders it with `sources`, but no contract checks its layer or its use of `httpx`, so none goes there |
-| C | Pure rules, in any context (and the kernel), use no effect and no use case |
+| C | Pure rules, in any context (and the kernel), use no effect and no use case, nor structlog, OpenTelemetry or Rich: a rule neither logs, traces nor draws |
 | D | Effects, in any context, use no use case |
 | E | Search, the server and the evaluation read the mirror, never a source: the index is built from the mirror alone |
 | F | Use cases and commands reach the network through effects only (no `httpx`) |
-| G | Declaring the command, `cli.main` and `cli.options`, imports none of the packages that runs need: the MCP SDK, Playwright, httpx, NumPy, lxml, PyYAML, Pydantic, Rich, OpenTelemetry, and plan 016's structlog and platformdirs |
+| G | Declaring the command, `cli.main` and `cli.options`, imports none of the packages that runs need: the MCP SDK, Playwright, httpx, NumPy, lxml, PyYAML, Pydantic, Rich, OpenTelemetry, requests, structlog and platformdirs |
+| H | Only `observability` and `cli` use Rich, which draws on the terminal, and requests, which OpenTelemetry's exporters bring: the rest reaches the network by httpx. It counts indirect imports, so what the other contexts import of `observability` reaches neither. It names every other context, so a new one joins its list as it joins A's order |
 
 A orders the contexts, which B, applied per context, does not; C and D carry the order
 of the layers across contexts, which B cannot. All but F count indirect imports too.
 None sees an import by name, as `main` makes of the entry and the run: a test of
 `tests/test_cli.py` checks, in a fresh interpreter, that `--help` and a completion
-import none of G's packages.
+import none of G's packages. And a contract forbids only the root of another package,
+which OpenTelemetry's API and SDK share: so `tests/test_code_layout.py` keeps the SDK,
+its exporters and its instrumentation within `observability`, while the other contexts
+use the API alone.
 
 ## Where a new module goes
 
@@ -94,4 +98,4 @@ import none of G's packages.
    `domain/`, an effect in `adapters/`, a use case in `app/`.
 3. Run `uv run lint-imports`. A broken contract says which import crosses a boundary;
    move the code, or the import, rather than the boundary. A module that fits no
-   context needs a split, or a new context placed in contract A's order.
+   context needs a split, or a new context placed in contract A's order and H's list.
