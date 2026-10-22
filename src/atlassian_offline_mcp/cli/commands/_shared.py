@@ -27,7 +27,8 @@ def enter(arguments: argparse.Namespace) -> int:
     """Load the settings, with the flags given, run the chosen subcommand, write its result.
 
     Refused settings exit 2 before the run is imported, as does what the command refuses
-    of them and of its arguments, or a program that it needs missing from PATH; else the
+    of them and of its arguments, a program that it needs missing from PATH, or a file
+    that it reads missing; else the
     values ignored go to stderr, after the summary of a command that writes and before
     the command to copy. Such a command then asks, unless told not to, and is refused
     where no one can answer: declined, it exits 1, refused, 2, both before the run is
@@ -60,6 +61,14 @@ def enter(arguments: argparse.Namespace) -> int:
         refusal = command.refused(arguments, values_of(loaded)) if command.refused else None
         refusal = refusal or next(
             (f"{name}: not found on PATH" for name in command.programs if not shutil.which(name)),
+            None,
+        )
+        refusal = refusal or next(
+            (
+                f"{path}: not a file"
+                for path in (getattr(arguments, dest) for dest in command.files)
+                if not Path(path).is_file()
+            ),
             None,
         )
         if refusal is not None:

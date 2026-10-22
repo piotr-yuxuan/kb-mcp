@@ -14,6 +14,7 @@ import select
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, override
 
 import pytest
@@ -27,7 +28,6 @@ from tests.test_download import SITE, FakeSite
 
 if TYPE_CHECKING:
     import argparse
-    from pathlib import Path
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
@@ -40,11 +40,13 @@ INTERRUPTED = 130
 QUESTION = "Proceed? [y/N] "
 REFUSAL = "refused: no terminal to ask on; pass --yes to run without the question\n"
 WAIT = 30  # seconds for the child to ask, or to end
+# A golden file, which eval needs to be one: plan 002's set.
+GOLDEN = str(Path(__file__).parents[1] / "sandbox" / "golden.yaml")
 # Each command that writes, by plan 015: what it needs besides options to be parsed and
 # to pass its declaration's checks, and the module that runs it.
 WRITING = {
     "download": (["--site", SITE, "--space", "MFS"], "download"),
-    "eval": (["golden.yaml"], "evaluate"),
+    "eval": ([GOLDEN], "evaluate"),
     "index": ([], "index"),
     "login": (["--site", SITE], "login"),
     "mirror": ([], "mirror"),
@@ -69,7 +71,8 @@ REFUSED_FIRST = [
     (["login"], {}, "site: not set"),
     (["index"], BY_MEANING | ELSEWHERE, "embedding_url: not an address of this machine"),
     (["index", "--allow-remote-embeddings"], BY_MEANING | IN_CLEAR, "over https only"),
-    (["eval", "golden.yaml"], ELSEWHERE, "embedding_url: not an address of this machine"),
+    (["eval", GOLDEN], ELSEWHERE, "embedding_url: not an address of this machine"),
+    (["eval", "missing.yaml"], {}, "missing.yaml: not a file"),
     (["mirror"], {"PATH": ""}, "pandoc: not found on PATH"),
 ]
 

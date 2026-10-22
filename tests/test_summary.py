@@ -195,6 +195,8 @@ def test_a_model_named_on_the_command_line_replaces_the_setting(
 ) -> None:
     """The run uses ``eval``'s --model and ``model check``'s name; without them, the setting."""
     monkeypatch.setattr(model_command, "run", lambda *_: (0, None))
+    monkeypatch.chdir(home)
+    (home / "golden.yaml").write_text("", "utf-8")
     config = home / "config.toml"
     config.write_text('model = "tiny"\n', "utf-8")
     command, named = given
@@ -383,6 +385,7 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     --model, an option of its own, is.
     """
     monkeypatch.chdir(home)
+    (home / "golden.yaml").write_text("", "utf-8")
     config = home / "config.toml"
     config.write_text(
         f'site = "{SITE}"\nmodel = "tiny"\n[sources.jira]\nprojects = ["PRB"]\n', "utf-8"

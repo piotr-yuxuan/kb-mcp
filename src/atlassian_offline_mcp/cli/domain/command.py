@@ -46,7 +46,9 @@ class Command:
     on, such as a download without a site, which exits 2 before the summary. Each lives
     in the command's own declaration and names no type of ``config``, so that declaring
     the command stays light. ``programs`` names those that the run needs on PATH, such
-    as pandoc, without which it is refused alike.
+    as pandoc, without which it is refused alike; ``files`` names, by their ``dest``,
+    the arguments that name a file the run reads, such as ``eval``'s golden file,
+    refused alike when it is not one.
     """
 
     name: str
@@ -60,6 +62,7 @@ class Command:
     described: Described | None = None
     refused: Refused | None = None
     programs: tuple[str, ...] = ()
+    files: tuple[str, ...] = ()
 
     def setting_flags(self) -> dict[str, tuple[str, str]]:
         """Map the ``dest`` of each flag among the actions to its option and its setting.

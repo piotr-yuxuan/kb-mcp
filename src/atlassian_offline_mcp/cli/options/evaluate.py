@@ -59,5 +59,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             writes=True,
             unapplied=models_named,
             refused=endpoint_elsewhere,
+            files=("golden",),
         )
     )
