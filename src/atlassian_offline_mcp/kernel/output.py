@@ -1,4 +1,4 @@
-"""How a run reports: the level of what it says, how its result is written, its terminals.
+"""How a run reports: the level of what it says, -q, how its result is written, its terminals.
 
 Standard library only, and light, since the parser takes its choices from here; the
 entry builds ``Output`` from the options, for the command line and plan 016's logs.
@@ -24,18 +24,16 @@ FORMATS: tuple[Format, ...] = ("text", "json")
 class Output:
     """How a run reports, as its options and its terminals say.
 
-    ``level`` is the least severe of what it says on stderr; ``summary`` and ``format``
-    say how its result is written on stdout. ``stdin_terminal`` and ``stderr_terminal``
-    say whether someone can read a question there and answer it.
+    ``level`` is the least severe of what it says on stderr, and leaves stdout alone;
+    ``summary`` and ``format`` say how its result is written on stdout. ``quiet``, from
+    -q alone, leaves a result as text unwritten, and what is said before a run that asks
+    nothing. ``stdin_terminal`` and ``stderr_terminal`` say whether someone can read a
+    question there and answer it.
     """
 
     level: Level
     summary: Summary
     format: Format
+    quiet: bool
     stdin_terminal: bool
     stderr_terminal: bool
-
-    @property
-    def quiet(self) -> bool:
-        """Say whether a result as text goes unwritten: at errors alone, as -q asks."""
-        return self.level == "error"

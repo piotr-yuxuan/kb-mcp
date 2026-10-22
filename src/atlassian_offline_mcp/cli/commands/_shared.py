@@ -44,6 +44,7 @@ def enter(arguments: argparse.Namespace) -> int:
         arguments.level,
         arguments.summary,
         arguments.format,
+        quiet=arguments.quiet,
         stdin_terminal=sys.stdin.isatty(),
         stderr_terminal=sys.stderr.isatty(),
     )

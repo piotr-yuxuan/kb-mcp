@@ -324,6 +324,20 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     assert len(runs) == len(["short", "detailed", "quiet"])
 
 
+@pytest.mark.usefixtures("runs")
+def test_the_level_error_says_the_summary_and_the_command_as_the_default_does(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Only -q leaves them out: a level is of what is said, not of what the run is."""
+    options = ["index", "--yes", "--config", str(home / "none.toml")]
+    assert main(options) == 0
+    said = capsys.readouterr().err
+    assert said.startswith("index, with these settings:\n")
+    assert "atlassian-offline-mcp index \\\n" in said
+    assert main([*options, "--log-level", "error"]) == 0
+    assert capsys.readouterr().err == said
+
+
 def test_a_command_s_described_lines_end_its_summary(
     home: Path, capsys: CaptureFixture[str], runs: list[tuple[argparse.Namespace, Loaded]]
 ) -> None:

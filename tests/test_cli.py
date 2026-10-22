@@ -469,16 +469,33 @@ def test_serve_and_completion_take_no_format_nor_summary(
     assert "unrecognized arguments: --format json --summary detailed" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("quiet", [["-q"], ["--log-level", "error"]])
 def test_check_quiet_prints_nothing_but_still_its_document(
-    home: Path, quiet: list[str], capsys: CaptureFixture[str]
+    home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """At errors alone, a result as text goes unwritten; one in JSON is written all the same."""
-    options = ["check", "--config", str(home / "none.toml"), *quiet]
+    """-q leaves a result as text unwritten, a site given too; one in JSON is written still."""
+    site = "https://quiet.example.invalid"
+    options = ["check", "--config", str(home / "none.toml"), "--site", site, "-q"]
     assert main(options) == 0
     assert capsys.readouterr() == ("", "")
     assert main([*options, "--format", "json"]) == 0
-    assert json.loads(capsys.readouterr().out)["layers"] == {}
+    assert json.loads(capsys.readouterr().out)["layers"] == {"site": "--site"}
+
+
+@pytest.mark.parametrize(
+    "level",
+    [*(["--log-level", named] for named in ("debug", "info", "warning", "error")), ["-v"], ["-vv"]],
+)
+def test_a_level_leaves_check_s_listing_as_the_default_writes_it(
+    home: Path, level: list[str], capsys: CaptureFixture[str]
+) -> None:
+    """The level is of what is said on stderr, as Unix has it: only -q leaves stdout empty."""
+    site = "https://loud.example.invalid"
+    options = ["check", "--config", str(home / "none.toml"), "--site", site]
+    assert main(options) == 0
+    default = capsys.readouterr()
+    assert default.out == f"site: {site}\n"
+    assert main([*options, *level]) == 0
+    assert capsys.readouterr() == default
 
 
 def test_check_as_json_gives_settings_layers_and_ignored_values_secrets_masked(

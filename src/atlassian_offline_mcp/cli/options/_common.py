@@ -40,20 +40,38 @@ class Verbose(argparse.Action):
         setattr(namespace, self.dest, VERBOSITY[min(step, len(VERBOSITY) - 1)])
 
 
+class Quiet(argparse.Action):
+    """``-q``: write no result as text, and say errors alone, at the level error."""
+
+    @override
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: object,
+        option_string: str | None = None,
+    ) -> None:
+        """Set ``quiet``, and the level to error."""
+        setattr(namespace, self.dest, True)
+        namespace.level = "error"
+
+
 def add_output_options(parser: argparse.ArgumentParser, *, result: bool = True) -> None:
     """Add -q, -v and --log-level, which exclude one another, then --format and --summary.
 
     Each of the three sets ``level``: warning by default, info with -v, debug with -vv,
-    error with -q. Without ``result``, for a command whose output is its own, such as a
-    protocol, --format and --summary are not offered, and take their defaults.
+    error with -q. -q alone also sets ``quiet``, which leaves a result as text unwritten,
+    as Unix has it; a level leaves stdout alone. Without ``result``, for a command whose
+    output is its own, such as a protocol, --format and --summary are not offered, and
+    take their defaults.
     """
-    parser.set_defaults(level=VERBOSITY[0], format=FORMATS[0], summary=SUMMARIES[0])
+    parser.set_defaults(level=VERBOSITY[0], quiet=False, format=FORMATS[0], summary=SUMMARIES[0])
     levels = parser.add_mutually_exclusive_group()
     levels.add_argument(
         "-q",
-        dest="level",
-        action="store_const",
-        const="error",
+        dest="quiet",
+        action=Quiet,
+        nargs=0,
         help="say errors alone, and write no result as text",
     )
     levels.add_argument(
@@ -63,10 +81,7 @@ def add_output_options(parser: argparse.ArgumentParser, *, result: bool = True) 
         "--log-level",
         dest="level",
         choices=LEVELS,
-        help=(
-            "say what is of this level or above; warning by default; error, as -q, also"
-            " writes no result as text"
-        ),
+        help="say what is of this level or above; warning by default",
     )
     if result:
         parser.add_argument(
