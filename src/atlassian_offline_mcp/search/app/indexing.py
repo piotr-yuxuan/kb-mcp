@@ -11,17 +11,17 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters import sqlite_index, vector_store
-from atlassian_offline_mcp.domain.search import Embedded, passages, sections
 from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.mirror.adapters import markdown
+from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
+from atlassian_offline_mcp.search.domain.search import Embedded, passages, sections
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
     from pathlib import Path
 
-    from atlassian_offline_mcp.adapters.embedding import Embedder
+    from atlassian_offline_mcp.search.adapters.embedding import Embedder
 
 
 class MirrorMissingError(Exception):

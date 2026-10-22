@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.embedding import ModelError, connect
 from atlassian_offline_mcp.app.evaluation import (
     EvaluationError,
     GoldenError,
@@ -27,6 +26,7 @@ from atlassian_offline_mcp.commands._options import (
     settings_of,
 )
 from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
 
 if TYPE_CHECKING:
     import argparse

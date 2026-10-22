@@ -20,8 +20,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from atlassian_offline_mcp.adapters import vector_store
-from atlassian_offline_mcp.domain.search import (
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+from atlassian_offline_mcp.search.adapters import vector_store
+from atlassian_offline_mcp.search.domain.search import (
     Embedded,
     Entry,
     Filters,
@@ -30,12 +31,11 @@ from atlassian_offline_mcp.domain.search import (
     Score,
     Summary,
 )
-from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
-    from atlassian_offline_mcp.domain.search import Section
+    from atlassian_offline_mcp.search.domain.search import Section
 
 # 1 from plan 006; 3 from plan 011, with vectors and a build id.
 SCHEMA = "3"

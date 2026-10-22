@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-from atlassian_offline_mcp.adapters import vector_store
-from atlassian_offline_mcp.adapters.embedding import ModelError
-from atlassian_offline_mcp.adapters.sqlite_index import reading
-from atlassian_offline_mcp.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.cli import main
-from atlassian_offline_mcp.domain.search import Embedded
+from atlassian_offline_mcp.search.adapters import vector_store
+from atlassian_offline_mcp.search.adapters.embedding import ModelError
+from atlassian_offline_mcp.search.adapters.sqlite_index import reading
+from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
+from atlassian_offline_mcp.search.domain.search import Embedded
 from tests.endpoint import DIMENSIONS, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, fillers, page, write
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from numpy.typing import NDArray
 
-    from atlassian_offline_mcp.adapters.embedding import ApiEmbedder
+    from atlassian_offline_mcp.search.adapters.embedding import ApiEmbedder
 
 BODY = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
 FILLER_PAGES = 5

@@ -14,8 +14,8 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.shared.message import SessionMessage
 from mcp_types import JSONRPCError, JSONRPCResponse, TextContent, jsonrpc_message_adapter
 
-from atlassian_offline_mcp.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.cli import main
+from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from tests.answers import TOOLS, estimate, parts
 from tests.endpoint import Scripted, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write

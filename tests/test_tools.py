@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.adapters import sqlite_index
 from atlassian_offline_mcp.app.tools import UnanswerableError
+from atlassian_offline_mcp.search.adapters import sqlite_index
 from tests.answers import built, continuation, follow, parts
 from tests.mirrors import FILLERS, LOREM, MOMENT, issue, location, page
 

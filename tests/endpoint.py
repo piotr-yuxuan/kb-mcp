@@ -29,12 +29,12 @@ from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 import httpx
 import numpy as np
 
-from atlassian_offline_mcp.adapters.embedding import Endpoint, connect, endpoint
+from atlassian_offline_mcp.search.adapters.embedding import Endpoint, connect, endpoint
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    from atlassian_offline_mcp.adapters.embedding import ApiEmbedder
+    from atlassian_offline_mcp.search.adapters.embedding import ApiEmbedder
 
 REACHABLE: set[int] = set()
 FIXTURES = Path(__file__).parent / "fixtures" / "ollama"

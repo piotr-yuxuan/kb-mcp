@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.adapters import sqlite_index
-from atlassian_offline_mcp.adapters.sqlite_index import UnavailableIndexError, reading
-from atlassian_offline_mcp.app.indexing import build_index
 from atlassian_offline_mcp.cli import main
+from atlassian_offline_mcp.search.adapters import sqlite_index
+from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
+from atlassian_offline_mcp.search.app.indexing import build_index
 from tests.mirrors import FILLERS, MOMENT, fillers, issue, location, page, write
 
 if TYPE_CHECKING:

@@ -10,8 +10,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.adapters.embedding import ModelError
-from atlassian_offline_mcp.adapters.sqlite_index import reading
 from atlassian_offline_mcp.app import evaluation
 from atlassian_offline_mcp.app.evaluation import (
     EvaluationError,
@@ -21,12 +19,14 @@ from atlassian_offline_mcp.app.evaluation import (
     record,
     table,
 )
-from atlassian_offline_mcp.app.indexing import build_index
-from atlassian_offline_mcp.app.meaning import Meaning
 from atlassian_offline_mcp.app.tools import Library
 from atlassian_offline_mcp.cli import main
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.domain.evaluation import holm
+from atlassian_offline_mcp.search.adapters.embedding import ModelError
+from atlassian_offline_mcp.search.adapters.sqlite_index import reading
+from atlassian_offline_mcp.search.app.indexing import build_index
+from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.endpoint import DIGEST, Scripted, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
 
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.adapters.embedding import Embedder
+    from atlassian_offline_mcp.search.adapters.embedding import Embedder
 
 GOLDEN = """
 - id: q1

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
-    from atlassian_offline_mcp.domain.search import Entry, Passage, Summary
+    from atlassian_offline_mcp.search.domain.search import Entry, Passage, Summary
 
 BUDGET = 4_000  # estimated tokens of an answer to arguments at or below their defaults
 CEILING = 10_000  # estimated tokens of any answer

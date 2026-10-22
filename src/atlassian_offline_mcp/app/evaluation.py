@@ -15,8 +15,6 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from atlassian_offline_mcp.app.indexing import Embedding, build_index
-from atlassian_offline_mcp.app.meaning import Meaning
 from atlassian_offline_mcp.app.tools import Library
 from atlassian_offline_mcp.domain.evaluation import (
     CUTOFF,
@@ -31,15 +29,17 @@ from atlassian_offline_mcp.domain.evaluation import (
     percentile,
     plain,
 )
-from atlassian_offline_mcp.domain.search import WORD
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
+from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
+from atlassian_offline_mcp.search.app.meaning import Meaning
+from atlassian_offline_mcp.search.domain.search import WORD
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from datetime import datetime
 
-    from atlassian_offline_mcp.adapters.embedding import Embedder
     from atlassian_offline_mcp.config.domain.settings import SearchMode, Settings
+    from atlassian_offline_mcp.search.adapters.embedding import Embedder
 
 MODES: tuple[SearchMode, ...] = ("lexical", "semantic", "hybrid")
 FIELDS = frozenset({"id", "question", "expected", "partial", "groups", "evidence"})

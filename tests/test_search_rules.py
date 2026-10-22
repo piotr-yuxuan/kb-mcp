@@ -6,7 +6,7 @@ from datetime import timedelta
 
 import pytest
 
-from atlassian_offline_mcp.domain.search import (
+from atlassian_offline_mcp.search.domain.search import (
     MAX_WORDS,
     Score,
     fuse,

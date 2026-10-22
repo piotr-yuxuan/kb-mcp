@@ -14,14 +14,14 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.embedding import ModelError
+from atlassian_offline_mcp.search.adapters.embedding import ModelError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from atlassian_offline_mcp.adapters.embedding import Embedder
-    from atlassian_offline_mcp.adapters.sqlite_index import Reader
-    from atlassian_offline_mcp.domain.search import Embedded, Filters, Pieces, Score
+    from atlassian_offline_mcp.search.adapters.embedding import Embedder
+    from atlassian_offline_mcp.search.adapters.sqlite_index import Reader
+    from atlassian_offline_mcp.search.domain.search import Embedded, Filters, Pieces, Score
 
 # The documents nearest a query that a search by meaning gives, at most.
 DEPTH = 100

@@ -8,7 +8,6 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.embedding import ModelError, connect
 from atlassian_offline_mcp.commands._options import (
     add_embedding_options,
     add_settings_options,
@@ -18,6 +17,7 @@ from atlassian_offline_mcp.commands._options import (
     settings_of,
 )
 from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
 
 if TYPE_CHECKING:
     import argparse

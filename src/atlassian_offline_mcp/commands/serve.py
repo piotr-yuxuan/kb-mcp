@@ -15,8 +15,6 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 
-from atlassian_offline_mcp.adapters.embedding import connect
-from atlassian_offline_mcp.app.meaning import Meaning
 from atlassian_offline_mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.commands._options import (
     add_embedding_options,
@@ -25,6 +23,8 @@ from atlassian_offline_mcp.commands._options import (
     settings_of,
 )
 from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.search.adapters.embedding import connect
+from atlassian_offline_mcp.search.app.meaning import Meaning
 
 if TYPE_CHECKING:
     import argparse

@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from atlassian_offline_mcp.adapters.sqlite_index import reading
-from atlassian_offline_mcp.domain.search import Filters
 from atlassian_offline_mcp.kernel.fields import Fields
+from atlassian_offline_mcp.search.adapters.sqlite_index import reading
+from atlassian_offline_mcp.search.domain.search import Filters
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

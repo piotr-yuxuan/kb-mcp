@@ -15,10 +15,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, TypedDict
 
-from atlassian_offline_mcp.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.app import responses
-from atlassian_offline_mcp.app.meaning import Nearest
-from atlassian_offline_mcp.domain.search import (
+from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
+from atlassian_offline_mcp.search.app.meaning import Nearest
+from atlassian_offline_mcp.search.domain.search import (
     MAX_WORDS,
     Filters,
     Passage,
@@ -34,10 +34,10 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from atlassian_offline_mcp.adapters.sqlite_index import Reader
-    from atlassian_offline_mcp.app.meaning import Meaning
     from atlassian_offline_mcp.config.domain.settings import SearchMode as Mode
-    from atlassian_offline_mcp.domain.search import Entry, Plan
+    from atlassian_offline_mcp.search.adapters.sqlite_index import Reader
+    from atlassian_offline_mcp.search.app.meaning import Meaning
+    from atlassian_offline_mcp.search.domain.search import Entry, Plan
 
 SEARCH_LIMIT = 8
 SEARCH_LIMITS = (1, 50)

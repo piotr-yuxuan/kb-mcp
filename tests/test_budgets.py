@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.adapters.embedding import ModelError
-from atlassian_offline_mcp.app.meaning import Meaning
 from atlassian_offline_mcp.app.responses import cut
 from atlassian_offline_mcp.app.responses import page as fitted
 from atlassian_offline_mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
+from atlassian_offline_mcp.search.adapters.embedding import ModelError
+from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
 from tests.endpoint import connector
 from tests.mirrors import page
@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 
     from _pytest.tempdir import TempPathFactory
 
-    from atlassian_offline_mcp.adapters.embedding import Embedder
     from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+    from atlassian_offline_mcp.search.adapters.embedding import Embedder
 
 SIZE = 300_000
 # The documents a search by meaning gives at most, as the plan says.

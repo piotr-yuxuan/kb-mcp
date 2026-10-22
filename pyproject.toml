@@ -46,7 +46,6 @@ layers = [
   "atlassian_offline_mcp.cli",
   "atlassian_offline_mcp.commands",
   "atlassian_offline_mcp.app",
-  "atlassian_offline_mcp.adapters",
   "atlassian_offline_mcp.domain",
 ]
 
@@ -55,8 +54,8 @@ name = "The server, the index and the evaluation never reach the site, its brows
 type = "forbidden"
 source_modules = [
   "atlassian_offline_mcp.app.tools",
-  "atlassian_offline_mcp.app.meaning",
-  "atlassian_offline_mcp.app.indexing",
+  "atlassian_offline_mcp.search.app.meaning",
+  "atlassian_offline_mcp.search.app.indexing",
   "atlassian_offline_mcp.app.evaluation",
   "atlassian_offline_mcp.commands.serve",
   "atlassian_offline_mcp.commands.index",
