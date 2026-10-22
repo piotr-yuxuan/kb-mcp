@@ -180,6 +180,8 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
         "COMP_POINT": str(len(typed)),
         "_ARGCOMPLETE_STDOUT_FILENAME": str(home / "completions"),
     }
+    # Only --version reads the package's metadata, which costs as much as the parser.
+    parser_refused = RUNS_PACKAGES | {"importlib.metadata"}
     children = (
         (
             subprocess.run(
@@ -203,7 +205,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
                 cwd=home,
                 check=False,
             ),
-            RUNS_PACKAGES,
+            parser_refused,
         ),
         (
             subprocess.run(
@@ -223,7 +225,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
                 cwd=home,
                 check=False,
             ),
-            RUNS_PACKAGES,
+            parser_refused,
         ),
         (
             subprocess.run(
@@ -235,7 +237,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
                 cwd=home,
                 check=False,
             ),
-            RUNS_PACKAGES,
+            parser_refused,
         ),
         (
             subprocess.run(
@@ -254,10 +256,11 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
     for child, refused in children:
         assert child.returncode == 0
         imported = {
-            line.rsplit("|", 1)[-1].strip().split(".")[0]
+            line.rsplit("|", 1)[-1].strip()
             for line in child.stderr.splitlines()
             if line.startswith("import time:")
         }
+        imported |= {module.split(".")[0] for module in imported}
         assert {"argparse", "atlassian_offline_mcp"} <= imported
         assert not imported & refused
 
