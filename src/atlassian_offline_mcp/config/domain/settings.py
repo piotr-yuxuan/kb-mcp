@@ -14,20 +14,17 @@ import ipaddress
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal, get_args, get_origin, override
+from typing import TYPE_CHECKING, Annotated, Literal, get_args, get_origin
 from urllib.parse import urlsplit
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr, ValidationError
 from pydantic_core import PydanticCustomError
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from atlassian_offline_mcp.kernel.content import MODEL_NAME, PROJECT_KEY, SPACE_KEY
 
 if TYPE_CHECKING:
     import re
     from collections.abc import Iterable, Mapping
-
-    from pydantic_settings import PydanticBaseSettingsSource
 
 DEFAULT_DATA_DIR = "~/atlassian-offline-mcp"
 # The embedding model that indexes by meaning, as the endpoint names it. Chosen by plan
@@ -186,20 +183,14 @@ class Sources(BaseModel):
     jira: JiraSource = Field(default_factory=JiraSource, description="Jira, on the site.")
 
 
-class Settings(BaseSettings):
+class Settings(BaseModel):
     """What every command needs to know: the site, the data directory, the defaults.
 
-    The loader builds it from the layers' merge (``settings_of``): it reads nothing of
-    its own. Its data directory is the home's once loaded, and resolved.
+    The loader builds it from the layers' merge (``settings_of``). Its data directory is
+    the home's once loaded, and resolved.
     """
 
-    model_config = SettingsConfigDict(
-        frozen=True,
-        extra="forbid",
-        hide_input_in_errors=True,
-        env_prefix=PREFIX,
-        env_nested_delimiter=NESTING,
-    )
+    model_config = TABLE
 
     site: Site | None = Field(
         default=None,
@@ -243,19 +234,6 @@ class Settings(BaseSettings):
     sources: Sources = Field(
         default_factory=Sources, description="The sources of the mirror, each a table."
     )
-
-    @classmethod
-    @override
-    def settings_customise_sources(
-        cls,
-        settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Take the values given alone: the loader reads the layers and merges them."""
-        return (init_settings,)
 
     @property
     def raw(self) -> Path:

@@ -154,6 +154,17 @@ def test_the_old_lists_at_the_top_of_the_file_are_refused_with_their_new_place(
     assert str(refused.value) == f"{key} ({FILE}): moved, as {key} under {table}"
 
 
+@pytest.mark.parametrize("key", ["_cli_parse_args", "_env_file", "unknown"])
+def test_the_model_refuses_a_key_that_names_no_setting_whatever_its_layer(key: str) -> None:
+    """A key that names no setting is refused, from any layer, never taken as an option.
+
+    pydantic-settings' models took ``_cli_parse_args`` as one, which parsed sys.argv,
+    and ``_env_file``, which read the file named.
+    """
+    with pytest.raises(SettingsError, match=re.escape(f"{key} (a layer):")):
+        settings_of([Entry((key,), "/etc/passwd", "a layer")])
+
+
 def test_a_refusal_never_holds_the_value() -> None:
     """The setting and its layer are named; what the layer held is not."""
     with pytest.raises(SettingsError) as refused:
