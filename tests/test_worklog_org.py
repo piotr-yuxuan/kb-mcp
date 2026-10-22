@@ -78,7 +78,7 @@ def one(text: str) -> dict[str, str]:
         ("* LATER Undeclared", (1, None, None, False, "LATER Undeclared", ())),
         ("* COMMENT", (1, None, None, True, "", ())),
         ("* :only:tags:", (1, None, None, False, "", ("only", "tags"))),
-        ("*", (1, None, None, False, "", ())),
+        ("** ", (2, None, None, False, "", ())),
         ("* Time 10:30 stays", (1, None, None, False, "Time 10:30 stays", ())),
     ],
 )
@@ -98,9 +98,11 @@ def test_a_heading_is_read_into_its_parts(
     ) == expected
 
 
-@pytest.mark.parametrize("line", ["*bold* text", " * indented", "Text", "#+TITLE: x", ""])
+@pytest.mark.parametrize(
+    "line", ["*bold* text", " * indented", "*", "**", "Text", "#+TITLE: x", ""]
+)
 def test_other_lines_are_not_headings(line: str) -> None:
-    """A star must begin the line and be followed by a blank or nothing."""
+    """A star must begin the line and be followed by a blank, as org and pandoc read it."""
     assert org.heading(line, KEYWORDS) is None
 
 
@@ -147,6 +149,12 @@ def test_keywords_come_from_the_file_else_the_inherited_one_else_todo_and_done()
     assert org.read("#+TODO: LATER\n* WAITING x\n", parent).keywords == {"LATER"}
     assert org.read("* WAITING x\n").subtrees[0].heading.keyword is None
     assert org.read("* DONE x\n").keywords == {"TODO", "DONE"}
+
+
+def test_lines_end_at_a_line_feed_alone() -> None:
+    """A carriage return before it goes; other breaks, as U+2028 or a form feed, are text."""
+    parsed = org.read("* A\r\nx\u2028* B\x0c* C\x85* D\r\n* E\n")
+    assert [subtree.heading.title for subtree in parsed.subtrees] == ["A", "E"]
 
 
 def test_subtrees_are_the_top_level_headings_with_what_follows() -> None:

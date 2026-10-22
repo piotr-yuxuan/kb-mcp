@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 # The keywords of a file that declares none, as org and pandoc have them.
 DEFAULT_KEYWORDS = frozenset({"TODO", "DONE"})
 ARCHIVE = "ARCHIVE"
-# A heading: stars, then blanks and its text, or nothing.
-HEADING = re.compile(r"(\*+)(?:[ \t]+(.*?))?[ \t]*")
+# A heading: stars, then blanks and its text, which may be empty.
+HEADING = re.compile(r"(\*+)[ \t]+(.*?)[ \t]*")
 PRIORITY = re.compile(r"(\[#[A-Za-z0-9]+\])(?:[ \t]+|$)")
 COMMENT = re.compile(r"COMMENT(?:[ \t]+|$)")
 # Tags end a heading: names between colons, after a blank or alone.
@@ -89,7 +89,7 @@ def heading(line: str, keywords: Collection[str]) -> Heading | None:
     match = HEADING.fullmatch(line)
     if match is None:
         return None
-    rest = match[2] or ""
+    rest = match[2]
     first = rest.split(maxsplit=1)[0] if rest else ""
     keyword = first if first in keywords else None
     if keyword is not None:
@@ -154,7 +154,8 @@ def read(text: str, inherited: OrgFile | None = None) -> OrgFile:
     Its keywords are those it declares, else those of the ``inherited`` file, else TODO
     and DONE; the text before its first heading belongs to no subtree.
     """
-    lines = tuple(text.splitlines())
+    # Org's lines end at a line feed alone, not at the other breaks Python knows.
+    lines = tuple(line.removesuffix("\r") for line in text.removesuffix("\n").split("\n"))
     settings = [
         (match[1].upper(), match[2] or "", line)
         for line in lines
