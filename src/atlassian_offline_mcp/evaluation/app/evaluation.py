@@ -30,6 +30,7 @@ from atlassian_offline_mcp.evaluation.domain.evaluation import (
 )
 from atlassian_offline_mcp.evaluation.domain.golden import Golden
 from atlassian_offline_mcp.mcp.app.tools import Library
+from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning
 
@@ -145,7 +146,9 @@ def evaluate(
 
     Each model's index is ``<evaluations>/indexes/<model>.sqlite``, its name's ``/``
     and ``:`` written ``_``. Raises EvaluationError when a mode by meaning falls back to
-    words, which would measure words twice, and ModelError for a model that fails.
+    words, which would measure words twice, and ModelError for a model that fails. For
+    each model, its index's build reports its own tasks, then the task ``questions``
+    every question in every mode, each by its id.
     """
     runs: list[Run] = []
     for embedder in embedders:
@@ -167,26 +170,30 @@ def evaluate(
             raise EvaluationError(message)
         # Untimed: the first search by meaning reads the index's vectors.
         library.ranked(questions[0].text, "hybrid")
-        for mode in MODES:
-            run.per[mode], run.ranks[mode], spent = {}, {}, []
-            for question in questions:
-                started = clock()
-                shown, note = library.ranked(question.text, mode, limit=CUTOFF)
-                spent.append(clock() - started)
-                if note:
-                    message = f"{name}, {mode}:{note}"
-                    raise EvaluationError(message)
-                paths = [each.path for each in shown]
-                texts = {each.path: each.text for each in shown}
-                run.per[mode][question.id] = measure(paths, question, texts)
-                run.ranks[mode][question.id] = [
-                    paths.index(path) + 1 if path in paths else None for path in question.expected
+        with task("questions", len(MODES) * len(questions)) as asked:
+            for mode in MODES:
+                run.per[mode], run.ranks[mode], spent = {}, {}, []
+                for question in asked.each(questions, lambda one: one.id):
+                    started = clock()
+                    shown, note = library.ranked(question.text, mode, limit=CUTOFF)
+                    spent.append(clock() - started)
+                    if note:
+                        message = f"{name}, {mode}:{note}"
+                        raise EvaluationError(message)
+                    paths = [each.path for each in shown]
+                    texts = {each.path: each.text for each in shown}
+                    run.per[mode][question.id] = measure(paths, question, texts)
+                    run.ranks[mode][question.id] = [
+                        paths.index(path) + 1 if path in paths else None
+                        for path in question.expected
+                    ]
+                run.groups[mode] = averages(run.per[mode], questions)
+                run.times[mode] = (median(spent), percentile(spent, TAIL))
+                lexical = [
+                    run.per["lexical"][question.id].reciprocal_rank for question in questions
                 ]
-            run.groups[mode] = averages(run.per[mode], questions)
-            run.times[mode] = (median(spent), percentile(spent, TAIL))
-            lexical = [run.per["lexical"][question.id].reciprocal_rank for question in questions]
-            moded = [run.per[mode][question.id].reciprocal_rank for question in questions]
-            run.pvalues[mode] = paired_test(lexical, moded)
+                moded = [run.per[mode][question.id].reciprocal_rank for question in questions]
+                run.pvalues[mode] = paired_test(lexical, moded)
         runs.append(run)
     tests = [(run, mode) for run in runs for mode in MODES[1:]]
     adjusted = holm([run.pvalues[mode] for run, mode in tests])

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 import yaml
+from structlog.testing import capture_logs
 
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
@@ -350,6 +351,19 @@ def ticking() -> Callable[[], float]:
     """Return a clock that moves one second at each reading."""
     ticks = count()
     return lambda: float(next(ticks))
+
+
+def test_a_model_reports_its_index_s_tasks_then_every_question_in_every_mode(
+    data: Path,
+) -> None:
+    """Its files, its texts to embed, then the questions asked by words, meaning and both."""
+    questions = golden(data)
+    with capture_logs() as events:
+        evaluate(Settings(data_dir=data, model="tiny"), questions, [tiny()], ticking(), MOMENT)
+    reported = [(each["task"], each["done"], each["total"]) for each in events if "task" in each]
+    assert [task for task, _, _ in reported] == ["files", "texts to embed", "questions"]
+    assert all(done == total for _, done, total in reported)
+    assert reported[-1][1] == 3 * len(questions)  # lexical, semantic and hybrid
 
 
 def test_a_ref_missing_from_the_index_evaluated_is_refused(data: Path) -> None:
