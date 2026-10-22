@@ -21,6 +21,9 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.sources.atlassian.app.download import Outcome
 
 MEBIBYTE = 1024 * 1024
+# The counts that a short summary shows: the documents fetched, or to fetch, of each kind,
+# and the files downloaded, or to download.
+SHORT_COUNTS = (": fetched", ": to fetch", "files: downloaded", "files: to download")
 
 
 class RefusedOptionsError(ValueError):
@@ -79,6 +82,16 @@ def run(arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, 
     return outcome.status or ExitStatus.OK, outcome
 
 
-def text(outcome: Outcome, _summary: Summary) -> str:
-    """Write each count of what the run did, or would do."""
-    return "".join(f"{what}: {number}\n" for what, number in sorted(outcome.report.counts.items()))
+def text(outcome: Outcome, summary: Summary) -> str:
+    """Write the documents fetched by kind and the files, or those a dry run would; then failures.
+
+    In detail, every count of what the run did, or would do, comes before the failures.
+    """
+    shown = [
+        (what, number)
+        for what, number in sorted(outcome.report.counts.items())
+        if summary == "detailed" or what.endswith(SHORT_COUNTS)
+    ]
+    return "".join(f"{what}: {number}\n" for what, number in shown) + (
+        f"failures: {outcome.report.failures}\n"
+    )
