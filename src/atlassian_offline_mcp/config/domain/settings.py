@@ -33,7 +33,7 @@ from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from atlassian_offline_mcp.kernel.content import MODEL_NAME, PROJECT_KEY, SPACE_KEY
-from atlassian_offline_mcp.kernel.endpoint import endpoint_host
+from atlassian_offline_mcp.kernel.endpoint import endpoint_host, loopback
 
 if TYPE_CHECKING:
     import re
@@ -59,6 +59,11 @@ DEFAULT_LAYER = "default"
 MOVED = {"spaces": "[sources.confluence]", "projects": "[sources.jira]"}
 # The type of every refusal of a value by the settings' rules.
 RULE = "setting"
+# What telemetry's endpoint must be, since what it is sent holds titles and queries.
+TELEMETRY_ENDPOINT = (
+    "an http address of this machine, with a port and no path, such as"
+    " http://127.0.0.1:4318; write 127.0.0.1 for localhost"
+)
 # Folders that may be synchronised to a cloud, under the home directory or by name.
 SYNCED_UNDER_HOME = (
     Path("Library/Mobile Documents"),
@@ -110,6 +115,19 @@ def endpoint_address(value: str) -> str:
     return value.rstrip("/")
 
 
+def telemetry_address(value: str) -> str:
+    """Give telemetry's endpoint as ``http://<address>:<port>``; refuse another.
+
+    It is an embedding endpoint's address, over http, to a literal address of this
+    machine, with a port and no path: OTLP's own paths follow it. Raises
+    PydanticCustomError, a ValueError, saying ``TELEMETRY_ENDPOINT``.
+    """
+    parts = urlsplit(value) if loopback(value) else None
+    if parts is None or parts.scheme != "http" or parts.port is None or parts.path not in {"", "/"}:
+        raise PydanticCustomError(RULE, TELEMETRY_ENDPOINT)
+    return f"http://{parts.netloc}"
+
+
 def local_path(path: Path) -> Path:
     """Accept an absolute path; refuse another, which would lie below the current directory.
 
@@ -132,6 +150,7 @@ ModelName = Annotated[
     str, matching(MODEL_NAME, "the name of an embedding model, such as qwen3-embedding:0.6b")
 ]
 EmbeddingUrl = Annotated[str, AfterValidator(endpoint_address)]
+TelemetryEndpoint = Annotated[str, AfterValidator(telemetry_address)]
 # Every table of the settings: frozen, and refusing a key it does not know.
 TABLE = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
 
@@ -178,6 +197,22 @@ class Logs(BaseModel):
             "The folder of each run's log file, ~ being the home directory: by default the"
             " user's log folder, where the platform keeps them; never under a synchronised"
             " folder, nor inside a git working tree."
+        ),
+    )
+
+
+class Telemetry(BaseModel):
+    """Where traces, metrics and logs go, if anywhere: nowhere unless an endpoint is set."""
+
+    model_config = TABLE
+
+    endpoint: TelemetryEndpoint | None = Field(
+        default=None,
+        description=(
+            "The OTLP endpoint on this machine that traces, metrics and logs go to, over"
+            " http with a port and no path, such as http://127.0.0.1:4318; unset, none is"
+            " sent. Else OTEL_EXPORTER_OTLP_ENDPOINT gives it, below the settings file;"
+            " OTEL_SDK_DISABLED=true leaves it unset."
         ),
     )
 
@@ -244,6 +279,10 @@ class Settings(BaseSettings):
         default_factory=Sources, description="The sources of the mirror, each a table."
     )
     logs: Logs = Field(default_factory=Logs, description="The log file of each run.")
+    telemetry: Telemetry = Field(
+        default_factory=Telemetry,
+        description="Traces, metrics and logs sent by OpenTelemetry, off by default.",
+    )
 
     @classmethod
     @override

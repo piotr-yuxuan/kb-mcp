@@ -607,6 +607,7 @@ def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
         "sources.confluence.spaces: (none) [default]\n"
         "sources.jira.projects: (none) [default]\n"
         f"logs.dir: {user_log_folder(home.resolve())} [default]\n"
+        "telemetry.endpoint: (not set) [default]\n"
     )
     assert not any(secret in out for secret in SECRETS.values())
 
@@ -689,6 +690,79 @@ def test_check_and_index_refuse_a_log_folder_that_could_leave_the_machine(
     assert main([name, "--config", str(home / "none.toml")]) == BAD_SETTINGS
     error = capsys.readouterr().err
     assert f"settings refused: logs.dir (ATLASSIAN_OFFLINE_MCP_LOGS__DIR): {reason}" in error
+
+
+# Endpoints that telemetry may not go to, by plan 016: a name, another host, a user, https.
+ELSEWHERE = [
+    "http://localhost:4318",
+    "http://192.0.2.1:4318",
+    "http://user@127.0.0.1:4318",
+    "https://127.0.0.1:4318",
+]
+# What telemetry's endpoint must be, as the setting's refusal says.
+TELEMETRY_RULE = (
+    "an http address of this machine, with a port and no path, such as"
+    " http://127.0.0.1:4318; write 127.0.0.1 for localhost"
+)
+
+
+@pytest.mark.parametrize("endpoint", ELSEWHERE)
+def test_check_refuses_a_telemetry_endpoint_off_this_machine_naming_it(
+    home: Path, capsys: CaptureFixture[str], endpoint: str
+) -> None:
+    """The setting exits 2, naming itself, its layer and what it must be."""
+    config = home / "config.toml"
+    config.write_text(f'[telemetry]\nendpoint = "{endpoint}"\n', "utf-8")
+    assert main(["check", "--config", str(config)]) == BAD_SETTINGS
+    assert capsys.readouterr().err == (
+        f"settings refused: telemetry.endpoint (config.toml): {TELEMETRY_RULE}\n"
+    )
+
+
+@pytest.mark.parametrize("endpoint", ELSEWHERE)
+def test_check_ignores_opentelemetry_s_endpoint_off_this_machine_and_says_so(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], endpoint: str
+) -> None:
+    """Other programs share the variable: said ignored, it leaves telemetry off, exit 0."""
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
+    options = ["check", "--config", str(home / "none.toml"), "--summary", "detailed"]
+    assert main(options) == 0
+    out, err = capsys.readouterr()
+    assert "telemetry.endpoint: (not set) [default]\n" in out
+    assert (
+        err == f"ignored: telemetry.endpoint (OTEL_EXPORTER_OTLP_ENDPOINT): not {TELEMETRY_RULE}\n"
+    )
+
+
+def test_check_names_the_layer_of_telemetry_s_endpoint_the_setting_first(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """OpenTelemetry's variable, below the file: shown as the layer, or said replaced.
+
+    ``OTEL_SDK_DISABLED=true`` replaces whatever gave it, leaving it unset.
+    """
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
+    options = ["check", "--summary", "detailed", "--config"]
+    assert main([*options, str(home / "none.toml")]) == 0
+    out, err = capsys.readouterr()
+    assert "telemetry.endpoint: http://127.0.0.1:4317 [OTEL_EXPORTER_OTLP_ENDPOINT]\n" in out
+    assert err == ""
+
+    config = home / "config.toml"
+    config.write_text('[telemetry]\nendpoint = "http://127.0.0.1:4318"\n', "utf-8")
+    assert main([*options, str(config)]) == 0
+    out, err = capsys.readouterr()
+    assert "telemetry.endpoint: http://127.0.0.1:4318 [config.toml]\n" in out
+    assert (
+        err
+        == "ignored: telemetry.endpoint (OTEL_EXPORTER_OTLP_ENDPOINT): replaced by config.toml\n"
+    )
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
+    assert main([*options, str(config)]) == 0
+    out, err = capsys.readouterr()
+    assert "telemetry.endpoint: (not set) [OTEL_SDK_DISABLED]\n" in out
+    assert "ignored: telemetry.endpoint (config.toml): replaced by OTEL_SDK_DISABLED\n" in err
 
 
 def test_check_refuses_bad_settings_by_name(home: Path, capsys: CaptureFixture[str]) -> None:

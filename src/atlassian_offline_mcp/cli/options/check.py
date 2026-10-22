@@ -23,6 +23,7 @@ EVERY_SETTING = (
     "sources.confluence.spaces",
     "sources.jira.projects",
     "logs.dir",
+    "telemetry.endpoint",
 )
 
 

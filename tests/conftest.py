@@ -3,7 +3,7 @@
 An audit hook refuses any connection, and any name looked up, other than a loopback
 address and a port in ``tests.endpoint.REACHABLE``, so that no test reaches the network,
 or a real Ollama on this machine, by mistake. The settings' variables of the user's
-environment are removed for each test, which sets those it needs.
+environment, and OpenTelemetry's, are removed for each test, which sets those it needs.
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
 PREFIX = "ATLASSIAN_OFFLINE_MCP_"
+# OpenTelemetry's variables, two of which the settings read, and its SDK others.
+OTEL = "OTEL_"
 
 
 def guard(event: str, arguments: tuple[object, ...]) -> None:
@@ -49,7 +51,12 @@ sys.addaudithook(guard)
 def settings_environment(monkeypatch: MonkeyPatch) -> None:
     """Remove the variables that the settings read, so that none of the user's reaches a test.
 
-    pydantic-settings reads them without regard to case.
+    pydantic-settings reads its own without regard to case; OpenTelemetry's are read as
+    written.
     """
-    for name in [name for name in os.environ if name.lower().startswith(PREFIX.lower())]:
+    for name in [
+        name
+        for name in os.environ
+        if name.lower().startswith(PREFIX.lower()) or name.startswith(OTEL)
+    ]:
         monkeypatch.delenv(name)
