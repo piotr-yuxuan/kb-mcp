@@ -224,6 +224,25 @@ def test_an_empty_table_of_settings_leaves_them_at_their_defaults() -> None:
     assert from_file({"sources": {"jira": {}}}).sources.jira.projects == ()
 
 
+def test_an_empty_table_gives_each_setting_under_it_and_none_other() -> None:
+    """Each at its default, by the table's layer, so that it replaces a weaker value there."""
+    loaded = settings_of(
+        [
+            *file_entries({"site": "https://file.example.invalid"}, FILE),
+            *file_entries({"sources": {"confluence": {"spaces": ["ENG"]}}}, FILE),
+            *file_entries({"sources": {}}, "stronger"),
+        ],
+        HOME,
+    )
+    assert loaded.settings.sources.confluence.spaces == ()
+    assert loaded.layers == {
+        "site": FILE,
+        "sources.confluence.spaces": "stronger",
+        "sources.jira.projects": "stronger",
+    }
+    assert loaded.ignored == (Ignored("sources.confluence.spaces", FILE, "replaced by stronger"),)
+
+
 @pytest.mark.parametrize(
     ("key", "table"), [("spaces", "[sources.confluence]"), ("projects", "[sources.jira]")]
 )

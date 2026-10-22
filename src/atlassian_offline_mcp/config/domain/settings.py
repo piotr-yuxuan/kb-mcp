@@ -353,6 +353,13 @@ def setting_paths(
 
 
 SETTING_PATHS = setting_paths(Settings)
+# Each setting's default by its path, a table's aside, as the model holds it before
+# validation: a path keeps its ~.
+DEFAULTS = {
+    path: reduce(getattr, path, Settings.model_construct())
+    for path, kind in SETTING_PATHS.items()
+    if kind != "table"
+}
 
 
 def variable(path: tuple[str, ...]) -> str:
@@ -402,13 +409,21 @@ class Loaded:
 def entries_of(value: object, path: tuple[str, ...], layer: str) -> list[Entry]:
     """Give a value that a layer read at a path as entries: a table's, one per value in it.
 
-    An empty table is an entry of its own, so that one naming no setting is refused too.
+    An empty table of the settings gives each setting under it its default, so that the
+    layer replaces a weaker one's values there and is said to have given them. Another
+    empty table is an entry of its own, so that one naming no setting is refused too.
     """
     if isinstance(value, dict) and value:
         return [
             entry
             for name, inner in value.items()
             for entry in entries_of(inner, (*path, name), layer)
+        ]
+    if value == {} and SETTING_PATHS.get(path) == "table":
+        return [
+            Entry(setting, default, layer)
+            for setting, default in DEFAULTS.items()
+            if setting[: len(path)] == path
         ]
     return [Entry(path, value, layer)]
 
@@ -491,7 +506,7 @@ def environment_entries(
 # Each path setting at its default, an entry of the weakest layer, so that ``settings_of``
 # makes ``~`` the home in it as in a path given.
 PATH_DEFAULTS = [
-    Entry(path, reduce(getattr, path, Settings.model_construct()), DEFAULT_LAYER)
+    Entry(path, DEFAULTS[path], DEFAULT_LAYER)
     for path, kind in SETTING_PATHS.items()
     if kind == "path"
 ]

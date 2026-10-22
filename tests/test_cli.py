@@ -674,6 +674,34 @@ def test_check_runs_with_variables_that_name_no_setting_or_are_empty(
     ]
 
 
+def test_an_empty_table_in_the_file_gives_each_setting_under_it_at_its_default(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Its settings are the file's; check reads them, so none is said to be unread."""
+    config = home / "config.toml"
+    config.write_text('[sources.jira]\n# projects = ["PLAT"]\n', "utf-8")
+    assert main(["check", "--config", str(config), "--summary", "detailed"]) == 0
+    out, err = capsys.readouterr()
+    assert "sources.jira.projects: (none) [config.toml]\n" in out
+    assert err == ""
+
+
+def test_an_empty_table_in_a_variable_replaces_each_setting_under_it(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Each is the variable's, at its default, and the file's value is said to be replaced."""
+    config = home / "config.toml"
+    config.write_text('[sources.jira]\nprojects = ["PLAT"]\n', "utf-8")
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES", "{}")
+    assert main(["check", "--config", str(config), "--summary", "detailed"]) == 0
+    out, err = capsys.readouterr()
+    assert "sources.confluence.spaces: (none) [ATLASSIAN_OFFLINE_MCP_SOURCES]\n" in out
+    assert "sources.jira.projects: (none) [ATLASSIAN_OFFLINE_MCP_SOURCES]\n" in out
+    assert err == (
+        "ignored: sources.jira.projects (config.toml): replaced by ATLASSIAN_OFFLINE_MCP_SOURCES\n"
+    )
+
+
 def test_check_refuses_a_file_that_is_not_toml(home: Path, capsys: CaptureFixture[str]) -> None:
     """A broken settings file is refused rather than ignored."""
     config = home / "config.toml"
