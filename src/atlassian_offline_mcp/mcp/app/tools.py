@@ -10,6 +10,7 @@ ranking's search by words and by meaning are each a span, within the call's own,
 
 from __future__ import annotations
 
+import bisect
 import json
 import math
 import re
@@ -189,11 +190,12 @@ def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -
 
     A document ranked by meaning gives the unit of its best piece, by the index's
     chunking. One ranked by words gives its best section for the question's words, or
-    its first: whole up to UNIT characters, else UNIT of it about the occurrence of a
-    word with the most distinct words within UNIT / 2 of it, by ``around``, then cut to
-    whole lines where a line break falls in the half that the cut shortens. Words are
-    found as the index finds them: without regard to case or accents, between
-    characters that are no letter nor digit.
+    its first: whole up to UNIT characters, else UNIT of it about the occurrence of its
+    rarest word of the question with the most other words within UNIT / 2 of it, by
+    ``around``, then cut to whole lines where a line break falls in the half that the
+    cut shortens. Words are found as the index finds them: without regard to case or
+    accents, between characters that are no letter nor digit. Candidates being the
+    rarest word's occurrences, a section of many hits costs as many bisections.
     """
     embedded = reader.embedded()
     unit = CHUNKERS[embedded.chunking].unit if embedded else None
@@ -211,11 +213,16 @@ def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -
             number = best.number if best else 1
             first, last = bounds[number - 1]
             section = reader.text(path, first, last)
-            hits = [(each.start(), each[0].casefold()) for each in words.finditer(folded(section))]
+            spots: dict[str, list[int]] = {}  # where each word of the question is
+            for each in words.finditer(folded(section)):
+                spots.setdefault(each[0].casefold(), []).append(each.start())
             hit = first + max(
-                (at for at, _ in hits),
-                key=lambda at: len({word for near, word in hits if abs(near - at) <= UNIT // 2}),
-                default=0,
+                min(spots.values(), key=len, default=[0]),
+                key=lambda at: sum(
+                    bisect.bisect_left(places, at - UNIT // 2)
+                    < bisect.bisect_right(places, at + UNIT // 2)
+                    for places in spots.values()
+                ),
             )
             start, end = around((hit, hit + 1), (first, last))
             text = section[start - first : end - first]
