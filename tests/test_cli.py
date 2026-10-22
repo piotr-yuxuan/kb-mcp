@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 import sys
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import argcomplete
 import pytest
 
 from atlassian_offline_mcp.cli import options
-from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.cli.main import main, parser
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -53,8 +54,26 @@ def register(subparsers):
     parser = subparsers.add_parser("extra", help="a command added by a module pair")
     parser.add_argument("--config", type=Path)
     parser.add_argument("--data-dir")
-    parser.set_defaults(command=Command("extra_run", {"data_dir": "data_dir"}))
+    parser.set_defaults(command=Command("extra", "extra_run", {"data_dir": "data_dir"}))
 """
+
+
+class Declaring(argparse.ArgumentParser):
+    """A parser that keeps its subcommands' parsers by name, which argparse holds privately."""
+
+    subcommands: dict[str, argparse.ArgumentParser]
+
+    @override
+    def add_subparsers(
+        self, **keywords: object
+    ) -> argparse._SubParsersAction[argparse.ArgumentParser]:
+        declared = super().add_subparsers(**keywords)
+        self.subcommands = declared.choices
+        return declared
+
+
+# Every subcommand that the command declares, by the name it is typed by.
+SUBCOMMANDS = parser(Declaring).subcommands
 
 
 @pytest.fixture
@@ -105,6 +124,12 @@ def test_a_module_pair_makes_a_subcommand(
     data = home / "data"
     assert main(["extra", "--config", str(home / "none.toml"), "--data-dir", str(data)]) == 0
     assert capsys.readouterr().out == f"ran in {data.resolve()}\n"
+
+
+@pytest.mark.parametrize("name", sorted(SUBCOMMANDS))
+def test_each_subcommand_s_command_carries_its_name(name: str) -> None:
+    """The name typed, which the module of its run need not bear: eval's is evaluate."""
+    assert SUBCOMMANDS[name].get_default("command").name == name
 
 
 def test_refused_settings_exit_before_the_run_is_imported(

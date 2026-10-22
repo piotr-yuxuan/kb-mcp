@@ -19,4 +19,4 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument(
         "--keep-extensions", action="store_true", help="let Chrome load extensions, for SSO"
     )
-    parser.set_defaults(command=Command("atlassian_offline_mcp.cli.commands.login", flags))
+    parser.set_defaults(command=Command("login", "atlassian_offline_mcp.cli.commands.login", flags))

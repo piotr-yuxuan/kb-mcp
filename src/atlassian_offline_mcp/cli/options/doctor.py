@@ -15,4 +15,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     """Add ``doctor`` to the command."""
     parser = subparsers.add_parser("doctor", help="check the machine and the saved session")
     flags = add_settings_options(parser)
-    parser.set_defaults(command=Command("atlassian_offline_mcp.cli.commands.doctor", flags))
+    parser.set_defaults(
+        command=Command("doctor", "atlassian_offline_mcp.cli.commands.doctor", flags)
+    )

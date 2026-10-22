@@ -16,4 +16,4 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser("index", help="build the search index from the mirror")
     flags = add_settings_options(parser)
     add_embedding_options(parser)
-    parser.set_defaults(command=Command("atlassian_offline_mcp.cli.commands.index", flags))
+    parser.set_defaults(command=Command("index", "atlassian_offline_mcp.cli.commands.index", flags))

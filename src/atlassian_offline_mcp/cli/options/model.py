@@ -24,4 +24,4 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument(
         "name", nargs="?", type=model_name, help="the model to check; by default, the setting"
     )
-    parser.set_defaults(command=Command("atlassian_offline_mcp.cli.commands.model", flags))
+    parser.set_defaults(command=Command("model", "atlassian_offline_mcp.cli.commands.model", flags))

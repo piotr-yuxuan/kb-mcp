@@ -34,4 +34,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         type=model_name,
         help="a model to evaluate, as the endpoint names it; by default, the setting",
     )
-    parser.set_defaults(command=Command("atlassian_offline_mcp.cli.commands.evaluate", flags))
+    parser.set_defaults(
+        command=Command("eval", "atlassian_offline_mcp.cli.commands.evaluate", flags)
+    )

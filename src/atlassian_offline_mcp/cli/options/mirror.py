@@ -15,4 +15,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     """Add ``mirror`` to the command."""
     parser = subparsers.add_parser("mirror", help="write the Markdown mirror from the raw store")
     flags = add_settings_options(parser)
-    parser.set_defaults(command=Command("atlassian_offline_mcp.cli.commands.mirror", flags))
+    parser.set_defaults(
+        command=Command("mirror", "atlassian_offline_mcp.cli.commands.mirror", flags)
+    )

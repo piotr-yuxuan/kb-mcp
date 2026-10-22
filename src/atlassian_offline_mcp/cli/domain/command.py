@@ -16,15 +16,18 @@ PROGRAM = "atlassian-offline-mcp"
 class Command:
     """A subcommand as its parser declares it, by ``set_defaults(command=...)``.
 
-    ``run`` names the module whose ``run(arguments, settings)`` runs it, imported only
-    once it is chosen. ``flags`` maps each option that overrides a setting, by the
-    option's ``dest``, to that setting's path, its names joined by dots
+    ``name`` is the subcommand as typed, which its run's module need not match: ``eval``
+    is run by ``cli.commands.evaluate``. ``run`` names the module whose
+    ``run(arguments, settings)`` runs it, imported only once it is chosen. ``flags``
+    maps each option that overrides a setting, by the option's ``dest``, to that
+    setting's path, its names joined by dots
     (``sources.confluence.spaces``). Without ``reads_settings``, the run gets ``None``
     for its settings, and so runs whatever the settings file holds. With
     ``with_layers``, it gets the settings with the layer of each and the values ignored
     (``config.domain.settings.Loaded``) rather than the settings alone.
     """
 
+    name: str
     run: str
     flags: Mapping[str, str] = field(default_factory=dict)
     reads_settings: bool = True

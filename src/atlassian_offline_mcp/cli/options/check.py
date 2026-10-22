@@ -16,5 +16,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser("check", help="validate the settings and the data directory")
     flags = add_settings_options(parser)
     parser.set_defaults(
-        command=Command("atlassian_offline_mcp.cli.commands.check", flags, with_layers=True)
+        command=Command(
+            "check", "atlassian_offline_mcp.cli.commands.check", flags, with_layers=True
+        )
     )

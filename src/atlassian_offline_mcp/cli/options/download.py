@@ -52,4 +52,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "--max-file-mb", type=int, default=DEFAULT_MAX_FILE_MB, help="the largest file kept"
     )
     flags = {**flags, "space": "sources.confluence.spaces", "project": "sources.jira.projects"}
-    parser.set_defaults(command=Command("atlassian_offline_mcp.cli.commands.download", flags))
+    parser.set_defaults(
+        command=Command("download", "atlassian_offline_mcp.cli.commands.download", flags)
+    )

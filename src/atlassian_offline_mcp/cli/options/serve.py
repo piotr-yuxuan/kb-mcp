@@ -16,4 +16,4 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser("serve", help="serve the mirror over MCP on stdio")
     flags = add_settings_options(parser)
     add_embedding_options(parser)
-    parser.set_defaults(command=Command("atlassian_offline_mcp.cli.commands.serve", flags))
+    parser.set_defaults(command=Command("serve", "atlassian_offline_mcp.cli.commands.serve", flags))

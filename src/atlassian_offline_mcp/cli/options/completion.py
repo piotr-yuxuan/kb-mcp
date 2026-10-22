@@ -21,5 +21,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         ),
     )
     parser.set_defaults(
-        command=Command("atlassian_offline_mcp.cli.commands.completion", reads_settings=False)
+        command=Command(
+            "completion", "atlassian_offline_mcp.cli.commands.completion", reads_settings=False
+        )
     )
