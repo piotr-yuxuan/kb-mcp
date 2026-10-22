@@ -5,7 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.domain.command import Command
-from atlassian_offline_mcp.cli.options._common import add_output_options, add_settings_options
+from atlassian_offline_mcp.cli.options._common import (
+    SIGN_IN,
+    add_output_options,
+    add_settings_options,
+    email_without_token,
+)
 
 if TYPE_CHECKING:
     import argparse
@@ -20,8 +25,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         command=Command(
             "doctor",
             "atlassian_offline_mcp.cli.commands.doctor",
-            reads=("site", "data_dir"),
+            reads=("site", *SIGN_IN, "data_dir"),
             flags=flags,
             actions=actions,
+            unapplied=email_without_token,
         )
     )

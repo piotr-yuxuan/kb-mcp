@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from pydantic_core import to_json
 
+from atlassian_offline_mcp.cli.domain.summary import before
 from atlassian_offline_mcp.config.app.settings import load_settings
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
@@ -23,12 +24,13 @@ if TYPE_CHECKING:
 def enter(arguments: argparse.Namespace) -> int:
     """Load the settings, with the flags given, run the chosen subcommand, write its result.
 
-    Refused settings exit 2 before the run is imported. The run gets the settings loaded,
-    with each one's layer, a flag's being its option; one that reads no setting gets
-    None. It returns its status, then its result, or None when it has none to write,
-    such as ``serve``, whose output is the protocol. The result goes to stdout as one
-    JSON document, secrets masked, or as its module's ``text`` writes it, unless -q. The
-    run's status is returned.
+    Refused settings exit 2 before the run is imported; else the values ignored go to
+    stderr. The run gets the settings loaded, with each one's layer, a flag's being its
+    option; one that reads no setting gets None, and nothing is said. It returns its
+    status, then its result, or None when it has none to write, such as ``serve``, whose
+    output is the protocol. The result goes to stdout as one JSON document, secrets
+    masked, or as its module's ``text`` writes it, unless -q. The run's status is
+    returned.
     """
     command: Command = arguments.command
     output = Output(
@@ -49,6 +51,7 @@ def enter(arguments: argparse.Namespace) -> int:
         except SettingsError as error:
             sys.stderr.write(f"settings refused: {error}\n")
             return ExitStatus.REFUSED
+        sys.stderr.write(before(arguments, loaded, output))
     module = importlib.import_module(command.run)
     status, result = module.run(arguments, loaded)
     if result is not None and output.format == "json":

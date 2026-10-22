@@ -7,10 +7,13 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
 # The program's name, as pyproject.toml names its script.
 PROGRAM = "atlassian-offline-mcp"
+# What a run does not apply of the values given, by setting, and why: a pure function of
+# the arguments and of every setting's value, by its path joined by dots.
+type Unapplied = Callable[[argparse.Namespace, Mapping[str, object]], Mapping[str, str]]
 
 
 @dataclass(frozen=True)
@@ -25,7 +28,10 @@ class Command:
     settings, and so runs whatever the settings file holds. ``flags`` maps each option
     that overrides a setting, by the option's ``dest``, to that setting's path.
     ``actions`` are the options and positionals as ``add_argument`` returned them, those
-    of the output aside: each flag among them is named by its option.
+    of the output aside: each flag among them is named by its option. ``unapplied``, if
+    any, names what the run does not apply of the settings it reads, such as the model
+    of an index built by words alone; it lives in the command's own declaration and
+    names no type of ``config``, so that declaring the command stays light.
     """
 
     name: str
@@ -33,6 +39,7 @@ class Command:
     reads: tuple[str, ...] = ()
     flags: Mapping[str, str] = field(default_factory=dict)
     actions: tuple[argparse.Action, ...] = ()
+    unapplied: Unapplied | None = None
 
     def setting_flags(self) -> dict[str, tuple[str, str]]:
         """Map the ``dest`` of each flag among the actions to its option and its setting.

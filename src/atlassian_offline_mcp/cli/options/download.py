@@ -6,7 +6,12 @@ import argparse
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.domain.command import Command
-from atlassian_offline_mcp.cli.options._common import add_output_options, add_settings_options
+from atlassian_offline_mcp.cli.options._common import (
+    SIGN_IN,
+    add_output_options,
+    add_settings_options,
+    email_without_token,
+)
 from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
 
 if TYPE_CHECKING:
@@ -56,12 +61,19 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         command=Command(
             "download",
             "atlassian_offline_mcp.cli.commands.download",
-            reads=("site", "data_dir", "sources.confluence.spaces", "sources.jira.projects"),
+            reads=(
+                "site",
+                *SIGN_IN,
+                "data_dir",
+                "sources.confluence.spaces",
+                "sources.jira.projects",
+            ),
             flags={
                 **flags,
                 "space": "sources.confluence.spaces",
                 "project": "sources.jira.projects",
             },
             actions=(*actions, space, project, since, back, until, largest),
+            unapplied=email_without_token,
         )
     )

@@ -13,10 +13,15 @@ from atlassian_offline_mcp.kernel.content import MODEL_NAME
 from atlassian_offline_mcp.kernel.output import FORMATS, LEVELS, SUMMARIES
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from atlassian_offline_mcp.kernel.output import Level
 
 # The level of each -v given, from none: warning, then info, then debug.
 VERBOSITY: tuple[Level, ...] = ("warning", "info", "debug")
+# The settings of a sign-in by API token: a command that signs in reads them, if only
+# to say that they go unused.
+SIGN_IN = ("email", "api_token")
 
 
 class Verbose(argparse.Action):
@@ -101,3 +106,12 @@ def model_name(value: str) -> str:
         message = "the name of an embedding model, such as qwen3-embedding:0.6b"
         raise argparse.ArgumentTypeError(message)
     return value
+
+
+def email_without_token(
+    _arguments: argparse.Namespace, settings: Mapping[str, object]
+) -> dict[str, str]:
+    """Without an API token, the browser's session signs in, and an email goes unused."""
+    if settings["api_token"] is not None:
+        return {}
+    return {"email": "without an API token, the browser's session signs in"}

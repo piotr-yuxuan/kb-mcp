@@ -13,6 +13,18 @@ from atlassian_offline_mcp.cli.options._common import (
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Mapping
+
+
+def by_words_alone(
+    _arguments: argparse.Namespace, settings: Mapping[str, object]
+) -> dict[str, str]:
+    """By words alone, the lexical mode embeds nothing: the model and its endpoint go unused."""
+    if settings["search_mode"] != "lexical":
+        return {}
+    return dict.fromkeys(
+        ("model", "embedding_url", "embedding_api_key"), "the lexical mode embeds nothing"
+    )
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -28,5 +40,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             reads=("data_dir", "model", "search_mode", "embedding_url", "embedding_api_key"),
             flags=flags,
             actions=(*actions, remote),
+            unapplied=by_words_alone,
         )
     )

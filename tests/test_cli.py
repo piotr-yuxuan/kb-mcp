@@ -601,12 +601,18 @@ def test_check_refuses_a_secret_in_the_settings_file(
 def test_check_runs_with_variables_that_name_no_setting_or_are_empty(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """A misspelt, a former or an empty variable is ignored, not refused."""
+    """A misspelt, a former or an empty variable is ignored, not refused, and said on stderr."""
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS", '["X"]')
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SPACES", '["X"]')
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "")
     assert main(["check", "--config", str(home / "none.toml"), "--summary", "detailed"]) == 0
-    assert "site: (not set) [default]\n" in capsys.readouterr().out
+    out, err = capsys.readouterr()
+    assert "site: (not set) [default]\n" in out
+    assert sorted(err.splitlines()) == [
+        "ignored: ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS: names no setting",
+        "ignored: ATLASSIAN_OFFLINE_MCP_SPACES: names no setting",
+        "ignored: site (ATLASSIAN_OFFLINE_MCP_SITE): empty",
+    ]
 
 
 def test_check_refuses_a_file_that_is_not_toml(home: Path, capsys: CaptureFixture[str]) -> None:
@@ -651,10 +657,14 @@ def test_check_refuses_a_settings_file_it_cannot_read(
 def test_check_names_the_layer_of_each_setting_the_strongest_winning(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """The file, then its variable, then the flag: each wins in turn, and check names it."""
+    """The file, then its variable, then the flag: each wins in turn, and check names it.
+
+    Each value replaced is said on stderr, naming its layer and the one that replaced it.
+    """
     detailed = ["--summary", "detailed"]
     assert main(["check", "--config", str(home / "none.toml"), *detailed]) == 0
-    out = capsys.readouterr().out
+    out, err = capsys.readouterr()
+    assert err == ""
     assert "site: (not set) [default]\n" in out
     assert f"data_dir: {(home / 'atlassian-offline-mcp').resolve()} [default]\n" in out
     assert "sources.confluence.spaces: (none) [default]\n" in out
@@ -667,7 +677,8 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
         "utf-8",
     )
     assert main(["check", "--config", str(config), *detailed]) == 0
-    out = capsys.readouterr().out
+    out, err = capsys.readouterr()
+    assert err == ""
     assert "site: https://file.example.invalid [config.toml]\n" in out
     assert f"data_dir: {(home / 'from-file').resolve()} [config.toml]\n" in out
     assert "sources.confluence.spaces: ENG [config.toml]\n" in out
@@ -678,7 +689,19 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES", '["OPS"]')
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB", "PAY"]')
     assert main(["check", "--config", str(config), *detailed]) == 0
-    out = capsys.readouterr().out
+    out, err = capsys.readouterr()
+    assert sorted(err.splitlines()) == [
+        "ignored: data_dir (config.toml): replaced by ATLASSIAN_OFFLINE_MCP_DATA_DIR",
+        "ignored: site (config.toml): replaced by ATLASSIAN_OFFLINE_MCP_SITE",
+        (
+            "ignored: sources.confluence.spaces (config.toml):"
+            " replaced by ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES"
+        ),
+        (
+            "ignored: sources.jira.projects (config.toml):"
+            " replaced by ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS"
+        ),
+    ]
     assert "site: https://variable.example.invalid [ATLASSIAN_OFFLINE_MCP_SITE]\n" in out
     data = (home / "from-variable").resolve()
     assert f"data_dir: {data} [ATLASSIAN_OFFLINE_MCP_DATA_DIR]\n" in out
@@ -689,9 +712,11 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
 
     flag = ["--site", "https://flag.example.invalid", "--data-dir", "~/from-flag"]
     assert main(["check", "--config", str(config), *flag, *detailed]) == 0
-    out = capsys.readouterr().out
+    out, err = capsys.readouterr()
     assert "site: https://flag.example.invalid [--site]\n" in out
     assert f"data_dir: {(home / 'from-flag').resolve()} [--data-dir]\n" in out
+    assert "ignored: site (ATLASSIAN_OFFLINE_MCP_SITE): replaced by --site\n" in err
+    assert "ignored: data_dir (ATLASSIAN_OFFLINE_MCP_DATA_DIR): replaced by --data-dir\n" in err
 
 
 def test_check_reads_no_generic_atlassian_name(
