@@ -6,8 +6,12 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.app.settings import SETTINGS_PATH, UnsafeDataDirError, load_settings
-from atlassian_offline_mcp.domain.settings import SettingsError
+from atlassian_offline_mcp.config.app.settings import (
+    SETTINGS_PATH,
+    UnsafeDataDirError,
+    load_settings,
+)
+from atlassian_offline_mcp.config.domain.settings import SettingsError
 
 if TYPE_CHECKING:
     import argparse

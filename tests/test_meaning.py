@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
     from atlassian_offline_mcp.adapters.embedding import Embedder
     from atlassian_offline_mcp.adapters.sqlite_index import Reader
-    from atlassian_offline_mcp.domain.settings import SearchMode
+    from atlassian_offline_mcp.config.domain.settings import SearchMode
 
 # Where "Mixed notes" comes by words for "4002 revert release": after the issue and
 # the page holding both words.

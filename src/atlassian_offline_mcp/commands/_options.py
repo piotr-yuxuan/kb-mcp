@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.adapters.embedding import KEY_VARIABLE, Endpoint, endpoint, prefixes
-from atlassian_offline_mcp.app.settings import SETTINGS_PATH, load_settings
-from atlassian_offline_mcp.domain.settings import MODEL_NAME
+from atlassian_offline_mcp.config.app.settings import SETTINGS_PATH, load_settings
+from atlassian_offline_mcp.config.domain.settings import MODEL_NAME
 
 if TYPE_CHECKING:
-    from atlassian_offline_mcp.domain.settings import Settings
+    from atlassian_offline_mcp.config.domain.settings import Settings
 
 
 def add_settings_options(parser: argparse.ArgumentParser) -> None:

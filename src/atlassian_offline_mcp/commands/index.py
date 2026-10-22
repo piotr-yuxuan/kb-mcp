@@ -16,7 +16,7 @@ from atlassian_offline_mcp.commands._options import (
     prefixes_said,
     settings_of,
 )
-from atlassian_offline_mcp.domain.settings import SettingsError
+from atlassian_offline_mcp.config.domain.settings import SettingsError
 
 if TYPE_CHECKING:
     import argparse

@@ -9,7 +9,7 @@ from atlassian_offline_mcp.adapters.pandoc import Pandoc, PandocMissingError
 from atlassian_offline_mcp.adapters.raw_store import RawStore
 from atlassian_offline_mcp.app.mirror import mirror
 from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
-from atlassian_offline_mcp.domain.settings import SettingsError
+from atlassian_offline_mcp.config.domain.settings import SettingsError
 
 if TYPE_CHECKING:
     import argparse

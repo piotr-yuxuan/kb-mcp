@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.adapters.session_file import COOKIES, read_cookies
 from atlassian_offline_mcp.app import login as login_module
-from atlassian_offline_mcp.domain.settings import Settings
+from atlassian_offline_mcp.config.domain.settings import Settings
 
 if TYPE_CHECKING:
     from pathlib import Path

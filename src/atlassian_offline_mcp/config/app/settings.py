@@ -6,8 +6,12 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.adapters.settings_file import SETTINGS_PATH, git_root, read_settings_file
-from atlassian_offline_mcp.domain.settings import (
+from atlassian_offline_mcp.config.adapters.settings_file import (
+    SETTINGS_PATH,
+    git_root,
+    read_settings_file,
+)
+from atlassian_offline_mcp.config.domain.settings import (
     Settings,
     SettingsError,
     parse_settings,

@@ -16,9 +16,9 @@ from atlassian_offline_mcp.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.app.download import SIGN_IN_NEEDED, Targets, download, plan
 from atlassian_offline_mcp.app.mirror import mirror
 from atlassian_offline_mcp.cli import main
+from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.domain.coverage import Coverage, Target
 from atlassian_offline_mcp.domain.period import EPOCH, Period, PeriodError
-from atlassian_offline_mcp.domain.settings import Settings
 from atlassian_offline_mcp.kernel.content import Page
 from tests.samples import v2_page, v2_space
 from tests.test_download import CAP, PAGES, SITE, SPACE, FakeSite, stamp

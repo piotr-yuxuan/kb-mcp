@@ -25,8 +25,8 @@ from atlassian_offline_mcp.app.indexing import build_index
 from atlassian_offline_mcp.app.meaning import Meaning
 from atlassian_offline_mcp.app.tools import Library
 from atlassian_offline_mcp.cli import main
+from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.domain.evaluation import holm
-from atlassian_offline_mcp.domain.settings import Settings
 from tests.endpoint import DIGEST, Scripted, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
 

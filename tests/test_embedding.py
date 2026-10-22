@@ -36,7 +36,7 @@ from atlassian_offline_mcp.adapters.embedding import (
     endpoint,
 )
 from atlassian_offline_mcp.cli import main
-from atlassian_offline_mcp.domain.settings import DEFAULT_EMBEDDING_URL, SettingsError
+from atlassian_offline_mcp.config.domain.settings import DEFAULT_EMBEDDING_URL, SettingsError
 from tests.endpoint import (
     DIGEST,
     DIMENSIONS,

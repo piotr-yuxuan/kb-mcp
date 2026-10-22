@@ -9,7 +9,7 @@ from atlassian_offline_mcp.adapters.browser import disable_password_saving, sign
 from atlassian_offline_mcp.adapters.session_file import COOKIES, for_site, write_cookies
 
 if TYPE_CHECKING:
-    from atlassian_offline_mcp.domain.settings import Settings
+    from atlassian_offline_mcp.config.domain.settings import Settings
 
 PROFILE = "browser"
 

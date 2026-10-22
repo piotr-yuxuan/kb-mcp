@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from atlassian_offline_mcp.adapters.browser import SignInFailedError
 from atlassian_offline_mcp.app.login import login
 from atlassian_offline_mcp.commands._options import add_settings_options, settings_of
-from atlassian_offline_mcp.domain.settings import SettingsError
+from atlassian_offline_mcp.config.domain.settings import SettingsError
 
 if TYPE_CHECKING:
     import argparse

@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from atlassian_offline_mcp.adapters.http import ReadPage, Request
-    from atlassian_offline_mcp.domain.settings import Settings
+    from atlassian_offline_mcp.config.domain.settings import Settings
     from atlassian_offline_mcp.kernel.content import Attachment, Document, Listed
 
     type SnapshotRequests = Callable[[Listed], dict[str, tuple[Request, ReadPage | None]]]

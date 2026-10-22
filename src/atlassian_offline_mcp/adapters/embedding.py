@@ -22,7 +22,7 @@ import httpx
 import numpy as np
 import truststore
 
-from atlassian_offline_mcp.domain.settings import SettingsError, loopback
+from atlassian_offline_mcp.config.domain.settings import SettingsError, loopback
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

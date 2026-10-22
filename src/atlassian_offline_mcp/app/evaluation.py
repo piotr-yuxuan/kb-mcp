@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from atlassian_offline_mcp.adapters.embedding import Embedder
-    from atlassian_offline_mcp.domain.settings import SearchMode, Settings
+    from atlassian_offline_mcp.config.domain.settings import SearchMode, Settings
 
 MODES: tuple[SearchMode, ...] = ("lexical", "semantic", "hybrid")
 FIELDS = frozenset({"id", "question", "expected", "partial", "groups", "evidence"})

@@ -13,7 +13,7 @@ from atlassian_offline_mcp.adapters.session_file import COOKIES, read_cookies
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
 
 if TYPE_CHECKING:
-    from atlassian_offline_mcp.domain.settings import Settings
+    from atlassian_offline_mcp.config.domain.settings import Settings
 
 # What a check concludes: all is well, the user must sign in again, or something fails.
 WELL, SIGN_IN, FAILED = "well", "sign in", "failed"

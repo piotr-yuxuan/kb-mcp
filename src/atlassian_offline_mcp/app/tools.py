@@ -36,8 +36,8 @@ if TYPE_CHECKING:
 
     from atlassian_offline_mcp.adapters.sqlite_index import Reader
     from atlassian_offline_mcp.app.meaning import Meaning
+    from atlassian_offline_mcp.config.domain.settings import SearchMode as Mode
     from atlassian_offline_mcp.domain.search import Entry, Plan
-    from atlassian_offline_mcp.domain.settings import SearchMode as Mode
 
 SEARCH_LIMIT = 8
 SEARCH_LIMITS = (1, 50)
