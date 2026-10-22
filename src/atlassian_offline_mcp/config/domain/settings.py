@@ -368,8 +368,11 @@ class Loaded:
 
 
 def entries_of(value: object, path: tuple[str, ...], layer: str) -> list[Entry]:
-    """Give a value that a layer read at a path as entries: a table's, one per value in it."""
-    if isinstance(value, dict):
+    """Give a value that a layer read at a path as entries: a table's, one per value in it.
+
+    An empty table is an entry of its own, so that one naming no setting is refused too.
+    """
+    if isinstance(value, dict) and value:
         return [
             entry
             for name, inner in value.items()
@@ -380,7 +383,9 @@ def entries_of(value: object, path: tuple[str, ...], layer: str) -> list[Entry]:
 
 def file_entries(values: Mapping[str, object], layer: str) -> list[Entry]:
     """Give the settings file's values as entries; refuse a moved or unknown one, a secret."""
-    entries = entries_of(dict(values), (), layer)
+    entries = [
+        entry for name, value in values.items() for entry in entries_of(value, (name,), layer)
+    ]
     for entry in entries:
         setting = ".".join(entry.path)
         if entry.path[0] in MOVED:

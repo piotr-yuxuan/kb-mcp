@@ -127,6 +127,8 @@ def test_every_setting_is_described() -> None:
         ({"sight": "https://x.atlassian.net"}, "sight (config.toml): not a setting"),
         ({"sources": {"jira": {"projets": ["PLAT"]}}}, "sources.jira.projets (config.toml):"),
         ({"sources": {"worklog": {"spaces": []}}}, "sources.worklog.spaces (config.toml):"),
+        ({"unknown": {}}, "unknown (config.toml): not a setting"),
+        ({"sources": {"worklog": {}}}, "sources.worklog (config.toml): not a setting"),
         ({"site": "http://x.atlassian.net"}, "site (config.toml):"),
         ({"site": "https://user@x.atlassian.net"}, "site (config.toml):"),
         ({"site": "https://x.atlassian.net/wiki"}, "site (config.toml):"),
@@ -167,6 +169,11 @@ def test_unusable_settings_are_refused_by_name_and_layer(
     """Each refusal names the setting at fault and the layer that gave it."""
     with pytest.raises(SettingsError, match=re.escape(named)):
         from_file(values)
+
+
+def test_an_empty_table_of_settings_leaves_them_at_their_defaults() -> None:
+    """``[sources.jira]`` with nothing under it yet is a table of the settings."""
+    assert from_file({"sources": {"jira": {}}}).sources.jira.projects == ()
 
 
 @pytest.mark.parametrize(
