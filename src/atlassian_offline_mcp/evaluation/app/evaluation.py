@@ -52,6 +52,8 @@ HEADER = (
     "| Mode | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 |"
     " Query, median | Query, 95th |"
 )
+# The line under the header, one cell per column.
+DIVIDER = "|---|---|---|---|---|---|---|---|---|"
 
 
 class GoldenError(ValueError):
@@ -232,6 +234,17 @@ def record(runs: Sequence[Run], golden: str, built_at: datetime) -> dict[str, ob
     }
 
 
+def row(mode: str, group: str, each: Measures, times: tuple[float, float]) -> str:
+    """Write a mode's measures of a group as a row under ``HEADER``, with its query times."""
+    median_s, tail_s = times
+    section = "n/a" if each.section is None else f"{each.section:.3f}"
+    return (
+        f"| {mode} | {group} | {each.recall:.3f} | {each.reciprocal_rank:.3f} |"
+        f" {each.ndcg:.3f} | {each.success:.3f} | {section} |"
+        f" {median_s * 1000:.0f} ms | {tail_s * 1000:.0f} ms |"
+    )
+
+
 def table(runs: Sequence[Run]) -> str:
     """Write the measures of each model's run as Markdown: one table, then the tests."""
     lines: list[str] = []
@@ -242,18 +255,13 @@ def table(runs: Sequence[Run]) -> str:
             f"Index built in {run.seconds:.1f} s, {run.embedded} texts embedded for it.",
             "",
             HEADER,
-            "|---|---|---|---|---|---|---|---|---|",
+            DIVIDER,
         ]
         for mode, groups in run.groups.items():
-            median_s, tail_s = run.times[mode]
-            for group in sorted(groups, key=lambda name: (name != "all", name)):
-                each = groups[group]
-                section = "n/a" if each.section is None else f"{each.section:.3f}"
-                lines.append(
-                    f"| {mode} | {group} | {each.recall:.3f} | {each.reciprocal_rank:.3f} |"
-                    f" {each.ndcg:.3f} | {each.success:.3f} | {section} |"
-                    f" {median_s * 1000:.0f} ms | {tail_s * 1000:.0f} ms |"
-                )
+            lines += [
+                row(mode, group, groups[group], run.times[mode])
+                for group in sorted(groups, key=lambda name: (name != "all", name))
+            ]
         lines.append("")
         lines += [
             f"MRR@10, {mode} against lexical: p = {run.pvalues[mode]:.4f},"

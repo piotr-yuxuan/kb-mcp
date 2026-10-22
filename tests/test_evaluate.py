@@ -14,6 +14,7 @@ from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.evaluation.app import evaluation
 from atlassian_offline_mcp.evaluation.app.evaluation import (
+    HEADER,
     EvaluationError,
     GoldenError,
     evaluate,
@@ -167,6 +168,56 @@ def test_the_command_keeps_numbers_and_ids_but_no_question(
         assert main(["eval", str(data / "golden.yaml"), *options(data, url)]) == 0
     second = max((data / "eval" / "results").glob("*.json"))
     assert json.loads(second.read_text(encoding="utf-8"))["runs"][0]["embedded"] == 0
+
+
+def test_the_command_in_short_shows_each_mode_on_all_questions_then_the_results_file(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Under the model's name, the table's rows of the group all alone; nothing of the tests."""
+    (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
+    with serving(Scripted()) as url:
+        assert main(["eval", str(data / "golden.yaml"), *options(data, url)]) == 0
+    [results] = (data / "eval" / "results").glob("*.json")
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[:3] == ["## tiny", "", HEADER]
+    rows = [line.split(" | ")[:2] for line in lines[4:-2]]
+    assert rows == [["| lexical", "all"], ["| semantic", "all"], ["| hybrid", "all"]]
+    assert lines[-2:] == ["", f"Results: {results}"]
+
+
+def test_the_command_in_detail_shows_every_group_how_the_index_was_built_and_the_tests(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The model's whole table, as ``table`` writes it, then the results file."""
+    (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
+    with serving(Scripted()) as url:
+        options_given = [*options(data, url), "--summary", "detailed"]
+        assert main(["eval", str(data / "golden.yaml"), *options_given]) == 0
+    [results] = (data / "eval" / "results").glob("*.json")
+    out = capsys.readouterr().out
+    assert "Index built in " in out
+    assert "| semantic | paraphrase | 1.000 | 1.000 |" in out
+    assert "MRR@10, semantic against lexical: p = " in out
+    assert out.endswith(f"\nResults: {results}\n")
+
+
+def test_the_command_gives_each_model_s_run_and_the_results_file_as_json(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """One document, of ids and numbers: no question's text, as in the results file."""
+    (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
+    with serving(Scripted()) as url:
+        options_given = [*options(data, url), "--format", "json"]
+        assert main(["eval", str(data / "golden.yaml"), *options_given]) == 0
+    [results] = (data / "eval" / "results").glob("*.json")
+    out = capsys.readouterr().out
+    assert "vacation" not in out
+    assert "release" not in out
+    document = json.loads(out)
+    assert document["results"] == str(results)
+    [run] = document["runs"]
+    assert run["model"] == "tiny"
+    assert run["ranks"]["semantic"]["q1"] == [1]
 
 
 def test_a_refused_golden_file_exits_2(data: Path, capsys: CaptureFixture[str]) -> None:

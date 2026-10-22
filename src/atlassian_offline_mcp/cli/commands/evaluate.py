@@ -12,11 +12,14 @@ from typing import TYPE_CHECKING
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.evaluation.app.evaluation import (
+    DIVIDER,
+    HEADER,
     EvaluationError,
     GoldenError,
     evaluate,
     read_golden,
     record,
+    row,
     table,
 )
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
@@ -68,6 +71,19 @@ def run(arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, 
     return ExitStatus.OK, Evaluated(runs, results)
 
 
-def text(evaluated: Evaluated, _summary: Summary) -> str:
-    """Write each model's tables, then the results file."""
-    return f"{table(evaluated.runs)}\nResults: {evaluated.results}\n"
+def text(evaluated: Evaluated, summary: Summary) -> str:
+    """Write each model's measures, then the results file.
+
+    Short gives each model's row of all the questions, mode by mode; detailed, its table
+    of every group, how its index was built, and the tests of each mode against words.
+    """
+    if summary == "detailed":
+        return f"{table(evaluated.runs)}\nResults: {evaluated.results}\n"
+    lines = []
+    for run in evaluated.runs:
+        lines += [f"## {run.model}", "", HEADER, DIVIDER]
+        lines += [
+            row(mode, "all", groups["all"], run.times[mode]) for mode, groups in run.groups.items()
+        ]
+        lines.append("")
+    return "\n".join([*lines, f"Results: {evaluated.results}", ""])
