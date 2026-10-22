@@ -68,3 +68,22 @@ file's last change is a plan, and does not count), its file as `breadcrumb`. A d
 whose text did not change is not converted again, and its file keeps its dates, so an
 edit to one entry moves no other. pandoc converts each document; a transcript's lines
 stay apart.
+
+## 5. What a change does at the next sync
+
+- An entry edited, closed, retagged, ticked or archived keeps its id and its file. The
+  file is written again only when the entry's revision changed (its text, or pandoc's
+  version); an edit to one entry leaves every other entry's file, dates included, as it
+  was. An entry renamed without an `:ID:` takes a new id: its old file goes and a new one
+  is written.
+- An entry or transcript removed loses its file, unless the run reported a problem (a
+  file not read, a conversion that failed): then every file stays, until a run reads the
+  work log whole.
+- `archives = false` removes, at the next run, the files of the archive file's entries,
+  of `transcripts/archive/` and of the entries tagged `ARCHIVE`.
+- Search: `index` rebuilds the index whole from the mirror each time, so a document's
+  old pieces leave search with its old text. Each piece's vector is kept in
+  `<data>/vectors.sqlite` by its model and its text, so only the pieces whose text
+  changed are embedded again; the vectors of text no longer mirrored stay there, unused.
+  The work log takes part once the index reads it, with the second phase of plan 017,
+  when `sync` also ends by rebuilding the index.
