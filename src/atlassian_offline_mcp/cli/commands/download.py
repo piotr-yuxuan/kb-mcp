@@ -26,12 +26,13 @@ class RefusedOptionsError(ValueError):
 
 
 def targets_of(arguments: argparse.Namespace, settings: Settings, now: datetime) -> Targets:
-    """Read what a run downloads from the options, else the settings; refuse what cannot run.
+    """Read what a run downloads from the options and the settings; refuse what cannot run.
 
+    --space and --project are settings' flags, which replace the settings' lists.
     Raises RefusedOptionsError or PeriodError, naming the option at fault.
     """
-    spaces = arguments.space or list(settings.spaces)
-    projects = arguments.project or list(settings.projects)
+    spaces = list(settings.sources.confluence.spaces)
+    projects = list(settings.sources.jira.projects)
     for problem, refused in (
         ("site: not set; add it to the settings or pass --site", settings.site is None),
         ("nothing to download: name a --space or a --project", not (spaces or projects)),

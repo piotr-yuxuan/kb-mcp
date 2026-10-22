@@ -21,10 +21,17 @@ Create `~/.config/atlassian-offline-mcp/config.toml`:
 
 ```toml
 site = "https://<your-site>.atlassian.net"
+
 # Optional: what to download when no --space or --project is given.
+[sources.confluence]
 spaces = ["ENG", "OPS"]
+
+[sources.jira]
 projects = ["PLAT"]
 ```
+
+`spaces` and `projects` belong to their sources' tables: at the top of the file, where
+they were before, they are refused, and the message names their table.
 
 The data goes to `~/atlassian-offline-mcp` unless `data_dir` says otherwise; the command
 refuses a folder under iCloud, `~/Library/CloudStorage`, Dropbox, OneDrive, Google Drive,

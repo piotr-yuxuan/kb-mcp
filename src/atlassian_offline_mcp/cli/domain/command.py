@@ -18,8 +18,9 @@ class Command:
 
     ``run`` names the module whose ``run(arguments, settings)`` runs it, imported only
     once it is chosen. ``flags`` maps each option that overrides a setting, by the
-    option's ``dest``, to that setting's name. Without ``reads_settings``, the run gets
-    ``None`` for its settings, and so runs whatever the settings file holds.
+    option's ``dest``, to that setting's path, its names joined by dots
+    (``sources.confluence.spaces``). Without ``reads_settings``, the run gets ``None``
+    for its settings, and so runs whatever the settings file holds.
     """
 
     run: str

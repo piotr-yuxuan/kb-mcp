@@ -115,7 +115,7 @@ def test_refused_settings_exit_before_the_run_is_imported(
     config = home / "config.toml"
     config.write_text('sight = "https://example.atlassian.net"\n', "utf-8")
     assert main(["extra", "--config", str(config)]) == BAD_SETTINGS
-    assert "unknown setting: sight" in capsys.readouterr().err
+    assert "sight (config.toml): not a setting" in capsys.readouterr().err
 
 
 def test_the_version_is_the_project_s(capsys: CaptureFixture[str]) -> None:
@@ -244,10 +244,14 @@ def test_completion_prints_the_shell_code_whatever_the_settings(
 def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture[str]) -> None:
     """Valid settings and a safe directory exit 0 and are shown."""
     config = home / "config.toml"
-    config.write_text('site = "https://example.atlassian.net"\nspaces = ["ENG"]\n', "utf-8")
+    config.write_text(
+        'site = "https://example.atlassian.net"\n[sources.confluence]\nspaces = ["ENG"]\n',
+        "utf-8",
+    )
     assert main(["check", "--config", str(config)]) == 0
     out = capsys.readouterr().out
     assert "site: https://example.atlassian.net" in out
+    assert "spaces: ENG" in out
     assert f"data directory: {(home / 'atlassian-offline-mcp').resolve()}" in out
 
 
@@ -285,11 +289,11 @@ def test_check_refuses_a_data_directory_that_could_leave_the_machine(
 
 
 def test_check_refuses_bad_settings_by_name(home: Path, capsys: CaptureFixture[str]) -> None:
-    """A settings file with an unknown key exits 2, naming it."""
+    """A settings file with an unknown key exits 2, naming it and the file."""
     config = home / "config.toml"
     config.write_text('sight = "https://example.atlassian.net"\n', "utf-8")
     assert main(["check", "--config", str(config)]) == BAD_SETTINGS
-    assert "unknown setting: sight" in capsys.readouterr().err
+    assert "sight (config.toml): not a setting" in capsys.readouterr().err
 
 
 def test_check_refuses_a_file_that_is_not_toml(home: Path, capsys: CaptureFixture[str]) -> None:

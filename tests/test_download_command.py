@@ -89,7 +89,7 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The user's own key is shown to them, and never written to the run report."""
-    chosen = Settings(SITE, (home / "atlassian-offline-mcp").resolve())
+    chosen = Settings(site=SITE, data_dir=(home / "atlassian-offline-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite(spaces=[])
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
@@ -121,7 +121,7 @@ def test_a_busy_store_exits_1_with_its_reason(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Another run writing the store: the user is told to wait for it."""
-    chosen = Settings(SITE, (home / "atlassian-offline-mcp").resolve())
+    chosen = Settings(site=SITE, data_dir=(home / "atlassian-offline-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     options = ("--site", SITE, "--space", "MFS", "--since", "7d")

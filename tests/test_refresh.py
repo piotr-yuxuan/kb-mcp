@@ -103,7 +103,7 @@ class RefreshSite(FakeSite):
 
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory, and a saved session, under the scratch folder."""
-    chosen = Settings(SITE, tmp_path / "data")
+    chosen = Settings(site=SITE, data_dir=tmp_path / "data")
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     return chosen
 

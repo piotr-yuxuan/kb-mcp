@@ -28,7 +28,7 @@ def test_only_the_site_cookies_of_the_browser_are_saved(
     ]
     monkeypatch.setattr(login_module, "sign_in", lambda *_, **__: browser)
     monkeypatch.setattr(login_module, "disable_password_saving", lambda _: None)
-    settings = Settings(SITE, tmp_path / "data")
+    settings = Settings(site=SITE, data_dir=tmp_path / "data")
     login_module.login(settings, SITE, None, extensions=False)
     saved = read_cookies(settings.session / COOKIES)
     assert [(cookie["name"], cookie["path"]) for cookie in saved] == [

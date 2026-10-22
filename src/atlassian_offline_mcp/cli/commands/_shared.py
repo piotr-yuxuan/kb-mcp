@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.config.app.settings import load_settings
@@ -33,9 +34,12 @@ def enter(arguments: argparse.Namespace) -> int:
     command: Command = arguments.command
     settings = None
     if command.reads_settings:
-        given = {setting: getattr(arguments, dest) for dest, setting in command.flags.items()}
+        flags = {
+            f"--{dest.replace('_', '-')}": (setting, getattr(arguments, dest))
+            for dest, setting in command.flags.items()
+        }
         try:
-            settings = load_settings(arguments.config, given)
+            settings = load_settings(arguments.config, flags, Path.home().resolve()).settings
         except SettingsError as error:
             sys.stderr.write(f"settings refused: {error}\n")
             return ExitStatus.REFUSED

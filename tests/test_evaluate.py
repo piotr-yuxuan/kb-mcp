@@ -137,7 +137,7 @@ def test_refs_resolve_as_read_takes_them(data: Path) -> None:
 
 def test_meaning_answers_the_paraphrase_that_words_miss(data: Path) -> None:
     """Measured as search ranks: the paraphrase found by meaning only; the key first in all."""
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     ticks = count()
     [run] = evaluate(settings, golden(data), [tiny()], lambda: float(next(ticks)), MOMENT)
     assert run.per["lexical"]["q1"].reciprocal_rank == 0.0
@@ -209,7 +209,7 @@ def test_a_ref_missing_from_the_index_evaluated_is_refused(data: Path) -> None:
     """Read against an index that holds a page, measured against one that lost it: refused."""
     questions = golden(data)
     (data / "docs" / "confluence" / "ENG" / "4003-words.md").unlink()
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     with pytest.raises(EvaluationError, match=r"tiny: q2: confluence/ENG/4003-words\.md is not"):
         evaluate(settings, questions, [tiny()], ticking(), MOMENT)
 
@@ -222,7 +222,7 @@ def test_a_mode_by_meaning_that_falls_back_is_refused(data: Path, monkeypatch: M
         raise ModelError(message)
 
     monkeypatch.setattr(evaluation, "Meaning", lambda _connect: Meaning(broken))
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     with pytest.raises(EvaluationError, match="tiny, semantic: Ranked by words alone"):
         evaluate(settings, golden(data), [tiny()], ticking(), MOMENT)
 
@@ -236,7 +236,7 @@ def test_holm_adjusts_every_test_of_the_run(data: Path, monkeypatch: MonkeyPatch
     answers = Scripted({"tiny:latest": DIGEST, "tiny2:latest": DIGEST})
     given = iter([1.0, 0.01, 0.02, 1.0, 0.03, 0.04])  # lexical, semantic, hybrid, twice
     monkeypatch.setattr(evaluation, "paired_test", lambda *_: next(given))
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     embedders = [tiny(answers), tiny(answers, "tiny2")]
     runs = evaluate(settings, golden(data), embedders, ticking(), MOMENT)
     raw = [run.pvalues[mode] for run in runs for mode in ("semantic", "hybrid")]
@@ -251,7 +251,7 @@ def test_a_partial_ref_missing_from_the_index_evaluated_is_refused(data: Path) -
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     questions = golden(data, "- {id: q1, question: x, expected: ['4003'], partial: ['4004']}")
     (data / "docs" / "confluence" / "ENG" / "4004-helper.md").unlink()
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     with pytest.raises(EvaluationError, match=r"q1: confluence/ENG/4004-helper\.md is not"):
         evaluate(settings, questions, [tiny()], ticking(), MOMENT)
 
@@ -271,7 +271,7 @@ def test_the_first_search_by_meaning_is_not_timed_as_a_query(
         return tiny(model=name)
 
     monkeypatch.setattr(evaluation, "Meaning", lambda _connect: Meaning(slow))
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     [run] = evaluate(settings, golden(data), [tiny()], clock, MOMENT)
     assert all(tail < LOADING for _, tail in run.times.values())
 
@@ -282,7 +282,7 @@ def test_evaluation_leaves_the_served_index_and_builds_its_own(data: Path) -> No
     Its name's ``:`` and ``/`` are written ``_``, so that it stays one file there.
     """
     before = (data / "index.sqlite").read_bytes()
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     answers = Scripted({"tiny:latest": DIGEST, "hf.co/someone/tiny:latest": DIGEST})
     embedders = [tiny(answers, "tiny:latest"), tiny(answers, "hf.co/someone/tiny")]
     evaluate(settings, golden(data), embedders, ticking(), MOMENT)
@@ -315,7 +315,7 @@ def test_documents_are_measured_to_the_tenth_and_tested_on_mrr(
         return 0.5
 
     monkeypatch.setattr(evaluation, "paired_test", recorded)
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     [run] = evaluate(settings, questions, [tiny()], ticking(), MOMENT)
     assert run.per["lexical"]["q4"].recall == 1.0
     assert run.per["lexical"]["q4"].reciprocal_rank == pytest.approx(1 / 10)

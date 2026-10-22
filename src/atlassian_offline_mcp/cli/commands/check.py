@@ -18,7 +18,7 @@ def run(_arguments: argparse.Namespace, settings: Settings) -> ExitStatus:
     sys.stdout.write(
         f"site: {settings.site or '(not set)'}\n"
         f"data directory: {settings.data_dir}\n"
-        f"spaces: {', '.join(settings.spaces) or '(none)'}\n"
-        f"projects: {', '.join(settings.projects) or '(none)'}\n"
+        f"spaces: {', '.join(settings.sources.confluence.spaces) or '(none)'}\n"
+        f"projects: {', '.join(settings.sources.jira.projects) or '(none)'}\n"
     )
     return ExitStatus.OK

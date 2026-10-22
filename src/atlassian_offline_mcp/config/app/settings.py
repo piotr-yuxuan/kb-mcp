@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.config.adapters.settings_file import (
@@ -12,14 +10,17 @@ from atlassian_offline_mcp.config.adapters.settings_file import (
     read_settings_file,
 )
 from atlassian_offline_mcp.config.domain.settings import (
-    Settings,
+    Entry,
+    Loaded,
     SettingsError,
-    parse_settings,
+    file_entries,
+    settings_of,
     unsafe_location,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
 __all__ = ["SETTINGS_PATH", "UnsafeDataDirError", "load_settings"]
 
@@ -28,8 +29,12 @@ class UnsafeDataDirError(SettingsError):
     """A data directory where company data could leave the machine."""
 
 
-def load_settings(path: Path, overrides: Mapping[str, object]) -> Settings:
-    """Read the settings file, let the flags that were given override it, and check all.
+def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Path) -> Loaded:
+    """Read the settings file, let the flags given override it, and check all.
+
+    ``flags`` maps each flag, such as ``--site``, to the setting it overrides, by its
+    path joined by dots, and its value, None when it was not given. The file's layer is
+    its name. ``~`` in the data directory is ``home``, which must be resolved.
 
     The data directory, and each place under it where data is written, is resolved
     (links followed, ``..`` removed) before the guard judges it, and the resolved data
@@ -43,10 +48,20 @@ def load_settings(path: Path, overrides: Mapping[str, object]) -> Settings:
     except OSError as error:
         message = f"{path}: not readable ({type(error).__name__})"
         raise SettingsError(message) from error
-    given = {key: value for key, value in overrides.items() if value is not None}
-    home = Path.home().resolve()
-    settings = parse_settings({**values, **given}, home)
-    settings = replace(settings, data_dir=settings.data_dir.resolve())
+    loaded = settings_of(
+        [
+            *file_entries(values, path.name),
+            *(
+                Entry(tuple(setting.split(".")), value, flag)
+                for flag, (setting, value) in flags.items()
+                if value is not None
+            ),
+        ]
+    )
+    data_dir = loaded.settings.data_dir
+    under_home = data_dir.parts[0] == "~"
+    data_dir = (home.joinpath(*data_dir.parts[1:]) if under_home else data_dir).resolve()
+    settings = loaded.settings.model_copy(update={"data_dir": data_dir})
     for place in (settings.data_dir, *settings.parts):
         resolved = place.resolve()
         problem = unsafe_location(resolved, home, git_root(resolved))
@@ -54,4 +69,4 @@ def load_settings(path: Path, overrides: Mapping[str, object]) -> Settings:
             where = "" if place == settings.data_dir else f"{place.name}: "
             message = f"data_dir: {where}{problem}"
             raise UnsafeDataDirError(message)
-    return settings
+    return Loaded(settings, loaded.layers, loaded.ignored)

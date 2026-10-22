@@ -365,7 +365,7 @@ def test_the_report_names_nothing_the_site_served(tmp_path: Path) -> None:
 
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory under the scratch folder."""
-    return Settings(SITE, tmp_path / "data")
+    return Settings(site=SITE, data_dir=tmp_path / "data")
 
 
 def targets(spaces: list[str], projects: list[str]) -> Targets:
