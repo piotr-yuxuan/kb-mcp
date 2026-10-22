@@ -1,4 +1,4 @@
-"""Observing a run: its logs on stderr at the level asked, and in its own file.
+"""Observing a run: its logs, on stderr at the level asked and in its own file, and its progress.
 
 The command line enters ``early`` once its arguments are parsed, then ``observed`` once
 the run's settings are read, with plain values: how the run reports, its log folder, its
@@ -21,7 +21,8 @@ import structlog
 from rich.console import Console
 
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.observability.adapters.display import ConsoleLines
+from atlassian_offline_mcp.observability.adapters import progress
+from atlassian_offline_mcp.observability.adapters.display import Bars, ConsoleLines
 from atlassian_offline_mcp.observability.adapters.logs import (
     PROGRAM,
     QUIET,
@@ -85,6 +86,10 @@ def observed(
     ``run.failed`` with the exception's traceback; each says how many seconds it lasted.
     The run's status is then ``ExitStatus.INTERRUPTED`` or ``ExitStatus.FAILED``: the
     interruption or the exception goes no further.
+
+    On a terminal, unless -q, the tasks' progress is drawn on stderr as bars, and their
+    events ``progress`` are kept off it; elsewhere, these events show it from -v.
+    ``serve`` reports no task, so it draws no bar.
     """
     root = logging.getLogger()
     log = structlog.get_logger()
@@ -95,8 +100,11 @@ def observed(
             stack.callback(root.addHandler, handler)
         console = Console(stderr=True, force_terminal=output.stderr_terminal)
         stderr = ConsoleLines(console, logging.getLevelNamesMapping()[output.level.upper()])
+        bars = output.stderr_terminal and not output.quiet
+        stderr.addFilter(lambda record: not bars or record.name != progress.__name__)
         root.addHandler(stderr)
         stack.callback(root.removeHandler, stderr)
+        stack.enter_context(progress.drawn(Bars(console, shown=bars)))
         path = None
         if folder is not None:
             try:

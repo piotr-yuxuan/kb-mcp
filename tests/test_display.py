@@ -1,4 +1,4 @@
-"""The display's log lines: on stderr's console at a level, inert, coloured on a terminal."""
+"""The display: log lines on stderr's console at a level, inert, coloured on a terminal; bars."""
 
 from __future__ import annotations
 
@@ -6,15 +6,19 @@ import base64
 import io
 import json
 import logging
+import re
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
 import structlog
 from rich.console import Console
+from rich.progress import Progress
 
-from atlassian_offline_mcp.observability.adapters.display import ConsoleLines
+from atlassian_offline_mcp.observability.adapters import progress
+from atlassian_offline_mcp.observability.adapters.display import Bars, ConsoleLines, Remaining
 from atlassian_offline_mcp.observability.adapters.logs import log_file, route_through_logging
 
 if TYPE_CHECKING:
@@ -170,3 +174,77 @@ def test_the_sdk_s_own_records_stay_off_the_console(tmp_path: Path) -> None:
     assert events == ["export failed", "export failed again", "not the SDK"]
     (shown,) = written(console).splitlines()
     assert "not the SDK" in shown
+
+
+@dataclass
+class Clock:
+    """A clock that says the time it is set to, in seconds."""
+
+    now: float = 0.0
+
+    def __call__(self) -> float:
+        """Say the time."""
+        return self.now
+
+
+def drawn_now(bars: Bars) -> str:
+    """Give the bars as they would be drawn now, as text on a wide console."""
+    console = Console(file=io.StringIO(), force_terminal=False, width=200)
+    console.print(bars.progress)
+    return written(console)
+
+
+def test_a_task_s_line_shows_its_name_bar_items_times_and_item_inert() -> None:
+    """The item, a title from the site, passes printable() and is no markup: [red] stays."""
+    bars = Bars(Console(file=io.StringIO(), force_terminal=True, width=200), shown=True)
+    with progress.drawn(bars), progress.task("documents", 4) as documents:
+        lines = [drawn_now(bars) for _ in documents.each([TITLE], str)]
+    (line,) = lines
+    assert re.fullmatch(rf"documents [━╸╺ ]+ 0/4 0:00:00 -:--:-- {re.escape(INERT)} *\n", line)
+
+
+def test_a_task_of_no_known_total_shows_its_count_alone() -> None:
+    """A listing's pages: a question mark for the total, dashes for the time left."""
+    bars = Bars(Console(file=io.StringIO(), force_terminal=True, width=200), shown=True)
+    with progress.drawn(bars), progress.task("listing") as listing:
+        listing.advance()
+        line = drawn_now(bars)
+    assert re.fullmatch(r"listing [━╸╺ ]+ 1/\? 0:00:00 -:--:-- *\n", line)
+
+
+def test_the_time_left_is_at_the_pace_kept_and_unknown_before_an_item_is_done() -> None:
+    """One text of four embedded in 30 s: 1 min 30 s left; none done, or no total: dashes."""
+    clock = Clock()
+    bars = Progress(get_time=clock, disable=True)
+    texts = bars.add_task("texts to embed", total=4)
+    listing = bars.add_task("listing", total=None)
+    assert [Remaining().render(each).plain for each in bars.tasks] == ["-:--:--", "-:--:--"]
+    clock.now = 30.0
+    bars.update(texts, completed=1)
+    bars.update(listing, completed=3)
+    assert [Remaining().render(each).plain for each in bars.tasks] == ["0:01:30", "-:--:--"]
+
+
+def test_bars_are_drawn_while_a_task_runs_and_the_last_to_end_takes_them_away() -> None:
+    """Each task's last state is drawn; once none runs, the console's cursor is back."""
+    console = Console(file=io.StringIO(), force_terminal=True, color_system=None, width=100)
+    bars = Bars(console, shown=True)
+    with progress.drawn(bars):
+        with progress.task("targets", 2) as targets:
+            with progress.task("documents", 3) as documents:
+                documents.advance(3)
+            assert bars.progress.live.is_started
+            targets.advance()
+        assert not bars.progress.live.is_started
+    out = written(console)
+    assert re.search(r"documents [━╸╺ ]+ 3/3 0:00:00 0:00:00", out)
+    assert re.search(r"targets [━╸╺ ]+ 1/2 0:00:00 0:00:00", out)
+    assert out.endswith("\x1b[?25h")
+
+
+def test_bars_not_shown_draw_nothing() -> None:
+    """As piped, or with -q: the task runs, and the console is left as it was."""
+    console = Console(file=io.StringIO(), force_terminal=True, width=100)
+    with progress.drawn(Bars(console, shown=False)), progress.task("files", 2) as files:
+        files.advance(2)
+    assert written(console) == ""
