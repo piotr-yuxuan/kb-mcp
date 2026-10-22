@@ -25,7 +25,20 @@ Follow the `workflow:plans` skill with these parameters:
 ## Sandbox credentials
 
 `atlassian-test-credientials.sops.json`, at the root of the primary checkout, holds the
-sandbox site, account email and API token, encrypted with sops. Use it only as
-`sops exec-env <absolute path> '<command>'`, and only against the sandbox. Never
-print, decrypt or read its values. Never sign in with a password: browser sign-ins
-are the user's.
+sandbox site, account email and API token, encrypted with sops, under the generic names
+`ATLASSIAN_SITE`, `ATLASSIAN_EMAIL` and `ATLASSIAN_API_TOKEN`. It is the user's own test
+account, on the free plan, made for this. Agents may decrypt it and use its values
+against the sandbox only, by `sops exec-env <absolute path> '<command>'`, the quoted
+command mapping the names to the program's variables as
+[the how-to](docs/how-to/api-token-with-sops.md) does, such as, from a worktree:
+
+```bash
+sops exec-env <primary-checkout>/atlassian-test-credientials.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" \
+  ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" \
+  ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" \
+  uv run atlassian-offline-mcp download --yes --config <scratch>/none.toml \
+  --data-dir <scratch>/data --space MFS --project PRB --since 7d'
+```
+
+Never commit a value, nor write one into a tracked file, a log or a command line. Never
+sign in with a password: browser sign-ins, `login` included, are the user's.

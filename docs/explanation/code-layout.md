@@ -17,9 +17,9 @@ Each context may use those below it, never those above:
 | `mcp` | The tools agents call (`Library`), and answers within their budgets |
 | `search` | The index of the mirror, by words and by meaning, and ranking |
 | `mirror` | The raw store's newest snapshots as Markdown, with their front matter |
-| `sources` | Where documents come from: today `atlassian/`, Confluence and Jira, with the session and the raw store |
+| `sources` | Where documents come from: today `atlassian/`, Confluence and Jira, with the sign-in (the saved session or an API token) and the raw store |
 | `config` | The settings, their file, and the guard on where data lives |
-| `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON |
+| `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses, how a run reports, whether an endpoint is this machine |
 
 The order follows what each needs: `eval` ranks through the `Library` of `mcp`, which
 ranks with `search`, which indexes the mirror's front matter; the mirror reads the raw
@@ -46,17 +46,25 @@ Each context but the kernel holds the same layers, as sub-packages, from the top
 
 | Layer | What it holds |
 |---|---|
-| `main` | The entry point (in `cli` only) |
-| `commands` | One module per subcommand (in `cli` only) |
+| `main` | The entry point: the parser, built from every declaration (in `cli` only) |
+| `commands` | One run per subcommand, with its result as text; `_shared`, the entry that loads the settings, refuses what it can before anything is asked, says what it ignores, asks before a run that writes, runs the chosen one and writes its result; `_embedding`, which the runs that embed share (in `cli` only) |
+| `options` | One light declaration per subcommand: its help, its options, the run it names, the settings it reads, whether it writes, and the pure checks that refuse a run before anything is asked (in `cli` only) |
 | `app` | Use cases: they combine effects and rules, and know nothing of the command line |
-| `adapters` | Effects: the network, the browser, files, SQLite, subprocesses |
+| `adapters` | Effects: the network, the browser, files, SQLite, subprocesses, the terminal |
 | `domain` | Pure rules: decisions and conversions with no I/O, time or environment |
 
 A context holds only the layers it needs; `mcp` has only `app`.
 
+A subcommand is a pair of modules: `cli/options/<name>.py` declares it, and the module
+of `cli/commands/` that its declaration names runs it. `--help`, and shell completion at
+every Tab, build the whole parser, so they import every declaration; `main` imports the
+entry and the chosen run, by name, only once the arguments are parsed. So a declaration
+stays light: contract G keeps the packages that runs need out of `cli.main` and
+`cli.options`.
+
 ## The contracts
 
-`pyproject.toml` declares six contracts:
+`pyproject.toml` declares seven contracts:
 
 | | What it protects |
 |---|---|
@@ -66,9 +74,13 @@ A context holds only the layers it needs; `mcp` has only `app`.
 | D | Effects, in any context, use no use case |
 | E | Search, the server and the evaluation read the mirror, never a source: the index is built from the mirror alone |
 | F | Use cases and commands reach the network through effects only (no `httpx`) |
+| G | Declaring the command, `cli.main` and `cli.options`, imports none of the packages that runs need: the MCP SDK, Playwright, httpx, NumPy, lxml, PyYAML, Pydantic, Rich, OpenTelemetry, and plan 016's structlog and platformdirs |
 
 A orders the contexts, which B, applied per context, does not; C and D carry the order
 of the layers across contexts, which B cannot. All but F count indirect imports too.
+None sees an import by name, as `main` makes of the entry and the run: a test of
+`tests/test_cli.py` checks, in a fresh interpreter, that `--help` and a completion
+import none of G's packages.
 
 ## Where a new module goes
 

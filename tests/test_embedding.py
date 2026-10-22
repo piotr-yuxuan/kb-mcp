@@ -11,6 +11,7 @@ import os
 import re
 import socket
 import threading
+from argparse import Namespace
 from contextlib import suppress
 from dataclasses import replace
 from typing import TYPE_CHECKING
@@ -19,8 +20,13 @@ import httpx
 import numpy as np
 import pytest
 
+from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
 from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import DEFAULT_EMBEDDING_URL, SettingsError
+from atlassian_offline_mcp.config.domain.settings import (
+    DEFAULT_EMBEDDING_URL,
+    Settings,
+    SettingsError,
+)
 from atlassian_offline_mcp.search.adapters import embedding
 from atlassian_offline_mcp.search.adapters.embedding import (
     BATCH,
@@ -320,6 +326,17 @@ def test_the_key_is_sent_only_when_set_and_never_said() -> None:
             embed(opened, "tiny", ["undo"], SINGLE)
         assert "a-secret-key" not in str(refused.value)
     assert headers == ["Bearer a-secret-key", None]
+
+
+def test_a_run_opens_the_endpoint_with_the_key_of_its_secret_setting(tmp_path: Path) -> None:
+    """The key is the setting's, which the environment alone gives, as a bearer token."""
+    settings = Settings(data_dir=tmp_path, embedding_api_key="a-secret-key")
+    with open_endpoint(Namespace(allow_remote_embeddings=False), settings) as opened:
+        assert opened.http.headers["Authorization"] == "Bearer a-secret-key"
+    with open_endpoint(
+        Namespace(allow_remote_embeddings=False), Settings(data_dir=tmp_path)
+    ) as opened:
+        assert "Authorization" not in opened.http.headers
 
 
 def test_a_missing_model_and_no_answer_say_what_to_run() -> None:
@@ -654,6 +671,24 @@ def test_model_check_says_the_dimensions_and_whether_the_prefixes_are_known(
             " no prefixes known: texts as they are"
         ),
     ]
+
+
+def test_model_check_says_the_same_in_detail_and_gives_one_document(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Its line under --summary detailed too; under --format json, the model as it answered."""
+    with serving(Scripted({QWEN: DIGEST})) as url:
+        assert check(home, url) == 0
+        short = capsys.readouterr().out
+        assert check(home, url, "--summary", "detailed") == 0
+        assert capsys.readouterr().out == short
+        assert check(home, url, "--format", "json") == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "name": QWEN,
+        "dimensions": DIMENSIONS,
+        "url": url,
+        "digest": DIGEST,
+    }
 
 
 def test_model_check_says_what_to_run(home: Path, capsys: CaptureFixture[str]) -> None:

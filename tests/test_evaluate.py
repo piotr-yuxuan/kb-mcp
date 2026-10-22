@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import UTC, datetime
 from itertools import count
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+import yaml
 
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.evaluation.app import evaluation
 from atlassian_offline_mcp.evaluation.app.evaluation import (
+    HEADER,
     EvaluationError,
     GoldenError,
     evaluate,
@@ -21,7 +25,7 @@ from atlassian_offline_mcp.evaluation.app.evaluation import (
     record,
     table,
 )
-from atlassian_offline_mcp.evaluation.domain.evaluation import holm
+from atlassian_offline_mcp.evaluation.domain.evaluation import Question, holm
 from atlassian_offline_mcp.mcp.app.tools import Library
 from atlassian_offline_mcp.search.adapters.embedding import ModelError
 from atlassian_offline_mcp.search.adapters.sqlite_index import reading
@@ -32,7 +36,6 @@ from tests.mirrors import MOMENT, fillers, issue, page, write
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
@@ -55,6 +58,8 @@ GOLDEN = """
   expected: [PROJ-7]
 """
 REFUSED = 2
+# Plan 002's golden set, whose keys a golden file takes as refs.
+SANDBOX_SET = Path(__file__).parents[1] / "sandbox" / "golden.yaml"
 # Seconds that connecting takes in the test of timing: beyond any query's.
 LOADING = 1000
 
@@ -118,12 +123,58 @@ def golden(data: Path, text: str = GOLDEN) -> list:
         ),
         ("{id: q1}", "golden: expected a list"),
         ("- [unclosed", "not a golden file"),
+        ("- {id: 1, question: x, expected: ['4002']}", r"golden\[0\]\.id: expected a string"),
+        ("- 3", r"golden\[0\]: expected an object"),
+        (
+            "- {id: q1, question: x, expected: ['4002'], partial: null}",
+            r"golden\[0\]\.partial: expected a list",
+        ),
+        (
+            "- {id: q1, question: x, expected: ['4002'], evidence: {'4002': 3}}",
+            r"golden\[0\]\.evidence\.4002: expected a string",
+        ),
+        ("- {id: q1}", r"golden\[0\]\.question: missing; golden\[0\]\.expected: missing"),
     ],
 )
 def test_a_golden_file_is_refused_by_name(data: Path, text: str, named: str) -> None:
     """Each fault names where it is; nothing is half-read."""
     with pytest.raises(GoldenError, match=named):
         golden(data, text)
+
+
+def test_the_sandbox_s_golden_set_reads_as_written() -> None:
+    """Plan 002's set as a golden file, its overlap and language as groups, reads whole.
+
+    Each question keeps its id, its text, its groups, and its refs and evidence, each
+    ref as the path that the mirror gives it.
+    """
+
+    def path(ref: str) -> str:
+        return f"mirror/{ref}.md"
+
+    items = yaml.safe_load(SANDBOX_SET.read_text("utf-8"))
+    written = [
+        {
+            "id": item["id"],
+            "question": item["question"],
+            "expected": item["expected"],
+            "partial": item["partial"],
+            "groups": [item["overlap"], item["lang"]],
+            "evidence": item["evidence"],
+        }
+        for item in items
+    ]
+    assert read_golden(yaml.safe_dump(written, allow_unicode=True), path) == [
+        Question(
+            item["id"],
+            item["question"],
+            expected=tuple(path(ref) for ref in item["expected"]),
+            partial=tuple(path(ref) for ref in item["partial"]),
+            groups=(item["overlap"], item["lang"]),
+            evidence={path(ref): phrase for ref, phrase in item["evidence"].items()},
+        )
+        for item in items
+    ]
 
 
 def test_refs_resolve_as_read_takes_them(data: Path) -> None:
@@ -137,7 +188,7 @@ def test_refs_resolve_as_read_takes_them(data: Path) -> None:
 
 def test_meaning_answers_the_paraphrase_that_words_miss(data: Path) -> None:
     """Measured as search ranks: the paraphrase found by meaning only; the key first in all."""
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     ticks = count()
     [run] = evaluate(settings, golden(data), [tiny()], lambda: float(next(ticks)), MOMENT)
     assert run.per["lexical"]["q1"].reciprocal_rank == 0.0
@@ -156,7 +207,7 @@ def test_the_command_keeps_numbers_and_ids_but_no_question(
     """``eval`` prints its tables, and its results file holds no question's text."""
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     with serving(Scripted()) as url:
-        assert main(["eval", str(data / "golden.yaml"), *options(data, url)]) == 0
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data, url)]) == 0
         out = capsys.readouterr().out
         assert "## tiny" in out
         [results] = (data / "eval" / "results").glob("*.json")
@@ -164,17 +215,82 @@ def test_the_command_keeps_numbers_and_ids_but_no_question(
         assert "vacation" not in kept
         assert "release" not in kept
         assert json.loads(kept)["runs"][0]["ranks"]["semantic"]["q1"] == [1]
-        assert main(["eval", str(data / "golden.yaml"), *options(data, url)]) == 0
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data, url)]) == 0
     second = max((data / "eval" / "results").glob("*.json"))
     assert json.loads(second.read_text(encoding="utf-8"))["runs"][0]["embedded"] == 0
+
+
+def test_the_command_in_short_shows_each_mode_on_all_questions_then_the_results_file(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Under the model's name, the table's rows of the group all alone; nothing of the tests."""
+    (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
+    with serving(Scripted()) as url:
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data, url)]) == 0
+    [results] = (data / "eval" / "results").glob("*.json")
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[:3] == ["## tiny", "", HEADER]
+    rows = [line.split(" | ")[:2] for line in lines[4:-2]]
+    assert rows == [["| lexical", "all"], ["| semantic", "all"], ["| hybrid", "all"]]
+    assert lines[-2:] == ["", f"Results: {results}"]
+
+
+def test_the_command_in_detail_shows_every_group_how_the_index_was_built_and_the_tests(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The model's whole table, as ``table`` writes it, then the results file."""
+    (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
+    with serving(Scripted()) as url:
+        options_given = [*options(data, url), "--summary", "detailed"]
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options_given]) == 0
+    [results] = (data / "eval" / "results").glob("*.json")
+    out = capsys.readouterr().out
+    assert "Index built in " in out
+    assert "| semantic | paraphrase | 1.000 | 1.000 |" in out
+    assert "MRR@10, semantic against lexical: p = " in out
+    assert out.endswith(f"\nResults: {results}\n")
+
+
+def test_the_command_gives_each_model_s_run_and_the_results_file_as_json(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """One document, of ids and numbers: no question's text, as in the results file."""
+    (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
+    with serving(Scripted()) as url:
+        options_given = [*options(data, url), "--format", "json"]
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options_given]) == 0
+    [results] = (data / "eval" / "results").glob("*.json")
+    out = capsys.readouterr().out
+    assert "vacation" not in out
+    assert "release" not in out
+    document = json.loads(out)
+    assert document["results"] == str(results)
+    [run] = document["runs"]
+    assert run["model"] == "tiny"
+    assert run["ranks"]["semantic"]["q1"] == [1]
 
 
 def test_a_refused_golden_file_exits_2(data: Path, capsys: CaptureFixture[str]) -> None:
     """The command names the fault and evaluates nothing."""
     (data / "golden.yaml").write_text("- {id: q1}", encoding="utf-8")
-    assert main(["eval", str(data / "golden.yaml"), *options(data)]) == REFUSED
+    assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data)]) == REFUSED
     assert "golden[0].expected: missing" in capsys.readouterr().err
     assert not (data / "eval").exists()
+
+
+def test_a_golden_file_is_read_from_a_pipe(data: Path, capsys: CaptureFixture[str]) -> None:
+    """As a process substitution gives one, such as ``<(sops -d golden.sops.yaml)``.
+
+    It is no regular file, yet the reader reads it, and names the fault it holds.
+    """
+    read, write = os.pipe()
+    os.write(write, b"- {id: q1}")
+    os.close(write)
+    try:
+        assert main(["eval", "--yes", f"/dev/fd/{read}", *options(data)]) == REFUSED
+    finally:
+        os.close(read)
+    assert "golden[0].expected: missing" in capsys.readouterr().err
 
 
 def test_an_endpoint_elsewhere_without_the_flag_exits_2(
@@ -183,7 +299,7 @@ def test_an_endpoint_elsewhere_without_the_flag_exits_2(
     """``eval`` always embeds: an endpoint off this machine needs the run's word."""
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     remote = options(data, "https://embeddings.example/v1")
-    assert main(["eval", str(data / "golden.yaml"), *remote]) == REFUSED
+    assert main(["eval", "--yes", str(data / "golden.yaml"), *remote]) == REFUSED
     assert "refused: embedding_url: not an address of this machine" in capsys.readouterr().err
     assert not (data / "eval").exists()
 
@@ -209,7 +325,7 @@ def test_a_ref_missing_from_the_index_evaluated_is_refused(data: Path) -> None:
     """Read against an index that holds a page, measured against one that lost it: refused."""
     questions = golden(data)
     (data / "docs" / "confluence" / "ENG" / "4003-words.md").unlink()
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     with pytest.raises(EvaluationError, match=r"tiny: q2: confluence/ENG/4003-words\.md is not"):
         evaluate(settings, questions, [tiny()], ticking(), MOMENT)
 
@@ -222,7 +338,7 @@ def test_a_mode_by_meaning_that_falls_back_is_refused(data: Path, monkeypatch: M
         raise ModelError(message)
 
     monkeypatch.setattr(evaluation, "Meaning", lambda _connect: Meaning(broken))
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     with pytest.raises(EvaluationError, match="tiny, semantic: Ranked by words alone"):
         evaluate(settings, golden(data), [tiny()], ticking(), MOMENT)
 
@@ -236,7 +352,7 @@ def test_holm_adjusts_every_test_of_the_run(data: Path, monkeypatch: MonkeyPatch
     answers = Scripted({"tiny:latest": DIGEST, "tiny2:latest": DIGEST})
     given = iter([1.0, 0.01, 0.02, 1.0, 0.03, 0.04])  # lexical, semantic, hybrid, twice
     monkeypatch.setattr(evaluation, "paired_test", lambda *_: next(given))
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     embedders = [tiny(answers), tiny(answers, "tiny2")]
     runs = evaluate(settings, golden(data), embedders, ticking(), MOMENT)
     raw = [run.pvalues[mode] for run in runs for mode in ("semantic", "hybrid")]
@@ -251,7 +367,7 @@ def test_a_partial_ref_missing_from_the_index_evaluated_is_refused(data: Path) -
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     questions = golden(data, "- {id: q1, question: x, expected: ['4003'], partial: ['4004']}")
     (data / "docs" / "confluence" / "ENG" / "4004-helper.md").unlink()
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     with pytest.raises(EvaluationError, match=r"q1: confluence/ENG/4004-helper\.md is not"):
         evaluate(settings, questions, [tiny()], ticking(), MOMENT)
 
@@ -271,7 +387,7 @@ def test_the_first_search_by_meaning_is_not_timed_as_a_query(
         return tiny(model=name)
 
     monkeypatch.setattr(evaluation, "Meaning", lambda _connect: Meaning(slow))
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     [run] = evaluate(settings, golden(data), [tiny()], clock, MOMENT)
     assert all(tail < LOADING for _, tail in run.times.values())
 
@@ -282,7 +398,7 @@ def test_evaluation_leaves_the_served_index_and_builds_its_own(data: Path) -> No
     Its name's ``:`` and ``/`` are written ``_``, so that it stays one file there.
     """
     before = (data / "index.sqlite").read_bytes()
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     answers = Scripted({"tiny:latest": DIGEST, "hf.co/someone/tiny:latest": DIGEST})
     embedders = [tiny(answers, "tiny:latest"), tiny(answers, "hf.co/someone/tiny")]
     evaluate(settings, golden(data), embedders, ticking(), MOMENT)
@@ -315,7 +431,7 @@ def test_documents_are_measured_to_the_tenth_and_tested_on_mrr(
         return 0.5
 
     monkeypatch.setattr(evaluation, "paired_test", recorded)
-    settings = Settings(None, data, model="tiny")
+    settings = Settings(data_dir=data, model="tiny")
     [run] = evaluate(settings, questions, [tiny()], ticking(), MOMENT)
     assert run.per["lexical"]["q4"].recall == 1.0
     assert run.per["lexical"]["q4"].reciprocal_rank == pytest.approx(1 / 10)

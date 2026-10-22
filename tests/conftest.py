@@ -1,16 +1,26 @@
-"""Every test runs without the network: only ports of this machine that a test opened.
+"""Every test runs without the network, and without the settings' own environment.
 
 An audit hook refuses any connection, and any name looked up, other than a loopback
 address and a port in ``tests.endpoint.REACHABLE``, so that no test reaches the network,
-or a real Ollama on this machine, by mistake.
+or a real Ollama on this machine, by mistake. The settings' variables of the user's
+environment are removed for each test, which sets those it needs.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import os
 import sys
+from typing import TYPE_CHECKING
+
+import pytest
 
 from tests.endpoint import REACHABLE
+
+if TYPE_CHECKING:
+    from _pytest.monkeypatch import MonkeyPatch
+
+PREFIX = "ATLASSIAN_OFFLINE_MCP_"
 
 
 def guard(event: str, arguments: tuple[object, ...]) -> None:
@@ -33,3 +43,13 @@ def guard(event: str, arguments: tuple[object, ...]) -> None:
 
 
 sys.addaudithook(guard)
+
+
+@pytest.fixture(autouse=True)
+def settings_environment(monkeypatch: MonkeyPatch) -> None:
+    """Remove the variables that the settings read, so that none of the user's reaches a test.
+
+    pydantic-settings reads them without regard to case.
+    """
+    for name in [name for name in os.environ if name.lower().startswith(PREFIX.lower())]:
+        monkeypatch.delenv(name)

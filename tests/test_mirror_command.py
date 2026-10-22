@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 from datetime import UTC, datetime
@@ -14,7 +15,8 @@ from atlassian_offline_mcp.kernel.content import Page
 from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
 from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
-from tests.samples import v2_page, v2_view
+from tests.samples import v2_page, v2_space, v2_view
+from tests.test_mirror import FETCHED, SPACE_ID, listing_page, page_responses
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -46,18 +48,26 @@ def fake_pandoc(folder: Path, script: str) -> Path:
 
 def arguments(home: Path, *extra: str) -> list[str]:
     """Return the command line of ``mirror`` with a scratch settings file and data."""
-    return ["mirror", "--config", str(home / "none.toml"), "--data-dir", str(home / "data"), *extra]
+    return [
+        "mirror",
+        "--yes",
+        "--config",
+        str(home / "none.toml"),
+        "--data-dir",
+        str(home / "data"),
+        *extra,
+    ]
 
 
 def test_without_pandoc_the_mirror_names_it_and_writes_nothing(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Exit 1, a message naming pandoc, and no mirror."""
+    """Refused before anything is asked, exit 2, naming pandoc; and no mirror."""
     empty = home / "bin"
     empty.mkdir()
     monkeypatch.setenv("PATH", str(empty))
-    assert main(arguments(home)) == SOME_FAILED
-    assert "pandoc" in capsys.readouterr().err
+    assert main(arguments(home)) == BAD_SETTINGS
+    assert "refused: pandoc: not found on PATH" in capsys.readouterr().err
     assert not (home / "data" / "docs").exists()
 
 
@@ -72,9 +82,38 @@ def test_an_empty_store_mirrors_nothing_and_exits_zero(
 ) -> None:
     """A data directory without a raw store gives an empty mirror, and counts of zero."""
     assert main(arguments(home)) == 0
-    out = capsys.readouterr().out
-    assert "documents: 0\n" in out
-    assert "files written: 0\n" in out
+    assert capsys.readouterr().out == (
+        "documents: 0\nfiles written: 0\nfiles unchanged: 0\nfiles removed: 0\nproblems: 0\n"
+    )
+
+
+def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A page with a frame: short gives the counts; detailed, the frame's too, by its name.
+
+    The second run writes nothing, and finds unchanged what the first wrote.
+    """
+    store = RawStore(home / "data" / "raw")
+    html = '<p>Home.</p><iframe src="http://example.invalid/x"></iframe>'
+    with store.writing():
+        store.put_space(v2_space(id=SPACE_ID), [listing_page("100", "Home", None, None)], [], [])
+        store.put(Page, page_responses("100", "Home", 1, html, []), FETCHED, {})
+    assert main(arguments(home)) == 0
+    first = capsys.readouterr().out.splitlines()
+    names = ["documents", "files written", "files unchanged", "files removed", "problems"]
+    assert [line.split(": ")[0] for line in first] == names
+    assert first[0] == "documents: 1"
+    written = first[1].removeprefix("files written: ")
+    assert main(arguments(home, "--summary", "detailed")) == 0
+    assert capsys.readouterr().out == (
+        "documents: 1\n"
+        "files written: 0\n"
+        f"files unchanged: {written}\n"
+        "files removed: 0\n"
+        "not shown, element: iframe: 1\n"
+        "problems: 0\n"
+    )
 
 
 def test_pandoc_runs_sandboxed_on_its_standard_input(home: Path, monkeypatch: MonkeyPatch) -> None:
@@ -112,5 +151,12 @@ def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
     assert main(arguments(home)) == SOME_FAILED
     captured = capsys.readouterr()
     assert "documents: 0\n" in captured.out
+    assert "problems: 1\n" in captured.out
     assert "not mirrored: confluence/pages/196845/000001: space not listed\n" in captured.err
     assert "nothing was removed" in captured.err
+    assert main(arguments(home, "--format", "json")) == SOME_FAILED
+    document = json.loads(capsys.readouterr().out)
+    assert document["documents"] == 0
+    assert document["problems"] == [
+        {"where": "confluence/pages/196845/000001", "reason": "space not listed"}
+    ]

@@ -2,43 +2,38 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.config.app.settings import (
-    SETTINGS_PATH,
-    UnsafeDataDirError,
-    load_settings,
-)
-from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.cli.domain.summary import setting_line
+from atlassian_offline_mcp.config.domain.settings import SETTING_PATHS
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 
 if TYPE_CHECKING:
     import argparse
 
-
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add ``check`` to the command."""
-    parser = subparsers.add_parser("check", help="validate the settings and the data directory")
-    parser.add_argument("--config", type=Path, default=SETTINGS_PATH, help="the settings file")
-    parser.add_argument("--data-dir", help="the data directory, overriding the settings")
-    parser.set_defaults(run=run)
+    from atlassian_offline_mcp.config.domain.settings import Loaded
+    from atlassian_offline_mcp.kernel.output import Summary
 
 
-def run(arguments: argparse.Namespace) -> int:
-    """Print the effective settings; exit 2 for bad settings, 1 for a refused directory."""
-    try:
-        settings = load_settings(arguments.config, {"data_dir": arguments.data_dir})
-    except UnsafeDataDirError as error:
-        sys.stderr.write(f"data directory refused: {error}\n")
-        return 1
-    except SettingsError as error:
-        sys.stderr.write(f"settings refused: {error}\n")
-        return 2
-    sys.stdout.write(
-        f"site: {settings.site or '(not set)'}\n"
-        f"data directory: {settings.data_dir}\n"
-        f"spaces: {', '.join(settings.spaces) or '(none)'}\n"
-        f"projects: {', '.join(settings.projects) or '(none)'}\n"
-    )
-    return 0
+def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Loaded]:
+    """Give the effective settings, which the entry checked, the data directory included.
+
+    With them come the layer of each and the values ignored.
+    """
+    return ExitStatus.OK, loaded
+
+
+def text(loaded: Loaded, summary: Summary) -> str:
+    """Write each setting that a layer gave, and its value; in detail, every one and its layer.
+
+    A setting is named by its path, its names joined by dots; a secret is said to be set
+    or not, never shown. The layer is the settings file's name, a variable's, a flag, or
+    default.
+    """
+    lines = []
+    for path, kind in SETTING_PATHS.items():
+        setting = ".".join(path)
+        if kind == "table" or (summary == "short" and setting not in loaded.layers):
+            continue
+        lines.append(setting_line(loaded, setting, detailed=summary == "detailed"))
+    return "".join(f"{line}\n" for line in lines)

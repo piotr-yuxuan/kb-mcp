@@ -1,4 +1,4 @@
-"""The one port to the site: GET only, carrying the saved session's cookies."""
+"""The one port to the site: GET only, signed in by the saved session's cookies or a token."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ class TooManyFailuresError(Exception):
 
 
 class SignInNeededError(Exception):
-    """The session no longer opens the site: the user must sign in again."""
+    """The sign-in does not open the site, or there is none: the user must sign in again."""
 
 
 class SiteError(Exception):
@@ -73,7 +73,7 @@ class SiteError(Exception):
 
 
 def refuse_plain_http(request: httpx.Request) -> None:
-    """Refuse a request over plain HTTP, which would carry the session's cookies in clear."""
+    """Refuse a request over plain HTTP, which would carry the sign-in in clear."""
     if request.url.scheme != "https":
         message = "plain HTTP refused"
         raise SiteError(message)
@@ -105,8 +105,17 @@ class Breaker:
         self.failed = 0
 
 
-def client(site: str, cookies: Iterable[Mapping[str, str]]) -> httpx.Client:
-    """Return an httpx client for the site, carrying cookies, verifying TLS with the OS."""
+def client(
+    site: str,
+    cookies: Iterable[Mapping[str, str]],
+    hooks: Iterable[Callable[[httpx.Request], None]] = (),
+    transport: httpx.BaseTransport | None = None,
+) -> httpx.Client:
+    """Return an httpx client for the site, carrying cookies, verifying TLS with the OS.
+
+    Each of ``hooks`` sees every request before it is sent, once plain HTTP is refused.
+    ``transport`` replaces the network, for tests.
+    """
     cookie_jar = httpx.Cookies()
     for cookie in cookies:
         cookie_jar.set(
@@ -118,7 +127,8 @@ def client(site: str, cookies: Iterable[Mapping[str, str]]) -> httpx.Client:
         follow_redirects=False,
         timeout=TIMEOUT_S,
         verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT),
-        event_hooks={"request": [refuse_plain_http]},
+        event_hooks={"request": [refuse_plain_http, *hooks]},
+        transport=transport,
     )
 
 

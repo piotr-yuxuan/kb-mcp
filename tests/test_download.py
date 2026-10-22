@@ -32,13 +32,7 @@ from atlassian_offline_mcp.sources.atlassian.adapters.session_file import (
     write_cookies,
 )
 from atlassian_offline_mcp.sources.atlassian.app import download as download_module
-from atlassian_offline_mcp.sources.atlassian.app.download import (
-    SIGN_IN_NEEDED,
-    SOME_FAILED,
-    Download,
-    Targets,
-    download,
-)
+from atlassian_offline_mcp.sources.atlassian.app.download import Download, Targets, download
 from atlassian_offline_mcp.sources.atlassian.domain.period import period
 from tests.samples import (
     v1_user,
@@ -64,6 +58,9 @@ PICTURE = b"\x89PNG picture"
 SPACE = "196613"
 OWNER_ONLY = 0o600
 HTTP_OK = 200
+# The exit statuses of a run, as the shell reads them.
+SOME_FAILED = 1
+SIGN_IN_NEEDED = 3
 
 
 def stamp(day: int, number: int = 3) -> dict[str, object]:
@@ -368,7 +365,7 @@ def test_the_report_names_nothing_the_site_served(tmp_path: Path) -> None:
 
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory under the scratch folder."""
-    return Settings(SITE, tmp_path / "data")
+    return Settings(site=SITE, data_dir=tmp_path / "data")
 
 
 def targets(spaces: list[str], projects: list[str]) -> Targets:

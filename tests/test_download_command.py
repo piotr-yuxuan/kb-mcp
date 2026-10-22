@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections import Counter
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,9 +12,11 @@ import pytest
 from atlassian_offline_mcp.cli.commands import download as download_command
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report
 from tests.test_download import SITE, FakeSite
 
 if TYPE_CHECKING:
@@ -40,7 +43,99 @@ def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
 
 def command(home: Path, *options: str) -> list[str]:
     """Return the arguments of a download with no settings file."""
-    return ["download", "--config", str(home / "none.toml"), *options]
+    return ["download", "--yes", "--config", str(home / "none.toml"), *options]
+
+
+@pytest.fixture
+def signed_in(home: Path, monkeypatch: MonkeyPatch) -> list[str]:
+    """Save a session, and serve the scripted site; give the options of a run over it.
+
+    Its space and project changed since 2 October: two pages, a blog post and an issue,
+    with three files to keep, of which one fails, and a video, which is not kept.
+    """
+    chosen = Settings(site=SITE, data_dir=(home / "atlassian-offline-mcp").resolve())
+    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
+    return command(
+        home, "--site", SITE, "--space", "MFS", "--project", "PRB", "--since", "2026-10-02"
+    )
+
+
+def test_a_download_shows_what_it_fetched_by_kind_its_files_and_failures(
+    signed_in: list[str], capsys: CaptureFixture[str]
+) -> None:
+    """In short: the documents fetched of each kind, the files downloaded, the failures."""
+    assert main(signed_in) == SOME_FAILED
+    assert capsys.readouterr().out == (
+        "confluence blogposts: fetched: 1\n"
+        "confluence pages: fetched: 2\n"
+        "files: downloaded: 2\n"
+        "jira issues: fetched: 1\n"
+        "failures: 1\n"
+    )
+
+
+def test_a_download_in_detail_shows_every_count_then_the_failures(
+    signed_in: list[str], capsys: CaptureFixture[str]
+) -> None:
+    """Each count, in order, with what short leaves out: listings, files skipped or failed."""
+    assert main([*signed_in, "--summary", "detailed"]) == SOME_FAILED
+    *counts, failures = capsys.readouterr().out.splitlines()
+    assert counts == sorted(counts)
+    assert {
+        "confluence pages: listed: 3",
+        "confluence pages: fetched: 2",
+        "files: downloaded: 2",
+        "files: skipped, media type not kept: 1",
+        "files failed: status 404: 1",
+    } <= set(counts)
+    assert failures == "failures: 1"
+
+
+def test_a_stopped_download_says_why_in_short(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Too many failures in a row stop a run: short says so, else it reads as a whole run."""
+    counts = {
+        "confluence pages: fetched": 3,
+        "confluence pages failed: status 503": 5,
+        "runs: stopped, too many failures in a row": 1,
+    }
+    stopped = Outcome(Report(Counter(counts)), [], ExitStatus.FAILED)
+    monkeypatch.setattr(download_command, "download", lambda *_: stopped)
+    assert main(command(home, "--site", SITE, "--space", "MFS")) == SOME_FAILED
+    assert capsys.readouterr().out == (
+        "confluence pages: fetched: 3\nruns: stopped, too many failures in a row: 1\nfailures: 5\n"
+    )
+
+
+def test_a_dry_run_shows_what_it_would_fetch(
+    signed_in: list[str], capsys: CaptureFixture[str]
+) -> None:
+    """In short: the documents to fetch of each kind, the files to download, no failure.
+
+    The files to download are those that a listing names: the issue's.
+    """
+    assert main([*signed_in, "--dry-run"]) == 0
+    assert capsys.readouterr().out == (
+        "confluence blogposts: to fetch: 1\n"
+        "confluence pages: to fetch: 2\n"
+        "files: to download: 1\n"
+        "jira issues: to fetch: 1\n"
+        "failures: 0\n"
+    )
+
+
+def test_a_download_gives_its_counts_failed_keys_and_status_as_json(
+    signed_in: list[str], capsys: CaptureFixture[str]
+) -> None:
+    """One document: the counts whole, the user's keys that failed, the exit status."""
+    assert main([*signed_in, "--format", "json"]) == SOME_FAILED
+    document = json.loads(capsys.readouterr().out)
+    fetched = {"confluence pages: fetched": 2, "jira issues: fetched": 1}
+    assert fetched.items() <= document["report"]["counts"].items()
+    assert document["failed_targets"] == []
+    assert document["status"] == SOME_FAILED
 
 
 def test_a_download_without_a_site_is_refused_by_name(
@@ -89,11 +184,11 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The user's own key is shown to them, and never written to the run report."""
-    chosen = Settings(SITE, (home / "atlassian-offline-mcp").resolve())
+    chosen = Settings(site=SITE, data_dir=(home / "atlassian-offline-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite(spaces=[])
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
-    options = ("--site", SITE, "--space", "NOPE", "--since", "7d")
+    options = ("--site", SITE, "--space", "NOPE", "--since", "7d", "--summary", "detailed")
     assert main(command(home, *options)) == SOME_FAILED
     captured = capsys.readouterr()
     assert "space NOPE: not found" in captured.err
@@ -121,7 +216,7 @@ def test_a_busy_store_exits_1_with_its_reason(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Another run writing the store: the user is told to wait for it."""
-    chosen = Settings(SITE, (home / "atlassian-offline-mcp").resolve())
+    chosen = Settings(site=SITE, data_dir=(home / "atlassian-offline-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     options = ("--site", SITE, "--space", "MFS", "--since", "7d")

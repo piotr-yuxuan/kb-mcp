@@ -14,6 +14,7 @@ from statistics import median
 from typing import TYPE_CHECKING
 
 import yaml
+from pydantic import ValidationError
 
 from atlassian_offline_mcp.evaluation.domain.evaluation import (
     CUTOFF,
@@ -26,13 +27,11 @@ from atlassian_offline_mcp.evaluation.domain.evaluation import (
     measure,
     paired_test,
     percentile,
-    plain,
 )
-from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
+from atlassian_offline_mcp.evaluation.domain.golden import Golden
 from atlassian_offline_mcp.mcp.app.tools import Library
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning
-from atlassian_offline_mcp.search.domain.search import WORD
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -42,16 +41,25 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.search.adapters.embedding import Embedder
 
 MODES: tuple[SearchMode, ...] = ("lexical", "semantic", "hybrid")
-FIELDS = frozenset({"id", "question", "expected", "partial", "groups", "evidence"})
-# What a question without these fields has.
-DEFAULTS: dict[str, object] = {"partial": [], "groups": [], "evidence": {}}
-LONGEST_QUESTION = 500
+# What the refusal of a golden file says, by the type of Pydantic's error; of another
+# type, Pydantic's message, which holds no input, or the rule's.
+SAID = {
+    "missing": "missing",
+    "string_type": "expected a string",
+    "list_type": "expected a list",
+    "dict_type": "expected an object",
+    "model_type": "expected an object",
+}
+# The types of Pydantic's error for a field that a question does not have.
+UNKNOWN = frozenset({"extra_forbidden", "invalid_key"})
 # The share of queries faster than the slow time reported: its 95th percentile.
 TAIL = 0.95
 HEADER = (
     "| Mode | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 |"
     " Query, median | Query, 95th |"
 )
+# The line under the header, one cell per column.
+DIVIDER = "|---|---|---|---|---|---|---|---|---|"
 
 
 class GoldenError(ValueError):
@@ -65,66 +73,47 @@ class EvaluationError(Exception):
 def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Question]:
     """Read golden questions from YAML, each ref resolved to the path that it names.
 
-    Every field is checked, and refused by name: an unknown or missing one, an id given
-    twice, a question longer than search takes, no expected ref, evidence for a ref not
-    expected, a group named twice or named "all" (which the averages use), a ref that
-    the mirror does not hold, and a file without questions.
+    ``Golden`` reads the file, strictly. Its refusals are given by where each is, as
+    ``golden[i]`` and the field, never by what was found there: an unknown or missing
+    field, one of another type, or a rule broken. A ref that the mirror does not hold is
+    refused too, by its question.
     """
-    questions: list[Question] = []
     try:
-        for given in Fields.each(yaml.safe_load(text), "golden"):
-            item = Fields(DEFAULTS | given.value, given.path)
-            evidence, expected, groups = (
-                item.object("evidence"),
-                item.texts("expected"),
-                item.texts("groups"),
-            )
-            unknown = sorted(str(key) for key in set(item.value) - FIELDS)
-            faults = {
-                f"unknown field {', '.join(unknown)}": bool(unknown),
-                f"question: at most {LONGEST_QUESTION} characters": (
-                    len(item.text("question")) > LONGEST_QUESTION
-                ),
-                "expected: at least one ref": not expected,
-                "evidence: refs as text, in quotes": not all(
-                    isinstance(ref, str) for ref in evidence.value
-                ),
-                "evidence: only for an expected ref": not set(evidence.value) <= set(expected),
-                "evidence: a phrase of a word or more": not all(
-                    WORD.search(plain(evidence.text(ref))) for ref in evidence.value
-                ),
-                'groups: each once, and not "all"': len(set(groups)) != len(groups)
-                or "all" in groups,
-            }
-            if fault := next((name for name, found in faults.items() if found), None):
-                message = f"{item.path}: {fault}"
-                raise GoldenError(message)
-            questions.append(
-                Question(
-                    item.text("id"),
-                    item.text("question"),
-                    expected=tuple(path_of(ref, item, resolve) for ref in item.texts("expected")),
-                    partial=tuple(path_of(ref, item, resolve) for ref in item.texts("partial")),
-                    groups=item.texts("groups"),
-                    evidence={
-                        path_of(ref, item, resolve): evidence.text(ref) for ref in evidence.value
-                    },
-                )
-            )
-    except (yaml.YAMLError, RepresentationError) as error:
+        golden = Golden.model_validate(yaml.safe_load(text))
+    except yaml.YAMLError as error:
         message = f"not a golden file: {error}"
         raise GoldenError(message) from None
-    if not questions or len({question.id for question in questions}) != len(questions):
-        message = "golden: no question, or an id given twice"
-        raise GoldenError(message)
-    return questions
+    except ValidationError as error:
+        refusals = []
+        for each in error.errors(include_input=False, include_url=False):
+            unknown = each["type"] in UNKNOWN
+            place = each["loc"][:-1] if unknown else each["loc"]
+            where = "".join(f"[{part}]" if isinstance(part, int) else f".{part}" for part in place)
+            said = f"unknown field {each['loc'][-1]}" if unknown else SAID.get(each["type"])
+            refusals.append(f"golden{where}: {said or each['msg']}")
+        message = "; ".join(refusals)
+        raise GoldenError(message) from None
+    return [
+        Question(
+            given.id,
+            given.question,
+            expected=tuple(path_of(ref, f"golden[{index}]", resolve) for ref in given.expected),
+            partial=tuple(path_of(ref, f"golden[{index}]", resolve) for ref in given.partial),
+            groups=tuple(given.groups),
+            evidence={
+                path_of(ref, f"golden[{index}]", resolve): phrase
+                for ref, phrase in given.evidence.items()
+            },
+        )
+        for index, given in enumerate(golden.root)
+    ]
 
 
-def path_of(ref: str, item: Fields, resolve: Callable[[str], str | None]) -> str:
-    """Resolve a golden file's ref to a mirrored path, or refuse it, naming its question."""
+def path_of(ref: str, where: str, resolve: Callable[[str], str | None]) -> str:
+    """Resolve a golden file's ref to a mirrored path, or refuse it, naming ``where`` it is."""
     path = resolve(ref)
     if path is None:
-        message = f"{item.path}: {ref!r} is not mirrored"
+        message = f"{where}: {ref!r} is not mirrored"
         raise GoldenError(message)
     return path
 
@@ -232,6 +221,17 @@ def record(runs: Sequence[Run], golden: str, built_at: datetime) -> dict[str, ob
     }
 
 
+def row(mode: str, group: str, each: Measures, times: tuple[float, float]) -> str:
+    """Write a mode's measures of a group as a row under ``HEADER``, with its query times."""
+    median_s, tail_s = times
+    section = "n/a" if each.section is None else f"{each.section:.3f}"
+    return (
+        f"| {mode} | {group} | {each.recall:.3f} | {each.reciprocal_rank:.3f} |"
+        f" {each.ndcg:.3f} | {each.success:.3f} | {section} |"
+        f" {median_s * 1000:.0f} ms | {tail_s * 1000:.0f} ms |"
+    )
+
+
 def table(runs: Sequence[Run]) -> str:
     """Write the measures of each model's run as Markdown: one table, then the tests."""
     lines: list[str] = []
@@ -242,18 +242,13 @@ def table(runs: Sequence[Run]) -> str:
             f"Index built in {run.seconds:.1f} s, {run.embedded} texts embedded for it.",
             "",
             HEADER,
-            "|---|---|---|---|---|---|---|---|---|",
+            DIVIDER,
         ]
         for mode, groups in run.groups.items():
-            median_s, tail_s = run.times[mode]
-            for group in sorted(groups, key=lambda name: (name != "all", name)):
-                each = groups[group]
-                section = "n/a" if each.section is None else f"{each.section:.3f}"
-                lines.append(
-                    f"| {mode} | {group} | {each.recall:.3f} | {each.reciprocal_rank:.3f} |"
-                    f" {each.ndcg:.3f} | {each.success:.3f} | {section} |"
-                    f" {median_s * 1000:.0f} ms | {tail_s * 1000:.0f} ms |"
-                )
+            lines += [
+                row(mode, group, groups[group], run.times[mode])
+                for group in sorted(groups, key=lambda name: (name != "all", name))
+            ]
         lines.append("")
         lines += [
             f"MRR@10, {mode} against lexical: p = {run.pvalues[mode]:.4f},"

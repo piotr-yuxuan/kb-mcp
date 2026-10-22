@@ -16,12 +16,14 @@ from atlassian_offline_mcp.sources.atlassian.adapters.session_file import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from atlassian_offline_mcp.config.domain.settings import Settings
 
 PROFILE = "browser"
 
 
-def login(settings: Settings, site: str, chrome: str | None, *, extensions: bool) -> None:
+def login(settings: Settings, site: str, chrome: Path | None, *, extensions: bool) -> None:
     """Open the sign-in window, wait for the user, and save the site's cookies.
 
     The browser profile and the cookies stay under ``Settings.session``, readable by the

@@ -19,6 +19,9 @@ IDENTIFIER = re.compile(r"[A-Za-z0-9_-]+")
 SPACE_KEY = re.compile(r"~?[A-Za-z0-9]+")
 PROJECT_KEY = re.compile(r"[A-Z][A-Z0-9_]+")
 ISSUE_KEY = re.compile(r"[A-Z][A-Z0-9_]+-[0-9]+")
+# An embedding model's name, as the endpoint names it: the settings and the command
+# line check it alike.
+MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
 # A path on the site, never another host's: one slash, no second one, no backslash, no
 # control character.
 SITE_PATH = re.compile(r"/(?![/\\])[^\s\\\x00-\x1f\x7f]*")

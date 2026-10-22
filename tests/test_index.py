@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import replace
 from datetime import timedelta
@@ -45,7 +46,7 @@ def index(
     """
     config = data.parent / "config.toml"
     config.write_text(settings, encoding="utf-8")
-    status = main(["index", "--config", str(config), "--data-dir", str(data)])
+    status = main(["index", "--yes", "--config", str(config), "--data-dir", str(data)])
     out, err = capsys.readouterr()
     return status, out, err
 
@@ -56,8 +57,9 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
     path = write(data / "docs", front, BODY)
     write(data / "docs", issue("PROJ-1", "An issue"))
     status, out, err = index(data, capsys)
-    assert (status, err) == (0, "")
-    assert "indexed 2 documents (issue: 1, page: 1)" in out
+    assert status == 0
+    assert "skipped" not in err
+    assert out.startswith("documents: 2\n")
     with reading(data / "index.sqlite") as reader:
         assert reader.embedded() is None
         (entry,) = reader.entries(paths=[path])
@@ -74,6 +76,40 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
         {"ENG": 1},
         {"PROJ": 1},
     )
+
+
+@pytest.mark.parametrize(
+    ("summary", "shown"),
+    [
+        ("short", "documents: 1\nsections: 2\n"),
+        ("detailed", "indexed 1 documents (page: 1), 2 sections, into {index}\n"),
+    ],
+)
+def test_by_words_alone_the_command_shows_documents_and_sections(
+    data: Path, capsys: CaptureFixture[str], summary: str, shown: str
+) -> None:
+    """Short gives the counts; detailed, the documents by type and the index too; no pieces."""
+    write(data / "docs", page("196845", "Kafka"), BODY)
+    config = data.parent / "config.toml"
+    config.write_text('search_mode = "lexical"\n', encoding="utf-8")
+    options = ["--config", str(config), "--data-dir", str(data), "--summary", summary]
+    assert main(["index", "--yes", *options]) == 0
+    assert capsys.readouterr().out == shown.format(index=(data / "index.sqlite").resolve())
+
+
+def test_the_command_gives_its_report_index_and_model_as_json(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """One document: what the build did, the index it wrote, and no model by words alone."""
+    write(data / "docs", page("196845", "Kafka"), BODY)
+    config = data.parent / "config.toml"
+    config.write_text('search_mode = "lexical"\n', encoding="utf-8")
+    options = ["--config", str(config), "--data-dir", str(data), "--format", "json"]
+    assert main(["index", "--yes", *options]) == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["report"]["types"] == {"page": 1}
+    assert document["index"] == str((data / "index.sqlite").resolve())
+    assert document["model"] is None
 
 
 def test_line_endings_read_back_as_written(data: Path) -> None:
@@ -101,7 +137,7 @@ def test_a_refused_file_is_named_and_the_others_indexed(
     later = max(twin, location(page("900001", "Lorem 1")))
     status, out, err = index(data, capsys)
     assert status == 1
-    assert f"indexed {FILLERS} documents (page: {FILLERS})" in out
+    assert out.startswith(f"documents: {FILLERS}\n")
     assert "skipped confluence/ENG/1-broken.md: front matter without exactly" in err
     assert "skipped confluence/ENG/2-latin.md: not UTF-8" in err
     assert f"skipped {later}: another document has the same source and id" in err
@@ -161,14 +197,14 @@ def test_by_meaning_an_endpoint_elsewhere_needs_the_flag_and_https(
     remote = 'search_mode = "hybrid"\nembedding_url = "https://embeddings.example/v1"\n'
     status, _, err = index(data, capsys, remote)
     assert status == BAD_SETTINGS
-    assert "settings refused: embedding_url: not an address of this machine" in err
+    assert "refused: embedding_url: not an address of this machine" in err
     config = data.parent / "config.toml"
     config.write_text(
         'search_mode = "hybrid"\nembedding_url = "http://embeddings.example/v1"\n',
         encoding="utf-8",
     )
     options = ["--config", str(config), "--data-dir", str(data), "--allow-remote-embeddings"]
-    assert main(["index", *options]) == BAD_SETTINGS
+    assert main(["index", "--yes", *options]) == BAD_SETTINGS
     assert "over https only" in capsys.readouterr().err
     assert not (data / "index.sqlite").exists()
 
@@ -176,9 +212,13 @@ def test_by_meaning_an_endpoint_elsewhere_needs_the_flag_and_https(
 def test_refused_settings_exit_2(data: Path, capsys: CaptureFixture[str]) -> None:
     """A data directory in a synchronised folder is refused before anything is built."""
     dropbox = data.parent / "home" / "Dropbox" / "data"
-    status = main(["index", "--config", str(data / "none.toml"), "--data-dir", str(dropbox)])
+    status = main(
+        ["index", "--yes", "--config", str(data / "none.toml"), "--data-dir", str(dropbox)]
+    )
     assert status == BAD_SETTINGS
-    assert "settings refused: data_dir: under a Dropbox folder" in capsys.readouterr().err
+    assert (
+        "settings refused: data_dir (--data-dir): under a Dropbox folder" in capsys.readouterr().err
+    )
 
 
 def test_reading_opens_read_only(data: Path, monkeypatch: MonkeyPatch) -> None:

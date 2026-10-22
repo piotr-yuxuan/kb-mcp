@@ -7,6 +7,7 @@ requires-python = ">=3.14"
 # Declared together for plans 004 to 006, so that their parallel branches never
 # conflict over this file or the lock.
 dependencies = [
+  "argcomplete>=3.7,<4",
   "certifi>=2024.2",
   "httpx>=0.28,<1",
   "lxml>=6,<7",
@@ -14,6 +15,8 @@ dependencies = [
   "numpy>=2.3,<3",
   "pillow>=13,<14",
   "playwright>=1.64,<2",
+  "pydantic>=2.14,<3",
+  "pydantic-settings>=2.15,<3",
   "pyyaml>=6,<7",
   "truststore>=0.10,<1",
 ]
@@ -48,7 +51,7 @@ exhaustive = true
 exhaustive_ignores = ["__main__"]
 
 [[tool.importlinter.contracts]]
-name = "Within each context: entry, commands, use cases, effects, pure rules"
+name = "Within each context: entry, commands, options, use cases, effects, pure rules"
 type = "layers"
 containers = [
   "atlassian_offline_mcp.cli",
@@ -59,7 +62,7 @@ containers = [
   "atlassian_offline_mcp.sources.*",
   "atlassian_offline_mcp.config",
 ]
-layers = ["(main)", "(commands)", "(app)", "(adapters)", "(domain)"]
+layers = ["(main)", "(commands)", "(options)", "(app)", "(adapters)", "(domain)"]
 exhaustive = true
 
 [[tool.importlinter.contracts]]
@@ -94,3 +97,23 @@ type = "forbidden"
 source_modules = ["atlassian_offline_mcp.**.app", "atlassian_offline_mcp.cli.commands"]
 forbidden_modules = ["httpx"]
 allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Declaring the command imports none of the packages that runs need"
+type = "forbidden"
+source_modules = ["atlassian_offline_mcp.cli.main", "atlassian_offline_mcp.cli.options"]
+forbidden_modules = [
+  "httpx",
+  "lxml",
+  "mcp",
+  "numpy",
+  "opentelemetry",
+  "platformdirs",
+  "playwright",
+  "pydantic",
+  "pydantic_core",
+  "pydantic_settings",
+  "rich",
+  "structlog",
+  "yaml",
+]

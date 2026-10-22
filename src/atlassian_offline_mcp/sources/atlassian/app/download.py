@@ -9,11 +9,11 @@ from datetime import UTC, timedelta
 from functools import partial
 from itertools import batched
 from typing import TYPE_CHECKING, Literal
-from urllib.parse import urlsplit
 
 from atlassian_offline_mcp.kernel.content import IDENTIFIER, BlogPost, Issue, Page
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
-from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, http, jira_v3
+from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 from atlassian_offline_mcp.sources.atlassian.adapters.http import (
     SignInNeededError,
     Site,
@@ -25,12 +25,7 @@ from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import (
     RawStore,
     Unreadable,
 )
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import (
-    COOKIES,
-    for_site,
-    read_cookies,
-    write_cookies,
-)
+from atlassian_offline_mcp.sources.atlassian.adapters.sign_in import sign_in
 from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target, window
 from atlassian_offline_mcp.sources.atlassian.domain.deletions import (
     Answer,
@@ -65,9 +60,6 @@ KINDS: tuple[type[Page | BlogPost], ...] = (Page, BlogPost)
 # Jira reads JQL dates in the user's time zone, up to 14 hours off UTC, and a date
 # stands for its midnight: two days on each side always cover the period.
 JQL_MARGIN = timedelta(days=2)
-# Exit statuses, beyond 0 for a run without failure.
-SOME_FAILED = 1
-SIGN_IN_NEEDED = 3
 
 # How each kind of document is read from its listing, and which GETs make its snapshot.
 LISTED: dict[type[Document], Callable[[Fields], Listed]] = {
@@ -497,7 +489,7 @@ class Outcome:
 
     report: Report
     failed_targets: list[str]
-    status: int | None
+    status: ExitStatus | None
 
 
 def plan(
@@ -513,10 +505,10 @@ def plan(
     store, report = RawStore(settings.raw), Report()
     windows = targets.windows(store.coverage(), now())
     try:
-        cookies = read_cookies(settings.session / COOKIES)
-    except OSError, ValueError:
-        return Outcome(report, [], SIGN_IN_NEEDED)
-    with http.client(str(settings.site), cookies) as client:
+        client = sign_in(settings).client()
+    except SignInNeededError:
+        return Outcome(report, [], ExitStatus.SIGN_IN_AGAIN)
+    with client:
         run = Download(
             Site(client, sleep=sleep),
             store,
@@ -530,11 +522,13 @@ def plan(
         try:
             run.run(targets.spaces, targets.projects)
         except SignInNeededError:
-            return Outcome(report, run.failed_targets, SIGN_IN_NEEDED)
+            return Outcome(report, run.failed_targets, ExitStatus.SIGN_IN_AGAIN)
         except TooManyFailuresError:
             report.add("runs: stopped, too many failures in a row")
-            return Outcome(report, run.failed_targets, SOME_FAILED)
-    return Outcome(report, run.failed_targets, SOME_FAILED if report.failures else 0)
+            return Outcome(report, run.failed_targets, ExitStatus.FAILED)
+    return Outcome(
+        report, run.failed_targets, ExitStatus.FAILED if report.failures else ExitStatus.OK
+    )
 
 
 def download(
@@ -543,59 +537,54 @@ def download(
     now: Callable[[], datetime],
     sleep: Callable[[float], None],
 ) -> Outcome:
-    """Run a download with the saved session, and save its report, even when stopped.
+    """Run a download signed in as the settings say, and save its report, even when stopped.
 
     Each target is fetched over its window; the coverage of every target listed whole
-    grows, and the tombstones found are kept, even when the run stops. The status is 0
-    when nothing failed, ``SOME_FAILED`` when something did, and ``SIGN_IN_NEEDED`` when
-    the session no longer holds or none was saved. Raises PeriodError for a target with
-    nowhere to start, and StoreBusyError when another run writes, both before anything
-    is written.
+    grows, and the tombstones found are kept, even when the run stops. The status is
+    ``OK`` when nothing failed, ``FAILED`` when something did, and ``SIGN_IN_AGAIN``
+    when the sign-in no longer holds or no session was saved. Raises PeriodError for a
+    target with nowhere to start, and StoreBusyError when another run writes, both
+    before anything is written.
     """
     report, failed_targets, status = Report(), [], None
     store, started = RawStore(settings.raw), now()
     coverage = store.coverage()
     windows = targets.windows(coverage, started)
-    try:
-        cookies = read_cookies(settings.session / COOKIES)
-    except OSError, ValueError:
-        cookies, status = None, SIGN_IN_NEEDED
-    site = str(settings.site)
+    signing = sign_in(settings)
     with store.writing():
         try:
-            if cookies is not None:
-                with http.client(site, cookies) as client:
-                    reader = Site(client, sleep=sleep)
-                    run = Download(
-                        reader,
-                        store,
-                        Period(EPOCH, started),
-                        targets.max_file_bytes,
-                        now,
-                        report,
-                        windows=windows,
-                        tombstones=store.tombstones(),
-                    )
-                    failed_targets = run.failed_targets
-                    try:
-                        run.run(targets.spaces, targets.projects)
-                        status = SOME_FAILED if report.failures else 0
-                    except SignInNeededError:
-                        status = SIGN_IN_NEEDED
-                    except TooManyFailuresError:
-                        status = SOME_FAILED
-                        report.add("runs: stopped, too many failures in a row")
-                    finally:
-                        host = urlsplit(site).hostname or ""
-                        write_cookies(settings.session / COOKIES, for_site(http.jar(client), host))
-                        for target in run.covered:
-                            coverage = coverage.extended(target, windows[target])
-                        store.put_coverage(coverage)
-                        store.put_tombstones(run.tombstones.values())
+            with signing.client() as client:
+                run = Download(
+                    Site(client, sleep=sleep),
+                    store,
+                    Period(EPOCH, started),
+                    targets.max_file_bytes,
+                    now,
+                    report,
+                    windows=windows,
+                    tombstones=store.tombstones(),
+                )
+                failed_targets = run.failed_targets
+                try:
+                    run.run(targets.spaces, targets.projects)
+                    status = ExitStatus.FAILED if report.failures else ExitStatus.OK
+                except SignInNeededError:
+                    status = ExitStatus.SIGN_IN_AGAIN
+                except TooManyFailuresError:
+                    status = ExitStatus.FAILED
+                    report.add("runs: stopped, too many failures in a row")
+                finally:
+                    signing.keep(client)
+                    for target in run.covered:
+                        coverage = coverage.extended(target, windows[target])
+                    store.put_coverage(coverage)
+                    store.put_tombstones(run.tombstones.values())
+        except SignInNeededError:  # from the client: no session was saved
+            status = ExitStatus.SIGN_IN_AGAIN
         finally:
             if status is None:
                 report.add("runs: interrupted")
-            elif status == SIGN_IN_NEEDED:
+            elif status == ExitStatus.SIGN_IN_AGAIN:
                 report.add("runs: stopped, sign-in needed")
             settings.runs.mkdir(parents=True, exist_ok=True)
             stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")

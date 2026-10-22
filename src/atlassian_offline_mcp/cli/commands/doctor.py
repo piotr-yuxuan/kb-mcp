@@ -1,40 +1,34 @@
-"""``doctor``: check the machine, the data directory and the saved session."""
+"""``doctor``: check the machine, the data directory and the sign-in, by session or token."""
 
 from __future__ import annotations
 
-import sys
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.cli.commands._options import add_settings_options, settings_of
-from atlassian_offline_mcp.config.domain.settings import SettingsError
-from atlassian_offline_mcp.sources.atlassian.app.doctor import FAILED, SIGN_IN, doctor
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
+from atlassian_offline_mcp.sources.atlassian.app.doctor import FAILED, SIGN_IN, WELL, doctor
 
 if TYPE_CHECKING:
     import argparse
 
-SOME_FAILED = 1
-BAD_SETTINGS = 2
-NOT_SIGNED_IN = 3
+    from atlassian_offline_mcp.config.domain.settings import Loaded
+    from atlassian_offline_mcp.kernel.output import Summary
+    from atlassian_offline_mcp.sources.atlassian.app.doctor import Verdict
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add ``doctor`` to the command."""
-    parser = subparsers.add_parser("doctor", help="check the machine and the saved session")
-    add_settings_options(parser)
-    parser.set_defaults(run=run)
-
-
-def run(arguments: argparse.Namespace) -> int:
-    """Print each check's verdict; exit 1 if one fails, 2 for settings, 3 to sign in again."""
-    try:
-        settings = settings_of(arguments)
-    except SettingsError as error:
-        sys.stderr.write(f"settings refused: {error}\n")
-        return BAD_SETTINGS
+def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, list[Verdict]]:
+    """Give each check's verdict; exit 1 if one fails, 3 to sign in again."""
+    settings = loaded.settings
     verdicts = doctor(settings)
-    for verdict in verdicts:
-        sys.stdout.write(f"{verdict.name}: {verdict.found}\n")
     states = {verdict.state for verdict in verdicts}
     if SIGN_IN in states:
-        return NOT_SIGNED_IN
-    return SOME_FAILED if FAILED in states else 0
+        return ExitStatus.SIGN_IN_AGAIN, verdicts
+    return ExitStatus.FAILED if FAILED in states else ExitStatus.OK, verdicts
+
+
+def text(verdicts: list[Verdict], summary: Summary) -> str:
+    """Write the verdicts of the checks not well, in detail every one, then how many are well."""
+    shown = [verdict for verdict in verdicts if summary == "detailed" or verdict.state != WELL]
+    well = sum(verdict.state == WELL for verdict in verdicts)
+    return "".join(f"{verdict.name}: {verdict.found}\n" for verdict in shown) + (
+        f"{well} of {len(verdicts)} checks well\n"
+    )

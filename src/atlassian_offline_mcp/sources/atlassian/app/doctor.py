@@ -1,4 +1,4 @@
-"""Checks of the machine and the session that a download needs, each with a verdict."""
+"""Checks of the machine and the sign-in that a download needs, each with a verdict."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
 from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, http, jira_v3
 from atlassian_offline_mcp.sources.atlassian.adapters.http import SignInNeededError, Site, SiteError
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, read_cookies
+from atlassian_offline_mcp.sources.atlassian.adapters.sign_in import sign_in
 
 if TYPE_CHECKING:
     from atlassian_offline_mcp.config.domain.settings import Settings
@@ -46,14 +46,18 @@ def public_trust(site: str) -> Verdict:
     )
 
 
-def session(settings: Settings, site: str) -> list[Verdict]:
-    """Say whether the saved session still signs in to Confluence and to Jira."""
+def access(settings: Settings) -> list[Verdict]:
+    """Say how the run signs in, and whether that still opens Confluence and Jira.
+
+    By the API token when one is set, else by the session that ``login`` saved.
+    """
+    signing = sign_in(settings)
     try:
-        cookies = read_cookies(settings.session / COOKIES)
-    except OSError, ValueError:
-        return [Verdict("session", "none saved: run atlassian-offline-mcp login", SIGN_IN)]
-    verdicts = [Verdict("session", f"{len(cookies)} cookies saved")]
-    with http.client(site, cookies) as client:
+        client = signing.client()
+    except SignInNeededError:
+        return [Verdict("sign-in", f"no session saved: {signing.again}", SIGN_IN)]
+    verdicts = [Verdict("sign-in", signing.name)]
+    with client:
         reader = Site(client)
         for name, request, signed_in in (
             ("confluence", confluence_v2.current_user_request(), confluence_v2.signed_in),
@@ -64,10 +68,10 @@ def session(settings: Settings, site: str) -> list[Verdict]:
                 verdict = (
                     Verdict(name, "signed in")
                     if signed_in(user)
-                    else Verdict(name, "anonymous: sign in again", SIGN_IN)
+                    else Verdict(name, f"anonymous: {signing.again}", SIGN_IN)
                 )
             except SignInNeededError:
-                verdict = Verdict(name, "refused: sign in again", SIGN_IN)
+                verdict = Verdict(name, f"refused: {signing.again}", SIGN_IN)
             except (RepresentationError, SiteError) as error:
                 verdict = Verdict(name, f"no answer ({error})", FAILED)
             verdicts.append(verdict)
@@ -86,4 +90,4 @@ def doctor(settings: Settings) -> list[Verdict]:
             *verdicts,
             Verdict("site", "not set: add it to the settings or pass --site", FAILED),
         ]
-    return [*verdicts, public_trust(settings.site), *session(settings, settings.site)]
+    return [*verdicts, public_trust(settings.site), *access(settings)]

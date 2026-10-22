@@ -17,16 +17,11 @@ from atlassian_offline_mcp.mirror.app.mirror import mirror
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, Stored
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
-from atlassian_offline_mcp.sources.atlassian.app.download import (
-    SIGN_IN_NEEDED,
-    Targets,
-    download,
-    plan,
-)
+from atlassian_offline_mcp.sources.atlassian.app.download import Targets, download, plan
 from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target
 from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, Period, PeriodError
 from tests.samples import v2_page, v2_space
-from tests.test_download import CAP, PAGES, SITE, SPACE, FakeSite, stamp
+from tests.test_download import CAP, PAGES, SIGN_IN_NEEDED, SITE, SPACE, FakeSite, stamp
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -108,7 +103,7 @@ class RefreshSite(FakeSite):
 
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory, and a saved session, under the scratch folder."""
-    chosen = Settings(SITE, tmp_path / "data")
+    chosen = Settings(site=SITE, data_dir=tmp_path / "data")
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     return chosen
 
@@ -209,7 +204,7 @@ def test_a_target_whose_listing_failed_keeps_its_coverage(
 def test_a_plan_lists_and_decides_and_writes_nothing(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """--plan asks only for listings and searches, and leaves the data directory as it was."""
+    """A dry run asks only for listings and searches, and leaves the data directory as it was."""
     chosen = settings(tmp_path)
     fake = RefreshSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
@@ -448,7 +443,16 @@ def test_a_corrupt_coverage_record_is_refused_by_the_command(
     data = (home / "atlassian-offline-mcp").resolve()
     (data / "raw").mkdir(parents=True)
     (data / "raw" / "coverage.json").write_text("[{}]", "utf-8")
-    options = ["download", "--config", str(home / "none.toml"), "--site", SITE, "--space", "MFS"]
+    options = [
+        "download",
+        "--yes",
+        "--config",
+        str(home / "none.toml"),
+        "--site",
+        SITE,
+        "--space",
+        "MFS",
+    ]
     assert main(options) == REFUSED
     assert "coverage.json[0]" in capsys.readouterr().err
 
