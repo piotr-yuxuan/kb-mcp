@@ -6,6 +6,7 @@ check every page.
 
 from __future__ import annotations
 
+import inspect
 import re
 import shlex
 from pathlib import Path
@@ -13,13 +14,18 @@ from pathlib import Path
 import pytest
 
 from atlassian_offline_mcp.cli.main import parser
+from atlassian_offline_mcp.kernel.tools import TOOLS
+from atlassian_offline_mcp.mcp.app.surface import surface
+from atlassian_offline_mcp.mcp.app.tools import Library
 
 ROOT = Path(__file__).parents[1]
 PAGES = (
     "AGENTS.md",
     "docs/how-to/agents.md",
     "docs/how-to/api-token-with-sops.md",
+    "docs/how-to/evaluate-with-agents.md",
     "docs/how-to/first-download.md",
+    "docs/how-to/golden-questions.md",
     "docs/how-to/shell-completions.md",
 )
 # A block of shell commands in Markdown.
@@ -54,3 +60,29 @@ def test_each_command_line_of_the_program_parses(page: str) -> None:
             if stopped.code != 0:
                 refused.append(given)
     assert refused == []
+
+
+def test_the_reference_names_each_tool_and_prompt_served_and_each_of_their_parameters() -> None:
+    """Its headings under Tools and Prompts are those served, each parameter in code below.
+
+    The headings come in the server's order, as plan 020's check of every page reads them.
+    """
+    text = (ROOT / "docs" / "reference" / "mcp-tools.md").read_text("utf-8")
+    tools = text.split("\n## Tools\n")[1].split("\n## Prompts\n")[0]
+    prompts = text.split("\n## Prompts\n")[1]
+    library = Library(ROOT / "index.sqlite", ROOT / "docs")
+    sections = {
+        name: body
+        for part in (tools, prompts)
+        for name, body in re.findall(
+            r"^### (\S+)\n(.*?)(?=^### |\Z)", part, re.MULTILINE | re.DOTALL
+        )
+    }
+    assert re.findall(r"^### (\S+)$", tools, re.MULTILINE) == list(TOOLS)
+    guides = surface(library, TOOLS).guides
+    assert re.findall(r"^### (\S+)$", prompts, re.MULTILINE) == [guide.name for guide in guides]
+    for tool in TOOLS:
+        named = list(inspect.signature(getattr(library, tool)).parameters)
+        assert all(f"`{name}`" in sections[tool] for name in named), tool
+    for guide in guides:
+        assert all(f"`{name}`" in sections[guide.name] for name, _ in guide.arguments), guide.name

@@ -109,34 +109,28 @@ https; for the MCP server, that means registering it as `atlassian-offline-mcp s
 a forwarded port to another machine defeats the check: do not point `embedding_url` at
 one. By words alone, the default, no endpoint is asked at all.
 
-To check which mode, and which model, fits your own content, write golden questions
-and keep them in `<data>/eval/`: a
-YAML list where each question has an `id`, the `question`, the `expected` refs that
-answer it (page ids, issue keys, or mirror paths, as `read` takes them), and optionally
-`partial` refs that help, `groups` to break the measures down, and `evidence`, a phrase
-of each expected document's text. Quote page ids, which YAML would read as numbers:
+How an index cuts documents into the pieces it embeds is the setting `chunking`:
+`sections` by default, 011's pieces of each section, or `windows`, `section-paths` or
+`small-to-big`, which [chunking](../explanation/chunking.md) compares. Run `index` after
+changing it; `search`, `ask` and `status` follow the index, whatever the setting says.
 
-```yaml
-- id: q1
-  question: How do I roll back a release of the payments service?
-  expected: ["196845", PAY-142]
-  partial: ["197012"]
-  groups: [paraphrase, en]
-  evidence: {"196845": "Pause, drain, then roll back."}
-```
+To check which mode, model and chunking fit your own content, write [golden
+questions](golden-questions.md) and run `eval`.
 
-Then run:
+## Ask, and prompts
 
-```bash
-atlassian-offline-mcp eval ~/atlassian-offline-mcp/eval/golden.yaml
-```
+`ask` answers a question in one call with passages to quote: one per document, as many
+as fit, each with its title, ref, section, dates, site address and the `read()` call of
+its section, the text verbatim. It ranks as `search` does, in the setting's mode. An
+agent that would otherwise `search`, then `read` each document, gets the evidence at
+once; `search` stays to navigate. `serve --tools search,read,browse,status` serves the
+four tools of plan 006 alone, without `ask`.
 
-It prints Recall@10, MRR@10, nDCG@10, Success@1 and Section@10 per mode and model, with
-the paired tests, and keeps the numbers, never the questions, in `<data>/eval/results/`.
-It measures the setting's model, or each one named with `--model`, all served by the
-endpoint, whatever the setting `search_mode`. [Evaluating
-search](../explanation/search-evaluation.md) explains each measure, the tests, and how
-the defaults were chosen.
+The server also offers three prompts, which Claude Code shows as slash commands
+(`/mcp__atlassian-offline-mcp__brief`): `brief REF` summarises one document, `changes
+space:KEY 2026-10-01` what changed in a space or a project since a date, and `overview
+project:KEY` how one is organised and what to read first. [The
+reference](../reference/mcp-tools.md) lists each tool and prompt.
 
 ## Claude Code
 
