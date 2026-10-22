@@ -22,7 +22,8 @@ ARGUMENTS = (
     "--to=gfm",
     "--wrap=none",
 )
-ORG = ("--sandbox", "--from=org", "--to=gfm-raw_html", "--wrap=none")
+# A transcript's lines stay its own, one speaker's turn to a line.
+ORG = ("--sandbox", "--from=org", "--to=gfm-raw_html", "--wrap=preserve")
 VERSION = ("--version",)
 TIMEOUT = 120  # seconds for one document
 

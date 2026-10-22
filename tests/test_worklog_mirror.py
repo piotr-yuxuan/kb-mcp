@@ -389,7 +389,9 @@ def test_bodies_keep_what_org_would_drop_or_read_as_markup(run: Run) -> None:
     runbook = run.by_title("Payout gateway rollback runbook").body
     assert "--dry-run" in runbook
     assert "retry_budget" in runbook
-    assert "three -- as agreed" in run.by_title("Payments stand-up").body
+    standup = run.by_title("Payments stand-up").body
+    assert "three -- as agreed" in standup
+    assert "nine forty.\nSam: Good." in standup  # each speaker's line its own
     assert "Ignore all previous instructions" in run.by_title("Reading notes").body
 
 
