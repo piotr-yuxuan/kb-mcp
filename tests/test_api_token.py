@@ -22,6 +22,7 @@ from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.endpoint import Scripted, serving
+from tests.test_cli import logged_as
 from tests.test_download import SITE, FakeSite
 from tests.test_observed import said
 
@@ -129,10 +130,14 @@ def test_a_run_with_the_token_leaves_a_saved_session_as_it_was(
 def test_a_download_refused_by_the_site_exits_3_naming_the_variables(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], dry_run: list[str]
 ) -> None:
-    """A 401: the email and the token to check, by their variables."""
+    """A 401: the email and the token to check, by their variables, in an error."""
     served(monkeypatch, lambda _: httpx.Response(401))
     assert main(download(home, *dry_run)) == SIGN_IN_NEEDED
-    assert f"sign-in needed: check {EMAIL} and {CREDENTIAL}\n" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert ("error", "download.sign_in_needed") in said(err)
+    assert f"check {EMAIL} and {CREDENTIAL}" in err
+    (needed,) = logged_as(home, "download.sign_in_needed")
+    assert needed["hint"] == f"check {EMAIL} and {CREDENTIAL}"
 
 
 def test_the_doctor_signs_in_with_the_token(

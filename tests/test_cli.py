@@ -1013,6 +1013,19 @@ def logged(path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text("utf-8").splitlines()]
 
 
+def logged_as(home: Path, event: str) -> list[dict[str, object]]:
+    """Give the lines of the log files under a scratch home whose event is ``event``.
+
+    Every run's file, a command's in the order of their names, so of their starts.
+    """
+    return [
+        line
+        for path in sorted(user_log_folder(home.resolve()).iterdir())
+        for line in logged(path)
+        if line["event"] == event
+    ]
+
+
 def test_check_writes_one_log_file_at_the_platform_s_default_from_run_start_to_run_end(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
