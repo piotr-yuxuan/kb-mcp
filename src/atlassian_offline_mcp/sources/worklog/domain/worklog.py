@@ -8,6 +8,7 @@ by ``org``.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import re
 from collections import Counter
@@ -97,15 +98,6 @@ def revision(converter: str, text: str) -> str:
     return digest(f"{converter}\0{text}")
 
 
-def day(name: str) -> datetime | None:
-    """Return the day that begins a name, at midnight UTC, or None."""
-    match = DAY.match(name)
-    try:
-        return None if match is None else datetime.fromisoformat(match[0]).replace(tzinfo=UTC)
-    except ValueError:
-        return None
-
-
 def entries(todo: Source | None, archive: Source | None, *, archives: bool) -> list[Document]:
     """Return the entries of ``todo.org``, then of ``todo.org_archive``, in reading order.
 
@@ -162,8 +154,10 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
     A transcript's id is ``t-``, the day that begins its folder's name (or its own) and
     its name less ``.org``; without a day, or when that is off the id's rule, the digest
     of its path below ``transcripts/<first folder>/``. Of two files of one id, the first
-    in path order keeps it and the other takes the digest of its whole path. Without
-    ``archives``, those under ``transcripts/archive/`` are left out.
+    in path order keeps it and the other takes the digest of its whole path, written
+    from the work log's root (``/transcripts/...``): no path below a first folder begins
+    with ``/``, so no other file's digest is the same. Without ``archives``, those under
+    ``transcripts/archive/`` are left out.
     """
     found: list[Document] = []
     warnings: list[str] = []
@@ -175,14 +169,20 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
             continue
         stem = source.path.name.removesuffix(ORG)
         folder = folders[-1] if folders else ""
-        named = [(name, moment) for name in (folder, stem) if (moment := day(name))]
+        named: list[tuple[str, datetime]] = []  # the name that begins with a day, and the day
+        for name in (folder, stem):
+            match = DAY.match(name)
+            if match is None:
+                continue
+            with contextlib.suppress(ValueError):  # 2026-13-40 begins no day
+                named.append((name, datetime.fromisoformat(match[0]).replace(tzinfo=UTC)))
         dated = f"t-{named[0][1]:%Y%m%d}-{stem}" if named else ""
         below = "/".join(source.path.parts[2:] or source.path.parts[-1:])
         identifier = dated if WORKLOG_ID.fullmatch(dated) else f"t-{digest(below)}"
         if identifier in keepers:
             keeper = keepers[identifier]
             warnings.append(f"{source.path}: same id as {keeper}; named by its whole path")
-            identifier = f"t-{digest(source.path.as_posix())}"
+            identifier = f"t-{digest(f'/{source.path.as_posix()}')}"
         keepers[identifier] = source.path
         parsed = org.read(source.text)
         fallback = f"Transcript, {named[0][0]}, {stem}" if named else f"Transcript, {stem}"

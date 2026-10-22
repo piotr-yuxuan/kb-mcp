@@ -29,7 +29,6 @@ KEYWORDS = frozenset({"TODO", "WAITING", "DONE"})
 DECLARED = "#+TODO: TODO WAITING | DONE\n"
 MODIFIED = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
 ENTRY_ID = re.compile(r"e-[0-9a-f]{16}")
-HASHED_TRANSCRIPT = re.compile(r"t-[0-9a-f]{16}")
 # Titles with statistics cookies anywhere, and the words they leave.
 TITLES = [
     ("Review the ledger", "Review the ledger"),
@@ -246,9 +245,9 @@ def test_entry_ids_follow_id_then_created_then_title() -> None:
     )
     assert ids["Named"] == f"e-{sha('6f1c')}"
     assert ids["Bare"] == f"e-{sha('Bare')}"
-    assert ENTRY_ID.fullmatch(ids["Created"])
-    assert ids["Created"] != f"e-{sha('Created')}"  # :CREATED: counts
-    assert ids["Created"] != ids["Same created"]  # and so does the title
+    # The title and :CREATED:, one line each, joined by a line feed: names files for good.
+    assert ids["Created"] == f"e-{sha('Created\n[2026-10-13 Tue]')}"
+    assert ids["Same created"] == f"e-{sha('Same created\n[2026-10-13 Tue]')}"
     assert all(WORKLOG_ID.fullmatch(identifier) for identifier in ids.values())
 
 
@@ -395,12 +394,31 @@ def test_a_copy_keeps_the_id_and_the_other_takes_its_whole_path() -> None:
     found, warnings = transcripts([transcript(original), transcript(copy)], archives=True)
     assert [(str(each.source.path), each.id) for each in found] == [
         (f"transcripts/{copy}", "t-20261020-1"),
-        (f"transcripts/{original}", found[1].id),
+        (f"transcripts/{original}", f"t-{sha(f'/transcripts/{original}')}"),
     ]
-    assert HASHED_TRANSCRIPT.fullmatch(found[1].id)
     assert len(warnings) == 1
     assert f"transcripts/{copy}" in warnings[0]
     assert f"transcripts/{original}" in warnings[0]
+
+
+def test_a_whole_path_digest_is_never_another_file_s_digest() -> None:
+    """Written from the root, /transcripts/..., unlike any path below a first folder."""
+    found, warnings = transcripts(
+        [
+            transcript("aa/a.org"),
+            transcript("misc/a.org"),
+            transcript("F/transcripts/misc/a.org"),
+        ],
+        archives=True,
+    )
+    assert {str(each.source.path): each.id for each in found} == {
+        "transcripts/F/transcripts/misc/a.org": f"t-{sha('transcripts/misc/a.org')}",
+        "transcripts/aa/a.org": f"t-{sha('a.org')}",
+        "transcripts/misc/a.org": f"t-{sha('/transcripts/misc/a.org')}",
+    }
+    assert warnings == [
+        "transcripts/misc/a.org: same id as transcripts/aa/a.org; named by its whole path"
+    ]
 
 
 def test_two_undated_files_of_one_name_get_distinct_ids() -> None:
