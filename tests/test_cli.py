@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import os
 import subprocess
 import sys
@@ -13,7 +14,7 @@ from typing import TYPE_CHECKING, override
 import argcomplete
 import pytest
 
-from atlassian_offline_mcp.cli import options
+from atlassian_offline_mcp.cli import commands, options
 from atlassian_offline_mcp.cli.main import main, parser
 
 if TYPE_CHECKING:
@@ -127,9 +128,19 @@ def test_a_module_pair_makes_a_subcommand(
 
 
 @pytest.mark.parametrize("name", sorted(SUBCOMMANDS))
-def test_each_subcommand_s_command_carries_its_name(name: str) -> None:
-    """The name typed, which the module of its run need not bear: eval's is evaluate."""
-    assert SUBCOMMANDS[name].get_default("command").name == name
+def test_each_subcommand_s_command_carries_its_name_and_a_run_that_imports(name: str) -> None:
+    """The name typed, and a module of ``cli.commands`` with a ``run`` and a declaration.
+
+    The run's module need not bear the name: eval's is evaluate. It is named by a
+    string and imported only once chosen, so a misspelt one would fail only when run.
+    Its declaration, in ``cli.options``, bears the same module's name.
+    """
+    command = SUBCOMMANDS[name].get_default("command")
+    assert command.name == name
+    package, _, module = command.run.rpartition(".")
+    assert package == commands.__name__
+    assert callable(importlib.import_module(command.run).run)
+    assert callable(importlib.import_module(f"{options.__name__}.{module}").register)
 
 
 def test_refused_settings_exit_before_the_run_is_imported(
