@@ -13,11 +13,11 @@ from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.mirror.adapters import markdown
+from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
 from atlassian_offline_mcp.search.domain.search import Embedded, passages, sections
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from datetime import datetime
     from pathlib import Path
 
@@ -42,11 +42,10 @@ class Report:
 
 @dataclass(frozen=True)
 class Embedding:
-    """What gives an index its vectors: a model, the vector store, and who hears progress."""
+    """What gives an index its vectors: a model, and the vector store."""
 
     embedder: Embedder
     store: Path
-    progress: Callable[[int, int], None] = lambda _done, _total: None
 
 
 def build_index(
@@ -58,7 +57,8 @@ def build_index(
     there already is skipped, and named in the report with a reason that holds no
     content. The index replaces the old one only once complete. Raises ModelError when
     the embedding fails; the old index then stays. A piece whose text the model refuses
-    is left without a vector, and its document named in the report.
+    is left without a vector, and its document named in the report. The task ``files``
+    reports the files read, each by its path, then the vector store its own.
     """
     if not docs.is_dir():
         message = f"no mirror at {docs}: build it with `atlassian-offline-mcp mirror`"
@@ -70,35 +70,35 @@ def build_index(
     # key and document
     texts: dict[str, str] = {}  # what each key's vector embeds
     with sqlite_index.building(index, built_at, embedded) as writer:
-        for file in markdown.documents(docs):
-            path = file.relative_to(docs).as_posix()
-            try:
-                # Line endings are kept as written, so that a body reads back exactly.
-                text = file.read_text(encoding="utf-8", newline="")
-                front, body = markdown.load(text, path)
-                cut = sections(body)
-                first = writer.add(path, front, cut)
-            except UnicodeDecodeError:
-                reason = "not UTF-8"
-            except OSError as error:
-                reason = f"not readable ({type(error).__name__})"
-            except (RepresentationError, sqlite_index.DuplicateDocumentError) as error:
-                reason = str(error).removeprefix(f"{path}: ")
-            else:
-                report.types[front.type] += 1
-                report.sections += len(cut)
-                for number, start, end, text in passages(front.title, cut) if model else ():
-                    key = vector_store.key(model.fingerprint, text)
-                    pending.append((first + number, start, end, key, path))
-                    texts[key] = text
-                continue
-            writer.skip()
-            report.skipped.append((path, reason))
+        files = {file.relative_to(docs).as_posix(): file for file in markdown.documents(docs)}
+        with task("files", len(files)) as indexed:
+            for path in indexed.each(files, str):
+                file = files[path]
+                try:
+                    # Line endings are kept as written, so that a body reads back exactly.
+                    text = file.read_text(encoding="utf-8", newline="")
+                    front, body = markdown.load(text, path)
+                    cut = sections(body)
+                    first = writer.add(path, front, cut)
+                except UnicodeDecodeError:
+                    reason = "not UTF-8"
+                except OSError as error:
+                    reason = f"not readable ({type(error).__name__})"
+                except (RepresentationError, sqlite_index.DuplicateDocumentError) as error:
+                    reason = str(error).removeprefix(f"{path}: ")
+                else:
+                    report.types[front.type] += 1
+                    report.sections += len(cut)
+                    for number, start, end, text in passages(front.title, cut) if model else ():
+                        key = vector_store.key(model.fingerprint, text)
+                        pending.append((first + number, start, end, key, path))
+                        texts[key] = text
+                    continue
+                writer.skip()
+                report.skipped.append((path, reason))
         if embedding is not None:
             with vector_store.opened(embedding.store) as store:
-                found, report.embedded = store.vectors(
-                    texts, embedding.embedder.documents, embedding.progress
-                )
+                found, report.embedded = store.vectors(texts, embedding.embedder.documents)
             kept = [(*piece[:3], found[piece[3]]) for piece in pending if piece[3] in found]
             writer.add_pieces(kept)
             report.pieces = len(kept)

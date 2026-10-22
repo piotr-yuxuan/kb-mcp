@@ -183,6 +183,26 @@ def test_the_command_in_short_counts_the_pieces_and_those_embedded_now(
     assert capsys.readouterr().out.endswith(f"{pieces}\nembedded now: 0\n")
 
 
+def test_the_command_reports_its_files_then_its_texts_to_embed(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """In the log file, each task's last event progress: all done; the next run embeds none."""
+    with serving(Scripted()) as url:
+        assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
+        pieces = int(capsys.readouterr().out.splitlines()[-2].removeprefix("pieces: "))
+        assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
+    files = FILLER_PAGES + 1
+    assert [
+        (line["task"], line["done"], line["total"])
+        for line in logged_as(data.parent / "home", "progress")
+    ] == [
+        ("files", files, files),
+        ("texts to embed", pieces, pieces),
+        ("files", files, files),
+        ("texts to embed", 0, 0),
+    ]
+
+
 def test_an_endpoint_that_stops_answering_leaves_the_index_in_place(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:

@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
+import pty
+import re
 import sqlite3
+import subprocess
+import sys
 from dataclasses import replace
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -16,7 +21,8 @@ from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexE
 from atlassian_offline_mcp.search.app.indexing import build_index
 from tests.mirrors import FILLERS, MOMENT, fillers, issue, location, page, write
 from tests.test_cli import logged_as
-from tests.test_observed import said
+from tests.test_observed import CONTROL, said
+from tests.test_question import read_until
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -308,3 +314,77 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     )
     with refused, reading(data / "index.sqlite"):
         pass
+
+
+def child_environment(data: Path) -> dict[str, str]:
+    """Give a child its scratch home, the data directory and the lexical mode, 200 columns wide."""
+    return {
+        "HOME": str(data.parent / "home"),
+        "PATH": os.environ["PATH"],
+        "COLUMNS": "200",
+        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": str(data),
+        "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "lexical",
+    }
+
+
+def to_the_end(controller: int, child: subprocess.Popen[bytes]) -> tuple[str, bytes]:
+    """Give what a child sent its terminal until it ended, controls taken out; then its stdout."""
+    shown = read_until(controller, b"\0")  # never sent: read until the child ends
+    out, _ = child.communicate()
+    return CONTROL.sub("", shown.decode()), out
+
+
+def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_quiet(
+    data: Path,
+) -> None:
+    """Stdout piped throughout, the same document each time, by plan 016's criterion 12.
+
+    Piped, stderr has no bar, and the log file holds the events progress; on a terminal,
+    the files' bar shows them all done, with the time elapsed and the time left; with
+    -q, the terminal is sent no bar.
+    """
+    fillers(data / "docs")
+    piped = subprocess.run(
+        [sys.executable, "-m", "atlassian_offline_mcp", "index", "--yes", "--format", "json"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        env=child_environment(data),
+        cwd=data.parent,
+        check=False,
+    )
+    assert piped.returncode == 0
+    assert "━" not in piped.stderr.decode()
+    assert b"\x1b" not in piped.stderr
+    *_, last = logged_as(data.parent / "home", "progress")
+    assert (last["task"], last["done"], last["total"]) == ("files", FILLERS, FILLERS)
+    controller, terminal = pty.openpty()
+    with subprocess.Popen(
+        [sys.executable, "-m", "atlassian_offline_mcp", "index", "--yes", "--format", "json"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=terminal,
+        env=child_environment(data),
+        cwd=data.parent,
+    ) as child:
+        os.close(terminal)
+        shown, out = to_the_end(controller, child)
+    os.close(controller)
+    assert child.returncode == 0
+    clock = "[0-9]+:[0-9]{2}:[0-9]{2}"
+    assert re.search(rf"files [━╸╺ ]+ {FILLERS}/{FILLERS} {clock} {clock} ", shown)
+    controller, terminal = pty.openpty()
+    with subprocess.Popen(
+        [sys.executable, "-m", "atlassian_offline_mcp", "index", "--yes", "--format", "json", "-q"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=terminal,
+        env=child_environment(data),
+        cwd=data.parent,
+    ) as child:
+        os.close(terminal)
+        shown, quiet = to_the_end(controller, child)
+    os.close(controller)
+    assert child.returncode == 0
+    assert "━" not in shown
+    assert piped.stdout == out == quiet
+    assert json.loads(out)["report"]["types"] == {"page": FILLERS}

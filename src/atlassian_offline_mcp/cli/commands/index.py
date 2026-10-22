@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -35,11 +34,6 @@ class Indexed:
     model: str | None
 
 
-def progress(done: int, total: int) -> None:
-    """Say how many of the pieces to embed are done."""
-    sys.stderr.write(f"embedded {done} of {total} pieces\n")
-
-
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Indexed | None]:
     """Build the index; exit 1 when a file or a piece was left out, or nothing was built.
 
@@ -54,9 +48,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Inde
     with opened or contextlib.nullcontext():
         try:
             embedder = None if opened is None else connect(opened, settings.model)
-            embedding = (
-                None if embedder is None else Embedding(embedder, settings.vectors, progress)
-            )
+            embedding = None if embedder is None else Embedding(embedder, settings.vectors)
             report = build_index(settings.docs, settings.index, datetime.now(UTC), embedding)
         except ModelError as error:
             structlog.get_logger().error("index.not_built", reason=str(error), hint=WORDS_ALONE)
