@@ -104,11 +104,11 @@ SETTINGS = {".".join(path) for path, kind in SETTING_PATHS.items() if kind != "t
 # Every subcommand that the command declares, by the name it is typed by.
 SUBCOMMANDS = parser(Declaring).subcommands
 # What a subcommand needs besides its options to be parsed: its positional arguments.
-POSITIONALS = {"eval": ["golden.yaml"], "model": ["check"]}
+POSITIONALS = {"eval": ["golden.yaml"], "eval-agents": ["grade", "runs"], "model": ["check"]}
 # The subcommands whose output is their own, by plan 015: the protocol, a script.
 OWN_OUTPUT = {"serve", "completion"}
 # The subcommands that write under the data directory, and so ask first, by plan 015.
-WRITING = {"download", "eval", "index", "login", "mirror"}
+WRITING = {"download", "eval", "eval-agents", "index", "login", "mirror"}
 SECRETS = {
     "ATLASSIAN_OFFLINE_MCP_API_TOKEN": "token-sentinel-4d1c",
     "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY": "key-sentinel-9a7e",

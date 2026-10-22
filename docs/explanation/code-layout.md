@@ -13,14 +13,14 @@ Each context may use those below it, never those above:
 | Context | Its concern |
 |---|---|
 | `cli` | The command and its subcommands: where everything is put together |
-| `evaluation` | How well search answers golden questions (`eval`) |
+| `evaluation` | How well search and ask answer golden questions (`eval`), and how agents fare with them (`eval-agents`) |
 | `mcp` | The tools agents call (`Library`), and answers within their budgets |
 | `search` | The index of the mirror, by words and by meaning, and ranking |
 | `mirror` | The raw store's newest snapshots as Markdown, with their front matter |
 | `sources` | Where documents come from: today `atlassian/`, Confluence and Jira, with the sign-in (the saved session or an API token) and the raw store |
 | `config` | The settings, their file, and the guard on where data lives |
 | `observability` | What a run tells of itself: structured logs, progress on the terminal, traces and metrics |
-| `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses, how a run reports, whether an endpoint is this machine |
+| `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses, how a run reports, whether an endpoint is this machine, the names of the chunkings and of the server's tools |
 
 The order follows what each needs: `eval` ranks through the `Library` of `mcp`, which
 ranks with `search`, which indexes the mirror's front matter; the mirror reads the raw
@@ -41,8 +41,10 @@ Some choices are not obvious:
   get through `Library.ranked`; inside `search` it would make a cycle.
 - **`site_html.py` is in `mirror/adapters/`**, beside its only user. It is still an
   adapter: a fix for the real site's HTML goes there.
-- **The MCP SDK is known to `cli/commands/serve.py` alone**, which registers the methods
-  of `mcp.app.tools.Library` as tools.
+- **The MCP SDK is known to two modules**: `cli/commands/serve.py`, which registers the
+  methods of `mcp.app.tools.Library` as tools, with what `mcp.app.surface` composes, and
+  `evaluation/adapters/mcp_client.py`, the client through which `eval-agents` reaches
+  the server as an agent does.
 
 ## The layers within a context
 
