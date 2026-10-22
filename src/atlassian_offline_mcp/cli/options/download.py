@@ -38,20 +38,13 @@ def key_of(pattern_name: str) -> Callable[[str], str]:
     return check
 
 
-def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
-    """Refuse what no download can run with, before anything is asked: the first found.
+def period_refused(arguments: argparse.Namespace) -> str | None:
+    """Refuse a largest file under 1 MB, or an option of the period that does not read.
 
-    No site; an API token without its email; no space nor project; a largest file under
-    1 MB; an option of the period that does not read. Whether one reads does not depend
-    on when the run starts, so the epoch stands for it.
+    Whether one reads does not depend on when the run starts, so the epoch stands for it.
     """
-    named = settings["sources.confluence.spaces"] or settings["sources.jira.projects"]
-    faults = [
-        site_not_set(arguments, settings),
-        token_without_email(arguments, settings),
-        None if named else "nothing to download: name a --space or a --project",
-        None if arguments.max_file_mb >= 1 else "--max-file-mb: at least 1",
-    ]
+    if arguments.max_file_mb is not None and arguments.max_file_mb < 1:
+        return "--max-file-mb: at least 1"
     try:
         for option, text in (("--since", arguments.since), ("--until", arguments.until)):
             if text is not None:
@@ -59,8 +52,46 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
         if arguments.back is not None:
             length(arguments.back, "--back")
     except PeriodError as error:
-        faults.append(str(error))
+        return str(error)
+    return None
+
+
+def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
+    """Refuse what no download can run with, before anything is asked: the first found.
+
+    No site; an API token without its email; no space nor project; the period's options,
+    as ``period_refused`` says.
+    """
+    named = settings["sources.confluence.spaces"] or settings["sources.jira.projects"]
+    faults = [
+        site_not_set(arguments, settings),
+        token_without_email(arguments, settings),
+        None if named else "nothing to download: name a --space or a --project",
+        period_refused(arguments),
+    ]
     return next((fault for fault in faults if fault is not None), None)
+
+
+def add_period_options(
+    parser: argparse.ArgumentParser, *, max_file_mb: int | None
+) -> tuple[argparse.Action, ...]:
+    """Add --since, --back, --until and --max-file-mb, the largest file by default this many MB.
+
+    Return their actions. Without a default, --max-file-mb is None unless given, and the
+    download takes ``DEFAULT_MAX_FILE_MB``.
+    """
+    since = parser.add_argument(
+        "--since", help="7d, 6mo, or an ISO date; by default, the start of what is covered"
+    )
+    back = parser.add_argument("--back", help="reach this much further back (6mo, 1y), or all")
+    until = parser.add_argument("--until", help="an ISO date or time, excluded; by default, now")
+    largest = parser.add_argument(
+        "--max-file-mb",
+        type=int,
+        default=max_file_mb,
+        help=f"the largest file kept, in MB; {DEFAULT_MAX_FILE_MB} by default",
+    )
+    return since, back, until, largest
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -83,16 +114,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     project = parser.add_argument(
         "--project", action="append", type=key_of("project"), help="a project key; repeat"
     )
-    since = parser.add_argument(
-        "--since", help="7d, 6mo, or an ISO date; by default, the start of what is covered"
-    )
-    back = parser.add_argument("--back", help="reach this much further back (6mo, 1y), or all")
-    until = parser.add_argument("--until", help="an ISO date or time, excluded; by default, now")
+    period = add_period_options(parser, max_file_mb=DEFAULT_MAX_FILE_MB)
     parser.add_argument(
         "--dry-run", action="store_true", help="say what a run would fetch, and fetch nothing"
-    )
-    largest = parser.add_argument(
-        "--max-file-mb", type=int, default=DEFAULT_MAX_FILE_MB, help="the largest file kept"
     )
     parser.set_defaults(
         command=Command(
@@ -110,7 +134,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
                 "space": "sources.confluence.spaces",
                 "project": "sources.jira.projects",
             },
-            actions=(*actions, space, project, since, back, until, largest),
+            actions=(*actions, space, project, *period),
             writes=True,
             dry_run=True,
             unapplied=email_without_token,

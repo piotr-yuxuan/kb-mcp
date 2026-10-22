@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from atlassian_offline_mcp.cli.options.download import DEFAULT_MAX_FILE_MB
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
@@ -17,8 +18,9 @@ from atlassian_offline_mcp.sources.atlassian.domain.period import PeriodError, l
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Sequence
 
-    from atlassian_offline_mcp.config.domain.settings import Loaded, Settings
+    from atlassian_offline_mcp.config.domain.settings import Loaded
     from atlassian_offline_mcp.kernel.output import Summary
     from atlassian_offline_mcp.sources.atlassian.app.download import Outcome
 
@@ -29,15 +31,17 @@ SHORT_COUNTS = (": fetched", ": to fetch", "files: downloaded", "files: to downl
 STOPPED = "runs: "
 
 
-def targets_of(arguments: argparse.Namespace, settings: Settings, now: datetime) -> Targets:
-    """Read what a run downloads from the options and the settings, checked before the run.
+def targets_of(
+    arguments: argparse.Namespace, spaces: Sequence[str], projects: Sequence[str], now: datetime
+) -> Targets:
+    """Read what a run downloads of these spaces and projects from the period's options.
 
-    --space and --project are settings' flags, which replace the settings' lists.
+    The options were checked before the run; --max-file-mb not given is the default.
     """
     return Targets(
-        list(settings.sources.confluence.spaces),
-        list(settings.sources.jira.projects),
-        arguments.max_file_mb * MEBIBYTE,
+        list(spaces),
+        list(projects),
+        (arguments.max_file_mb or DEFAULT_MAX_FILE_MB) * MEBIBYTE,
         since=moment(arguments.since, now, "--since") if arguments.since else None,
         back=length(arguments.back, "--back") if arguments.back else None,
         until=moment(arguments.until, now, "--until") if arguments.until else None,
@@ -47,7 +51,7 @@ def targets_of(arguments: argparse.Namespace, settings: Settings, now: datetime)
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outcome | None]:
     """Download; exit 0, 1 when something failed, 2 for bad input, 3 to sign in again.
 
-    Spaces and projects not named on the command line come from the settings; without
+    --space and --project are settings' flags, which replace the settings' lists; without
     --since, each catches up from the start of what earlier runs covered. The outcome
     is given once a run ends, None when none could start or one was stopped. Why a run
     could not start or go on is an error; an interruption, or a space or a project that
@@ -55,7 +59,9 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
     """
     settings = loaded.settings
     try:
-        targets = targets_of(arguments, settings, datetime.now(UTC))
+        sources = settings.sources
+        spaces, projects = sources.confluence.spaces, sources.jira.projects
+        targets = targets_of(arguments, spaces, projects, datetime.now(UTC))
         act = plan if arguments.dry_run else download
         outcome = act(settings, targets, lambda: datetime.now(UTC), time.sleep)
     except (PeriodError, RepresentationError) as error:
