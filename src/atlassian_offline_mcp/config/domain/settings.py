@@ -53,7 +53,7 @@ type SearchMode = Literal["lexical", "semantic", "hybrid"]
 # plan 018, hybrid neither beat lexical significantly nor held identifiers, so by the bar
 # set before that run, and the user's word, words stay the default.
 DEFAULT_SEARCH_MODE: SearchMode = "lexical"
-# The layer of a setting that no layer gives.
+# The layer of a setting that no layer gives, as it is named.
 DEFAULT_LAYER = "default"
 # The settings that the file held at its top before plan 015, and their tables now.
 MOVED = {"spaces": "[sources.confluence]", "projects": "[sources.jira]"}
@@ -371,12 +371,14 @@ def variable(path: tuple[str, ...]) -> str:
 class Entry:
     """A value that a layer gives a setting: the setting's path, the value, the layer.
 
-    Its representation leaves the value out, which may be a secret not yet masked.
+    A default's layer is None, so that no layer is taken for the defaults by its name,
+    such as a settings file named ``default``. Its representation leaves the value out,
+    which may be a secret not yet masked.
     """
 
     path: tuple[str, ...]
     value: object = field(repr=False)
-    layer: str
+    layer: str | None
 
 
 @dataclass(frozen=True)
@@ -506,12 +508,10 @@ def environment_entries(
     return entries, ignored
 
 
-# Each path setting at its default, an entry of the weakest layer, so that ``settings_of``
-# makes ``~`` the home in it as in a path given.
+# Each path setting at its default, an entry of no layer, the weakest, so that
+# ``settings_of`` makes ``~`` the home in it as in a path given.
 PATH_DEFAULTS = [
-    Entry(path, DEFAULTS[path], DEFAULT_LAYER)
-    for path, kind in SETTING_PATHS.items()
-    if kind == "path"
+    Entry(path, DEFAULTS[path], None) for path, kind in SETTING_PATHS.items() if kind == "path"
 ]
 
 
@@ -525,18 +525,17 @@ def settings_of(entries: Iterable[Entry], home: Path) -> Loaded:
     as an argument of its own, such as ``_env_file``.
     """
     kept: dict[tuple[str, ...], Entry] = {}
-    replaced: list[Ignored] = []
+    replaced: list[tuple[Entry, str | None]] = []
     for entry in [*PATH_DEFAULTS, *entries]:
         if entry.path not in SETTING_PATHS:
             message = f"{'.'.join(entry.path)} ({entry.layer}): not a setting"
             raise SettingsError(message)
-        for path in [
+        overlapping = [
             path
             for path in kept
             if path[: len(entry.path)] == entry.path or entry.path[: len(path)] == path
-        ]:
-            weaker = kept.pop(path)
-            replaced.append(Ignored(".".join(path), weaker.layer, f"replaced by {entry.layer}"))
+        ]
+        replaced.extend((kept.pop(path), entry.layer) for path in overlapping)
         kept[entry.path] = entry
     values: dict[str, object] = {}
     for path, entry in kept.items():
@@ -552,7 +551,7 @@ def settings_of(entries: Iterable[Entry], home: Path) -> Loaded:
             value = home.joinpath(*Path(value).parts[1:])
         table[path[-1]] = value
     layers = {
-        ".".join(path): entry.layer for path, entry in kept.items() if entry.layer != DEFAULT_LAYER
+        ".".join(path): entry.layer for path, entry in kept.items() if entry.layer is not None
     }
     try:
         settings = Settings.model_validate(values)
@@ -568,9 +567,12 @@ def settings_of(entries: Iterable[Entry], home: Path) -> Loaded:
             named = ", ".join(sorted(given)) or DEFAULT_LAYER
             problems.append(f"{where} ({named}): {problem['msg']}")
         raise SettingsError("; ".join(problems)) from None
-    return Loaded(
-        settings, layers, tuple(ignored for ignored in replaced if ignored.layer != DEFAULT_LAYER)
+    ignored = tuple(
+        Ignored(".".join(weaker.path), weaker.layer, f"replaced by {stronger}")
+        for weaker, stronger in replaced
+        if weaker.layer is not None
     )
+    return Loaded(settings, layers, ignored)
 
 
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:

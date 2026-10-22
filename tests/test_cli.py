@@ -702,6 +702,21 @@ def test_an_empty_table_in_a_variable_replaces_each_setting_under_it(
     )
 
 
+def test_a_settings_file_named_default_is_a_layer_as_any_other(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Its site is shown in short, as a layer gave it, and said replaced by a variable."""
+    config = home / "default"
+    config.write_text('site = "https://file.example.invalid"\n', "utf-8")
+    assert main(["check", "--config", str(config)]) == 0
+    assert capsys.readouterr().out == "site: https://file.example.invalid\n"
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "https://variable.example.invalid")
+    assert main(["check", "--config", str(config)]) == 0
+    out, err = capsys.readouterr()
+    assert out == "site: https://variable.example.invalid\n"
+    assert err == "ignored: site (default): replaced by ATLASSIAN_OFFLINE_MCP_SITE\n"
+
+
 def test_check_refuses_a_file_that_is_not_toml(home: Path, capsys: CaptureFixture[str]) -> None:
     """A broken settings file is refused rather than ignored."""
     config = home / "config.toml"
