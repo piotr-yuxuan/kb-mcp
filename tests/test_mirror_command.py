@@ -17,6 +17,7 @@ from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from tests.samples import v2_page, v2_space, v2_view
 from tests.test_mirror import FETCHED, SPACE_ID, listing_page, page_responses
+from tests.test_observed import said
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -62,12 +63,14 @@ def arguments(home: Path, *extra: str) -> list[str]:
 def test_without_pandoc_the_mirror_names_it_and_writes_nothing(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Refused before anything is asked, exit 2, naming pandoc; and no mirror."""
+    """Refused before anything is asked, exit 2, naming pandoc by run.refused; and no mirror."""
     empty = home / "bin"
     empty.mkdir()
     monkeypatch.setenv("PATH", str(empty))
     assert main(arguments(home)) == BAD_SETTINGS
-    assert "refused: pandoc: not found on PATH" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "run.refused")]
+    assert "pandoc: not found on PATH" in err
     assert not (home / "data" / "docs").exists()
 
 

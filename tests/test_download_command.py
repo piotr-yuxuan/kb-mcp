@@ -18,6 +18,7 @@ from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report
 from tests.test_download import SITE, FakeSite
+from tests.test_observed import said
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -141,9 +142,11 @@ def test_a_download_gives_its_counts_failed_keys_and_status_as_json(
 def test_a_download_without_a_site_is_refused_by_name(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The site is named as the missing setting."""
+    """The site is named as the missing setting, by the error run.refused."""
     assert main(command(home, "--space", "MFS", "--since", "7d")) == REFUSED
-    assert "refused: site: not set" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "run.refused")]
+    assert "site: not set" in err
 
 
 def test_a_download_of_nothing_is_refused(home: Path, capsys: CaptureFixture[str]) -> None:

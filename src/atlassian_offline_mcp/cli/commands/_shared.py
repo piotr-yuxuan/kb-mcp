@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import structlog
 from pydantic_core import to_json, to_jsonable_python
 
 from atlassian_offline_mcp.cli.adapters.question import ask
@@ -30,8 +31,10 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
 
     Refused settings exit 2 before the run is imported, as does what the command refuses
     of them and of its arguments, a program that it needs missing from PATH, or a file
-    that it reads missing or a folder, a pipe being read; else the values ignored go to
-    stderr, after the summary of a command that writes and before the command to copy.
+    that it reads missing or a folder, a pipe being read: each is an error, the event
+    ``settings.refused`` or ``run.refused`` with its reason, on stderr alone, as a run
+    that never started has no log file. Else the values ignored go to stderr, after the
+    summary of a command that writes and before the command to copy.
     Such a command then asks, unless told not to, and is refused where no one can
     answer: declined, it exits 1, refused, 2, both before the run is imported. The run
     gets the settings loaded, with each one's layer, a flag's being its option; one that
@@ -64,7 +67,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
         try:
             loaded = load_settings(arguments.config, flags, Path.home().resolve())
         except SettingsError as error:
-            sys.stderr.write(f"settings refused: {error}\n")
+            structlog.get_logger().error("settings.refused", reason=str(error))
             return ExitStatus.REFUSED
         refusal = command.refused(arguments, values_of(loaded)) if command.refused else None
         refusal = refusal or next(
@@ -80,7 +83,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
             None,
         )
         if refusal is not None:
-            sys.stderr.write(f"refused: {refusal}\n")
+            structlog.get_logger().error("run.refused", reason=refusal)
             return ExitStatus.REFUSED
         said, then = before(arguments, loaded, output, lambda path: path.expanduser().absolute())
         sys.stderr.write(said)

@@ -55,6 +55,7 @@ from tests.endpoint import (
     serving,
     tiny,
 )
+from tests.test_observed import said
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -704,11 +705,15 @@ def test_model_check_says_what_to_run(home: Path, capsys: CaptureFixture[str]) -
 def test_model_check_refuses_an_endpoint_elsewhere_without_the_flag(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Even a probe is text sent away: exit 2, before any connection."""
+    """Even a probe is text sent away: exit 2, before any connection, by run.refused."""
     assert check(home, "https://embeddings.example/v1") == REFUSED
-    assert "refused: embedding_url: not an address of this machine" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "run.refused")]
+    assert "embedding_url: not an address of this machine" in err
     assert check(home, "http://embeddings.example/v1", "--allow-remote-embeddings") == REFUSED
-    assert "over https only" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "run.refused")]
+    assert "over https only" in err
 
 
 def test_proxies_are_ignored_on_this_machine(

@@ -23,6 +23,7 @@ from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.endpoint import Scripted, serving
 from tests.test_download import SITE, FakeSite
+from tests.test_observed import said
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -164,11 +165,15 @@ def test_the_doctor_refused_by_the_site_exits_3_naming_the_variables(
 def test_the_doctor_refuses_a_token_without_its_email_and_asks_nothing(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Exit 2 naming the email, as a download does, before any request."""
+    """Exit 2 naming the email, as a download does, before any request: one error alone."""
     monkeypatch.delenv(EMAIL)
     sent = served(monkeypatch, FakeSite().handle)
     assert main(["doctor", "--config", str(home / "none.toml"), "--site", SITE]) == REFUSED
-    assert capsys.readouterr() == ("", f"refused: {WITHOUT_EMAIL}\n")
+    out, err = capsys.readouterr()
+    assert out == ""
+    (line,) = err.splitlines()
+    assert said(line) == [("error", "run.refused")]
+    assert WITHOUT_EMAIL in line
     assert sent == []
 
 
@@ -247,7 +252,8 @@ def test_refused_settings_show_no_secret(
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_DATA_DIR", "relative")
     assert main(download(home)) == REFUSED
     out, err = capsys.readouterr()
-    assert "settings refused: data_dir" in err
+    assert said(err) == [("error", "settings.refused")]
+    assert "data_dir (ATLASSIAN_OFFLINE_MCP_DATA_DIR): " in err
     assert shown(out + err) == []
 
 

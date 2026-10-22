@@ -25,6 +25,7 @@ from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.endpoint import Scripted, serving
 from tests.test_download import SITE, FakeSite
+from tests.test_observed import said as said_on
 
 if TYPE_CHECKING:
     import argparse
@@ -288,7 +289,9 @@ def test_yes_in_the_settings_file_is_refused(
     config = home / "config.toml"
     config.write_text("yes = true\n", "utf-8")
     assert main(["mirror", "--config", str(config)]) == REFUSED
-    assert "settings refused: yes (config.toml): not a setting" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert said_on(err) == [("error", "settings.refused")]
+    assert "yes (config.toml): not a setting" in err
     assert runs == []
 
 
@@ -319,10 +322,12 @@ def test_what_needs_no_network_is_refused_before_anything_is_asked(
 ) -> None:
     """On terminals, a yes waiting: exit 2 naming the fault, and no summary nor question.
 
-    stdin is left unread, the run is never reached, and the data is as it was.
+    The fault is one error, run.refused. stdin is left unread, the run is never reached,
+    and the data is as it was, with no log file. The terminal is wide enough for every
+    fault, as the display cuts each text to its width, and uncoloured.
     """
     arguments, variables, named = refusal
-    for variable, value in variables.items():
+    for variable, value in {**variables, "NO_COLOR": "1", "COLUMNS": "1000"}.items():
         monkeypatch.setenv(variable, value)
     (home / "data").mkdir()
     before = tree(home)
@@ -332,7 +337,7 @@ def test_what_needs_no_network_is_refused_before_anything_is_asked(
     data = ["--config", str(home / "none.toml"), "--data-dir", str(home / "data")]
     assert main([name, *data, *more]) == REFUSED
     [said] = stderr.getvalue().splitlines()
-    assert said.startswith("refused: ")
+    assert said_on(said) == [("error", "run.refused")]
     assert named in said
     assert stdin.read() == "y\n"
     assert runs == []

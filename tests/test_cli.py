@@ -680,19 +680,25 @@ def test_check_and_index_refuse_a_log_folder_that_could_leave_the_machine(
 ) -> None:
     """Logs hold titles and queries: the data directory's guard exits 2, naming logs.dir.
 
-    From the file, then from its variable, each named as the layer.
+    From the file, then from its variable, each named as the layer, by the error
+    settings.refused; the run never starts, so no log file is written anywhere.
     """
     folder, reason = refused
     (home / "project" / ".git").mkdir(parents=True)
     config = home / "config.toml"
     config.write_text(f'[logs]\ndir = "{folder}"\n', "utf-8")
     assert main([name, "--config", str(config)]) == BAD_SETTINGS
-    assert f"settings refused: logs.dir (config.toml): {reason}" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert said_on(error) == [("error", "settings.refused")]
+    assert f"logs.dir (config.toml): {reason}" in error
 
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_LOGS__DIR", folder)
     assert main([name, "--config", str(home / "none.toml")]) == BAD_SETTINGS
     error = capsys.readouterr().err
-    assert f"settings refused: logs.dir (ATLASSIAN_OFFLINE_MCP_LOGS__DIR): {reason}" in error
+    assert said_on(error) == [("error", "settings.refused")]
+    assert f"logs.dir (ATLASSIAN_OFFLINE_MCP_LOGS__DIR): {reason}" in error
+    assert not (home / folder.removeprefix("~/")).exists()
+    assert not user_log_folder(home.resolve()).exists()
 
 
 # Endpoints that telemetry may not go to, by plan 016: a name, another host, a user, https.
@@ -713,13 +719,13 @@ TELEMETRY_RULE = (
 def test_check_refuses_a_telemetry_endpoint_off_this_machine_naming_it(
     home: Path, capsys: CaptureFixture[str], endpoint: str
 ) -> None:
-    """The setting exits 2, naming itself, its layer and what it must be."""
+    """The setting exits 2, naming itself, its layer and what it must be, in one error."""
     config = home / "config.toml"
     config.write_text(f'[telemetry]\nendpoint = "{endpoint}"\n', "utf-8")
     assert main(["check", "--config", str(config)]) == BAD_SETTINGS
-    assert capsys.readouterr().err == (
-        f"settings refused: telemetry.endpoint (config.toml): {TELEMETRY_RULE}\n"
-    )
+    (line,) = capsys.readouterr().err.splitlines()
+    assert said_on(line) == [("error", "settings.refused")]
+    assert f"telemetry.endpoint (config.toml): {TELEMETRY_RULE}" in line
 
 
 @pytest.mark.parametrize("endpoint", ELSEWHERE)
@@ -783,7 +789,8 @@ def test_check_refuses_a_list_variable_not_in_json_by_its_name(
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", "PLAT,PRB")
     assert main(["check", "--config", str(home / "none.toml")]) == BAD_SETTINGS
     error = capsys.readouterr().err
-    assert error.startswith("settings refused: ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS")
+    assert said_on(error) == [("error", "settings.refused")]
+    assert "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS" in error
     assert "PLAT" not in error
 
 

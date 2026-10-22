@@ -15,6 +15,7 @@ from atlassian_offline_mcp.search.adapters import sqlite_index
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.indexing import build_index
 from tests.mirrors import FILLERS, MOMENT, fillers, issue, location, page, write
+from tests.test_observed import said
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -197,7 +198,8 @@ def test_by_meaning_an_endpoint_elsewhere_needs_the_flag_and_https(
     remote = 'search_mode = "hybrid"\nembedding_url = "https://embeddings.example/v1"\n'
     status, _, err = index(data, capsys, remote)
     assert status == BAD_SETTINGS
-    assert "refused: embedding_url: not an address of this machine" in err
+    assert said(err) == [("error", "run.refused")]
+    assert "embedding_url: not an address of this machine" in err
     config = data.parent / "config.toml"
     config.write_text(
         'search_mode = "hybrid"\nembedding_url = "http://embeddings.example/v1"\n',
@@ -205,7 +207,9 @@ def test_by_meaning_an_endpoint_elsewhere_needs_the_flag_and_https(
     )
     options = ["--config", str(config), "--data-dir", str(data), "--allow-remote-embeddings"]
     assert main(["index", "--yes", *options]) == BAD_SETTINGS
-    assert "over https only" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "run.refused")]
+    assert "over https only" in err
     assert not (data / "index.sqlite").exists()
 
 
@@ -216,9 +220,9 @@ def test_refused_settings_exit_2(data: Path, capsys: CaptureFixture[str]) -> Non
         ["index", "--yes", "--config", str(data / "none.toml"), "--data-dir", str(dropbox)]
     )
     assert status == BAD_SETTINGS
-    assert (
-        "settings refused: data_dir (--data-dir): under a Dropbox folder" in capsys.readouterr().err
-    )
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "settings.refused")]
+    assert "data_dir (--data-dir): under a Dropbox folder" in err
 
 
 def test_reading_opens_read_only(data: Path, monkeypatch: MonkeyPatch) -> None:

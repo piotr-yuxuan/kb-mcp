@@ -33,6 +33,7 @@ from atlassian_offline_mcp.search.app.indexing import build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.endpoint import DIGEST, Scripted, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.test_observed import said
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -300,7 +301,9 @@ def test_an_endpoint_elsewhere_without_the_flag_exits_2(
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     remote = options(data, "https://embeddings.example/v1")
     assert main(["eval", "--yes", str(data / "golden.yaml"), *remote]) == REFUSED
-    assert "refused: embedding_url: not an address of this machine" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "run.refused")]
+    assert "embedding_url: not an address of this machine" in err
     assert not (data / "eval").exists()
 
 

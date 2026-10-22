@@ -19,6 +19,7 @@ from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from tests.answers import TOOLS, estimate, parts
 from tests.endpoint import Scripted, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.test_observed import said
 
 if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
@@ -175,9 +176,9 @@ def test_refused_settings_exit_before_serving(tmp_path: Path, capsys: CaptureFix
     dropbox = tmp_path / "Dropbox" / "data"
     config = str(tmp_path / "none.toml")
     assert main(["serve", "--config", config, "--data-dir", str(dropbox)]) == BAD_SETTINGS
-    assert (
-        "settings refused: data_dir (--data-dir): under a Dropbox folder" in capsys.readouterr().err
-    )
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "settings.refused")]
+    assert "data_dir (--data-dir): under a Dropbox folder" in err
 
 
 def test_a_hybrid_search_answers_by_meaning_over_stdio_offline(tmp_path: Path) -> None:
