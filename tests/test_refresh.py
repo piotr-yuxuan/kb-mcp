@@ -204,7 +204,7 @@ def test_a_target_whose_listing_failed_keeps_its_coverage(
 def test_a_plan_lists_and_decides_and_writes_nothing(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """--plan asks only for listings and searches, and leaves the data directory as it was."""
+    """A dry run asks only for listings and searches, and leaves the data directory as it was."""
     chosen = settings(tmp_path)
     fake = RefreshSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())

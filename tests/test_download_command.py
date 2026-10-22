@@ -96,7 +96,7 @@ def test_a_dry_run_shows_what_it_would_fetch(
 
     The files to download are those that a listing names: the issue's.
     """
-    assert main([*signed_in, "--plan"]) == 0
+    assert main([*signed_in, "--dry-run"]) == 0
     assert capsys.readouterr().out == (
         "confluence blogposts: to fetch: 1\n"
         "confluence pages: to fetch: 2\n"

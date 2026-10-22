@@ -52,7 +52,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     back = parser.add_argument("--back", help="reach this much further back (6mo, 1y), or all")
     until = parser.add_argument("--until", help="an ISO date or time, excluded; by default, now")
     parser.add_argument(
-        "--plan", action="store_true", help="say what a run would fetch, and fetch nothing"
+        "--dry-run", action="store_true", help="say what a run would fetch, and fetch nothing"
     )
     largest = parser.add_argument(
         "--max-file-mb", type=int, default=DEFAULT_MAX_FILE_MB, help="the largest file kept"

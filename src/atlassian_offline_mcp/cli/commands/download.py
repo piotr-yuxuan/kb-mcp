@@ -65,7 +65,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
     settings = loaded.settings
     try:
         targets = targets_of(arguments, settings, datetime.now(UTC))
-        act = plan if arguments.plan else download
+        act = plan if arguments.dry_run else download
         outcome = act(settings, targets, lambda: datetime.now(UTC), time.sleep)
     except (PeriodError, RefusedOptionsError, RepresentationError) as error:
         sys.stderr.write(f"refused: {error}\n")
