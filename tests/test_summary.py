@@ -234,7 +234,7 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
         for line in summary.splitlines()
         if line.endswith(" (not applied: the lexical mode embeds nothing)")
     ]
-    assert marked == ["model", "embedding_url", "embedding_api_key"]
+    assert marked == ["model", "chunking", "embedding_url", "embedding_api_key"]
 
 
 def test_settings_that_the_command_never_reads_are_ignored_in_detail_alone(

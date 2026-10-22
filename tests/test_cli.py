@@ -623,6 +623,7 @@ def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
         f"data_dir: {(home / 'atlassian-offline-mcp').resolve()} [default]\n"
         "model: qwen3-embedding:0.6b [default]\n"
         "search_mode: lexical [default]\n"
+        "chunking: sections [default]\n"
         "embedding_url: http://127.0.0.1:11434/v1 [default]\n"
         "embedding_api_key: not set [default]\n"
         "sources.confluence.spaces: (none) [default]\n"

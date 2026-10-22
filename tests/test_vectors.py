@@ -7,12 +7,14 @@ import re
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 
 from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
 from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.adapters.embedding import ModelError
@@ -26,7 +28,6 @@ from tests.test_observed import said
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
 BODY = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
 FILLER_PAGES = 5
 FAILED = 1
+REFUSED = 2
 # The windows of the body of 2,562 characters below: starting at 0, 960 and 1,920.
 WINDOWS = 3
 RELEASE = 2  # the number of its section "Release", after 30 characters of the first
@@ -347,3 +349,33 @@ def test_a_sections_rebuild_after_a_windows_one_embeds_nothing(data: Path) -> No
     )
     assert again.texts == []
     assert report.embedded == 0
+
+
+def test_a_chunking_that_the_kernel_does_not_name_is_refused(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """``chunking = "window"`` exits 2 naming the setting and its layer; nothing is built."""
+    settings = data.parent / "config.toml"
+    settings.write_text('chunking = "window"\n', encoding="utf-8")
+    options = ["--yes", "--config", str(settings), "--data-dir", str(data)]
+    assert main(["index", *options]) == REFUSED
+    err = capsys.readouterr().err
+    assert "chunking (config.toml):" in err
+    assert all(f"'{name}'" in err for name in CHUNKINGS)
+    assert not (data / "index.sqlite").exists()
+
+
+def test_the_environment_s_chunking_replaces_the_file_s(
+    data: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """``ATLASSIAN_OFFLINE_MCP_CHUNKING`` is stronger than the file, and the index says so."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_CHUNKING", "windows")
+    with serving(Scripted()) as url:
+        options = config(data, "tiny", url)
+        settings = Path(options[1])
+        settings.write_text(f'{settings.read_text("utf-8")}chunking = "section-paths"\n', "utf-8")
+        assert main(["index", "--yes", *options]) == 0
+    with reading(data / "index.sqlite") as reader:
+        embedded = reader.embedded()
+    assert embedded is not None
+    assert embedded.chunking == "windows"

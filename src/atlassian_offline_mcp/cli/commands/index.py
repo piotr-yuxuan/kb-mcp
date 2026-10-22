@@ -48,7 +48,11 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Inde
     with opened or contextlib.nullcontext():
         try:
             embedder = None if opened is None else connect(opened, settings.model)
-            embedding = None if embedder is None else Embedding(embedder, settings.vectors)
+            embedding = (
+                None
+                if embedder is None
+                else Embedding(embedder, settings.vectors, settings.chunking)
+            )
             report = build_index(settings.docs, settings.index, datetime.now(UTC), embedding)
         except ModelError as error:
             structlog.get_logger().error("index.not_built", reason=str(error), hint=WORDS_ALONE)
