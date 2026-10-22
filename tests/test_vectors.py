@@ -158,12 +158,27 @@ def test_the_command_embeds_with_the_settings_model(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
     """``index`` names the model and what it embedded; the next run embeds nothing."""
+    detailed = ["--summary", "detailed"]
     with serving(Scripted()) as url:
-        assert main(["index", *config(data, "tiny", url)]) == 0
+        assert main(["index", *config(data, "tiny", url), *detailed]) == 0
         out = capsys.readouterr().out
         assert "pieces by meaning, with tiny (no prefixes known: texts as they are);" in out
-        assert main(["index", *config(data, "tiny", url)]) == 0
+        assert main(["index", *config(data, "tiny", url), *detailed]) == 0
     assert "; 0 embedded now, the others kept" in capsys.readouterr().out
+
+
+def test_the_command_in_short_counts_the_pieces_and_those_embedded_now(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """After the documents and sections: every piece the first time, none the next."""
+    with serving(Scripted()) as url:
+        assert main(["index", *config(data, "tiny", url)]) == 0
+        *_, pieces, embedded = capsys.readouterr().out.splitlines()
+        assert pieces.startswith("pieces: ")
+        assert pieces != "pieces: 0"
+        assert embedded == f"embedded now: {pieces.removeprefix('pieces: ')}"
+        assert main(["index", *config(data, "tiny", url)]) == 0
+    assert capsys.readouterr().out.endswith(f"{pieces}\nembedded now: 0\n")
 
 
 def test_an_endpoint_that_stops_answering_leaves_the_index_in_place(

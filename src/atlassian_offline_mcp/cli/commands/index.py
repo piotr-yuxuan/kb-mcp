@@ -74,9 +74,18 @@ def run(arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, 
     return ExitStatus.FAILED if report.skipped or report.unembedded else ExitStatus.OK, indexed
 
 
-def text(indexed: Indexed, _summary: Summary) -> str:
-    """Write the documents indexed, by type, and their sections; then the pieces by meaning."""
+def text(indexed: Indexed, summary: Summary) -> str:
+    """Write the documents indexed and their sections; then the pieces by meaning, if any.
+
+    Short gives their counts and the texts embedded now. Detailed gives the documents by
+    type, the index, and the model with its prefixes.
+    """
     report = indexed.report
+    if summary == "short":
+        written = f"documents: {report.types.total()}\nsections: {report.sections}\n"
+        if indexed.model is not None:
+            written += f"pieces: {report.pieces}\nembedded now: {report.embedded}\n"
+        return written
     types = ", ".join(f"{name}: {count}" for name, count in sorted(report.types.items()))
     written = (
         f"indexed {report.types.total()} documents ({types or 'none'}),"
