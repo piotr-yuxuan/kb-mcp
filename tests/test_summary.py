@@ -309,6 +309,30 @@ def test_a_command_s_described_lines_end_its_summary(
     assert len(runs) == 1
 
 
+def test_the_command_to_copy_is_preceded_by_an_empty_list_that_no_flag_can_say(
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    runs: list[tuple[argparse.Namespace, Loaded]],
+) -> None:
+    """A variable emptied the file's projects: the command, run again, would read the file."""
+    config = home / "config.toml"
+    config.write_text('[sources.jira]\nprojects = ["PLAT"]\n', "utf-8")
+    variable = "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS"
+    monkeypatch.setenv(variable, "[]")
+    options = ["--yes", "--config", str(config), "--site", SITE, "--space", "ENG"]
+    assert main(["download", *options]) == 0
+    err = capsys.readouterr().err
+    said, _, copied = err.partition("atlassian-offline-mcp download")
+    assert said.endswith(
+        f"not in the command: sources.jira.projects ({variable}): empty, which --project"
+        " cannot say\n"
+    )
+    assert "--project" not in copied
+    [(_, loaded)] = runs
+    assert loaded.settings.sources.jira.projects == ()
+
+
 @pytest.mark.parametrize("name", sorted(OWN_OPTIONS))
 def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     name: str,

@@ -1,7 +1,8 @@
 """The command to copy: a run written as the command line that runs it again.
 
-Pure: the entry gives it the arguments, the settings' values and those that a layer gave,
-and writes what it returns, so that it can be copied, or kept in the shell's history.
+Pure: the entry gives it the arguments, the settings' values and the layers of those that
+a layer gave, and writes what it returns, so that it can be copied, or kept in the shell's
+history.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from atlassian_offline_mcp.cli.domain.command import PROGRAM
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Callable, Collection, Mapping
+    from collections.abc import Callable, Mapping
 
     from atlassian_offline_mcp.cli.domain.command import Command
 
@@ -25,7 +26,7 @@ CONTINUED = " \\\n  "
 def command_line(
     arguments: argparse.Namespace,
     values: Mapping[str, object],
-    given: Collection[str],
+    given: Mapping[str, str],
     absolute: Callable[[Path], Path],
 ) -> str:
     """Write the command that runs this run again, an option to a line, then a newline.
@@ -33,20 +34,28 @@ def command_line(
     The program and the subcommand come first, then each option among the command's
     ``actions``, its repeats on its line, then the positionals. A flag carries its
     setting's value, from ``values`` by the setting's path, when the command reads the
-    setting and a layer gave it, the file included (``given``); another option carries
-    its value when it is not its default. A path is made ``absolute``; each value is
-    quoted for the shell. What is not among the actions is never written: the output's
-    options, the question's, and the settings that no flag sets, such as the secrets.
+    setting and a layer gave it, the file included (``given``, by the layer's name);
+    another option carries its value when it is not its default. A path is made
+    ``absolute``; each value is quoted for the shell. What is not among the actions is
+    never written: the output's options, the question's, and the settings that no flag
+    sets, such as the secrets. No flag says an empty list: a line before the command
+    names such a setting and its layer, since the command, run again, takes that list
+    from the settings file, the environment or its default.
     """
     command: Command = arguments.command
     settings = {dest: setting for dest, (_, setting) in command.setting_flags().items()}
     options: list[str] = []
     positionals: list[str] = []
+    unsaid: list[str] = []
     for action in command.actions:
         if action.dest in settings:
             setting = settings[action.dest]
             carried = setting in given and setting in command.reads
             value = values[setting] if carried else None
+            if value == ():  # a list of the settings, empty
+                option = max(action.option_strings, key=len)
+                why = f"empty, which {option} cannot say"
+                unsaid.append(f"not in the command: {setting} ({given[setting]}): {why}\n")
         else:
             value = getattr(arguments, action.dest)
             value = None if value == action.default else value
@@ -63,4 +72,5 @@ def command_line(
         elif texts:
             option = max(action.option_strings, key=len)
             options.append(" ".join(f"{option} {text}" for text in texts))
-    return CONTINUED.join([f"{PROGRAM} {command.name}", *options, *positionals]) + "\n"
+    written = CONTINUED.join([f"{PROGRAM} {command.name}", *options, *positionals])
+    return "".join(unsaid) + written + "\n"
