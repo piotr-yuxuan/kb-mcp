@@ -13,11 +13,17 @@ dependencies = [
   "lxml>=6,<7",
   "mcp>=2.3,<3",
   "numpy>=2.3,<3",
+  "opentelemetry-exporter-otlp-proto-http>=1.45,<2",
+  "opentelemetry-instrumentation-logging>=0.66b1,<1",
+  "opentelemetry-sdk>=1.45,<2",
   "pillow>=13,<14",
+  "platformdirs>=4.13,<5",
   "playwright>=1.64,<2",
   "pydantic>=2.14,<3",
   "pydantic-settings>=2.15,<3",
   "pyyaml>=6,<7",
+  "rich>=15,<16",
+  "structlog>=26.1,<27",
   "truststore>=0.10,<1",
 ]
 
@@ -27,6 +33,7 @@ atlassian-offline-mcp = "atlassian_offline_mcp.cli.main:main"
 [dependency-groups]
 dev = [
   "import-linter>=2.15,<3",
+  "opentelemetry-proto>=1.45,<2",
   "pytest>=9,<10",
   "ruff>=0.16,<0.17",
 ]
