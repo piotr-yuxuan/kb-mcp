@@ -35,6 +35,8 @@ if TYPE_CHECKING:
 PIECE = 1200
 BLANK_LINE = re.compile(r"\n[ \t]*\n")
 NOT_SPACE = re.compile(r"\S")
+# A backslash escape of Markdown, before any ASCII punctuation.
+ESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
 # Characters of a document's title that each embedded piece begins with.
 EMBEDDED_TITLE = 200
 # Characters of the breadcrumb, and of the heading path, that a piece is embedded with.
@@ -99,11 +101,12 @@ def windows(front: FrontMatter, cut: Sequence[Section]) -> Cut:
     """Cut a document's whole body into windows, each embedded with the title.
 
     A window holds WINDOW characters and starts STEP after the last one's start, so that
-    two in a row overlap; when only white space lies from there to the last one's end, it
-    starts at the next character that is not white space. One that does not reach the
-    body's end stops instead at its last white space within its last TENTH or just past
-    it, when it has one there. The first starts at the body's first character that is not
-    white space, the last leaves only white space after it, and none is blank.
+    two in a row overlap; when the WINDOW - TENTH characters from there, which a window
+    holds at least, are white space alone, it starts instead at the first character after
+    the last one's end that is not. One that does not reach the body's end stops instead
+    at its last white space within its last TENTH or just past it, when it has one there.
+    The first starts at the body's first character that is not white space, the last
+    leaves only white space after it, and none is blank.
     """
     body = "".join(section.text for section in cut)
     starts = [section.start for section in cut]
@@ -124,7 +127,8 @@ def windows(front: FrontMatter, cut: Sequence[Section]) -> Cut:
         following = NOT_SPACE.search(body, end)
         if following is None:
             break
-        start = start + STEP if NOT_SPACE.search(body, start + STEP, end) else following.start()
+        held = NOT_SPACE.search(body, start + STEP, start + STEP + WINDOW - TENTH)
+        start = start + STEP if held else following.start()
     return found
 
 
@@ -137,9 +141,12 @@ def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = PIECE
     line is left out. A section's heading path joins by " > " its heading and those it
     sits under: the nearest heading before it with fewer #, that one's own, and so on.
     The title, which the mirror writes first as a heading of level 1, escaped as
-    Markdown, is left out of every path, since it is said first.
+    Markdown, is left out of every path, since it is said first: a body's first heading
+    of level 1, when it reads as the title once its escapes are undone and its white
+    space collapsed.
     """
     place = " / ".join(front.breadcrumb)[:EMBEDDED_PATH]
+    title = " ".join(front.title.split())
     above: list[tuple[int, str]] = []  # the headings that the next one may sit under
     found: Cut = []
     for index, section in enumerate(cut):
@@ -147,7 +154,9 @@ def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = PIECE
         level = len(heading[1]) if heading else 0
         while above and above[-1][0] >= level:
             above.pop()
-        above.append((level, "" if section.start == 0 and level == 1 else section.heading))
+        first = section.start == 0 and level == 1
+        said = first and " ".join(ESCAPE.sub(r"\1", section.heading).split()) == title
+        above.append((level, "" if said else section.heading))
         path = " > ".join(words for _, words in above if words)
         context = (front.title[:EMBEDDED_TITLE], place, path[:EMBEDDED_PATH])
         found += [

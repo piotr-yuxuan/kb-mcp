@@ -126,7 +126,9 @@ def test_a_window_stops_at_its_last_space_and_the_next_starts_960_after() -> Non
         ("x" * 1150 + " " + "y" * 49 + " " + "z" * 100, [(0, WINDOW), (STEP, 1301)]),
         # Nothing but white space after a window: no other.
         ("x" * 1100 + " " * 200, [(0, WINDOW)]),
-        # White space alone from the next start to the window's end: past it.
+        # White space alone where the next would start, but less than it holds: no skip.
+        ("abcd " * 180 + " " * 400 + "abcd " * 100, [(0, WINDOW), (STEP, 1800)]),
+        # White space alone in all the next would hold: past it.
         ("a" + " " * 5000 + "b", [(0, WINDOW), (5001, 5002)]),
     ],
 )
@@ -175,7 +177,7 @@ def test_windows_hold_at_most_1200_characters_and_overlap_as_the_plan_says() -> 
             assert text == "\n".join(line for line in (TITLE, body[start:end].strip()) if line)
         for (start, end), (following, _) in itertools.pairwise(spans):
             # Past white space alone, the next window starts at the next word.
-            skips = not body[start + STEP : end].strip()
+            skips = not body[start + STEP : start + STEP + WINDOW - TENTH].strip()
             assert following == (len(body) - len(body[end:].lstrip()) if skips else start + STEP)
             overlaps = OVERLAP_WITH_SHORT_WORDS if short_words else OVERLAP
             assert skips or end - following in overlaps
@@ -236,11 +238,10 @@ def test_section_paths_cuts_as_sections_does() -> None:
 
 def test_a_heading_path_names_each_heading_a_section_sits_under() -> None:
     """Under # A, ## B, ### C, ## D: C's path is A > B > C, and D's A > D."""
-    cut = sections("Lead.\n# A\n\na\n## B\n\nb\n### C\n\nc\n## D\n\nd\n")
+    cut = sections("# A\n\na\n## B\n\nb\n### C\n\nc\n## D\n\nd\n")
     texts = [text for *_, text in CHUNKERS["section-paths"].cut(FRONT, cut)]
     place = "Handbook / Payments"
     assert texts == [
-        f"{TITLE}\n{place}\nLead.",
         f"{TITLE}\n{place}\nA\na",
         f"{TITLE}\n{place}\nA > B\nb",
         f"{TITLE}\n{place}\nA > B > C\nc",
@@ -257,12 +258,35 @@ def test_the_title_the_breadcrumb_and_the_path_are_each_cut() -> None:
     assert texts == ["\n".join((*lines, "Intro.")), "\n".join((*lines, "H" * CONTEXT, "More."))]
 
 
-def test_the_title_is_left_out_of_the_path_however_the_mirror_escaped_it() -> None:
-    """The body's first heading, of level 1, is the title as pandoc writes Markdown."""
-    title = "[RFC] Q&A *plans*"
-    cut = sections("# \\[RFC\\] Q&A \\*plans\\*\n\nIntro.\n\n## Steps\n\nMore.\n")
+@pytest.mark.parametrize(
+    ("title", "heading"),
+    [
+        ("[RFC] Q&A *plans*", "\\[RFC\\] Q&A \\*plans\\*"),
+        (" Payout  rollback\t", "Payout rollback"),
+    ],
+)
+def test_the_title_is_left_out_of_the_path_however_the_mirror_wrote_it(
+    title: str, heading: str
+) -> None:
+    """The body's first heading, of level 1, is the title as pandoc writes it in Markdown."""
+    cut = sections(f"# {heading}\n\nIntro.\n\n## Steps\n\nMore.\n")
     texts = [text for *_, text in CHUNKERS["section-paths"].cut(page("1", title), cut)]
     assert texts == [f"{title}\nIntro.", f"{title}\nSteps\nMore."]
+
+
+@pytest.mark.parametrize(
+    ("body", "texts"),
+    [
+        (f"## {TITLE}\n\nMore.\n", [f"{TITLE}\n{TITLE}\nMore."]),
+        (f"Lead.\n\n# {TITLE}\n\nMore.\n", [f"{TITLE}\nLead.", f"{TITLE}\n{TITLE}\nMore."]),
+    ],
+)
+def test_only_a_body_s_first_heading_of_level_1_is_taken_for_the_title(
+    body: str, texts: list[str]
+) -> None:
+    """The title's words in a heading of another level, or after text, stay in the path."""
+    cut = sections(body)
+    assert [text for *_, text in CHUNKERS["section-paths"].cut(page("1", TITLE), cut)] == texts
 
 
 def test_a_heading_that_is_the_title_is_left_out_of_the_path() -> None:
