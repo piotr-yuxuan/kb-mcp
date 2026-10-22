@@ -53,7 +53,17 @@ include_external_packages = true
 name = "Contexts use those below them, never those above"
 type = "layers"
 containers = ["atlassian_offline_mcp"]
-layers = ["cli", "evaluation", "mcp", "search", "mirror", "sources", "config", "kernel"]
+layers = [
+  "cli",
+  "evaluation",
+  "mcp",
+  "search",
+  "mirror",
+  "sources",
+  "config",
+  "observability",
+  "kernel",
+]
 exhaustive = true
 exhaustive_ignores = ["__main__"]
 
@@ -68,6 +78,7 @@ containers = [
   "atlassian_offline_mcp.mirror",
   "atlassian_offline_mcp.sources.*",
   "atlassian_offline_mcp.config",
+  "atlassian_offline_mcp.observability",
 ]
 layers = ["(main)", "(commands)", "(options)", "(app)", "(adapters)", "(domain)"]
 exhaustive = true
