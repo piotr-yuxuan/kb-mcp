@@ -22,7 +22,7 @@ from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.endpoint import Scripted, serving
-from tests.test_cli import logged_as
+from tests.test_cli import logged_as, the_log_file
 from tests.test_download import SITE, FakeSite
 from tests.test_observed import said
 
@@ -265,7 +265,10 @@ def test_refused_settings_show_no_secret(
 def test_an_index_that_fails_to_embed_shows_no_key(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Its summary says the key is set; its error, that the model is missing, without it."""
+    """Its summary says the key is set; its error, that the model is missing, without it.
+
+    Nor does the run's log file show it.
+    """
     (home / "data" / "docs").mkdir(parents=True)
     monkeypatch.setenv(KEY, KEY_SENTINEL)
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "hybrid")
@@ -275,5 +278,6 @@ def test_an_index_that_fails_to_embed_shows_no_key(
         assert main(["index", *options, "--summary", "detailed"]) == 1
     out, err = capsys.readouterr()
     assert "embedding_api_key: set" in err
-    assert "index not built" in err
-    assert shown(out + err) == []
+    assert ("error", "index.not_built") in said(err)
+    assert [line["level"] for line in logged_as(home, "index.not_built")] == ["error"]
+    assert shown(out + err + the_log_file(home).read_text("utf-8")) == []

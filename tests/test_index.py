@@ -15,6 +15,7 @@ from atlassian_offline_mcp.search.adapters import sqlite_index
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.indexing import build_index
 from tests.mirrors import FILLERS, MOMENT, fillers, issue, location, page, write
+from tests.test_cli import logged_as
 from tests.test_observed import said
 
 if TYPE_CHECKING:
@@ -128,7 +129,11 @@ def test_line_endings_read_back_as_written(data: Path) -> None:
 def test_a_refused_file_is_named_and_the_others_indexed(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Front matter that the codec refuses, a file not in UTF-8 and a duplicate are skipped."""
+    """Front matter that the codec refuses, a file not in UTF-8 and a duplicate are skipped.
+
+    Each is the warning index.file_skipped, by its path and why; then index.lacks_files
+    warns how many the index lacks. The run's log file holds them all.
+    """
     fillers(data / "docs")
     broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
     broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
@@ -139,10 +144,20 @@ def test_a_refused_file_is_named_and_the_others_indexed(
     status, out, err = index(data, capsys)
     assert status == 1
     assert out.startswith(f"documents: {FILLERS}\n")
-    assert "skipped confluence/ENG/1-broken.md: front matter without exactly" in err
-    assert "skipped confluence/ENG/2-latin.md: not UTF-8" in err
-    assert f"skipped {later}: another document has the same source and id" in err
-    assert f"{SKIPPED} files skipped" in err
+    reasons = {
+        "confluence/ENG/1-broken.md": "front matter without exactly",
+        "confluence/ENG/2-latin.md": "not UTF-8",
+        later: "another document has the same source and id",
+    }
+    assert said(err).count(("warning", "index.file_skipped")) == SKIPPED
+    assert ("warning", "index.lacks_files") in said(err)
+    assert all(path in err and reason in err for path, reason in reasons.items())
+    skipped = logged_as(data.parent / "home", "index.file_skipped")
+    assert {line["level"] for line in skipped} == {"warning"}
+    assert {str(line["path"]): str(line["reason"]) for line in skipped}.keys() == reasons.keys()
+    assert all(str(line["reason"]).startswith(reasons[str(line["path"])]) for line in skipped)
+    (lacking,) = logged_as(data.parent / "home", "index.lacks_files")
+    assert (lacking["level"], lacking["count"]) == ("warning", SKIPPED)
     with reading(data / "index.sqlite") as reader:
         assert reader.summary().skipped == SKIPPED
 
@@ -173,11 +188,19 @@ def test_a_build_leaves_no_temporary_file(data: Path, capsys: CaptureFixture[str
 
 
 def test_no_mirror_is_a_failure(data: Path, capsys: CaptureFixture[str]) -> None:
-    """Without <data>/docs, nothing is built and the command exits 1."""
+    """Without <data>/docs, nothing is built and the command exits 1, by index.not_built.
+
+    The run's log file holds the error and its reason, with no hint of words alone.
+    """
     (data / "docs").rmdir()
     status, _, err = index(data, capsys)
     assert status == 1
+    assert ("error", "index.not_built") in said(err)
     assert "no mirror at" in err
+    (failed,) = logged_as(data.parent / "home", "index.not_built")
+    assert failed["level"] == "error"
+    assert str(failed["reason"]).startswith("no mirror at")
+    assert "hint" not in failed
     assert list(data.iterdir()) == []
 
 
