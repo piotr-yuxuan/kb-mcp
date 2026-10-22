@@ -40,6 +40,9 @@ SHARED = (
 QUIET = ("httpx", "httpcore", "urllib3", "requests")
 # The most that a run's file holds of lines, in bytes, before the line log.capped.
 CAP = 256 * 2**20
+# The OpenTelemetry SDK's loggers, whose records go to the file alone: on stderr they
+# would break -q, and exported, a failed export would log about itself.
+SDK = "opentelemetry"
 
 
 class CappedFile(logging.StreamHandler[TextIO]):
