@@ -382,6 +382,47 @@ def test_the_command_to_copy_is_preceded_by_an_empty_list_that_no_flag_can_say(
     assert loaded.settings.sources.jira.projects == ()
 
 
+@pytest.mark.usefixtures("runs")
+def test_the_command_to_copy_is_followed_by_the_settings_that_no_flag_sets(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Run again elsewhere, the command would index by words: each one is named, and its layer.
+
+    With every setting at its default but the file's path, which --config carries,
+    nothing is named.
+    """
+    options = ["index", "--yes", "--config", str(home / "none.toml")]
+    assert main(options) == 0
+    assert "not in the command" not in capsys.readouterr().err
+    mode, model = "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "ATLASSIAN_OFFLINE_MCP_MODEL"
+    monkeypatch.setenv(mode, "semantic")
+    monkeypatch.setenv(model, "foo")
+    assert main(options) == 0
+    command = f"atlassian-offline-mcp index \\\n  --config {shlex.quote(str(home / 'none.toml'))}\n"
+    _, found, after = capsys.readouterr().err.partition(command)
+    assert found
+    assert [line.rpartition(": ")[0] for line in after.splitlines()] == [
+        f"not in the command: model ({model})",
+        f"not in the command: search_mode ({mode})",
+    ]
+
+
+@pytest.mark.usefixtures("runs")
+def test_the_command_to_copy_names_no_setting_that_the_run_does_not_apply(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """``eval``'s --model replaces the file's model, and the command carries it."""
+    monkeypatch.chdir(home)
+    (home / "golden.yaml").write_text("", "utf-8")
+    config = home / "config.toml"
+    config.write_text('model = "tiny"\n', "utf-8")
+    options = ["eval", "--yes", "golden.yaml", "--config", str(config)]
+    assert main(options) == 0
+    assert "not in the command: model (config.toml): " in capsys.readouterr().err
+    assert main([*options, "--model", "other:1b"]) == 0
+    assert "not in the command: model" not in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("name", sorted(OWN_OPTIONS))
 def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     name: str,
@@ -415,11 +456,13 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     main([name, "--config", str(config), *output, *OWN_OPTIONS[name]])
     err = capsys.readouterr().err
     assert not any(secret in err for secret in SECRETS.values())
-    copied = err[err.index(f"atlassian-offline-mcp {name} ") :]
-    *continued, last = copied.splitlines()
-    assert all(line.endswith(" \\") for line in continued)
-    assert not last.endswith("\\")
-    assert "someone@example.invalid" not in copied
+    lines = err[err.index(f"atlassian-offline-mcp {name} ") :].splitlines()
+    assert "someone@example.invalid" not in "\n".join(lines)
+    # The command ends at its first line that no backslash continues; what follows names
+    # the settings that it cannot carry.
+    ends = next(index for index, line in enumerate(lines) if not line.endswith(" \\"))
+    copied = "\n".join(lines[: ends + 1])
+    assert all(line.startswith("not in the command: ") for line in lines[ends + 1 :])
     # The shell removes a backslash and the newline after it, then splits as shlex does.
     argv = shlex.split(copied.replace("\\\n", ""))
     assert argv[:2] == ["atlassian-offline-mcp", name]

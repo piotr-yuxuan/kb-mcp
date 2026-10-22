@@ -34,13 +34,15 @@ def command_line(
     The program and the subcommand come first, then each option among the command's
     ``actions``, its repeats on its line, then the positionals. A flag carries its
     setting's value, from ``values`` by the setting's path, when the command reads the
-    setting and a layer gave it, the file included (``given``, by the layer's name);
-    another option carries its value when it is not its default. A path is made
-    ``absolute``; each value is quoted for the shell. What is not among the actions is
-    never written: the output's options, the question's, and the settings that no flag
-    sets, such as the secrets. No flag says an empty list: a line before the command
-    names such a setting and its layer, since the command, run again, takes that list
-    from the settings file, the environment or its default.
+    setting and a layer gave it, the file included (``given``, by the layer's name, for
+    each value that the run applies); another option carries its value when it is not
+    its default. A path is made ``absolute``; each value is quoted for the shell. What
+    is not among the actions is never written: the output's options, the question's, and
+    the settings that no flag sets, such as the model or the secrets. No flag says an
+    empty list: a line before the command names such a setting and its layer. A line
+    after the command names each setting that it reads, that a layer gave and that no
+    flag of it sets, with its layer, never its value. The command, run again, takes
+    these from the settings file, the environment or their defaults.
     """
     command: Command = arguments.command
     settings = {dest: setting for dest, (_, setting) in command.setting_flags().items()}
@@ -73,4 +75,9 @@ def command_line(
             option = max(action.option_strings, key=len)
             options.append(" ".join(f"{option} {text}" for text in texts))
     written = CONTINUED.join([f"{PROGRAM} {command.name}", *options, *positionals])
-    return "".join(unsaid) + written + "\n"
+    unflagged = "".join(
+        f"not in the command: {setting} ({given[setting]}): no flag sets it\n"
+        for setting in command.reads
+        if setting in given and setting not in settings.values()
+    )
+    return "".join(unsaid) + written + "\n" + unflagged

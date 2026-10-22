@@ -67,7 +67,8 @@ def before(
     layer gave, those that the run does not apply, by its ``unapplied``, and in detail
     those of the settings that the command never reads, unless ``unapplied`` said why.
     Each names its setting, if any, and its layer, never its value. A command that
-    writes ends with the command to copy, its paths made ``absolute``.
+    writes ends with the command to copy, its paths made ``absolute``, which carries the
+    values that a layer gave and the run applies, or names those it cannot carry.
 
     A command that only reads runs, as does one given --yes, or --dry-run where it takes
     one. Another asks when stdin and stderr are both terminals, where someone can
@@ -115,5 +116,14 @@ def before(
         )
         + "".join(f"  {line}\n" for line in described)
         + noted
-        + command_line(arguments, values, loaded.layers, absolute)
+        + command_line(
+            arguments,
+            values,
+            {
+                setting: layer
+                for setting, layer in loaded.layers.items()
+                if setting not in unapplied
+            },
+            absolute,
+        )
     ), then
