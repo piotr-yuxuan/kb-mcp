@@ -1,18 +1,45 @@
-"""Grafana's LGTM dashboards, as files: each found in its folder, read as Grafana would.
+"""Grafana's LGTM container and its dashboards, as files: nothing is pulled or run.
 
-Each draws on the image's own data sources only, and charts no metric but those of the
-reference, named as Prometheus names what it receives over OTLP.
+The compose file pins the image, publishes two ports on the loopback address only, sets
+what turns away other host names and keeps the stack from calling home, and keeps no data.
+Each dashboard, found in its folder, draws on the image's own data sources only, and
+charts no metric but those of the reference, named as Prometheus names what it receives
+over OTLP.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
+import yaml
 
-DASHBOARDS = Path(__file__).parents[1] / "deploy" / "lgtm" / "dashboards"
+LGTM = Path(__file__).parents[1] / "deploy" / "lgtm"
+COMPOSE = LGTM / "compose.yaml"
+DASHBOARDS = LGTM / "dashboards"
+# 0.37.0, as Docker Hub's tag API gave it on 2026-10-21 and again on 2026-10-22.
+IMAGE = (
+    "docker.io/grafana/otel-lgtm:0.37.0"
+    "@sha256:57b5ab1ca6619beb180174e2fccce04762470750669d043f544b4726d0582d07"
+)
+# Grafana, and OTLP over HTTP, on the loopback address only.
+PORTS = ["127.0.0.1:3000:3000", "127.0.0.1:4318:4318"]
+# Against DNS rebinding, then against calling home.
+VARIABLES = {
+    "GF_SERVER_DOMAIN": "127.0.0.1",
+    "GF_SERVER_ENFORCE_DOMAIN": "true",
+    "GF_ANALYTICS_REPORTING_ENABLED": "false",
+    "GF_ANALYTICS_CHECK_FOR_UPDATES": "false",
+    "GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES": "false",
+    "GF_PLUGINS_PREINSTALL_DISABLED": "true",
+    "LOKI_EXTRA_ARGS": "-reporting.enabled=false",
+    "TEMPO_EXTRA_ARGS": "-reporting.enabled=false",
+    "PYROSCOPE_EXTRA_ARGS": "-usage-stats.enabled=false",
+}
+# Where the image's Grafana reads its providers of dashboards.
+PROVIDERS = PurePosixPath("/otel-lgtm/grafana/conf/provisioning/dashboards")
 # The data sources that the image provisions: each one's uid and type.
 SOURCES = {("prometheus", "prometheus"), ("loki", "loki"), ("tempo", "tempo")}
 # The overview, then one dashboard per operation; a later plan adds its own beside them.
@@ -53,6 +80,40 @@ NOT_METRICS = re.compile(
 NAME = re.compile(r"\b[a-zA-Z_:][a-zA-Z0-9_:]*\b(?!\s*\()")
 OPERATORS = {"and", "or", "unless", "bool", "offset"}
 PATHS = sorted(DASHBOARDS.iterdir())
+
+
+def test_the_image_is_pinned_by_its_digest_with_the_registry_written_out() -> None:
+    """Podman would ask which registry a short name means."""
+    services = yaml.safe_load(COMPOSE.read_text("utf-8"))["services"]
+    assert [service["image"] for service in services.values()] == [IMAGE]
+
+
+def test_only_grafana_and_otlp_over_http_are_published_on_the_loopback_address() -> None:
+    """No other port, nor the host's network, which would publish every port."""
+    services = yaml.safe_load(COMPOSE.read_text("utf-8"))["services"].values()
+    assert [port for service in services for port in service.get("ports", [])] == PORTS
+    assert all("network_mode" not in service for service in services)
+
+
+def test_each_variable_against_dns_rebinding_and_calling_home_is_set() -> None:
+    """Each a string, passed on as written: compose tools differ over a YAML boolean."""
+    (service,) = yaml.safe_load(COMPOSE.read_text("utf-8"))["services"].values()
+    assert {name: service["environment"].get(name) for name in VARIABLES} == VARIABLES
+
+
+def test_no_volume_keeps_data_and_the_dashboards_folder_is_mounted_whole_read_only() -> None:
+    """``down`` discards the data; Grafana's provider reads the folder that is mounted."""
+    compose = yaml.safe_load(COMPOSE.read_text("utf-8"))
+    assert "volumes" not in compose
+    (service,) = compose["services"].values()
+    mounts = [mount.split(":") for mount in service["volumes"]]
+    assert all(mode == "ro" for _, _, mode in mounts)
+    targets = {source: PurePosixPath(target) for source, target, _ in mounts}
+    assert set(targets) == {"./dashboards", "./dashboards.yaml"}
+    assert targets["./dashboards.yaml"].parent == PROVIDERS
+    (provider,) = yaml.safe_load((LGTM / "dashboards.yaml").read_text("utf-8"))["providers"]
+    assert PurePosixPath(provider["options"]["path"]) == targets["./dashboards"]
+    assert provider["allowUiUpdates"] is False
 
 
 def test_the_folder_holds_the_overview_and_each_operation_s_with_unique_uids() -> None:
