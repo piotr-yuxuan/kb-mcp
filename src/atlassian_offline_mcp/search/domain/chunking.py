@@ -1,19 +1,34 @@
-"""How a document's sections are cut into the pieces that vectors stand for.
+"""How a document is cut into the pieces that vectors stand for, by each chunking.
 
-Each piece is a span of a section's body, embedded with the document's title and the
-section's heading. Nothing here reads a file or the index.
+``CHUNKERS`` gives each chunking of ``kernel.chunking`` by its name: what it cuts a
+document into, as the index keeps each piece, and the span that ``ask`` returns for a
+piece found. A piece belongs to the section that holds its middle, and its span is
+relative to that section's body (its heading line aside): a window that crosses sections
+needs no other schema. ``sections``, 011's, is the control. Nothing here reads a file or
+the index.
 """
 
 from __future__ import annotations
 
 import bisect
+import functools
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
+from atlassian_offline_mcp.kernel.chunking import CHARACTERS_PER_TOKEN
+from atlassian_offline_mcp.search.domain.search import HEADING
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping, Sequence
+
+    from atlassian_offline_mcp.kernel.chunking import Chunking
+    from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
     from atlassian_offline_mcp.search.domain.search import Section
+
+    # Each piece of a document: the index in its sections of the one holding its middle,
+    # its span relative to that section's body, and the text embedded.
+    type Cut = list[tuple[int, int, int, str]]
 
 # The characters of a piece of a section that one vector stands for, at most: under the
 # 512 tokens of the smaller models' window, with the title, in English and French.
@@ -22,6 +37,17 @@ BLANK_LINE = re.compile(r"\n[ \t]*\n")
 NOT_SPACE = re.compile(r"\S")
 # Characters of a document's title that each embedded piece begins with.
 EMBEDDED_TITLE = 200
+# Characters of the breadcrumb, and of the heading path, that a piece is embedded with.
+EMBEDDED_PATH = 200
+# A window: its length, how far each starts after the last one's start, and the end of
+# it where it may stop at a white space instead.
+WINDOW = 300 * CHARACTERS_PER_TOKEN
+STEP = 240 * CHARACTERS_PER_TOKEN
+TENTH = WINDOW // 10
+WHITE_SPACE = re.compile(r"\s")
+# A piece of small-to-big, at most, and the unit returned for it, at most.
+SMALL = 128 * CHARACTERS_PER_TOKEN
+UNIT = 2400
 
 
 def pieces(text: str, limit: int = PIECE) -> list[tuple[int, int]]:
@@ -67,3 +93,90 @@ def passages(title: str, cut: Sequence[Section]) -> list[tuple[int, int, int, st
             for lines in [(title[:EMBEDDED_TITLE], heading, section.body[start:end].strip())]
         ]
     return found
+
+
+def windows(front: FrontMatter, cut: Sequence[Section]) -> Cut:
+    """Cut a document's whole body into windows, each embedded with the title.
+
+    A window holds WINDOW characters and starts STEP after the last one's start, so that
+    two in a row overlap. One that does not reach the body's end stops instead at its
+    last white space within its last TENTH, when it has one there. The first starts at
+    the body's first character that is not white space; the last leaves only white space
+    after it.
+    """
+    body = "".join(section.text for section in cut)
+    starts = [section.start for section in cut]
+    found: Cut = []
+    first = NOT_SPACE.search(body)
+    start = first.start() if first else len(body)
+    while start < len(body):
+        end = min(start + WINDOW, len(body))
+        if end < len(body):
+            # A white space just past the window ends it at its whole length.
+            spaces = WHITE_SPACE.finditer(body, start + WINDOW - TENTH, end + 1)
+            end = max((space.start() for space in spaces), default=end)
+        index = bisect.bisect_right(starts, (start + end) // 2) - 1
+        offset = cut[index].start + len(cut[index].head)
+        lines = (front.title[:EMBEDDED_TITLE], body[start:end].strip())
+        text = "\n".join(line for line in lines if line)
+        found.append((index, start - offset, end - offset, text))
+        start = start + STEP if NOT_SPACE.search(body, end) else len(body)
+    return found
+
+
+def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = PIECE) -> Cut:
+    """Give each piece of a document's sections, embedded with where the piece sits.
+
+    Pieces are cut as ``pieces`` cuts them, of at most ``limit`` characters. The text is
+    the title, the breadcrumb joined by " / ", the section's heading path, each cut to
+    EMBEDDED_TITLE or EMBEDDED_PATH characters, and the piece, one per line; an empty
+    line is left out. A section's heading path joins by " > " its heading and those it
+    sits under: the nearest heading before it with fewer #, that one's own, and so on;
+    a heading that is the title is left out of it, the title being said first.
+    """
+    place = " / ".join(front.breadcrumb)[:EMBEDDED_PATH]
+    above: list[tuple[int, str]] = []  # the headings that the next one may sit under
+    found: Cut = []
+    for index, section in enumerate(cut):
+        heading = HEADING.fullmatch(section.head.removesuffix("\n").removesuffix("\r"))
+        level = len(heading[1]) if heading else 0
+        while above and above[-1][0] >= level:
+            above.pop()
+        above.append((level, section.heading))
+        path = " > ".join(words for _, words in above if words and words != front.title)
+        context = (front.title[:EMBEDDED_TITLE], place, path[:EMBEDDED_PATH])
+        found += [
+            (index, start, end, "\n".join(line for line in lines if line))
+            for start, end in pieces(section.body, limit)
+            for lines in [(*context, section.body[start:end].strip())]
+        ]
+    return found
+
+
+def around(piece: tuple[int, int], section: tuple[int, int]) -> tuple[int, int]:
+    """Give a piece's section whole when it fits UNIT characters, else UNIT of it about the piece.
+
+    The UNIT characters are centred on the piece's middle, then moved to stay within the
+    section. Every span, given or returned, is in the document's body.
+    """
+    first, last = section
+    start = max(first, min((piece[0] + piece[1]) // 2 - UNIT // 2, last - UNIT))
+    return section if last - first <= UNIT else (start, start + UNIT)
+
+
+@dataclass(frozen=True)
+class Chunker:
+    """A chunking: the pieces it cuts a document into, and the unit returned for one."""
+
+    cut: Callable[[FrontMatter, Sequence[Section]], Cut]
+    # From a piece's span and that of the section holding it, both in the body, the span
+    # that ``ask`` returns.
+    unit: Callable[[tuple[int, int], tuple[int, int]], tuple[int, int]]
+
+
+CHUNKERS: Mapping[Chunking, Chunker] = {
+    "sections": Chunker(lambda front, cut: passages(front.title, cut), lambda piece, _: piece),
+    "windows": Chunker(windows, lambda piece, _: piece),
+    "section-paths": Chunker(section_paths, lambda piece, _: piece),
+    "small-to-big": Chunker(functools.partial(section_paths, limit=SMALL), around),
+}
