@@ -84,8 +84,9 @@ The limits of that measure:
   forbids both, the bridge logs every call, and where the harness keeps the
   transcript, a run that did more than read its prompt and run the bridge and the
   answer command is marked invalid and gives no result. `grade` refuses a call log or
-  an answer that its own steps did not write, but `runs.json`, which holds the bound
-  and what grades each question, is the transcript's to guard.
+  an answer not shaped as its steps write them, but one well formed and forged passes,
+  and `runs.json`, which holds the bound and what grades each question, is the
+  transcript's to guard too.
 - **One corpus.** The sandbox is small, invented, and written with its questions; the
   work set should decide again.
 
