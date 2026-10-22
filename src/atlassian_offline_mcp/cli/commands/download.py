@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
+from atlassian_offline_mcp.sources.atlassian.adapters.sign_in import sign_in
 from atlassian_offline_mcp.sources.atlassian.app.download import Targets, download, plan
 from atlassian_offline_mcp.sources.atlassian.domain.period import PeriodError, length, moment
 
@@ -65,7 +66,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
     for target in outcome.failed_targets:
         sys.stderr.write(f"{target}\n")
     if outcome.status == ExitStatus.SIGN_IN_AGAIN:
-        sys.stderr.write("sign-in needed: run atlassian-offline-mcp login\n")
+        sys.stderr.write(f"sign-in needed: {sign_in(settings).again}\n")
     return outcome.status or ExitStatus.OK, outcome
 
 
