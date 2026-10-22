@@ -109,6 +109,10 @@ def before(
     if not command.writes:
         return noted, then
     described = command.described(arguments, values) if command.described else ()
+    applied = {
+        setting: layer for setting, layer in loaded.layers.items() if setting not in unapplied
+    }
+    copied = command_line(arguments, values, applied, loaded.replaced, absolute)
     return (
         f"{command.name}, with these settings:\n"
         + "".join(
@@ -116,15 +120,7 @@ def before(
         )
         + "".join(f"  {line}\n" for line in described)
         + noted
-        + command_line(
-            arguments,
-            values,
-            {
-                setting: layer
-                for setting, layer in loaded.layers.items()
-                if setting not in unapplied
-            },
-            loaded.replaced,
-            absolute,
-        )
+        + copied.emptied
+        + copied.command
+        + copied.unflagged
     ), then

@@ -22,6 +22,8 @@ import pytest
 from atlassian_offline_mcp.cli.commands import login as login_command
 from atlassian_offline_mcp.cli.commands import model as model_command
 from atlassian_offline_mcp.cli.commands._shared import enter
+from atlassian_offline_mcp.cli.domain.command_line import command_line
+from atlassian_offline_mcp.cli.domain.summary import values_of
 from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.cli.options.index import by_words_alone
 
@@ -495,15 +497,18 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     main([name, "--config", str(config), *output, *OWN_OPTIONS[name]])
     err = capsys.readouterr().err
     assert not any(secret in err for secret in SECRETS.values())
-    lines = err[err.index(f"atlassian-offline-mcp {name} ") :].splitlines()
-    assert "someone@example.invalid" not in "\n".join(lines)
-    # The command ends at its first line that no backslash continues; what follows names
-    # the settings that it cannot carry.
-    ends = next(index for index, line in enumerate(lines) if not line.endswith(" \\"))
-    copied = "\n".join(lines[: ends + 1])
-    assert all(line.startswith("not in the command: ") for line in lines[ends + 1 :])
+    [(first_arguments, first)] = runs
+    copied = command_line(
+        first_arguments,
+        values_of(first),
+        first.layers,
+        first.replaced,
+        lambda path: path.expanduser().absolute(),
+    )
+    assert copied.command in err
+    assert "someone@example.invalid" not in copied.command
     # The shell removes a backslash and the newline after it, then splits as shlex does.
-    argv = shlex.split(copied.replace("\\\n", ""))
+    argv = shlex.split(copied.command.replace("\\\n", ""))
     assert argv[:2] == ["atlassian-offline-mcp", name]
     assert not EXCLUDED & set(argv)
     config.unlink()
@@ -513,7 +518,7 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
     main([*argv[1:], "--yes"])
-    (first_arguments, first), (second_arguments, second) = runs
+    [_, (second_arguments, second)] = runs
     command = first_arguments.command
     for setting in set(command.flags.values()) & set(command.reads):
         path = setting.split(".")
