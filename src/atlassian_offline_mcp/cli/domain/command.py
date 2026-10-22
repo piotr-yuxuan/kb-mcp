@@ -48,7 +48,8 @@ class Command:
     the command stays light. ``programs`` names those that the run needs on PATH, such
     as pandoc, without which it is refused alike; ``files`` names, by their ``dest``,
     the arguments that name a file the run reads, such as ``eval``'s golden file,
-    refused alike when it is not one.
+    refused alike when it names nothing or a folder, though not a pipe, which a process
+    substitution gives.
     """
 
     name: str

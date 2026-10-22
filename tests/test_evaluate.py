@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import UTC, datetime
 from itertools import count
@@ -275,6 +276,21 @@ def test_a_refused_golden_file_exits_2(data: Path, capsys: CaptureFixture[str]) 
     assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data)]) == REFUSED
     assert "golden[0].expected: missing" in capsys.readouterr().err
     assert not (data / "eval").exists()
+
+
+def test_a_golden_file_is_read_from_a_pipe(data: Path, capsys: CaptureFixture[str]) -> None:
+    """As a process substitution gives one, such as ``<(sops -d golden.sops.yaml)``.
+
+    It is no regular file, yet the reader reads it, and names the fault it holds.
+    """
+    read, write = os.pipe()
+    os.write(write, b"- {id: q1}")
+    os.close(write)
+    try:
+        assert main(["eval", "--yes", f"/dev/fd/{read}", *options(data)]) == REFUSED
+    finally:
+        os.close(read)
+    assert "golden[0].expected: missing" in capsys.readouterr().err
 
 
 def test_an_endpoint_elsewhere_without_the_flag_exits_2(

@@ -28,16 +28,15 @@ def enter(arguments: argparse.Namespace) -> int:
 
     Refused settings exit 2 before the run is imported, as does what the command refuses
     of them and of its arguments, a program that it needs missing from PATH, or a file
-    that it reads missing; else the
-    values ignored go to stderr, after the summary of a command that writes and before
-    the command to copy. Such a command then asks, unless told not to, and is refused
-    where no one can answer: declined, it exits 1, refused, 2, both before the run is
-    imported. The run gets the settings loaded, with each one's layer, a flag's being its
-    option; one that reads no setting gets None, and nothing is said. It returns its
-    status, then its result, or None when it has none to write, such as ``serve``, whose
-    output is the protocol. The result goes to stdout as one JSON document, secrets
-    masked, or as its module's ``text`` writes it, unless -q. The run's status is
-    returned.
+    that it reads missing or a folder, a pipe being read; else the values ignored go to
+    stderr, after the summary of a command that writes and before the command to copy.
+    Such a command then asks, unless told not to, and is refused where no one can
+    answer: declined, it exits 1, refused, 2, both before the run is imported. The run
+    gets the settings loaded, with each one's layer, a flag's being its option; one that
+    reads no setting gets None, and nothing is said. It returns its status, then its
+    result, or None when it has none to write, such as ``serve``, whose output is the
+    protocol. The result goes to stdout as one JSON document, secrets masked, or as its
+    module's ``text`` writes it, unless -q. The run's status is returned.
     """
     command: Command = arguments.command
     output = Output(
@@ -67,8 +66,8 @@ def enter(arguments: argparse.Namespace) -> int:
         refusal = refusal or next(
             (
                 f"{path}: not a file"
-                for path in (getattr(arguments, dest) for dest in command.files)
-                if not Path(path).is_file()
+                for path in (Path(getattr(arguments, dest)) for dest in command.files)
+                if not path.exists() or path.is_dir()
             ),
             None,
         )
