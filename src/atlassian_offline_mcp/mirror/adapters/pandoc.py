@@ -63,6 +63,10 @@ class Pandoc:
         """Return the first line of pandoc's version, such as ``pandoc 3.7.0.2``."""
         return self.run(VERSION, "").partition("\n")[0]
 
+    def org_converter(self) -> str:
+        """Name how org is converted: pandoc's version, then the arguments, one a line."""
+        return "\n".join([self.version(), *ORG])
+
     def run(self, arguments: Sequence[str], text: str) -> str:
         """Run pandoc with fixed arguments on ``text``, and return its output.
 

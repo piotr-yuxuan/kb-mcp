@@ -22,7 +22,12 @@ import pytest
 from atlassian_offline_mcp.mirror.adapters.markdown import load
 from atlassian_offline_mcp.mirror.adapters.mirror_files import owned, sync
 from atlassian_offline_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
-from atlassian_offline_mcp.mirror.app.worklog import Outcome, mirror_worklog
+from atlassian_offline_mcp.mirror.app.worklog import (
+    Outcome,
+    Planned,
+    mirror_worklog,
+    plan_worklog,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -102,6 +107,13 @@ class Run:
         outcome = mirror_worklog(self.root, self.docs, pandoc, archives=archives)
         self.runs.append(pandoc.runs)
         return outcome
+
+    def plan(self, *, archives: bool = True) -> Planned:
+        """Say what mirroring would do; pandoc's runs are recorded as for a run."""
+        pandoc = Counting(Pandoc.find().path)
+        planned = plan_worklog(self.root, self.docs, pandoc, archives=archives)
+        self.runs.append(pandoc.runs)
+        return planned
 
     def files(self) -> list[Mirrored]:
         """Read back every file of the work log's step, as search will."""
@@ -505,3 +517,37 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_until_a_clean_run(run: R
     run.edit("todo.org", "Drafted, failing, on", "Drafted on")
     assert run().problems == ()
     assert not gone.exists()
+
+
+def test_a_dry_run_counts_what_a_run_would_convert_and_remove_and_writes_nothing(
+    run: Run,
+) -> None:
+    """Every document at first; after a run, none; one edit, one; one deletion, one file."""
+    first = run.plan()
+    assert (first.documents, first.to_convert, first.to_remove, first.html) == (
+        len(ENTRIES) + len(TRANSCRIPTS),
+        len(ENTRIES) + len(TRANSCRIPTS),
+        0,
+        1,
+    )
+    assert (run.runs[-1], run.docs.exists()) == ([VERSION], False)
+    run()
+    before = snapshot(run.docs)
+    assert (run.plan().to_convert, run.plan().to_remove) == (0, 0)
+    run.edit("todo.org", "Drafted on", "First drafted on")
+    (run.root / "transcripts/misc/a.org").unlink()
+    planned = run.plan()
+    assert (planned.to_convert, planned.to_remove, run.runs[-1]) == (1, 1, [VERSION])
+    assert snapshot(run.docs) == before
+
+
+def test_a_dry_run_that_meets_a_problem_would_remove_nothing(run: Run) -> None:
+    """As a run would keep every file when a problem is reported."""
+    run()
+    (run.root / "transcripts/misc/a.org").unlink()
+    (run.root / "transcripts/current/2026-10-21 Wed/notes on x.org").write_bytes(b"\xff\n")
+    planned = run.plan()
+    assert (planned.to_remove, [problem.reason for problem in planned.problems]) == (
+        0,
+        ["not UTF-8"],
+    )

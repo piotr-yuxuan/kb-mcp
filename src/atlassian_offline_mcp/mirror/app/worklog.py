@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.mirror.adapters.markdown import WORKLOG, documents, dump, load
 from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes, sync, worklog_owned
-from atlassian_offline_mcp.mirror.adapters.pandoc import ORG, PandocFailedError
+from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
 from atlassian_offline_mcp.mirror.app.mirror import Problem
 from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 from atlassian_offline_mcp.mirror.domain.mirror_layout import one_line, worklog_path
@@ -34,9 +34,22 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc
-    from atlassian_offline_mcp.sources.worklog.domain.worklog import Source
+    from atlassian_offline_mcp.sources.worklog.domain.worklog import Document, Source
 
 SOURCE = "worklog"
+
+
+@dataclass(frozen=True)
+class Read:
+    """The work log's documents as read, in order, and the HTML transcripts left out.
+
+    Problems stop removals; warnings, such as two transcripts of one id, do not.
+    """
+
+    documents: tuple[Document, ...]
+    html: int
+    problems: tuple[Problem, ...]
+    warnings: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -53,13 +66,23 @@ class Outcome:
     warnings: tuple[str, ...]
 
 
-def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True) -> Outcome:
-    """Mirror the work log under ``folder`` into ``docs/worklog/``, with ``pandoc``.
+@dataclass(frozen=True)
+class Planned:
+    """What a run would do: documents, those to convert, files to remove, HTML left out."""
+
+    documents: int
+    to_convert: int
+    to_remove: int
+    html: int
+    problems: tuple[Problem, ...]
+    warnings: tuple[str, ...]
+
+
+def read_worklog(folder: Path, *, archives: bool) -> Read:
+    """Read the work log under ``folder``: its entries, then its transcripts.
 
     Without ``archives``, the archive file, ``transcripts/archive/`` and the subtrees
-    tagged ARCHIVE are left out, and so their files removed. Raises
-    ``PandocFailedError`` when pandoc gives no version, before any file is written: no
-    revision can be named without it.
+    tagged ARCHIVE are left out. A file not read is a problem, named by its path.
     """
     listing = files.listed(folder, archives=archives)
     problems = [Problem(each.path, each.reason) for each in listing.problems]
@@ -74,16 +97,43 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
         [each for each in sources if each.path.parts[0] == TRANSCRIPTS], archives=archives
     )
     todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
-    converter = "\n".join([pandoc.version(), *ORG])
+    return Read(
+        (*entries(todo, archive, archives=archives), *named),
+        listing.html,
+        tuple(problems),
+        tuple(warnings),
+    )
+
+
+def existing(docs: Path) -> dict[str, tuple[FrontMatter, str]]:
+    """Return the work log's files under ``docs``, by their document's id: front matter, body.
+
+    A damaged one is left out: it is the step's own, written again or removed.
+    """
     kept: dict[str, tuple[FrontMatter, str]] = {}
     for file in documents(docs, WORKLOG):
         try:
             matter, body = load(file.read_text(encoding="utf-8"), str(file))
         except OSError, ValueError:
-            continue  # the step's own file, damaged: written again or removed
+            continue
         kept[matter.id] = (matter, body)
+    return kept
+
+
+def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True) -> Outcome:
+    """Mirror the work log under ``folder`` into ``docs/worklog/``, with ``pandoc``.
+
+    Without ``archives``, the archive file, ``transcripts/archive/`` and the subtrees
+    tagged ARCHIVE are left out, and so their files removed. Raises
+    ``PandocFailedError`` when pandoc gives no version, before any file is written: no
+    revision can be named without it.
+    """
+    read = read_worklog(folder, archives=archives)
+    problems = list(read.problems)
+    converter = pandoc.org_converter()
+    kept = existing(docs)
     wanted: dict[PurePosixPath, bytes | Path] = {}
-    for document in [*entries(todo, archive, archives=archives), *named]:
+    for document in read.documents:
         name = revision(converter, document.text)
         old, body = kept.get(document.id, (None, ""))
         if old is not None and old.revision == name:
@@ -121,4 +171,27 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
             matter, body
         ).encode()
     changes = sync(docs, wanted, worklog_owned, remove=not problems)
-    return Outcome(len(wanted), changes, listing.html, tuple(problems), tuple(warnings))
+    return Outcome(len(wanted), changes, read.html, tuple(problems), read.warnings)
+
+
+def plan_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True) -> Planned:
+    """Say what mirroring the work log would do, converting and writing nothing.
+
+    A document is to convert when no file holds its revision; a file is to remove when no
+    document read has its path, unless a problem was found, as a run would then keep it.
+    Pandoc runs for its version alone, which names revisions; raises
+    ``PandocFailedError`` when it gives none.
+    """
+    read = read_worklog(folder, archives=archives)
+    converter = pandoc.org_converter()
+    held = {identifier: matter.revision for identifier, (matter, _) in existing(docs).items()}
+    to_convert = sum(
+        1
+        for document in read.documents
+        if held.get(document.id) != revision(converter, document.text)
+    )
+    wanted = {worklog_path(each.type, each.id, each.title) for each in read.documents}
+    to_remove = 0 if read.problems else len(worklog_owned(docs) - wanted)
+    return Planned(
+        len(read.documents), to_convert, to_remove, read.html, read.problems, read.warnings
+    )
