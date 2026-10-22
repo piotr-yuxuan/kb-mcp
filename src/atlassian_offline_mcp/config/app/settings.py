@@ -72,4 +72,4 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
             where = "" if place == settings.data_dir else f"{place.name}: "
             message = f"data_dir ({loaded.layer('data_dir')}): {where}{problem}"
             raise UnsafeDataDirError(message)
-    return Loaded(settings, loaded.layers, (*unread, *loaded.ignored))
+    return Loaded(settings, loaded.layers, (*unread, *loaded.ignored), loaded.replaced)

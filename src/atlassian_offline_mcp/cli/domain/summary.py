@@ -124,6 +124,7 @@ def before(
                 for setting, layer in loaded.layers.items()
                 if setting not in unapplied
             },
+            loaded.replaced,
             absolute,
         )
     ), then

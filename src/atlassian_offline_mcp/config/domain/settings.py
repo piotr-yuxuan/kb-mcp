@@ -372,13 +372,16 @@ class Entry:
     """A value that a layer gives a setting: the setting's path, the value, the layer.
 
     A default's layer is None, so that no layer is taken for the defaults by its name,
-    such as a settings file named ``default``. Its representation leaves the value out,
-    which may be a secret not yet masked.
+    such as a settings file named ``default``. An ``implicit`` entry is a default that
+    an empty table of its layer gives: the layer wrote no value, so a stronger one that
+    replaces it replaces none. Its representation leaves the value out, which may be a
+    secret not yet masked.
     """
 
     path: tuple[str, ...]
     value: object = field(repr=False)
     layer: str | None
+    implicit: bool = False
 
 
 @dataclass(frozen=True)
@@ -392,11 +395,16 @@ class Ignored:
 
 @dataclass(frozen=True)
 class Loaded:
-    """The settings, each one's layer by its path joined by dots, and the values ignored."""
+    """The settings, each one's layer by its path joined by dots, and the values ignored.
+
+    ``replaced`` names each setting, by its path joined by dots, whose value that a layer
+    wrote a stronger layer replaced.
+    """
 
     settings: Settings
     layers: Mapping[str, str] = field(default_factory=dict)
     ignored: tuple[Ignored, ...] = ()
+    replaced: frozenset[str] = frozenset()
 
     def layer(self, setting: str) -> str:
         """Name the layer that gave a setting, by its path joined by dots, or default.
@@ -412,8 +420,9 @@ def entries_of(value: object, path: tuple[str, ...], layer: str) -> list[Entry]:
     """Give a value that a layer read at a path as entries: a table's, one per value in it.
 
     An empty table of the settings gives each setting under it its default, so that the
-    layer replaces a weaker one's values there and is said to have given them. Another
-    empty table is an entry of its own, so that one naming no setting is refused too.
+    layer replaces a weaker one's values there and is said to have given them; each
+    entry is implicit, as the layer wrote no value there. Another empty table is an
+    entry of its own, so that one naming no setting is refused too.
     """
     if isinstance(value, dict) and value:
         return [
@@ -423,7 +432,7 @@ def entries_of(value: object, path: tuple[str, ...], layer: str) -> list[Entry]:
         ]
     if value == {} and SETTING_PATHS.get(path) == "table":
         return [
-            Entry(setting, default, layer)
+            Entry(setting, default, layer, implicit=True)
             for setting, default in DEFAULTS.items()
             if setting[: len(path)] == path
         ]
@@ -519,7 +528,9 @@ def settings_of(entries: Iterable[Entry], home: Path) -> Loaded:
     """Merge the layers' entries, weakest first, and build the settings from them.
 
     An entry replaces any earlier one at its path, above it or below it, whole: a list is
-    never joined to another. ``~`` in a path, a default's included, is ``home``. Raises
+    never joined to another. A value replaced that a layer wrote is ignored, and its
+    setting is ``replaced``; a default, by no layer or implicit, is neither. ``~`` in a
+    path, a default's included, is ``home``. Raises
     SettingsError naming each setting refused and the layers that gave it, never its
     value: first an entry whose path names no setting, which ``BaseSettings`` could take
     as an argument of its own, such as ``_env_file``.
@@ -567,12 +578,17 @@ def settings_of(entries: Iterable[Entry], home: Path) -> Loaded:
             named = ", ".join(sorted(given)) or DEFAULT_LAYER
             problems.append(f"{where} ({named}): {problem['msg']}")
         raise SettingsError("; ".join(problems)) from None
-    ignored = tuple(
-        Ignored(".".join(weaker.path), weaker.layer, f"replaced by {stronger}")
+    said = [
+        (".".join(weaker.path), weaker.layer, stronger)
         for weaker, stronger in replaced
-        if weaker.layer is not None
+        if weaker.layer is not None and not weaker.implicit
+    ]
+    return Loaded(
+        settings,
+        layers,
+        tuple(Ignored(setting, layer, f"replaced by {by}") for setting, layer, by in said),
+        frozenset(setting for setting, _, _ in said),
     )
-    return Loaded(settings, layers, ignored)
 
 
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:

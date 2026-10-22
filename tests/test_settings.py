@@ -241,6 +241,22 @@ def test_an_empty_table_gives_each_setting_under_it_and_none_other() -> None:
         "sources.jira.projects": "stronger",
     }
     assert loaded.ignored == (Ignored("sources.confluence.spaces", FILE, "replaced by stronger"),)
+    assert loaded.replaced == {"sources.confluence.spaces"}
+
+
+def test_a_value_replacing_an_empty_table_s_default_replaces_no_value_given() -> None:
+    """The table's layer wrote none: the stronger value is its setting's, nothing ignored."""
+    loaded = settings_of(
+        [
+            *file_entries({"sources": {"jira": {}}}, FILE),
+            Entry(("sources", "jira", "projects"), ["PRB"], "--project"),
+        ],
+        HOME,
+    )
+    assert loaded.settings.sources.jira.projects == ("PRB",)
+    assert loaded.layers == {"sources.jira.projects": "--project"}
+    assert loaded.ignored == ()
+    assert loaded.replaced == frozenset()
 
 
 @pytest.mark.parametrize(

@@ -1,8 +1,8 @@
 """The command to copy: a run written as the command line that runs it again.
 
-Pure: the entry gives it the arguments, the settings' values and the layers of those that
-a layer gave, and writes what it returns, so that it can be copied, or kept in the shell's
-history.
+Pure: the entry gives it the arguments, the settings' values, the layers of those that a
+layer gave and the settings whose value a stronger layer replaced, and writes what it
+returns, so that it can be copied, or kept in the shell's history.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from atlassian_offline_mcp.cli.domain.command import PROGRAM
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Collection, Mapping
 
     from atlassian_offline_mcp.cli.domain.command import Command
 
@@ -27,6 +27,7 @@ def command_line(
     arguments: argparse.Namespace,
     values: Mapping[str, object],
     given: Mapping[str, str],
+    replaced: Collection[str],
     absolute: Callable[[Path], Path],
 ) -> str:
     """Write the command that runs this run again, an option to a line, then a newline.
@@ -39,7 +40,8 @@ def command_line(
     its default. A path is made ``absolute``; each value is quoted for the shell. What
     is not among the actions is never written: the output's options, the question's, and
     the settings that no flag sets, such as the model or the secrets. No flag says an
-    empty list: a line before the command names such a setting and its layer. A line
+    empty list: when its layer ``replaced`` a weaker one's value, which the command, run
+    again, would read, a line before the command names the setting and its layer. A line
     after the command names each setting that it reads, that a layer gave and that no
     flag of it sets, with its layer, never its value. The command, run again, takes
     these from the settings file, the environment or their defaults.
@@ -54,7 +56,7 @@ def command_line(
             setting = settings[action.dest]
             carried = setting in given and setting in command.reads
             value = values[setting] if carried else None
-            if value == ():  # a list of the settings, empty
+            if value == () and setting in replaced:  # a list that a layer emptied
                 option = max(action.option_strings, key=len)
                 why = f"empty, which {option} cannot say"
                 unsaid.append(f"not in the command: {setting} ({given[setting]}): {why}\n")

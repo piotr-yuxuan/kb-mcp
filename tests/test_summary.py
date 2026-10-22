@@ -382,6 +382,45 @@ def test_the_command_to_copy_is_preceded_by_an_empty_list_that_no_flag_can_say(
     assert loaded.settings.sources.jira.projects == ()
 
 
+# A settings file whose table of Jira is empty, its one line commented out.
+EMPTY_TABLE = '[sources.jira]\n# projects = ["PLAT"]\n'
+
+
+@pytest.mark.parametrize(
+    "layers",
+    [
+        ("", {"ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS": "[]"}, []),
+        ("[sources.jira]\nprojects = []\n", {}, []),
+        (EMPTY_TABLE, {}, []),
+        (EMPTY_TABLE, {"ATLASSIAN_OFFLINE_MCP_SOURCES": "{}"}, []),
+        (EMPTY_TABLE, {}, ["--project", "PRB"]),
+    ],
+)
+@pytest.mark.usefixtures("runs")
+def test_an_empty_list_that_replaced_no_value_given_is_neither_ignored_nor_named(
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    layers: tuple[str, dict[str, str], list[str]],
+) -> None:
+    """The command, run again, reads the same projects: the file's, or the default.
+
+    An empty table's settings are at their defaults, which no layer wrote: a stronger
+    value replaces none of them. ``layers`` are the file's text, the variables and the
+    flags.
+    """
+    text, variables, flags = layers
+    config = home / "config.toml"
+    config.write_text(text, "utf-8")
+    for variable, value in variables.items():
+        monkeypatch.setenv(variable, value)
+    options = ["--yes", "--config", str(config), "--site", SITE, "--space", "ENG", *flags]
+    assert main(["download", *options]) == 0
+    err = capsys.readouterr().err
+    assert "ignored: " not in err
+    assert "not in the command: " not in err
+
+
 @pytest.mark.usefixtures("runs")
 def test_the_command_to_copy_is_followed_by_the_settings_that_no_flag_sets(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
