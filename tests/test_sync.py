@@ -28,6 +28,7 @@ from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes
 from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc
 from atlassian_offline_mcp.mirror.app import mirror as mirror_app
 from atlassian_offline_mcp.sources.atlassian.adapters import http
+from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report, Targets
 from tests.test_download import CAP, PAGES, SITE, FakeSite
@@ -581,3 +582,69 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
     synced = sync(context(settings, [], FIRST), [atlassian, Worklog(worklog, archives=True)])
     assert [row.outcome for row in synced.steps] == ["sign in", "failed", "interrupted"]
     assert synced.exit_status == ExitStatus.INTERRUPTED
+
+
+def test_an_included_source_without_its_table_is_refused_beside_one_that_has_it(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """--include confluence --include worklog, no work log: exit 2, naming its setting."""
+    config = settings_file(home, None, atlassian=True)
+    given = ("--yes", "--include", "confluence", "--include", "worklog")
+    assert main(command(home, config, *given)) == ExitStatus.REFUSED
+    said = capsys.readouterr().err
+    assert "refused: --include worklog: not configured; set sources.worklog.path\n" in said
+
+
+def test_with_a_site_source_an_email_without_a_token_alone_is_not_applied(
+    home: Path, signed_in: FakeSite, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The site is used; the email, without its token, signs nothing in."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMAIL", "someone@example.invalid")
+    config = settings_file(home, None, atlassian=True)
+    assert main(command(home, config, "--dry-run", "--since", "2026-10-02")) == ExitStatus.OK
+    said = capsys.readouterr().err
+    assert "no Atlassian source" not in said
+    assert "email: someone@example.invalid (not applied: without an API token" in said
+    assert signed_in.asked
+
+
+def test_without_a_site_source_the_sign_in_s_settings_are_not_applied(
+    home: Path, worklog: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The email and the token, given, are said ignored, by their variables."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMAIL", "someone@example.invalid")
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_API_TOKEN", "token-sentinel-7f2b")
+    config = settings_file(home, worklog)
+    assert main(command(home, config, "--dry-run")) == ExitStatus.OK
+    said = capsys.readouterr().err
+    for setting, variable in (
+        ("email", "ATLASSIAN_OFFLINE_MCP_EMAIL"),
+        ("api_token", "ATLASSIAN_OFFLINE_MCP_API_TOKEN"),
+    ):
+        assert f"ignored: {setting} ({variable}): no Atlassian source in this sync\n" in said
+    assert "token-sentinel-7f2b" not in said
+
+
+def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
+    tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Another run writing the store: the download failed, said; mirror and work log run."""
+
+    def busy(*_: object) -> Outcome:
+        raise StoreBusyError
+
+    monkeypatch.setattr(sync_app, "download", busy)
+    settings = chosen_settings(tmp_path, worklog)
+    steps = [
+        Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
+        Worklog(worklog, archives=True),
+    ]
+    said: list[str] = []
+    synced = sync(context(settings, said, FIRST), steps)
+    assert [(row.step, row.outcome) for row in synced.steps] == [
+        ("download", "failed"),
+        ("mirror", "done"),
+        ("worklog", "done"),
+    ]
+    assert synced.exit_status == ExitStatus.FAILED
+    assert "another run is writing the raw store; try again once it ends\n" in said
