@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from pydantic import ValidationError
 
 from atlassian_offline_mcp.config.app.settings import load_settings
 from atlassian_offline_mcp.config.domain.settings import (
@@ -36,7 +37,7 @@ SENTINEL = "sentinel-0c1e5a"
 
 def from_file(values: dict[str, object]) -> Settings:
     """Build the settings from a settings file's values alone."""
-    return settings_of(file_entries(values, FILE)).settings
+    return settings_of(file_entries(values, FILE), HOME).settings
 
 
 def test_settings_are_normalised() -> None:
@@ -57,7 +58,7 @@ def test_settings_are_normalised() -> None:
     )
     assert settings.site == "https://example.atlassian.net"
     assert settings.email == "someone@example.invalid"
-    assert settings.data_dir == Path("~/mirror")
+    assert settings.data_dir == HOME / "mirror"
     assert settings.sources.confluence.spaces == ("ENG", "~5f1a2b")
     assert settings.sources.jira.projects == ("PAY",)
     assert (settings.model, settings.search_mode, settings.embedding_url) == (
@@ -84,8 +85,33 @@ def test_the_default_embeddings_come_from_ollama_on_this_machine() -> None:
 def test_the_default_data_directory_is_under_the_home() -> None:
     """With nothing set, the data lives in ~/atlassian-offline-mcp and no site is known."""
     settings = from_file({})
-    assert (settings.site, settings.data_dir) == (None, Path("~/atlassian-offline-mcp"))
+    assert (settings.site, settings.data_dir) == (None, HOME / "atlassian-offline-mcp")
     assert (settings.sources.confluence.spaces, settings.sources.jira.projects) == ((), ())
+
+
+@pytest.mark.parametrize(
+    ("given", "data_dir"),
+    [
+        (None, HOME / "atlassian-offline-mcp"),
+        ("~", HOME),
+        ("~/mirror", HOME / "mirror"),
+        ("/data/mirror", Path("/data/mirror")),
+    ],
+)
+def test_the_data_directory_is_absolute_with_the_home_given_for_the_tilde(
+    given: str | None, data_dir: Path
+) -> None:
+    """Data written under a relative path would land below the current directory."""
+    entries = [] if given is None else [Entry(("data_dir",), given, "--data-dir")]
+    assert settings_of(entries, HOME).settings.data_dir == data_dir
+
+
+def test_no_settings_hold_a_path_under_the_tilde_without_a_home() -> None:
+    """Built without the loader's home, the default data directory is refused too."""
+    with pytest.raises(ValidationError):
+        Settings()
+    with pytest.raises(ValidationError):
+        Settings(data_dir=Path("~/mirror"))
 
 
 def test_every_setting_is_described() -> None:
@@ -162,7 +188,7 @@ def test_the_model_refuses_a_key_that_names_no_setting_whatever_its_layer(key: s
     and ``_env_file``, which read the file named.
     """
     with pytest.raises(SettingsError, match=re.escape(f"{key} (a layer):")):
-        settings_of([Entry((key,), "/etc/passwd", "a layer")])
+        settings_of([Entry((key,), "/etc/passwd", "a layer")], HOME)
 
 
 def test_a_refusal_never_holds_the_value() -> None:
@@ -178,7 +204,8 @@ def test_a_stronger_layer_replaces_a_weaker_one_and_the_weaker_is_ignored() -> N
         [
             Entry(("site",), "https://file.example.invalid", FILE),
             Entry(("site",), "https://flag.example.invalid", "--site"),
-        ]
+        ],
+        HOME,
     )
     assert loaded.settings.site == "https://flag.example.invalid"
     assert loaded.layers == {"site": "--site"}
@@ -191,7 +218,8 @@ def test_a_stronger_list_replaces_a_weaker_one_whole() -> None:
         [
             *file_entries({"sources": {"confluence": {"spaces": ["ENG", "OPS"]}}}, FILE),
             Entry(("sources", "confluence", "spaces"), ["MFS"], "--space"),
-        ]
+        ],
+        HOME,
     )
     assert loaded.settings.sources.confluence.spaces == ("MFS",)
     assert loaded.layers == {"sources.confluence.spaces": "--space"}
@@ -205,7 +233,8 @@ def test_a_value_replaces_a_weaker_table_above_or_below_it() -> None:
             Entry(("sources", "jira", "projects"), ["PLAT"], FILE),
             Entry(("sources", "jira"), {}, "stronger"),
             Entry(("sources", "jira", "projects"), ["PRB"], "strongest"),
-        ]
+        ],
+        HOME,
     )
     assert loaded.settings.sources.jira.projects == ("PRB",)
     assert loaded.ignored == (

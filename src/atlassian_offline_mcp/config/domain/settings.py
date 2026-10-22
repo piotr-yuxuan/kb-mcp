@@ -26,6 +26,8 @@ if TYPE_CHECKING:
     import re
     from collections.abc import Iterable, Mapping
 
+    from pydantic import ValidationInfo
+
 DEFAULT_DATA_DIR = "~/atlassian-offline-mcp"
 # The embedding model that indexes by meaning, as the endpoint names it. Chosen by plan
 # 018 from published retrieval scores: the best in English, French not needed for now.
@@ -132,16 +134,25 @@ def endpoint_address(value: str) -> str:
     return value.rstrip("/")
 
 
-def data_location(path: Path) -> Path:
-    """Accept an absolute path, or one under ``~``, which the loader makes the home's."""
-    if "\0" in str(path) or not (path.is_absolute() or path.parts[:1] == ("~",)):
+def local_path(path: Path, info: ValidationInfo) -> Path:
+    """Accept an absolute path, or one under ``~``, made the home that validation is given.
+
+    The home comes in the validation's context, as ``settings_of`` gives it: without
+    one, a path under ``~`` is refused, so that no settings hold a path relative to the
+    current directory.
+    """
+    home = (info.context or {}).get("home")
+    if home is not None and path.parts[:1] == ("~",):
+        path = home.joinpath(*path.parts[1:])
+    if "\0" in str(path) or not path.is_absolute():
         message = "an absolute path, or one under ~"
         raise PydanticCustomError(RULE, message)
     return path
 
 
 Site = Annotated[str, AfterValidator(site_address)]
-DataDir = Annotated[Path, AfterValidator(data_location)]
+# A path on this machine, such as the data directory.
+LocalPath = Annotated[Path, AfterValidator(local_path)]
 SpaceKey = Annotated[str, matching(SPACE_KEY, "a space key, such as ENG or ~5f1a2b")]
 ProjectKey = Annotated[str, matching(PROJECT_KEY, "a project key, such as PLAT")]
 ModelName = Annotated[
@@ -186,8 +197,9 @@ class Sources(BaseModel):
 class Settings(BaseModel):
     """What every command needs to know: the site, the data directory, the defaults.
 
-    The loader builds it from the layers' merge (``settings_of``). Its data directory is
-    the home's once loaded, and resolved.
+    The loader builds it from the layers' merge (``settings_of``), with the home that
+    ``~`` stands for: its paths are absolute, its default data directory included. The
+    loader then resolves the data directory.
     """
 
     model_config = TABLE
@@ -205,8 +217,9 @@ class Settings(BaseModel):
         default=None,
         description="The Atlassian account's API token, a secret: from the environment alone.",
     )
-    data_dir: DataDir = Field(
+    data_dir: LocalPath = Field(
         default=Path(DEFAULT_DATA_DIR),
+        validate_default=True,
         description=(
             "Where the data lives, ~ being the home directory: never under a synchronised"
             " folder, nor inside a git working tree."
@@ -405,12 +418,13 @@ def environment_entries(environ: Mapping[str, str]) -> tuple[list[Entry], list[I
     return entries, ignored
 
 
-def settings_of(entries: Iterable[Entry]) -> Loaded:
+def settings_of(entries: Iterable[Entry], home: Path) -> Loaded:
     """Merge the layers' entries, weakest first, and build the settings from them.
 
     An entry replaces any earlier one at its path, above it or below it, whole: a list is
-    never joined to another. Raises SettingsError naming each setting refused and the
-    layers that gave it, never its value.
+    never joined to another. ``~`` in a path, a default's included, is ``home``. Raises
+    SettingsError naming each setting refused and the layers that gave it, never its
+    value.
     """
     kept: dict[tuple[str, ...], Entry] = {}
     replaced: list[Ignored] = []
@@ -431,7 +445,7 @@ def settings_of(entries: Iterable[Entry]) -> Loaded:
         table[path[-1]] = entry.value
     layers = {".".join(path): entry.layer for path, entry in kept.items()}
     try:
-        settings = Settings.model_validate(values)
+        settings = Settings.model_validate(values, context={"home": home})
     except ValidationError as error:
         problems = []
         for problem in error.errors(include_input=False):

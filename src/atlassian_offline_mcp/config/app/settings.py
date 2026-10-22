@@ -32,8 +32,8 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
 
     ``flags`` maps each flag, such as ``--site``, to the setting it overrides, by its
     path joined by dots, and its value, None when it was not given. The file's layer is
-    its name, a variable's its name. ``~`` in the data directory is ``home``, which must
-    be resolved. What was ignored is each variable that names no setting or is empty,
+    its name, a variable's its name. ``~`` in a path is ``home``, which must be
+    resolved. What was ignored is each variable that names no setting or is empty,
     then each value replaced.
 
     The data directory, and each place under it where data is written, is resolved
@@ -58,12 +58,10 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
                 for flag, (setting, value) in flags.items()
                 if value is not None
             ),
-        ]
+        ],
+        home,
     )
-    data_dir = loaded.settings.data_dir
-    under_home = data_dir.parts[0] == "~"
-    data_dir = (home.joinpath(*data_dir.parts[1:]) if under_home else data_dir).resolve()
-    settings = loaded.settings.model_copy(update={"data_dir": data_dir})
+    settings = loaded.settings.model_copy(update={"data_dir": loaded.settings.data_dir.resolve()})
     for place in (settings.data_dir, *settings.parts):
         resolved = place.resolve()
         problem = unsafe_location(resolved, home, git_root(resolved))
