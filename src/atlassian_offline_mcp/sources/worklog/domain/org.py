@@ -75,10 +75,10 @@ class Heading:
 
     @property
     def line(self) -> str:
-        """Write it back as one line, without ``COMMENT``."""
+        """Write it back as one line, without ``COMMENT``; a blank always follows the stars."""
         tags = f":{':'.join(self.tags)}:" if self.tags else None
-        words = ["*" * self.level, self.keyword, self.priority, self.text, tags]
-        return " ".join(word for word in words if word)
+        words = [self.keyword, self.priority, self.text, tags]
+        return f"{'*' * self.level} {' '.join(word for word in words if word)}"
 
 
 def heading(line: str, keywords: Collection[str]) -> Heading | None:

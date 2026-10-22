@@ -127,6 +127,24 @@ def test_generated_headings_give_their_title_without_the_other_parts() -> None:
             priority,
             tags,
         ), line
+        again = org.heading(found.line, KEYWORDS)
+        assert again == found, line  # written back, it reads the same
+
+
+@pytest.mark.parametrize("line", ["* COMMENT", "** COMMENT :x:", "*** TODO [#A] COMMENT Title"])
+def test_a_heading_without_comment_is_still_a_heading(line: str) -> None:
+    """Written back without COMMENT, even with nothing else, it reads as the same heading."""
+    found = org.heading(line, KEYWORDS)
+    assert found is not None
+    again = org.heading(found.line, KEYWORDS)
+    assert again is not None
+    assert (again.level, again.keyword, again.title, again.tags, again.comment) == (
+        found.level,
+        found.keyword,
+        found.title,
+        found.tags,
+        False,
+    )
 
 
 def test_a_file_declares_its_keywords_its_title_and_its_tags() -> None:
@@ -152,8 +170,14 @@ def test_keywords_come_from_the_file_else_the_inherited_one_else_todo_and_done()
 
 def test_lines_end_at_a_line_feed_alone() -> None:
     """A carriage return before it goes; other breaks, as U+2028 or a form feed, are text."""
-    parsed = org.read("* A\r\nx\u2028* B\x0c* C\x85* D\r\n* E\n")
+    parsed = org.read(
+        "* A :work:\r\n:PROPERTIES:\r\n:ID: abc\r\n:END:\r\nx\u2028* B\x0c* C\x85* D\r\n* E\n"
+    )
     assert [subtree.heading.title for subtree in parsed.subtrees] == ["A", "E"]
+    assert (parsed.subtrees[0].heading.tags, parsed.subtrees[0].properties) == (
+        ("work",),
+        {"ID": "abc"},
+    )
 
 
 def test_subtrees_are_the_top_level_headings_with_what_follows() -> None:
