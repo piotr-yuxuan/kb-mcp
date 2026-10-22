@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
+import pytest
+
+from atlassian_offline_mcp.cli.commands import login as login_command
+from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, read_cookies
 from atlassian_offline_mcp.sources.atlassian.app import login as login_module
@@ -11,9 +16,12 @@ from atlassian_offline_mcp.sources.atlassian.app import login as login_module
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
 SITE = "https://sandbox.example.invalid"
+INSTRUCTION = f"Sign in to {SITE} in the Chrome window that opens.\n"
+SIGNED_IN = "Signed in; the session is saved.\n"
 
 
 def test_only_the_site_cookies_of_the_browser_are_saved(
@@ -35,3 +43,20 @@ def test_only_the_site_cookies_of_the_browser_are_saved(
         ("tenant", "/"),
         ("wiki", "/wiki"),
     ]
+
+
+@pytest.mark.parametrize("summary", ["short", "detailed"])
+def test_the_command_says_what_to_do_on_stderr_and_its_result_on_stdout(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], summary: str
+) -> None:
+    """The instruction is a message; the result, the same in each detail, or one document."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(login_command, "login", lambda *_, **__: None)
+    options = ["login", "--config", str(tmp_path / "none.toml"), "--site", SITE]
+    assert main([*options, "--summary", summary]) == 0
+    assert capsys.readouterr() == (SIGNED_IN, INSTRUCTION)
+    assert main([*options, "--format", "json"]) == 0
+    out, err = capsys.readouterr()
+    assert err == INSTRUCTION
+    session = (tmp_path / "atlassian-offline-mcp" / "session").resolve()
+    assert json.loads(out) == {"site": SITE, "session": str(session)}

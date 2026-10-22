@@ -66,16 +66,17 @@ def refusing(method: Callable[..., str]) -> Callable[..., str]:
     return tool
 
 
-def run(arguments: argparse.Namespace, settings: Settings) -> ExitStatus:
+def run(arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, None]:
     """Serve until the client closes stdin; exit 2 when the settings are refused.
 
-    The lexical mode never opens the embedding endpoint.
+    The lexical mode never opens the embedding endpoint. The protocol is the output:
+    no result is given.
     """
     try:
         opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
     except SettingsError as error:
         sys.stderr.write(f"settings refused: {error}\n")
-        return ExitStatus.REFUSED
+        return ExitStatus.REFUSED, None
     with opened or contextlib.nullcontext():
         meaning = None if opened is None else Meaning(functools.partial(connect, opened))
         library = Library(settings.index, settings.docs, meaning, settings.search_mode)
@@ -83,4 +84,4 @@ def run(arguments: argparse.Namespace, settings: Settings) -> ExitStatus:
         for method in (library.search, library.read, library.browse, library.status):
             server.add_tool(refusing(method), structured_output=False, annotations=READ_ONLY)
         server.run("stdio")
-    return ExitStatus.OK
+    return ExitStatus.OK, None

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
 import os
 import subprocess
 import sys
@@ -24,7 +25,8 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
 ROOT = Path(__file__).parents[1]
-# The exit status for settings refused before acting, an unsafe data directory included.
+# The exit status for what is refused before acting: options, and settings, an unsafe data
+# directory included.
 BAD_SETTINGS = 2
 # What a run may import and declaring the command must not, by plan 015: --help and each
 # completion build the whole parser, so they must start fast.
@@ -53,11 +55,13 @@ DECLARED = """
 from pathlib import Path
 
 from atlassian_offline_mcp.cli.domain.command import Command
+from atlassian_offline_mcp.cli.options._common import add_output_options
 
 def register(subparsers):
     parser = subparsers.add_parser("extra", help="a command added by a module pair")
     parser.add_argument("--config", type=Path)
     parser.add_argument("--data-dir")
+    add_output_options(parser)
     parser.set_defaults(command=Command("extra", "extra_run", {"data_dir": "data_dir"}))
 """
 
@@ -78,6 +82,14 @@ class Declaring(argparse.ArgumentParser):
 
 # Every subcommand that the command declares, by the name it is typed by.
 SUBCOMMANDS = parser(Declaring).subcommands
+# What a subcommand needs besides its options to be parsed: its positional arguments.
+POSITIONALS = {"eval": ["golden.yaml"], "model": ["check"]}
+# The subcommands whose output is their own, by plan 015: the protocol, a script.
+OWN_OUTPUT = {"serve", "completion"}
+SECRETS = {
+    "ATLASSIAN_OFFLINE_MCP_API_TOKEN": "token-sentinel-4d1c",
+    "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY": "key-sentinel-9a7e",
+}
 
 
 @pytest.fixture
@@ -113,10 +125,10 @@ def test_a_module_pair_makes_a_subcommand(
 ) -> None:
     """--help offers the declared subcommand, and its run gets the settings its flags set."""
     (extra / "extra_run.py").write_text(
-        "import sys\n"
         "def run(arguments, settings):\n"
-        "    sys.stdout.write(f'ran in {settings.data_dir}\\n')\n"
-        "    return 0\n",
+        "    return 0, settings.data_dir\n"
+        "def text(data_dir, summary):\n"
+        "    return f'ran in {data_dir}\\n'\n",
         "utf-8",
     )
     with pytest.raises(SystemExit) as stopped:
@@ -266,7 +278,8 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
 
 
 @pytest.mark.parametrize(
-    ("line", "offered"), [("dow", {"download"}), ("download --sp", {"--space"})]
+    ("line", "offered"),
+    [("dow", {"download"}), ("download --sp", {"--space"}), ("check --format ", {"text", "json"})],
 )
 def test_the_shell_completes_the_command_line(home: Path, line: str, offered: set[str]) -> None:
     """A child called as the shell code calls it offers what may follow the line.
@@ -305,6 +318,114 @@ def test_completion_prints_the_shell_code_whatever_the_settings(
     (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text("site = ", "utf-8")
     assert main(["completion"]) == 0
     assert capsys.readouterr().out == argcomplete.shellcode(["atlassian-offline-mcp"])
+
+
+@pytest.mark.parametrize("name", sorted(SUBCOMMANDS))
+@pytest.mark.parametrize(
+    ("given", "level"),
+    [
+        ([], "warning"),
+        (["-v"], "info"),
+        (["-vv"], "debug"),
+        (["-v", "-v", "-v"], "debug"),
+        (["-q"], "error"),
+        *((["--log-level", named], named) for named in ("debug", "info", "warning", "error")),
+    ],
+)
+def test_every_subcommand_takes_the_level_its_options_name(
+    name: str, given: list[str], level: str
+) -> None:
+    """Warning by default, info with -v, debug from -vv on, error with -q, else as named."""
+    assert parser().parse_args([name, *given, *POSITIONALS.get(name, [])]).level == level
+
+
+@pytest.mark.parametrize(
+    "given",
+    [["-q", "-v"], ["-v", "-q"], ["-q", "--log-level", "info"], ["-vv", "--log-level", "debug"]],
+)
+def test_the_level_options_exclude_one_another(
+    home: Path, given: list[str], capsys: CaptureFixture[str]
+) -> None:
+    """Two of -q, -v and --log-level: refused by the parser, exit 2, before any settings."""
+    config = home / "config.toml"
+    config.write_text("site = ", "utf-8")
+    with pytest.raises(SystemExit) as stopped:
+        main(["check", "--config", str(config), *given])
+    assert stopped.value.code == BAD_SETTINGS
+    assert "not allowed with argument" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("name", sorted(set(SUBCOMMANDS) - OWN_OUTPUT))
+def test_every_subcommand_with_a_result_takes_its_format_and_summary(name: str) -> None:
+    """Text and short by default; JSON and detailed when asked."""
+    positionals = POSITIONALS.get(name, [])
+    defaults = parser().parse_args([name, *positionals])
+    assert (defaults.format, defaults.summary) == ("text", "short")
+    asked = parser().parse_args([name, "--format", "json", "--summary", "detailed", *positionals])
+    assert (asked.format, asked.summary) == ("json", "detailed")
+
+
+@pytest.mark.parametrize("name", sorted(OWN_OUTPUT))
+def test_serve_and_completion_take_no_format_nor_summary(
+    name: str, capsys: CaptureFixture[str]
+) -> None:
+    """Their output is their own: the protocol, the script."""
+    with pytest.raises(SystemExit) as stopped:
+        parser().parse_args([name, "--format", "json", "--summary", "detailed"])
+    assert stopped.value.code == BAD_SETTINGS
+    assert "unrecognized arguments: --format json --summary detailed" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("quiet", [["-q"], ["--log-level", "error"]])
+def test_check_quiet_prints_nothing_but_still_its_document(
+    home: Path, quiet: list[str], capsys: CaptureFixture[str]
+) -> None:
+    """At errors alone, a result as text goes unwritten; one in JSON is written all the same."""
+    options = ["check", "--config", str(home / "none.toml"), *quiet]
+    assert main(options) == 0
+    assert capsys.readouterr() == ("", "")
+    assert main([*options, "--format", "json"]) == 0
+    assert json.loads(capsys.readouterr().out)["layers"] == {}
+
+
+def test_check_as_json_gives_settings_layers_and_ignored_values_secrets_masked(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """One document: the settings, each one's layer, what was ignored; never a secret's value."""
+    config = home / "config.toml"
+    config.write_text(
+        'site = "https://file.example.invalid"\n[sources.confluence]\nspaces = ["ENG"]\n', "utf-8"
+    )
+    for name, value in SECRETS.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "https://variable.example.invalid")
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SPACES", '["X"]')
+    for summary in ("short", "detailed"):
+        options = ["--config", str(config), "--summary", summary, "--format", "json"]
+        assert main(["check", *options]) == 0
+        out = capsys.readouterr().out
+        assert not any(secret in out for secret in SECRETS.values())
+        document = json.loads(out)
+        settings = document["settings"]
+        assert settings["site"] == "https://variable.example.invalid"
+        assert settings["data_dir"] == str((home / "atlassian-offline-mcp").resolve())
+        assert settings["sources"]["confluence"]["spaces"] == ["ENG"]
+        assert settings["api_token"]
+        assert settings["embedding_api_key"]
+        assert document["layers"] == {
+            "site": "ATLASSIAN_OFFLINE_MCP_SITE",
+            "sources.confluence.spaces": "config.toml",
+            "api_token": "ATLASSIAN_OFFLINE_MCP_API_TOKEN",
+            "embedding_api_key": "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY",
+        }
+        assert sorted(document["ignored"], key=lambda ignored: ignored["layer"]) == [
+            {"setting": None, "layer": "ATLASSIAN_OFFLINE_MCP_SPACES", "why": "names no setting"},
+            {
+                "setting": "site",
+                "layer": "config.toml",
+                "why": "replaced by ATLASSIAN_OFFLINE_MCP_SITE",
+            },
+        ]
 
 
 def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture[str]) -> None:

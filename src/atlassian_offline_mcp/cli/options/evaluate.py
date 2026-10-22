@@ -10,6 +10,7 @@ from argcomplete.completers import FilesCompleter
 from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.cli.options._common import (
     add_embedding_options,
+    add_output_options,
     add_settings_options,
     model_name,
 )
@@ -24,6 +25,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "eval", help="measure lexical, semantic and hybrid search on golden questions"
     )
     flags = add_settings_options(parser)
+    add_output_options(parser)
     add_embedding_options(parser)
     parser.add_argument(
         "golden", type=Path, help="a YAML file of golden questions"

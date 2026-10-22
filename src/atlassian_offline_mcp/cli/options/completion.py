@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.domain.command import PROGRAM, Command
+from atlassian_offline_mcp.cli.options._common import add_output_options
 
 if TYPE_CHECKING:
     import argparse
@@ -20,6 +21,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             f' eval "$({PROGRAM} completion)" to ~/.bashrc, or to ~/.zshrc after compinit.'
         ),
     )
+    add_output_options(parser, result=False)
     parser.set_defaults(
         command=Command(
             "completion", "atlassian_offline_mcp.cli.commands.completion", reads_settings=False

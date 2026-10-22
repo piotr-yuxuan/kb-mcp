@@ -19,7 +19,7 @@ Each context may use those below it, never those above:
 | `mirror` | The raw store's newest snapshots as Markdown, with their front matter |
 | `sources` | Where documents come from: today `atlassian/`, Confluence and Jira, with the session and the raw store |
 | `config` | The settings, their file, and the guard on where data lives |
-| `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses |
+| `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses, how a run reports |
 
 The order follows what each needs: `eval` ranks through the `Library` of `mcp`, which
 ranks with `search`, which indexes the mirror's front matter; the mirror reads the raw
@@ -47,7 +47,7 @@ Each context but the kernel holds the same layers, as sub-packages, from the top
 | Layer | What it holds |
 |---|---|
 | `main` | The entry point: the parser, built from every declaration (in `cli` only) |
-| `commands` | One run per subcommand, and `_shared`, the entry that loads the settings and runs the chosen one (in `cli` only) |
+| `commands` | One run per subcommand, with its result as text, and `_shared`, the entry that loads the settings, runs the chosen one and writes its result (in `cli` only) |
 | `options` | One light declaration per subcommand: its help, its options and the run it names (in `cli` only) |
 | `app` | Use cases: they combine effects and rules, and know nothing of the command line |
 | `adapters` | Effects: the network, the browser, files, SQLite, subprocesses |

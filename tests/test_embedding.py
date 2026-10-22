@@ -673,6 +673,24 @@ def test_model_check_says_the_dimensions_and_whether_the_prefixes_are_known(
     ]
 
 
+def test_model_check_says_the_same_in_detail_and_gives_one_document(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Its line under --summary detailed too; under --format json, the model as it answered."""
+    with serving(Scripted({QWEN: DIGEST})) as url:
+        assert check(home, url) == 0
+        short = capsys.readouterr().out
+        assert check(home, url, "--summary", "detailed") == 0
+        assert capsys.readouterr().out == short
+        assert check(home, url, "--format", "json") == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "name": QWEN,
+        "dimensions": DIMENSIONS,
+        "url": url,
+        "digest": DIGEST,
+    }
+
+
 def test_model_check_says_what_to_run(home: Path, capsys: CaptureFixture[str]) -> None:
     """A model not pulled: ``ollama pull``. Nothing answering: ``ollama serve``. Exit 1."""
     with serving(Scripted()) as url:

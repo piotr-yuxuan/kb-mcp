@@ -6,7 +6,7 @@ import argparse
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.domain.command import Command
-from atlassian_offline_mcp.cli.options._common import add_settings_options
+from atlassian_offline_mcp.cli.options._common import add_output_options, add_settings_options
 from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
 
 if TYPE_CHECKING:
@@ -34,6 +34,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "download", help="download what changed in a period, with its files"
     )
     flags = add_settings_options(parser)
+    add_output_options(parser)
     parser.add_argument(
         "--space", action="append", type=key_of("space"), help="a space key; repeat for more"
     )

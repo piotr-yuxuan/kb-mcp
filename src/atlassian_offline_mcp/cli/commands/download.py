@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     import argparse
 
     from atlassian_offline_mcp.config.domain.settings import Settings
+    from atlassian_offline_mcp.kernel.output import Summary
+    from atlassian_offline_mcp.sources.atlassian.app.download import Outcome
 
 MEBIBYTE = 1024 * 1024
 
@@ -50,11 +52,12 @@ def targets_of(arguments: argparse.Namespace, settings: Settings, now: datetime)
     )
 
 
-def run(arguments: argparse.Namespace, settings: Settings) -> ExitStatus:
+def run(arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, Outcome | None]:
     """Download; exit 0, 1 when something failed, 2 for bad input, 3 to sign in again.
 
     Spaces and projects not named on the command line come from the settings; without
-    --since, each catches up from the start of what earlier runs covered.
+    --since, each catches up from the start of what earlier runs covered. The outcome
+    is given once a run ends, None when none could start or one was stopped.
     """
     try:
         targets = targets_of(arguments, settings, datetime.now(UTC))
@@ -62,17 +65,20 @@ def run(arguments: argparse.Namespace, settings: Settings) -> ExitStatus:
         outcome = act(settings, targets, lambda: datetime.now(UTC), time.sleep)
     except (PeriodError, RefusedOptionsError, RepresentationError) as error:
         sys.stderr.write(f"refused: {error}\n")
-        return ExitStatus.REFUSED
+        return ExitStatus.REFUSED, None
     except StoreBusyError:
         sys.stderr.write("another run is writing the raw store; try again once it ends\n")
-        return ExitStatus.FAILED
+        return ExitStatus.FAILED, None
     except KeyboardInterrupt:
         sys.stderr.write(f"interrupted; the counts so far are in {settings.runs}\n")
-        return ExitStatus.INTERRUPTED
-    for what, number in sorted(outcome.report.counts.items()):
-        sys.stdout.write(f"{what}: {number}\n")
+        return ExitStatus.INTERRUPTED, None
     for target in outcome.failed_targets:
         sys.stderr.write(f"{target}\n")
     if outcome.status == ExitStatus.SIGN_IN_AGAIN:
         sys.stderr.write("sign-in needed: run atlassian-offline-mcp login\n")
-    return outcome.status or ExitStatus.OK
+    return outcome.status or ExitStatus.OK, outcome
+
+
+def text(outcome: Outcome, _summary: Summary) -> str:
+    """Write each count of what the run did, or would do."""
+    return "".join(f"{what}: {number}\n" for what, number in sorted(outcome.report.counts.items()))

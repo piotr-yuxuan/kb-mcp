@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
@@ -12,14 +11,19 @@ if TYPE_CHECKING:
     import argparse
 
     from atlassian_offline_mcp.config.domain.settings import Settings
+    from atlassian_offline_mcp.kernel.output import Summary
+    from atlassian_offline_mcp.sources.atlassian.app.doctor import Verdict
 
 
-def run(_arguments: argparse.Namespace, settings: Settings) -> ExitStatus:
-    """Print each check's verdict; exit 1 if one fails, 3 to sign in again."""
+def run(_arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, list[Verdict]]:
+    """Give each check's verdict; exit 1 if one fails, 3 to sign in again."""
     verdicts = doctor(settings)
-    for verdict in verdicts:
-        sys.stdout.write(f"{verdict.name}: {verdict.found}\n")
     states = {verdict.state for verdict in verdicts}
     if SIGN_IN in states:
-        return ExitStatus.SIGN_IN_AGAIN
-    return ExitStatus.FAILED if FAILED in states else ExitStatus.OK
+        return ExitStatus.SIGN_IN_AGAIN, verdicts
+    return ExitStatus.FAILED if FAILED in states else ExitStatus.OK, verdicts
+
+
+def text(verdicts: list[Verdict], _summary: Summary) -> str:
+    """Write each check's verdict."""
+    return "".join(f"{verdict.name}: {verdict.found}\n" for verdict in verdicts)

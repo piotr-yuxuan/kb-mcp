@@ -1,7 +1,8 @@
-"""The subcommands' runs: each module exposes ``run(arguments, settings)``.
+"""The subcommands' runs: each module exposes ``run(arguments, settings)`` and ``text``.
 
 The entry, ``_shared.enter``, loads the settings with the flags given, then imports the
 module that the chosen subcommand's ``Command`` names, alone, and calls its ``run``,
-which returns the exit status. A module whose name begins with ``_`` holds code that
-runs share.
+which returns the exit status and the result, or None when it has none to write. The
+entry writes the result as JSON, or as ``text(result, summary)`` gives it, short or
+detailed. A module whose name begins with ``_`` holds code that runs share.
 """

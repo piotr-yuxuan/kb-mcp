@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.cli.options._common import (
     add_embedding_options,
+    add_output_options,
     add_settings_options,
     model_name,
 )
@@ -19,6 +20,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     """Add ``model`` to the command."""
     parser = subparsers.add_parser("model", help="check the embedding model and its endpoint")
     flags = add_settings_options(parser)
+    add_output_options(parser)
     add_embedding_options(parser)
     parser.add_argument("action", choices=("check",))
     parser.add_argument(

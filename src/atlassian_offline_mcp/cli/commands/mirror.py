@@ -14,30 +14,36 @@ if TYPE_CHECKING:
     import argparse
 
     from atlassian_offline_mcp.config.domain.settings import Settings
+    from atlassian_offline_mcp.kernel.output import Summary
+    from atlassian_offline_mcp.mirror.app.mirror import Outcome
 
 
-def run(_arguments: argparse.Namespace, settings: Settings) -> ExitStatus:
+def run(_arguments: argparse.Namespace, settings: Settings) -> tuple[ExitStatus, Outcome | None]:
     """Mirror; exit 0, or 1 when pandoc is missing or something was not mirrored.
 
-    Counts go to standard output; what was not mirrored goes to standard error, by its
-    place in the raw store and the reason, never its content.
+    What was not mirrored goes to standard error, by its place in the raw store and the
+    reason, never its content. The outcome is given, None without pandoc.
     """
     try:
         pandoc = Pandoc.find()
     except PandocMissingError as error:
         sys.stderr.write(f"{error}\n")
-        return ExitStatus.FAILED
+        return ExitStatus.FAILED, None
     outcome = mirror(RawStore(settings.raw), settings.docs, settings.site, pandoc.markdown)
-    sys.stdout.write(
-        f"documents: {outcome.documents}\n"
-        f"files written: {outcome.changes.written}\n"
-        f"files unchanged: {outcome.changes.unchanged}\n"
-        f"files removed: {outcome.changes.removed}\n"
-    )
-    for name, count in sorted(outcome.unsupported.items()):
-        sys.stdout.write(f"not shown, {name}: {count}\n")
     for problem in outcome.problems:
         sys.stderr.write(f"not mirrored: {problem.where}: {problem.reason}\n")
     if outcome.problems:
         sys.stderr.write("nothing was removed, since something was not mirrored\n")
-    return ExitStatus.FAILED if outcome.problems else ExitStatus.OK
+    return ExitStatus.FAILED if outcome.problems else ExitStatus.OK, outcome
+
+
+def text(outcome: Outcome, _summary: Summary) -> str:
+    """Write the counts of documents and files, then what the mirror does not show."""
+    return (
+        f"documents: {outcome.documents}\n"
+        f"files written: {outcome.changes.written}\n"
+        f"files unchanged: {outcome.changes.unchanged}\n"
+        f"files removed: {outcome.changes.removed}\n"
+    ) + "".join(
+        f"not shown, {name}: {count}\n" for name, count in sorted(outcome.unsupported.items())
+    )
