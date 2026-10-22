@@ -1,4 +1,4 @@
-"""``doctor``: check the machine, the data directory and the saved session."""
+"""``doctor``: check the machine, the data directory and the sign-in, by session or token."""
 
 from __future__ import annotations
 
