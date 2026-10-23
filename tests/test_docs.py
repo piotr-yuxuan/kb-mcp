@@ -1,17 +1,25 @@
-"""The guides' command lines: each that runs the program parses as the program reads it.
+"""The pages stay true to the checkout and to the code they describe.
 
-Plan 015 checks its two how-tos, ``AGENTS.md`` and the guides it changed, plan 017 its
-two; plan 020 is to check every page.
+Plan 020 walks the checkout for Markdown and reads each page as GitHub renders it: a
+relative link reaches a file, or a heading, of the checkout. Plan 015 checks that the
+command lines of its two how-tos, ``AGENTS.md`` and the guides it changed parse, plan
+017 those of its two; plan 019 that the reference names each tool and prompt served.
 """
 
 from __future__ import annotations
 
 import inspect
+import itertools
+import posixpath
 import re
 import shlex
+from collections import Counter
 from pathlib import Path
+from typing import NamedTuple
+from urllib.parse import unquote, urlsplit
 
 import pytest
+from markdown_it import MarkdownIt
 
 from atlassian_offline_mcp.cli.main import parser
 from atlassian_offline_mcp.kernel.tools import TOOLS
@@ -30,6 +38,15 @@ PAGES = (
     "docs/how-to/sync.md",
     "docs/how-to/work-log.md",
 )
+# Folders whose Markdown is seeded into the sandbox site: its content, not pages here.
+SEEDED = frozenset({"sandbox/corpus", "sandbox/jira"})
+# Markdown as GitHub reads it, tables included, so that code is never read as a link.
+PARSER = MarkdownIt("commonmark").enable("table")
+# What GitHub drops from a heading's text to make its anchor: all but letters, digits,
+# underscores, hyphens and spaces.
+UNSLUGGED = re.compile(r"[^\w\- ]")
+# A fragment naming lines, as GitHub's view of a file reads it: lines move, names stay.
+LINES = re.compile(r"L\d+(-L\d+)?")
 # A block of shell commands in Markdown.
 BASH = re.compile(r"^```bash\n(.*?)^```", re.MULTILINE | re.DOTALL)
 # The program's name as a word of its own, not part of a path or of another name.
@@ -37,6 +54,118 @@ PROGRAM = re.compile(r"(?<![\w/.~-])atlassian-offline-mcp(?![\w/.-])")
 # What ends the arguments of a command: a quote, as around the command that sops runs, a
 # parenthesis, a pipe, a list, a redirection.
 END = re.compile(r"['\")|;&>]")
+
+
+class Link(NamedTuple):
+    """A link of a page, its target resolved from the checkout's root, as GitHub does.
+
+    ``path`` is ``None`` for a link off the checkout, a URL with a scheme or a host, and
+    the page itself for an anchor alone.
+    """
+
+    line: int
+    target: str
+    path: str | None
+    anchor: str
+
+
+class Page(NamedTuple):
+    """What the checks read of a page: its links, and the anchors of its headings."""
+
+    links: list[Link]
+    anchors: frozenset[str]
+
+
+@pytest.fixture(scope="module")
+def checkout() -> frozenset[str]:
+    """Walk the checkout for its files and folders, as paths from its root.
+
+    Walked, not asked of git, which Ruff refuses to run (S603, S607); without dot-folders,
+    caches and the seeded folders. So a link to a file that git does not track passes
+    here, and fails in CI's fresh clone.
+    """
+    found = set()
+    for folder, folders, files in ROOT.walk():
+        here = folder.relative_to(ROOT)
+        folders[:] = [
+            name
+            for name in folders
+            if not name.startswith(".")
+            and name != "__pycache__"
+            and (here / name).as_posix() not in SEEDED
+        ]
+        found.update((here / name).as_posix() for name in [*folders, *files])
+    return frozenset(found)
+
+
+def read(page: str) -> Page:
+    """Parse a page of the checkout, by its path from the root, as GitHub renders it.
+
+    A heading's anchor is its text in lower case, without punctuation, each space a
+    hyphen; one met again takes ``-1``, then ``-2``, and so on. A link's line counts the
+    line breaks before it in its paragraph, cell or heading.
+    """
+    links = []
+    slugs: Counter[str] = Counter()
+    anchors = set()
+    # Each inline token, the text of a block, follows the token that opens its block.
+    for before, block in itertools.pairwise(PARSER.parse((ROOT / page).read_text("utf-8"))):
+        children = block.children or []
+        if before.type == "heading_open":
+            text = "".join(
+                child.content for child in children if child.type in {"text", "code_inline"}
+            )
+            slug = UNSLUGGED.sub("", text.lower()).replace(" ", "-")
+            anchors.add(f"{slug}-{slugs[slug]}" if slugs[slug] else slug)
+            slugs[slug] += 1
+        breaks = 0
+        for child in children:
+            if child.type in {"softbreak", "hardbreak"}:
+                breaks += 1
+            elif child.type == "link_open":
+                target = str(child.attrs["href"])
+                parts = urlsplit(target)
+                if parts.scheme or parts.netloc:
+                    path = None
+                elif parts.path:
+                    relative = posixpath.join(posixpath.dirname(page), unquote(parts.path))
+                    path = posixpath.normpath(relative)
+                else:
+                    path = page
+                links.append(
+                    Link(
+                        line=block.map[0] + 1 + breaks,
+                        target=target,
+                        path=path,
+                        anchor=unquote(parts.fragment),
+                    )
+                )
+    return Page(links, frozenset(anchors))
+
+
+def test_each_relative_link_reaches_a_file_or_folder_and_each_anchor_a_heading(
+    checkout: frozenset[str],
+) -> None:
+    """In every Markdown page, as GitHub resolves its links; no link names lines.
+
+    An anchor needs a Markdown target with that heading. Lines are refused off the
+    checkout too: a claim links the code it describes by name.
+    """
+    broken = []
+    for page in sorted(path for path in checkout if path.endswith(".md")):
+        for link in read(page).links:
+            where = f"{page}:{link.line}: {link.target}"
+            if LINES.fullmatch(link.anchor):
+                broken.append(f"{where} names lines, not code")
+            elif link.path is None:
+                continue
+            elif link.path not in checkout:
+                broken.append(f"{where} reaches no file or folder")
+            elif link.anchor and (
+                not link.path.endswith(".md") or link.anchor not in read(link.path).anchors
+            ):
+                broken.append(f"{where} names no heading of {link.path}")
+    assert broken == []
 
 
 @pytest.mark.parametrize("page", PAGES)

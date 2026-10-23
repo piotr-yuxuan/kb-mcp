@@ -36,6 +36,7 @@ atlassian-offline-mcp = "atlassian_offline_mcp.cli.main:main"
 [dependency-groups]
 dev = [
   "import-linter>=2.15,<3",
+  "markdown-it-py>=4,<5",
   "opentelemetry-proto>=1.45,<2",
   "pytest>=9,<10",
   "ruff>=0.16,<0.17",
