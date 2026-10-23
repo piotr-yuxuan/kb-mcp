@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import TYPE_CHECKING
@@ -15,6 +16,8 @@ from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.observability.app.observed import early, observed
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
@@ -84,6 +87,17 @@ def test_a_run_s_stderr_takes_the_place_of_early_s_and_gives_it_back(
         ("info", "run.end"),
         ("warning", "early.warning"),
     ]
+
+
+def test_a_run_has_an_id_with_or_without_a_file_whose_lines_carry_it(tmp_path: Path) -> None:
+    """16 random hex digits, from the run's start, whether or not it writes a log file."""
+    with early(), observed(output("info"), None, None, "completion", {}) as alone:
+        assert re.fullmatch("[0-9a-f]{16}", alone.id)
+    with early(), observed(output("info"), tmp_path, None, "check", {}) as filed:
+        assert re.fullmatch("[0-9a-f]{16}", filed.id)
+    assert filed.id != alone.id
+    (path,) = tmp_path.iterdir()
+    assert {json.loads(line)["run"] for line in path.read_text("utf-8").splitlines()} == {filed.id}
 
 
 @pytest.mark.parametrize(

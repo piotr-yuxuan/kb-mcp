@@ -39,8 +39,9 @@ if TYPE_CHECKING:
 
 @dataclass
 class Run:
-    """A run that ``observed`` watches: its body sets its exit status before it ends."""
+    """A run that ``observed`` watches: its id, and the exit status its body sets before it ends."""
 
+    id: str
     status: int = ExitStatus.OK
 
 
@@ -75,11 +76,12 @@ def observed(
 ) -> Iterator[Run]:
     """Observe a run of ``command``: its logs on stderr at its level, and in its own file.
 
-    Within ``early``, whose stderr this one replaces while it lasts. Stderr is drawn at
-    ``output``'s level, through a console that is a terminal as ``output`` says. The
-    file, ``log_file``'s in ``folder``, holds all from DEBUG, under a run id of 16 random
-    hex digits; a run that reads no settings has no ``folder``, and one that cannot be
-    written gives one warning, ``log.unwritable``, and no file. The run then writes
+    Within ``early``, whose stderr this one replaces while it lasts. The run's id, 16
+    random hex digits, is made first, so that a run without a file has one too. Stderr
+    is drawn at ``output``'s level, through a console that is a terminal as ``output``
+    says. The file, ``log_file``'s in ``folder``, holds all from DEBUG, under the run's
+    id; a run that reads no settings has no ``folder``, and one that cannot be written
+    gives one warning, ``log.unwritable``, and no file. The run then writes
     ``run.start``: the version, ``described``, the command line's fields such as the
     arguments and the settings, the log file and the telemetry endpoint, if any. It ends
     with ``run.end``, its status as the body set it, or ``run.interrupted`` by Ctrl-C, or
@@ -93,7 +95,7 @@ def observed(
     """
     root = logging.getLogger()
     log = structlog.get_logger()
-    run = Run()
+    run = Run(secrets.token_hex(8))
     with ExitStack() as stack:
         for handler in [handler for handler in root.handlers if isinstance(handler, ConsoleLines)]:
             root.removeHandler(handler)
@@ -108,9 +110,7 @@ def observed(
         path = None
         if folder is not None:
             try:
-                path = stack.enter_context(
-                    log_file(folder, command, secrets.token_hex(8), datetime.now(UTC))
-                )
+                path = stack.enter_context(log_file(folder, command, run.id, datetime.now(UTC)))
             except OSError as error:
                 log.warning("log.unwritable", folder=str(folder), reason=str(error))
         log.info(
