@@ -71,9 +71,10 @@ def served(method: Callable[..., str]) -> Callable[..., str]:
     The SDK shows the agent the message of a ``ToolError`` alone; any other exception
     becomes a bare "Error executing tool". Each call's duration goes in
     ``mcp.server.operation.duration``, an unanswerable one's with the ``error.type``
-    ``tool_error``, as the MCP conventions have it; each answer's size, in
-    ``aom.serve.answer.size``; and ``serve.call`` says at DEBUG the tool, its arguments,
-    the error, the seconds and the size.
+    ``tool_error``, as the MCP conventions have it, and one that raises any other
+    exception, which goes on, with its class, qualified by its module; each answer's
+    size, in ``aom.serve.answer.size``; and ``serve.call`` says at DEBUG the tool, its
+    arguments, the error, the seconds and the size.
     """
     name = method.__name__
 
@@ -90,6 +91,9 @@ def served(method: Callable[..., str]) -> Callable[..., str]:
         except UnanswerableError as error:
             measured["error.type"] = "tool_error"
             raise ToolError(str(error)) from None
+        except Exception as error:
+            measured["error.type"] = f"{type(error).__module__}.{type(error).__qualname__}"
+            raise
         finally:
             seconds = time.perf_counter() - began
             OPERATION_DURATION.record(seconds, measured)

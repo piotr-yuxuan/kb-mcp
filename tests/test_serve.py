@@ -14,10 +14,14 @@ import anyio
 import pytest
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.shared.message import SessionMessage
 from mcp_types import JSONRPCError, JSONRPCResponse, TextContent, jsonrpc_message_adapter
+from structlog.testing import capture_logs
 
+from atlassian_offline_mcp.cli.commands.serve import served
 from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from tests.answers import TOOLS, estimate, parts
 from tests.collector import Collector, attributes, collecting
@@ -30,6 +34,8 @@ if TYPE_CHECKING:
     from typing import TextIO
 
     from _pytest.capture import CaptureFixture
+
+    from tests.conftest import InMemory
 
 BAD_SETTINGS = 2
 STANDING = 1500  # estimated tokens of the instructions and the tool listing together
@@ -261,6 +267,34 @@ def test_at_debug_stdout_holds_the_protocol_and_the_collector_a_search_s_spans(
     metrics = {metric.name: metric for metric in collector.metrics()}
     fallbacks = metrics["aom.serve.fallbacks"].sum.data_points
     assert [point.as_int for point in fallbacks] == [0]
+
+
+@pytest.mark.parametrize(
+    ("raised", "seen", "error_type"),
+    [
+        (UnanswerableError("no such document"), ToolError, "tool_error"),
+        (KeyError("boom"), KeyError, "builtins.KeyError"),
+    ],
+)
+def test_a_tool_that_fails_is_measured_and_said_with_its_error_type(
+    telemetry: InMemory, raised: Exception, seen: type[Exception], error_type: str
+) -> None:
+    """``tool_error`` when it cannot answer as asked, by the MCP conventions; else its class.
+
+    The class is qualified by its module, as for a request; the exception goes on, an
+    unanswerable call's as the ``ToolError`` that the agent reads.
+    """
+
+    def search(**_: object) -> str:
+        raise raised
+
+    with capture_logs() as events, pytest.raises(seen):
+        served(search)(query="Kafka")
+    (call,) = (event for event in events if event["event"] == "serve.call")
+    assert (call["tool"], call["error"]) == ("search", error_type)
+    duration = telemetry.measured()["mcp.server.operation.duration"]
+    (point,) = duration.data.data_points
+    assert dict(point.attributes or {})["error.type"] == error_type
 
 
 def test_refused_settings_exit_before_serving(tmp_path: Path, capsys: CaptureFixture[str]) -> None:

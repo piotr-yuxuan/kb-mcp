@@ -14,7 +14,7 @@ no task.
 
 | Event | Level | Fields | When |
 |---|---|---|---|
-| `serve.call` | debug | `tool`, `arguments`, `error`, `seconds`, `size` | A tool answers: its name, the arguments, `tool_error` when it could not answer as asked, how long it took, the answer's bytes |
+| `serve.call` | debug | `tool`, `arguments`, `error`, `seconds`, `size` | A tool answers: its name, the arguments, `tool_error` when it could not answer as asked, or the class of what it raised, such as `builtins.KeyError`, how long it took, the answer's bytes |
 | `search.fallback` | warning | `mode`, `reason` | A search asked by meaning is ranked by words alone, and says why to the agent: no vectors, an endpoint that does not answer, a model of other weights |
 | `http.get` | debug | `url`, `status`, `error`, `seconds` | Each request for the endpoint's list of models |
 | `http.post` | debug | `url`, `status`, `error`, `seconds` | Each request for an embedding |
@@ -38,7 +38,7 @@ no task.
 
 | Instrument | Kind | Unit | Attributes | What |
 |---|---|---|---|---|
-| `mcp.server.operation.duration` | histogram | `s` | `mcp.method.name`, `gen_ai.operation.name`, `gen_ai.tool.name`, `error.type` | Each tool call, from the tool's call to its answer, in the buckets that the MCP conventions advise; the SDK's validation and writing aside |
+| `mcp.server.operation.duration` | histogram | `s` | `mcp.method.name`, `gen_ai.operation.name`, `gen_ai.tool.name`, `error.type` | Each tool call, from the tool's call to its answer, in the buckets that the MCP conventions advise; the SDK's validation and writing aside; a failed one with `error.type`, as `serve.call` names its error |
 | `aom.serve.answer.size` | histogram | `By` | `gen_ai.tool.name` | How long each answer is |
 | `aom.serve.fallbacks` | counter | `{fallback}` | `aom.mode` | The searches asked by meaning ranked by words alone; 0 from the server's start |
 | `gen_ai.client.operation.duration` | histogram | `s` | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type` | Each embedding, its attempts and waits included, by the GenAI conventions |
