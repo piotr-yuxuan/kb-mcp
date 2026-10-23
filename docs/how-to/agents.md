@@ -48,11 +48,13 @@ program does not run itself: it asks any OpenAI-compatible embeddings API, by de
 Ollama: without it, `index` stops and names `search_mode = "lexical"`, and the server
 answers by words, saying why.
 
-Why hybrid search over windows: on plan 002's sandbox questions it ranked best (MRR@10
-0.639, against 0.578 over sections and 0.539 by words alone), at 266 ms for the 95th
-percentile of a query on the development laptop's CPU. The rules written before those
-measures kept words and sections, for want of speed and of evidence quoted; the user
-chose these defaults knowing that, as ranking matters more to them than speed.
+Why hybrid search over windows: on plan 002's sandbox questions it ranked better than
+hybrid search over sections or words alone, significantly (MRR@10 0.639, against 0.578
+and 0.539), at 266 ms for the 95th percentile of a query on the development laptop's
+CPU. Semantic search over windows ranked higher still there (0.674), untested against
+hybrid. The rules written before those measures kept words and sections, for want of
+speed and of evidence quoted; the user chose these defaults knowing that, as ranking
+matters more to them than speed.
 [Evaluating search](../explanation/search-evaluation.md) and
 [chunking](../explanation/chunking.md) explain the measures, the rules and the choice.
 
@@ -126,11 +128,11 @@ How an index cuts documents into the pieces it embeds is the setting `chunking`:
 `search`, `ask` and `status` follow the index, whatever the setting says.
 
 `windows` is the default by the user's choice. Plan 019's rule, set before the
-measures, kept `sections`: it asked a chunking to quote the evidence more often than
-`sections` to replace it, and none did. On the sandbox, `windows` ranked better,
-significantly (hybrid MRR@10 0.639 against 0.578), with half the pieces and a tenth
-more tokens to embed; an edit re-embeds more windows than sections, as later windows
-shift.
+measures, kept `sections`: it asked a chunking to quote the evidence significantly
+more often than `sections` (adjusted p below 0.05) to replace it, and none did. On the
+sandbox, `windows` ranked better, significantly (hybrid MRR@10 0.639 against 0.578),
+with half the pieces and a tenth more tokens to embed; an edit re-embeds more windows
+than sections, as later windows shift.
 
 The first `index` after upgrading to these defaults embeds every window of the mirror,
 since vectors are kept by text and no window's text is a section's (unless an `eval`

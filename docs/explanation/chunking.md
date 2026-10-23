@@ -5,8 +5,9 @@ finds the pieces nearest the question. How documents are cut into pieces, and wh
 each vector stands for, is the chunking: the setting `chunking`, which `index` cuts by
 and records in the index, so that `search`, `ask` and `status` follow the index, not the
 setting. Plan 019 compared four, on plan 002's sandbox questions, by a rule set before
-the run, which kept `sections`. `windows` ranked best, and is the default since plan
-025, by the user's choice: [the defaults](#the-defaults-the-users-choice) say why.
+the run, which kept `sections`. `windows` ranked best of the four, and is the default
+since plan 025, by the user's choice: [the defaults](#the-defaults-the-users-choice)
+say why.
 
 ## The four chunkings
 
@@ -109,28 +110,32 @@ with half the pieces, a smaller index and 1.11 times the tokens, and by meaning 
 its passages held the evidence more often (0.500 against 0.329); in hybrid mode the
 evidence quoted barely moved (0.357 against 0.333), perhaps because a document that
 words rank higher there gets its section, not its window. With `windows`, hybrid search
-also beat words significantly (MRR@10 0.639 against 0.539, adjusted p 0.0008), on
-identifiers too (0.674 against 0.616): two of the three counts of plan 018's bar for
-hybrid as the default, its 95th percentile (266 ms here) being the third. The rule set
-before this run decides the chunking alone, so by the rules the defaults stayed
-`sections` and `lexical`: the rules', not the best measured. The cold builds took 31
-minutes for `sections` and 52 for `section-paths`, and 27 for the part of
-`small-to-big` that the others had not embedded; `windows` were embedded across two
-runs, the machine being busy.
+also beat words significantly (MRR@10 0.639 against 0.539, adjusted p 0.0008), and
+held identifiers (0.674 against 0.616) and keywords (0.855 against 0.812): two of the
+three counts of plan 018's bar for hybrid as the default, its 95th percentile (266 ms
+here) being the third. The rule set before this run decides the chunking alone, so by
+the rules the defaults stayed `sections` and `lexical`. The cold builds took 31 minutes
+for `sections` and 52 for `section-paths`, and 27 for the part of `small-to-big` that
+the others had not embedded; `windows` were embedded across two runs, the machine being
+busy.
 
 ## The defaults: the user's choice
 
-Two rules, each written before its run, decided against the pair that ranked best.
-Plan 019's asked a chunking to quote the evidence more often than `sections`, which
-none did. Plan 018's bar asked hybrid search for three things: a significant gain over
-words, no loss of more than 0.02 on identifier and keyword questions, and a 95th
-percentile within 200 ms. With `windows`, hybrid search met two of the three, as plan
-019 recorded: it beat words significantly (MRR@10 0.639 against 0.539, adjusted p
-0.0008) and did better on identifiers (0.674 against 0.616); its 95th percentile, 266
-ms, missed the third. Knowing these numbers, the user chose `windows` and hybrid search
-as the defaults (plan 025): ranking matters more to them than speed, and 266 ms is
-good enough to them. The rules and their verdicts stay as recorded, and `eval` still
-prints the rule's verdict on any set of questions.
+Two rules, each written before its run, decided against `windows` and hybrid search.
+Plan 019's asked a chunking to quote the evidence significantly more often than
+`sections` (an adjusted p-value below 0.05 on Evidence@ask), which none did. Plan
+018's bar asked hybrid search for three things: a significant gain over words, no loss
+of more than 0.02 on identifier and keyword questions, and a 95th percentile within
+200 ms. With `windows`, hybrid search met two of the three, as plan 019 recorded: it
+beat words significantly (MRR@10 0.639 against 0.539, adjusted p 0.0008) and did better
+on identifiers (0.674 against 0.616) and keywords (0.855 against 0.812); its 95th
+percentile, 266 ms, missed the third. Knowing these numbers, the user chose `windows`
+and hybrid search as the defaults (plan 025): ranking matters more to them than speed,
+and 266 ms is good enough to them. Semantic search over `windows` scored higher still,
+on every measure of the table (MRR@10 0.674, Evidence@ask 0.500), in 256 ms at the 95th
+percentile; no test compared it with hybrid search, and the user chose hybrid. The
+rules and their verdicts stay as recorded, and `eval` still prints the rule's verdict
+on any set of questions.
 
 What the choice gains, on the sandbox: the first expected document comes sooner
 (MRR@10 0.639, against 0.578 for hybrid search over `sections` and 0.539 for words
@@ -146,6 +151,10 @@ MB against 38 MB. What it costs:
   names that setting, and the server answers by words, saying why.
 - **Evidence.** In hybrid mode, `ask`'s passages held the evidence barely more often
   than by `sections` (0.357 against 0.333, not significant).
+- **Documents found.** `ask`'s passages held fewer of the expected documents: Found@ask
+  0.852, against 0.914 for hybrid search over `sections` and 0.795 for words alone, the
+  lowest of the eight runs by meaning; Recall@10 was a little lower too (0.857 against
+  0.862). Neither difference was tested.
 - **Edits.** A change to a page re-embeds more windows than sections, as the next
   section shows.
 - **The first `index` after upgrading** embeds every window of the mirror: no window's

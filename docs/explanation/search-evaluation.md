@@ -340,15 +340,18 @@ gone, so this comparison cannot be run again from the repository.
 ### Plan 019: four chunkings, and the defaults since
 
 The same questions, mirror and model, on 2026-10-22 and 23, with the index cut four
-ways; [chunking](chunking.md) holds every table, cost and test. Cut by `windows`,
-hybrid search ranked best: MRR@10 0.639, against 0.578 over `sections` (adjusted p
-0.0114) and 0.539 by words alone (adjusted p 0.0008), and 0.674 against words' 0.616
-on identifier questions. Its 95th percentile of query time was 266 ms on this laptop's
-CPU.
+ways; [chunking](chunking.md) holds every table, cost and test. `windows` ranked best
+of the four, by meaning alone and in hybrid mode. Over `windows`, hybrid search reached
+MRR@10 0.639, against 0.578 over `sections` (adjusted p 0.0114) and 0.539 by words alone
+(adjusted p 0.0008), with 0.674 against words' 0.616 on identifier questions and 0.855
+against 0.812 on keyword questions; its 95th percentile of query time was 266 ms on
+this laptop's CPU. Semantic search over `windows` scored higher still (MRR@10 0.674,
+Evidence@ask 0.500 against 0.357), at 256 ms; no test compared the two modes.
 
-Neither rule chose that pair. Plan 019's rule, which decides the chunking by the
-evidence that `ask` quotes, kept `sections`. Plan 018's bar, applied to `windows`, was
-met on the gain and on identifiers but not on speed, so words would have stayed.
+Neither rule chose `windows` and hybrid search. Plan 019's rule, which decides the
+chunking by the evidence that `ask` quotes, kept `sections`. Plan 018's bar, applied to
+`windows`, was met on the gain and on identifier and keyword questions but not on
+speed, so words would have stayed.
 Knowing these numbers, the user made `windows` and hybrid search the defaults (plan
 025), as ranking matters more to them than speed. The rules and their verdicts above
 stay as written: what changed is the choice made after them, which is the user's.
@@ -365,8 +368,9 @@ stay as written: what changed is the choice made after them, which is the user's
   ([Cormack, Clarke and Büttcher, 2009](https://doi.org/10.1145/1571941.1572114))
   weighs the two rankings equally. With Qwen3, whose ranking was weaker than words' on
   identifiers (0.501 against 0.616), fusion pulled hybrid below words there, and below
-  semantic search overall. Over `windows` (plan 019) it did not: hybrid search did
-  better than words on identifiers (0.674 against 0.616). Tuning the fusion on these
+  semantic search overall. Over `windows` (plan 019), meaning held identifiers itself
+  (0.673 against 0.616), and so did hybrid search (0.674), but fusion still left hybrid
+  below semantic search overall (MRR@10 0.639 against 0.674). Tuning the fusion on these
   same questions would fit it to them; it waits for more questions.
 - **The leaderboard's English lead did not show here.** On the 90 English questions,
   Qwen3's semantic MRR@10 (0.568) was no better than bge-small's (0.587). The sandbox's
