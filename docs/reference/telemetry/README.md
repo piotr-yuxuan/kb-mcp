@@ -22,9 +22,10 @@ with its page and this one.
 
 ## The log file
 
-Each run that reads the settings writes one file, `<logs.dir>/<command>-<start>-<pid>.jsonl`,
-the start in UTC as `%Y%m%dT%H%M%SZ`: `download-20261022T210509Z-4242.jsonl`. `--help`,
-`--version`, a completion and `completion`, which reads no settings, write none.
+Each run that reads the settings writes one file,
+`<logs.dir>/<command>-<start>-<pid>.jsonl`, the start in UTC as `%Y%m%dT%H%M%SZ`, such
+as `download-20261022T210509Z-4242.jsonl`. `--help`, `--version`, a completion and
+`completion`, which reads no settings, write none.
 
 - **Where.** `logs.dir`, by default the user's log folder as platformdirs places it:
   `~/Library/Logs/atlassian-offline-mcp` on macOS,
@@ -110,8 +111,8 @@ without telemetry, saying `telemetry.undelivered`. At its end, what is not sent 
 5 seconds is dropped, with one `telemetry.undelivered`.
 
 A run is one trace, whose root span is named after the command, but `serve`, each of
-whose requests is a trace. Grafana's dashboards for each command are in
-`deploy/lgtm/dashboards/`.
+whose requests is a trace. Grafana's dashboards, an overview and one each for `download`,
+`mirror`, `index`, `serve` and `eval`, are in `deploy/lgtm/dashboards/`.
 
 ## Events
 
@@ -129,7 +130,7 @@ What any command may log.
 | `log.unwritable` | warning | `folder`, `reason` | The log folder cannot be written: no file |
 | `log.capped` | warning | | The file reached its cap: nothing more is written to it |
 | `telemetry.undelivered` | warning | `endpoint`, `reason` | The endpoint cannot be reached, or did not take everything at the end |
-| `telemetry.shutdown_failed` | debug | `provider` | A provider failed to shut down, in the file alone |
+| `telemetry.shutdown_failed` | debug | `provider` | A provider of the SDK failed to shut down at the end, what it raised following |
 
 ## Spans
 
