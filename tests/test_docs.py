@@ -5,9 +5,9 @@ relative link reaches a file, or a heading, of the checkout; a link into ``src/`
 text is code names what that file defines; the map, ``docs/README.md``, links each page
 of the four folders; each command line of the program in a bash block parses, as plans
 015 and 017 first checked on their own pages; a page that names Ollama says that any
-OpenAI-compatible API works; and the reference of the MCP server names, as plan 019
-first checked, each tool and prompt that a server lists over stdio, with their
-parameters.
+OpenAI-compatible API works; Docker's command follows each of Podman's; and the
+reference of the MCP server names, as plan 019 first checked, each tool and prompt that
+a server lists over stdio, with their parameters.
 """
 
 from __future__ import annotations
@@ -78,6 +78,10 @@ FIRST_CHANGE = "docs/tutorials/first-change.md"
 # of the embedding APIs that work, never the only one.
 OLLAMA = re.compile(r"ollama", re.IGNORECASE)
 COMPATIBLE = "OpenAI-compatible"
+# A container engine's command, in code: the engine, then its verb.
+CONTAINER = re.compile(r"(?<![\w-])(podman|docker) ([a-z][\w-]*)")
+# Podman's virtual machine on macOS, which Docker Desktop starts by itself.
+PODMAN_ONLY = frozenset({"machine"})
 
 
 class Link(NamedTuple):
@@ -341,6 +345,48 @@ def test_each_page_that_names_ollama_says_that_any_openai_compatible_api_works(
             line = text.count("\n", 0, named.start()) + 1
             unsaid.append(f"{page}:{line}: names Ollama, and nowhere {COMPATIBLE}")
     assert unsaid == []
+
+
+def test_each_podman_command_has_docker_s_below_it_in_its_section(
+    checkout: frozenset[str],
+) -> None:
+    """Outside the plans' records, Podman comes first and Docker too, as the user chose.
+
+    In code, in a fenced block or a span, each ``podman <verb>`` but ``podman machine``
+    has a ``docker <verb>`` below it before the next heading, one Docker line serving
+    every Podman line above it. A line of a block is cited exactly, a span by the first
+    line of its paragraph.
+    """
+    alone = []
+    for page in sorted(path for path in checkout if path.endswith(".md")):
+        if page.startswith("docs/work/"):
+            continue
+        commands = []  # each command's section, line, engine and verb, in the page's order
+        section = 0
+        for block in PARSER.parse((ROOT / page).read_text("utf-8")):
+            section += block.type == "heading_open"
+            # A fence's code starts on the line after it; a span is cited by its paragraph.
+            codes = (
+                [(block.content, block.map[0] + 2)]
+                if block.type == "fence"
+                else [
+                    (child.content, block.map[0] + 1)
+                    for child in block.children or []
+                    if child.type == "code_inline"
+                ]
+            )
+            commands += [
+                (section, first + code.count("\n", 0, at.start()), *at.groups())
+                for code, first in codes
+                for at in CONTAINER.finditer(code)
+            ]
+        later = set()  # the Docker verbs below, by section
+        for section, line, engine, verb in reversed(commands):
+            if engine == "docker":
+                later.add((section, verb))
+            elif verb not in PODMAN_ONLY and (section, verb) not in later:
+                alone.append(f"{page}:{line}: podman {verb}, no docker {verb} below in its section")
+    assert alone == []
 
 
 def test_the_reference_names_each_tool_and_prompt_served_and_each_of_their_parameters(
