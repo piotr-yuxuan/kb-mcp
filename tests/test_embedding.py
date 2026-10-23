@@ -6,6 +6,7 @@ reached only by the opt-in test at the end.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -21,7 +22,7 @@ import numpy as np
 import pytest
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
-from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.config.domain.settings import (
     DEFAULT_EMBEDDING_URL,
     Settings,
@@ -374,19 +375,82 @@ def test_a_missing_model_and_no_answer_say_what_to_run() -> None:
         digest(over(down), "tiny")
 
 
+OTHER = Service(
+    name="the other server", setting="other.url", flag="--allow-remote-other", start="other serve"
+)
+
+
 def test_no_answer_names_its_service_and_how_to_start_it() -> None:
     """Another service's client says that service's name and its own way to start it."""
-    other = Service("the other server", "other.url", "--allow-remote-other", "Start: other serve")
 
     def down(request: httpx.Request) -> httpx.Response:
         message = "refused"
         raise httpx.ConnectError(message, request=request)
 
-    opened = endpoint(URL, None, other, remote_allowed=False, transport=httpx.MockTransport(down))
+    opened = endpoint(URL, None, OTHER, remote_allowed=False, transport=httpx.MockTransport(down))
     with opened, pytest.raises(ModelError) as failed:
         send(opened, "GET", "anything", SINGLE)
-    said = "no answer from the other server (ConnectError); is it running? Start: other serve"
+    said = "no answer from the other server (ConnectError); is it running? other serve"
     assert str(failed.value) == said
+
+
+def test_another_service_s_address_elsewhere_is_refused_in_its_words() -> None:
+    """The client refuses that service's address off this machine by its setting and flag."""
+    with pytest.raises(SettingsError) as refused:
+        endpoint("http://10.0.0.1:9931/v1", None, OTHER, remote_allowed=False)
+    assert str(refused.value).startswith("other.url: not an address of this machine")
+    assert str(refused.value).endswith("or pass --allow-remote-other")
+
+
+def test_the_embeddings_messages_read_as_plan_018_wrote_them() -> None:
+    """Elsewhere, over http, unanswered or a cloud model: each message word for word."""
+    remote = "http://embeddings.example/v1"
+    with pytest.raises(SettingsError) as elsewhere:
+        endpoint(remote, None, EMBEDDINGS, remote_allowed=False)
+    assert str(elsewhere.value) == (
+        "embedding_url: not an address of this machine, where the mirror's text would go;"
+        " write 127.0.0.1 for this one, or pass --allow-remote-embeddings"
+    )
+    with pytest.raises(SettingsError) as in_clear:
+        endpoint(remote, None, EMBEDDINGS, remote_allowed=True)
+    https_only = "embedding_url: an endpoint off this machine is reached over https only"
+    assert str(in_clear.value) == https_only
+
+    def down(request: httpx.Request) -> httpx.Response:
+        message = "refused"
+        raise httpx.ConnectError(message, request=request)
+
+    with pytest.raises(ModelError) as unanswered:
+        digest(over(down), "tiny")
+    assert str(unanswered.value) == (
+        "no answer from the embedding endpoint (ConnectError); is it running?"
+        " With Ollama: ollama serve"
+    )
+
+    def cloud(_: httpx.Request) -> httpx.Response:
+        row = {"name": "tiny:cloud", "digest": "ee", "remote_host": "https://ollama.com:443"}
+        return httpx.Response(200, json={"models": [row]})
+
+    with pytest.raises(ModelError) as elsewhere_served:
+        digest(over(cloud), "tiny:cloud")
+    assert str(elsewhere_served.value) == (
+        "tiny:cloud: Ollama serves it from elsewhere (a cloud model), where the mirror's"
+        " text would go; pass --allow-remote-embeddings"
+    )
+
+
+class Unabridged(argparse.ArgumentParser):
+    """A parser that takes an option by its whole name only, never abbreviated."""
+
+    def __init__(self, *arguments: object, **options: object) -> None:
+        """Parse as argparse does, but for abbreviations."""
+        super().__init__(*arguments, **options, allow_abbrev=False)
+
+
+def test_the_embeddings_service_names_a_real_setting_and_option() -> None:
+    """The setting and the flag that its messages name are the settings' and the command's."""
+    assert EMBEDDINGS.setting in Settings.model_fields
+    assert parser(Unabridged).parse_args(["index", EMBEDDINGS.flag]).allow_remote_embeddings
 
 
 def test_the_captured_answers_of_ollama_parse() -> None:

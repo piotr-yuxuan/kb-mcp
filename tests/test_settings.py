@@ -1056,7 +1056,9 @@ def test_archives_false_in_the_environment_turns_archives_off(
 
 def test_a_refusal_names_its_own_service_s_setting_and_flag() -> None:
     """Each service is refused in its own words: its setting, then the flag that allows it."""
-    other = Service("the other server", "other.url", "--allow-remote-other", "other serve")
+    other = Service(
+        name="the other server", setting="other.url", flag="--allow-remote-other", start="x"
+    )
     url = "http://10.0.0.1:9931/v1"
     elsewhere = refused_endpoint(url, other, remote_allowed=False) or ""
     assert elsewhere.startswith("other.url: not an address of this machine")

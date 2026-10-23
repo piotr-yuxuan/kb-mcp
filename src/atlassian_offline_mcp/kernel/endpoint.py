@@ -22,15 +22,15 @@ class Service:
 
 
 EMBEDDINGS = Service(
-    "the embedding endpoint",
-    "embedding_url",
-    "--allow-remote-embeddings",
-    "With Ollama: ollama serve",
+    name="the embedding endpoint",
+    setting="embedding_url",
+    flag="--allow-remote-embeddings",
+    start="With Ollama: ollama serve",
 )
 
 
 def endpoint_host(value: object) -> str | None:
-    """Give the host of an embedding endpoint's address, or None when it is not one.
+    """Give the host of a model server's address, or None when it is not one.
 
     An address is http or https, with a host and a valid port if any, and no user,
     query or fragment.
@@ -67,7 +67,8 @@ def refused_endpoint(url: str, service: Service, *, remote_allowed: bool) -> str
     """Say why a run may not send the mirror's text to a service, or None when it may.
 
     An address that is not a literal one of this machine needs the run's word,
-    ``remote_allowed``, and https even then. The message names the service's setting.
+    ``remote_allowed``, and https even then. The message names the service's setting
+    and its flag.
     """
     if loopback(url):
         return None

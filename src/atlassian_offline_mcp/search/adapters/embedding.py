@@ -6,7 +6,7 @@ model asks for. The rest of the code sees an ``Embedder``: a name, a fingerprint
 dimensions, and texts in, unit vectors of float32 out.
 
 The mirror's text leaves this machine only when the run's command line allows it:
-``endpoint`` is the only way to a client, and refuses any other address.
+``model_api.endpoint`` is the only way to a client, and refuses any other address.
 """
 
 from __future__ import annotations
@@ -275,7 +275,7 @@ def digest(endpoint: Endpoint, model: str) -> str:
     if elsewhere and not endpoint.remote_allowed:
         message = (
             f"{model}: Ollama serves it from elsewhere (a cloud model), where the mirror's"
-            " text would go; pass --allow-remote-embeddings"
+            f" text would go; pass {endpoint.service.flag}"
         )
         raise ModelError(message)
     return found
