@@ -17,6 +17,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -57,6 +58,9 @@ def guard(event: str, arguments: tuple[object, ...]) -> None:
 # urllib3, at its import, binds a socket of this machine to learn whether it has IPv6.
 if ports:
     importlib.import_module(TELEMETRY).LIMIT_S = float(given["limit"])
+# Ctrl-C raises KeyboardInterrupt, as in a terminal, even where the tests run in the
+# background, whose children inherit SIGINT ignored.
+signal.signal(signal.SIGINT, signal.default_int_handler)
 sys.addaudithook(guard)
 status = main(given["arguments"])
 # Imported once the run is over: earlier, OpenTelemetry would read the variables that a
