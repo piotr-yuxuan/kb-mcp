@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections import Counter
 from datetime import UTC, datetime
 from itertools import count
 from pathlib import Path
@@ -583,3 +584,48 @@ def test_each_target_s_scores_are_measured_by_its_chunking_ask_s_among_them(
         }.items()
     }
     assert points == pytest.approx(expected)
+
+
+def test_each_target_s_span_events_and_question_times_name_its_chunking(
+    data: Path, telemetry: InMemory
+) -> None:
+    """Its span and its events, and its questions' times, each question once a mode."""
+    targets = [Target(tiny(), "sections"), Target(tiny(), "windows")]
+    questions = golden(data)
+    with capture_logs() as events:
+        evaluate(Settings(data_dir=data, model="tiny"), questions, targets, ticking(), MOMENT)
+    every = {
+        (chunking, mode): len(questions)
+        for chunking in ("sections", "windows")
+        for mode in ("lexical", "semantic", "hybrid")
+    }
+    spans = [span for span in telemetry.spans.get_finished_spans() if span.name == "eval.model"]
+    assert [(span.attributes or {})["aom.chunking"] for span in spans] == ["sections", "windows"]
+    timed = {
+        (str(point.attributes["aom.chunking"]), str(point.attributes["aom.mode"])): point.count
+        for point in telemetry.measured()["aom.eval.question.duration"].data.data_points
+        if point.attributes
+    }
+    assert timed == every
+    asked = Counter(
+        (each["chunking"], each["mode"]) for each in events if each["event"] == "eval.question"
+    )
+    assert asked == every
+    evaluated = [each["chunking"] for each in events if each["event"] == "eval.evaluated"]
+    assert evaluated == ["sections", "windows"]
+
+
+def test_without_evidence_found_at_ask_is_measured_and_evidence_at_ask_is_not(
+    data: Path, telemetry: InMemory
+) -> None:
+    """A golden file whose questions have no evidence: no point of Evidence@ask."""
+    without = GOLDEN.replace('  evidence: {"4002": "leave for a meal"}\n', "")
+    targets = [Target(tiny(), "sections")]
+    evaluate(
+        Settings(data_dir=data, model="tiny"), golden(data, without), targets, ticking(), MOMENT
+    )
+    measures = {
+        (point.attributes or {})["aom.measure"]
+        for point in telemetry.measured()["aom.eval.score"].data.data_points
+    }
+    assert measures == {"recall@10", "mrr@10", "ndcg@10", "success@1", "found@ask"}

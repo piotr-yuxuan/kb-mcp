@@ -717,3 +717,54 @@ def test_eval_agents_records_as_documented(
         monkeypatch.setattr(agents, "LISTING_S", 0.001)
         assert prepared(world, world.root / "unlisted") == FAILED
     assert undocumented("eval-agents", emitted) == []
+
+
+def test_calls_and_runs_are_measured_as_the_call_logs_and_the_results_say(
+    world: World, telemetry: InMemory
+) -> None:
+    """Ask answered on B, a search that A's tool refuses; graded, A without an answer.
+
+    Each call is counted by surface, tool and status, its tokens and seconds measured
+    as its line of the call log has them; each run is counted by its outcome.
+    """
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    a, b = first(out, "A"), first(out, "B")
+    assert main(bridged(out, b, "ask", {"question": QUESTIONS["q1"]})) == 0
+    assert main(bridged(out, a, "search", {"query": "kafka", "filters": {"space": "NOPE"}})) == 0
+    assert main(["eval-agents", "answer", str(out), b, json.dumps(VALID)]) == 0
+    for run in (a, b):
+        harness(out, run, status="returned", model=MODEL, tokens=1000)
+    assert main(["eval-agents", "grade", str(out), "--yes"]) == 0
+    measured = telemetry.measured()
+
+    def points(name: str, *keys: str) -> dict[tuple[str, ...], object]:
+        return {
+            tuple(str((point.attributes or {})[key]) for key in keys): point
+            for point in measured[name].data.data_points
+        }
+
+    lines = {
+        surface: json.loads((out / "calls" / f"{run}.jsonl").read_text("utf-8"))
+        for surface, run in (("A", a), ("B", b))
+    }
+    called = points("aom.eval.agent.calls", "aom.surface", "gen_ai.tool.name", "aom.status")
+    assert {key: point.value for key, point in called.items()} == {
+        ("B", "ask", "answered"): 1,
+        ("A", "search", "refused"): 1,
+    }
+    by_tool = {("B", "ask"): lines["B"], ("A", "search"): lines["A"]}
+    tokens = points("aom.eval.agent.tokens", "aom.surface", "gen_ai.tool.name")
+    assert {key: point.sum for key, point in tokens.items()} == {
+        key: line["tokens"] for key, line in by_tool.items()
+    }
+    seconds = points("aom.eval.agent.call.duration", "aom.surface", "gen_ai.tool.name")
+    assert {key: point.sum for key, point in seconds.items()} == pytest.approx(
+        {key: line["seconds"] for key, line in by_tool.items()}
+    )
+    results = json.loads((out / "results.json").read_text("utf-8"))
+    judged = points("aom.eval.agent.runs", "aom.surface", "aom.outcome")
+    assert {key: point.value for key, point in judged.items()} == {
+        (outcome["surface"], outcome["result"]): 1 for outcome in results["outcomes"]
+    }
+    assert ("A", "failure") in judged
