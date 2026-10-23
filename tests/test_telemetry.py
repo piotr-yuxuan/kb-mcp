@@ -75,7 +75,8 @@ def guarded(
     of 0 lets no socket be made at all.
     """
     report = home / "report.json"
-    given = {"port": port, "limit": limit, "report": str(report), "arguments": arguments}
+    ports = [port] if port else []
+    given = {"ports": ports, "limit": limit, "report": str(report), "arguments": arguments}
     began = time.monotonic()
     child = subprocess.run(
         [sys.executable, "-m", "tests.guarded"],
