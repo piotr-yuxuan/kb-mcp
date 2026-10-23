@@ -123,7 +123,8 @@ def test_an_exported_record_has_the_event_as_body_its_fields_and_the_span_around
     """From INFO, the SDK's own records aside; the record itself is left to the other sinks.
 
     An event's level, logger, time and the event itself are the exported record's own
-    fields, not attributes; its command is one more. A library's record has its message.
+    fields, not attributes; its command is one more. A library's record has its message,
+    a mapping too.
     """
     exporter = InMemoryLogRecordExporter()
     provider = LoggerProvider(shutdown_on_exit=False)
@@ -137,10 +138,11 @@ def test_an_exported_record_has_the_event_as_body_its_fields_and_the_span_around
                 structlog.get_logger("some.module").info("thing.done", count=2, nested={"a": 1})
             structlog.get_logger("some.module").debug("thing.detail")
             logging.getLogger("some.library").warning("%s failed", "it")
+            logging.getLogger("some.library").warning({"not": "an event"})
             logging.getLogger(f"{SDK}.sdk.trace").error("export failed")
         finally:
             root.removeHandler(sink)
-    event, library = (exported.log_record for exported in exporter.get_finished_logs())
+    event, library, mapping = (exported.log_record for exported in exporter.get_finished_logs())
     assert event.body == "thing.done"
     assert dict(event.attributes or {}) == {"count": 2, "nested": {"a": 1}, "command": "check"}
     context = span.get_span_context()
@@ -148,6 +150,7 @@ def test_an_exported_record_has_the_event_as_body_its_fields_and_the_span_around
     assert library.body == "it failed"
     assert dict(library.attributes or {}) == {"command": "check"}
     assert library.trace_id == 0
+    assert mapping.body == "{'not': 'an event'}"
     assert caplog.records[0].msg["event"] == "thing.done"
 
 

@@ -73,8 +73,9 @@ class Exported(LoggingHandler):
     An event's record has the event as its body, and the event's other fields as its
     attributes, but those that it holds as fields of its own (``NATIVE``) and those
     named as an attribute of the standard library's record, such as ``name``, which go
-    unexported; ``command`` is one more, as on each line of the run's file. A library's
-    record has its message as its body. Each carries the ids of the span around it.
+    unexported; ``command`` is one more, as on each line of the run's file. Another
+    record, a library's, has its message as its body, whatever its message is. Each
+    carries the ids of the span around it.
     """
 
     def __init__(self, provider: LoggerProvider, command: str) -> None:
@@ -89,7 +90,8 @@ class Exported(LoggingHandler):
 
         The record itself is left as it is, for the other sinks.
         """
-        fields = record.msg if isinstance(record.msg, dict) else {"event": record.getMessage()}
+        event = isinstance(record.msg, dict) and "event" in record.msg
+        fields = record.msg if event else {"event": record.getMessage()}
         standard = {key: value for key, value in vars(record).items() if key not in STRUCTLOG_EXTRA}
         copy = logging.makeLogRecord(
             {
