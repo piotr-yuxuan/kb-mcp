@@ -9,6 +9,7 @@ trace keeps its size however many documents it fetches, each a trace of its own.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import time
@@ -25,6 +26,8 @@ from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingEr
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from tests.endpoint import URL, Scripted, nothing_listening, serving
+from tests.mirrors import fillers, page, write
 from tests.reference import README, Emitted, documented, operations, undocumented
 from tests.samples import v2_space
 from tests.test_download import SITE, FakeSite
@@ -193,3 +196,37 @@ def test_mirror_records_as_documented(
     with emitted.gathering(telemetry, "mirror"):
         assert main(arguments) == ExitStatus.FAILED
     assert undocumented("mirror", emitted) == []
+
+
+def by_meaning(data: Path, url: str, mode: str = "hybrid") -> list[str]:
+    """Write settings naming the tiny model at ``url``, in ``mode``; give the options to them."""
+    settings = data.parent / "config.toml"
+    settings.write_text(
+        f'model = "tiny"\nembedding_url = {json.dumps(url)}\nsearch_mode = "{mode}"\n',
+        encoding="utf-8",
+    )
+    return ["--config", str(settings), "--data-dir", str(data)]
+
+
+def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None:
+    """Indexed by meaning, a file skipped and a piece refused; no endpoint; no mirror.
+
+    The mirror holds a few pages, one with a front matter refused, and one whose second
+    section the endpoint refuses to embed.
+    """
+    data = tmp_path / "data"
+    fillers(data / "docs", 5)
+    body = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
+    write(data / "docs", page("196845", "Rollback"), body)
+    broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
+    broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
+    refused = "Rollback\nRelease\nThe deploy of the seller service."
+    emitted = Emitted()
+    with serving(Scripted(refused={refused})) as url, emitted.gathering(telemetry, "index"):
+        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
+    with nothing_listening() as url, emitted.gathering(telemetry, "index"):
+        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
+    with emitted.gathering(telemetry, "index"):
+        empty = tmp_path / "empty"
+        assert main(["index", "--yes", *by_meaning(empty, URL, "lexical")]) == ExitStatus.FAILED
+    assert undocumented("index", emitted) == []

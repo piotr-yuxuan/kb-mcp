@@ -6,6 +6,7 @@ file, its fields, the levels, the settings and the variables, then what every co
 records. A page per command lists what that command records besides:
 
 - [download](download.md)
+- [index](index.md)
 - [mirror](mirror.md)
 
 A change to an event, a span or an instrument changes its page in the same commit: the
