@@ -214,13 +214,15 @@ def test_at_debug_stdout_holds_the_protocol_and_the_collector_a_search_s_spans(
     progress: no bar, no event. The collector gets the SDK's span of the call, ``tools/call
     search``, saying the mode, the two documents that hold the word and no fallback, with
     ``search.lexical`` as its child; and the count of fallbacks, 0 from the start. The
-    server may reach the collector's port alone.
+    server may reach the collector's port alone, and searches the index by words alone.
     """
     settings = home / ".config" / "atlassian-offline-mcp" / "config.toml"
     collector = Collector()
     with collecting(collector) as endpoint:
         with settings.open("a", encoding="utf-8") as appended:
-            appended.write(f"[telemetry]\nendpoint = {json.dumps(endpoint)}\n")
+            appended.write(
+                f'search_mode = "lexical"\n[telemetry]\nendpoint = {json.dumps(endpoint)}\n'
+            )
         port = int(endpoint.rpartition(":")[2])
         given = {"ports": [port], "limit": 1.0, "report": str(home / "report.json")}
         command = StdioServerParameters(

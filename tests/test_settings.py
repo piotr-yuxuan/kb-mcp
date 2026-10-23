@@ -90,13 +90,18 @@ def test_settings_are_normalised() -> None:
 
 
 def test_the_default_embeddings_come_from_ollama_on_this_machine() -> None:
-    """Ollama's own address, and the model that plan 018 chose; search by words."""
+    """Ollama's own address, and the model that plan 018 chose."""
     settings = from_file({})
-    assert (settings.embedding_url, settings.model, settings.search_mode) == (
+    assert (settings.embedding_url, settings.model) == (
         "http://127.0.0.1:11434/v1",
         "qwen3-embedding:0.6b",
-        "lexical",
     )
+
+
+def test_by_default_index_cuts_windows_and_search_is_hybrid() -> None:
+    """Plan 025: with no file, variable or flag, windows, searched by words and meaning."""
+    settings = settings_of([], HOME).settings
+    assert (settings.chunking, settings.search_mode) == ("windows", "hybrid")
 
 
 def test_the_default_data_directory_is_under_the_home() -> None:
