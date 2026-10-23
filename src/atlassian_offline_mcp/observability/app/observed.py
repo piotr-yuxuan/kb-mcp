@@ -102,8 +102,10 @@ def observed(
 ) -> Iterator[Run]:
     """Observe a run as ``invocation`` has it: its logs on stderr at its level, and in a file.
 
-    Within ``early``, whose stderr this one replaces while it lasts. The run's id, 16
-    random hex digits, is made first, so that a run without a file has one too. Stderr
+    Its events go through the standard library, as ``route_through_logging`` has them,
+    never to stdout, and stay so after it; within ``early``, which puts structlog back,
+    it replaces early's stderr while it lasts. The run's id, 16 random hex digits, is
+    made first, so that a run without a file has one too. Stderr
     is drawn at ``output``'s level, through a console that is a terminal as ``output``
     says. The file, ``log_file``'s in ``folder``, holds all from DEBUG, under the run's
     id; a run that reads no settings has no ``folder``, and one that cannot be written
@@ -131,6 +133,7 @@ def observed(
     status (``aom.exit_status``). Each run, traced or not, records how long it lasted in
     ``aom.run.duration``, by command and exit status.
     """
+    route_through_logging()
     root = logging.getLogger()
     log = structlog.get_logger()
     command = invocation.command

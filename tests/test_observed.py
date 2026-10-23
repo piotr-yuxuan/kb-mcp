@@ -12,6 +12,7 @@ import structlog
 
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.output import Output
+from atlassian_offline_mcp.observability.adapters.logs import QUIET
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.observability.app.observed import Invocation, early, observed
 
@@ -87,6 +88,27 @@ def test_a_run_s_stderr_takes_the_place_of_early_s_and_gives_it_back(
         ("info", "run.end"),
         ("warning", "early.warning"),
     ]
+
+
+def test_a_run_outside_early_logs_through_the_standard_library_all_the_same(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Its events reach its file, and stdout none, where structlog prints by default.
+
+    The test then puts structlog and the loggers' levels back, as ``early`` would.
+    """
+    levels = {name: logging.getLogger(name).level for name in ("", *QUIET)}
+    try:
+        with observed(output("warning"), tmp_path, None, Invocation("check")):
+            structlog.get_logger().info("some.event")
+    finally:
+        structlog.reset_defaults()
+        for name, level in levels.items():
+            logging.getLogger(name).setLevel(level)
+    assert capsys.readouterr().out == ""
+    (path,) = tmp_path.iterdir()
+    events = [json.loads(line)["event"] for line in path.read_text("utf-8").splitlines()]
+    assert events == ["run.start", "some.event", "run.end"]
 
 
 def test_a_run_has_an_id_with_or_without_a_file_whose_lines_carry_it(tmp_path: Path) -> None:
