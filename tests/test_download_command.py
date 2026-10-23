@@ -17,7 +17,9 @@ from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report
+from tests.test_cli import logged_as
 from tests.test_download import SITE, FakeSite
+from tests.test_observed import said
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -141,9 +143,11 @@ def test_a_download_gives_its_counts_failed_keys_and_status_as_json(
 def test_a_download_without_a_site_is_refused_by_name(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The site is named as the missing setting."""
+    """The site is named as the missing setting, by the error run.refused."""
     assert main(command(home, "--space", "MFS", "--since", "7d")) == REFUSED
-    assert "refused: site: not set" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "run.refused")]
+    assert "site: not set" in err
 
 
 def test_a_download_of_nothing_is_refused(home: Path, capsys: CaptureFixture[str]) -> None:
@@ -166,24 +170,36 @@ def test_a_key_that_is_not_one_is_refused_by_the_options(
 def test_a_period_that_ends_before_it_starts_is_refused(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The option at fault is named."""
+    """The option at fault is named, by the error download.refused, in the log file too."""
     options = ("--site", SITE, "--space", "MFS", "--since", "2026-10-22", "--until", "2026-10-01")
     assert main(command(home, *options)) == REFUSED
-    assert "--until" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert ("error", "download.refused") in said(err)
+    assert "--until" in err
+    (refused,) = logged_as(home, "download.refused")
+    assert refused["level"] == "error"
+    assert "--until" in str(refused["reason"])
 
 
 def test_without_a_session_the_user_is_told_to_sign_in(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """No saved session: exit 3, and the command to run."""
+    """No saved session: exit 3, and the command to run, by download.sign_in_needed."""
     assert main(command(home, "--site", SITE, "--space", "MFS", "--since", "7d")) == SIGN_IN_NEEDED
-    assert "sign-in needed: run atlassian-offline-mcp login" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert ("error", "download.sign_in_needed") in said(err)
+    assert "run atlassian-offline-mcp login" in err
+    (needed,) = logged_as(home, "download.sign_in_needed")
+    assert (needed["level"], needed["hint"]) == ("error", "run atlassian-offline-mcp login")
 
 
 def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """The user's own key is shown to them, and never written to the run report."""
+    """The user's own key is shown to them, and never written to the run report.
+
+    It is the warning download.target_failed, which the run's log file holds too.
+    """
     chosen = Settings(site=SITE, data_dir=(home / "atlassian-offline-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite(spaces=[])
@@ -191,7 +207,10 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     options = ("--site", SITE, "--space", "NOPE", "--since", "7d", "--summary", "detailed")
     assert main(command(home, *options)) == SOME_FAILED
     captured = capsys.readouterr()
+    assert ("warning", "download.target_failed") in said(captured.err)
     assert "space NOPE: not found" in captured.err
+    (failed,) = logged_as(home, "download.target_failed")
+    assert (failed["level"], failed["target"]) == ("warning", "space NOPE: not found")
     assert "confluence spaces failed: not found: 1" in captured.out
     [report] = chosen.runs.iterdir()
     assert "NOPE" not in report.read_text("utf-8")
@@ -201,7 +220,7 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
 def test_ctrl_c_exits_130_and_says_where_the_counts_are(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """An interrupted run is the shell's 130, not a failure."""
+    """An interrupted run is the shell's 130, not a failure: download.interrupted warns."""
 
     def interrupted(*_: object) -> None:
         raise KeyboardInterrupt
@@ -209,17 +228,26 @@ def test_ctrl_c_exits_130_and_says_where_the_counts_are(
     monkeypatch.setattr(download_command, "download", interrupted)
     options = ("--site", SITE, "--space", "MFS", "--since", "7d")
     assert main(command(home, *options)) == INTERRUPTED
-    assert "interrupted; the counts so far are in" in capsys.readouterr().err
+    runs = str(Settings(data_dir=(home / "atlassian-offline-mcp").resolve()).runs)
+    err = capsys.readouterr().err
+    assert ("warning", "download.interrupted") in said(err)
+    assert runs in err
+    (interrupted,) = logged_as(home, "download.interrupted")
+    assert (interrupted["level"], interrupted["counts"]) == ("warning", runs)
 
 
 def test_a_busy_store_exits_1_with_its_reason(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Another run writing the store: the user is told to wait for it."""
+    """Another run writing the store: the user is told to wait for it, by an error."""
     chosen = Settings(site=SITE, data_dir=(home / "atlassian-offline-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     options = ("--site", SITE, "--space", "MFS", "--since", "7d")
     with RawStore(chosen.raw).writing():
         assert main(command(home, *options)) == SOME_FAILED
-    assert "another run is writing the raw store" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert ("error", "download.store_busy") in said(err)
+    assert "another run is writing it; try again once that run ends" in err
+    (busy,) = logged_as(home, "download.store_busy")
+    assert (busy["level"], busy["store"]) == ("error", str(chosen.raw))

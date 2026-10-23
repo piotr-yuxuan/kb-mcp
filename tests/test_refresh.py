@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from structlog.testing import capture_logs
 
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
@@ -243,6 +244,19 @@ def test_a_page_gone_on_two_runs_is_confirmed_and_one_back_loses_it(
     assert stone.confirmed
     run(chosen, monkeypatch, RefreshSite(), catch_up(["MFS"], []), SECOND + timedelta(days=2))
     assert RawStore(chosen.raw).tombstones() == {}
+
+
+def test_the_probes_of_a_space_are_reported_as_a_task(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Two pages no longer listed: two probes, both done."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    both = RefreshSite(listing={"1003": PAGES["1003"]}, gone={"1001", "1002"})
+    with capture_logs() as events:
+        run(chosen, monkeypatch, both, catch_up(["MFS"], []), SECOND)
+    probes = [event for event in events if event.get("task") == "probes"]
+    assert [(event["done"], event["total"]) for event in probes] == [(2, 2)]
 
 
 def test_a_page_moved_to_another_space_listed_in_the_run_is_not_gone(

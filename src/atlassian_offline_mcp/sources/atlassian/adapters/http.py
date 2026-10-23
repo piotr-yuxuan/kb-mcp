@@ -10,9 +10,11 @@ from typing import TYPE_CHECKING
 
 import certifi
 import httpx
+import structlog
 import truststore
 
 from atlassian_offline_mcp.kernel.content import SITE_PATH
+from atlassian_offline_mcp.observability.adapters.http import Recorded
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
@@ -114,21 +116,24 @@ def client(
     """Return an httpx client for the site, carrying cookies, verifying TLS with the OS.
 
     Each of ``hooks`` sees every request before it is sent, once plain HTTP is refused.
-    ``transport`` replaces the network, for tests.
+    Each request sent is observed, as ``Recorded`` has it, with its query on the site's
+    host alone. ``transport`` replaces the network, for tests.
     """
     cookie_jar = httpx.Cookies()
     for cookie in cookies:
         cookie_jar.set(
             cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"]
         )
+    network = httpx.Client(
+        verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT), transport=transport
+    )
     return httpx.Client(
         base_url=site,
         cookies=cookie_jar,
         follow_redirects=False,
         timeout=TIMEOUT_S,
-        verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT),
         event_hooks={"request": [refuse_plain_http, *hooks]},
-        transport=transport,
+        transport=Recorded(network, httpx.URL(site).host),
     )
 
 
@@ -182,12 +187,20 @@ class Site:
         """GET a body, retrying throttling, gateway and transport failures four times.
 
         Raises SiteError for this GET, and TooManyFailuresError, before trying, once
-        ``MAX_FAILED_IN_A_ROW`` GETs in a row got no answer.
+        ``MAX_FAILED_IN_A_ROW`` GETs in a row got no answer. Each retry is said at DEBUG,
+        ``http.retry``, by the path, without its query, and why.
         """
         self._breaker.check()
         failure, wait, answered, last = "", 0.0, True, None
         for attempt in range(RETRIES + 1):
             if attempt:
+                structlog.get_logger().debug(
+                    "http.retry",
+                    path=request.path.partition("?")[0],
+                    attempt=attempt,
+                    failure=failure,
+                    wait_s=min(wait, MAX_WAIT_S),
+                )
                 self._sleep(min(wait, MAX_WAIT_S))
             try:
                 status, headers, body = self.once(request, max_bytes)
@@ -256,7 +269,8 @@ def verified_by_public_cas(url: str) -> bool | None:
     already allows for.
     """
     context = ssl.create_default_context(cafile=certifi.where())
-    with httpx.Client(timeout=TIMEOUT_S, verify=context) as client:
+    transport = Recorded(httpx.Client(verify=context), httpx.URL(url).host)
+    with httpx.Client(timeout=TIMEOUT_S, transport=transport) as client:
         try:
             client.get(url)
         except httpx.HTTPError as error:

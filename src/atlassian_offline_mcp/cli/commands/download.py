@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import sys
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+
+import structlog
 
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.fields import RepresentationError
@@ -48,7 +49,9 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
 
     Spaces and projects not named on the command line come from the settings; without
     --since, each catches up from the start of what earlier runs covered. The outcome
-    is given once a run ends, None when none could start or one was stopped.
+    is given once a run ends, None when none could start or one was stopped. Why a run
+    could not start or go on is an error; an interruption, or a space or a project that
+    failed, a warning.
     """
     settings = loaded.settings
     try:
@@ -56,18 +59,22 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
         act = plan if arguments.dry_run else download
         outcome = act(settings, targets, lambda: datetime.now(UTC), time.sleep)
     except (PeriodError, RepresentationError) as error:
-        sys.stderr.write(f"refused: {error}\n")
+        structlog.get_logger().error("download.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     except StoreBusyError:
-        sys.stderr.write("another run is writing the raw store; try again once it ends\n")
+        structlog.get_logger().error(
+            "download.store_busy",
+            store=str(settings.raw),
+            hint="another run is writing it; try again once that run ends",
+        )
         return ExitStatus.FAILED, None
     except KeyboardInterrupt:
-        sys.stderr.write(f"interrupted; the counts so far are in {settings.runs}\n")
+        structlog.get_logger().warning("download.interrupted", counts=str(settings.runs))
         return ExitStatus.INTERRUPTED, None
     for target in outcome.failed_targets:
-        sys.stderr.write(f"{target}\n")
+        structlog.get_logger().warning("download.target_failed", target=target)
     if outcome.status == ExitStatus.SIGN_IN_AGAIN:
-        sys.stderr.write(f"sign-in needed: {sign_in(settings).again}\n")
+        structlog.get_logger().error("download.sign_in_needed", hint=sign_in(settings).again)
     return outcome.status or ExitStatus.OK, outcome
 
 

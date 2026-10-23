@@ -32,8 +32,8 @@ In zsh, write it to a file named `_atlassian-offline-mcp` in a folder of `$fpath
 before `compinit` runs. Then open a new shell.
 
 Or load it at each start of a shell, which is simpler, but runs the command each time,
-for about a fifth of a second, as it loads the code that reads the settings. In bash,
-add this line to `~/.bashrc`:
+for about as long as `--help`, some 60 ms: it reads no settings and logs nothing. In
+bash, add this line to `~/.bashrc`:
 
 ```bash
 eval "$(atlassian-offline-mcp completion)"

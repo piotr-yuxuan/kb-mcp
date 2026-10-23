@@ -27,6 +27,9 @@ from atlassian_offline_mcp.cli.domain.summary import values_of
 from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.cli.options.index import by_words_alone
 from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL
+from atlassian_offline_mcp.observability.app.observed import early
+from tests.endpoint import nothing_listening
+from tests.test_settings import user_log_folder
 
 if TYPE_CHECKING:
     import argparse
@@ -318,7 +321,10 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     capsys: CaptureFixture[str],
     runs: list[tuple[argparse.Namespace, Loaded]],
 ) -> None:
-    """The settings it reads and their values, in detail their layers; -q says nothing."""
+    """The settings it reads and their values, in detail their layers; -q says nothing.
+
+    In detail, the entry's own follow, which it reads for every command.
+    """
     config = home / "config.toml"
     config.write_text(f'site = "{SITE}"\nmodel = "tiny"\n', "utf-8")
     monkeypatch.setenv(UNKNOWN, "1")
@@ -343,6 +349,8 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
         "mirror, with these settings:\n"
         f"  site: {SITE} [config.toml]\n"
         f"  data_dir: {data} [--data-dir]\n"
+        f"  logs.dir: {user_log_folder(home.resolve())} [default]\n"
+        "  telemetry.endpoint: (not set) [default]\n"
         f"ignored: {UNKNOWN}: names no setting\n"
         "ignored: model (config.toml): not read by mirror\n"
         f"{command}"
@@ -350,6 +358,68 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     assert main([*options, "-q"]) == 0
     assert capsys.readouterr().err == ""
     assert len(runs) == len(["short", "detailed", "quiet"])
+
+
+@pytest.mark.parametrize("command", ["mirror", "index"])
+@pytest.mark.usefixtures("runs")
+def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], command: str
+) -> None:
+    """Every run logs into logs.dir, and reads telemetry.endpoint: neither is ignored.
+
+    Given by a layer, each is listed with it under --summary detailed, after the
+    command's own settings, and the run's log file is there; the short summary names
+    neither.
+    """
+    logs = (home / "logs").resolve()
+    config = home / "config.toml"
+    config.write_text(f'[logs]\ndir = "{logs}"\n', "utf-8")
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
+    options = [command, "--yes", "--config", str(config)]
+    assert main([*options, "--summary", "detailed"]) == 0
+    said = capsys.readouterr().err
+    assert "ignored" not in said
+    assert said.split(f"atlassian-offline-mcp {command} \\\n")[0].endswith(
+        f"  logs.dir: {logs} [config.toml]\n  telemetry.endpoint: (not set) [OTEL_SDK_DISABLED]\n"
+    )
+    assert [path.name.partition("-")[0] for path in logs.iterdir()] == [command]
+    assert main(options) == 0
+    said = capsys.readouterr().err
+    assert "logs.dir" not in said
+    assert "telemetry.endpoint" not in said
+
+
+@pytest.mark.parametrize(
+    "variable", ["OTEL_EXPORTER_OTLP_ENDPOINT", "ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT"]
+)
+@pytest.mark.parametrize("command", [["index", "--yes"], ["check"]], ids=["index", "check"])
+@pytest.mark.usefixtures("runs")
+def test_every_command_says_that_telemetry_is_on_and_what_turned_it_on(
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    variable: str,
+    command: list[str],
+) -> None:
+    """Whatever layer sets the endpoint, one line names it on stderr, at every level but -q.
+
+    OpenTelemetry's variable, which other programs share, may turn telemetry on unseen,
+    as may the setting's: a command that writes says so in its summary, one that only
+    reads alike, without a summary. Without an endpoint, no such line. Nothing listens
+    there.
+    """
+    options = [*command, "--config", str(home / "none.toml")]
+    assert main(options) == 0
+    assert not any(line.startswith("telemetry") for line in capsys.readouterr().err.splitlines())
+    with nothing_listening() as url:
+        endpoint = url.removesuffix("/v1")
+        monkeypatch.setenv(variable, endpoint)
+        for level in ([], ["-v"], ["-vv"], ["--log-level", "error"]):
+            assert main([*options, *level]) == 0
+            said = capsys.readouterr().err.splitlines()
+            assert said.count(f"telemetry: on, to {endpoint} ({variable})") == 1
+        assert main([*options, "-q"]) == 0
+        assert "telemetry: on" not in capsys.readouterr().err
 
 
 @pytest.mark.usefixtures("runs")
@@ -385,11 +455,11 @@ def test_a_command_s_described_lines_end_its_summary(
     def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
         return (f"mirrors {settings['site']}", f"as {arguments.command.name}")
 
-    arguments = parser().parse_args(
-        ["mirror", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
-    )
+    given = ["mirror", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
+    arguments = parser().parse_args(given)
     arguments.command = dataclasses.replace(arguments.command, described=described)
-    assert enter(arguments) == 0
+    with early():
+        assert enter(arguments, given) == 0
     summary = capsys.readouterr().err.split("atlassian-offline-mcp mirror")[0]
     assert summary.endswith(
         f"  data_dir: {(home / 'atlassian-offline-mcp').resolve()}\n  mirrors {SITE}\n  as mirror\n"

@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
+import pty
+import re
 import sqlite3
+import subprocess
+import sys
 from dataclasses import replace
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -15,6 +20,9 @@ from atlassian_offline_mcp.search.adapters import sqlite_index
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.indexing import build_index
 from tests.mirrors import FILLERS, MOMENT, fillers, issue, location, page, write
+from tests.test_cli import logged_as
+from tests.test_observed import CONTROL, said
+from tests.test_question import read_until
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -127,7 +135,11 @@ def test_line_endings_read_back_as_written(data: Path) -> None:
 def test_a_refused_file_is_named_and_the_others_indexed(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Front matter that the codec refuses, a file not in UTF-8 and a duplicate are skipped."""
+    """Front matter that the codec refuses, a file not in UTF-8 and a duplicate are skipped.
+
+    Each is the warning index.file_skipped, by its path and why; then index.lacks_files
+    warns how many the index lacks. The run's log file holds them all.
+    """
     fillers(data / "docs")
     broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
     broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
@@ -138,10 +150,20 @@ def test_a_refused_file_is_named_and_the_others_indexed(
     status, out, err = index(data, capsys)
     assert status == 1
     assert out.startswith(f"documents: {FILLERS}\n")
-    assert "skipped confluence/ENG/1-broken.md: front matter without exactly" in err
-    assert "skipped confluence/ENG/2-latin.md: not UTF-8" in err
-    assert f"skipped {later}: another document has the same source and id" in err
-    assert f"{SKIPPED} files skipped" in err
+    reasons = {
+        "confluence/ENG/1-broken.md": "front matter without exactly",
+        "confluence/ENG/2-latin.md": "not UTF-8",
+        later: "another document has the same source and id",
+    }
+    assert said(err).count(("warning", "index.file_skipped")) == SKIPPED
+    assert ("warning", "index.lacks_files") in said(err)
+    assert all(path in err and reason in err for path, reason in reasons.items())
+    skipped = logged_as(data.parent / "home", "index.file_skipped")
+    assert {line["level"] for line in skipped} == {"warning"}
+    assert {str(line["path"]): str(line["reason"]) for line in skipped}.keys() == reasons.keys()
+    assert all(str(line["reason"]).startswith(reasons[str(line["path"])]) for line in skipped)
+    (lacking,) = logged_as(data.parent / "home", "index.lacks_files")
+    assert (lacking["level"], lacking["count"]) == ("warning", SKIPPED)
     with reading(data / "index.sqlite") as reader:
         assert reader.summary().skipped == SKIPPED
 
@@ -172,11 +194,19 @@ def test_a_build_leaves_no_temporary_file(data: Path, capsys: CaptureFixture[str
 
 
 def test_no_mirror_is_a_failure(data: Path, capsys: CaptureFixture[str]) -> None:
-    """Without <data>/docs, nothing is built and the command exits 1."""
+    """Without <data>/docs, nothing is built and the command exits 1, by index.not_built.
+
+    The run's log file holds the error and its reason, with no hint of words alone.
+    """
     (data / "docs").rmdir()
     status, _, err = index(data, capsys)
     assert status == 1
+    assert ("error", "index.not_built") in said(err)
     assert "no mirror at" in err
+    (failed,) = logged_as(data.parent / "home", "index.not_built")
+    assert failed["level"] == "error"
+    assert str(failed["reason"]).startswith("no mirror at")
+    assert "hint" not in failed
     assert list(data.iterdir()) == []
 
 
@@ -197,7 +227,8 @@ def test_by_meaning_an_endpoint_elsewhere_needs_the_flag_and_https(
     remote = 'search_mode = "hybrid"\nembedding_url = "https://embeddings.example/v1"\n'
     status, _, err = index(data, capsys, remote)
     assert status == BAD_SETTINGS
-    assert "refused: embedding_url: not an address of this machine" in err
+    assert said(err) == [("error", "run.refused")]
+    assert "embedding_url: not an address of this machine" in err
     config = data.parent / "config.toml"
     config.write_text(
         'search_mode = "hybrid"\nembedding_url = "http://embeddings.example/v1"\n',
@@ -205,7 +236,9 @@ def test_by_meaning_an_endpoint_elsewhere_needs_the_flag_and_https(
     )
     options = ["--config", str(config), "--data-dir", str(data), "--allow-remote-embeddings"]
     assert main(["index", "--yes", *options]) == BAD_SETTINGS
-    assert "over https only" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "run.refused")]
+    assert "over https only" in err
     assert not (data / "index.sqlite").exists()
 
 
@@ -216,9 +249,9 @@ def test_refused_settings_exit_2(data: Path, capsys: CaptureFixture[str]) -> Non
         ["index", "--yes", "--config", str(data / "none.toml"), "--data-dir", str(dropbox)]
     )
     assert status == BAD_SETTINGS
-    assert (
-        "settings refused: data_dir (--data-dir): under a Dropbox folder" in capsys.readouterr().err
-    )
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "settings.refused")]
+    assert "data_dir (--data-dir): under a Dropbox folder" in err
 
 
 def test_reading_opens_read_only(data: Path, monkeypatch: MonkeyPatch) -> None:
@@ -281,3 +314,77 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     )
     with refused, reading(data / "index.sqlite"):
         pass
+
+
+def child_environment(data: Path) -> dict[str, str]:
+    """Give a child its scratch home, the data directory and the lexical mode, 200 columns wide."""
+    return {
+        "HOME": str(data.parent / "home"),
+        "PATH": os.environ["PATH"],
+        "COLUMNS": "200",
+        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": str(data),
+        "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "lexical",
+    }
+
+
+def to_the_end(controller: int, child: subprocess.Popen[bytes]) -> tuple[str, bytes]:
+    """Give what a child sent its terminal until it ended, controls taken out; then its stdout."""
+    shown = read_until(controller, b"\0")  # never sent: read until the child ends
+    out, _ = child.communicate()
+    return CONTROL.sub("", shown.decode()), out
+
+
+def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_quiet(
+    data: Path,
+) -> None:
+    """Stdout piped throughout, the same document each time, by plan 016's criterion 12.
+
+    Piped, stderr has no bar, and the log file holds the events progress; on a terminal,
+    the files' bar shows them all done, with the time elapsed and the time left; with
+    -q, the terminal is sent no bar.
+    """
+    fillers(data / "docs")
+    piped = subprocess.run(
+        [sys.executable, "-m", "atlassian_offline_mcp", "index", "--yes", "--format", "json"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        env=child_environment(data),
+        cwd=data.parent,
+        check=False,
+    )
+    assert piped.returncode == 0
+    assert "━" not in piped.stderr.decode()
+    assert b"\x1b" not in piped.stderr
+    *_, last = logged_as(data.parent / "home", "progress")
+    assert (last["task"], last["done"], last["total"]) == ("files", FILLERS, FILLERS)
+    controller, terminal = pty.openpty()
+    with subprocess.Popen(
+        [sys.executable, "-m", "atlassian_offline_mcp", "index", "--yes", "--format", "json"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=terminal,
+        env=child_environment(data),
+        cwd=data.parent,
+    ) as child:
+        os.close(terminal)
+        shown, out = to_the_end(controller, child)
+    os.close(controller)
+    assert child.returncode == 0
+    clock = "[0-9]+:[0-9]{2}:[0-9]{2}"
+    assert re.search(rf"files [━╸╺ ]+ {FILLERS}/{FILLERS} {clock} {clock} ", shown)
+    controller, terminal = pty.openpty()
+    with subprocess.Popen(
+        [sys.executable, "-m", "atlassian_offline_mcp", "index", "--yes", "--format", "json", "-q"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=terminal,
+        env=child_environment(data),
+        cwd=data.parent,
+    ) as child:
+        os.close(terminal)
+        shown, quiet = to_the_end(controller, child)
+    os.close(controller)
+    assert child.returncode == 0
+    assert "━" not in shown
+    assert piped.stdout == out == quiet
+    assert json.loads(out)["report"]["types"] == {"page": FILLERS}

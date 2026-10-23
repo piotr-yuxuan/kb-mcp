@@ -33,7 +33,7 @@ from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from atlassian_offline_mcp.kernel.content import MODEL_NAME, PROJECT_KEY, SPACE_KEY
-from atlassian_offline_mcp.kernel.endpoint import endpoint_host
+from atlassian_offline_mcp.kernel.endpoint import endpoint_host, loopback
 
 if TYPE_CHECKING:
     import re
@@ -59,6 +59,11 @@ DEFAULT_LAYER = "default"
 MOVED = {"spaces": "[sources.confluence]", "projects": "[sources.jira]"}
 # The type of every refusal of a value by the settings' rules.
 RULE = "setting"
+# What telemetry's endpoint must be, since what it is sent holds titles and queries.
+TELEMETRY_ENDPOINT = (
+    "an http address of this machine, with a port and no path, such as"
+    " http://127.0.0.1:4318; write 127.0.0.1 for localhost"
+)
 # Folders that may be synchronised to a cloud, under the home directory or by name.
 SYNCED_UNDER_HOME = (
     Path("Library/Mobile Documents"),
@@ -110,6 +115,19 @@ def endpoint_address(value: str) -> str:
     return value.rstrip("/")
 
 
+def telemetry_address(value: str) -> str:
+    """Give telemetry's endpoint as ``http://<address>:<port>``; refuse another.
+
+    It is an embedding endpoint's address, over http, to a literal address of this
+    machine, with a port and no path: OTLP's own paths follow it. Raises
+    PydanticCustomError, a ValueError, saying ``TELEMETRY_ENDPOINT``.
+    """
+    parts = urlsplit(value) if loopback(value) else None
+    if parts is None or parts.scheme != "http" or parts.port is None or parts.path not in {"", "/"}:
+        raise PydanticCustomError(RULE, TELEMETRY_ENDPOINT)
+    return f"http://{parts.netloc}"
+
+
 def local_path(path: Path) -> Path:
     """Accept an absolute path; refuse another, which would lie below the current directory.
 
@@ -132,6 +150,7 @@ ModelName = Annotated[
     str, matching(MODEL_NAME, "the name of an embedding model, such as qwen3-embedding:0.6b")
 ]
 EmbeddingUrl = Annotated[str, AfterValidator(endpoint_address)]
+TelemetryEndpoint = Annotated[str, AfterValidator(telemetry_address)]
 # Every table of the settings: frozen, and refusing a key it does not know.
 TABLE = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
 
@@ -167,6 +186,37 @@ class Sources(BaseModel):
     jira: JiraSource = Field(default_factory=JiraSource, description="Jira, on the site.")
 
 
+class Logs(BaseModel):
+    """Where each run writes its log file."""
+
+    model_config = TABLE
+
+    dir: LocalPath | None = Field(
+        default=None,
+        description=(
+            "The folder of each run's log file, ~ being the home directory: by default the"
+            " user's log folder, where the platform keeps them; never under a synchronised"
+            " folder, nor inside a git working tree."
+        ),
+    )
+
+
+class Telemetry(BaseModel):
+    """Where traces, metrics and logs go, if anywhere: nowhere unless an endpoint is set."""
+
+    model_config = TABLE
+
+    endpoint: TelemetryEndpoint | None = Field(
+        default=None,
+        description=(
+            "The OTLP endpoint on this machine that traces, metrics and logs go to, over"
+            " http with a port and no path, such as http://127.0.0.1:4318; unset, none is"
+            " sent. Else OTEL_EXPORTER_OTLP_ENDPOINT gives it, below the settings file;"
+            " OTEL_SDK_DISABLED=true leaves it unset."
+        ),
+    )
+
+
 class Settings(BaseSettings):
     """What every command needs to know: the site, the data directory, the defaults.
 
@@ -174,7 +224,8 @@ class Settings(BaseSettings):
     ``~`` stands for: its paths are absolute, its default data directory included. It
     reads nothing of its own: the loader reads its variables by pydantic-settings'
     ``EnvSettingsSource``, with the prefix and the nesting of its configuration, an empty
-    variable ignored. The loader then resolves the data directory.
+    variable ignored. The loader then resolves the data directory, and the log folder,
+    which is the platform's for the user when none is set.
     """
 
     model_config = SettingsConfigDict(
@@ -226,6 +277,11 @@ class Settings(BaseSettings):
     )
     sources: Sources = Field(
         default_factory=Sources, description="The sources of the mirror, each a table."
+    )
+    logs: Logs = Field(default_factory=Logs, description="The log file of each run.")
+    telemetry: Telemetry = Field(
+        default_factory=Telemetry,
+        description="Traces, metrics and logs sent by OpenTelemetry, off by default.",
     )
 
     @classmethod
@@ -515,6 +571,35 @@ def environment_entries(
         )
     ]
     return entries, ignored
+
+
+# OpenTelemetry's own variables, which other programs share: its endpoint, a layer of
+# telemetry's below the settings file, and the switch that turns it off, above all.
+SHARED_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
+SDK_DISABLED = "OTEL_SDK_DISABLED"
+# Telemetry's endpoint, by its path among the settings.
+ENDPOINT = ("telemetry", "endpoint")
+
+
+def shared_entries(environ: Mapping[str, str]) -> tuple[list[Entry], list[Entry], list[Ignored]]:
+    """Give OpenTelemetry's own variables of an environment as entries of telemetry's endpoint.
+
+    ``OTEL_EXPORTER_OTLP_ENDPOINT`` gives an entry of the layer below the settings file,
+    unless the setting would refuse its value: it is then ignored, with the rule that it
+    breaks. ``OTEL_SDK_DISABLED``, when true as the SDK reads it, gives one of the layer
+    above all, which leaves the endpoint unset: telemetry off. Give the entries below,
+    those above, then what was ignored.
+    """
+    below: list[Entry] = []
+    ignored: list[Ignored] = []
+    shared = environ.get(SHARED_ENDPOINT)
+    if shared is not None:
+        try:
+            below.append(Entry(ENDPOINT, telemetry_address(shared), SHARED_ENDPOINT))
+        except ValueError as error:
+            ignored.append(Ignored(".".join(ENDPOINT), SHARED_ENDPOINT, f"not {error}"))
+    disabled = environ.get(SDK_DISABLED, "").strip().lower() == "true"
+    return below, [Entry(ENDPOINT, None, SDK_DISABLED)] if disabled else [], ignored
 
 
 # Each path setting at its default, an entry of no layer, the weakest, so that

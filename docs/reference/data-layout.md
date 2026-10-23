@@ -30,6 +30,20 @@ no location and is not for commands.
 
 No code builds these paths otherwise.
 
+## The log folder
+
+Outside the data directory, each run but `completion`'s, unless it is refused or
+declined before it starts, writes one file of JSON lines into the setting `logs.dir`,
+by default the user's log folder as platformdirs places it:
+`~/Library/Logs/atlassian-offline-mcp` on macOS,
+`$XDG_STATE_HOME/atlassian-offline-mcp/log` on Linux. `load_settings` resolves and
+judges it as it does the data directory, and names `logs.dir` when it refuses it.
+`observability.adapters.logs.log_file` alone writes there: one file a run,
+`<command>-<start>-<pid>.jsonl`, 0600, in a folder that it makes 0700, and it removes
+the files of that pattern, named after any of the program's commands, whose run
+started more than 30 days before. The program reads none back. [The telemetry
+reference](telemetry/README.md) gives the file's fields.
+
 ## The ontology, and where details of the site live
 
 The site's responses and its HTML change without notice. So that a change stays local:

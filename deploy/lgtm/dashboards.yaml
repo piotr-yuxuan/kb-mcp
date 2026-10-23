@@ -1,0 +1,13 @@
+# Grafana's provider of this program's dashboards, in a folder of their own, read-only:
+# no change in Grafana is saved over them, and none is deleted there.
+apiVersion: 1
+
+providers:
+  - name: atlassian-offline-mcp
+    folder: atlassian-offline-mcp
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /otel-lgtm/grafana/conf/provisioning/dashboards/atlassian-offline-mcp
+      foldersFromFilesStructure: false

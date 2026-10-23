@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import sys
 from typing import TYPE_CHECKING
+
+import structlog
 
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
@@ -22,21 +23,24 @@ def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Out
     """Mirror; exit 0, or 1 when something was not mirrored or pandoc went missing.
 
     The entry refuses a run without pandoc on PATH, exit 2, before anything is asked:
-    this run finds it again for its path, and exits 1 only if it went in between. What
-    was not mirrored goes to standard error, by its place in the raw store and the
-    reason, never its content. The outcome is given, None without pandoc.
+    this run finds it again for its path, and exits 1 only if it went in between, an
+    error. What was not mirrored is a warning, by its place in the raw store and the
+    reason, never its content, as is that nothing was then removed. The outcome is
+    given, None without pandoc.
     """
     settings = loaded.settings
     try:
         pandoc = Pandoc.find()
     except PandocMissingError as error:
-        sys.stderr.write(f"{error}\n")
+        structlog.get_logger().error("mirror.pandoc_missing", reason=str(error))
         return ExitStatus.FAILED, None
     outcome = mirror(RawStore(settings.raw), settings.docs, settings.site, pandoc.markdown)
     for problem in outcome.problems:
-        sys.stderr.write(f"not mirrored: {problem.where}: {problem.reason}\n")
+        structlog.get_logger().warning(
+            "mirror.not_mirrored", where=problem.where, reason=problem.reason
+        )
     if outcome.problems:
-        sys.stderr.write("nothing was removed, since something was not mirrored\n")
+        structlog.get_logger().warning("mirror.nothing_removed", problems=len(outcome.problems))
     return ExitStatus.FAILED if outcome.problems else ExitStatus.OK, outcome
 
 

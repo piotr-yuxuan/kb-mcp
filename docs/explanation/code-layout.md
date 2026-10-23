@@ -19,12 +19,16 @@ Each context may use those below it, never those above:
 | `mirror` | The raw store's newest snapshots as Markdown, with their front matter |
 | `sources` | Where documents come from: today `atlassian/`, Confluence and Jira, with the sign-in (the saved session or an API token) and the raw store |
 | `config` | The settings, their file, and the guard on where data lives |
+| `observability` | What a run tells of itself: structured logs, progress on the terminal, traces and metrics |
 | `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses, how a run reports, whether an endpoint is this machine |
 
 The order follows what each needs: `eval` ranks through the `Library` of `mcp`, which
 ranks with `search`, which indexes the mirror's front matter; the mirror reads the raw
 store of `sources`; a download reads the settings, which check keys by the kernel's
-patterns.
+patterns. `observability` sits just above the kernel, so that every other context, the
+settings included, may log, trace and report progress through it, while it takes from
+the kernel only how a run reports: the command line hands it plain values, never the
+settings.
 
 Some choices are not obvious:
 
@@ -47,7 +51,7 @@ Each context but the kernel holds the same layers, as sub-packages, from the top
 | Layer | What it holds |
 |---|---|
 | `main` | The entry point: the parser, built from every declaration (in `cli` only) |
-| `commands` | One run per subcommand, with its result as text; `_shared`, the entry that loads the settings, refuses what it can before anything is asked, says what it ignores, asks before a run that writes, runs the chosen one and writes its result; `_embedding`, which the runs that embed share (in `cli` only) |
+| `commands` | One run per subcommand, with its result as text; `_shared`, the entry of every run but `completion`'s, that loads the settings, refuses what it can before anything is asked, says what it ignores, asks before a run that writes, runs the chosen one and writes its result; `_embedding`, which the runs that embed share (in `cli` only) |
 | `options` | One light declaration per subcommand: its help, its options, the run it names, the settings it reads, whether it writes, and the pure checks that refuse a run before anything is asked (in `cli` only) |
 | `app` | Use cases: they combine effects and rules, and know nothing of the command line |
 | `adapters` | Effects: the network, the browser, files, SQLite, subprocesses, the terminal |
@@ -58,29 +62,34 @@ A context holds only the layers it needs; `mcp` has only `app`.
 A subcommand is a pair of modules: `cli/options/<name>.py` declares it, and the module
 of `cli/commands/` that its declaration names runs it. `--help`, and shell completion at
 every Tab, build the whole parser, so they import every declaration; `main` imports the
-entry and the chosen run, by name, only once the arguments are parsed. So a declaration
-stays light: contract G keeps the packages that runs need out of `cli.main` and
-`cli.options`.
+entry and the chosen run, by name, only once the arguments are parsed, and for a run
+that is not observed, such as `completion`'s, which shells run at each start, the run
+alone. So a declaration stays light: contract G keeps the packages that runs need out
+of `cli.main` and `cli.options`.
 
 ## The contracts
 
-`pyproject.toml` declares seven contracts:
+`pyproject.toml` declares eight contracts:
 
 | | What it protects |
 |---|---|
 | A | Contexts use those below them, never those above. It is exhaustive: a new top-level package breaks it until it is placed in the order |
 | B | Within each context, the layers' order. It is exhaustive too: a module outside a layer breaks it. Each source under `sources/` is a context of its own; a module put directly in `sources/` is outside B: A still orders it with `sources`, but no contract checks its layer or its use of `httpx`, so none goes there |
-| C | Pure rules, in any context (and the kernel), use no effect and no use case |
+| C | Pure rules, in any context (and the kernel), use no effect and no use case, nor structlog, OpenTelemetry or Rich: a rule neither logs, traces nor draws |
 | D | Effects, in any context, use no use case |
 | E | Search, the server and the evaluation read the mirror, never a source: the index is built from the mirror alone |
 | F | Use cases and commands reach the network through effects only (no `httpx`) |
-| G | Declaring the command, `cli.main` and `cli.options`, imports none of the packages that runs need: the MCP SDK, Playwright, httpx, NumPy, lxml, PyYAML, Pydantic, Rich, OpenTelemetry, and plan 016's structlog and platformdirs |
+| G | Declaring the command, `cli.main` and `cli.options`, imports none of the packages that runs need: the MCP SDK, Playwright, httpx, NumPy, lxml, PyYAML, Pydantic, Rich, OpenTelemetry, requests, structlog and platformdirs |
+| H | Only `observability` and `cli` use Rich, which draws on the terminal, and requests, which OpenTelemetry's exporters bring: the rest reaches the network by httpx. It counts indirect imports, so what the other contexts import of `observability` reaches neither. It names every other context, so a new one joins its list as it joins A's order, and `observability.adapters.progress`, through which they all report progress, so that it never imports the display that draws it |
 
 A orders the contexts, which B, applied per context, does not; C and D carry the order
 of the layers across contexts, which B cannot. All but F count indirect imports too.
-None sees an import by name, as `main` makes of the entry and the run: a test of
-`tests/test_cli.py` checks, in a fresh interpreter, that `--help` and a completion
-import none of G's packages.
+None sees an import by name, as `main` makes of the entry and the run, or of the run
+alone: a test of `tests/test_cli.py` checks, in a fresh interpreter, that `--help` and a
+completion import none of G's packages. And a contract forbids only the root of another
+package, which OpenTelemetry's API and SDK share: so `tests/test_code_layout.py` keeps
+the SDK, its exporters and its instrumentation within `observability`, while the other
+contexts use the API alone.
 
 ## Where a new module goes
 
@@ -90,4 +99,4 @@ import none of G's packages.
    `domain/`, an effect in `adapters/`, a use case in `app/`.
 3. Run `uv run lint-imports`. A broken contract says which import crosses a boundary;
    move the code, or the import, rather than the boundary. A module that fits no
-   context needs a split, or a new context placed in contract A's order.
+   context needs a split, or a new context placed in contract A's order and H's list.

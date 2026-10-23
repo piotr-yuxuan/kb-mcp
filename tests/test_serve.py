@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
+import pty
 import sys
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,17 +14,28 @@ import anyio
 import pytest
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.shared.message import SessionMessage
 from mcp_types import JSONRPCError, JSONRPCResponse, TextContent, jsonrpc_message_adapter
+from structlog.testing import capture_logs
 
+from atlassian_offline_mcp.cli.commands.serve import served
 from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from tests.answers import TOOLS, estimate, parts
+from tests.collector import Collector, attributes, collecting
 from tests.endpoint import Scripted, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.test_observed import CONTROL, said
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import TextIO
+
     from _pytest.capture import CaptureFixture
+
+    from tests.conftest import InMemory
 
 BAD_SETTINGS = 2
 STANDING = 1500  # estimated tokens of the instructions and the tool listing together
@@ -117,19 +131,24 @@ def test_a_client_calls_every_tool_over_stdio(home: Path) -> None:
     assert faults == []
 
 
-def test_stdout_holds_protocol_messages_and_no_socket_opens(home: Path) -> None:
-    """Through the SDK's own pipes, every line is JSON-RPC and every request is answered.
+def talk(
+    command: StdioServerParameters,
+    calls: Sequence[tuple[str, dict[str, object]]],
+    errlog: TextIO = sys.stderr,
+) -> tuple[list[object], list[dict[str, object]], list[dict[str, object]]]:
+    """Start a server, and speak to it as an agent does: initialise, list the tools, call.
 
-    The transport hands on a line that is not a protocol message as an exception, which
-    a client session would only log. The server dies at any use of the network.
+    Through the SDK's own pipes, each request must be answered within ``WAIT`` seconds,
+    never by an error of the protocol; the server's stderr goes to ``errlog``. Give what
+    was received, a line that is not a protocol message being an exception, the tools
+    listed, and each call's result.
     """
     received: list[object] = []
+    listed: list[dict[str, object]] = []
+    results: list[dict[str, object]] = []
 
     async def exchange() -> None:
-        command = StdioServerParameters(
-            command=sys.executable, args=["-c", GUARDED], env={"HOME": str(home)}
-        )
-        async with stdio_client(command) as (read, write):
+        async with stdio_client(command, errlog) as (read, write):
 
             async def ask(message: dict[str, object]) -> dict[str, object]:
                 await write.send(SessionMessage(jsonrpc_message_adapter.validate_python(message)))
@@ -152,22 +171,130 @@ def test_stdout_holds_protocol_messages_and_no_socket_opens(home: Path) -> None:
             initialized = {"jsonrpc": "2.0", "method": "notifications/initialized"}
             await write.send(SessionMessage(jsonrpc_message_adapter.validate_python(initialized)))
             listing = await ask({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-            assert sorted(tool["name"] for tool in listing["tools"]) == TOOLS
-            calls = [
-                ("search", {"query": "kafka"}),
-                ("read", {"ref": "196845"}),
-                ("browse", {"project": "PROJ"}),
-                ("status", {}),
-            ]
+            listed.extend(listing["tools"])
             for number, (name, arguments) in enumerate(calls, 3):
                 params = {"name": name, "arguments": arguments}
                 call = {"jsonrpc": "2.0", "id": number, "method": "tools/call", "params": params}
-                result = await ask(call)
-                assert result["isError"] is False
-                assert "structuredContent" not in result
+                results.append(await ask(call))
 
     anyio.run(exchange)
+    return received, listed, results
+
+
+def test_stdout_holds_protocol_messages_and_no_socket_opens(home: Path) -> None:
+    """Every line is JSON-RPC and every request is answered, by text without structure.
+
+    The transport hands on a line that is not a protocol message as an exception, which
+    a client session would only log. The server dies at any use of the network.
+    """
+    command = StdioServerParameters(
+        command=sys.executable, args=["-c", GUARDED], env={"HOME": str(home)}
+    )
+    calls = [
+        ("search", {"query": "kafka"}),
+        ("read", {"ref": "196845"}),
+        ("browse", {"project": "PROJ"}),
+        ("status", {}),
+    ]
+    received, listed, results = talk(command, calls)
+    assert sorted(tool["name"] for tool in listed) == TOOLS
+    for result in results:
+        assert result["isError"] is False
+        assert "structuredContent" not in result
     assert [item for item in received if not isinstance(item, SessionMessage)] == []
+
+
+def test_at_debug_stdout_holds_the_protocol_and_the_collector_a_search_s_spans(
+    home: Path,
+) -> None:
+    """Plan 016, criterion 4: -vv, stderr on a terminal, telemetry to a scripted collector.
+
+    Stdout holds JSON-RPC alone, while stderr says the run's events from DEBUG, and no
+    progress: no bar, no event. The collector gets the SDK's span of the call, ``tools/call
+    search``, saying the mode, the two documents that hold the word and no fallback, with
+    ``search.lexical`` as its child; and the count of fallbacks, 0 from the start. The
+    server may reach the collector's port alone.
+    """
+    settings = home / ".config" / "atlassian-offline-mcp" / "config.toml"
+    collector = Collector()
+    with collecting(collector) as endpoint:
+        with settings.open("a", encoding="utf-8") as appended:
+            appended.write(f"[telemetry]\nendpoint = {json.dumps(endpoint)}\n")
+        port = int(endpoint.rpartition(":")[2])
+        given = {"ports": [port], "limit": 1.0, "report": str(home / "report.json")}
+        command = StdioServerParameters(
+            command=sys.executable,
+            args=["-m", "tests.guarded", json.dumps({**given, "arguments": ["serve", "-vv"]})],
+            env={"HOME": str(home)},
+            cwd=ROOT,
+        )
+        main_end, terminal_end = pty.openpty()
+        shown = bytearray()
+
+        def drain() -> None:
+            while True:
+                try:
+                    chunk = os.read(main_end, 4096)
+                except OSError:  # every end of the terminal closed
+                    return
+                if not chunk:
+                    return
+                shown.extend(chunk)
+
+        reader = threading.Thread(target=drain, daemon=True)
+        reader.start()
+        with os.fdopen(terminal_end, "w") as terminal:
+            received, _, results = talk(command, [("search", {"query": "kafka"})], terminal)
+        reader.join(WAIT)
+        os.close(main_end)
+    assert [item for item in received if not isinstance(item, SessionMessage)] == []
+    assert [result["isError"] for result in results] == [False]
+    err = CONTROL.sub("", shown.decode("utf-8", "replace"))
+    events = said(err)
+    assert ("debug", "serve.call") in events
+    assert [event for event in events if event[1] == "progress"] == []
+    assert "━" not in err
+    spans = collector.spans()
+    (call,) = (span for span in spans if span.name == "tools/call search")
+    (lexical,) = (span for span in spans if span.name == "search.lexical")
+    assert (lexical.trace_id, lexical.parent_span_id) == (call.trace_id, call.span_id)
+    call_says = attributes(call.attributes)
+    assert {key: call_says[key] for key in ("aom.mode", "aom.hits", "aom.fallback")} == {
+        "aom.mode": "lexical",
+        "aom.hits": 2,
+        "aom.fallback": False,
+    }
+    metrics = {metric.name: metric for metric in collector.metrics()}
+    fallbacks = metrics["aom.serve.fallbacks"].sum.data_points
+    assert [point.as_int for point in fallbacks] == [0]
+
+
+@pytest.mark.parametrize(
+    ("raised", "seen", "error_type"),
+    [
+        (UnanswerableError("no such document"), ToolError, "tool_error"),
+        (KeyError("boom"), KeyError, "builtins.KeyError"),
+    ],
+)
+def test_a_tool_that_fails_is_measured_and_said_with_its_error_type(
+    telemetry: InMemory, raised: Exception, seen: type[Exception], error_type: str
+) -> None:
+    """``tool_error`` when it cannot answer as asked, by the MCP conventions; else its class.
+
+    The class is qualified by its module, as for a request; the exception goes on, an
+    unanswerable call's as the ``ToolError`` that the agent reads.
+    """
+
+    def search(**_: object) -> str:
+        raise raised
+
+    with capture_logs() as events, pytest.raises(seen):
+        served(search)(query="Kafka")
+    (call,) = (event for event in events if event["event"] == "serve.call")
+    assert (call["tool"], call["error"]) == ("search", error_type)
+    duration = telemetry.measured()["mcp.server.operation.duration"]
+    (point,) = duration.data.data_points
+    assert dict(point.attributes or {})["error.type"] == error_type
 
 
 def test_refused_settings_exit_before_serving(tmp_path: Path, capsys: CaptureFixture[str]) -> None:
@@ -175,9 +302,9 @@ def test_refused_settings_exit_before_serving(tmp_path: Path, capsys: CaptureFix
     dropbox = tmp_path / "Dropbox" / "data"
     config = str(tmp_path / "none.toml")
     assert main(["serve", "--config", config, "--data-dir", str(dropbox)]) == BAD_SETTINGS
-    assert (
-        "settings refused: data_dir (--data-dir): under a Dropbox folder" in capsys.readouterr().err
-    )
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "settings.refused")]
+    assert "data_dir (--data-dir): under a Dropbox folder" in err
 
 
 def test_a_hybrid_search_answers_by_meaning_over_stdio_offline(tmp_path: Path) -> None:

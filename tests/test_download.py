@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from structlog.testing import capture_logs
 
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
@@ -168,7 +169,7 @@ class FakeSite:
             routes[f"/wiki/api/v2/folders/{folder_id}"] = lambda _, f=folder: httpx.Response(
                 200, json=f
             )
-        for kind, documents in (("pages", PAGES), ("blogposts", POSTS)):
+        for kind, documents in (("pages", PAGES | self.many()), ("blogposts", POSTS)):
             for document_id, document in documents.items():
                 routes[f"/wiki/api/v2/{kind}/{document_id}"] = lambda request, d=document: (
                     self.document(request, d)
@@ -228,10 +229,15 @@ class FakeSite:
             entries.append({**issue, "fields": {k: v for k, v in values.items() if k != "summary"}})
         return httpx.Response(200, json={"issues": entries, "isLast": True})
 
+    def many(self) -> dict[str, dict[str, object]]:
+        """Give the many pages in the period, by id, as the switch has them: none by default."""
+        ids = [str(5000 + i) for i in range(self.many_pages)]
+        return {page_id: v2_page(id=page_id, version=stamp(20)) for page_id in ids}
+
     def pages(self, request: httpx.Request) -> httpx.Response:
-        """Serve the pages listing in two pages, linked by _links.next."""
+        """Serve the pages listing in two pages, linked by _links.next; or the many in one."""
         if self.many_pages:
-            many = [v2_page(id=str(5000 + i), version=stamp(20)) for i in range(self.many_pages)]
+            many = list(self.many().values())
             return httpx.Response(200, json={"results": many, "_links": {}})
         if "cursor" in request.url.params:
             return httpx.Response(200, json={"results": [PAGES["1003"]], "_links": {}})
@@ -307,6 +313,29 @@ def test_a_space_is_listed_whole_with_its_folders_and_authors(tmp_path: Path) ->
     ]
     assert sorted(folder.id for folder in store.folders(SPACE)) == ["2001", "2002"]  # type: ignore[union-attr]
     assert [user.display_name for user in store.users()] == ["A Person"]  # type: ignore[union-attr]
+
+
+def test_a_run_reports_its_targets_their_listings_documents_and_probes(tmp_path: Path) -> None:
+    """Each task's last event progress, as it ends: the space's, its probes, the project's.
+
+    The space's pages are listed in two pages, its blog posts in one; it lists three
+    pages and a post. Nothing was stored before, so nothing is probed. The search reads
+    one page of two issues.
+    """
+    with capture_logs() as events:
+        run(RawStore(tmp_path / "raw"), FakeSite())
+    assert [
+        (event["task"], event["done"], event["total"])
+        for event in events
+        if event["event"] == "progress"
+    ] == [
+        ("listing", 3, None),
+        ("documents", 4, 4),
+        ("probes", 0, 0),
+        ("listing", 1, None),
+        ("documents", 2, 2),
+        ("targets", 2, 2),
+    ]
 
 
 def test_a_second_run_fetches_no_document_again(tmp_path: Path) -> None:

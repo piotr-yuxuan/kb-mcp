@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from ipaddress import IPv4Address
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
@@ -12,7 +13,7 @@ import pytest
 from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model
 from pydantic_settings import EnvSettingsSource
 
-from atlassian_offline_mcp.config.app.settings import load_settings
+from atlassian_offline_mcp.config.app.settings import UnsafeDataDirError, load_settings
 from atlassian_offline_mcp.config.domain.settings import (
     SETTING_PATHS,
     ConfluenceSource,
@@ -41,6 +42,17 @@ SENTINEL = "sentinel-0c1e5a"
 def from_file(values: dict[str, object]) -> Settings:
     """Build the settings from a settings file's values alone."""
     return settings_of(file_entries(values, FILE), HOME).settings
+
+
+def user_log_folder(home: Path) -> Path:
+    """Give the user's log folder under a home, where the platform keeps it, by plan 016.
+
+    On Linux, without ``XDG_STATE_HOME``, as platformdirs places it.
+    """
+    return {
+        "darwin": home / "Library" / "Logs" / "atlassian-offline-mcp",
+        "linux": home / ".local" / "state" / "atlassian-offline-mcp" / "log",
+    }[sys.platform]
 
 
 def test_settings_are_normalised() -> None:
@@ -129,12 +141,15 @@ def test_every_setting_is_described() -> None:
 def test_each_setting_is_read_by_its_kind() -> None:
     """Tables and lists are JSON; the token and the embedding key are the secrets.
 
-    The data directory is a path, in which ``~`` is the home.
+    The data directory and the log folder are paths, in which ``~`` is the home.
     """
     assert {path: kind for path, kind in SETTING_PATHS.items() if kind != "value"} == {
         ("api_token",): "secret",
         ("data_dir",): "path",
         ("embedding_api_key",): "secret",
+        ("logs",): "table",
+        ("logs", "dir"): "path",
+        ("telemetry",): "table",
         ("sources",): "table",
         ("sources", "confluence"): "table",
         ("sources", "confluence", "spaces"): "list",
@@ -209,6 +224,8 @@ def test_a_setting_of_a_type_that_has_no_kind_is_refused(annotation: object) -> 
         ({"embedding_url": "http:///v1"}, "embedding_url (config.toml):"),
         ({"embedding_url": 11434}, "embedding_url (config.toml):"),
         ({"search_mode": "fuzzy"}, "search_mode (config.toml):"),
+        ({"logs": {"dir": "relative/logs"}}, "logs.dir (config.toml): an absolute path"),
+        ({"logs": "~/logs"}, "logs (config.toml):"),
     ],
 )
 def test_unusable_settings_are_refused_by_name_and_layer(
@@ -217,6 +234,56 @@ def test_unusable_settings_are_refused_by_name_and_layer(
     """Each refusal names the setting at fault and the layer that gave it."""
     with pytest.raises(SettingsError, match=re.escape(named)):
         from_file(values)
+
+
+@pytest.mark.parametrize(
+    ("given", "endpoint"),
+    [
+        ("http://127.0.0.1:4318", "http://127.0.0.1:4318"),
+        ("http://127.0.0.1:4318/", "http://127.0.0.1:4318"),
+        ("HTTP://127.1.2.3:4318", "http://127.1.2.3:4318"),
+        ("http://[::1]:4318", "http://[::1]:4318"),
+    ],
+)
+def test_telemetry_s_endpoint_is_an_http_address_of_this_machine(given: str, endpoint: str) -> None:
+    """A literal address of this machine, with a port, which OTLP's paths follow."""
+    assert from_file({"telemetry": {"endpoint": given}}).telemetry.endpoint == endpoint
+
+
+def test_telemetry_is_off_by_default() -> None:
+    """No endpoint is set, so nothing is sent anywhere."""
+    assert from_file({}).telemetry.endpoint is None
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        "http://localhost:4318",
+        "http://192.0.2.1:4318",
+        "http://user@127.0.0.1:4318",
+        "https://127.0.0.1:4318",
+        "http://127.0.0.1",
+        "http://127.0.0.1:4318/v1/traces",
+        "http://127.0.0.1:4318?key=1",
+        "http://127.0.0.1:4318#here",
+        "http://127.0.0.1:0",
+        "http://[::1:4318",
+        "127.0.0.1:4318",
+    ],
+)
+def test_telemetry_s_endpoint_elsewhere_or_with_more_than_its_address_is_refused(
+    given: str,
+) -> None:
+    """Telemetry holds titles and queries: this machine alone, written as an address.
+
+    Named, the setting and its layer, with what it must be, never its value.
+    """
+    with pytest.raises(SettingsError) as refused:
+        from_file({"telemetry": {"endpoint": given}})
+    assert str(refused.value) == (
+        "telemetry.endpoint (config.toml): an http address of this machine, with a port and"
+        " no path, such as http://127.0.0.1:4318; write 127.0.0.1 for localhost"
+    )
 
 
 def test_an_empty_table_of_settings_leaves_them_at_their_defaults() -> None:
@@ -384,6 +451,123 @@ def loaded_from(
     return load_settings(config, flags or {}, home)
 
 
+def test_the_log_folder_is_the_user_s_unless_one_is_set(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """By default where the platform keeps the user's logs, an empty table too; else as set.
+
+    ``~`` in the one set is the home.
+    """
+    home = (tmp_path / "home").resolve()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    by_default = loaded_from(tmp_path, "")
+    assert by_default.settings.logs.dir == user_log_folder(home)
+    assert by_default.layer("logs.dir") == "default"
+    empty = loaded_from(tmp_path, "[logs]\n")
+    assert empty.settings.logs.dir == user_log_folder(home)
+    assert empty.layer("logs.dir") == FILE
+    assert loaded_from(tmp_path, '[logs]\ndir = "~/logs"\n').settings.logs.dir == home / "logs"
+
+
+def test_the_user_s_log_folder_passes_the_guard_too(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A home inside a git working tree holds it: refused, naming the default layer."""
+    (tmp_path / "repository" / ".git").mkdir(parents=True)
+    home = (tmp_path / "repository" / "home").resolve()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    elsewhere = {"--data-dir": ("data_dir", str(tmp_path / "data"))}
+    with pytest.raises(UnsafeDataDirError, match=r"^logs\.dir \(default\): inside the git"):
+        load_settings(tmp_path / FILE, elsewhere, home)
+
+
+def test_opentelemetry_s_endpoint_is_a_layer_below_the_file(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Shared by other programs, it gives the endpoint that no setting gives, named.
+
+    The file's, then the variable's, replace it, and it is said to be replaced.
+    """
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
+    shared = loaded_from(tmp_path, "")
+    assert shared.settings.telemetry.endpoint == "http://127.0.0.1:4317"
+    assert shared.layers == {"telemetry.endpoint": "OTEL_EXPORTER_OTLP_ENDPOINT"}
+    assert shared.ignored == ()
+
+    text = '[telemetry]\nendpoint = "http://127.0.0.1:4318"\n'
+    from_the_file = loaded_from(tmp_path, text)
+    assert from_the_file.settings.telemetry.endpoint == "http://127.0.0.1:4318"
+    assert from_the_file.layers == {"telemetry.endpoint": FILE}
+    assert from_the_file.ignored == (
+        Ignored("telemetry.endpoint", "OTEL_EXPORTER_OTLP_ENDPOINT", f"replaced by {FILE}"),
+    )
+
+    variable = "ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT"
+    monkeypatch.setenv(variable, "http://127.0.0.1:4319")
+    from_the_variable = loaded_from(tmp_path, text)
+    assert from_the_variable.settings.telemetry.endpoint == "http://127.0.0.1:4319"
+    assert from_the_variable.layers == {"telemetry.endpoint": variable}
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        "http://localhost:4318",
+        f"http://{SENTINEL}.example.invalid:4318",
+        f"http://{SENTINEL}@127.0.0.1:4318",
+        "https://127.0.0.1:4318",
+        "http://127.0.0.1:4318/v1/traces",
+        "",
+    ],
+)
+def test_opentelemetry_s_endpoint_that_the_setting_would_refuse_is_ignored(
+    tmp_path: Path, monkeypatch: MonkeyPatch, given: str
+) -> None:
+    """Said, with what it must be, never its value; telemetry stays off, or as set."""
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", given)
+    loaded = loaded_from(tmp_path, "")
+    assert loaded.settings.telemetry.endpoint is None
+    assert loaded.layers == {}
+    (ignored,) = loaded.ignored
+    assert (ignored.setting, ignored.layer) == ("telemetry.endpoint", "OTEL_EXPORTER_OTLP_ENDPOINT")
+    assert ignored.why.startswith("not an http address of this machine, with a port and no path")
+    assert SENTINEL not in ignored.why
+    text = '[telemetry]\nendpoint = "http://127.0.0.1:4318"\n'
+    assert loaded_from(tmp_path, text).settings.telemetry.endpoint == "http://127.0.0.1:4318"
+
+
+@pytest.mark.parametrize("disabled", ["true", "TRUE", " True\n"])
+def test_opentelemetry_disabled_leaves_telemetry_s_endpoint_unset_whatever_gave_it(
+    tmp_path: Path, monkeypatch: MonkeyPatch, disabled: str
+) -> None:
+    """``OTEL_SDK_DISABLED``, true as the SDK reads it, is above every layer.
+
+    The values it replaces are said to be, the file's and the variables' alike.
+    """
+    monkeypatch.setenv("OTEL_SDK_DISABLED", disabled)
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
+    loaded = loaded_from(tmp_path, '[telemetry]\nendpoint = "http://127.0.0.1:4318"\n')
+    assert loaded.settings.telemetry.endpoint is None
+    assert loaded.layers == {"telemetry.endpoint": "OTEL_SDK_DISABLED"}
+    assert loaded.ignored == (
+        Ignored("telemetry.endpoint", "OTEL_EXPORTER_OTLP_ENDPOINT", f"replaced by {FILE}"),
+        Ignored("telemetry.endpoint", FILE, "replaced by OTEL_SDK_DISABLED"),
+    )
+
+
+@pytest.mark.parametrize("enabled", ["false", "1", "yes", ""])
+def test_opentelemetry_disabled_by_any_other_value_leaves_telemetry_on(
+    tmp_path: Path, monkeypatch: MonkeyPatch, enabled: str
+) -> None:
+    """OpenTelemetry's specification takes any value but true as false, so does the SDK."""
+    monkeypatch.setenv("OTEL_SDK_DISABLED", enabled)
+    loaded = loaded_from(tmp_path, '[telemetry]\nendpoint = "http://127.0.0.1:4318"\n')
+    assert loaded.settings.telemetry.endpoint == "http://127.0.0.1:4318"
+    assert loaded.ignored == ()
+
+
 def test_each_layer_wins_over_the_weaker_and_the_weaker_is_ignored(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
@@ -441,6 +625,8 @@ def test_each_setting_s_variable_gives_its_value_and_names_its_layer(
         "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY": f"{SENTINEL}-key",
         "ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES": '["ENG"]',
         "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS": '["PRB", "PAY"]',
+        "ATLASSIAN_OFFLINE_MCP_LOGS__DIR": "~/logs",
+        "ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT": "http://127.0.0.1:4318",
     }
     for name, value in given.items():
         monkeypatch.setenv(name, value)
@@ -460,6 +646,8 @@ def test_each_setting_s_variable_gives_its_value_and_names_its_layer(
     assert settings.embedding_api_key.get_secret_value() == f"{SENTINEL}-key"
     assert settings.sources.confluence.spaces == ("ENG",)
     assert settings.sources.jira.projects == ("PRB", "PAY")
+    assert settings.logs.dir == (tmp_path / "home" / "logs").resolve()
+    assert settings.telemetry.endpoint == "http://127.0.0.1:4318"
     assert loaded.layers == {
         name.removeprefix("ATLASSIAN_OFFLINE_MCP_").lower().replace("__", "."): name
         for name in given

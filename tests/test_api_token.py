@@ -22,7 +22,9 @@ from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.endpoint import Scripted, serving
+from tests.test_cli import logged_as, the_log_file
 from tests.test_download import SITE, FakeSite
+from tests.test_observed import said
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -128,10 +130,14 @@ def test_a_run_with_the_token_leaves_a_saved_session_as_it_was(
 def test_a_download_refused_by_the_site_exits_3_naming_the_variables(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], dry_run: list[str]
 ) -> None:
-    """A 401: the email and the token to check, by their variables."""
+    """A 401: the email and the token to check, by their variables, in an error."""
     served(monkeypatch, lambda _: httpx.Response(401))
     assert main(download(home, *dry_run)) == SIGN_IN_NEEDED
-    assert f"sign-in needed: check {EMAIL} and {CREDENTIAL}\n" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert ("error", "download.sign_in_needed") in said(err)
+    assert f"check {EMAIL} and {CREDENTIAL}" in err
+    (needed,) = logged_as(home, "download.sign_in_needed")
+    assert needed["hint"] == f"check {EMAIL} and {CREDENTIAL}"
 
 
 def test_the_doctor_signs_in_with_the_token(
@@ -164,11 +170,15 @@ def test_the_doctor_refused_by_the_site_exits_3_naming_the_variables(
 def test_the_doctor_refuses_a_token_without_its_email_and_asks_nothing(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Exit 2 naming the email, as a download does, before any request."""
+    """Exit 2 naming the email, as a download does, before any request: one error alone."""
     monkeypatch.delenv(EMAIL)
     sent = served(monkeypatch, FakeSite().handle)
     assert main(["doctor", "--config", str(home / "none.toml"), "--site", SITE]) == REFUSED
-    assert capsys.readouterr() == ("", f"refused: {WITHOUT_EMAIL}\n")
+    out, err = capsys.readouterr()
+    assert out == ""
+    (line,) = err.splitlines()
+    assert said(line) == [("error", "run.refused")]
+    assert WITHOUT_EMAIL in line
     assert sent == []
 
 
@@ -247,14 +257,18 @@ def test_refused_settings_show_no_secret(
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_DATA_DIR", "relative")
     assert main(download(home)) == REFUSED
     out, err = capsys.readouterr()
-    assert "settings refused: data_dir" in err
+    assert said(err) == [("error", "settings.refused")]
+    assert "data_dir (ATLASSIAN_OFFLINE_MCP_DATA_DIR): " in err
     assert shown(out + err) == []
 
 
 def test_an_index_that_fails_to_embed_shows_no_key(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Its summary says the key is set; its error, that the model is missing, without it."""
+    """Its summary says the key is set; its error, that the model is missing, without it.
+
+    Nor does the run's log file show it.
+    """
     (home / "data" / "docs").mkdir(parents=True)
     monkeypatch.setenv(KEY, KEY_SENTINEL)
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "hybrid")
@@ -264,5 +278,6 @@ def test_an_index_that_fails_to_embed_shows_no_key(
         assert main(["index", *options, "--summary", "detailed"]) == 1
     out, err = capsys.readouterr()
     assert "embedding_api_key: set" in err
-    assert "index not built" in err
-    assert shown(out + err) == []
+    assert ("error", "index.not_built") in said(err)
+    assert [line["level"] for line in logged_as(home, "index.not_built")] == ["error"]
+    assert shown(out + err + the_log_file(home).read_text("utf-8")) == []

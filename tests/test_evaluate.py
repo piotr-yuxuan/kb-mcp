@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 import yaml
+from structlog.testing import capture_logs
 
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
@@ -31,8 +32,10 @@ from atlassian_offline_mcp.search.adapters.embedding import ModelError
 from atlassian_offline_mcp.search.adapters.sqlite_index import reading
 from atlassian_offline_mcp.search.app.indexing import build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning
-from tests.endpoint import DIGEST, Scripted, serving, tiny
+from tests.endpoint import DIGEST, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.test_cli import logged_as
+from tests.test_observed import said
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -271,10 +274,37 @@ def test_the_command_gives_each_model_s_run_and_the_results_file_as_json(
 
 
 def test_a_refused_golden_file_exits_2(data: Path, capsys: CaptureFixture[str]) -> None:
-    """The command names the fault and evaluates nothing."""
+    """The command names the fault, by the error eval.refused, and evaluates nothing.
+
+    The run's log file holds the error and its reason.
+    """
     (data / "golden.yaml").write_text("- {id: q1}", encoding="utf-8")
     assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data)]) == REFUSED
-    assert "golden[0].expected: missing" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert ("error", "eval.refused") in said(err)
+    assert "golden[0].expected: missing" in err
+    (refused,) = logged_as(data.parent / "home", "eval.refused")
+    assert refused["level"] == "error"
+    assert "golden[0].expected: missing" in str(refused["reason"])
+    assert not (data / "eval").exists()
+
+
+def test_an_endpoint_that_does_not_answer_evaluates_nothing(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Ollama not started: exit 1, the error eval.not_evaluated saying what to run.
+
+    The run's log file holds it too, and no results are written.
+    """
+    (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
+    with nothing_listening() as url:
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data, url)]) == 1
+    err = capsys.readouterr().err
+    assert ("error", "eval.not_evaluated") in said(err)
+    assert "ollama serve" in err
+    (failed,) = logged_as(data.parent / "home", "eval.not_evaluated")
+    assert failed["level"] == "error"
+    assert "ollama serve" in str(failed["reason"])
     assert not (data / "eval").exists()
 
 
@@ -300,7 +330,9 @@ def test_an_endpoint_elsewhere_without_the_flag_exits_2(
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     remote = options(data, "https://embeddings.example/v1")
     assert main(["eval", "--yes", str(data / "golden.yaml"), *remote]) == REFUSED
-    assert "refused: embedding_url: not an address of this machine" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert said(err) == [("error", "run.refused")]
+    assert "embedding_url: not an address of this machine" in err
     assert not (data / "eval").exists()
 
 
@@ -319,6 +351,19 @@ def ticking() -> Callable[[], float]:
     """Return a clock that moves one second at each reading."""
     ticks = count()
     return lambda: float(next(ticks))
+
+
+def test_a_model_reports_its_index_s_tasks_then_every_question_in_every_mode(
+    data: Path,
+) -> None:
+    """Its files, its texts to embed, then the questions asked by words, meaning and both."""
+    questions = golden(data)
+    with capture_logs() as events:
+        evaluate(Settings(data_dir=data, model="tiny"), questions, [tiny()], ticking(), MOMENT)
+    reported = [(each["task"], each["done"], each["total"]) for each in events if "task" in each]
+    assert [task for task, _, _ in reported] == ["files", "texts to embed", "questions"]
+    assert all(done == total for _, done, total in reported)
+    assert reported[-1][1] == 3 * len(questions)  # lexical, semantic and hybrid
 
 
 def test_a_ref_missing_from_the_index_evaluated_is_refused(data: Path) -> None:

@@ -3,7 +3,9 @@
 A method's name, parameters and defaults are its tool's schema, and continuation calls
 are written from them, so the two never drift apart. Each call opens the index for
 itself, so a rebuilt index is read from the next call on. A call that cannot be
-answered as asked raises ``UnanswerableError``, whose message says what would do.
+answered as asked raises ``UnanswerableError``, whose message says what would do. A
+ranking's search by words and by meaning are each a span, within the call's own, as
+``docs/reference/telemetry/serve.md`` lists them.
 """
 
 from __future__ import annotations
@@ -14,6 +16,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, TypedDict
+
+import structlog
+from opentelemetry import metrics, trace
 
 from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
@@ -54,6 +59,11 @@ NO_WORDS = (
 NOT_MIRRORED = (
     "Not mirrored: the mirror holds no such document. It holds what was downloaded;"
     " status() says which spaces and projects, and search() finds by words."
+)
+TRACER = trace.get_tracer(__name__)
+# The searches asked by meaning that ranked by words alone, by the mode asked.
+FALLBACKS = metrics.get_meter(__name__).create_counter(
+    "aom.serve.fallbacks", unit="{fallback}", description="Searches by meaning ranked by words"
 )
 
 
@@ -109,20 +119,27 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
 
     Lexical: by words, as 006 ranks. Semantic: the nearest by meaning. Hybrid: both,
     fused by reciprocal rank. Sorted by update, or with no meaning to search, by words,
-    with a note saying why. A document is shown by meaning when that ranks it higher.
+    with a note saying why, which is the warning ``search.fallback``, counted in
+    ``aom.serve.fallbacks``. A document is shown by meaning when that ranks it higher.
+    The search by words is the span ``search.lexical``, by meaning ``search.semantic``.
     """
     planned, filters, by_update = asked.planned, asked.filters, asked.by_update
-    found = [reader.scores(each, filters, every=by_update) for each in planned.expressions]
-    named = [*planned.identifiers.keys, *planned.identifiers.ids]
-    keys, ids = planned.identifiers.keys, planned.identifiers.ids
-    pinned = reader.entries(keys=keys, ids=ids, filters=filters)
-    first = [e.path for e in sorted(pinned, key=lambda e: named.index(e.front.key or e.front.id))]
-    words = rank((one for one, _ in found), first, by_update=by_update)
-    whole = all(every for _, every in found)
+    with TRACER.start_as_current_span("search.lexical"):
+        found = [reader.scores(each, filters, every=by_update) for each in planned.expressions]
+        named = [*planned.identifiers.keys, *planned.identifiers.ids]
+        keys, ids = planned.identifiers.keys, planned.identifiers.ids
+        pinned = reader.entries(keys=keys, ids=ids, filters=filters)
+        ordered = sorted(pinned, key=lambda e: named.index(e.front.key or e.front.id))
+        first = [entry.path for entry in ordered]
+        words = rank((one for one, _ in found), first, by_update=by_update)
+        whole = all(every for _, every in found)
     if asked.mode == "lexical" or by_update:
         return Ranking(words, whole, {})
-    near = meaning.nearest(reader, asked.query, filters) if meaning else Nearest({}, NOT_SET_UP)
+    with TRACER.start_as_current_span("search.semantic"):
+        near = meaning.nearest(reader, asked.query, filters) if meaning else Nearest({}, NOT_SET_UP)
     if near.reason:
+        FALLBACKS.add(1, {"aom.mode": asked.mode})
+        structlog.get_logger().warning("search.fallback", mode=asked.mode, reason=near.reason)
         note = f" Ranked by words alone: {near.reason}."
         return Ranking(words, whole, {}, note=note)
     scores = {path: score for path, (score, *_) in near.found.items()}
@@ -297,6 +314,11 @@ class Library:
                 shown = sorted(reader.entries(paths=paths), key=lambda e: paths.index(e.path))
             else:
                 (total, shown), whole = reader.recent(narrowed, offset, size), True
+            # On the call's span, the SDK's: the mode, the documents found, whether words
+            # stood in for meaning. Said here, as the docstring is the agent's to read.
+            trace.get_current_span().set_attributes(
+                {"aom.mode": self._mode, "aom.hits": total, "aom.fallback": bool(ranked.note)}
+            )
             items = []
             for number, entry in enumerate(shown, offset + 1):
                 passage = passage_of(reader, entry, ranked, planned)

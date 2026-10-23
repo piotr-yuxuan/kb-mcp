@@ -17,6 +17,8 @@ from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.domain.search import Embedded
 from tests.endpoint import DIMENSIONS, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, fillers, page, write
+from tests.test_cli import logged_as
+from tests.test_observed import said
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -181,10 +183,34 @@ def test_the_command_in_short_counts_the_pieces_and_those_embedded_now(
     assert capsys.readouterr().out.endswith(f"{pieces}\nembedded now: 0\n")
 
 
+def test_the_command_reports_its_files_then_its_texts_to_embed(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """In the log file, each task's last event progress: all done; the next run embeds none."""
+    with serving(Scripted()) as url:
+        assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
+        pieces = int(capsys.readouterr().out.splitlines()[-2].removeprefix("pieces: "))
+        assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
+    files = FILLER_PAGES + 1
+    assert [
+        (line["task"], line["done"], line["total"])
+        for line in logged_as(data.parent / "home", "progress")
+    ] == [
+        ("files", files, files),
+        ("texts to embed", pieces, pieces),
+        ("files", files, files),
+        ("texts to embed", 0, 0),
+    ]
+
+
 def test_an_endpoint_that_stops_answering_leaves_the_index_in_place(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Ollama not started: the build fails, the index keeps its vectors, and the exit says why."""
+    """Ollama not started: the build fails, the index keeps its vectors, and the exit says why.
+
+    By the error index.not_built, with its reason and how to index by words alone,
+    which the run's log file holds too.
+    """
     with serving(Scripted()) as url:
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
     with reading(data / "index.sqlite") as reader:
@@ -194,9 +220,14 @@ def test_an_endpoint_that_stops_answering_leaves_the_index_in_place(
     with nothing_listening() as url:
         assert main(["index", "--yes", *config(data, "tiny", url)]) == FAILED
     err = capsys.readouterr().err
-    assert "index not built: no answer from the embedding endpoint" in err
+    assert ("error", "index.not_built") in said(err)
+    assert "no answer from the embedding endpoint" in err
     assert "ollama serve" in err
-    assert 'or set search_mode = "lexical" to index by words alone' in err
+    words_alone = 'set search_mode = "lexical" to index by words alone'
+    assert words_alone in err
+    (failed,) = logged_as(data.parent / "home", "index.not_built")
+    assert (failed["level"], failed["hint"]) == ("error", words_alone)
+    assert str(failed["reason"]).startswith("no answer from the embedding endpoint")
     with reading(data / "index.sqlite") as reader:
         assert reader.summary() == before
 
@@ -204,13 +235,19 @@ def test_an_endpoint_that_stops_answering_leaves_the_index_in_place(
 def test_a_piece_the_model_refuses_is_named_and_asked_again(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The others are embedded, the index replaced, the exit 1; the next build asks again."""
+    """The others are embedded, the index replaced, the exit 1; the next build asks again.
+
+    The piece's document is named by the warning index.piece_refused, in the log file too.
+    """
     refused = "Rollback\nRelease\nThe deploy of the seller service."
     answers = Scripted(refused={refused})
     with serving(answers) as url:
         assert main(["index", "--yes", *config(data, "tiny", url)]) == FAILED
         err = capsys.readouterr().err
-        assert "not embedded: a piece of confluence/ENG/196845-rollback.md" in err
+        assert ("warning", "index.piece_refused") in said(err)
+        assert "confluence/ENG/196845-rollback.md" in err
+        (piece,) = logged_as(data.parent / "home", "index.piece_refused")
+        assert (piece["level"], piece["path"]) == ("warning", "confluence/ENG/196845-rollback.md")
         with reading(data / "index.sqlite") as reader:
             assert len(reader.pieces().documents) == reader.summary().sections - 1
         asked = sum(refused in each for each in answers.asked)

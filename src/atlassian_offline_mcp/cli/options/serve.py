@@ -30,5 +30,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             flags=flags,
             actions=(*actions, remote),
             refused=endpoint_by_meaning,
+            traced=False,
         )
     )

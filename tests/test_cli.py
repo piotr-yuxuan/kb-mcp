@@ -7,9 +7,12 @@ import importlib
 import json
 import os
 import pty
+import re
+import stat
 import subprocess
 import sys
 import tomllib
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, override
 
@@ -21,7 +24,10 @@ from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.config.domain.settings import SETTING_PATHS
 from atlassian_offline_mcp.kernel.exit_status import MEANINGS, ExitStatus
 from atlassian_offline_mcp.kernel.output import Output
+from tests.endpoint import nothing_listening
+from tests.test_observed import said as said_on
 from tests.test_question import read_until
+from tests.test_settings import user_log_folder
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -49,14 +55,12 @@ RUNS_PACKAGES = frozenset(
         "pydantic",
         "pydantic_core",
         "pydantic_settings",
+        "requests",
         "rich",
         "structlog",
         "yaml",
     }
 )
-# What other runs import and ``completion`` must not, by plan 015: a command loads only
-# its own code, and shells run this one at each start. The entry loads pydantic for all.
-OTHER_RUNS_PACKAGES = frozenset({"httpx", "mcp", "numpy", "playwright"})
 # A subcommand's declaration, which names its run, a module of its own.
 DECLARED = """
 from pathlib import Path
@@ -113,10 +117,14 @@ SECRETS = {
 
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
-    """Give each test a scratch home directory, so that none reads or writes the user's."""
+    """Give each test a scratch home directory, so that none reads or writes the user's.
+
+    The user's log folder is under it, as ``XDG_STATE_HOME`` is removed.
+    """
     scratch = tmp_path / "home"
     scratch.mkdir()
     monkeypatch.setenv("HOME", str(scratch))
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     return scratch
 
 
@@ -277,8 +285,11 @@ def test_the_help_on_a_terminal_has_no_colour_under_no_color(
 def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> None:
     """--version, --help, a subcommand's and a completion import no run; ``completion`` its own.
 
-    Each builds the whole parser. ``-X importtime`` names each module that the child
-    imports, so a package it does not name never reached ``sys.modules``.
+    Each builds the whole parser. ``completion``, which shells run at each start, is not
+    observed, as plan 016 decided after its review: it reads no settings, so its run
+    imports none of the runs' packages either, as --version. ``-X importtime`` names
+    each module that the child imports, so a package it does not name never reached
+    ``sys.modules``.
     """
     environment = {"HOME": str(home), "PATH": os.environ["PATH"]}
     typed = "atlassian-offline-mcp download --sp"
@@ -357,7 +368,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
                 cwd=home,
                 check=False,
             ),
-            OTHER_RUNS_PACKAGES,
+            RUNS_PACKAGES,
         ),
     )
     assert (home / "completions").read_text("utf-8").strip() == "--space"
@@ -414,6 +425,21 @@ def test_completion_prints_the_shell_code_whatever_the_settings(
     (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text("site = ", "utf-8")
     assert main(["completion"]) == 0
     assert capsys.readouterr().out == argcomplete.shellcode(["atlassian-offline-mcp"])
+
+
+def test_completion_is_not_observed_and_writes_no_script_with_q(
+    capsys: CaptureFixture[str],
+) -> None:
+    """As --version, it says nothing on stderr at any level; -q leaves its script unwritten.
+
+    Plan 016 decided so after its review, shells running it at each start; plan 015 has
+    the script be its result, which -q leaves unwritten as any result as text.
+    """
+    for level in (["-v"], ["-vv"], ["--log-level", "debug"]):
+        assert main(["completion", *level]) == 0
+        assert capsys.readouterr() == (argcomplete.shellcode(["atlassian-offline-mcp"]), "")
+    assert main(["completion", "-q"]) == 0
+    assert capsys.readouterr() == ("", "")
 
 
 @pytest.mark.parametrize("name", sorted(SUBCOMMANDS))
@@ -502,10 +528,10 @@ def test_a_level_leaves_check_s_listing_as_the_default_writes_it(
     site = "https://loud.example.invalid"
     options = ["check", "--config", str(home / "none.toml"), "--site", site]
     assert main(options) == 0
-    default = capsys.readouterr()
-    assert default.out == f"site: {site}\n"
+    default = capsys.readouterr().out
+    assert default == f"site: {site}\n"
     assert main([*options, *level]) == 0
-    assert capsys.readouterr() == default
+    assert capsys.readouterr().out == default
 
 
 def test_check_as_json_gives_settings_layers_and_ignored_values_secrets_masked(
@@ -601,6 +627,8 @@ def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
         "embedding_api_key: not set [default]\n"
         "sources.confluence.spaces: (none) [default]\n"
         "sources.jira.projects: (none) [default]\n"
+        f"logs.dir: {user_log_folder(home.resolve())} [default]\n"
+        "telemetry.endpoint: (not set) [default]\n"
     )
     assert not any(secret in out for secret in SECRETS.values())
 
@@ -653,6 +681,152 @@ def test_check_names_the_layer_of_a_refused_data_directory(
     assert "data_dir (ATLASSIAN_OFFLINE_MCP_DATA_DIR): under ~/Documents" in error
 
 
+@pytest.mark.parametrize("name", ["check", "index"])
+@pytest.mark.parametrize(
+    "refused",
+    [
+        ("~/Dropbox/logs", "under a Dropbox folder"),
+        ("~/project/logs", "inside the git working tree"),
+    ],
+)
+def test_check_and_index_refuse_a_log_folder_that_could_leave_the_machine(
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    name: str,
+    refused: tuple[str, str],
+) -> None:
+    """Logs hold titles and queries: the data directory's guard exits 2, naming logs.dir.
+
+    From the file, then from its variable, each named as the layer, by the error
+    settings.refused; the run never starts, so no log file is written anywhere.
+    """
+    folder, reason = refused
+    (home / "project" / ".git").mkdir(parents=True)
+    config = home / "config.toml"
+    config.write_text(f'[logs]\ndir = "{folder}"\n', "utf-8")
+    assert main([name, "--config", str(config)]) == BAD_SETTINGS
+    error = capsys.readouterr().err
+    assert said_on(error) == [("error", "settings.refused")]
+    assert f"logs.dir (config.toml): {reason}" in error
+
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_LOGS__DIR", folder)
+    assert main([name, "--config", str(home / "none.toml")]) == BAD_SETTINGS
+    error = capsys.readouterr().err
+    assert said_on(error) == [("error", "settings.refused")]
+    assert f"logs.dir (ATLASSIAN_OFFLINE_MCP_LOGS__DIR): {reason}" in error
+    assert not (home / folder.removeprefix("~/")).exists()
+    assert not user_log_folder(home.resolve()).exists()
+
+
+# Endpoints that telemetry may not go to, by plan 016: a name, another host, a user, https.
+ELSEWHERE = [
+    "http://localhost:4318",
+    "http://192.0.2.1:4318",
+    "http://user@127.0.0.1:4318",
+    "https://127.0.0.1:4318",
+]
+# What telemetry's endpoint must be, as the setting's refusal says.
+TELEMETRY_RULE = (
+    "an http address of this machine, with a port and no path, such as"
+    " http://127.0.0.1:4318; write 127.0.0.1 for localhost"
+)
+
+
+@pytest.mark.parametrize("endpoint", ELSEWHERE)
+def test_check_refuses_a_telemetry_endpoint_off_this_machine_naming_it(
+    home: Path, capsys: CaptureFixture[str], endpoint: str
+) -> None:
+    """The setting exits 2, naming itself, its layer and what it must be, in one error."""
+    config = home / "config.toml"
+    config.write_text(f'[telemetry]\nendpoint = "{endpoint}"\n', "utf-8")
+    assert main(["check", "--config", str(config)]) == BAD_SETTINGS
+    (line,) = capsys.readouterr().err.splitlines()
+    assert said_on(line) == [("error", "settings.refused")]
+    assert f"telemetry.endpoint (config.toml): {TELEMETRY_RULE}" in line
+
+
+@pytest.mark.parametrize("endpoint", ELSEWHERE)
+def test_check_ignores_opentelemetry_s_endpoint_off_this_machine_and_says_so(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], endpoint: str
+) -> None:
+    """Other programs share the variable: said ignored, it leaves telemetry off, exit 0."""
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
+    options = ["check", "--config", str(home / "none.toml"), "--summary", "detailed"]
+    assert main(options) == 0
+    out, err = capsys.readouterr()
+    assert "telemetry.endpoint: (not set) [default]\n" in out
+    assert (
+        err == f"ignored: telemetry.endpoint (OTEL_EXPORTER_OTLP_ENDPOINT): not {TELEMETRY_RULE}\n"
+    )
+
+
+def test_check_names_the_layer_of_telemetry_s_endpoint_the_setting_first(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """OpenTelemetry's variable, below the file: shown as the layer, or said replaced.
+
+    ``OTEL_SDK_DISABLED=true`` replaces whatever gave it, leaving it unset. Nothing
+    listens at either endpoint, which each run says once, after it says telemetry on.
+    """
+    with nothing_listening() as shared, nothing_listening() as set_here:
+        variable, setting = shared.removesuffix("/v1"), set_here.removesuffix("/v1")
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", variable)
+        options = ["check", "--summary", "detailed", "--config"]
+        assert main([*options, str(home / "none.toml")]) == 0
+        out, err = capsys.readouterr()
+        assert f"telemetry.endpoint: {variable} [OTEL_EXPORTER_OTLP_ENDPOINT]\n" in out
+        on, undelivered = err.splitlines()
+        assert on == f"telemetry: on, to {variable} (OTEL_EXPORTER_OTLP_ENDPOINT)"
+        assert said_on(undelivered) == [("warning", "telemetry.undelivered")]
+
+        config = home / "config.toml"
+        config.write_text(f'[telemetry]\nendpoint = "{setting}"\n', "utf-8")
+        assert main([*options, str(config)]) == 0
+        out, err = capsys.readouterr()
+        assert f"telemetry.endpoint: {setting} [config.toml]\n" in out
+        on, ignored, undelivered = err.splitlines()
+        assert on == f"telemetry: on, to {setting} (config.toml)"
+        assert ignored == (
+            "ignored: telemetry.endpoint (OTEL_EXPORTER_OTLP_ENDPOINT): replaced by config.toml"
+        )
+        assert said_on(undelivered) == [("warning", "telemetry.undelivered")]
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
+    assert main([*options, str(config)]) == 0
+    out, err = capsys.readouterr()
+    assert "telemetry.endpoint: (not set) [OTEL_SDK_DISABLED]\n" in out
+    assert "ignored: telemetry.endpoint (config.toml): replaced by OTEL_SDK_DISABLED\n" in err
+
+
+def test_check_says_that_telemetry_is_on_and_names_its_layer_at_info(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """A command that only reads has no summary, but says that telemetry is on, and where.
+
+    run.start names the endpoint and its layer too. OpenTelemetry's variable alone turns
+    telemetry on; nothing listens there, which the run says once: two lines at the
+    default level.
+    """
+    with nothing_listening() as url:
+        endpoint = url.removesuffix("/v1")
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
+        options = ["check", "--config", str(home / "none.toml")]
+        assert main(options) == 0
+        on, undelivered = capsys.readouterr().err.splitlines()
+        assert on == f"telemetry: on, to {endpoint} (OTEL_EXPORTER_OTLP_ENDPOINT)"
+        assert said_on(undelivered) == [("warning", "telemetry.undelivered")]
+        assert main([*options, "-v"]) == 0
+        err = capsys.readouterr().err
+    (started,) = [line for line in err.splitlines() if said_on(line) == [("info", "run.start")]]
+    assert f"telemetry={endpoint} " in started
+    assert "telemetry_layer=OTEL_EXPORTER_OTLP_ENDPOINT" in started
+    starts = logged_as(home, "run.start")
+    assert [(start["telemetry"], start["telemetry_layer"]) for start in starts] == [
+        (endpoint, "OTEL_EXPORTER_OTLP_ENDPOINT")
+    ] * len(["default", "-v"])
+
+
 def test_check_refuses_bad_settings_by_name(home: Path, capsys: CaptureFixture[str]) -> None:
     """A settings file with an unknown key exits 2, naming it and the file."""
     config = home / "config.toml"
@@ -668,7 +842,8 @@ def test_check_refuses_a_list_variable_not_in_json_by_its_name(
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", "PLAT,PRB")
     assert main(["check", "--config", str(home / "none.toml")]) == BAD_SETTINGS
     error = capsys.readouterr().err
-    assert error.startswith("settings refused: ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS")
+    assert said_on(error) == [("error", "settings.refused")]
+    assert "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS" in error
     assert "PLAT" not in error
 
 
@@ -863,3 +1038,294 @@ def test_a_flag_overrides_the_settings_file(home: Path, capsys: CaptureFixture[s
     config.write_text('data_dir = "~/from-file"\n', "utf-8")
     assert main(["check", "--config", str(config), "--data-dir", "~/from-flag"]) == 0
     assert capsys.readouterr().out == f"data_dir: {(home / 'from-flag').resolve()}\n"
+
+
+# The site that the runs below are given, by --site.
+SITE = "https://logged.example.invalid"
+# Each line of a run's log file holds these fields, by plan 016.
+LOG_FIELDS = {"timestamp", "level", "event", "logger", "run", "command"}
+# A run that says something at each level, then ends.
+SAYING = """
+import structlog
+
+def run(arguments, loaded):
+    for level in ("debug", "info", "warning", "error"):
+        getattr(structlog.get_logger(), level)(f"extra.{level}")
+    return 0, None
+"""
+
+
+def the_log_file(home: Path) -> Path:
+    """Give the one log file in the user's log folder under a scratch home."""
+    (path,) = user_log_folder(home.resolve()).iterdir()
+    return path
+
+
+def logged(path: Path) -> list[dict[str, object]]:
+    """Read a log file's lines, each a JSON object."""
+    return [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+
+
+def logged_as(home: Path, event: str) -> list[dict[str, object]]:
+    """Give the lines of the log files under a scratch home whose event is ``event``.
+
+    Every run's file, a command's in the order of their names, so of their starts.
+    """
+    return [
+        line
+        for path in sorted(user_log_folder(home.resolve()).iterdir())
+        for line in logged(path)
+        if line["event"] == event
+    ]
+
+
+def test_check_writes_one_log_file_at_the_platform_s_default_from_run_start_to_run_end(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The user's alone, in their log folder; run.start says the settings as check's JSON.
+
+    The secrets that check masks are redacted there, by their names.
+    """
+    for name, value in SECRETS.items():
+        monkeypatch.setenv(name, value)
+    given = ["check", "--config", str(home / "none.toml"), "--site", SITE, "--format", "json"]
+    assert main(given) == 0
+    document = json.loads(capsys.readouterr().out)
+    path = the_log_file(home)
+    assert re.fullmatch(rf"check-[0-9]{{8}}T[0-9]{{6}}Z-{os.getpid()}\.jsonl", path.name)
+    assert stat.S_IMODE(path.parent.stat().st_mode) == stat.S_IRWXU
+    assert stat.S_IMODE(path.stat().st_mode) == stat.S_IRUSR | stat.S_IWUSR
+    assert not any(secret in path.read_text("utf-8") for secret in SECRETS.values())
+    start, end = logged(path)
+    for line in (start, end):
+        assert line.keys() >= LOG_FIELDS
+        assert line["command"] == "check"
+        assert re.fullmatch("[0-9a-f]{16}", str(line["run"]))
+    assert start["run"] == end["run"]
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]
+    for secret in ("api_token", "embedding_api_key"):  # by their names, at any depth
+        document["settings"][secret] = document["layers"][secret] = "[redacted]"
+    assert {key: start[key] for key in ("level", "event", "version", "arguments")} == {
+        "level": "info",
+        "event": "run.start",
+        "version": project["version"],
+        "arguments": given,
+    }
+    assert start["settings"] == document
+    assert (start["log_file"], start["telemetry"], start["telemetry_layer"]) == (
+        str(path),
+        None,
+        "default",
+    )
+    assert (end["level"], end["event"], end["status"]) == ("info", "run.end", 0)
+    assert isinstance(end["seconds"], float)
+    assert end["seconds"] >= 0
+
+
+def test_a_run_removes_every_command_s_log_files_past_30_days_but_not_another_program_s(
+    home: Path,
+) -> None:
+    """``check`` removes ``doctor``'s and ``serve``'s as its own, by plan 016.
+
+    A command that is rarely run, such as ``doctor``, so keeps none past 30 days. A file
+    of the same shape named after no command, another program's in a shared folder,
+    stays, as does a command's of yesterday.
+    """
+    folder = user_log_folder(home.resolve())
+    folder.mkdir(parents=True)
+    old = "20200101T000000Z"
+    gone = [f"check-{old}-7.jsonl", f"doctor-{old}-8.jsonl", f"serve-{old}-9.jsonl"]
+    kept = [
+        f"backup-{old}-7.jsonl",
+        f"index-{datetime.now(UTC) - timedelta(days=1):%Y%m%dT%H%M%SZ}-7.jsonl",
+    ]
+    for name in [*gone, *kept]:
+        (folder / name).write_text("{}\n", encoding="utf-8")
+    assert main(["check", "--config", str(home / "none.toml"), "--site", SITE]) == 0
+    (written,) = {path.name for path in folder.iterdir()} - set(kept)
+    assert written.startswith("check-")
+    assert written not in gone
+
+
+def test_help_version_completions_and_completion_write_no_log_file(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """None of them is a run: no log folder is even made under the scratch home."""
+    for asked in (["--help"], ["--version"], ["check", "--help"]):
+        with pytest.raises(SystemExit) as stopped:
+            main(asked)
+        assert stopped.value.code == 0
+    assert main(["completion"]) == 0
+    capsys.readouterr()
+    typed = "atlassian-offline-mcp check --"
+    child = subprocess.run(
+        [sys.executable, "-m", "atlassian_offline_mcp"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env={
+            "HOME": str(home),
+            "PATH": os.environ["PATH"],
+            "_ARGCOMPLETE": "1",
+            "COMP_LINE": typed,
+            "COMP_POINT": str(len(typed)),
+            "_ARGCOMPLETE_STDOUT_FILENAME": str(home / "completions"),
+        },
+        cwd=home,
+        check=False,
+    )
+    assert child.returncode == 0
+    assert "--config" in (home / "completions").read_text("utf-8")
+    assert not user_log_folder(home.resolve()).exists()
+
+
+@pytest.mark.parametrize(
+    ("level", "said"),
+    [
+        ([], []),
+        (["-v"], [("info", "run.start"), ("info", "run.end")]),
+        (["-vv"], [("info", "run.start"), ("info", "run.end")]),
+        (["-q"], []),
+    ],
+)
+def test_check_s_stderr_holds_its_level_s_lines_and_stdout_its_listing(
+    home: Path, capsys: CaptureFixture[str], level: list[str], said: list[tuple[str, str]]
+) -> None:
+    """Uncoloured, piped; stdout alike at every level but -q, which empties it.
+
+    The file holds the run from DEBUG, whatever the level.
+    """
+    assert main(["check", "--config", str(home / "none.toml"), "--site", SITE, *level]) == 0
+    out, err = capsys.readouterr()
+    assert out == ("" if level == ["-q"] else f"site: {SITE}\n")
+    assert said_on(err) == said
+    assert "\x1b" not in err
+    assert [line["event"] for line in logged(the_log_file(home))] == ["run.start", "run.end"]
+
+
+def test_quiet_leaves_check_s_json_document_as_it_is(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """-q is of stderr and of a result as text: a document is the same with it as without."""
+    given = ["check", "--config", str(home / "none.toml"), "--site", SITE, "--format", "json"]
+    assert main(given) == 0
+    document = capsys.readouterr().out
+    assert main([*given, "-q"]) == 0
+    assert capsys.readouterr() == (document, "")
+
+
+@pytest.mark.parametrize(
+    ("level", "shown"),
+    [
+        ([], ("warning", "error")),
+        (["-v"], ("info", "warning", "error")),
+        (["-vv"], ("debug", "info", "warning", "error")),
+        (["-q"], ("error",)),
+        (["--log-level", "debug"], ("debug", "info", "warning", "error")),
+        (["--log-level", "info"], ("info", "warning", "error")),
+        (["--log-level", "warning"], ("warning", "error")),
+        (["--log-level", "error"], ("error",)),
+    ],
+)
+def test_stderr_shows_what_is_of_the_level_or_above_and_the_file_all(
+    home: Path,
+    extra: Path,
+    capsys: CaptureFixture[str],
+    level: list[str],
+    shown: tuple[str, ...],
+) -> None:
+    """Warning by default, info with -v, debug with -vv, error with -q, else as named."""
+    (extra / "extra_run.py").write_text(SAYING, "utf-8")
+    assert main(["extra", "--config", str(home / "none.toml"), *level]) == 0
+    expected = [(each, f"extra.{each}") for each in shown]
+    if "info" in shown:
+        expected = [("info", "run.start"), *expected, ("info", "run.end")]
+    assert said_on(capsys.readouterr().err) == expected
+    assert [line["event"] for line in logged(the_log_file(home))] == [
+        "run.start",
+        *(f"extra.{each}" for each in ("debug", "info", "warning", "error")),
+        "run.end",
+    ]
+
+
+def test_an_unwritable_log_folder_gives_one_warning_and_no_file(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The run goes on, exit 0, its listing unchanged; the warning names the folder."""
+    (home / "a-file").write_text("", "utf-8")
+    config = home / "config.toml"
+    config.write_text('[logs]\ndir = "~/a-file/logs"\n', "utf-8")
+    assert main(["check", "--config", str(config)]) == 0
+    out, err = capsys.readouterr()
+    assert out == f"logs.dir: {home.resolve() / 'a-file' / 'logs'}\n"
+    (warning,) = err.splitlines()
+    assert said_on(warning) == [("warning", "log.unwritable")]
+    assert str(home.resolve() / "a-file" / "logs") in warning
+    assert (home / "a-file").is_file()
+
+
+@pytest.mark.parametrize(
+    ("raised", "ending"),
+    [
+        ("ValueError('the run broke')", (ExitStatus.FAILED, "error", "run.failed")),
+        ("KeyboardInterrupt()", (ExitStatus.INTERRUPTED, "warning", "run.interrupted")),
+    ],
+)
+def test_a_run_that_fails_or_is_interrupted_says_so_and_exits_with_its_status(
+    home: Path,
+    extra: Path,
+    capsys: CaptureFixture[str],
+    raised: str,
+    ending: tuple[ExitStatus, str, str],
+) -> None:
+    """On stderr and in the file, its last line; a traceback shows no frame's locals."""
+    status, *said = ending
+    sentinel = "local-sentinel-5b2c"
+    (extra / "extra_run.py").write_text(
+        f"def run(arguments, loaded):\n    held = {sentinel!r}\n    raise {raised}\n", "utf-8"
+    )
+    assert main(["extra", "--config", str(home / "none.toml")]) == status
+    _, err = capsys.readouterr()
+    assert said_on(err) == [tuple(said)]
+    path = the_log_file(home)
+    *_, last = logged(path)
+    assert [last["level"], last["event"]] == said
+    assert isinstance(last["seconds"], float)
+    assert sentinel not in err
+    assert sentinel not in path.read_text("utf-8")
+    assert ("Traceback (most recent call last):" in err) is (status == ExitStatus.FAILED)
+
+
+@pytest.mark.parametrize(("variables", "coloured"), [({"NO_COLOR": "1"}, False), ({}, True)])
+def test_stderr_on_a_terminal_is_coloured_unless_no_color(
+    home: Path, variables: dict[str, str], *, coloured: bool
+) -> None:
+    """A child's -v lines on a pseudo-terminal have escape bytes, none under NO_COLOR.
+
+    Stdout, piped, holds the listing alone.
+    """
+    controller, terminal = pty.openpty()
+    with subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "atlassian_offline_mcp",
+            "check",
+            "-v",
+            "--site",
+            "https://a.invalid",
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=terminal,
+        env={"HOME": str(home), "PATH": os.environ["PATH"], **variables},
+        cwd=home,
+    ) as child:
+        os.close(terminal)
+        said = read_until(controller, b"run.end")
+        out, _ = child.communicate()
+    os.close(controller)
+    assert child.returncode == 0
+    assert out == b"site: https://a.invalid\n"
+    assert b"run.start" in said
+    assert (b"\x1b" in said) is coloured

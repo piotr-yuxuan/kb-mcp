@@ -10,8 +10,11 @@ import pytest
 from atlassian_offline_mcp.cli.commands import login as login_command
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
+from atlassian_offline_mcp.sources.atlassian.adapters.browser import SignInFailedError
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, read_cookies
 from atlassian_offline_mcp.sources.atlassian.app import login as login_module
+from tests.test_cli import logged_as
+from tests.test_observed import said
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,6 +25,7 @@ if TYPE_CHECKING:
 SITE = "https://sandbox.example.invalid"
 INSTRUCTION = f"Sign in to {SITE} in the Chrome window that opens.\n"
 SIGNED_IN = "Signed in; the session is saved.\n"
+SIGN_IN_AGAIN = 3
 
 
 def test_only_the_site_cookies_of_the_browser_are_saved(
@@ -65,3 +69,27 @@ def test_the_command_says_what_to_do_on_stderr_and_its_result_on_stdout(
     assert err.endswith(INSTRUCTION)
     session = (tmp_path / "atlassian-offline-mcp" / "session").resolve()
     assert json.loads(out) == {"site": SITE, "session": str(session)}
+
+
+def test_a_sign_in_that_does_not_complete_exits_3_with_an_error(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The instruction, then the error login.not_signed_in with why; nothing on stdout.
+
+    The run's log file holds the error too.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    reason = "the sign-in window was closed"
+
+    def closed(*_: object, **__: object) -> None:
+        raise SignInFailedError(reason)
+
+    monkeypatch.setattr(login_command, "login", closed)
+    options = ["login", "--yes", "--config", str(tmp_path / "none.toml"), "--site", SITE]
+    assert main(options) == SIGN_IN_AGAIN
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert ("error", "login.not_signed_in") in said(err)
+    assert err.index(INSTRUCTION) < err.index("login.not_signed_in") < err.index(reason)
+    (failed,) = logged_as(tmp_path, "login.not_signed_in")
+    assert (failed["level"], failed["reason"]) == ("error", reason)

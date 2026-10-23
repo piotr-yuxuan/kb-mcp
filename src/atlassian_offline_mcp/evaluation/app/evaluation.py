@@ -3,7 +3,9 @@
 Each model gets its own index, built from the mirror like any other with the vector
 store, so a second evaluation embeds nothing new. Every question is ranked by
 ``Library.ranked``, as ``search`` ranks, in each mode; the measures and the paired
-tests of ``evaluation.domain.evaluation`` say how the modes compare.
+tests of ``evaluation.domain.evaluation`` say how the modes compare. Each model is a span;
+each question is timed and logged, and each mode's scores measured, as
+``docs/reference/telemetry/eval.md`` lists it.
 """
 
 from __future__ import annotations
@@ -13,7 +15,9 @@ from dataclasses import asdict, dataclass, field
 from statistics import median
 from typing import TYPE_CHECKING
 
+import structlog
 import yaml
+from opentelemetry import metrics, trace
 from pydantic import ValidationError
 
 from atlassian_offline_mcp.evaluation.domain.evaluation import (
@@ -30,6 +34,7 @@ from atlassian_offline_mcp.evaluation.domain.evaluation import (
 )
 from atlassian_offline_mcp.evaluation.domain.golden import Golden
 from atlassian_offline_mcp.mcp.app.tools import Library
+from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning
 
@@ -60,6 +65,16 @@ HEADER = (
 )
 # The line under the header, one cell per column.
 DIVIDER = "|---|---|---|---|---|---|---|---|---|"
+TRACER = trace.get_tracer(__name__)
+METER = metrics.get_meter(__name__)
+# How long each question took to rank, by mode; each mode's measures on all the
+# questions, as the table's first row of the mode has them, by model, mode and measure.
+QUESTION_DURATION = METER.create_histogram(
+    "aom.eval.question.duration", unit="s", description="How long a question took to rank"
+)
+SCORE = METER.create_gauge(
+    "aom.eval.score", unit="1", description="A mode's measure on all the golden questions"
+)
 
 
 class GoldenError(ValueError):
@@ -145,48 +160,83 @@ def evaluate(
 
     Each model's index is ``<evaluations>/indexes/<model>.sqlite``, its name's ``/``
     and ``:`` written ``_``. Raises EvaluationError when a mode by meaning falls back to
-    words, which would measure words twice, and ModelError for a model that fails.
+    words, which would measure words twice, and ModelError for a model that fails. For
+    each model, its index's build reports its own tasks, then the task ``questions``
+    every question in every mode, each by its id.
+
+    Each model is the span ``eval.model``; each question, timed in
+    ``aom.eval.question.duration`` and said at DEBUG by ``eval.question``; each mode's
+    measures on all the questions but Section@10, which a golden file without evidence
+    lacks, are set in ``aom.eval.score``; ``eval.evaluated`` says at INFO each model
+    evaluated.
     """
+    log = structlog.get_logger()
     runs: list[Run] = []
     for embedder in embedders:
         name = embedder.name
-        index = (
-            settings.evaluations / "indexes" / f"{name.replace('/', '_').replace(':', '_')}.sqlite"
-        )
-        index.parent.mkdir(parents=True, exist_ok=True)
-        started = clock()
-        embedding = Embedding(embedder, settings.vectors)
-        report = build_index(settings.docs, index, built_at, embedding)
-        run = Run(name, embedder.fingerprint, report.embedded, clock() - started)
-        # The model that the index names is this embedder's.
-        meaning = Meaning({name: embedder}.__getitem__)
-        library = Library(index, settings.docs, meaning, "lexical")
-        refs = ((question.id, path) for question in questions for path in question.paths)
-        if missing := next(((id_, path) for id_, path in refs if not library.resolve(path)), None):
-            message = f"{name}: {missing[0]}: {missing[1]} is not in its index; run index again"
-            raise EvaluationError(message)
-        # Untimed: the first search by meaning reads the index's vectors.
-        library.ranked(questions[0].text, "hybrid")
-        for mode in MODES:
-            run.per[mode], run.ranks[mode], spent = {}, {}, []
-            for question in questions:
-                started = clock()
-                shown, note = library.ranked(question.text, mode, limit=CUTOFF)
-                spent.append(clock() - started)
-                if note:
-                    message = f"{name}, {mode}:{note}"
-                    raise EvaluationError(message)
-                paths = [each.path for each in shown]
-                texts = {each.path: each.text for each in shown}
-                run.per[mode][question.id] = measure(paths, question, texts)
-                run.ranks[mode][question.id] = [
-                    paths.index(path) + 1 if path in paths else None for path in question.expected
-                ]
-            run.groups[mode] = averages(run.per[mode], questions)
-            run.times[mode] = (median(spent), percentile(spent, TAIL))
-            lexical = [run.per["lexical"][question.id].reciprocal_rank for question in questions]
-            moded = [run.per[mode][question.id].reciprocal_rank for question in questions]
-            run.pvalues[mode] = paired_test(lexical, moded)
+        with TRACER.start_as_current_span("eval.model", attributes={"gen_ai.request.model": name}):
+            folder = settings.evaluations / "indexes"
+            index = folder / f"{name.replace('/', '_').replace(':', '_')}.sqlite"
+            index.parent.mkdir(parents=True, exist_ok=True)
+            started = clock()
+            embedding = Embedding(embedder, settings.vectors)
+            report = build_index(settings.docs, index, built_at, embedding)
+            run = Run(name, embedder.fingerprint, report.embedded, clock() - started)
+            # The model that the index names is this embedder's.
+            meaning = Meaning({name: embedder}.__getitem__)
+            library = Library(index, settings.docs, meaning, "lexical")
+            refs = ((question.id, path) for question in questions for path in question.paths)
+            missing = next(((id_, path) for id_, path in refs if not library.resolve(path)), None)
+            if missing:
+                message = f"{name}: {missing[0]}: {missing[1]} is not in its index; run index again"
+                raise EvaluationError(message)
+            # Untimed: the first search by meaning reads the index's vectors.
+            library.ranked(questions[0].text, "hybrid")
+            with task("questions", len(MODES) * len(questions)) as asked:
+                for mode in MODES:
+                    run.per[mode], run.ranks[mode], spent = {}, {}, []
+                    for question in asked.each(questions, lambda one: one.id):
+                        started = clock()
+                        shown, note = library.ranked(question.text, mode, limit=CUTOFF)
+                        spent.append(clock() - started)
+                        QUESTION_DURATION.record(spent[-1], {"aom.mode": mode})
+                        if note:
+                            message = f"{name}, {mode}:{note}"
+                            raise EvaluationError(message)
+                        paths = [each.path for each in shown]
+                        texts = {each.path: each.text for each in shown}
+                        run.per[mode][question.id] = measure(paths, question, texts)
+                        run.ranks[mode][question.id] = [
+                            paths.index(path) + 1 if path in paths else None
+                            for path in question.expected
+                        ]
+                        log.debug(
+                            "eval.question",
+                            id=question.id,
+                            mode=mode,
+                            seconds=round(spent[-1], 3),
+                            reciprocal_rank=run.per[mode][question.id].reciprocal_rank,
+                        )
+                    run.groups[mode] = averages(run.per[mode], questions)
+                    run.times[mode] = (median(spent), percentile(spent, TAIL))
+                    lexical = [
+                        run.per["lexical"][question.id].reciprocal_rank for question in questions
+                    ]
+                    moded = [run.per[mode][question.id].reciprocal_rank for question in questions]
+                    run.pvalues[mode] = paired_test(lexical, moded)
+                    every = run.groups[mode]["all"]
+                    scored = {"gen_ai.request.model": name, "aom.mode": mode}
+                    SCORE.set(every.recall, {**scored, "aom.measure": f"recall@{CUTOFF}"})
+                    SCORE.set(every.reciprocal_rank, {**scored, "aom.measure": f"mrr@{CUTOFF}"})
+                    SCORE.set(every.ndcg, {**scored, "aom.measure": f"ndcg@{CUTOFF}"})
+                    SCORE.set(every.success, {**scored, "aom.measure": "success@1"})
+            log.info(
+                "eval.evaluated",
+                model=name,
+                questions=len(questions),
+                embedded=run.embedded,
+                index_seconds=round(run.seconds, 3),
+            )
         runs.append(run)
     tests = [(run, mode) for run in runs for mode in MODES[1:]]
     adjusted = holm([run.pvalues[mode] for run, mode in tests])

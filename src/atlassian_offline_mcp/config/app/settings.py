@@ -1,4 +1,4 @@
-"""Loading the settings, with the guard on where the data lives, for every command."""
+"""Loading the settings, with the guard on where the data and the logs live, for every command."""
 
 from __future__ import annotations
 
@@ -16,8 +16,10 @@ from atlassian_offline_mcp.config.domain.settings import (
     environment_entries,
     file_entries,
     settings_of,
+    shared_entries,
     unsafe_location,
 )
+from atlassian_offline_mcp.observability.adapters.logs import default_log_folder
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -27,7 +29,7 @@ __all__ = ["UnsafeDataDirError", "load_settings"]
 
 
 class UnsafeDataDirError(SettingsError):
-    """A data directory where company data could leave the machine."""
+    """A data directory, or a log folder, where company data could leave the machine."""
 
 
 def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Path) -> Loaded:
@@ -39,9 +41,16 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
     resolved. What was ignored is each variable that names no setting or is empty,
     then each value replaced.
 
-    The data directory, and each place under it where data is written, is resolved
-    (links followed, ``..`` removed) before the guard judges it, and the resolved data
-    directory is what every command then uses. Links deeper inside are not followed.
+    Telemetry's endpoint has two layers more, OpenTelemetry's own variables, as
+    ``shared_entries`` reads them: ``OTEL_EXPORTER_OTLP_ENDPOINT``, below the file,
+    ignored unless the setting would take it, and ``OTEL_SDK_DISABLED`` when true, above
+    all, which leaves the endpoint unset: telemetry off.
+
+    The data directory, each place under it where data is written, and the log folder,
+    the user's (``default_log_folder``) when none is set, are resolved (links followed,
+    ``..`` removed) before the guard judges them, as logs hold titles and queries; the
+    resolved data directory and log folder are what every command then uses. Links
+    deeper inside are not followed.
     """
     try:
         values = read_settings_file(path)
@@ -52,8 +61,10 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
         message = f"{path}: not readable ({type(error).__name__})"
         raise SettingsError(message) from error
     environment, unread = environment_entries(os.environ, EnvSettingsSource(Settings))
+    below, above, unshared = shared_entries(os.environ)
     loaded = settings_of(
         [
+            *below,
             *file_entries(values, path.name),
             *environment,
             *(
@@ -61,15 +72,26 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
                 for flag, (setting, value) in flags.items()
                 if value is not None
             ),
+            *above,
         ],
         home,
     )
-    settings = loaded.settings.model_copy(update={"data_dir": loaded.settings.data_dir.resolve()})
-    for place in (settings.data_dir, *settings.parts):
+    logs = loaded.settings.logs
+    settings = loaded.settings.model_copy(
+        update={
+            "data_dir": loaded.settings.data_dir.resolve(),
+            "logs": logs.model_copy(update={"dir": (logs.dir or default_log_folder()).resolve()}),
+        }
+    )
+    places = [
+        ("data_dir", settings.data_dir, ""),
+        *(("data_dir", part, f"{part.name}: ") for part in settings.parts),
+        ("logs.dir", settings.logs.dir, ""),
+    ]
+    for setting, place, where in places:
         resolved = place.resolve()
         problem = unsafe_location(resolved, home, git_root(resolved))
         if problem is not None:
-            where = "" if place == settings.data_dir else f"{place.name}: "
-            message = f"data_dir ({loaded.layer('data_dir')}): {where}{problem}"
+            message = f"{setting} ({loaded.layer(setting)}): {where}{problem}"
             raise UnsafeDataDirError(message)
-    return Loaded(settings, loaded.layers, (*unread, *loaded.ignored), loaded.replaced)
+    return Loaded(settings, loaded.layers, (*unread, *unshared, *loaded.ignored), loaded.replaced)

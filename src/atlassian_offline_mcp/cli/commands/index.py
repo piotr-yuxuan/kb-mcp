@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import contextlib
-import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+
+import structlog
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint, prefixes_said
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.kernel.output import Summary
     from atlassian_offline_mcp.search.app.indexing import Report
 
-WORDS_ALONE = 'or set search_mode = "lexical" to index by words alone'
+WORDS_ALONE = 'set search_mode = "lexical" to index by words alone'
 
 
 @dataclass(frozen=True)
@@ -33,39 +34,34 @@ class Indexed:
     model: str | None
 
 
-def progress(done: int, total: int) -> None:
-    """Say how many of the pieces to embed are done."""
-    sys.stderr.write(f"embedded {done} of {total} pieces\n")
-
-
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Indexed | None]:
     """Build the index; exit 1 when a file or a piece was left out, or nothing was built.
 
     By words alone in the lexical mode, which never calls the embedding endpoint. In the
     other modes the endpoint must answer with the setting's model; when it does not,
-    the index in place stays, with its vectors, and nothing is given.
+    the index in place stays, with its vectors, and nothing is given. Nothing built is
+    an error; each file skipped and each piece that the endpoint refused is a warning,
+    as is the count of files that the index lacks.
     """
     settings = loaded.settings
     opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
     with opened or contextlib.nullcontext():
         try:
             embedder = None if opened is None else connect(opened, settings.model)
-            embedding = (
-                None if embedder is None else Embedding(embedder, settings.vectors, progress)
-            )
+            embedding = None if embedder is None else Embedding(embedder, settings.vectors)
             report = build_index(settings.docs, settings.index, datetime.now(UTC), embedding)
         except ModelError as error:
-            sys.stderr.write(f"index not built: {error}; {WORDS_ALONE}\n")
+            structlog.get_logger().error("index.not_built", reason=str(error), hint=WORDS_ALONE)
             return ExitStatus.FAILED, None
         except (MirrorMissingError, OSError) as error:
-            sys.stderr.write(f"index not built: {error}\n")
+            structlog.get_logger().error("index.not_built", reason=str(error))
             return ExitStatus.FAILED, None
     for path, reason in report.skipped:
-        sys.stderr.write(f"skipped {path}: {reason}\n")
+        structlog.get_logger().warning("index.file_skipped", path=path, reason=reason)
     for path in report.unembedded:
-        sys.stderr.write(f"not embedded: a piece of {path}, which the endpoint refused\n")
+        structlog.get_logger().warning("index.piece_refused", path=path)
     if report.skipped:
-        sys.stderr.write(f"{len(report.skipped)} files skipped: the index lacks them\n")
+        structlog.get_logger().warning("index.lacks_files", count=len(report.skipped))
     indexed = Indexed(report, settings.index, None if embedding is None else settings.model)
     return ExitStatus.FAILED if report.skipped or report.unembedded else ExitStatus.OK, indexed
 

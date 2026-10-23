@@ -11,6 +11,9 @@ if TYPE_CHECKING:
 
 # The program's name, as pyproject.toml names its script.
 PROGRAM = "atlassian-offline-mcp"
+# The settings that the entry reads for every command that it observes, by path, to
+# observe its run: where its log file goes and where its telemetry goes.
+OBSERVING = ("logs.dir", "telemetry.endpoint")
 # What a run does not apply of the values given, by setting, and why: a pure function of
 # the arguments and of every setting's value, by its path joined by dots.
 type Unapplied = Callable[[argparse.Namespace, Mapping[str, object]], Mapping[str, str]]
@@ -30,14 +33,20 @@ class Command:
     is run by ``cli.commands.evaluate``. ``run`` names the module whose
     ``run(arguments, loaded)`` runs it, imported only once it is chosen. ``reads`` names
     each setting that the run reads, by its path, its names joined by dots
-    (``sources.confluence.spaces``); a command that reads none gets ``None`` for its
-    settings, and so runs whatever the settings file holds. ``flags`` maps each option
-    that overrides a setting, by the option's ``dest``, to that setting's path.
+    (``sources.confluence.spaces``); for every command that it observes, the entry reads
+    those of ``OBSERVING`` too, which ``reads`` need not name, and so loads the settings
+    even for one that reads no other. ``flags`` maps each option that overrides a
+    setting, by the option's ``dest``, to that setting's path.
     ``actions`` are the options and positionals as ``add_argument`` returned them, those
     of the output aside: each flag among them is named by its option, and the command to
     copy carries them. A command that ``writes`` under the data directory shows its
     summary and that command, then asks before it acts, unless given --yes, which it
-    then takes, or --dry-run, if it takes one (``dry_run``).
+    then takes, or --dry-run, if it takes one (``dry_run``). A command whose run is not
+    ``traced``, such as ``serve``, each of whose requests is a trace, is none of its own.
+    One that is not ``observed``, such as ``completion``, which shells run at each start,
+    is run as --version is, without the entry: its module's ``run(arguments)`` writes
+    its output and gives its exit status, and nothing reads settings, logs, writes a
+    log file or sends telemetry for it, so it reads none.
 
     ``unapplied``, if any, names what the run does not apply of the settings given, and
     why, such as the model of an index built by words alone, or the API token that
@@ -59,6 +68,8 @@ class Command:
     actions: tuple[argparse.Action, ...] = ()
     writes: bool = False
     dry_run: bool = False
+    traced: bool = True
+    observed: bool = True
     unapplied: Unapplied | None = None
     described: Described | None = None
     refused: Refused | None = None
