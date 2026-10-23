@@ -11,6 +11,7 @@ import re
 from typing import TYPE_CHECKING
 
 import pytest
+from opentelemetry import trace
 
 from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 
     from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.mcp.app.tools import SearchFilters
+    from tests.conftest import InMemory
 
 # A passage's two lines about it, then its text, which runs to the next passage.
 ABOUT = re.compile(
@@ -263,6 +265,44 @@ def test_without_vectors_ask_answers_by_words_and_says_why(tmp_path: Path) -> No
     answer = library.ask("kafka retention")
     assert "Ranked by words alone: the index holds no vectors" in parts(answer)[0]
     assert passages(answer)[0]["ref"] == "196845"
+
+
+def call_s_span(library: Library, question: str, telemetry: InMemory) -> dict[str, object]:
+    """Ask within a span, as the SDK's around a call, and give what ask set on it."""
+    with trace.get_tracer(__name__).start_as_current_span("tools/call ask"):
+        library.ask(question)
+    (span,) = (
+        each for each in telemetry.spans.get_finished_spans() if each.name == "tools/call ask"
+    )
+    return {key: value for key, value in (span.attributes or {}).items() if key.startswith("aom.")}
+
+
+def test_the_call_s_span_says_the_mode_the_documents_found_and_the_passages_quoted(
+    words: Library, telemetry: InMemory
+) -> None:
+    """Forty documents found by words, fewer passages than twenty within the budget."""
+    shown = len(passages(words.ask("gamma notes")))
+    said = call_s_span(words, "gamma notes", telemetry)
+    assert said == {
+        "aom.mode": "lexical",
+        "aom.hits": ENOUGH,
+        "aom.fallback": False,
+        "aom.passages": shown,
+    }
+    assert 0 < shown < ASK_DOCUMENTS
+
+
+def test_the_call_s_span_says_that_words_stood_in_for_meaning(
+    tmp_path: Path, telemetry: InMemory
+) -> None:
+    """Hybrid asked of an index built without a model."""
+    docs = tmp_path / "docs"
+    fillers(docs)
+    write(docs, page("196845", "Kafka"), RETENTION)
+    build_index(docs, tmp_path / "index.sqlite", MOMENT)
+    library = Library(tmp_path / "index.sqlite", docs, Meaning(connector()), "hybrid")
+    said = call_s_span(library, "kafka retention", telemetry)
+    assert (said["aom.mode"], said["aom.fallback"]) == ("hybrid", True)
 
 
 def by_meaning(

@@ -2,9 +2,9 @@
 
 What `serve` records, besides what every command does ([README](README.md)). A server
 is no trace of its own: each message of the protocol is a trace, whose root is the MCP
-SDK's span, by the MCP conventions, named after its method and its tool. A search adds
-its own spans below the call's: by words, then by meaning, with the embedding of the
-query and its requests. The SDK records no metric; each tool call is measured here. Its
+SDK's span, by the MCP conventions, named after its method and its tool or prompt. A
+search or an ask adds its own spans below the call's: by words, then by meaning, with the
+embedding of the query and its requests. The SDK records no metric; each tool call is measured here. Its
 records carry no span's ids but those logged within a call.
 
 Stdout holds the protocol alone; on a terminal, stderr shows no bar, as the server has
@@ -27,7 +27,9 @@ no task.
 | `notifications/initialized` | server | `mcp.method.name`, `mcp.protocol.version` | The SDK's: the agent says that the handshake is done |
 | `server/discover` | server | `mcp.method.name`, `mcp.protocol.version`, `jsonrpc.request.id`, `error.type`, `rpc.response.status_code` | The SDK's: what the server offers, asked by a client of a later version |
 | `tools/list` | server | `mcp.method.name`, `mcp.protocol.version`, `jsonrpc.request.id`, `error.type`, `rpc.response.status_code` | The SDK's: the list of tools |
-| `tools/call <tool>` | server | `mcp.method.name`, `mcp.protocol.version`, `jsonrpc.request.id`, `gen_ai.operation.name`, `gen_ai.tool.name`, `error.type`, `rpc.response.status_code`, `aom.mode`, `aom.hits`, `aom.fallback` | The SDK's: a call of `search`, `read`, `browse` or `status`; `error.type` `tool_error` when it cannot be answered as asked. A search adds its mode, how many documents it found, and whether it fell back to words |
+| `tools/call <tool>` | server | `mcp.method.name`, `mcp.protocol.version`, `jsonrpc.request.id`, `gen_ai.operation.name`, `gen_ai.tool.name`, `error.type`, `rpc.response.status_code`, `aom.mode`, `aom.hits`, `aom.fallback`, `aom.passages` | The SDK's: a call of `ask`, `search`, `read`, `browse` or `status`; `error.type` `tool_error` when it cannot be answered as asked. An ask or a search adds its mode, how many documents it found, and whether it fell back to words; an ask, how many passages it quoted |
+| `prompts/list` | server | `mcp.method.name`, `mcp.protocol.version`, `jsonrpc.request.id`, `error.type`, `rpc.response.status_code` | The SDK's: the prompts that the tools served allow |
+| `prompts/get <prompt>` | server | `mcp.method.name`, `mcp.protocol.version`, `jsonrpc.request.id`, `gen_ai.prompt.name`, `error.type`, `rpc.response.status_code` | The SDK's: a prompt written, `brief`, `changes` or `overview`; `error.type` `-32602` when an argument is refused |
 | `search.lexical` | internal | | A search by words, the documents named first |
 | `search.semantic` | internal | | A search by meaning: the model connected once an index, the query embedded, the nearest pieces |
 | `embeddings <model>` | client | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type` | An embedding by the GenAI conventions, its attempts included |

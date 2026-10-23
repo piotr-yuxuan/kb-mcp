@@ -427,12 +427,23 @@ class Library:
         it by ref. An answer holds what fits its budget, then the call that continues it.
         filters narrow as search's do.
         """
-        return self._asked(question, filters, cursor, self._mode)[0]
+        answer, pairs, ranked = self._asked(question, filters, cursor, self._mode)
+        # On the call's span, the SDK's, as for search: the mode, the documents found,
+        # whether words stood in for meaning, and the passages quoted.
+        trace.get_current_span().set_attributes(
+            {
+                "aom.mode": self._mode,
+                "aom.hits": len(ranked.paths),
+                "aom.fallback": bool(ranked.note),
+                "aom.passages": len(pairs),
+            }
+        )
+        return answer
 
     def _asked(
         self, question: str, filters: SearchFilters | None, cursor: str | None, mode: Mode
-    ) -> tuple[str, list[tuple[Entry, Passage]]]:
-        """Write ask's answer in a mode, and give the documents and passages that it quotes."""
+    ) -> tuple[str, list[tuple[Entry, Passage]], Ranking]:
+        """Write ask's answer in a mode; give the documents and passages quoted, and the ranking."""
         given = checked(filters)
         bounded(question=(question, LONGEST["query"]), cursor=(cursor, LONGEST["cursor"]))
         planned = plan(question)
@@ -441,7 +452,7 @@ class Library:
             offset = start_of(cursor, built_at)
             asked = Asked(question, planned, narrowed(reader, given), by_update=False, mode=mode)
             if not planned.words:
-                return responses.answer(NO_QUESTION), []
+                return responses.answer(NO_QUESTION), [], Ranking([], whole=True, meaning={})
             ranked = ranking(reader, self._meaning, asked)
             paths = ranked.paths[offset : offset + ASK_DOCUMENTS]
             entries = {entry.path: entry for entry in reader.entries(paths=paths)}
@@ -468,7 +479,7 @@ class Library:
         count, footer = responses.page(items, total - offset, allowed, more)
         counted = f"Documents {ranked.counted}: {total if ranked.whole else f'at least {total}'}"
         header = f"{counted}; {responses.span(offset, count, built_at)}{ranked.note}"
-        return responses.answer(header, "\n\n".join(items[:count]), footer), pairs[:count]
+        return responses.answer(header, "\n\n".join(items[:count]), footer), pairs[:count], ranked
 
     def quoted(self, question: str, mode: Mode) -> list[Shown]:
         """Give the passages of ask's first answer in a mode, for an evaluation."""

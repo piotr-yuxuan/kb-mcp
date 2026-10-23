@@ -255,6 +255,8 @@ def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> Non
 def test_serve_records_as_documented(tmp_path: Path) -> None:
     """By meaning, each tool and a call refused; then, the endpoint stopped, by words alone.
 
+    The second also lists the prompts, and writes one.
+
     The first server is spoken to as an agent does, from ``initialize``; the second by
     the SDK's client, from ``server/discover``. Each runs in a fresh interpreter, as
     agents start it, kept to the ports of the endpoint and of a scripted collector, which
@@ -268,6 +270,7 @@ def test_serve_records_as_documented(tmp_path: Path) -> None:
     build_index(data / "docs", data / "index.sqlite", MOMENT, Embedding(tiny(), data / "v.db"))
     calls: list[tuple[str, dict[str, object]]] = [
         ("search", {"query": "vacation lunch"}),
+        ("ask", {"question": "vacation lunch"}),
         ("read", {"ref": "PROJ-7"}),
         ("browse", {"space": "ENG"}),
         ("status", {}),
@@ -278,6 +281,8 @@ def test_serve_records_as_documented(tmp_path: Path) -> None:
         async with Client(command) as client:
             with anyio.fail_after(WAIT_S):
                 await client.call_tool("search", {"query": "vacation lunch"})
+                await client.list_prompts()
+                await client.get_prompt("brief", {"ref": "PROJ-7"})
 
     emitted = Emitted()
     for name, stopped in (("answering", False), ("stopped", True)):
@@ -306,7 +311,7 @@ def test_serve_records_as_documented(tmp_path: Path) -> None:
                 anyio.run(search, command)
             else:
                 _, _, results = talk(command, calls)
-                assert [result["isError"] for result in results] == [False] * 4 + [True]
+                assert [result["isError"] for result in results] == [False] * 5 + [True]
         (log_file,) = user_log_folder(home).iterdir()
         emitted.collected(log_file, collector)
     assert undocumented("serve", emitted) == []
