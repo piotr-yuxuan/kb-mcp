@@ -210,6 +210,29 @@ def test_no_mirror_is_a_failure(data: Path, capsys: CaptureFixture[str]) -> None
     assert list(data.iterdir()) == []
 
 
+def test_a_database_error_is_a_failure_and_keeps_the_old_index(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """The database's error while building, as of a full disk, simulated: exit 1, said.
+
+    The index in place stays as it was, and no traceback is written.
+    """
+    write(data / "docs", page("196845", "Kafka"))
+    assert index(data, capsys)[0] == 0
+    before = (data / "index.sqlite").read_bytes()
+
+    def full(*_: object) -> None:
+        message = "database or disk is full"
+        raise sqlite3.OperationalError(message)
+
+    monkeypatch.setattr(sqlite_index.Writer, "add", full)
+    status, _, err = index(data, capsys)
+    assert status == 1
+    assert ("error", "index.not_built") in said(err)
+    assert "Traceback" not in err
+    assert (data / "index.sqlite").read_bytes() == before
+
+
 def test_by_words_alone_no_endpoint_is_asked_even_one_elsewhere(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:

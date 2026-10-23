@@ -389,18 +389,22 @@ def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
 def test_an_index_that_cannot_be_written_fails_its_row_and_keeps_the_others(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A full disk while indexing: the work log's row stays, the index's fails, exit 1."""
+    """The database's error while indexing, as of a full disk, simulated: exit 1.
+
+    The work log's row stays, the index's fails, and the index in place stays as it was.
+    """
 
     def full(*_: object) -> None:
         message = "database or disk is full"
         raise sqlite3.OperationalError(message)
 
-    monkeypatch.setattr(sqlite_index.Writer, "add", full)
     settings = chosen_settings(tmp_path, worklog)
+    steps = [Worklog(worklog, archives=True), by_words(settings)]
+    assert sync(context(settings, FIRST), steps).exit_status == ExitStatus.OK
+    before = settings.index.read_bytes()
+    monkeypatch.setattr(sqlite_index.Writer, "add", full)
     with capture_logs() as logged:
-        synced = sync(
-            context(settings, FIRST), [Worklog(worklog, archives=True), by_words(settings)]
-        )
+        synced = sync(context(settings, FIRST), steps)
     assert [(row.step, row.outcome) for row in synced.steps] == [
         ("worklog", "done"),
         ("index", "failed"),
@@ -408,7 +412,7 @@ def test_an_index_that_cannot_be_written_fails_its_row_and_keeps_the_others(
     assert synced.exit_status == ExitStatus.FAILED
     (said,) = logged_as(logged, "index.not_built")
     assert said["reason"] == "database or disk is full"
-    assert not settings.index.exists()
+    assert settings.index.read_bytes() == before
 
 
 def test_a_work_log_that_is_not_a_folder_is_refused_before_any_step(

@@ -196,11 +196,11 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
     """Build the index from the whole mirror, by words alone or with vectors too.
 
     With an endpoint, it must answer with the model; when it does not, or there is no
-    mirror, or the index cannot be written (a file's error, or the database's, such as a
-    full disk), the index in place stays, with its vectors, nothing is returned, and
-    ``index.not_built`` is an error. Each file skipped
-    and each piece that the endpoint refused is a warning, as is the count of files that
-    the index lacks.
+    mirror, or the index cannot be written (a file's error, or the database's operational
+    one, such as a full disk or a lock), the index in place stays, with its vectors,
+    nothing is returned, and ``index.not_built`` is an error. Each file skipped and each
+    piece that the endpoint refused is a warning, as is the count of files that the index
+    lacks.
     """
     log = structlog.get_logger()
     opened = None if indexing.endpoint is None else indexing.endpoint()
@@ -216,7 +216,7 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
     except ModelError as error:
         structlog.get_logger().error("index.not_built", reason=str(error), hint=WORDS_ALONE)
         return None
-    except (MirrorMissingError, OSError, sqlite3.Error) as error:
+    except (MirrorMissingError, OSError, sqlite3.OperationalError) as error:
         structlog.get_logger().error("index.not_built", reason=str(error))
         return None
     for path, reason in report.skipped:
