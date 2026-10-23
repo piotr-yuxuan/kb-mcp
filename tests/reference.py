@@ -31,8 +31,6 @@ from tests.collector import attributes, plain
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
-    from opentelemetry.sdk.metrics.export import Metric
-
     from tests.collector import Collector
     from tests.conftest import InMemory
 
@@ -69,8 +67,8 @@ def ticked(cell: str) -> list[str]:
 class Documented:
     """What a page lists: each event's fields, each span's kind and attributes, and more.
 
-    A span is listed by its name as a pattern, as ``pattern`` reads it; an instrument
-    with its kind, unit and attributes.
+    A span is listed by its name, a placeholder in angle brackets standing for a word,
+    such as ``<model>``; an instrument with its kind, unit and attributes.
     """
 
     events: dict[str, frozenset[str]]
@@ -177,8 +175,10 @@ class Emitted:
                     tuple((link.context.trace_id, link.context.span_id) for link in span.links),
                 )
             )
+        kinds = {Sum: "counter", Histogram: "histogram", Gauge: "gauge"}
         for name, metric in telemetry.measured().items():
-            self.measure(name, kind_of(metric), metric.unit or "", keys_of(metric))
+            keys = {key for point in metric.data.data_points for key in point.attributes or {}}
+            self.measure(name, kinds[type(metric.data)], metric.unit or "", keys)
 
     def collected(self, log_file: Path, collector: Collector) -> None:
         """Gather what a run in a fresh interpreter recorded: in its file, at the collector."""
@@ -229,22 +229,6 @@ class Gathering(logging.Handler):
             self.emitted.log(record.msg, record.levelno, (context.trace_id, context.span_id))
 
 
-def kind_of(metric: Metric) -> str:
-    """Name the kind of an instrument by the data it gave: counter, histogram or gauge."""
-    kinds = {Sum: "counter", Histogram: "histogram", Gauge: "gauge"}
-    return kinds[type(metric.data)]
-
-
-def keys_of(metric: Metric) -> set[str]:
-    """Give the keys of the attributes of every point of a metric."""
-    return {key for point in metric.data.data_points for key in point.attributes or {}}
-
-
-def pattern(name: str, command: str) -> re.Pattern[str]:
-    """Read a documented span's name as a pattern: ``<command>`` the command, ``<x>`` a word."""
-    return re.compile(PLACEHOLDER.sub(r"\\S+", re.escape(name.replace("<command>", command))))
-
-
 def undocumented(command: str, emitted: Emitted) -> list[str]:
     """Say how what runs of ``command`` recorded differs from its page and the README.
 
@@ -268,7 +252,12 @@ def undocumented(command: str, emitted: Emitted) -> list[str]:
         if name in events and fields - events[name]
     ]
     spans = every.spans | own.spans
-    patterns = {name: pattern(name, command) for name in spans}
+    # A span's name as a pattern: ``<command>`` the command's name, another placeholder
+    # any one word, such as ``<model>``.
+    patterns = {
+        name: re.compile(PLACEHOLDER.sub(r"\\S+", re.escape(name.replace("<command>", command))))
+        for name in spans
+    }
     for span in emitted.spans:
         names = [name for name, matching in patterns.items() if matching.fullmatch(span.name)]
         if len(names) != 1:

@@ -251,31 +251,14 @@ def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> Non
     assert undocumented("index", emitted) == []
 
 
-def server(home: Path, settings: str, ports: list[int]) -> StdioServerParameters:
-    """Give the command of a server run from ``home``, whose settings file holds ``settings``.
-
-    It runs in a fresh interpreter, as agents start it, kept to the ports given of this
-    machine; telemetry has ``LIMIT_S`` seconds at its end.
-    """
-    folder = home / ".config" / "atlassian-offline-mcp"
-    folder.mkdir(parents=True)
-    (folder / "config.toml").write_text(settings, encoding="utf-8")
-    given = {"ports": ports, "limit": LIMIT_S, "report": str(home / "report.json")}
-    return StdioServerParameters(
-        command=sys.executable,
-        args=["-m", "tests.guarded", json.dumps({**given, "arguments": ["serve"]})],
-        env={"HOME": str(home)},
-        cwd=ROOT,
-    )
-
-
 def test_serve_records_as_documented(tmp_path: Path) -> None:
     """By meaning, each tool and a call refused; then, the endpoint stopped, by words alone.
 
     The first server is spoken to as an agent does, from ``initialize``; the second by
-    the SDK's client, from ``server/discover``. Each runs in a fresh interpreter, its
-    telemetry sent to a scripted collector: what it logged is read from its file, what
-    it traced and measured at the collector.
+    the SDK's client, from ``server/discover``. Each runs in a fresh interpreter, as
+    agents start it, kept to the ports of the endpoint and of a scripted collector, which
+    its telemetry goes to, with ``LIMIT_S`` seconds at its end: what it logged is read
+    from its file, what it traced and measured at the collector.
     """
     data = tmp_path / "data"
     fillers(data / "docs")
@@ -302,13 +285,22 @@ def test_serve_records_as_documented(tmp_path: Path) -> None:
             nothing_listening() if stopped else serving(Scripted()) as url,
             collecting(collector) as endpoint,
         ):
-            settings = (
+            folder = home / ".config" / "atlassian-offline-mcp"
+            folder.mkdir(parents=True)
+            (folder / "config.toml").write_text(
                 f'data_dir = {json.dumps(str(data))}\nmodel = "tiny"\nsearch_mode = "hybrid"\n'
                 f"embedding_url = {json.dumps(url)}\n"
-                f"[telemetry]\nendpoint = {json.dumps(endpoint)}\n"
+                f"[telemetry]\nendpoint = {json.dumps(endpoint)}\n",
+                encoding="utf-8",
             )
             ports = [int(each.rpartition(":")[2].partition("/")[0]) for each in (url, endpoint)]
-            command = server(home, settings, ports)
+            given = {"ports": ports, "limit": LIMIT_S, "report": str(home / "report.json")}
+            command = StdioServerParameters(
+                command=sys.executable,
+                args=["-m", "tests.guarded", json.dumps({**given, "arguments": ["serve"]})],
+                env={"HOME": str(home)},
+                cwd=ROOT,
+            )
             if stopped:
                 anyio.run(search, command)
             else:
