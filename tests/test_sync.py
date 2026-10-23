@@ -3,7 +3,9 @@
 The expectations come from the plan's "What sync does" and "Choosing sources", and its
 criteria 3 to 6, 11 and 12. The Atlassian sources are served by plan 004's scripted site,
 the work log is the invented fixture; each test has a scratch home, and terminals are
-injected or ``--yes`` given.
+injected or ``--yes`` given. A test whose sync builds the index sets its search mode
+rather than rely on the default: words alone, which need no embedding endpoint, unless
+meaning is what it tests.
 """
 
 from __future__ import annotations
@@ -127,6 +129,12 @@ def worklog(tmp_path: Path) -> Path:
     return root
 
 
+@pytest.fixture
+def words_alone(monkeypatch: MonkeyPatch) -> None:
+    """Search by words alone, so that the index that sync builds calls no endpoint."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "lexical")
+
+
 def settings_file(home: Path, worklog: Path | None, *, atlassian: bool = False) -> Path:
     """Write a settings file naming the work log, and with ``atlassian``, MFS and PRB."""
     text = ""
@@ -186,6 +194,7 @@ def test_the_work_log_alone_says_the_period_it_ignores_and_a_dry_run_writes_noth
     assert not (home / "data").exists()
 
 
+@pytest.mark.usefixtures("words_alone")
 def test_the_work_log_alone_ignores_nothing_when_given_nothing_to_ignore(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
@@ -228,6 +237,7 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> FakeSite:
     return fake
 
 
+@pytest.mark.usefixtures("words_alone")
 def test_json_is_one_document_with_a_row_per_step(
     home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
@@ -427,6 +437,7 @@ def test_a_work_log_that_is_not_a_folder_is_refused_before_any_step(
     assert not (home / "data").exists()
 
 
+@pytest.mark.usefixtures("words_alone")
 def test_sync_and_its_dry_run_leave_the_work_log_as_it_was(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
@@ -476,6 +487,7 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     assert not gone.exists()
 
 
+@pytest.mark.usefixtures("words_alone")
 def test_the_text_gives_a_row_per_step_then_its_counts(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
@@ -534,6 +546,7 @@ def test_a_dry_run_of_the_site_plans_and_writes_nothing(
     assert signed_in.asked
 
 
+@pytest.mark.usefixtures("words_alone")
 @pytest.mark.parametrize(
     "case",
     [
@@ -559,6 +572,7 @@ def test_the_sources_chosen_are_the_steps_run(
     assert (home / "data" / "docs" / "worklog").exists() is ("worklog" in steps)
 
 
+@pytest.mark.usefixtures("words_alone")
 def test_archives_off_leaves_the_archived_documents_out_of_a_sync(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
@@ -574,6 +588,7 @@ def test_archives_off_leaves_the_archived_documents_out_of_a_sync(
     assert "ARCHIVE" not in labels
 
 
+@pytest.mark.usefixtures("words_alone")
 def test_the_settings_of_sources_left_out_are_said_not_applied(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
@@ -595,6 +610,7 @@ def test_a_work_log_that_is_a_file_is_refused_as_not_a_folder(
     assert "sources.worklog.path: not a folder" in capsys.readouterr().err
 
 
+@pytest.mark.usefixtures("words_alone")
 def test_the_text_of_a_full_sync_gives_each_command_s_counts_under_its_row(
     home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
@@ -607,6 +623,7 @@ def test_the_text_of_a_full_sync_gives_each_command_s_counts_under_its_row(
     assert signed_in.asked
 
 
+@pytest.mark.usefixtures("words_alone")
 def test_with_the_work_log_alone_the_index_still_holds_every_page(
     home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
@@ -676,6 +693,7 @@ def test_an_index_not_built_fails_its_row_and_keeps_the_others(
     assert [line["level"] for line in logged_in_files(home, "index.not_built")] == ["error"]
 
 
+@pytest.mark.usefixtures("words_alone")
 def test_the_index_s_settings_are_said_not_applied_by_words_alone_and_in_a_dry_run(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
@@ -831,7 +849,7 @@ def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
 STEP_PAGES = ("download", "mirror", "index")
 
 
-@pytest.mark.usefixtures("signed_in")
+@pytest.mark.usefixtures("signed_in", "words_alone")
 def test_what_sync_records_is_what_its_page_says(
     home: Path, worklog: Path, telemetry: InMemory, monkeypatch: MonkeyPatch
 ) -> None:
@@ -918,6 +936,7 @@ def by_kind_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, objec
     }
 
 
+@pytest.mark.usefixtures("words_alone")
 def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
     home: Path, worklog: Path, telemetry: InMemory
 ) -> None:

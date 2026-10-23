@@ -39,7 +39,8 @@ def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     """Sync the fixture's work log, beside a Confluence page that holds the word too.
 
     The home's settings name the data directory and the work log, so that a server
-    started in it reads the index that ``sync`` built.
+    started in it reads the index that ``sync`` built; the search mode is words alone,
+    which need no embedding endpoint.
     """
     home, data, root = tmp_path / "home", tmp_path / "data", tmp_path / "todo"
     shutil.copytree(FIXTURE, root)
@@ -47,7 +48,8 @@ def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     config = home / ".config" / "atlassian-offline-mcp" / "config.toml"
     config.parent.mkdir(parents=True)
     config.write_text(
-        f"data_dir = {json.dumps(str(data))}\n[sources.worklog]\npath = {json.dumps(str(root))}\n",
+        f'data_dir = {json.dumps(str(data))}\nsearch_mode = "lexical"\n'
+        f"[sources.worklog]\npath = {json.dumps(str(root))}\n",
         encoding="utf-8",
     )
     write(data / "docs", page("196845", f"Kafka {UNIQUE}"))
