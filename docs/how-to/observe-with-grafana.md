@@ -119,8 +119,8 @@ file in a span carries its `trace_id`, which Tempo's search by trace id opens.
 
 ## 5. Check the dashboards
 
-Once the container has received a run of each command, `sync` with a space or a project
-and the work log, so that each of its rows ran, the opt-in test asks Grafana for
+Once the container has received a run of each command, `sync` included, with a space or
+a project and a work log configured, the opt-in test asks Grafana for
 every dashboard of the folder and every query of their panels: each must answer without
 error, and each panel but those of failures must have data; Loki must hold the runs'
 records; another host name must be turned away:
