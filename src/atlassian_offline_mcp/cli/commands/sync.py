@@ -11,12 +11,15 @@ import structlog
 from atlassian_offline_mcp.cli.app.sync import (
     Atlassian,
     Context,
+    Index,
     SyncRefusedError,
     Worklog,
     sync,
 )
 from atlassian_offline_mcp.cli.commands import download as download_command
+from atlassian_offline_mcp.cli.commands import index as index_command
 from atlassian_offline_mcp.cli.commands import mirror as mirror_command
+from atlassian_offline_mcp.cli.commands._embedding import indexing_of
 from atlassian_offline_mcp.cli.commands.download import targets_of
 from atlassian_offline_mcp.cli.domain.summary import values_of
 from atlassian_offline_mcp.cli.domain.sync import chosen
@@ -37,7 +40,7 @@ if TYPE_CHECKING:
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Synced | None]:
-    """Sync the sources chosen; exit 0, 1, 3 or 130 as the steps rank, 2 when refused.
+    """Sync the sources chosen, then index the mirror; exit as the rows rank, 2 when refused.
 
     The entry refused what it could before asking. A target with nowhere to start, or a
     work log that is not a folder, is refused here, before any step runs, an error,
@@ -59,11 +62,12 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sync
             time.sleep,
             dry_run=arguments.dry_run,
         )
-        steps: list[Atlassian | Worklog] = []
+        steps: list[Atlassian | Worklog | Index] = []
         if spaces or projects:
             steps.append(Atlassian(targets_of(arguments, spaces, projects, context.now())))
         if folder is not None:
             steps.append(Worklog(folder, sources.worklog.archives))
+        steps.append(Index(indexing_of(arguments, settings)))
         synced = sync(context, steps)
     except (PeriodError, RepresentationError, SyncRefusedError) as error:
         structlog.get_logger().error("sync.refused", reason=str(error))
@@ -104,6 +108,7 @@ TEXTS: dict[str, Callable[..., str]] = {
     "download": download_command.text,
     "mirror": mirror_command.text,
     "worklog": worklog_text,
+    "index": index_command.text,
 }
 
 

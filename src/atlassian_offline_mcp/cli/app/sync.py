@@ -1,11 +1,12 @@
-"""``sync``'s steps: Confluence's and Jira's download and mirror, then the work log's.
+"""``sync``'s steps: Confluence's and Jira's download and mirror, the work log's, the index.
 
 Each step runs even when an earlier one failed, since the next reads what is on disk;
 Ctrl-C stops the run, and no later step runs. What can be refused is refused before the
 first step: a target with nowhere to start, and a work log that is not a folder. A dry
 run plans the download and counts the work log, and writes nothing. Each row is a span,
 ``sync.step``, within which its step's own spans and events are recorded, those of
-``download``, ``mirror`` or the work log, as ``docs/reference/telemetry/sync.md`` says.
+``download``, ``mirror``, the work log or ``index``, as
+``docs/reference/telemetry/sync.md`` says.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
 from atlassian_offline_mcp.mirror.app.mirror import mirror
 from atlassian_offline_mcp.mirror.app.worklog import mirror_worklog, plan_worklog
+from atlassian_offline_mcp.search.app.indexing import index_mirror
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, StoreBusyError
 from atlassian_offline_mcp.sources.atlassian.adapters.sign_in import sign_in
 from atlassian_offline_mcp.sources.atlassian.app.download import download, plan
@@ -33,6 +35,7 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.cli.domain.sync import Outcome
     from atlassian_offline_mcp.config.domain.settings import Settings
     from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc
+    from atlassian_offline_mcp.search.app.indexing import Indexing
     from atlassian_offline_mcp.sources.atlassian.app.download import Targets
 
 # How a download or its plan ended, by its status. A download that Ctrl-C stops raises
@@ -68,6 +71,15 @@ class Worklog:
 
     folder: Path
     archives: bool
+
+
+@dataclass(frozen=True)
+class Index:
+    """The index's step: how it is built, from the whole mirror, whatever sources were taken."""
+
+    rows: ClassVar[tuple[str, ...]] = ("index",)
+
+    indexing: Indexing
 
 
 @dataclass(frozen=True)
@@ -166,7 +178,17 @@ def worklog(context: Context, step: Worklog, add: Callable[[Row], None]) -> None
         add(Row("worklog", "failed" if done.problems else "done", done))
 
 
-def sync(context: Context, steps: Sequence[Atlassian | Worklog]) -> Synced:
+def index(context: Context, step: Index, add: Callable[[Row], None]) -> None:
+    """Build the index from the whole mirror, unless a dry run; its problems as index says."""
+    with TRACER.start_as_current_span("sync.step", attributes={"aom.step": "index"}):
+        if context.dry_run:
+            add(Row("index", "not run", None))
+            return
+        indexed = index_mirror(step.indexing, context.now())
+        add(Row("index", "done" if indexed and indexed.report.whole else "failed", indexed))
+
+
+def sync(context: Context, steps: Sequence[Atlassian | Worklog | Index]) -> Synced:
     """Run the steps in their order; return a row per step and the exit status they rank.
 
     Raises ``SyncRefusedError`` for a work log that is not a folder, and PeriodError for
@@ -180,7 +202,7 @@ def sync(context: Context, steps: Sequence[Atlassian | Worklog]) -> Synced:
     for step in steps:
         if isinstance(step, Atlassian):
             step.targets.windows(RawStore(context.settings.raw).coverage(), context.now())
-        elif not step.folder.is_dir():
+        elif isinstance(step, Worklog) and not step.folder.is_dir():
             message = "sources.worklog.path: not a folder"
             raise SyncRefusedError(message)
     log = structlog.get_logger()
@@ -192,8 +214,10 @@ def sync(context: Context, steps: Sequence[Atlassian | Worklog]) -> Synced:
         for step in steps:
             if isinstance(step, Atlassian):
                 atlassian(context, step, rows.add)
-            else:
+            elif isinstance(step, Worklog):
                 worklog(context, step, rows.add)
+            else:
+                index(context, step, rows.add)
     except KeyboardInterrupt:
         stopped = len(rows.added)
         log.warning("sync.interrupted", step=planned[stopped] if stopped < len(planned) else None)

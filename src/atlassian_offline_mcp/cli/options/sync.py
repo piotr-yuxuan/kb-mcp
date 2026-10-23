@@ -8,27 +8,40 @@ from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.cli.domain.sync import SITE_SETTINGS, SOURCES, chosen, described
 from atlassian_offline_mcp.cli.options._common import (
     SIGN_IN,
+    add_embedding_options,
     add_output_options,
     add_settings_options,
     add_yes_option,
     email_without_token,
+    endpoint_by_meaning,
     site_not_set,
     token_without_email,
 )
 from atlassian_offline_mcp.cli.options.download import add_period_options, period_refused
+from atlassian_offline_mcp.cli.options.index import by_words_alone
 from atlassian_offline_mcp.kernel.content import SOURCE_NAMES
 
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping
 
+# The settings of the index's step, which embeds as ``index`` does.
+INDEX_SETTINGS = (
+    "model",
+    "search_mode",
+    "chunking",
+    "embedding_url",
+    "embedding_api_key",
+)
+
 
 def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
     """Refuse what no sync can run with, before anything is asked: the first found.
 
     A source included but not configured, or none left; with Confluence or Jira, no
-    site, an API token without its email, or an option of the period that does not read.
-    The period's options are not read when no source uses them.
+    site, an API token without its email, or an option of the period that does not read;
+    an embedding endpoint that ``index`` would refuse. The period's options are not read
+    when no source uses them.
     """
     taken, left = chosen(arguments, settings)
     unready = [
@@ -37,6 +50,7 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
         if source.name in (arguments.include or ()) and left.get(source.name) == "not configured"
     ]
     faults = [*unready, None if taken else "nothing to sync: no source is configured and chosen"]
+    faults.append(endpoint_by_meaning(arguments, settings))
     if any(source.step == "atlassian" for source in taken):
         faults += [
             site_not_set(arguments, settings),
@@ -50,7 +64,8 @@ def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
     """Name what the run does not apply, and why.
 
     The settings of the sources left out, the site's when no Atlassian source is taken,
-    and else an email without an API token.
+    and else an email without an API token; the index's in a dry run, which builds none,
+    and else those that the lexical mode does not use.
     """
     taken, left = chosen(arguments, settings)
     unused = {
@@ -59,6 +74,10 @@ def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
         if source.name in left
         for setting in source.settings
     }
+    if arguments.dry_run:
+        unused |= dict.fromkeys(INDEX_SETTINGS, "a dry run builds no index")
+    else:
+        unused |= by_words_alone(arguments, settings)
     if any(source.step == "atlassian" for source in taken):
         return unused | email_without_token(arguments, settings)
     return unused | dict.fromkeys(SITE_SETTINGS, "no Atlassian source in this sync")
@@ -68,11 +87,14 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     """Add ``sync`` to the command."""
     parser = subparsers.add_parser(
         "sync",
-        help="bring the configured sources up to date: download, mirror, then the work log",
+        help=(
+            "bring the configured sources up to date: download, mirror, the work log,"
+            " then the index"
+        ),
         epilog=(
             "With --format json: exit_status, the run's; steps, a row per step (download,"
-            " mirror, worklog), each with its step, its outcome (done, failed, sign in,"
-            " interrupted, not run) and its result, as its own command gives it."
+            " mirror, worklog, index), each with its step, its outcome (done, failed, sign"
+            " in, interrupted, not run) and its result, as its own command gives it."
         ),
     )
     actions, flags = add_settings_options(parser)
@@ -92,6 +114,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="sync every configured source but this one; repeat for more",
     )
     period = add_period_options(parser, max_file_mb=None)
+    remote = add_embedding_options(parser)
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -109,9 +132,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
                 "sources.jira.projects",
                 "sources.worklog.path",
                 "sources.worklog.archives",
+                *INDEX_SETTINGS,
             ),
             flags=flags,
-            actions=(*actions, include, exclude, *period),
+            actions=(*actions, include, exclude, *period, remote),
             writes=True,
             dry_run=True,
             unapplied=unapplied,

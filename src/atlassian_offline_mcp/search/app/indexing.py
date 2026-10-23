@@ -4,11 +4,13 @@ With an embedding, each piece of each section also gets its vector: from the vec
 store when it holds the piece's text, else from the model, then kept there. A piece
 whose text the model refuses has no vector, and its document is named. Reading the files
 and embedding are each a span; files and pieces are counted, as
-``docs/reference/telemetry/index.md`` lists it.
+``docs/reference/telemetry/index.md`` lists it. ``index_mirror`` is the build that
+``index`` and ``sync`` run alike: it opens the endpoint, if any, then builds.
 """
 
 from __future__ import annotations
 
+import contextlib
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -20,15 +22,17 @@ from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.mirror.adapters import markdown
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
+from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
 from atlassian_offline_mcp.search.domain.chunking import CHUNKERS
 from atlassian_offline_mcp.search.domain.search import Embedded, sections
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import datetime
     from pathlib import Path
 
     from atlassian_offline_mcp.kernel.chunking import Chunking
-    from atlassian_offline_mcp.search.adapters.embedding import Embedder
+    from atlassian_offline_mcp.search.adapters.embedding import Embedder, Endpoint
 
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
@@ -38,6 +42,10 @@ FILES = METER.create_counter("aom.index.files", unit="{file}", description="File
 PIECES = METER.create_counter(
     "aom.index.pieces", unit="{piece}", description="Pieces by meaning, by outcome"
 )
+
+
+# What to do when the endpoint does not answer with the model.
+WORDS_ALONE = 'set search_mode = "lexical" to index by words alone'
 
 
 class MirrorMissingError(Exception):
@@ -56,6 +64,11 @@ class Report:
     unembedded: list[str] = field(default_factory=list)  # paths with a piece refused
     characters: int = 0  # of the texts that the pieces embed, whatever the store held
 
+    @property
+    def whole(self) -> bool:
+        """Whether every file was indexed, and every piece given a vector."""
+        return not (self.skipped or self.unembedded)
+
 
 @dataclass(frozen=True)
 class Embedding:
@@ -67,6 +80,31 @@ class Embedding:
     embedder: Embedder
     store: Path
     chunking: Chunking = "sections"
+
+
+@dataclass(frozen=True)
+class Indexing:
+    """What a build of the index reads and writes, and how it embeds.
+
+    ``endpoint`` opens the embedding endpoint, as the run allows it, or is None for an
+    index by words alone, which never calls it.
+    """
+
+    docs: Path
+    index: Path
+    vectors: Path
+    model: str
+    chunking: Chunking
+    endpoint: Callable[[], Endpoint] | None
+
+
+@dataclass(frozen=True)
+class Indexed:
+    """What a build did, the index it wrote, and the model that embedded, None by words alone."""
+
+    report: Report
+    index: Path
+    model: str | None
 
 
 def build_index(
@@ -151,3 +189,38 @@ def build_index(
         embedded=report.embedded,
     )
     return report
+
+
+def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
+    """Build the index from the whole mirror, by words alone or with vectors too.
+
+    With an endpoint, it must answer with the model; when it does not, or there is no
+    mirror, or a file of the index cannot be written, the index in place stays, with its
+    vectors, nothing is returned, and ``index.not_built`` is an error. Each file skipped
+    and each piece that the endpoint refused is a warning, as is the count of files that
+    the index lacks.
+    """
+    log = structlog.get_logger()
+    opened = None if indexing.endpoint is None else indexing.endpoint()
+    try:
+        with opened or contextlib.nullcontext():
+            embedder = None if opened is None else connect(opened, indexing.model)
+            embedding = (
+                None
+                if embedder is None
+                else Embedding(embedder, indexing.vectors, indexing.chunking)
+            )
+            report = build_index(indexing.docs, indexing.index, built_at, embedding)
+    except ModelError as error:
+        structlog.get_logger().error("index.not_built", reason=str(error), hint=WORDS_ALONE)
+        return None
+    except (MirrorMissingError, OSError) as error:
+        structlog.get_logger().error("index.not_built", reason=str(error))
+        return None
+    for path, reason in report.skipped:
+        log.warning("index.file_skipped", path=path, reason=reason)
+    for path in report.unembedded:
+        log.warning("index.piece_refused", path=path)
+    if report.skipped:
+        log.warning("index.lacks_files", count=len(report.skipped))
+    return Indexed(report, indexing.index, None if embedding is None else indexing.model)

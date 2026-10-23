@@ -299,7 +299,7 @@
       "gridPos": {
         "x": 0,
         "y": 12,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "type": "bargauge",
@@ -343,13 +343,13 @@
     {
       "id": 8,
       "gridPos": {
-        "x": 8,
+        "x": 6,
         "y": 12,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "type": "bargauge",
-      "title": "Files by outcome",
+      "title": "Downloaded files by outcome",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -389,9 +389,9 @@
     {
       "id": 9,
       "gridPos": {
-        "x": 16,
+        "x": 12,
         "y": 12,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "type": "bargauge",
@@ -426,6 +426,52 @@
             "uid": "prometheus"
           },
           "expr": "sum by (aom_outcome) (last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\", aom_kind=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{aom_outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "gridPos": {
+        "x": 18,
+        "y": 12,
+        "w": 6,
+        "h": 8
+      },
+      "type": "bargauge",
+      "title": "Indexed files by outcome",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (aom_outcome) (last_over_time(aom_index_files_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_outcome}}"

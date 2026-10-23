@@ -36,7 +36,9 @@ from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report, Targets
+from tests.endpoint import Scripted, serving
 from tests.reference import Emitted, documented, undocumented
+from tests.test_cli import logged_as as logged_in_files
 from tests.test_download import CAP, PAGES, SITE, FakeSite
 from tests.test_question import QUESTION, Terminal
 from tests.test_refresh import FIRST, SECOND, WEEK, RefreshSite, stored_pages
@@ -222,7 +224,7 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> FakeSite:
 def test_json_is_one_document_with_a_row_per_step(
     home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """exit_status, then download, mirror and the work log, each with its own result."""
+    """exit_status, then download, mirror, the work log and the index, each with its result."""
     config = settings_file(home, worklog, atlassian=True)
     given = ("--yes", "--since", "2026-10-02", "--format", "json")
     status = main(command(home, config, *given))
@@ -232,6 +234,7 @@ def test_json_is_one_document_with_a_row_per_step(
         ("download", "failed"),
         ("mirror", "done"),
         ("worklog", "done"),
+        ("index", "done"),
     ]
     assert document["steps"][2]["result"]["documents"] == WORKLOG_DOCUMENTS
     assert signed_in.asked
@@ -426,7 +429,10 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
 def test_the_text_gives_a_row_per_step_then_its_counts(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The work log's: documents, files, HTML left out, problems; a dry run's to convert."""
+    """The work log's: documents, files, HTML left out, problems; a dry run's to convert.
+
+    Then the index's row: not run in a dry run, else index's counts.
+    """
     config = settings_file(home, worklog)
     assert main(command(home, config, "--dry-run")) == 0
     assert capsys.readouterr().out == (
@@ -436,6 +442,7 @@ def test_the_text_gives_a_row_per_step_then_its_counts(
         "  files to remove: 0\n"
         "  HTML left out: 1\n"
         "  problems: 0\n"
+        "index: not run\n"
     )
     assert main(command(home, config, "--yes")) == 0
     assert capsys.readouterr().out == (
@@ -446,6 +453,9 @@ def test_the_text_gives_a_row_per_step_then_its_counts(
         "  files removed: 0\n"
         "  HTML left out: 1\n"
         "  problems: 0\n"
+        "index: done\n"
+        "  documents: 0\n"
+        "  sections: 0\n"
     )
 
 
@@ -457,7 +467,7 @@ def test_the_sources_are_the_names_that_the_options_offer() -> None:
 def test_a_dry_run_of_the_site_plans_and_writes_nothing(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """The download planned, the mirror not run; the data folder holds the session alone."""
+    """The download planned, mirror and index not run; the data folder holds the session alone."""
     config = settings_file(home, None, atlassian=True)
     given = ("--dry-run", "--since", "2026-10-02", "--format", "json")
     assert main(command(home, config, *given)) == ExitStatus.OK
@@ -465,6 +475,7 @@ def test_a_dry_run_of_the_site_plans_and_writes_nothing(
     assert [(row["step"], row["outcome"]) for row in rows] == [
         ("download", "done"),
         ("mirror", "not run"),
+        ("index", "not run"),
     ]
     assert "confluence pages: to fetch" in rows[0]["result"]["report"]["counts"]
     assert sorted(path.name for path in (home / "data").iterdir()) == ["session"]
@@ -474,9 +485,9 @@ def test_a_dry_run_of_the_site_plans_and_writes_nothing(
 @pytest.mark.parametrize(
     "case",
     [
-        (("--exclude", "worklog"), ["download", "mirror"], True),
-        (("--exclude", "confluence"), ["download", "mirror", "worklog"], False),
-        (("--include", "worklog"), ["worklog"], False),
+        (("--exclude", "worklog"), ["download", "mirror", "index"], True),
+        (("--exclude", "confluence"), ["download", "mirror", "worklog", "index"], False),
+        (("--include", "worklog"), ["worklog", "index"], False),
     ],
 )
 def test_the_sources_chosen_are_the_steps_run(
@@ -486,7 +497,7 @@ def test_the_sources_chosen_are_the_steps_run(
     capsys: CaptureFixture[str],
     case: tuple[tuple[str, ...], list[str], bool],
 ) -> None:
-    """Excluded or not included: no step, no request, no file of it."""
+    """Excluded or not included: no step, no request, no file of it; the index runs always."""
     given, steps, confluence = case
     config = settings_file(home, worklog, atlassian=True)
     main(command(home, config, "--yes", "--since", "2026-10-02", "--format", "json", *given))
@@ -542,6 +553,77 @@ def test_the_text_of_a_full_sync_gives_each_command_s_counts_under_its_row(
     assert out.startswith("download: failed\n  confluence blogposts: fetched: 1\n")
     assert "  failures: 1\nmirror: done\n  documents: " in out
     assert signed_in.asked
+
+
+def test_with_the_work_log_alone_the_index_still_holds_every_page(
+    home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
+) -> None:
+    """--include worklog refreshes the work log alone; the index, from the whole mirror."""
+    config = settings_file(home, worklog, atlassian=True)
+    main(command(home, config, "--yes", "--since", "2026-10-02", "--format", "json"))
+    first = json.loads(capsys.readouterr().out)["steps"][-1]["result"]["report"]["types"]
+    assert {"page", "blogpost", "issue"} <= set(first)
+    signed_in.asked.clear()
+    given = ("--yes", "--include", "worklog", "--format", "json")
+    assert main(command(home, config, *given)) == ExitStatus.OK
+    rows = json.loads(capsys.readouterr().out)["steps"]
+    assert [(row["step"], row["outcome"]) for row in rows] == [
+        ("worklog", "done"),
+        ("index", "done"),
+    ]
+    assert rows[-1]["result"]["report"]["types"] == first
+    assert not signed_in.asked
+
+
+def test_an_endpoint_elsewhere_is_refused_before_any_step(
+    home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
+) -> None:
+    """By meaning, an endpoint off this machine without --allow-remote-embeddings: exit 2."""
+    config = settings_file(home, worklog, atlassian=True)
+    remote = 'search_mode = "hybrid"\nembedding_url = "https://embeddings.example/v1"\n'
+    config.write_text(remote + config.read_text("utf-8"), "utf-8")
+    assert main(command(home, config, "--yes", "--since", "2026-10-02")) == ExitStatus.REFUSED
+    assert "embedding_url: not an address of this machine" in capsys.readouterr().err
+    assert not signed_in.asked
+    assert not (home / "data" / "docs").exists()
+
+
+def test_an_index_not_built_fails_its_row_and_keeps_the_others(
+    home: Path, worklog: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The endpoint lacks the model: the work log done, the index failed, exit 1, said."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "hybrid")
+    config = settings_file(home, worklog)
+    with serving(Scripted(models={})) as url:
+        monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL", url)
+        status = main(command(home, config, "--yes", "--format", "json"))
+    rows = json.loads(capsys.readouterr().out)["steps"]
+    assert status == ExitStatus.FAILED
+    assert [(row["step"], row["outcome"]) for row in rows] == [
+        ("worklog", "done"),
+        ("index", "failed"),
+    ]
+    assert rows[-1]["result"] is None
+    assert [line["level"] for line in logged_in_files(home, "index.not_built")] == ["error"]
+
+
+def test_the_index_s_settings_are_said_not_applied_by_words_alone_and_in_a_dry_run(
+    home: Path, worklog: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The lexical mode embeds nothing; a dry run builds no index at all."""
+    config = settings_file(home, worklog)
+    assert main(command(home, config, "--yes")) == ExitStatus.OK
+    said = capsys.readouterr().err
+    assert "model: " in said
+    assert said.count("(not applied: the lexical mode embeds nothing)") == len(
+        ["model", "embedding_url", "embedding_api_key", "chunking"]
+    )
+    assert main(command(home, config, "--dry-run")) == ExitStatus.OK
+    said = capsys.readouterr().err
+    assert "search_mode: lexical" in said
+    assert said.count("(not applied: a dry run builds no index)") == len(
+        ["model", "search_mode", "chunking", "embedding_url", "embedding_api_key"]
+    )
 
 
 def interrupting(*_: object) -> None:
@@ -677,7 +759,7 @@ def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
 
 # The commands whose steps sync runs: what their pages list, and sync's does not, is
 # theirs, and sync records it as they do.
-STEP_PAGES = ("download", "mirror")
+STEP_PAGES = ("download", "mirror", "index")
 
 
 @pytest.mark.usefixtures("signed_in")
@@ -790,8 +872,10 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
         "transcript": 4,
     }
     assert "aom.mirror.conversion.duration" not in second
-    (row,) = [span for span in spans if span.name == "sync.step"]
-    assert (row.attributes["aom.step"], row.attributes["aom.outcome"]) == ("worklog", "done")
+    rows = {span.attributes["aom.step"]: span for span in spans if span.name == "sync.step"}
+    assert list(rows) == ["worklog", "index"]
+    row = rows["worklog"]
+    assert row.attributes["aom.outcome"] == "done"
     (root,) = [span for span in spans if span.name == "sync"]
     assert row.parent is not None
     assert row.parent.span_id == root.context.span_id
