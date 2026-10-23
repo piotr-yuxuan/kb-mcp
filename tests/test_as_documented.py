@@ -22,6 +22,7 @@ import httpx
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
+from atlassian_offline_mcp.cli.commands import login as login_command
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.kernel.content import Page
@@ -29,6 +30,7 @@ from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.sources.atlassian.adapters import http
+from atlassian_offline_mcp.sources.atlassian.adapters.browser import SignInFailedError
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.collector import Collector, collecting
@@ -44,6 +46,8 @@ from tests.test_serve import talk
 from tests.test_settings import user_log_folder
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from _pytest.monkeypatch import MonkeyPatch
 
     from tests.conftest import InMemory
@@ -79,15 +83,17 @@ def test_no_page_repeats_what_the_readme_says_every_command_records() -> None:
         assert set(own.instruments).isdisjoint(every.instruments), name
 
 
-def signed_in(monkeypatch: MonkeyPatch, fake: FakeSite, data: Path) -> Settings:
-    """Save a session in the data directory ``data``; have the site's client reach ``fake``.
+def signed_in(
+    monkeypatch: MonkeyPatch, handle: Callable[[httpx.Request], httpx.Response], data: Path
+) -> Settings:
+    """Save a session in the data directory ``data``; have ``handle`` answer the site's client.
 
     The client is the site's own, observed, over the scripted site; no run waits between
     requests. Give the settings of a run that names the site and the data directory.
     """
     chosen = Settings(site=SITE, data_dir=data.resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
-    transport = httpx.MockTransport(fake.handle)
+    transport = httpx.MockTransport(handle)
     monkeypatch.setattr(
         http, "client", lambda site, cookies, hooks=(): CLIENT(site, cookies, hooks, transport)
     )
@@ -115,14 +121,14 @@ def test_download_records_as_documented(
     since = ("--since", "2026-10-02")
     data = tmp_path / "data"
     fake = FakeSite(changed_labels=True, failing_files=1)
-    chosen = signed_in(monkeypatch, fake, data)
+    chosen = signed_in(monkeypatch, fake.handle, data)
     with emitted.gathering(telemetry, "download"):
         whole = download(data, "--space", "MFS", "--project", "PRB", *since)
         assert main(whole) == ExitStatus.FAILED
-    signed_in(monkeypatch, FakeSite(pages_fail=True), tmp_path / "retried")
+    signed_in(monkeypatch, FakeSite(pages_fail=True).handle, tmp_path / "retried")
     with emitted.gathering(telemetry, "download"):
         assert main(download(tmp_path / "retried", "--space", "MFS", *since)) == ExitStatus.FAILED
-    signed_in(monkeypatch, FakeSite(spaces=[]), data)
+    signed_in(monkeypatch, FakeSite(spaces=[]).handle, data)
     with emitted.gathering(telemetry, "download"):
         assert main(download(data, "--space", "NOPE", *since)) == ExitStatus.FAILED
     with emitted.gathering(telemetry, "download"):
@@ -154,7 +160,7 @@ def test_a_run_s_trace_keeps_its_size_each_document_a_trace_linked_to_it(
     sizes = []
     for pages in (2, 29):
         data = tmp_path / str(pages)
-        signed_in(monkeypatch, FakeSite(many_pages=pages), data)
+        signed_in(monkeypatch, FakeSite(many_pages=pages).handle, data)
         emitted = Emitted()
         with emitted.gathering(telemetry, "download"):
             assert main(download(data, "--space", "MFS", "--since", "2026-10-02")) == 0
@@ -342,3 +348,74 @@ def test_eval_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None
     with nothing_listening() as url, emitted.gathering(telemetry, "eval"):
         assert main(["eval", "--yes", str(golden), *by_meaning(data, url)]) == ExitStatus.FAILED
     assert undocumented("eval", emitted) == []
+
+
+def test_check_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None:
+    """Nothing of its own: a run that reads the settings, and shows them."""
+    settings = ["--config", str(tmp_path / "none.toml"), "--data-dir", str(tmp_path / "data")]
+    emitted = Emitted()
+    with emitted.gathering(telemetry, "check"):
+        assert main(["check", *settings]) == 0
+    assert undocumented("check", emitted) == []
+
+
+def test_completion_records_as_documented(telemetry: InMemory) -> None:
+    """Nothing of its own: a run that reads no settings."""
+    emitted = Emitted()
+    with emitted.gathering(telemetry, "completion"):
+        assert main(["completion"]) == 0
+    assert undocumented("completion", emitted) == []
+
+
+def test_doctor_records_as_documented(
+    telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """Signed in to Confluence; Jira busy, retried at once until the check fails.
+
+    The certificate's check, which would reach the site itself, is said to pass.
+    """
+
+    def busy(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/rest/api/3/myself":
+            return httpx.Response(503, headers={"retry-after": "0"})
+        return FakeSite().handle(request)
+
+    data = tmp_path / "data"
+    signed_in(monkeypatch, busy, data)
+    monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
+    arguments = ["doctor", "--config", str(tmp_path / "none.toml"), "--data-dir", str(data)]
+    emitted = Emitted()
+    with emitted.gathering(telemetry, "doctor"):
+        assert main([*arguments, "--site", SITE]) == ExitStatus.FAILED
+    assert undocumented("doctor", emitted) == []
+
+
+def test_login_records_as_documented(
+    telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """Signed in, then a window closed: the browser is a stand-in, which signs in nowhere."""
+    arguments = ["login", "--yes", "--config", str(tmp_path / "none.toml"), "--site", SITE]
+    emitted = Emitted()
+    monkeypatch.setattr(login_command, "login", lambda *_, **__: None)
+    with emitted.gathering(telemetry, "login"):
+        assert main(arguments) == 0
+
+    def closed(*_: object, **__: object) -> None:
+        message = "the sign-in window was closed"
+        raise SignInFailedError(message)
+
+    monkeypatch.setattr(login_command, "login", closed)
+    with emitted.gathering(telemetry, "login"):
+        assert main(arguments) == ExitStatus.SIGN_IN_AGAIN
+    assert undocumented("login", emitted) == []
+
+
+def test_model_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None:
+    """The tiny model ready; then no endpoint listening."""
+    data = tmp_path / "data"
+    emitted = Emitted()
+    with serving(Scripted()) as url, emitted.gathering(telemetry, "model"):
+        assert main(["model", "check", *by_meaning(data, url)]) == 0
+    with nothing_listening() as url, emitted.gathering(telemetry, "model"):
+        assert main(["model", "check", *by_meaning(data, url)]) == ExitStatus.FAILED
+    assert undocumented("model", emitted) == []

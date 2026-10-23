@@ -5,10 +5,15 @@ endpoint is set, its traces, metrics and logs sent by OpenTelemetry. This page g
 file, its fields, the levels, the settings and the variables, then what every command
 records. A page per command lists what that command records besides:
 
+- [check](check.md)
+- [completion](completion.md)
+- [doctor](doctor.md)
 - [download](download.md)
 - [eval](eval.md)
 - [index](index.md)
+- [login](login.md)
 - [mirror](mirror.md)
+- [model](model.md)
 - [serve](serve.md)
 
 A change to an event, a span or an instrument changes its page in the same commit: the

@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from opentelemetry import metrics, trace
-from opentelemetry.sdk.metrics import Counter, Histogram, MeterProvider
+from opentelemetry.sdk.metrics import Counter, Histogram, MeterProvider, _Gauge
 from opentelemetry.sdk.metrics.export import AggregationTemporality, InMemoryMetricReader
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -109,12 +109,13 @@ def providers() -> InMemory:
 
     The API takes a provider once a process. OpenTelemetry's variables are removed while
     the providers are made, as the SDK reads some then, such as ``OTEL_SDK_DISABLED``.
-    Counters and histograms are read as deltas, so that a reading gives what was
+    Counters, histograms and gauges are read as deltas, so that a reading gives what was
     recorded since the one before.
     """
     spans = InMemorySpanExporter()
     delta = AggregationTemporality.DELTA
-    reader = InMemoryMetricReader(preferred_temporality={Counter: delta, Histogram: delta})
+    deltas = dict.fromkeys((Counter, Histogram, _Gauge), delta)
+    reader = InMemoryMetricReader(preferred_temporality=deltas)
     with pytest.MonkeyPatch.context() as patch:
         for name in [name for name in os.environ if name.startswith(OTEL)]:
             patch.delenv(name)
