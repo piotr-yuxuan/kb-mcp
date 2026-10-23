@@ -1,0 +1,237 @@
+{
+  "uid": "aom-sync",
+  "title": "sync",
+  "description": "The sync runs in the time range: how they ended, the work log's documents and how long each took to convert, and each step.",
+  "tags": [
+    "atlassian-offline-mcp"
+  ],
+  "editable": false,
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "",
+  "timezone": "browser",
+  "annotations": {
+    "list": []
+  },
+  "templating": {
+    "list": []
+  },
+  "links": [],
+  "panels": [
+    {
+      "title": "Runs by exit status",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (aom_exit_status) (last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{aom_exit_status}}"
+        }
+      ]
+    },
+    {
+      "title": "Time spent",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(last_over_time(aom_run_duration_seconds_sum{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "title": "Work-log conversion time, 95th percentile",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(aom_mirror_conversion_duration_seconds_bucket{job=\"atlassian-offline-mcp\", aom_kind!=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range])))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "title": "Failed work-log documents",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\", aom_kind!=\"\", aom_outcome=\"failed\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "title": "Work-log documents by outcome and kind",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (aom_kind, aom_outcome) (last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\", aom_kind!=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{aom_kind}} {{aom_outcome}}"
+        }
+      ]
+    },
+    {
+      "title": "Failed or skipped, from the logs",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"atlassian-offline-mcp\"} | command=\"sync\" | severity_number >= 13",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "title": "Runs, as traces",
+      "type": "table",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"atlassian-offline-mcp\" && span.aom.command = \"sync\" }",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "title": "Steps, as spans",
+      "type": "table",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"atlassian-offline-mcp\" && name = \"sync.step\" }",
+          "limit": 20,
+          "tableType": "spans"
+        }
+      ]
+    }
+  ]
+}

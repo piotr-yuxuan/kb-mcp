@@ -68,8 +68,8 @@ whatever sets the endpoint.
 ## 3. Read the dashboards
 
 Under Dashboards, the folder `atlassian-offline-mcp` holds an overview and one
-dashboard each for `download`, `mirror`, `index`, `serve`, `eval` and `eval-agents`,
-read-only, from `deploy/lgtm/dashboards/`:
+dashboard each for `download`, `mirror`, `index`, `serve`, `eval`, `eval-agents` and
+`sync`, read-only, from `deploy/lgtm/dashboards/`:
 
 - **Overview**: the runs of each command, those that failed by their exit status, the
   time spent, the requests to the site by status, the warnings and errors of every run
@@ -83,6 +83,11 @@ read-only, from `deploy/lgtm/dashboards/`:
   bridge by surface and tool, those that failed or timed out, the tokens handed over
   and the calls' time by surface, the runs that `grade` judged by surface and outcome,
   each `grade` counting every run again, then the errors and the steps as traces.
+- **sync**: over the last 24 hours, the runs by exit status, the time spent, the work
+  log's documents by outcome and kind, their conversion time at the 95th percentile,
+  then the runs' warnings and errors, their traces, and each step as a span. The
+  dashboards of download and mirror keep to their own commands' runs, so a sync's
+  download and mirror are not counted there; its steps' spans and logs are in sync's.
 - **serve**: over the last hour, rates: tool calls per second by tool, their time and
   the answers' size at the 95th percentile, the searches that fell back to words, the
   queries' embedding time, then the warnings and the calls as traces.
