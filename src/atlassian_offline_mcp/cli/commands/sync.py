@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import sys
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+
+import structlog
 
 from atlassian_offline_mcp.cli.app.sync import (
     Atlassian,
@@ -39,8 +40,9 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sync
     """Sync the sources chosen; exit 0, 1, 3 or 130 as the steps rank, 2 when refused.
 
     The entry refused what it could before asking. A target with nowhere to start, or a
-    work log that is not a folder, is refused here, before any step runs. Each step's
-    problems go to standard error as it runs, by place and reason, never content.
+    work log that is not a folder, is refused here, before any step runs, an error,
+    ``sync.refused``, as is pandoc gone from PATH since, ``sync.pandoc_missing``. Each
+    step's problems are said as it runs, by place and reason, never content.
     """
     settings = loaded.settings
     taken, _ = chosen(arguments, values_of(loaded))
@@ -55,7 +57,6 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sync
             Pandoc.find(),
             lambda: datetime.now(UTC),
             time.sleep,
-            sys.stderr.write,
             dry_run=arguments.dry_run,
         )
         steps: list[Atlassian | Worklog] = []
@@ -65,10 +66,10 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sync
             steps.append(Worklog(folder, sources.worklog.archives))
         synced = sync(context, steps)
     except (PeriodError, RepresentationError, SyncRefusedError) as error:
-        sys.stderr.write(f"refused: {error}\n")
+        structlog.get_logger().error("sync.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     except PandocMissingError as error:
-        sys.stderr.write(f"{error}\n")
+        structlog.get_logger().error("sync.pandoc_missing", reason=str(error))
         return ExitStatus.FAILED, None
     return synced.exit_status, synced
 

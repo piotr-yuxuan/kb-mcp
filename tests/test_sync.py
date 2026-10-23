@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from structlog.testing import capture_logs
 
 from atlassian_offline_mcp.cli.app import sync as sync_app
 from atlassian_offline_mcp.cli.app.sync import Atlassian, Context, Row, Worklog, sync
@@ -25,12 +26,17 @@ from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.kernel.content import SOURCE_NAMES
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes
-from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc
+from atlassian_offline_mcp.mirror.adapters.pandoc import (
+    Pandoc,
+    PandocFailedError,
+    PandocMissingError,
+)
 from atlassian_offline_mcp.mirror.app import mirror as mirror_app
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report, Targets
+from tests.reference import Emitted, documented, undocumented
 from tests.test_download import CAP, PAGES, SITE, FakeSite
 from tests.test_question import QUESTION, Terminal
 from tests.test_refresh import FIRST, SECOND, WEEK, RefreshSite, stored_pages
@@ -43,6 +49,8 @@ if TYPE_CHECKING:
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
+
+    from tests.conftest import InMemory
 
 # Each setting that chooses a source, as the declaration's functions take them.
 CONFIGURED = {
@@ -234,17 +242,20 @@ def test_a_space_never_covered_exits_2_by_name_before_any_get(
     """Without --since, a target with nowhere to start: refused before the first step."""
     config = settings_file(home, None, atlassian=True)
     assert main(command(home, config, "--yes", "--include", "confluence")) == ExitStatus.REFUSED
-    assert "refused: space MFS: nothing covered yet" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "sync.refused" in err
+    assert "space MFS: nothing covered yet" in err
     assert signed_in.asked == []
 
 
-def context(
-    settings: Settings, said: list[str], now: datetime, pandoc: Pandoc | None = None
-) -> Context:
-    """Give a sync's context at ``now``, saying into ``said``."""
-    return Context(
-        settings, pandoc or Pandoc.find(), lambda: now, lambda _: None, said.append, dry_run=False
-    )
+def context(settings: Settings, now: datetime, pandoc: Pandoc | None = None) -> Context:
+    """Give a sync's context at ``now``."""
+    return Context(settings, pandoc or Pandoc.find(), lambda: now, lambda _: None, dry_run=False)
+
+
+def logged_as(logged: list[dict[str, object]], event: str) -> list[dict[str, object]]:
+    """Give each event of this name that ``capture_logs`` held."""
+    return [each for each in logged if each["event"] == event]
 
 
 def chosen_settings(tmp_path: Path, worklog: Path) -> Settings:
@@ -263,13 +274,12 @@ def test_a_later_sync_catches_up_on_an_old_page_edited_today_and_nothing_stored(
     settings = chosen_settings(tmp_path, worklog)
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
     first = Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK))
-    said: list[str] = []
-    assert sync(context(settings, said, FIRST), [first]).exit_status == ExitStatus.OK
+    assert sync(context(settings, FIRST), [first]).exit_status == ExitStatus.OK
     assert "1003" not in stored_pages(settings)
     edited = {"number": 4, "createdAt": "2026-10-23T08:00:00.000Z"}
     later = RefreshSite(listing={**PAGES, "1003": {**PAGES["1003"], "version": edited}})
     monkeypatch.setattr(http, "client", lambda *_: later.client())
-    synced = sync(context(settings, said, SECOND), [Atlassian(Targets(["MFS"], [], CAP))])
+    synced = sync(context(settings, SECOND), [Atlassian(Targets(["MFS"], [], CAP))])
     assert synced.exit_status == ExitStatus.OK
     fetched = synced.steps[0].result
     assert isinstance(fetched, Outcome)
@@ -286,15 +296,15 @@ def test_the_site_asking_to_sign_in_still_lets_the_work_log_run_exit_3(
         Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
         Worklog(worklog, archives=True),
     ]
-    said: list[str] = []
-    synced = sync(context(settings, said, FIRST), steps)
+    with capture_logs() as logged:
+        synced = sync(context(settings, FIRST), steps)
     assert [(row.step, row.outcome) for row in synced.steps] == [
         ("download", "sign in"),
         ("mirror", "done"),
         ("worklog", "done"),
     ]
     assert synced.exit_status == ExitStatus.SIGN_IN_AGAIN
-    assert any(line.startswith("sign-in needed: ") for line in said)
+    assert logged_as(logged, "download.sign_in_needed")
     assert len(list((settings.docs / "worklog").rglob("*.md"))) == WORKLOG_DOCUMENTS
 
 
@@ -312,7 +322,7 @@ def test_ctrl_c_in_the_download_exits_130_and_no_later_step_runs(
         Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
         Worklog(worklog, archives=True),
     ]
-    synced = sync(context(settings, [], FIRST), steps)
+    synced = sync(context(settings, FIRST), steps)
     assert [(row.step, row.outcome) for row in synced.steps] == [
         ("download", "interrupted"),
         ("mirror", "not run"),
@@ -338,15 +348,16 @@ def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
         Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
         Worklog(worklog, archives=True),
     ]
-    said: list[str] = []
-    synced = sync(context(settings, said, FIRST), steps)
+    with capture_logs() as logged:
+        synced = sync(context(settings, FIRST), steps)
     assert [(row.step, row.outcome) for row in synced.steps] == [
         ("download", "done"),
         ("mirror", "failed"),
         ("worklog", "done"),
     ]
     assert synced.exit_status == ExitStatus.FAILED
-    assert f"not mirrored: {problem.where}: {problem.reason}\n" in said
+    (said,) = logged_as(logged, "mirror.not_mirrored")
+    assert (said["where"], said["reason"]) == (problem.where, problem.reason)
     assert len(list((settings.docs / "worklog").rglob("*.md"))) == WORKLOG_DOCUMENTS
 
 
@@ -356,7 +367,9 @@ def test_a_work_log_that_is_not_a_folder_is_refused_before_any_step(
     """Named by its setting; nothing is written."""
     config = settings_file(home, tmp_path / "absent")
     assert main(command(home, config, "--yes")) == ExitStatus.REFUSED
-    assert "refused: sources.worklog.path: not a folder" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "sync.refused" in err
+    assert "sources.worklog.path: not a folder" in err
     assert not (home / "data").exists()
 
 
@@ -383,19 +396,19 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     """Until the next clean run; standard error says that nothing was removed."""
     settings = chosen_settings(tmp_path, worklog)
     step = Worklog(worklog, archives=True)
-    said: list[str] = []
-    sync(context(settings, said, FIRST), [step])
+    sync(context(settings, FIRST), [step])
     gone = next((settings.docs / "worklog/transcripts").glob("*waiting-notes.md"))
     (worklog / "transcripts/misc/a.org").unlink()
     todo = worklog / "todo.org"
     todo.write_text(todo.read_text("utf-8").replace("Drafted on", "Drafted, failing, on"), "utf-8")
     failing = Counting(Pandoc.find().path, failing="failing")
-    synced = sync(context(settings, said, FIRST, failing), [step])
+    with capture_logs() as logged:
+        synced = sync(context(settings, FIRST, failing), [step])
     assert (synced.steps[0].outcome, synced.exit_status) == ("failed", ExitStatus.FAILED)
-    assert "no work-log file was removed, since something was not mirrored\n" in said
+    assert logged_as(logged, "worklog.nothing_removed")
     assert gone.exists()
     todo.write_text(todo.read_text("utf-8").replace("Drafted, failing, on", "Drafted on"), "utf-8")
-    assert sync(context(settings, said, FIRST), [step]).exit_status == ExitStatus.OK
+    assert sync(context(settings, FIRST), [step]).exit_status == ExitStatus.OK
     assert not gone.exists()
 
 
@@ -536,15 +549,15 @@ def test_ctrl_c_in_the_mirror_marks_it_interrupted_and_the_work_log_not_run(
         Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
         Worklog(worklog, archives=True),
     ]
-    said: list[str] = []
-    synced = sync(context(settings, said, FIRST), steps)
+    with capture_logs() as logged:
+        synced = sync(context(settings, FIRST), steps)
     assert [(row.step, row.outcome) for row in synced.steps] == [
         ("download", "done"),
         ("mirror", "interrupted"),
         ("worklog", "not run"),
     ]
     assert synced.exit_status == ExitStatus.INTERRUPTED
-    assert "interrupted; no later step runs\n" in said
+    assert [each["step"] for each in logged_as(logged, "sync.interrupted")] == ["mirror"]
 
 
 def test_ctrl_c_once_every_step_ended_still_exits_130(
@@ -558,7 +571,7 @@ def test_ctrl_c_once_every_step_ended_still_exits_130(
 
     monkeypatch.setattr(sync_app, "worklog", ended_then_stopped)
     settings = chosen_settings(tmp_path, worklog)
-    synced = sync(context(settings, [], FIRST), [Worklog(worklog, archives=True)])
+    synced = sync(context(settings, FIRST), [Worklog(worklog, archives=True)])
     assert [(row.step, row.outcome) for row in synced.steps] == [("worklog", "done")]
     assert synced.exit_status == ExitStatus.INTERRUPTED
 
@@ -575,11 +588,11 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
     )
     settings = Settings(data_dir=tmp_path / "data", site=SITE)
     atlassian = Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK))
-    synced = sync(context(settings, [], FIRST), [atlassian, Worklog(worklog, archives=True)])
+    synced = sync(context(settings, FIRST), [atlassian, Worklog(worklog, archives=True)])
     assert [row.outcome for row in synced.steps] == ["sign in", "failed", "done"]
     assert synced.exit_status == ExitStatus.SIGN_IN_AGAIN
     monkeypatch.setattr(sync_app, "worklog", interrupting)
-    synced = sync(context(settings, [], FIRST), [atlassian, Worklog(worklog, archives=True)])
+    synced = sync(context(settings, FIRST), [atlassian, Worklog(worklog, archives=True)])
     assert [row.outcome for row in synced.steps] == ["sign in", "failed", "interrupted"]
     assert synced.exit_status == ExitStatus.INTERRUPTED
 
@@ -592,7 +605,8 @@ def test_an_included_source_without_its_table_is_refused_beside_one_that_has_it(
     given = ("--yes", "--include", "confluence", "--include", "worklog")
     assert main(command(home, config, *given)) == ExitStatus.REFUSED
     said = capsys.readouterr().err
-    assert "refused: --include worklog: not configured; set sources.worklog.path\n" in said
+    assert "run.refused" in said
+    assert "--include worklog: not configured; set sources.worklog.path" in said
 
 
 def test_with_a_site_source_an_email_without_a_token_alone_is_not_applied(
@@ -639,12 +653,100 @@ def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
         Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
         Worklog(worklog, archives=True),
     ]
-    said: list[str] = []
-    synced = sync(context(settings, said, FIRST), steps)
+    with capture_logs() as logged:
+        synced = sync(context(settings, FIRST), steps)
     assert [(row.step, row.outcome) for row in synced.steps] == [
         ("download", "failed"),
         ("mirror", "done"),
         ("worklog", "done"),
     ]
     assert synced.exit_status == ExitStatus.FAILED
-    assert "another run is writing the raw store; try again once it ends\n" in said
+    assert logged_as(logged, "download.store_busy")
+
+
+# The commands whose steps sync runs: what their pages list, and sync's does not, is
+# theirs, and sync records it as they do.
+STEP_PAGES = ("download", "mirror")
+
+
+def own_records(emitted: Emitted) -> Emitted:
+    """Keep what a sync records of its own; check that the steps' records are on their pages.
+
+    What a step's page lists, and sync's page does not, is the step's: each such event is
+    recorded with listed fields alone, each span by its listed name, and is left out.
+    """
+    mine = documented("sync")
+    steps = [documented(page) for page in STEP_PAGES]
+    events = {name: fields for page in steps for name, fields in page.events.items()}
+    events = {name: fields for name, fields in events.items() if name not in mine.events}
+    spans = {name for page in steps for name in page.spans} - set(mine.spans)
+    instruments = {name for page in steps for name in page.instruments} - set(mine.instruments)
+    assert all(
+        recorded <= events[name] for name, recorded in emitted.events.items() if name in events
+    )
+    kept = Emitted()
+    for name, fields in emitted.events.items():
+        if name not in events:
+            kept.events[name] |= fields
+    kept.logged = [each for each in emitted.logged if each[0] not in events]
+    kept.records = [each for each in emitted.records if each[0] not in events]
+    kept.spans = [each for each in emitted.spans if each.name not in spans]
+    kept.instruments.update(
+        (name, value) for name, value in emitted.instruments.items() if name not in instruments
+    )
+    return kept
+
+
+@pytest.mark.usefixtures("signed_in")
+def test_what_sync_records_is_what_its_page_says(
+    home: Path, worklog: Path, telemetry: InMemory, monkeypatch: MonkeyPatch
+) -> None:
+    """Runs that between them record each event, span and instrument of sync's page.
+
+    A full run, a dry run, one interrupted, one refused, one without pandoc, one meeting
+    a problem and two transcripts of one id, one whose pandoc gives no version. No line
+    of the log files holds a document's text.
+    """
+    config = settings_file(home, worklog, atlassian=True)
+    period = ("--since", "2026-10-02")
+    emitted = Emitted()
+    with emitted.gathering(telemetry, "sync"):
+        assert main(command(home, config, "--yes", "-vv", *period)) == ExitStatus.FAILED
+    with emitted.gathering(telemetry, "sync"):
+        assert main(command(home, config, "--dry-run", *period)) == ExitStatus.OK
+    shutil.copytree(worklog / "transcripts/current", worklog / "transcripts/archive/2026/x")
+    (worklog / "transcripts/misc/a.org").write_bytes(b"* Caf\xe9\n")
+    with emitted.gathering(telemetry, "sync"):
+        assert main(command(home, config, "--yes", "--include", "worklog")) == ExitStatus.FAILED
+    with monkeypatch.context() as patch:
+        patch.setattr(sync_app, "download", interrupting)
+        with emitted.gathering(telemetry, "sync"):
+            assert main(command(home, config, "--yes", *period)) == ExitStatus.INTERRUPTED
+    with monkeypatch.context() as patch:
+        patch.setattr(Pandoc, "org_converter", lambda _: unconverted())
+        with emitted.gathering(telemetry, "sync"):
+            assert main(command(home, config, "--yes", "--include", "worklog")) == 1
+    with monkeypatch.context() as patch:
+        patch.setattr(Pandoc, "find", missing)
+        with emitted.gathering(telemetry, "sync"):
+            assert main(command(home, config, "--yes", "--include", "worklog")) == 1
+    absent = settings_file(home, home / "absent")
+    with emitted.gathering(telemetry, "sync"):
+        assert main(command(home, absent, "--yes")) == ExitStatus.REFUSED
+    assert undocumented("sync", own_records(emitted)) == []
+    logs = "".join(path.read_text("utf-8") for path in home.rglob("sync-*.jsonl"))
+    assert '"event": "worklog.document"' in logs  # the files hold DEBUG, titles too
+    assert "Nothing dated here yet" in (worklog / "todo.org").read_text("utf-8")
+    assert all(text not in logs for text in ("zanzibarite", "PWNED", "Nothing dated here yet"))
+
+
+def unconverted() -> str:
+    """Fail as pandoc does when it gives no version."""
+    message = "pandoc: exit status 9"
+    raise PandocFailedError(message)
+
+
+def missing() -> Pandoc:
+    """Fail as when pandoc went from PATH once the run began."""
+    message = "pandoc: not found on PATH"
+    raise PandocMissingError(message)

@@ -3,13 +3,18 @@
 Each step runs even when an earlier one failed, since the next reads what is on disk;
 Ctrl-C stops the run, and no later step runs. What can be refused is refused before the
 first step: a target with nowhere to start, and a work log that is not a folder. A dry
-run plans the download and counts the work log, and writes nothing.
+run plans the download and counts the work log, and writes nothing. Each row is a span,
+``sync.step``, within which its step's own spans and events are recorded, those of
+``download``, ``mirror`` or the work log, as ``docs/reference/telemetry/sync.md`` says.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
+
+import structlog
+from opentelemetry import trace
 
 from atlassian_offline_mcp.cli.domain.sync import RANKED
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
@@ -39,6 +44,9 @@ DOWNLOADED: dict[ExitStatus | None, Outcome] = {
 }
 
 
+TRACER = trace.get_tracer(__name__)
+
+
 class SyncRefusedError(ValueError):
     """What a sync cannot run with, found before its first step; the message names it."""
 
@@ -64,13 +72,12 @@ class Worklog:
 
 @dataclass(frozen=True)
 class Context:
-    """What every step needs: the settings, pandoc, the clock, the pause, where to say."""
+    """What every step needs: the settings, pandoc, the clock, the pause, and a dry run."""
 
     settings: Settings
     pandoc: Pandoc
     now: Callable[[], datetime]
     sleep: Callable[[float], None]
-    say: Callable[[str], object]
     dry_run: bool
 
 
@@ -91,51 +98,72 @@ class Synced:
     steps: tuple[Row, ...]
 
 
+@dataclass
+class Rows:
+    """A sync's rows so far, in their order."""
+
+    added: list[Row] = field(default_factory=list)
+
+    def add(self, row: Row) -> None:
+        """Keep a row that ended within its step's span: log it, and set its outcome there."""
+        trace.get_current_span().set_attribute("aom.outcome", row.outcome)
+        structlog.get_logger().info("sync.step", step=row.step, outcome=row.outcome)
+        self.added.append(row)
+
+
 def atlassian(context: Context, step: Atlassian, add: Callable[[Row], None]) -> None:
     """Download, or plan the download, then mirror the raw store, unless a dry run.
 
-    The mirror runs whatever the download did, since it reads what is stored.
+    The mirror runs whatever the download did, since it reads what is stored. What went
+    wrong is said by ``download``'s and ``mirror``'s events.
     """
+    log, settings = structlog.get_logger(), context.settings
     act = plan if context.dry_run else download
-    try:
-        fetched = act(context.settings, step.targets, context.now, context.sleep)
-    except StoreBusyError:
-        context.say("another run is writing the raw store; try again once it ends\n")
-        add(Row("download", "failed", None))
-    else:
-        for target in fetched.failed_targets:
-            context.say(f"{target}\n")
-        if fetched.status == ExitStatus.SIGN_IN_AGAIN:
-            context.say(f"sign-in needed: {sign_in(context.settings).again}\n")
-        add(Row("download", DOWNLOADED[fetched.status], fetched))
-    if context.dry_run:
-        add(Row("mirror", "not run", None))
-        return
-    settings = context.settings
-    mirrored = mirror(RawStore(settings.raw), settings.docs, settings.site, context.pandoc.markdown)
-    for problem in mirrored.problems:
-        context.say(f"not mirrored: {problem.where}: {problem.reason}\n")
-    if mirrored.problems:
-        context.say("nothing was removed, since something was not mirrored\n")
-    add(Row("mirror", "failed" if mirrored.problems else "done", mirrored))
+    with TRACER.start_as_current_span("sync.step", attributes={"aom.step": "download"}):
+        try:
+            fetched = act(settings, step.targets, context.now, context.sleep)
+        except StoreBusyError:
+            hint = "another run is writing it; try again once that run ends"
+            structlog.get_logger().error("download.store_busy", store=str(settings.raw), hint=hint)
+            add(Row("download", "failed", None))
+        else:
+            for target in fetched.failed_targets:
+                log.warning("download.target_failed", target=target)
+            if fetched.status == ExitStatus.SIGN_IN_AGAIN:
+                log.error("download.sign_in_needed", hint=sign_in(settings).again)
+            add(Row("download", DOWNLOADED[fetched.status], fetched))
+    with TRACER.start_as_current_span("sync.step", attributes={"aom.step": "mirror"}):
+        if context.dry_run:
+            add(Row("mirror", "not run", None))
+            return
+        mirrored = mirror(
+            RawStore(settings.raw), settings.docs, settings.site, context.pandoc.markdown
+        )
+        for problem in mirrored.problems:
+            log.warning("mirror.not_mirrored", where=problem.where, reason=problem.reason)
+        if mirrored.problems:
+            log.warning("mirror.nothing_removed", problems=len(mirrored.problems))
+        add(Row("mirror", "failed" if mirrored.problems else "done", mirrored))
 
 
 def worklog(context: Context, step: Worklog, add: Callable[[Row], None]) -> None:
     """Mirror the work log, or count what mirroring it would do; say its problems."""
+    log = structlog.get_logger()
     act = plan_worklog if context.dry_run else mirror_worklog
-    try:
-        done = act(step.folder, context.settings.docs, context.pandoc, archives=step.archives)
-    except PandocFailedError as error:
-        context.say(f"work log not mirrored: {error}\n")
-        add(Row("worklog", "failed", None))
-        return
-    for problem in done.problems:
-        context.say(f"not mirrored: {problem.where}: {problem.reason}\n")
-    for warning in done.warnings:
-        context.say(f"warning: {warning}\n")
-    if done.problems and not context.dry_run:
-        context.say("no work-log file was removed, since something was not mirrored\n")
-    add(Row("worklog", "failed" if done.problems else "done", done))
+    with TRACER.start_as_current_span("sync.step", attributes={"aom.step": "worklog"}):
+        try:
+            done = act(step.folder, context.settings.docs, context.pandoc, archives=step.archives)
+        except PandocFailedError as error:
+            structlog.get_logger().error("worklog.pandoc_failed", reason=str(error))
+            add(Row("worklog", "failed", None))
+            return
+        for problem in done.problems:
+            log.warning("worklog.problem", where=problem.where, reason=problem.reason)
+        for warning in done.warnings:
+            log.warning("worklog.same_id", reason=warning)
+        if done.problems and not context.dry_run:
+            log.warning("worklog.nothing_removed", problems=len(done.problems))
+        add(Row("worklog", "failed" if done.problems else "done", done))
 
 
 def sync(context: Context, steps: Sequence[Atlassian | Worklog]) -> Synced:
@@ -145,7 +173,9 @@ def sync(context: Context, steps: Sequence[Atlassian | Worklog]) -> Synced:
     a target with nowhere to start, both before the first step. Ctrl-C ends the step it
     stops as interrupted, and each later one as not run; the run is interrupted even
     when Ctrl-C comes once every step has ended. The status is the first of
-    ``RANKED``'s outcomes that the run had, else OK.
+    ``RANKED``'s outcomes that the run had, else OK. ``sync.start`` and ``sync.end`` say
+    at INFO the rows planned and how each ended; ``sync.interrupted``, a warning, which
+    row Ctrl-C stopped.
     """
     for step in steps:
         if isinstance(step, Atlassian):
@@ -153,23 +183,28 @@ def sync(context: Context, steps: Sequence[Atlassian | Worklog]) -> Synced:
         elif not step.folder.is_dir():
             message = "sources.worklog.path: not a folder"
             raise SyncRefusedError(message)
-    rows: list[Row] = []
+    log = structlog.get_logger()
+    planned = [row for step in steps for row in step.rows]
+    log.info("sync.start", steps=planned, dry_run=context.dry_run)
+    rows = Rows()
     outcomes: set[Outcome] = set()
     try:
         for step in steps:
             if isinstance(step, Atlassian):
-                atlassian(context, step, rows.append)
+                atlassian(context, step, rows.add)
             else:
-                worklog(context, step, rows.append)
+                worklog(context, step, rows.add)
     except KeyboardInterrupt:
-        context.say("interrupted; no later step runs\n")
+        stopped = len(rows.added)
+        log.warning("sync.interrupted", step=planned[stopped] if stopped < len(planned) else None)
         outcomes.add("interrupted")
-        planned = [row for step in steps for row in step.rows]
-        stopped = len(rows)
-        rows.extend(
+        rows.added.extend(
             Row(name, "interrupted" if index == stopped else "not run", None)
             for index, name in enumerate(planned[stopped:], stopped)
         )
-    outcomes.update(row.outcome for row in rows)
+    outcomes.update(row.outcome for row in rows.added)
     status = next((status for outcome, status in RANKED if outcome in outcomes), ExitStatus.OK)
-    return Synced(status, tuple(rows))
+    log.info(
+        "sync.end", status=int(status), steps=[f"{row.step}: {row.outcome}" for row in rows.added]
+    )
+    return Synced(status, tuple(rows.added))
