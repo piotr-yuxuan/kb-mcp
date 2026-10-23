@@ -1,13 +1,15 @@
 """The pages stay true to the checkout and to the code they describe.
 
 Plan 020 walks the checkout for Markdown and reads each page as GitHub renders it: a
-relative link reaches a file, or a heading, of the checkout. Plan 015 checks that the
+relative link reaches a file, or a heading, of the checkout, and a link into ``src/``
+whose text is code names what that file defines. Plan 015 checks that the
 command lines of its two how-tos, ``AGENTS.md`` and the guides it changed parse, plan
 017 those of its two; plan 019 that the reference names each tool and prompt served.
 """
 
 from __future__ import annotations
 
+import ast
 import inspect
 import itertools
 import posixpath
@@ -15,7 +17,7 @@ import re
 import shlex
 from collections import Counter
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import unquote, urlsplit
 
 import pytest
@@ -25,6 +27,9 @@ from atlassian_offline_mcp.cli.main import parser
 from atlassian_offline_mcp.kernel.tools import TOOLS
 from atlassian_offline_mcp.mcp.app.surface import surface
 from atlassian_offline_mcp.mcp.app.tools import Library
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 ROOT = Path(__file__).parents[1]
 PAGES = (
@@ -60,13 +65,14 @@ class Link(NamedTuple):
     """A link of a page, its target resolved from the checkout's root, as GitHub does.
 
     ``path`` is ``None`` for a link off the checkout, a URL with a scheme or a host, and
-    the page itself for an anchor alone.
+    the page itself for an anchor alone; ``code`` is the text when it is one code span.
     """
 
     line: int
     target: str
     path: str | None
     anchor: str
+    code: str | None
 
 
 class Page(NamedTuple):
@@ -119,7 +125,7 @@ def read(page: str) -> Page:
             anchors.add(f"{slug}-{slugs[slug]}" if slugs[slug] else slug)
             slugs[slug] += 1
         breaks = 0
-        for child in children:
+        for index, child in enumerate(children):
             if child.type in {"softbreak", "hardbreak"}:
                 breaks += 1
             elif child.type == "link_open":
@@ -132,12 +138,16 @@ def read(page: str) -> Page:
                     path = posixpath.normpath(relative)
                 else:
                     path = page
+                inside = [token.type for token in children[index + 1 : index + 3]]
                 links.append(
                     Link(
                         line=block.map[0] + 1 + breaks,
                         target=target,
                         path=path,
                         anchor=unquote(parts.fragment),
+                        code=children[index + 1].content
+                        if inside == ["code_inline", "link_close"]
+                        else None,
                     )
                 )
     return Page(links, frozenset(anchors))
@@ -166,6 +176,53 @@ def test_each_relative_link_reaches_a_file_or_folder_and_each_anchor_a_heading(
             ):
                 broken.append(f"{where} names no heading of {link.path}")
     assert broken == []
+
+
+def defined(statements: Iterable[ast.stmt]) -> set[str]:
+    """Name the functions, classes and assigned names that statements define."""
+    names = set()
+    for statement in statements:
+        match statement:
+            case (
+                ast.FunctionDef(name=name)
+                | ast.AsyncFunctionDef(name=name)
+                | ast.ClassDef(name=name)
+            ):
+                names.add(name)
+            case ast.AnnAssign(target=ast.Name(id=name)) | ast.TypeAlias(name=ast.Name(id=name)):
+                names.add(name)
+            case ast.Assign(targets=targets):
+                names.update(target.id for target in targets if isinstance(target, ast.Name))
+    return names
+
+
+def test_each_code_link_into_the_source_names_what_its_file_defines(
+    checkout: frozenset[str],
+) -> None:
+    """A link to a module of ``src/`` whose text is one code span names what it defines.
+
+    That is a function, a class or a constant defined at its top, or ``Class.name``: a
+    method, or a name assigned in the class's body. A link to a folder is not read, nor
+    one to a missing file, which the check of links refuses.
+    """
+    unknown = []
+    for page in sorted(path for path in checkout if path.endswith(".md")):
+        for link in read(page).links:
+            if not (
+                link.code
+                and link.path in checkout
+                and link.path.startswith("src/")
+                and link.path.endswith(".py")
+            ):
+                continue
+            module = ast.parse((ROOT / link.path).read_bytes(), link.path).body
+            classes = [node for node in module if isinstance(node, ast.ClassDef)]
+            names = defined(module) | {
+                f"{owner.name}.{name}" for owner in classes for name in defined(owner.body)
+            }
+            if link.code not in names:
+                unknown.append(f"{page}:{link.line}: `{link.code}` is not defined in {link.path}")
+    assert unknown == []
 
 
 @pytest.mark.parametrize("page", PAGES)
