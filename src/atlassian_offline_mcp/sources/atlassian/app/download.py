@@ -526,7 +526,7 @@ class Download:
         log = structlog.get_logger()
         blobs: dict[str, str] = {}
         for attachment in attachments:
-            named = {"id": attachment.id, "name": attachment.filename}
+            named = {"id": attachment.id, "file_name": attachment.filename}
             reason = skip_reason(attachment, self.max_file_bytes)
             if reason is not None:
                 self.report.add(f"files: skipped, {reason}")

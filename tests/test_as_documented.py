@@ -3,8 +3,9 @@
 Plan 016, criterion 10: for each page found in the folder, runs of its command over the
 scripted site and the scripted endpoint, between them, record every event, span and
 instrument that the page lists, and none that it and the README do not; each record
-exported has the event as body and the ids of the span around it. Criterion 11: a run's
-trace keeps its size however many documents it fetches, each a trace of its own.
+exported has the event as body, its fields as attributes and the ids of the span around
+it. Criterion 11: a run's trace keeps its size however many documents it fetches, each a
+trace of its own.
 """
 
 from __future__ import annotations

@@ -45,6 +45,10 @@ STANDARD = frozenset(
     {"event", "level", "logger", "timestamp", "run", "command", "trace_id", "span_id"}
     | {"exc_info", "exception"}
 )
+# What an exported record's attributes hold besides its event's fields: its command, and
+# the type, message and traceback of an exception, which the SDK adds.
+EXPORTED = "command"
+EXCEPTION = "exception."
 # A placeholder in a documented name, such as ``<model>``, which stands for one word.
 PLACEHOLDER = re.compile(r"<[a-z]+>")
 # The kinds of span, as OTLP numbers them.
@@ -112,24 +116,31 @@ class Emitted:
     """What runs recorded, gathered run after run.
 
     ``events`` holds each event's fields; ``logged`` each event logged, at its level,
-    with the ids of the span it was logged in, 0 outside any; ``records`` each record
-    exported, by its body and the same ids; ``instruments`` each instrument's kinds and
-    units, one of each unless runs disagree, and its attributes' keys.
+    with the ids of the span it was logged in, 0 outside any, and its fields, sorted;
+    ``records`` each record exported, by its body, the same ids and the keys of its
+    attributes that are fields of its event, sorted; ``instruments`` each instrument's
+    kinds and units, one of each unless runs disagree, and its attributes' keys.
     """
 
     events: defaultdict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
-    logged: list[tuple[str, int, int, int]] = field(default_factory=list)
+    logged: list[tuple[str, int, int, int, tuple[str, ...]]] = field(default_factory=list)
     spans: list[Traced] = field(default_factory=list)
     instruments: defaultdict[str, tuple[set[tuple[str, str]], set[str]]] = field(
         default_factory=lambda: defaultdict(lambda: (set(), set()))
     )
-    records: list[tuple[str, int, int]] = field(default_factory=list)
+    records: list[tuple[str, int, int, tuple[str, ...]]] = field(default_factory=list)
 
     def log(self, fields: dict[str, object], level: int, ids: tuple[int, int]) -> None:
         """Note an event logged, with its fields, at ``level``, in the span of ``ids``."""
         event = str(fields["event"])
-        self.events[event] |= set(fields) - STANDARD
-        self.logged.append((event, level, *ids))
+        own = set(fields) - STANDARD
+        self.events[event] |= own
+        self.logged.append((event, level, *ids, tuple(sorted(own))))
+
+    def export(self, body: str, ids: tuple[int, int], keys: Iterable[str]) -> None:
+        """Note a record exported, by its body, in the span of ``ids``, and its attributes' keys."""
+        fields = (key for key in keys if key != EXPORTED and not key.startswith(EXCEPTION))
+        self.records.append((body, *ids, tuple(sorted(fields))))
 
     def measure(self, name: str, kind: str, unit: str, keys: Iterable[str]) -> None:
         """Note an instrument that recorded, of a kind and a unit, with its attributes' keys."""
@@ -161,7 +172,8 @@ class Emitted:
                 root.removeHandler(sink)
         for exported in exporter.get_finished_logs():
             record = exported.log_record
-            self.records.append((str(record.body), record.trace_id or 0, record.span_id or 0))
+            ids = (record.trace_id or 0, record.span_id or 0)
+            self.export(str(record.body), ids, record.attributes or {})
         for span in telemetry.spans.get_finished_spans():
             context = span.get_span_context()
             self.spans.append(
@@ -189,7 +201,7 @@ class Emitted:
                 self.log(line, level, ids)
         for _, record in collector.records():
             ids = (int.from_bytes(record.trace_id), int.from_bytes(record.span_id))
-            self.records.append((str(plain(record.body)), *ids))
+            self.export(str(plain(record.body)), ids, attributes(record.attributes))
         for span in collector.spans():
             self.spans.append(
                 Traced(
@@ -236,7 +248,8 @@ def undocumented(command: str, emitted: Emitted) -> list[str]:
     the README, with the fields, kind, attributes and unit recorded, or more; each that
     the command's page lists must have been recorded. Each event logged from INFO must
     have been exported, a record whose body is the event, with the ids of the span it
-    was logged in. Nothing differs when the list is empty.
+    was logged in and the event's fields as its attributes. Nothing differs when the
+    list is empty.
     """
     own, every = documented(command), documented(README)
     events = every.events | own.events

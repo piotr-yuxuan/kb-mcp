@@ -45,11 +45,12 @@ as `download-20261022T210509Z-4242.jsonl`. `--help`, `--version`, a completion a
 | `trace_id`, `span_id` | Within a span, its trace's and its own ids, in hex, as Tempo shows them |
 | `exception` | A traceback, structured, without any frame's locals |
 
-The other fields are the event's own, in snake case, as the pages list them. Before any
-sink, the value of a key whose words, in lower case and split at `_`, `-` and `.`, hold
-`authorization`, `cookie`, `token`, `password`, `secret`, or `api` then `key`, at any
-depth, reads `[redacted]`; no header is logged, nor a query sent to another host than
-the site.
+The other fields are the event's own, in snake case, as the pages list them, none named
+as an attribute of the standard library's log record, such as `name` or `filename`,
+which an exported record could not hold. Before any sink, the value of a key whose
+words, in lower case and split at `_`, `-` and `.`, hold `authorization`, `cookie`,
+`token`, `password`, `secret`, or `api` then `key`, at any depth, reads `[redacted]`; no
+header is logged, nor a query sent to another host than the site.
 
 ## Levels
 

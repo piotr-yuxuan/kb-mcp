@@ -16,8 +16,8 @@ space's or project's span.
 | `download.document` | debug | `id`, `kind`, `title` | A document is fetched, and its snapshot read |
 | `download.document_failed` | warning | `id`, `kind`, `reason` | A document cannot be fetched: the run goes on, and exits 1 |
 | `download.document_unread` | warning | `kind`, `reason` | A snapshot that its adapter refuses: stored as it came, without its files |
-| `download.file_skipped` | info | `id`, `name`, `reason` | An attached file is not downloaded, by its media type or its size |
-| `download.file_failed` | warning | `id`, `name`, `reason` | An attached file cannot be downloaded, or is not the size listed |
+| `download.file_skipped` | info | `id`, `file_name`, `reason` | An attached file is not downloaded, by its media type or its size |
+| `download.file_failed` | warning | `id`, `file_name`, `reason` | An attached file cannot be downloaded, or is not the size listed |
 | `download.target_failed` | warning | `target` | A space or a project named cannot be listed |
 | `download.refused` | error | `reason` | The period or a setting is refused, before any request: exit 2 |
 | `download.store_busy` | error | `store`, `hint` | Another run writes the raw store: exit 1 |
