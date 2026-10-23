@@ -21,9 +21,9 @@ no location and is not for commands.
 | Path | `Settings` | Written by | Read by |
 |---|---|---|---|
 | `<data>/raw/` | `raw` | `download` (004) | `mirror` (005) |
-| `<data>/docs/` | `docs` | `mirror` (005) | agents, and `index` (006) |
-| `<data>/index.sqlite` | `index` | `index` (006) | the MCP server (006) |
-| `<data>/vectors.sqlite` | `vectors` | `index`, `eval` (011) | `index`, `eval` (011) |
+| `<data>/docs/` | `docs` | `mirror` (005), `sync` (017) | agents, and `index` (006), `sync` (017) |
+| `<data>/index.sqlite` | `index` | `index` (006), `sync` (017) | the MCP server (006) |
+| `<data>/vectors.sqlite` | `vectors` | `index`, `eval` (011), `sync` (017) | `index`, `eval` (011), `sync` (017) |
 | `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011) |
 | `<data>/session/` | `session` | `login` (004) | a run signed in by the saved session (004, 015) |
 | `<data>/runs/` | `runs` | `download` (004) | the user, and `doctor` (004) |
@@ -229,9 +229,10 @@ Owned by `download` (004): `<data>/runs/<UTC time as %Y%m%dT%H%M%SZ>.json`, in t
 
 ## The Markdown mirror
 
-Owned by `mirror` (005). Derived from the raw store and the `site` setting alone, so it
-can be rebuilt without network, byte for byte: nothing in it depends on when `mirror`
-ran.
+Owned by `mirror` (005), but for `worklog/`, which `sync`'s work-log step owns (017,
+[below](#the-work-log)); neither removes the other's files. `mirror`'s part is derived
+from the raw store and the `site` setting alone, so it can be rebuilt without network,
+byte for byte: nothing in it depends on when `mirror` ran.
 
 ```
 <data>/docs/confluence/<SPACE>/<id>-<slug>.md        a page
@@ -239,11 +240,14 @@ ran.
 <data>/docs/confluence/<SPACE>/_tree.md              the space's tree
 <data>/docs/jira/<PROJECT>/<KEY>.md                  an issue
 <data>/docs/assets/<sha256>.<ext>                    an attached file
+<data>/docs/worklog/entries/<id>-<slug>.md           a work-log entry
+<data>/docs/worklog/transcripts/<id>-<slug>.md       a work-log transcript
 ```
 
 - The documents are exactly the files that `mirror.adapters.markdown.documents(docs)`
-  yields: those of the first, second and fourth patterns, except names beginning with
-  `_` or `.`. `_tree.md` has no front matter, and nothing under `assets/` is a document.
+  yields: those of the first, second, fourth, sixth and seventh patterns, except names
+  beginning with `_` or `.`. `_tree.md` has no front matter, and nothing under
+  `assets/` is a document.
 - `<SPACE>` is the space key, `<PROJECT>` the project key, `<KEY>` the issue key.
 - `<slug>`: the title decomposed (Unicode NFKD) and lowered, its combining marks dropped
   (`Crème` gives `creme`), keeping ASCII letters and digits; every run of other
@@ -268,24 +272,24 @@ order or type, by name.
 
 | Key | Type | Value |
 |---|---|---|
-| `source` | string | `confluence` or `jira` |
-| `type` | string | `page` or `blogpost` (Confluence), `issue` (Jira) |
-| `id` | string | the content id or issue id |
+| `source` | string | `confluence`, `jira` or `worklog` |
+| `type` | string | `page` or `blogpost` (Confluence), `issue` (Jira), `entry` or `transcript` (work log) |
+| `id` | string | the content id or issue id; a work-log document's, [below](#the-work-log) |
 | `key` | string or null | the issue key; `null` for Confluence |
 | `title` | string | the title |
 | `space` | string or null | the space key; `null` for Jira |
 | `project` | string or null | the project key; `null` for Confluence |
-| `status` | string | as the site names it |
+| `status` | string | as the site names it; an entry's keyword, else `current`, as a transcript's |
 | `issue_type` | string or null | the issue type, such as `Bug`; `null` for Confluence |
-| `labels` | list of strings | the labels, `[]` when none |
-| `author` | string or null | the display name when known (from `users()` for Confluence), otherwise the account id; `null` when none |
+| `labels` | list of strings | the labels, `[]` when none; a work-log document's tags, its file's `#+FILETAGS`, and `ARCHIVE` when archived |
+| `author` | string or null | the display name when known (from `users()` for Confluence), otherwise the account id; `null` when none, and for the work log |
 | `assignee` | string or null | the assignee's display name, or account id; `null` when unassigned or for Confluence |
-| `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'` |
+| `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |
-| `revision` | string | the raw store revision mirrored |
-| `url` | string or null | the absolute address of the web page: the `site` setting and `Document.url`; `null` when no site is set |
-| `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]` |
-| `fetched_at` | string | `fetched_at` of the snapshot, as `created` |
+| `revision` | string | the raw store revision mirrored; a work-log document's, 16 hex digits, [below](#the-work-log) |
+| `url` | string or null | the absolute address of the web page: the `site` setting and `Document.url`; `null` when no site is set, and for the work log |
+| `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for an entry, its file's name; for a transcript, its folders from `transcripts` |
+| `fetched_at` | string | `fetched_at` of the snapshot, as `created`; a work-log document's file's modification time when converted |
 
 Images: an image in the rendered HTML names its attachment by
 `data-linked-resource-id` (the attachment id) or by the file name in its `src`, as
@@ -307,13 +311,52 @@ downloaded"), then for an issue a `## Comments` section with one `### <author>, 
 heading per comment. Headings inside the body are kept, so that 006 can cut a document
 into sections.
 
-Everything in the mirror is content from the site: untrusted reference data, never
-instructions.
+Everything in the mirror is content from the site or the work log: untrusted reference
+data, never instructions.
+
+### The work log
+
+Owned by `sync`'s work-log step (017), in `mirror.app.worklog`: `<data>/docs/worklog/`,
+from the folder that `sources.worklog.path` names, read in place and never written.
+`mirror.adapters.mirror_files.owned` and `worklog_owned` tell each owner's files apart,
+so that `mirror` and the work-log step never remove each other's. A run that meets a
+problem (a file not read, a conversion that failed) removes none of its files.
+
+- An **entry** is a top-level heading of `todo.org` or `todo.org_archive`, with what
+  lies below it. Its id is `e-` and the first 16 hex digits of the SHA-256 of its `:ID:`
+  property; else of its title, a line feed, and its `:CREATED:` property; else of its
+  title alone. The title is the heading without keyword, priority, tags and statistics
+  cookies. The second entry of one digest takes `-2`, the third `-3`, in file order,
+  `todo.org` first.
+- A **transcript** is an `*.org` file under `transcripts/`. Its id is `t-`, the day
+  that begins its folder's name, else its own, as `%Y%m%d`, `-` and its name without
+  `.org`, when that matches the rule below; else `t-` and the digest of its path below
+  `transcripts/<first folder>/`. Of two files of one id, the second in path order takes
+  the digest of its whole path from the work log's root, written with a leading `/`,
+  which no path below a first folder has.
+- The rule of an id is `kernel.content.WORKLOG_ID`,
+  `e-[0-9a-f]{16}(?:-[0-9]+)?|t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})`. It names
+  the file, with the title's slug, as for a page.
+- `revision` is the digest of pandoc's version and options, a NUL, and the org text
+  that pandoc converts: a document whose revision has not changed is not converted
+  again, and its file keeps its dates.
+- `created` and `updated` are a transcript's day at midnight UTC; else the earliest and
+  latest timestamps of the document's lines, as written, up to its file's modification
+  time, a later one being a plan; else, without any, the modification time, `created`
+  keeping an existing file's.
+- The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
+  and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
+  file, `transcripts/archive/` and subtrees tagged `ARCHIVE` are left out.
+
+An entry holds the user's notes and summaries an AI wrote; a transcript, the
+word-by-word record. The MCP server says so to agents, in its instructions and its
+`source` filter, and `read` opens a document by its id.
 
 ## The index
 
-Owned by `index` (006). `<data>/index.sqlite` is built from the documents of
-`<data>/docs/` alone, read with `mirror.adapters.markdown`, into a temporary file that
+Owned by `index` (006), which `sync` runs as its last step (017).
+`<data>/index.sqlite` is built from the documents of `<data>/docs/` alone, the work
+log's among them, read with `mirror.adapters.markdown`, into a temporary file that
 is then renamed into place. Its schema is defined in 006's plan; schema 3 (011) adds the
 table `pieces` (each piece of a section's body, its span and its vector) and the meta
 rows `build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the
