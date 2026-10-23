@@ -176,6 +176,28 @@ def test_a_traceback_on_the_console_shows_no_frame_s_locals() -> None:
     assert SENTINEL not in out
 
 
+def test_a_traceback_on_the_console_is_inert_whole_and_indented() -> None:
+    """An exception's message with the site's text: each line inert, none cut, as indented.
+
+    On a terminal in colour, narrower than the message.
+    """
+    console = Console(file=io.StringIO(), force_terminal=True, color_system="truecolor", width=40)
+    long = "b" * 60
+    failure = ValueError(f"{TITLE} {long}")
+    with pytest.raises(ValueError, match="second line") as raised:
+        raise failure
+    with drawn(console):
+        structlog.get_logger().error("run.failed", exc_info=raised.value)
+    out = written(console)
+    for control in ("\x07", "\N{RIGHT-TO-LEFT OVERRIDE}", "\x1b[31mnotes"):
+        assert control not in out
+    lines = out.splitlines()
+    assert "ValueError: Release [31mnotes plan [red]draft" in lines
+    assert f"second line {long}" in lines
+    assert any(line.startswith('  File "') for line in lines)
+    assert "    raise failure" in lines
+
+
 def test_secrets_are_redacted_before_the_console() -> None:
     """Under headers.Authorization or as a token, neither sentinel nor its base64 is shown."""
     console = piped()

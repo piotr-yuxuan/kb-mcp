@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import traceback
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, override
@@ -49,7 +50,8 @@ class ConsoleLines(logging.Handler):
     console's width on a terminal, whole elsewhere, and the others whole everywhere, the
     terminal wrapping them. The line is drawn as Rich's ``Text``, never as markup, and is
     coloured on a terminal without ``NO_COLOR`` alone. A traceback follows its line, with
-    no frame's locals. The SDK's own records are left to the file.
+    no frame's locals, each of its lines through ``printable()`` too, whole and indented
+    as it was. The SDK's own records are left to the file.
     """
 
     def __init__(self, console: Console, level: int) -> None:
@@ -70,7 +72,12 @@ class ConsoleLines(logging.Handler):
                         for key, value in event.items()
                     },
                     structlog.dev.ConsoleRenderer(
-                        colors=colours, exception_formatter=structlog.dev.plain_traceback
+                        colors=colours,
+                        exception_formatter=lambda out, exc_info: out.writelines(
+                            f"\n{line[: len(line) - len(line.lstrip(' '))]}"
+                            f"{printable(line, width=sys.maxsize)}"
+                            for line in "".join(traceback.format_exception(*exc_info)).splitlines()
+                        ),
                     ),
                 ],
             )
