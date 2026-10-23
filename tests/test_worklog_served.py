@@ -111,7 +111,10 @@ def test_the_server_says_what_entries_and_transcripts_are(home: Path) -> None:
     """
     instructions, tools, _ = seen(home)
     (said,) = [s for s in re.split(r"(?<=\.)\s", instructions) if "transcripts" in s]
-    told = ["entries", "notes", "summaries", "transcripts", "word-by-word", "prefer", "quoting"]
+    told = [
+        *("entries", "user's", "notes", "AI-written", "summaries"),
+        *("transcripts", "word-by-word", "prefer", "quoting"),
+    ]
     assert [words for words in [*told, "check a summary"] if words not in said] == [], said
     assert [said.index(words) for words in told] == sorted(said.index(words) for words in told)
     assert said.index("quoting") < said.index("check a summary")
@@ -121,8 +124,10 @@ def test_the_server_says_what_entries_and_transcripts_are(home: Path) -> None:
     filters = search.input_schema["$defs"]["SearchFilters"]
     assert "worklog" in filters["properties"]["source"]["enum"]
     described = filters["description"]
-    kinds = ["worklog", "entries", "notes", "summaries", "transcripts", "verbatim"]
+    kinds = ["worklog", "user's", "entries", "notes", "AI", "summaries", "transcripts", "verbatim"]
     assert [words for words in kinds if words not in described] == [], described
     assert [described.index(words) for words in kinds] == sorted(
         described.index(words) for words in kinds
     )
+    verbatim = described[described.index("transcripts") :]
+    assert [words for words in ("entries", "notes", "summaries") if words in verbatim] == []
