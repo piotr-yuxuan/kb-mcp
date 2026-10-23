@@ -2,6 +2,7 @@
 
 The compose file pins the image, publishes two ports on the loopback address only, sets
 what turns away other host names and keeps the stack from calling home, and keeps no data.
+Where podman or Docker has a compose provider, its ``compose config`` accepts the file.
 Each dashboard, found in its folder, draws on the image's own data sources only, and
 charts no metric but those of the reference, ``docs/reference/telemetry/``, named as
 Prometheus names what it receives over OTLP.
@@ -10,7 +11,9 @@ Prometheus names what it receives over OTLP.
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 from pathlib import Path, PurePosixPath
 
 import pytest
@@ -40,6 +43,8 @@ VARIABLES = {
     "TEMPO_EXTRA_ARGS": "-reporting.enabled=false",
     "PYROSCOPE_EXTRA_ARGS": "-usage-stats.enabled=false",
 }
+# How long a compose tool has to say its version, or to read the file, in seconds.
+COMPOSING_S = 120
 # Where the image's Grafana reads its providers of dashboards.
 PROVIDERS = PurePosixPath("/otel-lgtm/grafana/conf/provisioning/dashboards")
 # The data sources that the image provisions: each one's uid and type.
@@ -97,6 +102,68 @@ def test_no_volume_keeps_data_and_the_dashboards_folder_is_mounted_whole_read_on
     (provider,) = yaml.safe_load((LGTM / "dashboards.yaml").read_text("utf-8"))["providers"]
     assert PurePosixPath(provider["options"]["path"]) == targets["./dashboards"]
     assert provider["allowUiUpdates"] is False
+
+
+def test_podman_compose_accepts_the_file_where_it_has_a_provider(tmp_path: Path) -> None:
+    """``config`` reads and checks the file, and pulls and starts nothing.
+
+    Skipped without podman, or where ``podman compose`` finds no provider to run; under a
+    scratch home, podman found by its name on ``PATH``, as the user runs it.
+    """
+    found = subprocess.run(
+        ["/usr/bin/env", "podman", "compose", "version"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env={"HOME": str(tmp_path), "PATH": os.environ["PATH"]},
+        cwd=LGTM,
+        check=False,
+        timeout=COMPOSING_S,
+    )
+    if found.returncode != 0:
+        pytest.skip("no podman here, or no compose provider for it")
+    checked = subprocess.run(
+        ["/usr/bin/env", "podman", "compose", "-f", "compose.yaml", "config", "--quiet"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env={"HOME": str(tmp_path), "PATH": os.environ["PATH"]},
+        cwd=LGTM,
+        check=False,
+        timeout=COMPOSING_S,
+    )
+    assert checked.returncode == 0, checked.stderr
+
+
+def test_docker_compose_accepts_the_file_where_it_has_a_provider(tmp_path: Path) -> None:
+    """``config`` reads and checks the file, and pulls and starts nothing.
+
+    Skipped without Docker, or where ``docker compose`` has no plugin to run; under a
+    scratch home, Docker found by its name on ``PATH``, as the user runs it.
+    """
+    found = subprocess.run(
+        ["/usr/bin/env", "docker", "compose", "version"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env={"HOME": str(tmp_path), "PATH": os.environ["PATH"]},
+        cwd=LGTM,
+        check=False,
+        timeout=COMPOSING_S,
+    )
+    if found.returncode != 0:
+        pytest.skip("no Docker here, or no compose plugin for it")
+    checked = subprocess.run(
+        ["/usr/bin/env", "docker", "compose", "-f", "compose.yaml", "config", "--quiet"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env={"HOME": str(tmp_path), "PATH": os.environ["PATH"]},
+        cwd=LGTM,
+        check=False,
+        timeout=COMPOSING_S,
+    )
+    assert checked.returncode == 0, checked.stderr
 
 
 def test_the_folder_holds_the_overview_and_each_operation_s_with_unique_uids() -> None:
