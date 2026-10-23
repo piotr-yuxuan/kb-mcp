@@ -768,3 +768,21 @@ def test_calls_and_runs_are_measured_as_the_call_logs_and_the_results_say(
         (outcome["surface"], outcome["result"]): 1 for outcome in results["outcomes"]
     }
     assert ("A", "failure") in judged
+
+
+def test_an_answer_is_not_logged_as_it_quotes_the_mirror(world: World) -> None:
+    """Its run's start names the step and the run, and ``[not logged]`` for the JSON."""
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    run = first(out, "B")
+    given = json.dumps(VALID | {"quotes": [{"ref": "196845", "text": SENTINEL}]})
+    assert main(["eval-agents", "answer", str(out), run, given]) == 0
+    starts = [
+        json.loads(line)
+        for path in world.logs.glob("eval-agents-*.jsonl")
+        for line in path.read_text("utf-8").splitlines()
+        if '"run.start"' in line
+    ]
+    (answered,) = (each for each in starts if "answer" in each["arguments"])
+    assert answered["arguments"] == ["eval-agents", "answer", str(out), run, "[not logged]"]
+    assert not any(SENTINEL in path.read_text("utf-8") for path in world.logs.iterdir())

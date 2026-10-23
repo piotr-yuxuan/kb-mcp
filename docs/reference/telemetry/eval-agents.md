@@ -2,13 +2,14 @@
 
 What `eval-agents` records, besides what every command does ([README](README.md)). Each
 step is a run of its own, named `eval-agents` in its log file, its root span and
-`aom.command`; its `run.start` names the step among the arguments given, a call's and an
-answer's included. The agents run `call` and `answer`, once a call each, so each call is
-a trace of its own. The server that `call` starts, as `prepare` starts each surface's to
-list its tools, is a `serve` of its own, which records what [serve.md](serve.md) lists;
-the client passes the trace's context in each request, so the server's spans join the
-call's trace when both send telemetry. The step's own events hold ids, counts and
-seconds: the runs' directory keeps the questions, the calls and the answers.
+`aom.command`; its `run.start` names the step among the arguments given, a call's JSON
+included, but an answer's, which quotes the mirror: it reads `[not logged]`. The agents
+run `call` and `answer`, once a call each, so each call is a trace of its own. The
+server that `call` starts, as `prepare` starts each surface's to list its tools, is a
+`serve` of its own, which records what [serve.md](serve.md) lists; the client passes the
+trace's context in each request, so the server's spans join the call's trace when both
+send telemetry. The step's own events hold ids, counts and seconds: the runs' directory
+keeps the questions, the calls and the answers.
 
 On a terminal, `grade` shows its task `runs`, each run judged by its id.
 

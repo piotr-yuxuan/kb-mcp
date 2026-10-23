@@ -102,7 +102,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     answer.add_argument("answer", help="the answer, as one JSON object")
     answer.set_defaults(
         step="answer",
-        command=Command("eval-agents answer", RUN, flags=answered_flags, actions=answered_actions),
+        command=Command(
+            "eval-agents answer",
+            RUN,
+            flags=answered_flags,
+            actions=answered_actions,
+            unlogged=("answer",),
+        ),
     )
 
     grade = steps.add_parser("grade", help="grade the runs, and judge ask; keep the results")

@@ -136,7 +136,7 @@ What any command may log.
 
 | Event | Level | Fields | When |
 |---|---|---|---|
-| `run.start` | info | `version`, `arguments`, `settings`, `log_file`, `telemetry`, `telemetry_layer` | A run starts: the program's version, the arguments given, the settings as JSON, secrets masked, the log file, the endpoint, if any, and the layer that gave its value, `default` if none did |
+| `run.start` | info | `version`, `arguments`, `settings`, `log_file`, `telemetry`, `telemetry_layer` | A run starts: the program's version, the arguments given, those that its command keeps out of logs reading `[not logged]`, the settings as JSON, secrets masked, the log file, the endpoint, if any, and the layer that gave its value, `default` if none did |
 | `run.end` | info | `status`, `seconds` | A run ends: its exit status, how long it took |
 | `run.interrupted` | warning | `seconds` | Ctrl-C stopped the run, which exits 130 |
 | `run.failed` | error | `seconds` | An exception stopped the run, which exits 1; the traceback follows |
