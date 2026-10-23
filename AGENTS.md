@@ -20,6 +20,7 @@ Follow the `workflow:plans` skill with these parameters:
   `docs/reference/data-layout.md`; where code goes, in `docs/explanation/code-layout.md`.
   Only the adapter of a representation reads its JSON, and only one module knows the
   site's HTML.
+- What runs log, trace and measure: `docs/reference/telemetry/`, changed with the code.
 - At most three review rounds.
 
 ## Sandbox credentials
