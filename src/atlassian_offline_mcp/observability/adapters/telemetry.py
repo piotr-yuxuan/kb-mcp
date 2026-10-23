@@ -14,7 +14,7 @@ import threading
 import time
 from contextlib import contextmanager
 from importlib.metadata import version
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, cast, override
 from urllib.parse import urlsplit
 
 import requests
@@ -38,6 +38,7 @@ from opentelemetry.semconv.attributes.service_attributes import (
 )
 
 from atlassian_offline_mcp.observability.adapters.logs import PROGRAM, SDK
+from atlassian_offline_mcp.observability.domain.redaction import redacted
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -74,8 +75,9 @@ class Exported(LoggingHandler):
     attributes, but those that it holds as fields of its own (``NATIVE``) and those
     named as an attribute of the standard library's record, such as ``name``, which go
     unexported; ``command`` is one more, as on each line of the run's file. Another
-    record, a library's, has its message as its body, whatever its message is. Each
-    carries the ids of the span around it.
+    record, a library's, has its message as its body, whatever its message is, and the
+    fields it was given as ``extra`` as its attributes, redacted here, since no
+    processor sees them. Each carries the ids of the span around it.
     """
 
     def __init__(self, provider: LoggerProvider, command: str) -> None:
@@ -93,16 +95,14 @@ class Exported(LoggingHandler):
         event = isinstance(record.msg, dict) and "event" in record.msg
         fields = record.msg if event else {"event": record.getMessage()}
         standard = {key: value for key, value in vars(record).items() if key not in STRUCTLOG_EXTRA}
-        copy = logging.makeLogRecord(
-            {
-                **{key: value for key, value in fields.items() if key not in NATIVE},
-                **standard,
-                "msg": fields["event"],
-                "args": (),
-                "command": self.command,
-            }
-        )
-        super().emit(copy)
+        copied = {
+            **{key: value for key, value in fields.items() if key not in NATIVE},
+            **standard,
+            "msg": fields["event"],
+            "args": (),
+            "command": self.command,
+        }
+        super().emit(logging.makeLogRecord(cast("dict[str, object]", redacted(copied))))
 
 
 class Stopping(threading.Thread):

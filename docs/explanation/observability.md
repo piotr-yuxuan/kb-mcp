@@ -100,7 +100,9 @@ lower case and split at `_`, `-` and `.`, hold `authorization`, `cookie`, `token
 not values, and misses a key in camel case, such as `accessToken`; so the code never
 logs a header, and shows a URL's query on the site's own host alone, since a media
 redirect carries a signed token in its query. A traceback shows no frame's locals,
-which structlog would show by default, and where a token could sit.
+which structlog would show by default, and where a token could sit. A library's record
+reaches OpenTelemetry with the fields given as its `extra`, which no processor sees: the
+exporter redacts them by the same rule.
 
 Text from the site or the mirror, a title or a query, is untrusted: a control character
 in it could move the cursor of a terminal or rewrite what it shows, and a

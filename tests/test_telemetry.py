@@ -17,18 +17,35 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import httpx
 import pytest
 import structlog
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
 from opentelemetry.sdk.trace import TracerProvider
 
+from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.observability.adapters.logs import SDK
 from atlassian_offline_mcp.observability.adapters.telemetry import Exported
 from atlassian_offline_mcp.observability.app.observed import early
+from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.collector import LOGS, METRICS, TRACES, Collector, attributes, collecting, plain
 from tests.endpoint import nothing_listening
+from tests.test_api_token import (
+    ADDRESS,
+    AUTHORISATION,
+    CREDENTIAL,
+    EMAIL,
+    ENCODED,
+    HOST,
+    KEY,
+    KEY_SENTINEL,
+    SENTINEL,
+    SIGN_IN_NEEDED,
+    download,
+    served,
+)
 from tests.test_download import SITE
 from tests.test_observed import said
 from tests.test_settings import user_log_folder
@@ -36,7 +53,11 @@ from tests.test_settings import user_log_folder
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from _pytest.capture import CaptureFixture
     from _pytest.logging import LogCaptureFixture
+    from _pytest.monkeypatch import MonkeyPatch
+
+    from tests.conftest import InMemory
 
 ROOT = Path(__file__).parents[1]
 PROGRAM = "atlassian-offline-mcp"
@@ -61,6 +82,10 @@ PROVIDERS = {
 }
 # The same, each naming what is installed nowhere.
 UNKNOWN_PROVIDERS = dict.fromkeys(PROVIDERS, "elsewhere")
+# A saved session's cookie, which no sink may show.
+COOKIE = "cookie-sentinel-7e3b"
+# What no sink may show: the token, the key, the credential's base64 and the cookie.
+SECRETS = (SENTINEL, KEY_SENTINEL, ENCODED, COOKIE)
 
 
 @dataclass(frozen=True)
@@ -135,7 +160,7 @@ def test_an_exported_record_has_the_event_as_body_its_fields_and_the_span_around
 
     An event's level, logger, time and the event itself are the exported record's own
     fields, not attributes; its command is one more. A library's record has its message,
-    a mapping too.
+    a mapping too, and the fields given as its ``extra``, their secrets redacted.
     """
     exporter = InMemoryLogRecordExporter()
     provider = LoggerProvider(shutdown_on_exit=False)
@@ -150,10 +175,16 @@ def test_an_exported_record_has_the_event_as_body_its_fields_and_the_span_around
             structlog.get_logger("some.module").debug("thing.detail")
             logging.getLogger("some.library").warning("%s failed", "it")
             logging.getLogger("some.library").warning({"not": "an event"})
+            logging.getLogger("some.library").warning(
+                "signed in",
+                extra={"authorization": "Bearer sentinel", "x": {"api_key": "sentinel"}},
+            )
             logging.getLogger(f"{SDK}.sdk.trace").error("export failed")
         finally:
             root.removeHandler(sink)
-    event, library, mapping = (exported.log_record for exported in exporter.get_finished_logs())
+    event, library, mapping, extra = (
+        exported.log_record for exported in exporter.get_finished_logs()
+    )
     assert event.body == "thing.done"
     assert dict(event.attributes or {}) == {"count": 2, "nested": {"a": 1}, "command": "check"}
     context = span.get_span_context()
@@ -162,7 +193,73 @@ def test_an_exported_record_has_the_event_as_body_its_fields_and_the_span_around
     assert dict(library.attributes or {}) == {"command": "check"}
     assert library.trace_id == 0
     assert mapping.body == "{'not': 'an event'}"
+    assert dict(extra.attributes or {}) == {
+        "authorization": "[redacted]",
+        "x": {"api_key": "[redacted]"},
+        "command": "check",
+    }
     assert caplog.records[0].msg["event"] == "thing.done"
+
+
+def test_no_secret_reaches_the_files_stderr_or_telemetry_at_debug(
+    telemetry: InMemory,
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+) -> None:
+    """Plan 016's criterion 6, on the scripted site at -vv, telemetry on in this process.
+
+    First a download signing in by token, which the site refuses with 401; then one by
+    a saved session, whose site fails, the session's cookie a local of the failing
+    frame, after an event nesting the credential and the cookie under
+    ``headers.Authorization``, and a library's record giving both as its fields. No
+    secret is in the files, on stderr, in a span, a metric or an exported record. The
+    SDK's providers are this session's, over in-memory exporters; the records are
+    exported as ``exporting`` has it, through ``Exported``.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+    exporter = InMemoryLogRecordExporter()
+    provider = LoggerProvider(shutdown_on_exit=False)
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+    root, sink = logging.getLogger(), Exported(provider, "download")
+
+    def site(request: httpx.Request) -> httpx.Response:
+        if "authorization" in request.headers:
+            return httpx.Response(401)
+        cookie = request.headers.get("cookie", "")
+        both = [AUTHORISATION, cookie]
+        structlog.get_logger().warning("scripted.sent", headers={"Authorization": both})
+        logging.getLogger("some.library").warning(
+            "sent", extra={"authorization": AUTHORISATION, "cookie": cookie}
+        )
+        message = "the site broke"
+        raise RuntimeError(message)
+
+    sent = served(monkeypatch, site)
+    monkeypatch.setenv(KEY, KEY_SENTINEL)
+    root.addHandler(sink)
+    try:
+        with monkeypatch.context() as token:
+            token.setenv(EMAIL, ADDRESS)
+            token.setenv(CREDENTIAL, SENTINEL)
+            assert main(download(tmp_path, "-vv")) == SIGN_IN_NEEDED
+        session = tmp_path / "atlassian-offline-mcp" / "session" / COOKIES
+        write_cookies(session, [{"name": "tenant.session.token", "value": COOKIE, "domain": HOST}])
+        assert main(download(tmp_path, "-vv")) == ExitStatus.FAILED
+    finally:
+        root.removeHandler(sink)
+    assert any(COOKIE in request.headers.get("cookie", "") for request in sent)
+    out, err = capsys.readouterr()
+    files = "".join(path.read_text("utf-8") for path in user_log_folder(tmp_path).iterdir())
+    spans = "".join(span.to_json() for span in telemetry.spans.get_finished_spans())
+    data = telemetry.reader.get_metrics_data()
+    exported = "".join(record.to_json() for record in exporter.get_finished_logs())
+    assert "scripted.sent" in files
+    assert '"exception"' in files
+    assert "scripted.sent" in exported
+    for shown in (out + err, files, spans, "" if data is None else data.to_json(), exported):
+        assert [secret for secret in SECRETS if secret in shown] == []
 
 
 @pytest.mark.parametrize(
@@ -206,7 +303,7 @@ def test_on_all_arrives_at_this_machine_under_the_program_s_name_whatever_the_en
     reaching; the service's name and attributes name another, and gRPC is asked for;
     the API's variables name the SDK's providers, and the sampler none. Traces, metrics
     and the records from INFO arrive, each record with the event as body and its
-    command, none of the SDK's own.
+    command, none of the SDK's own; none shows the secrets that the settings hold.
     """
     collector = Collector()
     with nothing_listening() as dead, collecting(collector) as endpoint:
@@ -222,6 +319,9 @@ def test_on_all_arrives_at_this_machine_under_the_program_s_name_whatever_the_en
             "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": f"{elsewhere}/v1/metrics",
             "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": f"{elsewhere}/v1/logs",
             **({"OTEL_EXPORTER_OTLP_ENDPOINT": endpoint} if variable else {}),
+            EMAIL: ADDRESS,
+            CREDENTIAL: SENTINEL,
+            KEY: KEY_SENTINEL,
         }
         arguments = check(tmp_path, None if variable else endpoint)
         ran = guarded(tmp_path, port_of(endpoint), arguments, environment, LIMIT_S)
@@ -239,6 +339,8 @@ def test_on_all_arrives_at_this_machine_under_the_program_s_name_whatever_the_en
     assert [plain(record.body) for _, record in records] == ["run.start", "run.end"]
     for _, record in records:
         assert attributes(record.attributes)["command"] == "check"
+    for _, body in collector.sent:
+        assert [secret for secret in SECRETS if secret.encode() in body] == []
 
 
 def test_a_run_is_one_trace_whose_root_holds_its_records_and_says_its_command_and_status(
