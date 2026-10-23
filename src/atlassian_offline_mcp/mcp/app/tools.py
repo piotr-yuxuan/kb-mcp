@@ -10,8 +10,11 @@ ranking's search by words and by meaning are each a span, within the call's own,
 
 from __future__ import annotations
 
+import bisect
 import json
 import math
+import re
+import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -23,6 +26,7 @@ from opentelemetry import metrics, trace
 from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.meaning import Nearest
+from atlassian_offline_mcp.search.domain.chunking import CHUNKERS, UNIT, around
 from atlassian_offline_mcp.search.domain.search import (
     MAX_WORDS,
     Filters,
@@ -36,7 +40,7 @@ from atlassian_offline_mcp.search.domain.search import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
     from pathlib import Path
 
     from atlassian_offline_mcp.config.domain.settings import SearchMode as Mode
@@ -56,6 +60,9 @@ CURSOR_TIME = "%Y%m%dT%H%M%SZ"
 NO_WORDS = (
     'The query has no words to search. Give words, or sort="updated" to list what changed last.'
 )
+NO_QUESTION = "The question has no words to search: ask it in words."
+# The documents that one answer of ask quotes, at most, however short their passages.
+ASK_DOCUMENTS = 20
 NOT_MIRRORED = (
     "Not mirrored: the mirror holds no such document. It holds what was downloaded;"
     " status() says which spaces and projects, and search() finds by words."
@@ -173,6 +180,84 @@ def passage_of(reader: Reader, entry: Entry, ranked: Ranking, planned: Plan) -> 
     return passage or Passage(1, "", lead.partition("\n")[2])
 
 
+def folded(text: str) -> str:
+    """Write a text without its accents, character for character, as the index compares.
+
+    Each character is the first of its decomposition, so that offsets hold: a text
+    written decomposed keeps its marks, and a Hangul syllable becomes its first jamo,
+    where the index differs; a passage then falls back to its section's start.
+    """
+    return "".join(unicodedata.normalize("NFD", char)[0] for char in text)
+
+
+def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -> list[Passage]:
+    """Give the passage that ask quotes of each document, verbatim, in the order given.
+
+    A document ranked by meaning gives the unit of its best piece, by the index's
+    chunking. One ranked by words gives its best section for the question's words, or
+    its first: whole up to UNIT characters, else UNIT of it about the occurrence of its
+    rarest word of the question with the most other words within UNIT / 2 of it, by
+    ``around``, then cut to whole lines where a line break falls in the half that the
+    cut shortens. Words are found as the index finds them: without regard to case or
+    accents, between characters that are no letter nor digit. Candidates being the
+    rarest word's occurrences, a section of many hits costs as many bisections.
+    """
+    embedded = reader.embedded()
+    unit = CHUNKERS[embedded.chunking].unit if embedded else None
+    alone = (rf"(?<![^\W_]){re.escape(folded(word))}(?![^\W_])" for word in planned.words)
+    words = re.compile("|".join(alone), re.IGNORECASE)
+    found = []
+    for path in paths:
+        bounds = reader.bounds(path)
+        if unit and path in ranked.meaning:
+            number, start, end = ranked.meaning[path]
+            first, last = unit((start, end), bounds[number - 1])
+            text = reader.text(path, first, last)
+        else:
+            best = reader.passage(path, planned.match) if planned.words else None
+            number = best.number if best else 1
+            first, last = bounds[number - 1]
+            section = reader.text(path, first, last)
+            spots: dict[str, list[int]] = {}  # where each word of the question is
+            for each in words.finditer(folded(section)):
+                spots.setdefault(each[0].casefold(), []).append(each.start())
+            hit = first + max(
+                min(spots.values(), key=len, default=[0]),
+                key=lambda at: sum(
+                    bisect.bisect_left(places, at - UNIT // 2)
+                    < bisect.bisect_right(places, at + UNIT // 2)
+                    for places in spots.values()
+                ),
+            )
+            start, end = around((hit, hit + 1), (first, last))
+            text = section[start - first : end - first]
+            text = text if end == last else text[: text.rfind("\n", UNIT // 2) + 1 or UNIT]
+            text = text if start == first else text[text.find("\n", 0, UNIT // 2) + 1 :]
+        found.append(Passage(number, reader.heading(path, number), text))
+    return found
+
+
+def checked(filters: SearchFilters | None) -> dict[str, str]:
+    """Refuse a filter that is not one, or a value too long; give the filters given."""
+    given: dict[str, str] = {**(filters or {})}
+    if unknown := sorted(set(given) - SearchFilters.__optional_keys__):
+        valid = ", ".join(sorted(SearchFilters.__optional_keys__))
+        message = f"filters: no {', '.join(unknown)}; the filters are {valid}"
+        raise UnanswerableError(message)
+    bounded(**{name: (value, LONGEST["value"]) for name, value in given.items()})
+    return given
+
+
+def narrowed(reader: Reader, given: Mapping[str, str]) -> Filters:
+    """Give the filters as the index holds their values, refusing one that no document has."""
+    names = ("source", "space", "project", "status", "label")
+    return Filters(
+        **{name: canonical(reader, name, given.get(name)) for name in names},
+        updated_after=instant("updated_after", given.get("updated_after")),
+        updated_before=instant("updated_before", given.get("updated_before")),
+    )
+
+
 def bounded(**values: tuple[str | None, int]) -> None:
     """Refuse an argument longer than its limit, naming it."""
     for name, (value, limit) in values.items():
@@ -239,7 +324,7 @@ class Shown:
 
     path: str
     section: int
-    text: str  # the section's text, as the body holds it
+    text: str  # the section's text, or the passage quoted, as the body holds it
 
 
 class Library:
@@ -286,34 +371,24 @@ class Library:
         query, lists what changed last. Each hit gives the read() call of its best
         section; a long list ends with the call that continues it.
         """
-        given: dict[str, str] = {**(filters or {})}
-        if unknown := sorted(set(given) - SearchFilters.__optional_keys__):
-            valid = ", ".join(sorted(SearchFilters.__optional_keys__))
-            message = f"filters: no {', '.join(unknown)}; the filters are {valid}"
-            raise UnanswerableError(message)
+        given = checked(filters)
         bounded(query=(query, LONGEST["query"]), cursor=(cursor, LONGEST["cursor"]))
-        bounded(**{name: (value, LONGEST["value"]) for name, value in given.items()})
         planned, by_update = plan(query), sort == "updated"
         with self._reading() as reader:
             built_at = reader.built_at()
             offset, size = start_of(cursor, built_at), clamp(limit, SEARCH_LIMITS)
-            names = ("source", "space", "project", "status", "label")
-            narrowed = Filters(
-                **{name: canonical(reader, name, given.get(name)) for name in names},
-                updated_after=instant("updated_after", given.get("updated_after")),
-                updated_before=instant("updated_before", given.get("updated_before")),
-            )
+            kept = narrowed(reader, given)
             if not planned.words and not by_update:
                 return responses.answer(NO_WORDS)
             ranked = Ranking([], whole=True, meaning={})
             if planned.words:
-                asked = Asked(query, planned, narrowed, by_update, self._mode)
+                asked = Asked(query, planned, kept, by_update, self._mode)
                 ranked = ranking(reader, self._meaning, asked)
                 total, whole = len(ranked.paths), ranked.whole
                 paths = ranked.paths[offset : offset + size]
                 shown = sorted(reader.entries(paths=paths), key=lambda e: paths.index(e.path))
             else:
-                (total, shown), whole = reader.recent(narrowed, offset, size), True
+                (total, shown), whole = reader.recent(kept, offset, size), True
             # On the call's span, the SDK's: the mode, the documents found, whether words
             # stood in for meaning. Said here, as the docstring is the agent's to read.
             trace.get_current_span().set_attributes(
@@ -340,6 +415,83 @@ class Library:
         if planned.dropped:
             header += f" Only the first {MAX_WORDS} words of the query were searched."
         return responses.answer(header, "\n".join(items[:count]), footer)
+
+    def ask(
+        self, question: str, filters: SearchFilters | None = None, cursor: str | None = None
+    ) -> str:
+        """Answer a question from the offline mirror with passages to quote, the best first.
+
+        Ask in words; issue keys and page ids in the question put their documents first.
+        Each passage is the part of a document that answers best, verbatim, with its
+        title, ref, section, dates, site address and the read() call of its section: cite
+        it by ref. An answer holds what fits its budget, then the call that continues it.
+        filters narrow as search's do.
+        """
+        answer, pairs, ranked = self._asked(question, filters, cursor, self._mode)
+        # On the call's span, the SDK's, as for search: the mode, the documents found,
+        # whether words stood in for meaning, and the passages quoted.
+        trace.get_current_span().set_attributes(
+            {
+                "aom.mode": self._mode,
+                "aom.hits": len(ranked.paths),
+                "aom.fallback": bool(ranked.note),
+                "aom.passages": len(pairs),
+            }
+        )
+        return answer
+
+    def _asked(
+        self, question: str, filters: SearchFilters | None, cursor: str | None, mode: Mode
+    ) -> tuple[str, list[tuple[Entry, Passage]], Ranking]:
+        """Write ask's answer in a mode; give the documents and passages quoted, and the ranking."""
+        given = checked(filters)
+        bounded(question=(question, LONGEST["query"]), cursor=(cursor, LONGEST["cursor"]))
+        planned = plan(question)
+        with self._reading() as reader:
+            built_at = reader.built_at()
+            offset = start_of(cursor, built_at)
+            asked = Asked(question, planned, narrowed(reader, given), by_update=False, mode=mode)
+            if not planned.words:
+                return responses.answer(NO_QUESTION), [], Ranking([], whole=True, meaning={})
+            ranked = ranking(reader, self._meaning, asked)
+            paths = ranked.paths[offset : offset + ASK_DOCUMENTS]
+            entries = {entry.path: entry for entry in reader.entries(paths=paths)}
+            chosen = excerpts(reader, ranked, planned, paths)
+        pairs = [(entries[path], passage) for path, passage in zip(paths, chosen, strict=True)]
+        items = [
+            responses.excerpt(
+                number,
+                entry,
+                passage,
+                responses.call(
+                    self.read, ref=entry.front.key or entry.front.id, section=passage.number
+                ),
+            )
+            for number, (entry, passage) in enumerate(pairs, offset + 1)
+        ]
+
+        def more(count: int) -> str:
+            after = cursor_at(offset + count, built_at)
+            return responses.call(self.ask, question=question, filters=filters, cursor=after)
+
+        allowed = responses.BUDGET - responses.tokens(ranked.note)
+        total = len(ranked.paths)
+        count, footer = responses.page(items, total - offset, allowed, more)
+        counted = f"Documents {ranked.counted}: {total if ranked.whole else f'at least {total}'}"
+        header = f"{counted}; {responses.span(offset, count, built_at)}{ranked.note}"
+        return responses.answer(header, "\n\n".join(items[:count]), footer), pairs[:count], ranked
+
+    def quoted(self, question: str, mode: Mode) -> list[Shown]:
+        """Give the passages of ask's first answer in a mode, for an evaluation."""
+        return [
+            Shown(entry.path, passage.number, passage.snippet)
+            for entry, passage in self._asked(question, None, None, mode)[1]
+        ]
+
+    def key_of(self, kind: Literal["space", "project"], key: str) -> str:
+        """Give a space's or a project's key as the index holds it; refuse one it lacks."""
+        with self._reading() as reader:
+            return canonical(reader, kind, key) or ""
 
     def resolve(self, ref: str) -> str | None:
         """Find a document's path by its id, key, address or path, as read does."""

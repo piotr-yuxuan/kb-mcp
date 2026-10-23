@@ -1,4 +1,4 @@
-"""``eval``: measure lexical, semantic and hybrid search on golden questions, by model."""
+"""``eval``: measure search and ask on golden questions, by mode, model and chunking."""
 
 from __future__ import annotations
 
@@ -12,16 +12,25 @@ import structlog
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
 from atlassian_offline_mcp.evaluation.app.evaluation import (
+    ASK_DIVIDER,
+    ASK_HEADER,
     DIVIDER,
     HEADER,
     EvaluationError,
     GoldenError,
+    Target,
+    ask_row,
+    built,
+    compared,
     evaluate,
+    heading,
     read_golden,
     record,
     row,
     table,
 )
+from atlassian_offline_mcp.evaluation.domain.evaluation import CONTROL
+from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
@@ -32,6 +41,7 @@ if TYPE_CHECKING:
 
     from atlassian_offline_mcp.config.domain.settings import Loaded
     from atlassian_offline_mcp.evaluation.app.evaluation import Run
+    from atlassian_offline_mcp.evaluation.domain.evaluation import Choice
     from atlassian_offline_mcp.kernel.output import Summary
 
 STAMP = "%Y%m%dT%H%M%SZ"
@@ -39,16 +49,18 @@ STAMP = "%Y%m%dT%H%M%SZ"
 
 @dataclass(frozen=True)
 class Evaluated:
-    """How each model's search ranked the golden questions, and the file of the results."""
+    """How each target served the golden questions, each model's chunking, the results file."""
 
     runs: list[Run]
+    choices: dict[str, Choice]
     results: Path
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Evaluated | None]:
-    """Evaluate; exit 1 when something failed, 2 for a refused golden file, each an error.
+    """Evaluate each model and chunking; exit 1 on a failure, 2 for a refused golden file.
 
-    The results, ids and numbers only, go to ``<data>/eval/results/<UTC time>.json``.
+    Each target connects anew, so that the tokens reported are its own. The results,
+    ids and numbers only, go to ``<data>/eval/results/<UTC time>.json``.
     """
     settings = loaded.settings
     try:
@@ -60,30 +72,56 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
     built_at = datetime.now(UTC)
     try:
         with open_endpoint(arguments, settings) as opened:
-            embedders = [connect(opened, name) for name in arguments.model or [settings.model]]
-            runs = evaluate(settings, questions, embedders, time.perf_counter, built_at)
+            targets = [
+                Target(connect(opened, name), chunking)
+                for name in arguments.model or [settings.model]
+                for chunking in arguments.chunking or CHUNKINGS
+            ]
+            runs = evaluate(settings, questions, targets, time.perf_counter, built_at)
     except (ModelError, EvaluationError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}.json"
     results.parent.mkdir(parents=True, exist_ok=True)
-    results.write_text(json.dumps(record(runs, golden, built_at), indent=1), encoding="utf-8")
-    return ExitStatus.OK, Evaluated(runs, results)
+    choices = compared(runs, questions)
+    kept = record(runs, golden, built_at, choices)
+    results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
+    return ExitStatus.OK, Evaluated(runs, choices, results)
 
 
 def text(evaluated: Evaluated, summary: Summary) -> str:
-    """Write each model's measures, then the results file.
+    """Write each run's measures, each model's choice of chunking, then the results file.
 
-    Short gives each model's row of all the questions, mode by mode; detailed, its table
-    of every group, how its index was built, and the tests of each mode against words.
+    Short gives each run's row of all the questions, mode by mode, for search and for
+    ask, and its costs; detailed, its tables of every group and the tests of each mode
+    against words. Both end with each model's default chunking by the rule, and its
+    tests against the control. Lexical search's rows come with the first run alone.
     """
+    choices = [
+        line
+        for model, choice in evaluated.choices.items()
+        for line in (
+            f"Default chunking for {model}, by the rule: {choice.chunking}",
+            *(
+                f"  {name}, {measure} against {CONTROL}: p = {value:.4f},"
+                f" adjusted (Holm) {choice.adjusted[name][measure]:.4f}"
+                for name, tested in choice.pvalues.items()
+                for measure, value in tested.items()
+            ),
+        )
+    ]
+    closing = "\n".join([*choices, f"Results: {evaluated.results}", ""])
     if summary == "detailed":
-        return f"{table(evaluated.runs)}\nResults: {evaluated.results}\n"
+        return f"{table(evaluated.runs)}\n{closing}"
     lines = []
     for run in evaluated.runs:
-        lines += [f"## {run.model}", "", HEADER, DIVIDER]
+        modes = [mode for mode in run.groups if mode != "lexical" or run is evaluated.runs[0]]
+        lines += [heading(run), "", built(run), "", HEADER, DIVIDER]
+        lines += [row(mode, "all", run.groups[mode]["all"], run.times[mode]) for mode in modes]
+        lines += ["", ASK_HEADER, ASK_DIVIDER]
         lines += [
-            row(mode, "all", groups["all"], run.times[mode]) for mode, groups in run.groups.items()
+            ask_row(mode, "all", run.asked_groups[mode]["all"], run.ask_times[mode])
+            for mode in modes
         ]
         lines.append("")
-    return "\n".join([*lines, f"Results: {evaluated.results}", ""])
+    return "\n".join(lines) + closing

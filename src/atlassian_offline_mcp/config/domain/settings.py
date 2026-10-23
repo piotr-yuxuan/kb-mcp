@@ -32,6 +32,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SecretStr, Va
 from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from atlassian_offline_mcp.kernel.chunking import CHUNKINGS, Chunking
 from atlassian_offline_mcp.kernel.content import MODEL_NAME, PROJECT_KEY, SPACE_KEY
 from atlassian_offline_mcp.kernel.endpoint import endpoint_host, loopback
 
@@ -53,6 +54,9 @@ type SearchMode = Literal["lexical", "semantic", "hybrid"]
 # plan 018, hybrid neither beat lexical significantly nor held identifiers, so by the bar
 # set before that run, and the user's word, words stay the default.
 DEFAULT_SEARCH_MODE: SearchMode = "lexical"
+# How index cuts documents into the pieces it embeds: 011's sections, until plan 019's
+# evaluation decides by its rule.
+DEFAULT_CHUNKING: Chunking = "sections"
 # The layer of a setting that no layer gives, as it is named.
 DEFAULT_LAYER = "default"
 # The settings that the file held at its top before plan 015, and their tables now.
@@ -263,6 +267,14 @@ class Settings(BaseSettings):
     search_mode: SearchMode = Field(
         default=DEFAULT_SEARCH_MODE,
         description="How search ranks: by words (lexical), by meaning (semantic), or both.",
+    )
+    chunking: Chunking = Field(
+        default=DEFAULT_CHUNKING,
+        description=(
+            f"How index cuts documents into the pieces it embeds: {', '.join(CHUNKINGS)};"
+            " search follows the index. The default is plan 019's rule's; windows ranked"
+            " best on its sandbox."
+        ),
     )
     embedding_url: EmbeddingUrl = Field(
         default=DEFAULT_EMBEDDING_URL,

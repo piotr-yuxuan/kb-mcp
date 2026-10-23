@@ -41,6 +41,7 @@ from atlassian_offline_mcp.search.adapters.embedding import (
     connect,
     digest,
     embed,
+    embeddings,
     endpoint,
 )
 from tests.endpoint import (
@@ -65,6 +66,8 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
+    from tests.conftest import InMemory
+
 QWEN = "qwen3-embedding:0.6b"
 NOT_READY = 1
 REFUSED = 2
@@ -78,6 +81,8 @@ TICK_S = 11.0
 READS = 4
 # Embeddings asked by one query and two probes, each in a single attempt.
 ATTEMPTED = 3
+# Words, and so tokens of the endpoint that counts a token a word, in each text embedded.
+WORDS = 3
 # A model pulled in a local Ollama, for the opt-in test.
 LIVE = os.environ.get("ATLASSIAN_OFFLINE_MCP_LIVE_MODEL")
 
@@ -768,3 +773,113 @@ def test_a_model_in_a_local_ollama_embeds_by_meaning() -> None:
     assert near > far
     assert embedder.digest
     assert again == embedder.fingerprint
+
+
+def counting_words(
+    answers: Scripted, counts: Callable[[list[str]], bool] = lambda _: True
+) -> embedding.Endpoint:
+    """Open an endpoint answering as scripted, whose usage counts a token a word.
+
+    It counts nothing for the texts that ``counts`` refuses.
+    """
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        answer = answers(request)
+        if request.url.path != "/v1/embeddings" or answer.status_code != httpx.codes.OK:
+            return answer
+        content = answer.json()
+        texts = json.loads(request.content)["input"]
+        words = sum(len(text.split()) for text in texts)
+        content["usage"] = (
+            {"prompt_tokens": words, "total_tokens": words} if counts(texts) else None
+        )
+        return httpx.Response(200, json=content)
+
+    return over(handle)
+
+
+def test_the_tokens_counted_for_documents_are_summed() -> None:
+    """Three words a text: every text but the refused one, alone or not; no query, no probe."""
+    texts = [f"undo {number} now" for number in range(70)]
+    embedder = connect(counting_words(Scripted(refused={texts[5]})), "tiny")
+    assert embedder.tokens is None
+    embedder.query("revert")
+    embedder.documents(texts)
+    assert embedder.tokens == WORDS * (len(texts) - 1)
+
+
+def test_an_endpoint_that_counts_no_token_gives_none() -> None:
+    """Without usage, the embedder's tokens are none, not zero."""
+    embedder = connect(counting_words(Scripted(), lambda _: False), "tiny")
+    embedder.documents(["undo it now"])
+    assert embedder.tokens is None
+
+
+def test_an_endpoint_that_counts_some_answers_alone_gives_none() -> None:
+    """Batches counted, texts sent alone not: a part of the count is no count."""
+    texts = [f"undo {number} now" for number in range(70)]
+    answers = Scripted(refused={texts[5]})
+    embedder = connect(counting_words(answers, lambda sent: len(sent) > 1), "tiny")
+    embedder.documents(texts)
+    assert embedder.tokens is None
+
+
+def usage(value: object) -> embedding.Endpoint:
+    """Open an endpoint whose answer embeds one text and says this usage."""
+    rows = [{"object": "embedding", "embedding": [1.0, 0.0], "index": 0}]
+    return answering(lambda _: httpx.Response(200, json={"data": rows, "usage": value}))
+
+
+@pytest.mark.parametrize(
+    ("value", "tokens"),
+    [
+        ({"prompt_tokens": 0}, 0),
+        ({"prompt_tokens": 21}, 21),
+        ({"prompt_tokens": None}, None),
+        ({}, None),
+        (None, None),
+    ],
+)
+def test_a_count_of_tokens_is_read_and_null_is_none(value: object, tokens: int | None) -> None:
+    """An integer of 0 or more is the count; null says none, as no count or no usage does."""
+    assert embeddings(usage(value), "tiny", ["one"], SINGLE).tokens == tokens
+
+
+@pytest.mark.parametrize(("value", "said"), [({"prompt_tokens": 21}, [21]), (None, [])])
+def test_the_embedding_s_span_and_measure_say_the_tokens_counted_if_any(
+    telemetry: InMemory, value: object, said: list[int]
+) -> None:
+    """As the GenAI conventions name them: none without a count, so none recorded as 0."""
+    embeddings(usage(value), "tiny", ["one"], SINGLE)
+    (span,) = (
+        each for each in telemetry.spans.get_finished_spans() if each.name == "embeddings tiny"
+    )
+    attributes = span.attributes or {}
+    assert [attributes[key] for key in attributes if key == "gen_ai.usage.input_tokens"] == said
+    measured = telemetry.measured().get("gen_ai.client.token.usage")
+    points = measured.data.data_points if measured else []
+    assert [(point.sum, (point.attributes or {})["gen_ai.token.type"]) for point in points] == [
+        (count, "input") for count in said
+    ]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"prompt_tokens": -1},
+        {"prompt_tokens": 2.5},
+        {"prompt_tokens": 2.0},
+        {"prompt_tokens": "2"},
+        {"prompt_tokens": True},
+        "2",
+        [2],
+        0,
+        False,
+        "",
+        [],
+    ],
+)
+def test_a_count_of_tokens_that_is_not_one_refuses_the_answer(value: object) -> None:
+    """Negative, fractional, not a number, or a usage that is no object: the answer is refused."""
+    with pytest.raises(ModelError, match="the endpoint's usage is not a count of tokens"):
+        embed(usage(value), "tiny", ["one"], SINGLE)

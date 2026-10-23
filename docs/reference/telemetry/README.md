@@ -15,7 +15,8 @@ with its page and this one, finding the pages in this folder.
 
 Each run, once its settings are read, unless it is then refused or declined, writes one
 file, `<logs.dir>/<command>-<start>-<pid>.jsonl`, the start in UTC as `%Y%m%dT%H%M%SZ`,
-such as `download-20261022T210509Z-4242.jsonl`. `--help`, `--version`, a completion and
+such as `download-20261022T210509Z-4242.jsonl`; a step's command names its file, as
+`eval-agents` does for `eval-agents call`. `--help`, `--version`, a completion and
 `completion`, which reads no settings, write none.
 
 - **Where.** `logs.dir`, by default the user's log folder as platformdirs places it:
@@ -126,8 +127,8 @@ status stays its own.
 
 A run is one trace, whose root span is named after the command, but `serve`, each of
 whose requests is a trace, and `completion`, which records nothing. Grafana's
-dashboards, an overview and one each for `download`, `mirror`, `index`, `serve` and
-`eval`, are in `deploy/lgtm/dashboards/`.
+dashboards, an overview and one each for `download`, `mirror`, `index`, `serve`, `eval`
+and `eval-agents`, are in `deploy/lgtm/dashboards/`.
 
 ## Events
 
@@ -135,7 +136,7 @@ What any command may log.
 
 | Event | Level | Fields | When |
 |---|---|---|---|
-| `run.start` | info | `version`, `arguments`, `settings`, `log_file`, `telemetry`, `telemetry_layer` | A run starts: the program's version, the arguments given, the settings as JSON, secrets masked, the log file, the endpoint, if any, and the layer that gave its value, `default` if none did |
+| `run.start` | info | `version`, `arguments`, `settings`, `log_file`, `telemetry`, `telemetry_layer` | A run starts: the program's version, the arguments given, those that its command keeps out of logs reading `[not logged]`, the settings as JSON, secrets masked, the log file, the endpoint, if any, and the layer that gave its value, `default` if none did |
 | `run.end` | info | `status`, `seconds` | A run ends: its exit status, how long it took |
 | `run.interrupted` | warning | `seconds` | Ctrl-C stopped the run, which exits 130 |
 | `run.failed` | error | `seconds` | An exception stopped the run, which exits 1; the traceback follows |

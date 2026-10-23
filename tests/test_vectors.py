@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import json
+import re
+import sqlite3
+from contextlib import closing
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 
 from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
+from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.adapters.embedding import ModelError
-from atlassian_offline_mcp.search.adapters.sqlite_index import reading
+from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.domain.search import Embedded
 from tests.endpoint import DIMENSIONS, Scripted, nothing_listening, serving, tiny
@@ -22,17 +28,21 @@ from tests.test_observed import said
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
     from numpy.typing import NDArray
 
+    from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.search.adapters.embedding import ApiEmbedder
 
 BODY = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
 FILLER_PAGES = 5
 FAILED = 1
+REFUSED = 2
+# The windows of the body of 2,562 characters below: starting at 0, 960 and 1,920.
+WINDOWS = 3
+RELEASE = 2  # the number of its section "Release", after 30 characters of the first
 
 
 @dataclass
@@ -266,3 +276,117 @@ def test_two_runs_share_the_store_at_once(tmp_path: Path) -> None:
         assert second.get(["a"]) == {"a": b"1234"}
         second.put({"b": b"5678"})
         assert first.get(["a", "b"]) == {"a": b"1234", "b": b"5678"}
+
+
+def chunked(data: Path, embedder: Counting, chunking: Chunking) -> None:
+    """Build the data directory's index with an embedder, cutting by ``chunking``."""
+    embedding = Embedding(embedder, data / "v.db", chunking=chunking)
+    build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
+
+
+def test_the_index_and_its_status_name_its_chunking(data: Path) -> None:
+    """The meta row says how the pieces were cut, sections unless told; so does status."""
+    build(data, counting())
+    with reading(data / "index.sqlite") as reader:
+        assert reader.embedded() == Embedded("tiny", tiny().fingerprint, DIMENSIONS, "sections")
+    chunked(data, counting(), "windows")
+    with reading(data / "index.sqlite") as reader:
+        assert reader.embedded() == Embedded("tiny", tiny().fingerprint, DIMENSIONS, "windows")
+        said = responses.status(reader.summary(), data / "docs")
+    assert re.search(r"search by meaning: tiny, \d+ pieces cut by windows\n", said)
+
+
+def test_an_index_built_before_the_row_reads_as_cut_by_sections(data: Path) -> None:
+    """Indexes of 011 and 018 name no chunking: theirs is sections."""
+    build(data, counting())
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        connection.execute("DELETE FROM meta WHERE name = 'chunking'")
+        connection.commit()
+    with reading(data / "index.sqlite") as reader:
+        assert reader.embedded() == Embedded("tiny", tiny().fingerprint, DIMENSIONS, "sections")
+        assert reader.summary().chunking == "sections"
+
+
+def test_a_window_belongs_to_the_section_of_its_middle_and_spans_the_body(data: Path) -> None:
+    """A window across sections: its section holds its middle, its span reads the body."""
+    body = "# Rollback\n\nUndo the payout.\n\n## Release\n\n" + "The deploy goes out. " * 120
+    write(data / "docs", page("196845", "Rollback"), body)
+    embedder = counting()
+    chunked(data, embedder, "windows")
+    path = "confluence/ENG/196845-rollback.md"
+    with reading(data / "index.sqlite") as reader:
+        pieces = reader.pieces()
+        bounds = reader.bounds(path)
+        mine = [index for index, each in enumerate(pieces.documents) if pieces.paths[each] == path]
+        assert len(mine) == WINDOWS
+        for index in mine:
+            start, end = pieces.offsets[index], pieces.ends[index]
+            first, last = bounds[pieces.sections[index] - 1]
+            assert first <= (start + end) // 2 < last
+            assert reader.text(path, start, end) == body[start:end]
+            assert f"Rollback\n{body[start:end].strip()}" in embedder.texts
+    assert pieces.offsets[mine[0]] == 0
+    assert pieces.sections[mine[0]] == RELEASE
+
+
+def test_a_text_that_chunkings_share_is_embedded_once(data: Path) -> None:
+    """Without a breadcrumb or nested headings, section-paths embeds what sections did."""
+    build(data, counting())
+    paths = counting()
+    chunked(data, paths, "section-paths")
+    assert paths.texts == []
+
+
+def test_a_sections_rebuild_after_a_windows_one_embeds_nothing(data: Path) -> None:
+    """The store keeps the vectors of every chunking built: none is embedded again."""
+    build(data, counting())
+    windows = counting()
+    chunked(data, windows, "windows")
+    assert windows.texts
+    again = counting()
+    report = build_index(
+        data / "docs", data / "index.sqlite", MOMENT, Embedding(again, data / "v.db")
+    )
+    assert again.texts == []
+    assert report.embedded == 0
+
+
+def test_a_chunking_that_the_kernel_does_not_name_is_refused(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """``chunking = "window"`` exits 2 naming the setting and its layer; nothing is built."""
+    settings = data.parent / "config.toml"
+    settings.write_text('chunking = "window"\n', encoding="utf-8")
+    options = ["--yes", "--config", str(settings), "--data-dir", str(data)]
+    assert main(["index", *options]) == REFUSED
+    err = capsys.readouterr().err
+    assert "chunking (config.toml):" in err
+    assert all(f"'{name}'" in err for name in CHUNKINGS)
+    assert not (data / "index.sqlite").exists()
+
+
+def test_the_environment_s_chunking_replaces_the_file_s(
+    data: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """``ATLASSIAN_OFFLINE_MCP_CHUNKING`` is stronger than the file, and the index says so."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_CHUNKING", "windows")
+    with serving(Scripted()) as url:
+        options = config(data, "tiny", url)
+        settings = Path(options[1])
+        settings.write_text(f'{settings.read_text("utf-8")}chunking = "section-paths"\n', "utf-8")
+        assert main(["index", "--yes", *options]) == 0
+    with reading(data / "index.sqlite") as reader:
+        embedded = reader.embedded()
+    assert embedded is not None
+    assert embedded.chunking == "windows"
+
+
+def test_an_index_cut_by_a_chunking_this_version_lacks_is_refused(data: Path) -> None:
+    """Its pieces could be quoted by no unit known here: rebuilt, it is read again."""
+    build(data, counting())
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        connection.execute("UPDATE meta SET value = 'paragraphs' WHERE name = 'chunking'")
+        connection.commit()
+    refused = pytest.raises(UnavailableIndexError, match="not an index that this version reads")
+    with refused, reading(data / "index.sqlite"):
+        pass

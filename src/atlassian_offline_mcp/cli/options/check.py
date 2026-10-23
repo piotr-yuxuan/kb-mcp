@@ -18,6 +18,7 @@ EVERY_SETTING = (
     "data_dir",
     "model",
     "search_mode",
+    "chunking",
     "embedding_url",
     "embedding_api_key",
     "sources.confluence.spaces",

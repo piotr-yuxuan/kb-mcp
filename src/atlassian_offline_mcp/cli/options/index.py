@@ -21,11 +21,12 @@ if TYPE_CHECKING:
 def by_words_alone(
     _arguments: argparse.Namespace, settings: Mapping[str, object]
 ) -> dict[str, str]:
-    """By words alone, the lexical mode embeds nothing: the model and its endpoint go unused."""
+    """By words alone, the lexical mode embeds nothing: model, endpoint, chunking unused."""
     if settings["search_mode"] != "lexical":
         return {}
     return dict.fromkeys(
-        ("model", "embedding_url", "embedding_api_key"), "the lexical mode embeds nothing"
+        ("model", "embedding_url", "embedding_api_key", "chunking"),
+        "the lexical mode embeds nothing",
     )
 
 
@@ -49,7 +50,14 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         command=Command(
             "index",
             "atlassian_offline_mcp.cli.commands.index",
-            reads=("data_dir", "model", "search_mode", "embedding_url", "embedding_api_key"),
+            reads=(
+                "data_dir",
+                "model",
+                "search_mode",
+                "chunking",
+                "embedding_url",
+                "embedding_api_key",
+            ),
             flags=flags,
             actions=(*actions, remote),
             writes=True,

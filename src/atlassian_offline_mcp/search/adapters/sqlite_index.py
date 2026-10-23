@@ -16,10 +16,11 @@ import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
 from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.domain.search import (
@@ -35,6 +36,7 @@ from atlassian_offline_mcp.search.domain.search import (
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
+    from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.search.domain.search import Section
 
 # 1 from plan 006; 3 from plan 011, with vectors and a build id.
@@ -152,6 +154,8 @@ SELECT s.start, s.head || s.body AS text FROM sections s JOIN documents d ON d.r
 WHERE d.path = :path AND s.start < :end AND s.start + length(s.head) + length(s.body) > :start
 ORDER BY s.number
 """
+# What ``reading`` checks before it reads an index.
+META = "SELECT name, value FROM meta WHERE name IN ('schema', 'chunking')"
 # Each value that a filter can take, with how many documents have it, the most used first.
 VALUES = {
     "source": "SELECT source, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
@@ -292,6 +296,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
                     ("model", embedded.model if embedded else ""),
                     ("fingerprint", embedded.fingerprint if embedded else ""),
                     ("dimensions", str(embedded.dimensions) if embedded else ""),
+                    ("chunking", embedded.chunking if embedded else ""),
                 ],
             )
             connection.commit()
@@ -452,7 +457,9 @@ class Reader:
         meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
         if not meta["model"]:
             return None
-        return Embedded(meta["model"], meta["fingerprint"], int(meta["dimensions"]))
+        # Indexes of 011 and 018 have no chunking: their pieces were cut by sections.
+        chunking = cast("Chunking", meta.get("chunking", "sections"))
+        return Embedded(meta["model"], meta["fingerprint"], int(meta["dimensions"]), chunking)
 
     def pieces(self) -> Pieces:
         """Read every piece's vector, with where the piece is: what meaning searches."""
@@ -484,6 +491,7 @@ class Reader:
         newest = self._connection.execute("SELECT max(fetched_at) FROM documents").fetchone()[0]
         sections = self._connection.execute("SELECT count(*) FROM sections").fetchone()[0]
         pieces = self._connection.execute("SELECT count(*) FROM pieces").fetchone()[0]
+        embedded = self.embedded()
         return Summary(
             built_at=self.built_at(),
             skipped=int(meta["skipped"]),
@@ -494,6 +502,7 @@ class Reader:
             newest_fetch=None if newest is None else datetime.fromisoformat(newest),
             model=meta["model"] or None,
             pieces=pieces,
+            chunking=embedded.chunking if embedded else None,
         )
 
 
@@ -512,10 +521,11 @@ def reading(path: Path) -> Iterator[Reader]:
     try:
         connection.row_factory = sqlite3.Row
         try:
-            row = connection.execute("SELECT value FROM meta WHERE name = 'schema'").fetchone()
+            meta = dict(connection.execute(META).fetchall())
         except sqlite3.DatabaseError:
-            row = None
-        if row is None or row[0] != SCHEMA:
+            meta = {}
+        # A chunking that this version lacks would be cut as no table says.
+        if meta.get("schema") != SCHEMA or meta.get("chunking", "") not in {"", *CHUNKINGS}:
             message = f"{path} is not an index that this version reads: {hint}"
             raise UnavailableIndexError(message)
         yield Reader(connection)

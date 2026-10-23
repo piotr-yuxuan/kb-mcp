@@ -20,12 +20,14 @@ from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.mirror.adapters import markdown
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
-from atlassian_offline_mcp.search.domain.search import Embedded, passages, sections
+from atlassian_offline_mcp.search.domain.chunking import CHUNKERS
+from atlassian_offline_mcp.search.domain.search import Embedded, sections
 
 if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
+    from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.search.adapters.embedding import Embedder
 
 TRACER = trace.get_tracer(__name__)
@@ -52,14 +54,19 @@ class Report:
     pieces: int = 0  # pieces with a vector
     embedded: int = 0  # texts that the model embedded, the store lacking them
     unembedded: list[str] = field(default_factory=list)  # paths with a piece refused
+    characters: int = 0  # of the texts that the pieces embed, whatever the store held
 
 
 @dataclass(frozen=True)
 class Embedding:
-    """What gives an index its vectors: a model, and the vector store."""
+    """What gives an index its vectors: a model, and the vector store.
+
+    ``chunking`` names how documents are cut into the pieces that the vectors stand for.
+    """
 
     embedder: Embedder
     store: Path
+    chunking: Chunking = "sections"
 
 
 def build_index(
@@ -82,7 +89,11 @@ def build_index(
         raise MirrorMissingError(message)
     report = Report()
     model = embedding.embedder if embedding else None
-    embedded = Embedded(model.name, model.fingerprint, model.dimensions) if model else None
+    embedded = (
+        Embedded(model.name, model.fingerprint, model.dimensions, embedding.chunking)
+        if model
+        else None
+    )
     pending: list[tuple[int, int, int, str, str]] = []  # each piece's section, span,
     # key and document
     texts: dict[str, str] = {}  # what each key's vector embeds
@@ -107,7 +118,10 @@ def build_index(
                 else:
                     report.types[front.type] += 1
                     report.sections += len(cut)
-                    for number, start, end, text in passages(front.title, cut) if model else ():
+                    # Cut as the index records it.
+                    for number, start, end, text in (
+                        CHUNKERS[embedded.chunking].cut(front, cut) if embedded else ()
+                    ):
                         key = vector_store.key(model.fingerprint, text)
                         pending.append((first + number, start, end, key, path))
                         texts[key] = text
@@ -124,6 +138,7 @@ def build_index(
                 kept = [(*piece[:3], found[piece[3]]) for piece in pending if piece[3] in found]
                 writer.add_pieces(kept)
             report.pieces = len(kept)
+            report.characters = sum(len(text) for text in texts.values())
             report.unembedded = sorted({piece[4] for piece in pending if piece[3] not in found})
             PIECES.add(len(kept), {"aom.outcome": "indexed"})
             PIECES.add(len(pending) - len(kept), {"aom.outcome": "refused"})

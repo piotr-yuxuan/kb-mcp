@@ -305,7 +305,7 @@ def test_an_embedding_is_a_client_span_by_the_genai_conventions_holding_its_atte
         embed(opened, "tiny", ["undo"], DOCUMENTS)
     busy, answered, embedding = telemetry.spans.get_finished_spans()
     assert (embedding.name, embedding.kind) == ("embeddings tiny", SpanKind.CLIENT)
-    assert dict(embedding.attributes or {}) == EMBEDDING
+    assert dict(embedding.attributes or {}) == {**EMBEDDING, "gen_ai.usage.input_tokens": 21}
     assert embedding.status.status_code == StatusCode.UNSET
     statuses = [
         dict(span.attributes or {})["http.response.status_code"] for span in (busy, answered)

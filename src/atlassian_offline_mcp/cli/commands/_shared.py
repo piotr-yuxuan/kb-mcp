@@ -19,6 +19,9 @@ from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.output import Output
 from atlassian_offline_mcp.observability.app.observed import Invocation, observed
 
+# What run.start names in place of an argument's value that the command keeps out of logs.
+UNLOGGED = "[not logged]"
+
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Sequence
@@ -50,7 +53,9 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
     names the arguments ``given``, the settings as one JSON document, secrets masked,
     and the layer of telemetry's endpoint, which says what turned telemetry on, or off;
     its telemetry goes to the settings' endpoint, if any, as one trace unless its
-    command says it is not ``traced``, saying whether it is a dry run. An exception
+    command says it is not ``traced``, saying whether it is a dry run. The values of the
+    command's ``unlogged`` arguments read ``[not logged]`` among those given, each in its
+    place. An exception
     that the run lets through, or Ctrl-C, ends it with the status that ``observed``
     gives.
     """
@@ -89,6 +94,11 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
         structlog.get_logger().error("run.refused", reason=refusal)
         return ExitStatus.REFUSED
     said, then = before(arguments, loaded, output, lambda path: path.expanduser().absolute())
+    # Each unlogged argument is a positional string, given as the last token equal to it.
+    hidden = {
+        len(given) - 1 - list(reversed(given)).index(getattr(arguments, dest))
+        for dest in command.unlogged
+    }
     sys.stderr.write(said)
     stopped = ask(then, sys.stdin, sys.stderr)
     if stopped is not None:
@@ -98,9 +108,11 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
         loaded.settings.logs.dir,
         loaded.settings.telemetry.endpoint,
         Invocation(
-            command.name,
+            # A step, such as eval-agents' call, is observed as its command: their log
+            # files, root spans and aom.command share its name, as its pattern has it.
+            command.name.partition(" ")[0],
             {
-                "arguments": list(given),
+                "arguments": [UNLOGGED if at in hidden else each for at, each in enumerate(given)],
                 "settings": to_jsonable_python(loaded),
                 "telemetry_layer": loaded.layer("telemetry.endpoint"),
             },

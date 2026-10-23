@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 OPENING = re.compile(r'<untrusted-reference-data boundary="([0-9a-f]{16})">\n')
 BUDGET = 4_000
 CEILING = 10_000
-TOOLS = ["browse", "read", "search", "status"]  # what the server registers, by name
+TOOLS = ["ask", "browse", "read", "search", "status"]  # what the server registers, by name
 
 
 def estimate(text: str) -> int:

@@ -27,7 +27,8 @@ files.
   otherwise. It never asks, since its stdin is the protocol's, and says on stderr which
   values it ignores.
 
-The server has four tools, all read-only: `search`, `read`, `browse` and `status`. Every
+The server has five tools, all read-only: `ask`, `search`, `read`, `browse` and `status`
+(`serve --tools` serves some of them). Every
 answer marks the text it copies from Confluence and Jira as untrusted reference data,
 and the server's instructions tell agents never to follow directions found in it.
 
@@ -39,9 +40,11 @@ Never give an agent `<data>/session/` (your saved sign-in) or `<data>/raw/`: onl
 `search` ranks by words unless the setting `search_mode` says otherwise: `hybrid`
 fuses words and meaning, `semantic` ranks by meaning alone, and `lexical`, the default,
 needs nothing more. On plan 002's sandbox questions, hybrid search with the default
-model did not beat words significantly and did worse on identifiers, so words stay
-the default until your own questions say otherwise (see
-[evaluating search](../explanation/search-evaluation.md)). Meaning comes from an
+model and the default chunking did not beat words significantly and did worse on
+identifiers, so words stay the default until your own questions say otherwise (see
+[evaluating search](../explanation/search-evaluation.md)). The defaults are thus not
+the best measured: with `chunking = "windows"`, hybrid search did beat words there,
+identifiers included (see below). Meaning comes from an
 embedding model that this program does not run itself: it asks any OpenAI-compatible
 embeddings API, by default [Ollama](https://ollama.com) on this machine. To search by
 meaning, install Ollama on the host, not in a container (a container on macOS cannot
@@ -108,34 +111,42 @@ https; for the MCP server, that means registering it as `atlassian-offline-mcp s
 a forwarded port to another machine defeats the check: do not point `embedding_url` at
 one. By words alone, the default, no endpoint is asked at all.
 
-To check which mode, and which model, fits your own content, write golden questions
-and keep them in `<data>/eval/`: a
-YAML list where each question has an `id`, the `question`, the `expected` refs that
-answer it (page ids, issue keys, or mirror paths, as `read` takes them), and optionally
-`partial` refs that help, `groups` to break the measures down, and `evidence`, a phrase
-of each expected document's text. Quote page ids, which YAML would read as numbers:
+How an index cuts documents into the pieces it embeds is the setting `chunking`:
+`sections` by default, 011's pieces of each section, or `windows`, `section-paths` or
+`small-to-big`, which [chunking](../explanation/chunking.md) compares. Run `index` after
+changing it; `search`, `ask` and `status` follow the index, whatever the setting says.
 
-```yaml
-- id: q1
-  question: How do I roll back a release of the payments service?
-  expected: ["196845", PAY-142]
-  partial: ["197012"]
-  groups: [paraphrase, en]
-  evidence: {"196845": "Pause, drain, then roll back."}
+`sections` is the default by plan 019's rule, set before the measures, which asked a
+chunking to quote the evidence more often than `sections` to replace it; none did. It is
+not the best measured: on the sandbox, `windows` ranked better, significantly (hybrid
+MRR@10 0.639 against 0.578, and 0.539 by words alone), with half the pieces and a tenth
+more tokens to embed, though its 95th percentile of a query was 266 ms on this laptop's
+CPU. To rank as best measured there, with Ollama running:
+
+```toml
+search_mode = "hybrid"
+chunking = "windows"
 ```
 
-Then run:
+then run `index`.
 
-```bash
-atlassian-offline-mcp eval ~/atlassian-offline-mcp/eval/golden.yaml
-```
+To check which mode, model and chunking fit your own content, write [golden
+questions](golden-questions.md) and run `eval`.
 
-It prints Recall@10, MRR@10, nDCG@10, Success@1 and Section@10 per mode and model, with
-the paired tests, and keeps the numbers, never the questions, in `<data>/eval/results/`.
-It measures the setting's model, or each one named with `--model`, all served by the
-endpoint, whatever the setting `search_mode`. [Evaluating
-search](../explanation/search-evaluation.md) explains each measure, the tests, and how
-the defaults were chosen.
+## Ask, and prompts
+
+`ask` answers a question in one call with passages to quote: one per document, as many
+as fit, each with its title, ref, section, dates, site address and the `read()` call of
+its section, the text verbatim. It ranks as `search` does, in the setting's mode. An
+agent that would otherwise `search`, then `read` each document, gets the evidence at
+once; `search` stays to navigate. `serve --tools search,read,browse,status` serves the
+four tools of plan 006 alone, without `ask`.
+
+The server also offers three prompts, which Claude Code shows as slash commands
+(`/mcp__atlassian-offline-mcp__brief`): `brief REF` summarises one document, `changes
+space:KEY 2026-10-01` what changed in a space or a project since a date, and `overview
+project:KEY` how one is organised and what to read first. [The
+reference](../reference/mcp-tools.md) lists each tool and prompt.
 
 ## Claude Code
 
@@ -166,15 +177,16 @@ project's server):
 If Claude Code does not find the command, give its absolute path, as `which
 atlassian-offline-mcp` prints it.
 
-### Allow the four tools
+### Allow the five tools
 
 Claude Code names a server's tools `mcp__<server>__<tool>`. In `~/.claude/settings.json`,
-allow each of the four by name, so that no prompt interrupts a search:
+allow each of the five by name, so that no prompt interrupts a search:
 
 ```json
 {
   "permissions": {
     "allow": [
+      "mcp__atlassian-offline-mcp__ask",
       "mcp__atlassian-offline-mcp__search",
       "mcp__atlassian-offline-mcp__read",
       "mcp__atlassian-offline-mcp__browse",
@@ -185,7 +197,7 @@ allow each of the four by name, so that no prompt interrupts a search:
 ```
 
 The wildcard `mcp__atlassian-offline-mcp__*` would also allow any tool a later version
-adds; the list keeps to these four. `/permissions` shows each rule and where it comes
+adds; the list keeps to these five. `/permissions` shows each rule and where it comes
 from.
 
 ### Give read-only access to the files
@@ -228,10 +240,10 @@ workspace's `.vscode/mcp.json`:
 }
 ```
 
-### Allow the four tools
+### Allow the five tools
 
 Run "Chat: Manage Tool Approval" from the Command Palette, open `atlassian-offline-mcp`,
-and pre-approve `search`, `read`, `browse` and `status`, or all of the server's tools
+and pre-approve `ask`, `search`, `read`, `browse` and `status`, or all of the server's tools
 with its own box. The first time a tool asks, its dialog also offers to allow it always.
 "Chat: Reset Tool Confirmations" withdraws every approval. Leave the global
 auto-approval off: it would approve every tool of every server.

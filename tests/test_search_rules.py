@@ -6,13 +6,12 @@ from datetime import timedelta
 
 import pytest
 
+from atlassian_offline_mcp.search.domain.chunking import passages, pieces
 from atlassian_offline_mcp.search.domain.search import (
     MAX_WORDS,
     Score,
     fuse,
     identifiers,
-    passages,
-    pieces,
     plan,
     quote,
     rank,

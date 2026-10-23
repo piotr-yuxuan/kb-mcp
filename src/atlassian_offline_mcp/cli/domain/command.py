@@ -58,7 +58,10 @@ class Command:
     as pandoc, without which it is refused alike; ``files`` names, by their ``dest``,
     the arguments that name a file the run reads, such as ``eval``'s golden file,
     refused alike when it names nothing or a folder, though not a pipe, which a process
-    substitution gives.
+    substitution gives. ``unlogged`` names, by their ``dest``, the positional arguments
+    of type ``str`` whose values the run's ``run.start`` does not name, each at the last
+    token of the command line equal to it, such as the answer that ``eval-agents answer``
+    keeps, which quotes the mirror.
     """
 
     name: str
@@ -75,6 +78,7 @@ class Command:
     refused: Refused | None = None
     programs: tuple[str, ...] = ()
     files: tuple[str, ...] = ()
+    unlogged: tuple[str, ...] = ()
 
     def setting_flags(self) -> dict[str, tuple[str, str]]:
         """Map the ``dest`` of each flag among the actions to its option and its setting.

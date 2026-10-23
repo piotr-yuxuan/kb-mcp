@@ -16,6 +16,7 @@ from atlassian_offline_mcp.cli.options._common import (
     endpoint_elsewhere,
     model_name,
 )
+from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
 
 if TYPE_CHECKING:
     import argparse
@@ -31,10 +32,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     """Add ``eval`` to the command."""
     parser = subparsers.add_parser(
         "eval",
-        help="measure lexical, semantic and hybrid search on golden questions",
+        help="measure search and ask on golden questions, by mode, model and chunking",
         epilog=(
-            "With --format json: runs, each model's measures by mode, question and group,"
-            " with its ranks, times and tests; results, the file that keeps them."
+            "With --format json: runs, each model's and chunking's measures of search and"
+            " ask by mode and group, with its ranks, times, costs and tests; choices, each"
+            " model's default chunking by the rule; results, the file that keeps them."
         ),
     )
     actions, flags = add_settings_options(parser)
@@ -49,13 +51,19 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         type=model_name,
         help="a model to evaluate, as the endpoint names it; by default, the setting",
     )
+    chunkings = parser.add_argument(
+        "--chunking",
+        action="append",
+        choices=CHUNKINGS,
+        help="a chunking to evaluate; by default, every one",
+    )
     parser.set_defaults(
         command=Command(
             "eval",
             "atlassian_offline_mcp.cli.commands.evaluate",
             reads=("data_dir", "model", "embedding_url", "embedding_api_key"),
             flags=flags,
-            actions=(*actions, remote, golden, models),
+            actions=(*actions, remote, golden, models, chunkings),
             writes=True,
             unapplied=models_named,
             refused=endpoint_elsewhere,
