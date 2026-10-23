@@ -23,6 +23,7 @@ from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.config.domain.settings import SETTING_PATHS
 from atlassian_offline_mcp.kernel.exit_status import MEANINGS, ExitStatus
 from atlassian_offline_mcp.kernel.output import Output
+from tests.endpoint import nothing_listening
 from tests.test_observed import said as said_on
 from tests.test_question import read_until
 from tests.test_settings import user_log_folder
@@ -748,24 +749,28 @@ def test_check_names_the_layer_of_telemetry_s_endpoint_the_setting_first(
 ) -> None:
     """OpenTelemetry's variable, below the file: shown as the layer, or said replaced.
 
-    ``OTEL_SDK_DISABLED=true`` replaces whatever gave it, leaving it unset.
+    ``OTEL_SDK_DISABLED=true`` replaces whatever gave it, leaving it unset. Nothing
+    listens at either endpoint, which each run says once.
     """
-    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
-    options = ["check", "--summary", "detailed", "--config"]
-    assert main([*options, str(home / "none.toml")]) == 0
-    out, err = capsys.readouterr()
-    assert "telemetry.endpoint: http://127.0.0.1:4317 [OTEL_EXPORTER_OTLP_ENDPOINT]\n" in out
-    assert err == ""
+    with nothing_listening() as shared, nothing_listening() as set_here:
+        variable, setting = shared.removesuffix("/v1"), set_here.removesuffix("/v1")
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", variable)
+        options = ["check", "--summary", "detailed", "--config"]
+        assert main([*options, str(home / "none.toml")]) == 0
+        out, err = capsys.readouterr()
+        assert f"telemetry.endpoint: {variable} [OTEL_EXPORTER_OTLP_ENDPOINT]\n" in out
+        assert said_on(err) == [("warning", "telemetry.undelivered")]
 
-    config = home / "config.toml"
-    config.write_text('[telemetry]\nendpoint = "http://127.0.0.1:4318"\n', "utf-8")
-    assert main([*options, str(config)]) == 0
-    out, err = capsys.readouterr()
-    assert "telemetry.endpoint: http://127.0.0.1:4318 [config.toml]\n" in out
-    assert (
-        err
-        == "ignored: telemetry.endpoint (OTEL_EXPORTER_OTLP_ENDPOINT): replaced by config.toml\n"
-    )
+        config = home / "config.toml"
+        config.write_text(f'[telemetry]\nendpoint = "{setting}"\n', "utf-8")
+        assert main([*options, str(config)]) == 0
+        out, err = capsys.readouterr()
+        assert f"telemetry.endpoint: {setting} [config.toml]\n" in out
+        ignored, undelivered = err.splitlines()
+        assert ignored == (
+            "ignored: telemetry.endpoint (OTEL_EXPORTER_OTLP_ENDPOINT): replaced by config.toml"
+        )
+        assert said_on(undelivered) == [("warning", "telemetry.undelivered")]
 
     monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
     assert main([*options, str(config)]) == 0

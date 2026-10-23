@@ -1,4 +1,4 @@
-"""Observing a run: its logs, on stderr at the level asked and in its own file, and its progress.
+"""Observing a run: its logs, on stderr and in its own file, its progress, its telemetry.
 
 The command line enters ``early`` once its arguments are parsed, then ``observed`` once
 the run's settings are read, with plain values: how the run reports, its log folder, its
@@ -8,6 +8,7 @@ neither ``config`` nor ``cli``.
 
 from __future__ import annotations
 
+import importlib
 import logging
 import secrets
 import time
@@ -35,6 +36,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from atlassian_offline_mcp.kernel.output import Output
+
+# What exports telemetry, imported only for a run that has an endpoint: the SDK, its
+# exporters and requests take a tenth of a second to import, which a run without would
+# pay for nothing.
+TELEMETRY = "atlassian_offline_mcp.observability.adapters.telemetry"
 
 
 @dataclass
@@ -92,6 +98,12 @@ def observed(
     On a terminal, unless -q, the tasks' progress is drawn on stderr as bars, and their
     events ``progress`` are kept off it; elsewhere, these events show it from -v.
     ``serve`` reports no task, so it draws no bar.
+
+    With an ``endpoint``, the run's traces, metrics and logs from INFO are sent there,
+    as ``exporting`` has it, from before ``run.start`` to after ``run.end``; one that
+    does not take a connection gives one warning, ``telemetry.undelivered``, and the run
+    goes on without. Without, the SDK is not even imported: what the run traces and
+    measures goes nowhere.
     """
     root = logging.getLogger()
     log = structlog.get_logger()
@@ -113,6 +125,12 @@ def observed(
                 path = stack.enter_context(log_file(folder, command, run.id, datetime.now(UTC)))
             except OSError as error:
                 log.warning("log.unwritable", folder=str(folder), reason=str(error))
+        if endpoint is not None:
+            try:
+                exporting = importlib.import_module(TELEMETRY).exporting
+                stack.enter_context(exporting(endpoint, run.id, command))
+            except OSError as error:
+                log.warning("telemetry.undelivered", endpoint=endpoint, reason=str(error))
         log.info(
             "run.start",
             version=version(PROGRAM),

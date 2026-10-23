@@ -1,0 +1,247 @@
+"""Telemetry: how a record is exported, then runs of the command, each in a fresh interpreter.
+
+Off by default; on, everything goes to a scripted collector on this machine under the
+program's name, whatever the environment says; and a run ends in bounded time whatever
+the collector does, saying once that telemetry was not delivered.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import subprocess
+import sys
+import time
+import tomllib
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import pytest
+import structlog
+from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
+from opentelemetry.sdk.trace import TracerProvider
+
+from atlassian_offline_mcp.observability.adapters.logs import SDK
+from atlassian_offline_mcp.observability.adapters.telemetry import Exported
+from atlassian_offline_mcp.observability.app.observed import early
+from tests.collector import LOGS, Collector, attributes, collecting, plain
+from tests.endpoint import nothing_listening
+from tests.test_observed import said
+from tests.test_settings import user_log_folder
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from _pytest.logging import LogCaptureFixture
+
+ROOT = Path(__file__).parents[1]
+PROGRAM = "atlassian-offline-mcp"
+VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]["version"]
+# The limit that telemetry has at a run's end, as plan 016 injects it for the bounded exit,
+# and the time that a run then takes at most, when the endpoint refuses and when it
+# never answers.
+LIMIT_S = 1.0
+REFUSING_S = 2.0
+SILENT_S = 3.0
+# An endpoint that a run may not reach, by the guard, nor need to.
+ENDPOINT = "http://127.0.0.1:4318"
+# Every variable that names a proxy, in both cases, as requests and urllib read them.
+PROXIES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+
+
+@dataclass(frozen=True)
+class Ran:
+    """A run of the command in a fresh interpreter: what it said, how long it took, what it left."""
+
+    status: int
+    err: str
+    seconds: float
+    threads: list[str]
+    providers: list[str]
+    sdk: bool
+
+
+def guarded(
+    home: Path, port: int, arguments: list[str], environment: Mapping[str, str], limit: float
+) -> Ran:
+    """Run the command with ``arguments`` from a scratch home, reaching ``port`` alone.
+
+    It runs as ``tests.guarded`` has it, its environment holding ``HOME`` and
+    ``environment`` only, and telemetry has ``limit`` seconds at the run's end. A port
+    of 0 lets no socket be made at all.
+    """
+    report = home / "report.json"
+    given = {"port": port, "limit": limit, "report": str(report), "arguments": arguments}
+    began = time.monotonic()
+    child = subprocess.run(
+        [sys.executable, "-m", "tests.guarded"],
+        input=json.dumps(given),
+        capture_output=True,
+        text=True,
+        env={"HOME": str(home), **environment},
+        cwd=ROOT,
+        check=False,
+    )
+    seconds = time.monotonic() - began
+    left = json.loads(report.read_text("utf-8")) if report.exists() else {}
+    return Ran(
+        child.returncode,
+        child.stderr,
+        seconds,
+        left.get("threads", []),
+        left.get("providers", []),
+        left.get("sdk", False),
+    )
+
+
+def check(home: Path, endpoint: str | None) -> list[str]:
+    """Give the arguments of ``check`` with settings naming ``endpoint``, if any, as telemetry's."""
+    config = home / "config.toml"
+    if endpoint is not None:
+        config.write_text(f'[telemetry]\nendpoint = "{endpoint}"\n', "utf-8")
+    return ["check", "--config", str(config), "--data-dir", str(home / "data")]
+
+
+def port_of(endpoint: str) -> int:
+    """Give the port of an endpoint as the settings take it, ``http://<address>:<port>``."""
+    return int(endpoint.rpartition(":")[2])
+
+
+def logged(home: Path) -> list[dict[str, object]]:
+    """Give the lines of the one log file that a run left in the scratch home's log folder."""
+    (path,) = user_log_folder(home).iterdir()
+    return [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+
+
+def test_an_exported_record_has_the_event_as_body_its_fields_and_the_span_around_it(
+    caplog: LogCaptureFixture,
+) -> None:
+    """From INFO, the SDK's own records aside; the record itself is left to the other sinks.
+
+    An event's level, logger, time and the event itself are the exported record's own
+    fields, not attributes; its command is one more. A library's record has its message.
+    """
+    exporter = InMemoryLogRecordExporter()
+    provider = LoggerProvider(shutdown_on_exit=False)
+    provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+    tracer = TracerProvider(shutdown_on_exit=False).get_tracer(__name__)
+    root, sink = logging.getLogger(), Exported(provider, "check")
+    with early():
+        root.addHandler(sink)
+        try:
+            with tracer.start_as_current_span("phase") as span:
+                structlog.get_logger("some.module").info("thing.done", count=2, nested={"a": 1})
+            structlog.get_logger("some.module").debug("thing.detail")
+            logging.getLogger("some.library").warning("%s failed", "it")
+            logging.getLogger(f"{SDK}.sdk.trace").error("export failed")
+        finally:
+            root.removeHandler(sink)
+    event, library = (exported.log_record for exported in exporter.get_finished_logs())
+    assert event.body == "thing.done"
+    assert dict(event.attributes or {}) == {"count": 2, "nested": {"a": 1}, "command": "check"}
+    context = span.get_span_context()
+    assert (event.trace_id, event.span_id) == (context.trace_id, context.span_id)
+    assert library.body == "it failed"
+    assert dict(library.attributes or {}) == {"command": "check"}
+    assert library.trace_id == 0
+    assert caplog.records[0].msg["event"] == "thing.done"
+
+
+@pytest.mark.parametrize(
+    ("setting", "environment"),
+    [
+        (False, {}),
+        (True, {"OTEL_SDK_DISABLED": "true"}),
+        (False, {"OTEL_EXPORTER_OTLP_ENDPOINT": ENDPOINT, "OTEL_SDK_DISABLED": "TRUE"}),
+    ],
+)
+def test_off_check_installs_no_provider_starts_no_thread_and_opens_no_socket(
+    tmp_path: Path, *, setting: bool, environment: dict[str, str]
+) -> None:
+    """Without an endpoint, or with one that ``OTEL_SDK_DISABLED`` turns off: nothing is sent.
+
+    Any socket at all would end the run, with status 3; no thread starts, the SDK is not
+    even imported, and the API's providers are its own, which trace and measure nothing.
+    """
+    endpoint = ENDPOINT if setting else None
+    ran = guarded(tmp_path, 0, check(tmp_path, endpoint), environment, LIMIT_S)
+    assert ran.status == 0
+    assert "network" not in ran.err
+    assert ran.threads == []
+    assert not ran.sdk
+    assert ran.providers
+    assert not any(provider.startswith("opentelemetry.sdk.") for provider in ran.providers)
+
+
+def test_on_logs_arrive_at_this_machine_under_the_program_s_name_whatever_the_environment(
+    tmp_path: Path,
+) -> None:
+    """No proxy is taken, and OpenTelemetry's variables name neither the service nor where.
+
+    Every proxy and every signal's own endpoint name a port where nothing listens, which
+    the run dies reaching; the service's name and attributes name another, and gRPC is
+    asked for. The records from INFO arrive, the event as body, each with its command,
+    none of the SDK's own.
+    """
+    collector = Collector()
+    with nothing_listening() as dead, collecting(collector) as endpoint:
+        elsewhere = dead.removesuffix("/v1")
+        environment = {
+            **dict.fromkeys(PROXIES, elsewhere),
+            "OTEL_SERVICE_NAME": "elsewhere",
+            "OTEL_RESOURCE_ATTRIBUTES": "service.name=elsewhere,service.instance.id=elsewhere",
+            "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": f"{elsewhere}/v1/traces",
+            "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": f"{elsewhere}/v1/metrics",
+            "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": f"{elsewhere}/v1/logs",
+        }
+        ran = guarded(tmp_path, port_of(endpoint), check(tmp_path, endpoint), environment, LIMIT_S)
+    assert (ran.status, ran.err) == (0, "")
+    run = logged(tmp_path)[0]["run"]
+    assert collector.bodies(LOGS)
+    assert collector.resources()
+    for resource in collector.resources():
+        assert resource == {
+            "service.name": PROGRAM,
+            "service.version": VERSION,
+            "service.instance.id": run,
+        }
+    records = collector.records()
+    assert not any(scope.partition(".")[0] == SDK for scope, _ in records)
+    assert [plain(record.body) for _, record in records] == ["run.start", "run.end"]
+    for _, record in records:
+        assert attributes(record.attributes)["command"] == "check"
+
+
+def test_an_endpoint_that_refuses_ends_check_in_bounded_time_with_one_warning(
+    tmp_path: Path,
+) -> None:
+    """Nothing listens there: the run goes on without telemetry, and says so once."""
+    with nothing_listening() as dead:
+        endpoint = dead.removesuffix("/v1")
+        ran = guarded(tmp_path, port_of(endpoint), check(tmp_path, endpoint), {}, LIMIT_S)
+    assert ran.status == 0
+    assert ran.seconds < REFUSING_S
+    assert len(ran.err.splitlines()) == 1
+    assert said(ran.err) == [("warning", "telemetry.undelivered")]
+    assert ran.threads == []
+    assert not any(provider.startswith("opentelemetry.sdk.") for provider in ran.providers)
+
+
+def test_an_endpoint_that_never_answers_ends_check_in_bounded_time_with_one_warning(
+    tmp_path: Path,
+) -> None:
+    """It takes the connection, and the exports, but never answers: the run drops them.
+
+    Neither stderr nor the collector gets a record of the SDK's own.
+    """
+    collector = Collector(silent=True)
+    with collecting(collector) as endpoint:
+        ran = guarded(tmp_path, port_of(endpoint), check(tmp_path, endpoint), {}, LIMIT_S)
+    assert ran.status == 0
+    assert ran.seconds < 3 * LIMIT_S
+    assert len(ran.err.splitlines()) == 1
+    assert said(ran.err) == [("warning", "telemetry.undelivered")]
+    assert not any(scope.partition(".")[0] == SDK for scope, _ in collector.records())
