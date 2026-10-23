@@ -6,6 +6,7 @@ file, its fields, the levels, the settings and the variables, then what every co
 records. A page per command lists what that command records besides:
 
 - [download](download.md)
+- [eval](eval.md)
 - [index](index.md)
 - [mirror](mirror.md)
 - [serve](serve.md)

@@ -37,6 +37,7 @@ from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.reference import README, Emitted, documented, operations, undocumented
 from tests.samples import v2_space
 from tests.test_download import SITE, FakeSite
+from tests.test_evaluate import GOLDEN
 from tests.test_mirror import FETCHED, SPACE_ID, listing_page, page_responses
 from tests.test_mirror_command import fake_pandoc
 from tests.test_serve import talk
@@ -310,3 +311,34 @@ def test_serve_records_as_documented(tmp_path: Path) -> None:
         (log_file,) = user_log_folder(home).iterdir()
         emitted.collected(log_file, collector)
     assert undocumented("serve", emitted) == []
+
+
+def test_eval_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None:
+    """Evaluated; a golden file refused; a query refused, so words for meaning; no endpoint.
+
+    The mirror holds the golden questions' documents and fillers, indexed by words. The
+    endpoint refuses to embed the second question, which a search by meaning then ranks
+    by words.
+    """
+    data = tmp_path / "data"
+    docs = data / "docs"
+    fillers(docs)
+    write(docs, page("4002", "Holiday canteen"), "# Holiday canteen\n\nLeave for a **meal**.\n")
+    write(docs, page("4003", "Words"), "revert release\n")
+    write(docs, issue("PROJ-7", "Kafka upgrade"))
+    build_index(docs, data / "index.sqlite", MOMENT)
+    golden = tmp_path / "golden.yaml"
+    golden.write_text(GOLDEN, encoding="utf-8")
+    refused = tmp_path / "refused.yaml"
+    refused.write_text("- {id: q1, question: x}\n", encoding="utf-8")
+    emitted = Emitted()
+    with serving(Scripted()) as url, emitted.gathering(telemetry, "eval"):
+        assert main(["eval", "--yes", str(golden), *by_meaning(data, url)]) == 0
+    with emitted.gathering(telemetry, "eval"):
+        assert main(["eval", "--yes", str(refused), *by_meaning(data, URL)]) == ExitStatus.REFUSED
+    answers = Scripted(refused={"revert release"})
+    with serving(answers) as url, emitted.gathering(telemetry, "eval"):
+        assert main(["eval", "--yes", str(golden), *by_meaning(data, url)]) == ExitStatus.FAILED
+    with nothing_listening() as url, emitted.gathering(telemetry, "eval"):
+        assert main(["eval", "--yes", str(golden), *by_meaning(data, url)]) == ExitStatus.FAILED
+    assert undocumented("eval", emitted) == []
