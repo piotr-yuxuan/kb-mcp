@@ -56,6 +56,8 @@ marked for contributors.
 
 ## Explanation
 
+- [Trade-offs](explanation/trade-offs.md): each decision of the design, why it was
+  taken, what it costs, the alternative rejected and the plan that settled it.
 - [The code's layout](explanation/code-layout.md), for contributors: the contexts, the
   layers within each, the contracts that keep them, and where a new module goes.
 - [Sources](explanation/sources.md): why Confluence, Jira and the work log are put

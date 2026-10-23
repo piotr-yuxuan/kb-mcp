@@ -1,0 +1,302 @@
+# Trade-offs
+
+Each decision that shapes atlassian-offline-mcp, as one section: what was decided, why,
+what it costs, the alternative rejected, and the plan that settled it, whose record in
+[`docs/work/changelog/`](../work/changelog/) holds the full reasoning and the measures.
+[The data layout](../reference/data-layout.md) says what each part writes; this page
+says why the parts are as they are. A decision costs something by definition: each
+section names its price, so that the next person to weigh it knows what was paid.
+
+## Reads only
+
+Every request to the site is a GET, and nothing is ever written to Confluence or Jira.
+[`Site`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py), the one
+port to the site, builds no other request ([`Site.once`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py)),
+and the server's tools are read-only too.
+
+- **Why.** A mirror needs nothing more, and a program that only reads can do the site no
+  harm, whatever fails in it: the session or token it holds is used for reading alone.
+- **Cost.** Nothing that needs a write: an agent cannot comment on a page or move an
+  issue through this program, and must go to the site for that.
+- **Rejected.** Write access, through the REST APIs or tools that edit pages and issues.
+- **Settled** by the programme of plans, before plan 001 (see
+  [the roadmap](../work/README.md)), and held by
+  [plan 004](../work/changelog/004-download.md#decisions)'s port, GET only.
+
+## Refresh by hand
+
+The mirror changes only when someone runs `download`, then `mirror` and `index`. Nothing
+runs on a schedule, and the server never fetches from the site.
+
+- **Why.** The user chooses when the site is read, and is there when a session has
+  expired: through single sign-on, only a person can sign in again. Coverage makes a run
+  by hand cheap: without `--since`, a run catches up from the start of the period
+  already covered ([`window`](../../src/atlassian_offline_mcp/sources/atlassian/domain/coverage.py)),
+  so nobody keeps track of when the last run was.
+- **Cost.** The mirror is as old as its last run. Each answer gives every document's
+  mirror date, the time its snapshot was fetched, and `status` the newest, so that an
+  agent can tell how old its evidence is.
+- **Rejected.** A schedule (cron, launchd) or a server that refreshes itself. A refresh
+  started from an MCP tool, after the user's approval, is planned (009), not built.
+- **Settled** by the programme with the user, before plan 001; catching up without
+  dates by [plan 007](../work/changelog/007-incremental-refresh.md#decisions).
+
+## Cookies and API tokens
+
+A run signs in by the session saved from the user's own browser, or by an API token with
+its account's email: [`sign_in`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/sign_in.py)
+takes the token when one is set, else the session.
+
+- **Why.** On a managed network, single sign-on in the user's own browser is the route. Chrome opens
+  for `login` alone; reads then go over httpx with the saved cookies, without a browser,
+  to the same REST APIs that the site's pages read, which answer with the bodies the
+  server renders. Plan 001 checked on the sandbox that these bodies hold what the browser
+  shows. The token serves the sandbox, the agents that test against it, and anyone who
+  has one.
+- **Cost.** Cookies expire: a 401, or a redirect to sign in, stops a run with exit status
+  3 until a person runs `login` again. The cookies sit in clear in `<data>/session/`,
+  mode 0600, as the browser's own profile holds them. A token is in no file of the
+  program: the environment gives it to one run, for instance through `sops exec-env`.
+- **Rejected.** Reading the pages in a browser, which would paint every page and its
+  includes, slowly, for text that REST gives directly; a token in the settings file,
+  which is refused, since secrets come from the environment alone; the generic
+  `ATLASSIAN_*` variables, as a token exported for another tool would then switch the
+  sign-in.
+- **Settled** by [plan 001](../work/changelog/001-proof-test.md#decisions) and
+  [plan 004](../work/changelog/004-download.md#decisions) for the session, by
+  [plan 015](../work/changelog/015-cli-and-configuration.md#sign-in-with-an-api-token)
+  for the token.
+
+## Raw first
+
+`download` keeps each response exactly as received, in the raw store
+([`RawStore`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py));
+the mirror, the index and the vectors are all derived from it, offline.
+
+- **Why.** The site's responses and HTML "can and will unexpectedly change", in the
+  user's words. A response that a change breaks is still stored
+  ([`Download.keep`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
+  stores a snapshot that its adapter refuses), and once the adapter is fixed, `mirror`
+  reads it again without fetching anything. A fix to the conversion is a rebuild, never
+  a download.
+- **Cost.** Disk: every revision fetched stays as received, a page with both its bodies,
+  storage and view, and each attached file once, by its digest. No snapshot is ever
+  rewritten or removed.
+- **Rejected.** Converting while downloading, which would fetch everything again after
+  each fix of the conversion.
+- **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions).
+
+## Strict reading, a module per representation
+
+Only [the Confluence adapter](../../src/atlassian_offline_mcp/sources/atlassian/adapters/confluence_v2.py)
+and [the Jira adapter](../../src/atlassian_offline_mcp/sources/atlassian/adapters/jira_v3.py)
+know the JSON of their APIs, and only
+[`normalise`](../../src/atlassian_offline_mcp/mirror/adapters/site_html.py)'s module
+knows the site's HTML. Adapters read through
+[`Fields`](../../src/atlassian_offline_mcp/kernel/fields.py), which requires every field
+and raises [`RepresentationError`](../../src/atlassian_offline_mcp/kernel/fields.py)
+naming its path, never its value.
+
+- **Why.** When the site changes, the failure says where
+  (`document.json.version.number: expected an integer`), and the fix stays in one
+  module. A lenient reader would carry a wrong or empty value into the mirror, where an
+  agent would quote it.
+- **Cost.** A response that lacks a field the code reads is refused even when the field
+  hardly matters: that document waits for the adapter's fix, its snapshot kept raw. Each
+  absence that is allowed is named, one reader at a time.
+- **Rejected.** Reading responses where they are used, or with defaults for what is
+  missing; models of the site's JSON in Pydantic, which plan 015 left for later, if at
+  all.
+- **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions), at the
+  user's request.
+
+## Markdown beside MCP
+
+The mirror is a folder of Markdown files, one per document with its front matter, under
+`<data>/docs/`; the MCP server searches and reads an index built from those files alone.
+
+- **Why.** Rendered HTML is a poor input for a language model, and pandoc
+  ([`Pandoc.markdown`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)) writes
+  the site's HTML as GitHub's Markdown. Files serve agents that prefer to search and read
+  files, and any other tool; the server adds ranking, budgets and citations. As the index
+  reads the files alone, the two never disagree.
+- **Cost.** pandoc must be on `PATH`. What Markdown cannot hold stays as HTML (a table
+  whose cells hold blocks), and a macro that only JavaScript draws is a placeholder that
+  names it.
+- **Rejected.** Serving the site's HTML; files alone, without search; exports to Word or
+  PDF, which do not scale to a site.
+- **Settled** by [plan 005](../work/changelog/005-markdown-mirror.md#goal) and
+  [plan 006](../work/changelog/006-search-mcp.md#goal).
+
+## SQLite FTS5
+
+Words are indexed by SQLite's full-text engine, FTS5, in one file,
+`<data>/index.sqlite`, with accents folded and bm25 weights per column: title 10, labels
+3, breadcrumb 2, heading 5, body 1.
+
+- **Why.** It comes with Python's standard library and needs no server. A build writes
+  a new file aside and renames it into place
+  ([`building`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), and the
+  server opens it read-only for each call
+  ([`reading`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), so a new
+  build is served from the next call without a restart.
+- **Cost.** No stemming: `deploy` does not find `deployment`. The weights are set by
+  hand, and every `index` reads the whole mirror again.
+- **Rejected.** The Porter stemmer, which knows English alone where the content mixes
+  English and French ([plan 011](../work/changelog/011-search-strategies.md#deliberately-not-done)).
+  No plan weighed another engine: the programme settled FTS5 with the user.
+- **Settled** by the programme, and built by
+  [plan 006](../work/changelog/006-search-mcp.md#the-index).
+
+## Hybrid ranking, measured by `eval`
+
+By default, `search` and `ask` rank by words and by meaning, each apart, then fuse the
+two rankings by reciprocal rank: each list gives a document 1 / (60 + its rank)
+([`fuse`](../../src/atlassian_offline_mcp/search/domain/search.py)). `eval` measures every
+mode and chunking on golden questions, whose answers are known.
+
+- **Why.** Words find identifiers and exact terms; meaning finds a question asked in
+  other words than the page's. Fusing ranks, not scores, needs no common scale for bm25
+  and cosines. And measuring keeps the default from being the one that sounds best: each
+  plan wrote its bar before its run.
+- **The record.** Plan 011 made hybrid search the default on the sandbox's questions.
+  With the model of plan 018, hybrid search no longer beat words by 018's bar, and words
+  became the default again. Plan 019 compared four chunkings: `windows` ranked best
+  (MRR@10 0.639 by hybrid search, against 0.578 over `sections` and 0.539 by words), but
+  its rule, which asked for the evidence quoted significantly more often, kept
+  `sections`. Plan 025 made hybrid search over `windows` the default, the user's choice
+  over both rules, knowing their numbers: ranking mattered more to them than speed.
+- **Cost.** A model by default: `index` and the server need an embedding endpoint
+  unless `search_mode = "lexical"`. A query took 266 ms at the 95th percentile on the
+  development laptop's processor, against a bar of 200 ms set before the runs. And
+  the sandbox's questions are not the user's: the work set will decide again
+  ([evaluating search](search-evaluation.md)).
+- **Rejected.** Words alone and `sections`, which the rules of 018 and 019 kept; meaning
+  alone, which scored higher still over `windows` on the sandbox, where the user chose
+  hybrid search.
+- **Settled** by [plan 011](../work/changelog/011-search-strategies.md#search) for the
+  modes and the measure; the defaults by plan 025, the user's choice.
+
+## Embeddings by any OpenAI-compatible API, not in process
+
+No model runs in this program:
+[`connect`](../../src/atlassian_offline_mcp/search/adapters/embedding.py) reaches a model
+behind an OpenAI-compatible `/v1/embeddings` endpoint, by default Ollama on this machine,
+which is only the example: any such server works.
+
+- **Why.** The graphics processor does the work: Ollama on the host uses the Mac's GPU,
+  where plan 011's models ran in process, on the processor. The code lost onnxruntime,
+  the tokeniser, the downloader and the catalogue of model files. The model and the
+  server are the user's to choose.
+- **Cost.** One more program to install and keep running. Ollama lists the digest of
+  each model, which its fingerprint holds
+  ([`ApiEmbedder.fingerprint`](../../src/atlassian_offline_mcp/search/adapters/embedding.py)),
+  so new weights call for new vectors; another server lists none, and vectors then
+  follow the model's name alone. The text sent is the company's content: an address
+  that is not a literal one of this machine needs `--allow-remote-embeddings` on every
+  run, and https ([`refused_endpoint`](../../src/atlassian_offline_mcp/kernel/endpoint.py)).
+- **Rejected.** Models in process with onnxruntime, from pinned files, as plan 011 built
+  them; Ollama's own `/api/embed`, which other servers do not offer; a setting that
+  allows a remote endpoint, which would allow it on every run without a word.
+- **Settled** by the user, in
+  [plan 018](../work/changelog/018-embeddings-via-ollama.md#settled-by-the-user-not-reopened).
+
+## Budgets and untrusted-data markers
+
+An answer of the server stays within a budget of estimated tokens, 4,000 for arguments
+at or below their defaults and 10,000 at most
+([`BUDGET`](../../src/atlassian_offline_mcp/mcp/app/responses.py),
+[`CEILING`](../../src/atlassian_offline_mcp/mcp/app/responses.py)); one that is cut ends
+with the call that continues it; and everything copied from the site stands inside one
+block marked as untrusted reference data
+([`answer`](../../src/atlassian_offline_mcp/mcp/app/responses.py)).
+
+- **Why.** An agent's context is small, and shared with its task: an answer that floods
+  it crowds out the rest. A page is written by anyone with access to it, and an
+  instruction hidden in one must not read as the server's own words. The server's
+  instructions tell agents never to follow directions found inside the block, whose
+  boundary, the start of the content's SHA-256, the content can forge only by a chance
+  of 2^-64.
+- **Cost.** A long document comes in slices, a call each. Tokens are estimated, not
+  counted, so a budget holds only roughly. The markers are advice to the agent, not a
+  guarantee: a model may still follow what a page says.
+- **Rejected.** Rewriting content to defuse a forged marker, after which a page would no
+  longer read back as written; answers without a bound.
+- **Settled** by [plan 006](../work/changelog/006-search-mcp.md#responses), and for `ask`
+  by [plan 019](../work/changelog/019-knowledge-base-surface.md#ask).
+
+## argparse with argcomplete
+
+The command line is the standard library's argparse, completed in bash and zsh by
+argcomplete. Each subcommand is declared apart from its run, so that `--help` and a
+completion import no run's packages: [`parser`](../../src/atlassian_offline_mcp/cli/main.py)
+registers every declaration, and imports a run only once the arguments are parsed.
+
+- **Why.** The user's choice: argparse needs no dependency, and argcomplete completes
+  subcommands, options and their values. argcomplete runs the program at every Tab, so a
+  declaration must stay light; an import contract keeps the runs' packages out of it.
+- **Cost.** A subcommand is two modules, its declaration and its run. argcomplete patches
+  argparse's internals, so a new Python may break completion; fish is not supported.
+- **Rejected.** Subparsers registered lazily, which neither argcomplete nor `--help`
+  would see.
+- **Settled** by the user, in
+  [plan 015](../work/changelog/015-cli-and-configuration.md#settled-by-the-user).
+
+## File, then environment, then flags
+
+Settings come from one model,
+[`Settings`](../../src/atlassian_offline_mcp/config/domain/settings.py), fed by three
+layers, each stronger than the last: the settings file, the environment (the prefix
+`ATLASSIAN_OFFLINE_MCP_`, `__` for nesting) and the flags.
+[`load_settings`](../../src/atlassian_offline_mcp/config/app/settings.py) reads each layer,
+merges them and keeps each value's layer.
+
+- **Why.** The Unix convention: the file holds what stays, the environment what a
+  session or a script sets, a flag what one run needs. Knowing each value's layer lets
+  every command say which values it ignores, naming the layer and never the value, and
+  lets `check` say where each value came from.
+- **Cost.** Three places to look. A list from a stronger layer replaces a weaker one
+  whole. Secrets come from the environment alone, so neither a flag nor the file can
+  give a token or a key.
+- **Rejected.** pydantic-settings' own sources, which would add a flag per field,
+  secrets included, and cannot say which layer gave a value.
+- **Settled** by the user, in
+  [plan 015](../work/changelog/015-cli-and-configuration.md#the-settings-one-model-three-layers).
+
+## Telemetry off, logs that may hold titles
+
+Each run writes a log file of JSON lines, from DEBUG, in the user's log folder; it may
+hold titles, ids, paths and queries. Traces, metrics and logs go out by OpenTelemetry
+only once an endpoint is set, and only to this machine.
+
+- **Why.** In the user's words, the logs "will most likely never leave any machine": they
+  are there for detailed observability when needed, so they hold what explains a run.
+  Telemetry carries the same titles and queries, hence off by default, and to a literal
+  loopback address alone, as embeddings are.
+- **Cost.** The log folder holds the company's titles: it passes the data directory's
+  guard, its files are readable by their owner alone, and they go after 30 days. Seeing
+  telemetry needs a container, Grafana's LGTM.
+- **Rejected.** Logs without titles, which could not say which document was slow or
+  failed; telemetry on by default, or to a collector elsewhere.
+- **Settled** by the user, in
+  [plan 016](../work/changelog/016-observability-and-progress.md#settled-by-the-user);
+  [observability](observability.md) explains it further.
+
+## Data off synchronised folders and git trees
+
+The data directory and the log folder are refused under a synchronised folder (iCloud,
+`~/Library/CloudStorage`, Dropbox, OneDrive, Google Drive, `~/Desktop`, `~/Documents`)
+or inside a git working tree
+([`unsafe_location`](../../src/atlassian_offline_mcp/config/domain/settings.py)); a
+command then stops with
+[`UnsafeDataDirError`](../../src/atlassian_offline_mcp/config/app/settings.py) before
+anything is written.
+
+- **Why.** The mirror is the company's content. A synchronised folder would copy it off
+  the machine, and a git tree could commit and push it: either by accident, and without
+  a word.
+- **Cost.** The guard judges by name: a folder named like a synchronised one is refused
+  even when nothing synchronises it, and a sync client that it does not know passes.
+- **Rejected.** No plan weighed another way: the rule came with the programme of plans,
+  and plan 003 made every command enforce it.
+- **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions).
