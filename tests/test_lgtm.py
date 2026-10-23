@@ -3,8 +3,8 @@
 The compose file pins the image, publishes two ports on the loopback address only, sets
 what turns away other host names and keeps the stack from calling home, and keeps no data.
 Each dashboard, found in its folder, draws on the image's own data sources only, and
-charts no metric but those of the reference, named as Prometheus names what it receives
-over OTLP.
+charts no metric but those of the reference, ``docs/reference/telemetry/``, named as
+Prometheus names what it receives over OTLP.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 import yaml
+
+from tests.reference import README, documented, operations
 
 LGTM = Path(__file__).parents[1] / "deploy" / "lgtm"
 COMPOSE = LGTM / "compose.yaml"
@@ -46,25 +48,6 @@ SOURCES = {("prometheus", "prometheus"), ("loki", "loki"), ("tempo", "tempo")}
 NAMES = {"overview", "download", "mirror", "index", "serve", "eval"}
 # Grafana's longest uid.
 UID_LENGTH = 40
-# The instruments of the reference, each one's kind and unit. Step 11 of plan 016 ties
-# this list to the pages of docs/reference/telemetry/.
-INSTRUMENTS = {
-    "aom.run.duration": ("histogram", "s"),
-    "http.client.request.duration": ("histogram", "s"),
-    "gen_ai.client.operation.duration": ("histogram", "s"),
-    "mcp.server.operation.duration": ("histogram", "s"),
-    "aom.download.documents": ("counter", "{document}"),
-    "aom.download.files": ("counter", "{file}"),
-    "aom.download.bytes": ("counter", "By"),
-    "aom.mirror.documents": ("counter", "{document}"),
-    "aom.mirror.conversion.duration": ("histogram", "s"),
-    "aom.index.files": ("counter", "{file}"),
-    "aom.index.pieces": ("counter", "{piece}"),
-    "aom.serve.answer.size": ("histogram", "By"),
-    "aom.serve.fallbacks": ("counter", "{fallback}"),
-    "aom.eval.question.duration": ("histogram", "s"),
-    "aom.eval.score": ("gauge", "1"),
-}
 # Prometheus's names for what it receives over OTLP, by default: the name's words joined
 # by underscores, then the unit's word unless there already (an annotation in braces
 # adds none, unit 1 adds ``ratio`` to a gauge), then a suffix per series of the kind.
@@ -139,9 +122,17 @@ def test_each_dashboard_is_json_drawing_on_the_image_s_three_sources(path: Path)
 
 @pytest.mark.parametrize("path", PATHS, ids=lambda path: path.name)
 def test_each_dashboard_charts_only_metrics_of_the_reference(path: Path) -> None:
-    """Every name of a metric in every Prometheus query is one that an instrument gives."""
+    """Every name of a metric in every Prometheus query is one that an instrument gives.
+
+    The instruments, each with its kind and unit, are those that the reference lists,
+    every command's and each command's, its pages found in their folder.
+    """
+    pages = [documented(page) for page in (README, *operations())]
+    instruments = {
+        name: (kind, unit) for page in pages for name, (kind, unit, _) in page.instruments.items()
+    }
     known = set()
-    for name, (kind, unit) in INSTRUMENTS.items():
+    for name, (kind, unit) in instruments.items():
         words = re.split(r"[^a-z0-9]+", name)
         word = "ratio" if (kind, unit) == ("gauge", "1") else UNIT_WORDS.get(unit)
         stem = "_".join([*words, word] if word and word not in words else words)
