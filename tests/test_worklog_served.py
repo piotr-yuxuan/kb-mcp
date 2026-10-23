@@ -106,20 +106,23 @@ def test_the_server_says_what_entries_and_transcripts_are(home: Path) -> None:
 
     Entries: the user's notes and AI-written summaries. Transcripts: the word-by-word
     record, to prefer when quoting and to check a summary against. Each kind is named
-    before what it is, and the entries first, so that the roles cannot be swapped.
+    before what it is, and the entries first, so that the roles cannot be swapped; once
+    the record is named, no entry is, so that what to quote is the transcripts.
     """
     instructions, tools, _ = seen(home)
     (said,) = [s for s in re.split(r"(?<=\.)\s", instructions) if "transcripts" in s]
-    told = ["entries", "notes", "summaries", "transcripts", "word-by-word", "quoting"]
-    assert all(words in said for words in [*told, "check a summary"]), said
+    told = ["entries", "notes", "summaries", "transcripts", "word-by-word", "prefer", "quoting"]
+    assert [words for words in [*told, "check a summary"] if words not in said] == [], said
     assert [said.index(words) for words in told] == sorted(said.index(words) for words in told)
     assert said.index("quoting") < said.index("check a summary")
+    record = said[said.index("word-by-word") :]
+    assert [words for words in ("entries", "notes", "summaries") if words in record] == []
     (search,) = [tool for tool in tools.tools if tool.name == "search"]
     filters = search.input_schema["$defs"]["SearchFilters"]
     assert "worklog" in filters["properties"]["source"]["enum"]
     described = filters["description"]
     kinds = ["worklog", "entries", "notes", "summaries", "transcripts", "verbatim"]
-    assert all(words in described for words in kinds), described
+    assert [words for words in kinds if words not in described] == [], described
     assert [described.index(words) for words in kinds] == sorted(
         described.index(words) for words in kinds
     )
