@@ -15,7 +15,8 @@ with its page and this one, finding the pages in this folder.
 
 Each run, once its settings are read, unless it is then refused or declined, writes one
 file, `<logs.dir>/<command>-<start>-<pid>.jsonl`, the start in UTC as `%Y%m%dT%H%M%SZ`,
-such as `download-20261022T210509Z-4242.jsonl`. `--help`, `--version`, a completion and
+such as `download-20261022T210509Z-4242.jsonl`; a step's command names its file, as
+`eval-agents` does for `eval-agents call`. `--help`, `--version`, a completion and
 `completion`, which reads no settings, write none.
 
 - **Where.** `logs.dir`, by default the user's log folder as platformdirs places it:

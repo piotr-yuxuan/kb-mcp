@@ -98,7 +98,9 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
         loaded.settings.logs.dir,
         loaded.settings.telemetry.endpoint,
         Invocation(
-            command.name,
+            # A step, such as eval-agents' call, is observed as its command: their log
+            # files, root spans and aom.command share its name, as its pattern has it.
+            command.name.partition(" ")[0],
             {
                 "arguments": list(given),
                 "settings": to_jsonable_python(loaded),

@@ -83,6 +83,7 @@ class World:
     data: Path
     golden: Path
     root: Path
+    logs: Path
 
 
 @pytest.fixture
@@ -106,14 +107,15 @@ def world(
     build_index(docs, data / "index.sqlite", MOMENT, Embedding(tiny(), data / "vectors.sqlite"))
     golden = tmp_path / "golden.yaml"
     golden.write_text(GOLDEN, encoding="utf-8")
+    logs = tmp_path_factory.mktemp("logs")
     with serving(Scripted()) as url:
         (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text(
             f'data_dir = {json.dumps(str(data))}\nmodel = "tiny"\nsearch_mode = "hybrid"\n'
             f"embedding_url = {json.dumps(url)}\n"
-            f"[logs]\ndir = {json.dumps(str(tmp_path_factory.mktemp('logs')))}\n",
+            f"[logs]\ndir = {json.dumps(str(logs))}\n",
             encoding="utf-8",
         )
-        yield World(home, data, golden, tmp_path)
+        yield World(home, data, golden, tmp_path, logs)
 
 
 def prepared(world: World, out: Path, *more: str) -> int:
@@ -369,6 +371,28 @@ def test_prepare_says_its_runs_bound_and_estimates_then_asks(
     lines = ("bound: 12 calls of 60 s at most per run", "in all: 4 runs, 48 calls at most")
     assert all(-1 < said.index(line) < said.index("Proceed?") for line in lines)
     assert not out.exists()
+
+
+def test_each_step_logs_to_a_file_of_its_command_which_expires_as_any(world: World) -> None:
+    """Named ``eval-agents-<start>-<pid>.jsonl``, by plan 016's pattern: one of 2019 goes.
+
+    A step's file named after the step, with its space, would match no command's
+    pattern, and stay past its 30 days. Beside prepare's and the call's, the folder
+    holds the files of the servers that they started.
+    """
+    expired = "eval-agents-20190101T000000Z-1.jsonl"
+    (world.logs / expired).write_text("", "utf-8")
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    assert main(bridged(out, first(out, "A"), "status", {})) == 0
+    names = [path.name for path in world.logs.iterdir()]
+    assert all(
+        re.fullmatch(r"[a-z][a-z-]*-[0-9]{8}T[0-9]{6}Z-[0-9]+\.jsonl", name) for name in names
+    )
+    assert len([name for name in names if name.startswith("eval-agents-")]) == len(
+        ["prepare", "call"]
+    )
+    assert expired not in names
 
 
 def test_a_dry_run_creates_nothing(world: World, capsys: CaptureFixture[str]) -> None:
