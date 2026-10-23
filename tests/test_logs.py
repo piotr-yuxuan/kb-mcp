@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 import structlog
+from opentelemetry.sdk.trace import TracerProvider
 
 from atlassian_offline_mcp.observability.adapters.logs import (
     default_log_folder,
@@ -122,6 +123,27 @@ def test_the_run_s_fields_replace_an_event_s_own(tmp_path: Path) -> None:
         structlog.get_logger().info("run.start", run="another", command="index")
     (line,) = lines(path)
     assert (line["run"], line["command"]) == (RUN, "check")
+
+
+def test_a_line_within_a_span_carries_its_ids_in_hex_and_one_outside_none(
+    tmp_path: Path,
+) -> None:
+    """As OTLP's JSON writes them: the trace's in 32 hex digits, the span's in 16."""
+    tracer = TracerProvider(shutdown_on_exit=False).get_tracer(__name__)
+    with log_file(tmp_path, "download", RUN, NOW) as path:
+        with tracer.start_as_current_span("download.document") as span:
+            structlog.get_logger().debug("download.document", id="65601")
+            logging.getLogger("some.library").info("connected")
+        structlog.get_logger().info("run.end")
+    inside_event, inside_record, outside = lines(path)
+    context = span.get_span_context()
+    for line in (inside_event, inside_record):
+        assert (line["trace_id"], line["span_id"]) == (
+            f"{context.trace_id:032x}",
+            f"{context.span_id:016x}",
+        )
+    assert "trace_id" not in outside
+    assert "span_id" not in outside
 
 
 @pytest.mark.parametrize(

@@ -18,13 +18,14 @@ from typing import TYPE_CHECKING, TextIO, override
 
 import platformdirs
 import structlog
+from opentelemetry import trace
 from structlog.tracebacks import ExceptionDictTransformer
 
 from atlassian_offline_mcp.observability.domain.log_files import expired, log_file_name
 from atlassian_offline_mcp.observability.domain.redaction import redact_secrets
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
     from datetime import datetime
 
 # The program's name, as pyproject.toml names its script, which names its log folder.
@@ -81,6 +82,24 @@ class CappedFile(logging.StreamHandler[TextIO]):
         return super().format(capped)
 
 
+def span_ids(
+    _logger: object, _method_name: str, event_dict: Mapping[str, object]
+) -> Mapping[str, object]:
+    """Add the ids of the span that an event or a record is logged in, if any.
+
+    ``trace_id`` and ``span_id`` are in hex, as OTLP's JSON and Tempo show them, so that
+    a line of the file leads to its trace.
+    """
+    context = trace.get_current_span().get_span_context()
+    if not context.is_valid:
+        return event_dict
+    return {
+        **event_dict,
+        "trace_id": trace.format_trace_id(context.trace_id),
+        "span_id": trace.format_span_id(context.span_id),
+    }
+
+
 def default_log_folder() -> Path:
     """Return the user's log folder for this program, as platformdirs places it.
 
@@ -116,9 +135,10 @@ def log_file(folder: Path, command: str, run: str, now: datetime, cap: int = CAP
     can read, as ``folder`` when it is made here; one that exists keeps its mode, since
     the user may have chosen it. Before the file is opened, the log files in ``folder``
     whose run started over 30 days before ``now`` are removed. Each line adds ``run``
-    and ``command``, which replace an event's own of these names, and a traceback shows
-    no frame's locals. Past ``cap`` bytes of lines, a line ``log.capped`` ends the file.
-    Raises OSError when ``folder`` cannot be made or written.
+    and ``command``, which replace an event's own of these names, and, within a span, its
+    ``trace_id`` and ``span_id``; a traceback shows no frame's locals. Past ``cap`` bytes
+    of lines, a line ``log.capped`` ends the file. Raises OSError when ``folder`` cannot
+    be made or written.
     """
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     for old in folder.iterdir():
@@ -133,6 +153,7 @@ def log_file(folder: Path, command: str, run: str, now: datetime, cap: int = CAP
                 processors=[
                     structlog.stdlib.ProcessorFormatter.remove_processors_meta,
                     lambda _logger, _method, event: {**event, "run": run, "command": command},
+                    span_ids,
                     structlog.processors.ExceptionRenderer(
                         ExceptionDictTransformer(show_locals=False)
                     ),
