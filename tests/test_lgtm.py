@@ -232,18 +232,27 @@ def test_each_dashboard_charts_only_metrics_of_the_reference(path: Path) -> None
 def test_a_command_s_dashboard_charts_what_others_record_too_for_its_own_runs(
     command: str,
 ) -> None:
-    """A query of an instrument that another command's page lists too keeps to its runs.
+    """A query of an instrument that another command records too keeps to its runs.
 
-    It names its command, ``aom_command``, or a metric that no other command records, as
-    ``serve``'s keep to the runs that served a call: else an ``eval`` run's pieces, which
-    it indexes, would count as an ``index`` run's.
+    Each selector of such an instrument names the command, ``aom_command``; or the query
+    keeps its series, by ``and on (instance)``, to the runs of a series that names the
+    command or that no other command records, as ``serve``'s keep to the runs that
+    served a call. Else an ``eval`` run's pieces, which it indexes, would count as an
+    ``index`` run's, and with ``aom.run.duration``, which every command records, every
+    run would count as the command's.
     """
-    own = documented(command).instruments
-    others = {
-        name for page in operations() if page != command for name in documented(page).instruments
-    }
+    every = documented(README).instruments
+    own = every | documented(command).instruments
+    others = set(every).union(
+        *(documented(page).instruments for page in operations() if page != command)
+    )
     shared = series({name: own[name] for name in own.keys() & others})
     alone = series({name: own[name] for name in own.keys() - others})
+    kept = f'aom_command="{command}"'
     for query, metrics in prometheus_queries(DASHBOARDS / f"{command}.json"):
-        if metrics & shared:
-            assert f'aom_command="{command}"' in query or metrics & alone, query
+        _, joined, right = query.partition(" and on (instance) ")
+        selected = [re.findall(rf"\b{name}\b(\{{[^}}]*\}})?", query) for name in metrics & shared]
+        named = set(NAME.findall(NOT_METRICS.sub(" ", right)))
+        assert all(kept in labels for found in selected for labels in found) or (
+            joined and (kept in right or named & alone)
+        ), query
