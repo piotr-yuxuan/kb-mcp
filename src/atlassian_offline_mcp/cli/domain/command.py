@@ -42,7 +42,8 @@ class Command:
     of the output aside: each flag among them is named by its option, and the command to
     copy carries them. A command that ``writes`` under the data directory shows its
     summary and that command, then asks before it acts, unless given --yes, which it
-    then takes, or --dry-run, if it takes one (``dry_run``).
+    then takes, or --dry-run, if it takes one (``dry_run``). A command whose run is not
+    ``traced``, such as ``serve``, each of whose requests is a trace, is none of its own.
 
     ``unapplied``, if any, names what the run does not apply of the settings given, and
     why, such as the model of an index built by words alone, or the API token that
@@ -64,6 +65,7 @@ class Command:
     actions: tuple[argparse.Action, ...] = ()
     writes: bool = False
     dry_run: bool = False
+    traced: bool = True
     unapplied: Unapplied | None = None
     described: Described | None = None
     refused: Refused | None = None

@@ -23,11 +23,13 @@ from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
 from opentelemetry.sdk.trace import TracerProvider
 
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.observability.adapters.logs import SDK
 from atlassian_offline_mcp.observability.adapters.telemetry import Exported
 from atlassian_offline_mcp.observability.app.observed import early
-from tests.collector import LOGS, Collector, attributes, collecting, plain
+from tests.collector import LOGS, METRICS, TRACES, Collector, attributes, collecting, plain
 from tests.endpoint import nothing_listening
+from tests.test_download import SITE
 from tests.test_observed import said
 from tests.test_settings import user_log_folder
 
@@ -175,15 +177,15 @@ def test_off_check_installs_no_provider_starts_no_thread_and_opens_no_socket(
     assert not any(provider.startswith("opentelemetry.sdk.") for provider in ran.providers)
 
 
-def test_on_logs_arrive_at_this_machine_under_the_program_s_name_whatever_the_environment(
+def test_on_all_arrives_at_this_machine_under_the_program_s_name_whatever_the_environment(
     tmp_path: Path,
 ) -> None:
     """No proxy is taken, and OpenTelemetry's variables name neither the service nor where.
 
     Every proxy and every signal's own endpoint name a port where nothing listens, which
     the run dies reaching; the service's name and attributes name another, and gRPC is
-    asked for. The records from INFO arrive, the event as body, each with its command,
-    none of the SDK's own.
+    asked for. Traces, metrics and the records from INFO arrive, each record with the
+    event as body and its command, none of the SDK's own.
     """
     collector = Collector()
     with nothing_listening() as dead, collecting(collector) as endpoint:
@@ -200,8 +202,7 @@ def test_on_logs_arrive_at_this_machine_under_the_program_s_name_whatever_the_en
         ran = guarded(tmp_path, port_of(endpoint), check(tmp_path, endpoint), environment, LIMIT_S)
     assert (ran.status, ran.err) == (0, "")
     run = logged(tmp_path)[0]["run"]
-    assert collector.bodies(LOGS)
-    assert collector.resources()
+    assert {path for path, _ in collector.sent} == {TRACES, METRICS, LOGS}
     for resource in collector.resources():
         assert resource == {
             "service.name": PROGRAM,
@@ -213,6 +214,82 @@ def test_on_logs_arrive_at_this_machine_under_the_program_s_name_whatever_the_en
     assert [plain(record.body) for _, record in records] == ["run.start", "run.end"]
     for _, record in records:
         assert attributes(record.attributes)["command"] == "check"
+
+
+def test_a_run_is_one_trace_whose_root_holds_its_records_and_says_its_command_and_status(
+    tmp_path: Path,
+) -> None:
+    """Named after the command, with no parent; its duration is measured alike.
+
+    ``run.start`` and ``run.end`` carry the ids of the root span.
+    """
+    collector = Collector()
+    with collecting(collector) as endpoint:
+        ran = guarded(tmp_path, port_of(endpoint), check(tmp_path, endpoint), {}, LIMIT_S)
+    assert ran.status == 0
+    (root,) = collector.spans()
+    assert (root.name, root.parent_span_id) == ("check", b"")
+    assert attributes(root.attributes) == {
+        "aom.command": "check",
+        "aom.dry_run": False,
+        "aom.exit_status": 0,
+    }
+    for _, record in collector.records():
+        assert (record.trace_id, record.span_id) == (root.trace_id, root.span_id)
+    (duration,) = (metric for metric in collector.metrics() if metric.name == "aom.run.duration")
+    assert duration.unit == "s"
+    (point,) = duration.histogram.data_points
+    assert attributes(point.attributes) == {"aom.command": "check", "aom.exit_status": 0}
+    assert point.count == 1
+
+
+@pytest.mark.parametrize(("dry", "options"), [(True, ["--dry-run"]), (False, [])])
+def test_a_download_s_root_says_whether_it_is_a_dry_run(
+    tmp_path: Path, *, dry: bool, options: list[str]
+) -> None:
+    """The flag's value, not whether the command takes it.
+
+    With nothing covered yet and no --since, the run refuses before any request.
+    """
+    collector = Collector()
+    with collecting(collector) as endpoint:
+        arguments = [
+            "download",
+            "--yes",
+            *options,
+            *check(tmp_path, endpoint)[1:],
+            "--site",
+            SITE,
+            "--space",
+            "MFS",
+        ]
+        ran = guarded(tmp_path, port_of(endpoint), arguments, {}, LIMIT_S)
+    assert ran.status == ExitStatus.REFUSED
+    (root,) = collector.spans()
+    assert attributes(root.attributes) == {
+        "aom.command": "download",
+        "aom.dry_run": dry,
+        "aom.exit_status": ExitStatus.REFUSED,
+    }
+
+
+def test_serve_is_no_trace_of_its_own(tmp_path: Path) -> None:
+    """Each of its requests is one: its records carry no span's ids, and no span is sent.
+
+    Its duration is measured, as every run's. With stdin at its end, it serves nothing.
+    """
+    collector = Collector()
+    with collecting(collector) as endpoint:
+        arguments = ["serve", *check(tmp_path, endpoint)[1:]]
+        ran = guarded(tmp_path, port_of(endpoint), arguments, {}, LIMIT_S)
+    assert ran.status == 0
+    assert collector.spans() == []
+    records = [record for _, record in collector.records()]
+    assert [plain(record.body) for record in records] == ["run.start", "run.end"]
+    assert all(record.trace_id == b"" for record in records)
+    (duration,) = (metric for metric in collector.metrics() if metric.name == "aom.run.duration")
+    (point,) = duration.histogram.data_points
+    assert attributes(point.attributes) == {"aom.command": "serve", "aom.exit_status": 0}
 
 
 def test_an_endpoint_that_refuses_ends_check_in_bounded_time_with_one_warning(

@@ -12,13 +12,14 @@ import importlib
 import logging
 import secrets
 import time
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from importlib.metadata import version
 from typing import TYPE_CHECKING
 
 import structlog
+from opentelemetry import metrics, trace
 from rich.console import Console
 
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
@@ -41,6 +42,11 @@ if TYPE_CHECKING:
 # exporters and requests take a tenth of a second to import, which a run without would
 # pay for nothing.
 TELEMETRY = "atlassian_offline_mcp.observability.adapters.telemetry"
+# How long each run lasted, by its command and its exit status: made once, as the API
+# would have an instrument, and recorded once the SDK, if any, is behind it.
+RUN_DURATION = metrics.get_meter(__name__).create_histogram(
+    "aom.run.duration", unit="s", description="How long a run lasted"
+)
 
 
 @dataclass(frozen=True)
@@ -48,11 +54,14 @@ class Invocation:
     """What a run is asked to do: its command, by name, and what ``run.start`` says of it.
 
     ``described`` holds the command line's fields, such as the arguments and the
-    settings.
+    settings. A ``dry_run`` only says what it would do; a run that is not ``traced`` is
+    no trace of its own, such as a server's, each of whose requests is one.
     """
 
     command: str
     described: Mapping[str, object] = field(default_factory=dict)
+    dry_run: bool = False
+    traced: bool = True
 
 
 @dataclass
@@ -115,6 +124,12 @@ def observed(
     does not take a connection gives one warning, ``telemetry.undelivered``, and the run
     goes on without. Without, the SDK is not even imported: what the run traces and
     measures goes nowhere.
+
+    A ``traced`` run is one trace, whose root span, named after the command, holds
+    ``run.start``, ``run.end`` and all that the body traces. It says the command
+    (``aom.command``), whether the run is a ``dry_run`` (``aom.dry_run``) and its exit
+    status (``aom.exit_status``). Each run, traced or not, records how long it lasted in
+    ``aom.run.duration``, by command and exit status.
     """
     root = logging.getLogger()
     log = structlog.get_logger()
@@ -143,6 +158,14 @@ def observed(
                 stack.enter_context(exporting(endpoint, run.id, command))
             except OSError as error:
                 log.warning("telemetry.undelivered", endpoint=endpoint, reason=str(error))
+        spanned = (
+            trace.get_tracer(__name__).start_as_current_span(
+                command, attributes={"aom.command": command, "aom.dry_run": invocation.dry_run}
+            )
+            if invocation.traced
+            else nullcontext(trace.INVALID_SPAN)
+        )
+        span = stack.enter_context(spanned)
         log.info(
             "run.start",
             version=version(PROGRAM),
@@ -161,3 +184,7 @@ def observed(
             log.exception("run.failed", seconds=round(time.monotonic() - began, 3))
         else:
             log.info("run.end", status=run.status, seconds=round(time.monotonic() - began, 3))
+        span.set_attribute("aom.exit_status", int(run.status))
+        RUN_DURATION.record(
+            time.monotonic() - began, {"aom.command": command, "aom.exit_status": int(run.status)}
+        )
