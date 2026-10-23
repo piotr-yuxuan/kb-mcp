@@ -31,6 +31,11 @@ marked for contributors.
 
 ## Reference
 
+- [Commands](reference/commands.md): what the command and each subcommand say with
+  `--help`, and the exit statuses; generated from the parser.
+- [Settings](reference/settings.md): each setting's key, variable, type, default and
+  meaning, which layer wins, and the variables read besides; generated from the
+  settings' model.
 - [Data layout](reference/data-layout.md): what each part of the program writes and
   reads under the data directory and in the log folder.
 - [The MCP server's tools and prompts](reference/mcp-tools.md): what `serve` offers
