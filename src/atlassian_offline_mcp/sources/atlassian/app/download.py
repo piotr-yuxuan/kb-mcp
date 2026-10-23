@@ -53,10 +53,7 @@ from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, Period
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
-    from contextlib import AbstractContextManager
     from datetime import datetime
-
-    from opentelemetry.trace import Span
 
     from atlassian_offline_mcp.config.domain.settings import Settings
     from atlassian_offline_mcp.kernel.content import Attachment, Document, Listed
@@ -131,20 +128,6 @@ class Report:
 def label(kind: type[Document]) -> str:
     """Name a kind of document in the report, as ``confluence pages``."""
     return f"{kind.source} {kind.kind}"
-
-
-def own_trace(document: Listed) -> AbstractContextManager[Span]:
-    """Begin the span ``download.document`` of a document: a trace of its own.
-
-    It is linked to the span current when it begins, of the run's trace, and says the
-    document's id and kind.
-    """
-    return TRACER.start_as_current_span(
-        "download.document",
-        context=Context(),
-        links=[trace.Link(trace.get_current_span().get_span_context())],
-        attributes={"aom.document.id": document.id, "aom.document.kind": label(document.type)},
-    )
 
 
 @dataclass
@@ -452,8 +435,9 @@ class Download:
     def consider(self, document: Listed, period: Period) -> None:
         """Fetch a listed document when it is in the period and its revision not stored.
 
-        The fetch is a trace of its own, as ``own_trace`` begins it, an error when it
-        fails, which is a warning, by the document's id.
+        The fetch is a trace of its own, ``download.document``, linked to the span of the
+        run's trace current when it begins, saying the document's id and kind; an error
+        when the fetch fails, which is a warning, by the document's id.
         """
         if document.updated not in period:
             return
@@ -467,7 +451,12 @@ class Download:
         if self.plan:
             self.report.add(f"{what}: to fetch")
             return
-        with own_trace(document) as span:
+        with TRACER.start_as_current_span(
+            "download.document",
+            context=Context(),  # no parent: the root of a trace of its own
+            links=[trace.Link(trace.get_current_span().get_span_context())],
+            attributes={"aom.document.id": document.id, "aom.document.kind": what},
+        ) as span:
             try:
                 responses = {
                     name: self.site.json(request) if read is None else self.collect(request, read)
