@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import certifi
 import httpx
+import structlog
 import truststore
 
 from atlassian_offline_mcp.kernel.content import SITE_PATH
@@ -186,12 +187,20 @@ class Site:
         """GET a body, retrying throttling, gateway and transport failures four times.
 
         Raises SiteError for this GET, and TooManyFailuresError, before trying, once
-        ``MAX_FAILED_IN_A_ROW`` GETs in a row got no answer.
+        ``MAX_FAILED_IN_A_ROW`` GETs in a row got no answer. Each retry is said at DEBUG,
+        ``http.retry``, by the path, without its query, and why.
         """
         self._breaker.check()
         failure, wait, answered, last = "", 0.0, True, None
         for attempt in range(RETRIES + 1):
             if attempt:
+                structlog.get_logger().debug(
+                    "http.retry",
+                    path=request.path.partition("?")[0],
+                    attempt=attempt,
+                    failure=failure,
+                    wait_s=min(wait, MAX_WAIT_S),
+                )
                 self._sleep(min(wait, MAX_WAIT_S))
             try:
                 status, headers, body = self.once(request, max_bytes)

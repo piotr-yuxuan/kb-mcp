@@ -169,7 +169,7 @@ class FakeSite:
             routes[f"/wiki/api/v2/folders/{folder_id}"] = lambda _, f=folder: httpx.Response(
                 200, json=f
             )
-        for kind, documents in (("pages", PAGES), ("blogposts", POSTS)):
+        for kind, documents in (("pages", PAGES | self.many()), ("blogposts", POSTS)):
             for document_id, document in documents.items():
                 routes[f"/wiki/api/v2/{kind}/{document_id}"] = lambda request, d=document: (
                     self.document(request, d)
@@ -229,10 +229,15 @@ class FakeSite:
             entries.append({**issue, "fields": {k: v for k, v in values.items() if k != "summary"}})
         return httpx.Response(200, json={"issues": entries, "isLast": True})
 
+    def many(self) -> dict[str, dict[str, object]]:
+        """Give the many pages in the period, by id, as the switch has them: none by default."""
+        ids = [str(5000 + i) for i in range(self.many_pages)]
+        return {page_id: v2_page(id=page_id, version=stamp(20)) for page_id in ids}
+
     def pages(self, request: httpx.Request) -> httpx.Response:
-        """Serve the pages listing in two pages, linked by _links.next."""
+        """Serve the pages listing in two pages, linked by _links.next; or the many in one."""
         if self.many_pages:
-            many = [v2_page(id=str(5000 + i), version=stamp(20)) for i in range(self.many_pages)]
+            many = list(self.many().values())
             return httpx.Response(200, json={"results": many, "_links": {}})
         if "cursor" in request.url.params:
             return httpx.Response(200, json={"results": [PAGES["1003"]], "_links": {}})

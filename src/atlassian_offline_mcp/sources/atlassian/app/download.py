@@ -1,4 +1,11 @@
-"""Downloading the documents of spaces and projects updated in a period."""
+"""Downloading the documents of spaces and projects updated in a period.
+
+Each space, project, round of probes and merge of users is a span of the run's trace;
+each document fetched is a trace of its own, ``download.document``, linked to the run's,
+since Tempo drops a trace past 5 MB, which one trace of all a run's requests could pass.
+What is fetched, failed or skipped is counted and logged, as
+``docs/reference/telemetry/download.md`` lists it.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +16,11 @@ from datetime import UTC, timedelta
 from functools import partial
 from itertools import batched
 from typing import TYPE_CHECKING, Literal
+
+import structlog
+from opentelemetry import metrics, trace
+from opentelemetry.context import Context
+from opentelemetry.trace import StatusCode
 
 from atlassian_offline_mcp.kernel.content import IDENTIFIER, BlogPost, Issue, Page
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
@@ -41,7 +53,10 @@ from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, Period
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
+    from contextlib import AbstractContextManager
     from datetime import datetime
+
+    from opentelemetry.trace import Span
 
     from atlassian_offline_mcp.config.domain.settings import Settings
     from atlassian_offline_mcp.kernel.content import Attachment, Document, Listed
@@ -73,6 +88,19 @@ SNAPSHOT_REQUESTS: dict[type[Document], SnapshotRequests] = {
     BlogPost: confluence_v2.snapshot_requests,
     Issue: jira_v3.snapshot_requests,
 }
+TRACER = trace.get_tracer(__name__)
+METER = metrics.get_meter(__name__)
+# What a run did, by outcome: documents fetched or failed; files downloaded, failed or
+# skipped; the bytes of the files downloaded.
+DOCUMENTS = METER.create_counter(
+    "aom.download.documents", unit="{document}", description="Documents fetched, by outcome"
+)
+FILES = METER.create_counter(
+    "aom.download.files", unit="{file}", description="Attached files, by outcome"
+)
+BYTES = METER.create_counter(
+    "aom.download.bytes", unit="By", description="Bytes of the attached files downloaded"
+)
 
 
 @dataclass
@@ -103,6 +131,20 @@ class Report:
 def label(kind: type[Document]) -> str:
     """Name a kind of document in the report, as ``confluence pages``."""
     return f"{kind.source} {kind.kind}"
+
+
+def own_trace(document: Listed) -> AbstractContextManager[Span]:
+    """Begin the span ``download.document`` of a document: a trace of its own.
+
+    It is linked to the span current when it begins, of the run's trace, and says the
+    document's id and kind.
+    """
+    return TRACER.start_as_current_span(
+        "download.document",
+        context=Context(),
+        links=[trace.Link(trace.get_current_span().get_span_context())],
+        attributes={"aom.document.id": document.id, "aom.document.kind": label(document.type)},
+    )
 
 
 @dataclass
@@ -210,39 +252,46 @@ class Download:
 
         The task ``listing`` reports the pages of its listings read, and the task
         ``documents`` the documents it lists, each by its id. Return whether the space
-        was listed whole.
+        was listed whole. All is the span ``download.space``, an error when the space
+        could not be listed.
         """
-        try:
-            found = self.collect(confluence_v2.space_request(key), confluence_v2.listing_page)
-            space = confluence_v2.space(Fields(found[0], "space")) if found else None
-            if space is None:
-                self.failed_targets.append(f"space {key}: not found")
-                self.report.add("confluence spaces failed: not found")
+        with TRACER.start_as_current_span("download.space", attributes={"aom.target": key}) as span:
+            try:
+                found = self.collect(confluence_v2.space_request(key), confluence_v2.listing_page)
+                space = confluence_v2.space(Fields(found[0], "space")) if found else None
+                if space is None:
+                    self.failed_targets.append(f"space {key}: not found")
+                    self.report.add("confluence spaces failed: not found")
+                    span.set_status(StatusCode.ERROR, "not found")
+                    return False
+                page_listing = confluence_v2.listing_request(space.id, Page)
+                post_listing = confluence_v2.listing_request(space.id, BlogPost)
+                with task("listing") as listing:
+                    pages = self.collect(page_listing, confluence_v2.listing_page, listing.advance)
+                    posts = self.collect(post_listing, confluence_v2.listing_page, listing.advance)
+            except (RepresentationError, SiteError) as error:
+                self.failed_targets.append(f"space {key}: {error}")
+                self.report.failed("confluence spaces", error)
+                span.set_status(StatusCode.ERROR, str(error))
                 return False
-            page_listing = confluence_v2.listing_request(space.id, Page)
-            post_listing = confluence_v2.listing_request(space.id, BlogPost)
-            with task("listing") as listing:
-                pages = self.collect(page_listing, confluence_v2.listing_page, listing.advance)
-                posts = self.collect(post_listing, confluence_v2.listing_page, listing.advance)
-        except (RepresentationError, SiteError) as error:
-            self.failed_targets.append(f"space {key}: {error}")
-            self.report.failed("confluence spaces", error)
-            return False
-        documents = [*self.documents(Page, pages), *self.documents(BlogPost, posts)]
-        if not self.plan:
-            # By id alone, as the last listing is read: an entry refused for its other
-            # fields still names its document, which is then not absent.
-            listed = {
-                Page: confluence_v2.entry_ids(pages),
-                BlogPost: confluence_v2.entry_ids(posts),
-            }
-            self.track(space.id, listed)
-            folders = self.folders(pages)
-            self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
-        with task("documents", len(documents)) as considered:
-            for document in considered.each(documents, lambda listed: listed.id):
-                self.consider(document, period)
-        return True
+            documents = [*self.documents(Page, pages), *self.documents(BlogPost, posts)]
+            structlog.get_logger().info(
+                "download.listed", target=f"space {key}", documents=len(documents)
+            )
+            if not self.plan:
+                # By id alone, as the last listing is read: an entry refused for its other
+                # fields still names its document, which is then not absent.
+                listed = {
+                    Page: confluence_v2.entry_ids(pages),
+                    BlogPost: confluence_v2.entry_ids(posts),
+                }
+                self.track(space.id, listed)
+                folders = self.folders(pages)
+                self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
+            with task("documents", len(documents)) as considered:
+                for document in considered.each(documents, lambda listed: listed.id):
+                    self.consider(document, period)
+            return True
 
     def track(self, space_id: str, listed: Mapping[type[Document], set[str]]) -> None:
         """Record, as pending, what the space's last listing named and the new one does not.
@@ -275,29 +324,32 @@ class Download:
         space is followed there once that space's stored listing names it, and stays
         pending until then. Raises SignInNeededError when too many answer gone and the
         session no longer holds; when the site does not answer, nothing is believed. The
-        task ``probes`` reports a space's probes, each by its document's id.
+        task ``probes`` reports a space's probes, each by its document's id; all is the
+        span ``download.probes``.
         """
         canary = (confluence_v2.current_user_request(), confluence_v2.signed_in)
         kept = {each.id for each in self.store.spaces() if not isinstance(each, Unreadable)}
-        for space_id, (absent, stored, before) in self.absent.items():
-            known = {k: s for k, s in self.tombstones.items() if s.space_id == space_id}
-            # By the tombstones as they stood before this run: those on their way first.
-            order = probing_order(absent, before)[:MAX_PROBES]
-            with task("probes", len(order)) as probes:
-                answers = {
-                    k: a
-                    for k in probes.each(order, lambda key: key[1])
-                    if (a := self.probe(k, kept))
-                }
-            if too_many_gone(answers, stored) and not self.reachable("confluence", *canary):
-                answers = {}  # the site stopped answering: believe none of these answers
-            now = after_probes(known, absent, answers, self.now())
-            others = {k: s for k, s in self.tombstones.items() if s.space_id != space_id}
-            self.tombstones = {**others, **now}
-            self.store.put_tombstones(self.tombstones.values())
-            self.report.add("confluence documents: probed, absent from their listing", len(answers))
-            waiting = sum(1 for stone in now.values() if stone.first_gone is None)
-            self.report.add("confluence documents: absent, waiting for a probe", waiting)
+        with TRACER.start_as_current_span("download.probes"):
+            for space_id, (absent, stored, before) in self.absent.items():
+                known = {k: s for k, s in self.tombstones.items() if s.space_id == space_id}
+                # By the tombstones as they stood before this run: those on their way first.
+                order = probing_order(absent, before)[:MAX_PROBES]
+                with task("probes", len(order)) as probes:
+                    answers = {
+                        k: a
+                        for k in probes.each(order, lambda key: key[1])
+                        if (a := self.probe(k, kept))
+                    }
+                if too_many_gone(answers, stored) and not self.reachable("confluence", *canary):
+                    answers = {}  # the site stopped answering: believe none of these answers
+                now = after_probes(known, absent, answers, self.now())
+                others = {k: s for k, s in self.tombstones.items() if s.space_id != space_id}
+                self.tombstones = {**others, **now}
+                self.store.put_tombstones(self.tombstones.values())
+                probed = "confluence documents: probed, absent from their listing"
+                self.report.add(probed, len(answers))
+                waiting = sum(1 for stone in now.values() if stone.first_gone is None)
+                self.report.add("confluence documents: absent, waiting for a probe", waiting)
 
     def probe(self, key: tuple[str, str], kept: set[str]) -> Answer | None:
         """GET a document absent from its listing, and say what became of it."""
@@ -356,25 +408,32 @@ class Download:
 
         The task ``listing`` reports the pages of the search read, and the task
         ``documents`` the issues found, each by its id. Return whether the search was
-        read whole.
+        read whole. All is the span ``download.project``, an error when the search
+        could not be read.
         """
         start = (period.start - JQL_MARGIN).date()
         end = (period.end + JQL_MARGIN).date()
-        try:
-            with task("listing") as listing:
-                search = jira_v3.search_request(key, start, end)
-                entries = self.collect(search, jira_v3.search_page, listing.advance)
-        except (RepresentationError, SiteError) as error:
-            self.failed_targets.append(f"project {key}: {error}")
-            self.report.failed("jira projects", error)
-            return False
-        if self.plan:
-            self.count_files(entries, period)
-        issues = self.documents(Issue, entries)
-        with task("documents", len(issues)) as considered:
-            for issue in considered.each(issues, lambda listed: listed.id):
-                self.consider(issue, period)
-        return True
+        attributes = {"aom.target": key}
+        with TRACER.start_as_current_span("download.project", attributes=attributes) as span:
+            try:
+                with task("listing") as listing:
+                    search = jira_v3.search_request(key, start, end)
+                    entries = self.collect(search, jira_v3.search_page, listing.advance)
+            except (RepresentationError, SiteError) as error:
+                self.failed_targets.append(f"project {key}: {error}")
+                self.report.failed("jira projects", error)
+                span.set_status(StatusCode.ERROR, str(error))
+                return False
+            if self.plan:
+                self.count_files(entries, period)
+            issues = self.documents(Issue, entries)
+            structlog.get_logger().info(
+                "download.listed", target=f"project {key}", documents=len(issues)
+            )
+            with task("documents", len(issues)) as considered:
+                for issue in considered.each(issues, lambda listed: listed.id):
+                    self.consider(issue, period)
+            return True
 
     def count_files(self, entries: Iterable[object], period: Period) -> None:
         """Count the files, and their bytes, that a run would download for these issues."""
@@ -391,7 +450,11 @@ class Download:
             self.report.add("files: bytes to download", sum(each.size for each in kept))
 
     def consider(self, document: Listed, period: Period) -> None:
-        """Fetch a listed document when it is in the period and its revision not stored."""
+        """Fetch a listed document when it is in the period and its revision not stored.
+
+        The fetch is a trace of its own, as ``own_trace`` begins it, an error when it
+        fails, which is a warning, by the document's id.
+        """
         if document.updated not in period:
             return
         what = label(document.type)
@@ -404,27 +467,44 @@ class Download:
         if self.plan:
             self.report.add(f"{what}: to fetch")
             return
-        try:
-            responses = {
-                name: self.site.json(request) if read is None else self.collect(request, read)
-                for name, (request, read) in SNAPSHOT_REQUESTS[document.type](document).items()
-            }
-            self.keep(document.type, responses)
-        except (RepresentationError, SiteError) as error:
-            self.report.failed(what, error)
-            return
-        self.report.add(f"{what}: fetched")
+        with own_trace(document) as span:
+            try:
+                responses = {
+                    name: self.site.json(request) if read is None else self.collect(request, read)
+                    for name, (request, read) in SNAPSHOT_REQUESTS[document.type](document).items()
+                }
+                self.keep(document.type, responses)
+            except (RepresentationError, SiteError) as error:
+                self.report.failed(what, error)
+                DOCUMENTS.add(1, {"aom.outcome": "failed"})
+                span.set_status(StatusCode.ERROR, str(error))
+                structlog.get_logger().warning(
+                    "download.document_failed", id=document.id, kind=what, reason=str(error)
+                )
+                return
+            self.report.add(f"{what}: fetched")
+            DOCUMENTS.add(1, {"aom.outcome": "fetched"})
 
     def keep(self, kind: type[Document], responses: dict[str, object]) -> None:
         """Download a snapshot's files, then store it with their digests.
 
         A snapshot that its adapter refuses is stored all the same, without files: raw
         first, so that a fixed adapter reads it, and a later run downloads its files.
+        Read, its document's title goes on the current span, and in ``download.document``
+        at DEBUG; refused, it is a warning, without the id that it would have given.
         """
         try:
             snapshot = REPRESENTATIONS[kind].snapshot(responses)
+            document = snapshot.document
+            trace.get_current_span().set_attribute("aom.document.title", document.title)
+            structlog.get_logger().debug(
+                "download.document", id=document.id, kind=label(kind), title=document.title
+            )
         except RepresentationError as error:
             self.report.failed(f"{label(kind)} read", error)
+            structlog.get_logger().warning(
+                "download.document_unread", kind=label(kind), reason=str(error)
+            )
             snapshot = None
         blobs = self.files(snapshot.attachments) if snapshot else {}
         self.store.put(kind, responses, self.now(), blobs)
@@ -449,41 +529,60 @@ class Download:
             self.authors.add(stored.snapshot.document.author.account_id)
 
     def files(self, attachments: Iterable[Attachment]) -> dict[str, str]:
-        """Download the attachments' files that are kept, and return their digests by id."""
+        """Download the attachments' files that are kept, and return their digests by id.
+
+        A file skipped is said at INFO, one that failed is a warning, each by its id and
+        its name.
+        """
+        log = structlog.get_logger()
         blobs: dict[str, str] = {}
         for attachment in attachments:
+            named = {"id": attachment.id, "name": attachment.filename}
             reason = skip_reason(attachment, self.max_file_bytes)
             if reason is not None:
                 self.report.add(f"files: skipped, {reason}")
+                FILES.add(1, {"aom.outcome": "skipped"})
+                log.info("download.file_skipped", **named, reason=reason)
                 continue
             try:
                 data = self.site.file(attachment.download, self.max_file_bytes)
             except SiteError as error:
                 self.report.failed("files", error)
+                FILES.add(1, {"aom.outcome": "failed"})
+                log.warning("download.file_failed", **named, reason=str(error))
                 continue
             if len(data) != attachment.size:  # a proxy's page, say, in the file's place
                 self.report.add("files failed: not the size listed")
+                FILES.add(1, {"aom.outcome": "failed"})
+                log.warning("download.file_failed", **named, reason="not the size listed")
                 continue
             blobs[attachment.id] = self.store.put_blob(data)
             self.report.add("files: downloaded")
+            FILES.add(1, {"aom.outcome": "downloaded"})
+            BYTES.add(len(data))
         return blobs
 
     def users(self) -> None:
-        """Merge the names of the Confluence authors seen into the users kept."""
-        users: list[object] = []
-        for chunk in batched(sorted(self.authors), confluence_v2.USERS_PER_REQUEST, strict=False):
-            request = confluence_v2.users_request(chunk)
+        """Merge the names of the Confluence authors seen into the users kept.
+
+        All is the span ``download.users``.
+        """
+        with TRACER.start_as_current_span("download.users"):
+            users: list[object] = []
+            authors = sorted(self.authors)
+            for chunk in batched(authors, confluence_v2.USERS_PER_REQUEST, strict=False):
+                request = confluence_v2.users_request(chunk)
+                try:
+                    users += self.collect(request, confluence_v2.users_page)
+                except (RepresentationError, SiteError) as error:
+                    self.report.failed("confluence users", error)
             try:
-                users += self.collect(request, confluence_v2.users_page)
-            except (RepresentationError, SiteError) as error:
+                if users:
+                    self.store.put_users(users)
+            except RepresentationError as error:
                 self.report.failed("confluence users", error)
-        try:
-            if users:
-                self.store.put_users(users)
-        except RepresentationError as error:
-            self.report.failed("confluence users", error)
-            return
-        self.report.add("confluence users: named", len(users))
+                return
+            self.report.add("confluence users: named", len(users))
 
 
 @dataclass(frozen=True)
