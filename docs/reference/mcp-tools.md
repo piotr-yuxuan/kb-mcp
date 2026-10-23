@@ -41,10 +41,11 @@ Finds documents by words, issue keys, page ids or page addresses, the best first
 with its best section's `read()` call and a snippet.
 
 - `query`: the words, at most 500 characters.
-- `filters`: an object of `source` (`confluence` or `jira`), `space`, `project`,
-  `status`, `label`, `updated_after` (included) and `updated_before` (excluded); values
-  match without regard to case, dates are ISO 8601, and a value that no document has
-  is refused with the valid ones.
+- `filters`: an object of `source` (`confluence`, `jira` or `worklog`), `space`,
+  `project`, `status`, `label`, `updated_after` (included) and `updated_before`
+  (excluded); values match without regard to case, dates are ISO 8601, and a value that
+  no document has is refused with the valid ones. The work log's entries are the user's
+  notes and AI-written summaries, its transcripts the word-by-word record.
 - `sort`: `relevance`, or `updated` to list what changed last, with no query.
 - `limit`: 1 to 50 documents, 8 by default.
 - `cursor`: the one that the previous answer ended with.
@@ -53,8 +54,8 @@ with its best section's `read()` call and a snippet.
 
 Reads a document, or one of its sections, from a character offset, in slices.
 
-- `ref`: a page id, an issue key, a page's or an issue's address, or a path in the
-  mirror, at most 300 characters.
+- `ref`: a page id, an issue key, a work-log id (`e-...` or `t-...`), a page's or an
+  issue's address, or a path in the mirror, at most 300 characters.
 - `section`: a section's number, from 1.
 - `offset`: a character of the body to start from.
 - `max_chars`: 1 to 40,000 characters, 12,000 by default.
@@ -86,7 +87,7 @@ the argument. A prompt is listed only when the tools it uses are served.
 Read the document whole; summarise its purpose, facts, decisions, status and dates,
 each cited by section. Needs `read`.
 
-- `ref`: a page id, an issue key, an address or a path in the mirror.
+- `ref`: a page, issue or work-log id, an address or a path in the mirror.
 
 ### changes
 
