@@ -1,10 +1,11 @@
 """The pages stay true to the checkout and to the code they describe.
 
 Plan 020 walks the checkout for Markdown and reads each page as GitHub renders it: a
-relative link reaches a file, or a heading, of the checkout, and a link into ``src/``
-whose text is code names what that file defines. Plan 015 checks that the
-command lines of its two how-tos, ``AGENTS.md`` and the guides it changed parse, plan
-017 those of its two; plan 019 that the reference names each tool and prompt served.
+relative link reaches a file, or a heading, of the checkout; a link into ``src/`` whose
+text is code names what that file defines; the map, ``docs/README.md``, links each page
+of the four folders. Plan 015 checks that the command lines of its two how-tos,
+``AGENTS.md`` and the guides it changed parse, plan 017 those of its two; plan 019 that
+the reference names each tool and prompt served.
 """
 
 from __future__ import annotations
@@ -50,6 +51,8 @@ PARSER = MarkdownIt("commonmark").enable("table")
 # What GitHub drops from a heading's text to make its anchor: all but letters, digits,
 # underscores, hyphens and spaces.
 UNSLUGGED = re.compile(r"[^\w\- ]")
+# The four kinds of page, by Diataxis, each a folder of docs/.
+KINDS = frozenset({"tutorials", "how-to", "reference", "explanation"})
 # A fragment naming lines, as GitHub's view of a file reads it: lines move, names stay.
 LINES = re.compile(r"L\d+(-L\d+)?")
 # A block of shell commands in Markdown.
@@ -223,6 +226,21 @@ def test_each_code_link_into_the_source_names_what_its_file_defines(
             if link.code not in names:
                 unknown.append(f"{page}:{link.line}: `{link.code}` is not defined in {link.path}")
     assert unknown == []
+
+
+def test_the_map_links_each_page_of_the_four_kinds_and_docs_holds_no_other(
+    checkout: frozenset[str],
+) -> None:
+    """``docs/README.md`` links each page under the four folders, at any depth.
+
+    Any other page under ``docs/`` is the map itself or a plan's record in ``docs/work/``.
+    """
+    mapped = {link.path for link in read("docs/README.md").links}
+    pages = {path for path in checkout if path.startswith("docs/") and path.endswith(".md")}
+    kinds = {page for page in pages if page.split("/")[1] in KINDS}
+    assert [f"docs/README.md does not link {page}" for page in sorted(kinds - mapped)] == []
+    others = sorted(page for page in pages - kinds if not page.startswith("docs/work/"))
+    assert others == ["docs/README.md"]
 
 
 @pytest.mark.parametrize("page", PAGES)
