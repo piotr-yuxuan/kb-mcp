@@ -45,11 +45,12 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
 
     From the run's import to its result written, the run is ``observed``: its logs go to
     stderr at its level and to its log file, in the settings' log folder, none for a run
-    that reads no settings, and its start names the arguments ``given`` and the settings
-    as one JSON document, secrets masked; its telemetry goes to the settings' endpoint,
-    if any, as one trace unless its command says it is not ``traced``, saying whether it
-    is a dry run. An exception that the run lets through, or Ctrl-C, ends it with the
-    status that ``observed`` gives.
+    that reads no settings, and its start names the arguments ``given``, the settings
+    as one JSON document, secrets masked, and the layer of telemetry's endpoint, which
+    says what turned telemetry on, or off; its telemetry goes to the settings' endpoint,
+    if any, as one trace unless its command says it is not ``traced``, saying whether
+    it is a dry run. An exception that the run lets through, or Ctrl-C, ends it with
+    the status that ``observed`` gives.
     """
     command: Command = arguments.command
     output = Output(
@@ -101,6 +102,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
             {
                 "arguments": list(given),
                 "settings": None if loaded is None else to_jsonable_python(loaded),
+                "telemetry_layer": None if loaded is None else loaded.layer("telemetry.endpoint"),
             },
             dry_run=command.dry_run and arguments.dry_run,
             traced=command.traced,

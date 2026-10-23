@@ -28,6 +28,7 @@ from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.cli.options.index import by_words_alone
 from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL
 from atlassian_offline_mcp.observability.app.observed import early
+from tests.endpoint import nothing_listening
 from tests.test_settings import user_log_folder
 
 if TYPE_CHECKING:
@@ -386,6 +387,32 @@ def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
     said = capsys.readouterr().err
     assert "logs.dir" not in said
     assert "telemetry.endpoint" not in said
+
+
+@pytest.mark.parametrize(
+    "variable", ["OTEL_EXPORTER_OTLP_ENDPOINT", "ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT"]
+)
+@pytest.mark.usefixtures("runs")
+def test_a_command_that_writes_says_that_telemetry_is_on_and_what_turned_it_on(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], variable: str
+) -> None:
+    """Whatever layer sets the endpoint, one line of the summary names it, at every level but -q.
+
+    OpenTelemetry's variable, which other programs share, may turn telemetry on unseen,
+    as may the setting's. Without an endpoint, no such line. Nothing listens there.
+    """
+    options = ["index", "--yes", "--config", str(home / "none.toml")]
+    assert main(options) == 0
+    assert not any(line.startswith("telemetry") for line in capsys.readouterr().err.splitlines())
+    with nothing_listening() as url:
+        endpoint = url.removesuffix("/v1")
+        monkeypatch.setenv(variable, endpoint)
+        for level in ([], ["-v"], ["-vv"], ["--log-level", "error"]):
+            assert main([*options, *level]) == 0
+            said = capsys.readouterr().err.splitlines()
+            assert said.count(f"telemetry: on, to {endpoint} ({variable})") == 1
+        assert main([*options, "-q"]) == 0
+        assert "telemetry: on" not in capsys.readouterr().err
 
 
 @pytest.mark.usefixtures("runs")

@@ -103,13 +103,16 @@ not settings.
 
 ## Telemetry
 
-Off unless an endpoint is set. Traces, metrics and the records from INFO go to the
-endpoint by OTLP over HTTP, in protobuf, to `/v1/traces`, `/v1/metrics` and `/v1/logs`,
-under the resource `service.name` `atlassian-offline-mcp`, `service.version` the
-program's version and `service.instance.id` the run's id. Spans go in batches, metrics
-every 15 seconds and at the end. An exported record has the event as its body, the
-event's fields as its attributes with `command`, and the ids of the span it was logged
-in. No trace context is sent to the site or to the embedding endpoint.
+Off unless an endpoint is set. Whatever layer sets it, a command that writes says so
+before it acts, in a line of its summary, `telemetry: on, to <endpoint> (<layer>)`,
+unless `-q`; every command names the endpoint and its layer in `run.start`, at INFO.
+Traces, metrics and the records from INFO go to the endpoint by OTLP over HTTP, in
+protobuf, to `/v1/traces`, `/v1/metrics` and `/v1/logs`, under the resource
+`service.name` `atlassian-offline-mcp`, `service.version` the program's version and
+`service.instance.id` the run's id. Spans go in batches, metrics every 15 seconds and at
+the end. An exported record has the event as its body, the event's fields as its
+attributes with `command`, and the ids of the span it was logged in. No trace context is
+sent to the site or to the embedding endpoint.
 
 A run first connects to the endpoint once, waiting 0.5 s at most; unreached, it goes on
 without telemetry, saying `telemetry.undelivered`. At its end, what is not sent within
@@ -126,7 +129,7 @@ What any command may log.
 
 | Event | Level | Fields | When |
 |---|---|---|---|
-| `run.start` | info | `version`, `arguments`, `settings`, `log_file`, `telemetry` | A run starts: the program's version, the arguments given, the settings as JSON, secrets masked, the log file, the endpoint |
+| `run.start` | info | `version`, `arguments`, `settings`, `log_file`, `telemetry`, `telemetry_layer` | A run starts: the program's version, the arguments given, the settings as JSON, secrets masked, the log file, the endpoint, if any, and the layer that gave its value, `default` if none did |
 | `run.end` | info | `status`, `seconds` | A run ends: its exit status, how long it took |
 | `run.interrupted` | warning | `seconds` | Ctrl-C stopped the run, which exits 130 |
 | `run.failed` | error | `seconds` | An exception stopped the run, which exits 1; the traceback follows |

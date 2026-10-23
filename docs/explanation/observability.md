@@ -48,8 +48,10 @@ loopback address, so none is offered: the exporters ignore the proxy variables, 
 would carry the data off the machine, and the resource ignores `OTEL_SERVICE_NAME` and
 `OTEL_RESOURCE_ATTRIBUTES`, so that dashboards find the runs under one name.
 `OTEL_EXPORTER_OTLP_ENDPOINT`, which other programs share, is read below the settings
-file, and ignored, with a word, when it breaks the rule. Every other `OTEL_` variable but
-`OTEL_SDK_DISABLED` is taken out of the run's environment before OpenTelemetry is
+file, and ignored, with a word, when it breaks the rule; as it can turn telemetry on
+unseen, a command that writes says, before it acts, that telemetry is on, where to and
+by which layer, and every run names both in `run.start`. Every other `OTEL_` variable
+but `OTEL_SDK_DISABLED` is taken out of the run's environment before OpenTelemetry is
 imported: the API reads some on its own, and a provider named there would install the
 SDK with telemetry off, or end the run if unknown. The SDK is imported only once
 an endpoint is set: a run without telemetry opens no socket and starts no thread for

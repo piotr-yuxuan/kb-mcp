@@ -783,6 +783,32 @@ def test_check_names_the_layer_of_telemetry_s_endpoint_the_setting_first(
     assert "ignored: telemetry.endpoint (config.toml): replaced by OTEL_SDK_DISABLED\n" in err
 
 
+def test_check_says_no_line_more_of_telemetry_and_names_its_layer_at_info(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """A command that only reads has no summary: run.start names the endpoint and its layer.
+
+    OpenTelemetry's variable alone turns telemetry on; nothing listens there, which the
+    run says once, its only line at the default level.
+    """
+    with nothing_listening() as url:
+        endpoint = url.removesuffix("/v1")
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
+        options = ["check", "--config", str(home / "none.toml")]
+        assert main(options) == 0
+        (line,) = capsys.readouterr().err.splitlines()
+        assert said_on(line) == [("warning", "telemetry.undelivered")]
+        assert main([*options, "-v"]) == 0
+        err = capsys.readouterr().err
+    (started,) = [line for line in err.splitlines() if said_on(line) == [("info", "run.start")]]
+    assert f"telemetry={endpoint} " in started
+    assert "telemetry_layer=OTEL_EXPORTER_OTLP_ENDPOINT" in started
+    starts = logged_as(home, "run.start")
+    assert [(start["telemetry"], start["telemetry_layer"]) for start in starts] == [
+        (endpoint, "OTEL_EXPORTER_OTLP_ENDPOINT")
+    ] * len(["default", "-v"])
+
+
 def test_check_refuses_bad_settings_by_name(home: Path, capsys: CaptureFixture[str]) -> None:
     """A settings file with an unknown key exits 2, naming it and the file."""
     config = home / "config.toml"
@@ -1068,7 +1094,11 @@ def test_check_writes_one_log_file_at_the_platform_s_default_from_run_start_to_r
         "arguments": given,
     }
     assert start["settings"] == document
-    assert (start["log_file"], start["telemetry"]) == (str(path), None)
+    assert (start["log_file"], start["telemetry"], start["telemetry_layer"]) == (
+        str(path),
+        None,
+        "default",
+    )
     assert (end["level"], end["event"], end["status"]) == ("info", "run.end", 0)
     assert isinstance(end["seconds"], float)
     assert end["seconds"] >= 0

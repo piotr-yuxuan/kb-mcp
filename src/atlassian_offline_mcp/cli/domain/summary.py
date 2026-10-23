@@ -64,14 +64,16 @@ def before(
     A command that writes begins with its summary: its name, each setting it reads and
     its value, in detail its layer too, and why the run does not apply it, by its
     ``unapplied``, whatever its layer, followed in detail by the entry's own of
-    ``OBSERVING``; then the lines of its ``described``. Every command then gives each
-    value ignored: those that a stronger layer replaced and the variables that name no
-    setting or are empty, as loaded; then, of the values that a layer gave, those that
-    the run does not apply, by its ``unapplied``, and in detail those of the settings
-    that neither the command nor the entry reads, unless ``unapplied`` said why.
-    Each names its setting, if any, and its layer, never its value. A command that
-    writes ends with the command to copy, its paths made ``absolute``, which carries the
-    values that a layer gave and the run applies, or names those it cannot carry.
+    ``OBSERVING``; then the lines of its ``described``; then, when telemetry is on,
+    whatever layer turned it on, ``telemetry: on, to <endpoint> (<layer>)``, since a
+    variable that other programs share may have done so unseen. Every command then
+    gives each value ignored: those that a stronger layer replaced and the variables
+    that name no setting or are empty, as loaded; then, of the values that a layer
+    gave, those that the run does not apply, by its ``unapplied``, and in detail those
+    of the settings that neither the command nor the entry reads, unless ``unapplied``
+    said why. Each names its setting, if any, and its layer, never its value. A command
+    that writes ends with the command to copy, its paths made ``absolute``, which carries
+    the values that a layer gave and the run applies, or names those it cannot carry.
 
     A command that only reads runs, as does one given --yes, or --dry-run where it takes
     one. Another asks when stdin and stderr are both terminals, where someone can
@@ -120,6 +122,12 @@ def before(
         setting: layer for setting, layer in loaded.layers.items() if setting not in unapplied
     }
     copied = command_line(arguments, values, applied, loaded.replaced, absolute)
+    endpoint = loaded.settings.telemetry.endpoint
+    telemetry = (
+        ""
+        if endpoint is None
+        else f"telemetry: on, to {endpoint} ({loaded.layer('telemetry.endpoint')})\n"
+    )
     return (
         f"{command.name}, with these settings:\n"
         + "".join(
@@ -129,6 +137,7 @@ def before(
             for setting in (read if detailed else command.reads)
         )
         + "".join(f"  {line}\n" for line in described)
+        + telemetry
         + noted
         + copied.emptied
         + copied.command
