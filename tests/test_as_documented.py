@@ -352,11 +352,16 @@ def test_check_records_as_documented(telemetry: InMemory, tmp_path: Path) -> Non
 
 
 def test_completion_records_as_documented(telemetry: InMemory) -> None:
-    """Nothing of its own: a run that reads no settings."""
+    """Nothing at all, not even what the README says every command records: not observed.
+
+    Its page lists nothing, and no event, span, instrument or record is emitted, even
+    at -vv.
+    """
     emitted = Emitted()
     with emitted.gathering(telemetry, "completion"):
-        assert main(["completion"]) == 0
+        assert main(["completion", "-vv"]) == 0
     assert undocumented("completion", emitted) == []
+    assert emitted == Emitted()
 
 
 def test_doctor_records_as_documented(

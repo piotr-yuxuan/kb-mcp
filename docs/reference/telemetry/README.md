@@ -3,9 +3,9 @@
 What a run records of itself: its log file, what it says on stderr, and, once an
 endpoint is set, its traces, metrics and logs sent by OpenTelemetry. This page gives the
 file, its fields, the levels, the settings and the variables, then what every command
-records. Beside it, a page per command, named after it, such as
-[download.md](download.md), lists what that command records besides; a command added
-adds its page, and no list here.
+records, but `completion`, which records nothing. Beside it, a page per command, named
+after it, such as [download.md](download.md), lists what that command records besides;
+a command added adds its page, and no list here.
 
 A change to an event, a span or an instrument changes its page in the same commit: the
 tests run each command on the scripted site and endpoint, and compare what it records
@@ -120,8 +120,9 @@ without telemetry, saying `telemetry.undelivered`. At its end, what is not sent 
 status stays its own.
 
 A run is one trace, whose root span is named after the command, but `serve`, each of
-whose requests is a trace. Grafana's dashboards, an overview and one each for `download`,
-`mirror`, `index`, `serve` and `eval`, are in `deploy/lgtm/dashboards/`.
+whose requests is a trace, and `completion`, which records nothing. Grafana's
+dashboards, an overview and one each for `download`, `mirror`, `index`, `serve` and
+`eval`, are in `deploy/lgtm/dashboards/`.
 
 ## Events
 
@@ -145,10 +146,10 @@ What any command may log.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `<command>` | internal | `aom.command`, `aom.dry_run`, `aom.exit_status` | The root of a run's trace, named after its command, holding `run.start` and `run.end`; `serve` has none |
+| `<command>` | internal | `aom.command`, `aom.dry_run`, `aom.exit_status` | The root of a run's trace, named after its command, holding `run.start` and `run.end`; `serve` and `completion` have none |
 
 ## Instruments
 
 | Instrument | Kind | Unit | Attributes | What |
 |---|---|---|---|---|
-| `aom.run.duration` | histogram | `s` | `aom.command`, `aom.exit_status` | How long a run lasted, `serve`'s included |
+| `aom.run.duration` | histogram | `s` | `aom.command`, `aom.exit_status` | How long a run lasted, `serve`'s included, `completion`'s not |

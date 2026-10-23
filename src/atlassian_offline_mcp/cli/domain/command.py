@@ -44,6 +44,10 @@ class Command:
     summary and that command, then asks before it acts, unless given --yes, which it
     then takes, or --dry-run, if it takes one (``dry_run``). A command whose run is not
     ``traced``, such as ``serve``, each of whose requests is a trace, is none of its own.
+    One that is not ``observed``, such as ``completion``, which shells run at each start,
+    is run as --version is, without the entry: its module's ``run(arguments)`` writes
+    its output and gives its exit status, and nothing reads settings, logs, writes a
+    log file or sends telemetry for it, so it reads none.
 
     ``unapplied``, if any, names what the run does not apply of the settings given, and
     why, such as the model of an index built by words alone, or the API token that
@@ -66,6 +70,7 @@ class Command:
     writes: bool = False
     dry_run: bool = False
     traced: bool = True
+    observed: bool = True
     unapplied: Unapplied | None = None
     described: Described | None = None
     refused: Refused | None = None

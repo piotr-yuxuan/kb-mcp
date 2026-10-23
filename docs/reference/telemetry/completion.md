@@ -1,8 +1,9 @@
 # completion
 
-`completion` records nothing besides what every command does ([README](README.md)): its
-run is a trace of one span, `completion`, between `run.start` and `run.end`. It reads
-no settings, so it writes no log file, and sends no telemetry.
+`completion` records nothing, not even what the [README](README.md) says every command
+records: shells run it at each start, so, as `--help` and `--version`, it is not
+observed. It reads no settings, writes no log file, says nothing on stderr at any level
+and sends no telemetry; its run is no trace, and `aom.run.duration` does not count it.
 
 ## Events
 

@@ -60,12 +60,6 @@ RUNS_PACKAGES = frozenset(
         "yaml",
     }
 )
-# What other runs import and ``completion`` must not, by plan 015: a command loads only
-# its own code, and shells run this one at each start. The entry loads pydantic for all,
-# and, since plan 016, structlog, Rich and the OpenTelemetry API, but not its SDK.
-OTHER_RUNS_PACKAGES = frozenset(
-    {"httpx", "lxml", "mcp", "numpy", "opentelemetry.sdk", "playwright", "requests", "yaml"}
-)
 # A subcommand's declaration, which names its run, a module of its own.
 DECLARED = """
 from pathlib import Path
@@ -290,8 +284,11 @@ def test_the_help_on_a_terminal_has_no_colour_under_no_color(
 def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> None:
     """--version, --help, a subcommand's and a completion import no run; ``completion`` its own.
 
-    Each builds the whole parser. ``-X importtime`` names each module that the child
-    imports, so a package it does not name never reached ``sys.modules``.
+    Each builds the whole parser. ``completion``, which shells run at each start, is not
+    observed, as plan 016 decided after its review: it reads no settings, so its run
+    imports none of the runs' packages either, as --version. ``-X importtime`` names
+    each module that the child imports, so a package it does not name never reached
+    ``sys.modules``.
     """
     environment = {"HOME": str(home), "PATH": os.environ["PATH"]}
     typed = "atlassian-offline-mcp download --sp"
@@ -370,7 +367,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
                 cwd=home,
                 check=False,
             ),
-            OTHER_RUNS_PACKAGES,
+            RUNS_PACKAGES,
         ),
     )
     assert (home / "completions").read_text("utf-8").strip() == "--space"
@@ -427,6 +424,21 @@ def test_completion_prints_the_shell_code_whatever_the_settings(
     (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text("site = ", "utf-8")
     assert main(["completion"]) == 0
     assert capsys.readouterr().out == argcomplete.shellcode(["atlassian-offline-mcp"])
+
+
+def test_completion_is_not_observed_and_writes_no_script_with_q(
+    capsys: CaptureFixture[str],
+) -> None:
+    """As --version, it says nothing on stderr at any level; -q leaves its script unwritten.
+
+    Plan 016 decided so after its review, shells running it at each start; plan 015 has
+    the script be its result, which -q leaves unwritten as any result as text.
+    """
+    for level in (["-v"], ["-vv"], ["--log-level", "debug"]):
+        assert main(["completion", *level]) == 0
+        assert capsys.readouterr() == (argcomplete.shellcode(["atlassian-offline-mcp"]), "")
+    assert main(["completion", "-q"]) == 0
+    assert capsys.readouterr() == ("", "")
 
 
 @pytest.mark.parametrize("name", sorted(SUBCOMMANDS))

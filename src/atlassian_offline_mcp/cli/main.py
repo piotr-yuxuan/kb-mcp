@@ -3,8 +3,9 @@
 
 The parser is built from ``cli.options`` alone, which is light, so that ``--help`` and
 shell completion, which runs the command at every Tab, start fast; what observes the run,
-the entry and the chosen run are imported once the arguments are parsed. The first line
-lets argcomplete's global completion find the command.
+the entry and the chosen run are imported once the arguments are parsed, and for a run
+that is not observed, such as ``completion``, which shells run at each start, the run
+alone. The first line lets argcomplete's global completion find the command.
 """
 
 from __future__ import annotations
@@ -90,13 +91,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Parse the arguments, run the chosen subcommand, and return its exit status.
 
     When the shell asks for completions, argcomplete answers them and exits instead, as
-    --help and --version do. Else, from then on, events and records go to stderr from
-    WARNING, never to stdout, until the run's settings are read.
+    --help and --version do. A command that is not ``observed``, ``completion``, is run
+    as they are: its run alone is imported, and writes its output. Else, from then on,
+    events and records go to stderr from WARNING, never to stdout, until the run's
+    settings are read.
     """
     program = parser()
     argcomplete.autocomplete(program)
     # Agents start the command with no arguments, which serves MCP over stdio.
     given = list(sys.argv[1:] if argv is None else argv) or ["serve"]
     arguments = program.parse_args(given)
+    if not arguments.command.observed:
+        return importlib.import_module(arguments.command.run).run(arguments)
     with importlib.import_module(OBSERVED).early():
         return importlib.import_module(ENTRY).enter(arguments, given)
