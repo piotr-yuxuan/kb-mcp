@@ -11,6 +11,7 @@ and embedding are each a span; files and pieces are counted, as
 from __future__ import annotations
 
 import contextlib
+import sqlite3
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -195,8 +196,9 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
     """Build the index from the whole mirror, by words alone or with vectors too.
 
     With an endpoint, it must answer with the model; when it does not, or there is no
-    mirror, or a file of the index cannot be written, the index in place stays, with its
-    vectors, nothing is returned, and ``index.not_built`` is an error. Each file skipped
+    mirror, or the index cannot be written (a file's error, or the database's, such as a
+    full disk), the index in place stays, with its vectors, nothing is returned, and
+    ``index.not_built`` is an error. Each file skipped
     and each piece that the endpoint refused is a warning, as is the count of files that
     the index lacks.
     """
@@ -214,7 +216,7 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
     except ModelError as error:
         structlog.get_logger().error("index.not_built", reason=str(error), hint=WORDS_ALONE)
         return None
-    except (MirrorMissingError, OSError) as error:
+    except (MirrorMissingError, OSError, sqlite3.Error) as error:
         structlog.get_logger().error("index.not_built", reason=str(error))
         return None
     for path, reason in report.skipped:

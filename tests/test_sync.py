@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import sqlite3
 import time
 from collections import Counter
 from pathlib import Path
@@ -33,6 +34,7 @@ from atlassian_offline_mcp.mirror.adapters.pandoc import (
     PandocMissingError,
 )
 from atlassian_offline_mcp.mirror.app import mirror as mirror_app
+from atlassian_offline_mcp.search.adapters import sqlite_index
 from atlassian_offline_mcp.search.app.indexing import Indexing
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
@@ -379,6 +381,31 @@ def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
     (said,) = logged_as(logged, "mirror.not_mirrored")
     assert (said["where"], said["reason"]) == (problem.where, problem.reason)
     assert len(list((settings.docs / "worklog").rglob("*.md"))) == WORKLOG_DOCUMENTS
+
+
+def test_an_index_that_cannot_be_written_fails_its_row_and_keeps_the_others(
+    tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A full disk while indexing: the work log's row stays, the index's fails, exit 1."""
+
+    def full(*_: object) -> None:
+        message = "database or disk is full"
+        raise sqlite3.OperationalError(message)
+
+    monkeypatch.setattr(sqlite_index.Writer, "add", full)
+    settings = chosen_settings(tmp_path, worklog)
+    with capture_logs() as logged:
+        synced = sync(
+            context(settings, FIRST), [Worklog(worklog, archives=True), by_words(settings)]
+        )
+    assert [(row.step, row.outcome) for row in synced.steps] == [
+        ("worklog", "done"),
+        ("index", "failed"),
+    ]
+    assert synced.exit_status == ExitStatus.FAILED
+    (said,) = logged_as(logged, "index.not_built")
+    assert said["reason"] == "database or disk is full"
+    assert not settings.index.exists()
 
 
 def test_a_work_log_that_is_not_a_folder_is_refused_before_any_step(
