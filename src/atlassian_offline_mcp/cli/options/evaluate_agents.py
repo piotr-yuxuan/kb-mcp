@@ -82,18 +82,28 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         ),
     )
 
+    # call and answer read no setting but where their own logs and telemetry go; the
+    # server that call starts reads the settings that prepare named.
     call = steps.add_parser("call", help="call a tool for a run, and print its answer")
+    called_actions, called_flags = add_settings_options(call)
     call.add_argument("directory", type=Path, help="the runs' directory")
     call.add_argument("run", help="the run's id")
     call.add_argument("tool", help="the tool's name")
     call.add_argument("arguments", help="the tool's arguments, as one JSON object")
-    call.set_defaults(step="call", command=Command("eval-agents call", RUN))
+    call.set_defaults(
+        step="call",
+        command=Command("eval-agents call", RUN, flags=called_flags, actions=called_actions),
+    )
 
     answer = steps.add_parser("answer", help="keep a run's answer, once")
+    answered_actions, answered_flags = add_settings_options(answer)
     answer.add_argument("directory", type=Path, help="the runs' directory")
     answer.add_argument("run", help="the run's id")
     answer.add_argument("answer", help="the answer, as one JSON object")
-    answer.set_defaults(step="answer", command=Command("eval-agents answer", RUN))
+    answer.set_defaults(
+        step="answer",
+        command=Command("eval-agents answer", RUN, flags=answered_flags, actions=answered_actions),
+    )
 
     grade = steps.add_parser("grade", help="grade the runs, and judge ask; keep the results")
     graded_actions, graded_flags = add_settings_options(grade)

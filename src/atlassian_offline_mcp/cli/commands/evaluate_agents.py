@@ -1,8 +1,8 @@
 """``eval-agents``: prepare runs for agents, bridge their calls, keep their answers, grade.
 
 Each step's run is the one that ``run`` dispatches to by the step parsed. ``call`` and
-``answer``, which the agents run, read no settings and ask nothing; ``call`` writes the
-tool's answer alone on stdout.
+``answer``, which the agents run, read no settings but where their logs and telemetry
+go, and ask nothing; ``call`` writes the tool's answer alone on stdout.
 """
 
 from __future__ import annotations
@@ -62,15 +62,11 @@ class Prepared:
     written: bool
 
 
-def prepared(
-    arguments: argparse.Namespace, loaded: Loaded | None
-) -> tuple[ExitStatus, Prepared | None]:
+def prepared(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Prepared | None]:
     """Write the runs' directory; exit 2 for a refused golden file, sample or directory.
 
     Exit 1 when a surface's server lists nothing.
     """
-    if loaded is None:
-        return ExitStatus.REFUSED, None
     settings = loaded.settings
     try:
         golden = arguments.golden.read_text(encoding="utf-8")
@@ -113,9 +109,7 @@ def prepared(
     return ExitStatus.OK, Prepared(len(runs.runs), arguments.out, written=True)
 
 
-def bridged(
-    arguments: argparse.Namespace, _loaded: Loaded | None
-) -> tuple[ExitStatus, Called | None]:
+def bridged(arguments: argparse.Namespace, _loaded: Loaded) -> tuple[ExitStatus, Called | None]:
     """Make one call of a run; exit 2 for a refused call, 1 when the server did not answer."""
     try:
         done = call(arguments.directory, arguments.run, arguments.tool, arguments.arguments)
@@ -126,9 +120,7 @@ def bridged(
     return ExitStatus.FAILED if failed else ExitStatus.OK, done
 
 
-def answered(
-    arguments: argparse.Namespace, _loaded: Loaded | None
-) -> tuple[ExitStatus, Answer | None]:
+def answered(arguments: argparse.Namespace, _loaded: Loaded) -> tuple[ExitStatus, Answer | None]:
     """Keep a run's answer; exit 2 when it is refused, or one is kept already."""
     try:
         kept = answer(arguments.directory, arguments.run, arguments.answer)
@@ -138,15 +130,11 @@ def answered(
     return ExitStatus.OK, kept
 
 
-def graded(
-    arguments: argparse.Namespace, loaded: Loaded | None
-) -> tuple[ExitStatus, Results | None]:
+def graded(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Results | None]:
     """Grade the runs and judge ask; exit 2 for a refused file, 1 past twice the estimates.
 
     Refs resolve as read resolves them, and quotes are sought in the mirror's bodies.
     """
-    if loaded is None:
-        return ExitStatus.REFUSED, None
     settings = loaded.settings
     library = Library(settings.index, settings.docs)
 
@@ -176,7 +164,7 @@ def graded(
     return ExitStatus.OK, results
 
 
-STEPS: dict[str, Callable[[argparse.Namespace, Loaded | None], tuple[ExitStatus, object]]] = {
+STEPS: dict[str, Callable[[argparse.Namespace, Loaded], tuple[ExitStatus, object]]] = {
     "prepare": prepared,
     "call": bridged,
     "answer": answered,
@@ -184,7 +172,7 @@ STEPS: dict[str, Callable[[argparse.Namespace, Loaded | None], tuple[ExitStatus,
 }
 
 
-def run(arguments: argparse.Namespace, loaded: Loaded | None) -> tuple[ExitStatus, object]:
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, object]:
     """Run the step parsed."""
     return STEPS[arguments.step](arguments, loaded)
 

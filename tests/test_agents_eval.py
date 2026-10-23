@@ -14,7 +14,6 @@ import re
 import shlex
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, override
 
@@ -39,6 +38,7 @@ if TYPE_CHECKING:
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
+    from _pytest.tmpdir import TempPathFactory
 
 QUESTIONS = {
     "q1": "How long does Kafka keep its logs?",
@@ -86,8 +86,14 @@ class World:
 
 
 @pytest.fixture
-def world(tmp_path: Path, monkeypatch: MonkeyPatch) -> Iterator[World]:
-    """Index a mirror with the tiny model; settings search it in hybrid mode, endpoint up."""
+def world(
+    tmp_path: Path, tmp_path_factory: TempPathFactory, monkeypatch: MonkeyPatch
+) -> Iterator[World]:
+    """Index a mirror with the tiny model; settings search it in hybrid mode, endpoint up.
+
+    The runs' log files, plan 016's, go to a folder of their own, beside the world, so
+    that what the world holds is what the runs wrote of their own.
+    """
     home, data = tmp_path / "home", tmp_path / "data"
     (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
@@ -103,7 +109,8 @@ def world(tmp_path: Path, monkeypatch: MonkeyPatch) -> Iterator[World]:
     with serving(Scripted()) as url:
         (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text(
             f'data_dir = {json.dumps(str(data))}\nmodel = "tiny"\nsearch_mode = "hybrid"\n'
-            f"embedding_url = {json.dumps(url)}\n",
+            f"embedding_url = {json.dumps(url)}\n"
+            f"[logs]\ndir = {json.dumps(str(tmp_path_factory.mktemp('logs')))}\n",
             encoding="utf-8",
         )
         yield World(home, data, golden, tmp_path)
@@ -291,16 +298,33 @@ def command(out: Path, run: str, *more: str) -> list[str]:
 
 
 def test_two_calls_at_once_at_the_twelfth_give_one_answer(world: World) -> None:
-    """Eleven made: of two calls at once, one is answered, the other refused, under a lock."""
+    """Eleven made: of two calls at once, one is answered, the other refused, under a lock.
+
+    Each call is a process of its own, as an agent's are, with the world's home.
+    """
     out = world.root / "runs"
     assert prepared(world, out, "--sample", "1") == 0
     run = first(out, "A")
     (out / "calls").mkdir()
     (out / "calls" / f"{run}.jsonl").write_text(LOGGED * (CALLS - 1), "utf-8")
-    calling = bridged(out, run, "search", {"query": "kafka"})
-    with ThreadPoolExecutor(2) as pool:
-        statuses = sorted(pool.map(lambda _: main(calling), range(2)))
-    assert statuses == [0, REFUSED]
+    calling = [
+        sys.executable,
+        "-m",
+        "atlassian_offline_mcp",
+        *bridged(out, run, "search", {"query": "kafka"}),
+    ]
+    statuses: list[int] = []
+
+    async def call() -> None:
+        statuses.append((await anyio.run_process(calling, check=False)).returncode)
+
+    async def both() -> None:
+        async with anyio.create_task_group() as group:
+            group.start_soon(call)
+            group.start_soon(call)
+
+    anyio.run(both)
+    assert sorted(statuses) == [0, REFUSED]
     assert len((out / "calls" / f"{run}.jsonl").read_text("utf-8").splitlines()) == CALLS
 
 
