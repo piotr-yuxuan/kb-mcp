@@ -4,8 +4,8 @@ An index by meaning holds a vector per piece of each document, and a search by m
 finds the pieces nearest the question. How documents are cut into pieces, and what text
 each vector stands for, is the chunking: the setting `chunking`, which `index` cuts by
 and records in the index, so that `search`, `ask` and `status` follow the index, not the
-setting. Plan 019 compares four, on plan 002's sandbox questions, and chooses the default
-by a rule set before the run.
+setting. Plan 019 compared four, on plan 002's sandbox questions, and chose the default
+by a rule set before the run: `sections` stays.
 
 ## The four chunkings
 
@@ -64,6 +64,56 @@ of MRR@10, and costs at most three times `sections`' tokens; the best Evidence@a
 and within 0.01 the cheaper; else `sections` stays. Three times, because
 `small-to-big` repeats each piece's context, about 2.1 times `sections`' tokens; only a
 cold build three times as long is refused. The work set should decide again.
+
+## On the sandbox
+
+Plan 002's mirror (1,474 documents, 7,344 sections) and its 105 questions, with
+`qwen3-embedding:0.6b` through Ollama on this laptop's CPU, on 2026-10-22 and 23
+(results `20261023T001258Z.json`). The cold build of `sections` reported 663,854 tokens
+for 2,628,524 characters, 3.96 a token: within 3.2 to 4.8, so the constant stays at 4.
+Lexical search, which ignores the chunking, is the same for every one: MRR@10 0.539,
+Found@ask 0.795, Evidence@ask 0.276.
+
+| Chunking | Mode | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Found@ask | Evidence@ask |
+|---|---|---|---|---|---|---|---|
+| `sections` | semantic | 0.871 | 0.592 | 0.647 | 0.438 | 0.933 | 0.329 |
+| `sections` | hybrid | 0.862 | 0.578 | 0.648 | 0.429 | 0.914 | 0.333 |
+| `windows` | semantic | 0.905 | 0.674 | 0.712 | 0.533 | 0.910 | 0.500 |
+| `windows` | hybrid | 0.857 | 0.639 | 0.684 | 0.505 | 0.852 | 0.357 |
+| `section-paths` | semantic | 0.867 | 0.619 | 0.653 | 0.467 | 0.943 | 0.352 |
+| `section-paths` | hybrid | 0.871 | 0.599 | 0.654 | 0.457 | 0.914 | 0.338 |
+| `small-to-big` | semantic | 0.905 | 0.594 | 0.658 | 0.410 | 0.933 | 0.362 |
+| `small-to-big` | hybrid | 0.852 | 0.579 | 0.650 | 0.419 | 0.890 | 0.324 |
+
+| Chunking | Pieces | Characters embedded | Tokens, at 4 | Index | `search`, median by meaning |
+|---|---|---|---|---|---|
+| `sections` | 6,729 | 2,628,524 | 657,131 | 38 MB | 178 ms |
+| `windows` | 2,974 | 2,920,227 | 730,056 | 21 MB | 201 ms |
+| `section-paths` | 6,729 | 2,815,916 | 703,979 | 38 MB | 206 ms |
+| `small-to-big` | 9,149 | 3,039,022 | 759,755 | 50 MB | 219 ms |
+
+The tests of the rule, in hybrid mode, each challenger against `sections`, adjusted by
+Holm over the six:
+
+| Challenger | MRR@10, p (adjusted) | Evidence@ask, p (adjusted) |
+|---|---|---|
+| `windows` | 0.0019 (0.0114) | 0.5846 (1.0000) |
+| `section-paths` | 0.3044 (1.0000) | 1.0000 (1.0000) |
+| `small-to-big` | 0.9571 (1.0000) | 0.8629 (1.0000) |
+
+**The rule keeps `sections`**: no challenger beat it on Evidence@ask in hybrid mode.
+`windows` ranked better, significantly once adjusted (MRR@10 0.639 against 0.578),
+with half the pieces, a smaller index and 1.11 times the tokens, and by meaning alone
+its passages held the evidence more often (0.500 against 0.329); in hybrid mode the
+evidence quoted barely moved (0.357 against 0.333), perhaps because a document that
+words rank higher there gets its section, not its window. With `windows`, hybrid search
+also beat words significantly (MRR@10 0.639 against 0.539, adjusted p 0.0008), on
+identifiers too (0.674 against 0.616): two of the three counts of plan 018's bar for
+hybrid as the default, its 95th percentile (266 ms here) being the third. The rule set
+before this run decides the chunking alone, so the defaults stay `sections` and
+`lexical`, and the user is told. The cold builds took 31 minutes for `sections` and 52
+for `section-paths`, and 27 for the part of `small-to-big` that the others had not
+embedded; `windows` were embedded across two runs, the machine being busy.
 
 ## When pages change
 
