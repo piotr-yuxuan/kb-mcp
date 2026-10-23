@@ -40,6 +40,8 @@ if TYPE_CHECKING:
 BAD_SETTINGS = 2
 STANDING = 2200  # estimated tokens of the instructions and the tool listing together
 WAIT = 30  # seconds for one answer of the server
+# What ``talk`` asks a server to list, in this order, before any call.
+LISTS = ("tools", "prompts")
 # Run the command as its console script does, killing it on any use of the network but
 # a connection to the port of this machine that the first argument names, if any.
 GUARDED = """
@@ -136,16 +138,16 @@ def talk(
     command: StdioServerParameters,
     calls: Sequence[tuple[str, dict[str, object]]],
     errlog: TextIO = sys.stderr,
-) -> tuple[list[object], list[dict[str, object]], list[dict[str, object]]]:
-    """Start a server, and speak to it as an agent does: initialise, list the tools, call.
+) -> tuple[list[object], dict[str, list[dict[str, object]]], list[dict[str, object]]]:
+    """Start a server, and speak to it as an agent does: initialise, list, then call.
 
     Through the SDK's own pipes, each request must be answered within ``WAIT`` seconds,
     never by an error of the protocol; the server's stderr goes to ``errlog``. Give what
-    was received, a line that is not a protocol message being an exception, the tools
-    listed, and each call's result.
+    was received, a line that is not a protocol message being an exception, what was
+    listed by kind (``LISTS``), and each call's result.
     """
     received: list[object] = []
-    listed: list[dict[str, object]] = []
+    listed: dict[str, list[dict[str, object]]] = {}
     results: list[dict[str, object]] = []
 
     async def exchange() -> None:
@@ -171,9 +173,10 @@ def talk(
             await ask({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": hello})
             initialized = {"jsonrpc": "2.0", "method": "notifications/initialized"}
             await write.send(SessionMessage(jsonrpc_message_adapter.validate_python(initialized)))
-            listing = await ask({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-            listed.extend(listing["tools"])
-            for number, (name, arguments) in enumerate(calls, 3):
+            for number, kind in enumerate(LISTS, 2):
+                listing = await ask({"jsonrpc": "2.0", "id": number, "method": f"{kind}/list"})
+                listed[kind] = listing[kind]
+            for number, (name, arguments) in enumerate(calls, 2 + len(LISTS)):
                 params = {"name": name, "arguments": arguments}
                 call = {"jsonrpc": "2.0", "id": number, "method": "tools/call", "params": params}
                 results.append(await ask(call))
@@ -198,7 +201,7 @@ def test_stdout_holds_protocol_messages_and_no_socket_opens(home: Path) -> None:
         ("status", {}),
     ]
     received, listed, results = talk(command, calls)
-    assert sorted(tool["name"] for tool in listed) == TOOLS
+    assert sorted(tool["name"] for tool in listed["tools"]) == TOOLS
     for result in results:
         assert result["isError"] is False
         assert "structuredContent" not in result

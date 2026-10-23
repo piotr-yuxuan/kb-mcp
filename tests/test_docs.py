@@ -4,20 +4,21 @@ Plan 020 walks the checkout for Markdown and reads each page as GitHub renders i
 relative link reaches a file, or a heading, of the checkout; a link into ``src/`` whose
 text is code names what that file defines; the map, ``docs/README.md``, links each page
 of the four folders; each command line of the program in a bash block parses, as plans
-015 and 017 first checked on their own pages. Plan 019 checks that the reference names
-each tool and prompt served.
+015 and 017 first checked on their own pages; and the reference of the MCP server names,
+as plan 019 first checked, each tool and prompt that a server lists over stdio, with
+their parameters.
 """
 
 from __future__ import annotations
 
 import ast
 import contextlib
-import inspect
 import io
 import itertools
 import posixpath
 import re
 import shlex
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
@@ -25,11 +26,10 @@ from urllib.parse import unquote, urlsplit
 
 import pytest
 from markdown_it import MarkdownIt
+from mcp.client.stdio import StdioServerParameters
 
 from atlassian_offline_mcp.cli.main import parser
-from atlassian_offline_mcp.kernel.tools import TOOLS
-from atlassian_offline_mcp.mcp.app.surface import surface
-from atlassian_offline_mcp.mcp.app.tools import Library
+from tests.test_serve import talk
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -66,6 +66,10 @@ SHELL_LINE = re.compile(r"^(?:.*\\\n)*.*$", re.MULTILINE)
 ASSIGNMENT = re.compile(r"[A-Za-z_]\w*=")
 # Words that end a command's arguments: a pipe, a list, a redirection.
 OPERATORS = frozenset({"|", "||", "&", "&&", ";", "<", ">", ">>"})
+# The reference of the MCP server's tools and prompts, and its headings: a part, then
+# a tool or a prompt of that part.
+MCP_TOOLS = "docs/reference/mcp-tools.md"
+HEADING = re.compile(r"^(#{2,3}) (.+)$", re.MULTILINE)
 # The one page whose console blocks may run the program: the lesson's own subcommand,
 # which no commit declares.
 FIRST_CHANGE = "docs/tutorials/first-change.md"
@@ -316,27 +320,55 @@ def test_each_documented_command_line_of_the_program_parses(checkout: frozenset[
     assert [page for page in PAGES if not checked[page]] == []
 
 
-def test_the_reference_names_each_tool_and_prompt_served_and_each_of_their_parameters() -> None:
-    """Its headings under Tools and Prompts are those served, each parameter in code below.
+def test_the_reference_names_each_tool_and_prompt_served_and_each_of_their_parameters(
+    tmp_path: Path,
+) -> None:
+    """Its headings under Tools and Prompts are what a server lists over stdio, in order.
 
-    The headings come in the server's order, as plan 020's check of every page reads them.
+    The server starts as agents start it, in a scratch home, and is listed through
+    ``tests/test_serve.py``'s ``talk``; each parameter of a tool's schema and each
+    argument of a prompt is in code in its section.
     """
-    text = (ROOT / "docs" / "reference" / "mcp-tools.md").read_text("utf-8")
-    tools = text.split("\n## Tools\n")[1].split("\n## Prompts\n")[0]
-    prompts = text.split("\n## Prompts\n")[1]
-    library = Library(ROOT / "index.sqlite", ROOT / "docs")
-    sections = {
-        name: body
-        for part in (tools, prompts)
-        for name, body in re.findall(
-            r"^### (\S+)\n(.*?)(?=^### |\Z)", part, re.MULTILINE | re.DOTALL
-        )
+    command = StdioServerParameters(
+        command=sys.executable, args=["-m", "atlassian_offline_mcp"], env={"HOME": str(tmp_path)}
+    )
+    _, listed, _ = talk(command, [])
+    served = {
+        "Tools": {
+            tool["name"]: list(tool["inputSchema"].get("properties", {}))
+            for tool in listed["tools"]
+        },
+        "Prompts": {
+            prompt["name"]: [argument["name"] for argument in prompt.get("arguments", [])]
+            for prompt in listed["prompts"]
+        },
     }
-    assert re.findall(r"^### (\S+)$", tools, re.MULTILINE) == list(TOOLS)
-    guides = surface(library, TOOLS).guides
-    assert re.findall(r"^### (\S+)$", prompts, re.MULTILINE) == [guide.name for guide in guides]
-    for tool in TOOLS:
-        named = list(inspect.signature(getattr(library, tool)).parameters)
-        assert all(f"`{name}`" in sections[tool] for name in named), tool
-    for guide in guides:
-        assert all(f"`{name}`" in sections[guide.name] for name, _ in guide.arguments), guide.name
+    text = (ROOT / MCP_TOOLS).read_text("utf-8")
+    found = list(HEADING.finditer(text))
+    headings: dict[str, list[str]] = {}
+    lines: dict[tuple[str, str], int] = {}
+    bodies: dict[tuple[str, str], str] = {}
+    part = ""
+    for heading, after in zip(found, [*found[1:], None], strict=True):
+        line = text.count("\n", 0, heading.start()) + 1
+        if heading[1] == "##":
+            part = heading[2]
+            lines[part, ""] = line
+            continue
+        headings.setdefault(part, []).append(heading[2])
+        lines[part, heading[2]] = line
+        bodies[part, heading[2]] = text[heading.end() : after.start() if after else len(text)]
+    problems = []
+    for part, offered in served.items():
+        at = lines.get((part, ""), 1)
+        if headings.get(part, []) != list(offered):
+            problems.append(
+                f"{MCP_TOOLS}:{at}: {part} are {headings.get(part, [])}, served {list(offered)}"
+            )
+        problems.extend(
+            f"{MCP_TOOLS}:{lines.get((part, name), at)}: {name} names no `{parameter}`"
+            for name, parameters in offered.items()
+            for parameter in parameters
+            if f"`{parameter}`" not in bodies.get((part, name), "")
+        )
+    assert problems == []
