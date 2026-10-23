@@ -10,6 +10,7 @@ from __future__ import annotations
 from functools import reduce
 from typing import TYPE_CHECKING, Literal
 
+from atlassian_offline_mcp.cli.domain.command import OBSERVING
 from atlassian_offline_mcp.cli.domain.command_line import command_line
 from atlassian_offline_mcp.config.domain.settings import SETTING_PATHS, Ignored
 
@@ -62,11 +63,12 @@ def before(
 
     A command that writes begins with its summary: its name, each setting it reads and
     its value, in detail its layer too, and why the run does not apply it, by its
-    ``unapplied``, whatever its layer; then the lines of its ``described``. Every
-    command then gives each value ignored: those that a stronger layer replaced and the
-    variables that name no setting or are empty, as loaded; then, of the values that a
-    layer gave, those that the run does not apply, by its ``unapplied``, and in detail
-    those of the settings that the command never reads, unless ``unapplied`` said why.
+    ``unapplied``, whatever its layer, followed in detail by the entry's own of
+    ``OBSERVING``; then the lines of its ``described``. Every command then gives each
+    value ignored: those that a stronger layer replaced and the variables that name no
+    setting or are empty, as loaded; then, of the values that a layer gave, those that
+    the run does not apply, by its ``unapplied``, and in detail those of the settings
+    that neither the command nor the entry reads, unless ``unapplied`` said why.
     Each names its setting, if any, and its layer, never its value. A command that
     writes ends with the command to copy, its paths made ``absolute``, which carries the
     values that a layer gave and the run applies, or names those it cannot carry.
@@ -90,6 +92,7 @@ def before(
     detailed = output.summary == "detailed"
     values = values_of(loaded)
     unapplied = command.unapplied(arguments, values) if command.unapplied else {}
+    read = dict.fromkeys((*command.reads, *OBSERVING))
     ignored = [
         *loaded.ignored,
         *(
@@ -100,7 +103,7 @@ def before(
         *(
             Ignored(setting, layer, f"not read by {command.name}")
             for setting, layer in loaded.layers.items()
-            if detailed and setting not in command.reads and setting not in unapplied
+            if detailed and setting not in read and setting not in unapplied
         ),
     ]
     warned = ignored if output.level != "error" or then == "ask" else []
@@ -123,7 +126,7 @@ def before(
             f"  {setting_line(loaded, setting, detailed=detailed)}"
             + (f" (not applied: {unapplied[setting]})" if setting in unapplied else "")
             + "\n"
-            for setting in command.reads
+            for setting in (read if detailed else command.reads)
         )
         + "".join(f"  {line}\n" for line in described)
         + noted

@@ -11,6 +11,9 @@ if TYPE_CHECKING:
 
 # The program's name, as pyproject.toml names its script.
 PROGRAM = "atlassian-offline-mcp"
+# The settings that the entry reads for every command that reads any, by path, to
+# observe its run: where its log file goes and where its telemetry goes.
+OBSERVING = ("logs.dir", "telemetry.endpoint")
 # What a run does not apply of the values given, by setting, and why: a pure function of
 # the arguments and of every setting's value, by its path joined by dots.
 type Unapplied = Callable[[argparse.Namespace, Mapping[str, object]], Mapping[str, str]]
@@ -31,8 +34,10 @@ class Command:
     ``run(arguments, loaded)`` runs it, imported only once it is chosen. ``reads`` names
     each setting that the run reads, by its path, its names joined by dots
     (``sources.confluence.spaces``); a command that reads none gets ``None`` for its
-    settings, and so runs whatever the settings file holds. ``flags`` maps each option
-    that overrides a setting, by the option's ``dest``, to that setting's path.
+    settings, and so runs whatever the settings file holds. For one that reads some, the
+    entry reads those of ``OBSERVING`` too, which ``reads`` need not name. ``flags`` maps
+    each option that overrides a setting, by the option's ``dest``, to that setting's
+    path.
     ``actions`` are the options and positionals as ``add_argument`` returned them, those
     of the output aside: each flag among them is named by its option, and the command to
     copy carries them. A command that ``writes`` under the data directory shows its

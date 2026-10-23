@@ -28,6 +28,7 @@ from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.cli.options.index import by_words_alone
 from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL
 from atlassian_offline_mcp.observability.app.observed import early
+from tests.test_settings import user_log_folder
 
 if TYPE_CHECKING:
     import argparse
@@ -319,7 +320,10 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     capsys: CaptureFixture[str],
     runs: list[tuple[argparse.Namespace, Loaded]],
 ) -> None:
-    """The settings it reads and their values, in detail their layers; -q says nothing."""
+    """The settings it reads and their values, in detail their layers; -q says nothing.
+
+    In detail, the entry's own follow, which it reads for every command.
+    """
     config = home / "config.toml"
     config.write_text(f'site = "{SITE}"\nmodel = "tiny"\n', "utf-8")
     monkeypatch.setenv(UNKNOWN, "1")
@@ -344,6 +348,8 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
         "mirror, with these settings:\n"
         f"  site: {SITE} [config.toml]\n"
         f"  data_dir: {data} [--data-dir]\n"
+        f"  logs.dir: {user_log_folder(home.resolve())} [default]\n"
+        "  telemetry.endpoint: (not set) [default]\n"
         f"ignored: {UNKNOWN}: names no setting\n"
         "ignored: model (config.toml): not read by mirror\n"
         f"{command}"
@@ -351,6 +357,35 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     assert main([*options, "-q"]) == 0
     assert capsys.readouterr().err == ""
     assert len(runs) == len(["short", "detailed", "quiet"])
+
+
+@pytest.mark.parametrize("command", ["mirror", "index"])
+@pytest.mark.usefixtures("runs")
+def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], command: str
+) -> None:
+    """Every run logs into logs.dir, and reads telemetry.endpoint: neither is ignored.
+
+    Given by a layer, each is listed with it under --summary detailed, after the
+    command's own settings, and the run's log file is there; the short summary names
+    neither.
+    """
+    logs = (home / "logs").resolve()
+    config = home / "config.toml"
+    config.write_text(f'[logs]\ndir = "{logs}"\n', "utf-8")
+    monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
+    options = [command, "--yes", "--config", str(config)]
+    assert main([*options, "--summary", "detailed"]) == 0
+    said = capsys.readouterr().err
+    assert "ignored" not in said
+    assert said.split(f"atlassian-offline-mcp {command} \\\n")[0].endswith(
+        f"  logs.dir: {logs} [config.toml]\n  telemetry.endpoint: (not set) [OTEL_SDK_DISABLED]\n"
+    )
+    assert [path.name.partition("-")[0] for path in logs.iterdir()] == [command]
+    assert main(options) == 0
+    said = capsys.readouterr().err
+    assert "logs.dir" not in said
+    assert "telemetry.endpoint" not in said
 
 
 @pytest.mark.usefixtures("runs")
