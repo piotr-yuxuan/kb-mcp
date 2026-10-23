@@ -2,8 +2,9 @@
 
 Plan 016: the site's client, over the scripted site, reports every request it sends,
 a redirect's included, and never a header nor another host's query; so does the
-embeddings endpoint's, over the scripted endpoint. What is traced and measured is read
-from the SDK's in-memory exporters.
+embeddings endpoint's, over the scripted endpoint, whose every embedding is a span of
+its own, by the GenAI conventions. What is traced and measured is read from the SDK's
+in-memory exporters.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 import socket
 import threading
 from contextlib import suppress
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import httpx
@@ -18,7 +20,14 @@ import pytest
 from opentelemetry.trace import SpanKind, StatusCode
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.search.adapters.embedding import connect, endpoint
+from atlassian_offline_mcp.search.adapters.embedding import (
+    DOCUMENTS,
+    SINGLE,
+    RefusedError,
+    connect,
+    embed,
+    endpoint,
+)
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.http import (
     RETRIES,
@@ -26,7 +35,7 @@ from atlassian_offline_mcp.sources.atlassian.adapters.http import (
     Site,
     SiteError,
 )
-from tests.endpoint import REACHABLE, URL, Scripted
+from tests.endpoint import REACHABLE, URL, Scripted, scripted
 from tests.test_download import PICTURE, SITE, FakeSite
 
 if TYPE_CHECKING:
@@ -46,6 +55,20 @@ GRANT = "media-grant-sentinel-51f0"
 COOKIE = "cookie-sentinel-8c2d"
 CREDENTIAL = "credential-sentinel-07b9"
 KEY = "key-sentinel-3e6a"
+# The buckets that the GenAI conventions advise for an operation's duration, in seconds.
+OPERATION_BUCKETS_S = (
+    *(0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64),
+    *(1.28, 2.56, 5.12, 10.24, 20.48, 40.96, 81.92),
+)
+# What the GenAI conventions have an embedding by the tiny model at the scripted
+# endpoint say: an OpenAI-compatible API, as the client knows it, on this machine.
+EMBEDDING = {
+    "gen_ai.operation.name": "embeddings",
+    "gen_ai.provider.name": "openai",
+    "gen_ai.request.model": "tiny",
+    "server.address": "127.0.0.1",
+    "server.port": 11434,
+}
 LISTENED_S = 10
 
 
@@ -268,3 +291,46 @@ def test_the_embeddings_endpoint_s_requests_are_observed_alike_its_key_never_sho
         ("http.post", "http://127.0.0.1:11434/v1/embeddings"),
     ]
     assert KEY not in f"{events} {[dict(span.attributes or {}) for span in spans]}"
+
+
+def test_an_embedding_is_a_client_span_by_the_genai_conventions_holding_its_attempts(
+    telemetry: InMemory,
+) -> None:
+    """Named after the operation and the model; a busy endpoint's 503, then the answer.
+
+    Its duration is measured by the same attributes, in the buckets that they advise.
+    """
+    opened = replace(scripted(Scripted(statuses=[503])), sleep=lambda _: None)
+    with opened:
+        embed(opened, "tiny", ["undo"], DOCUMENTS)
+    busy, answered, embedding = telemetry.spans.get_finished_spans()
+    assert (embedding.name, embedding.kind) == ("embeddings tiny", SpanKind.CLIENT)
+    assert dict(embedding.attributes or {}) == EMBEDDING
+    assert embedding.status.status_code == StatusCode.UNSET
+    statuses = [
+        dict(span.attributes or {})["http.response.status_code"] for span in (busy, answered)
+    ]
+    assert statuses == [503, 200]
+    for attempt in (busy, answered):
+        assert attempt.parent is not None
+        assert attempt.parent.span_id == embedding.context.span_id
+    duration = telemetry.measured()["gen_ai.client.operation.duration"]
+    assert duration.unit == "s"
+    (point,) = duration.data.data_points
+    assert dict(point.attributes or {}) == EMBEDDING
+    assert point.count == 1
+    assert tuple(point.explicit_bounds) == OPERATION_BUCKETS_S
+
+
+def test_an_embedding_that_fails_is_an_error_typed_as_its_exception(telemetry: InMemory) -> None:
+    """Refused, its text sent back with 400: the class qualified by its module; its POST's, 400."""
+    opened = scripted(Scripted(statuses=[400]))
+    with opened, pytest.raises(RefusedError):
+        embed(opened, "tiny", ["undo"], SINGLE)
+    refused, embedding = telemetry.spans.get_finished_spans()
+    failed = "atlassian_offline_mcp.search.adapters.embedding.RefusedError"
+    assert dict(embedding.attributes or {}) == {**EMBEDDING, "error.type": failed}
+    assert embedding.status.status_code == StatusCode.ERROR
+    assert dict(refused.attributes or {})["error.type"] == "400"
+    (point,) = telemetry.measured()["gen_ai.client.operation.duration"].data.data_points
+    assert dict(point.attributes or {}) == {**EMBEDDING, "error.type": failed}

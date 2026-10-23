@@ -21,10 +21,11 @@ from typing import TYPE_CHECKING, Protocol, Self
 import httpx
 import numpy as np
 import truststore
+from opentelemetry import metrics
 
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.endpoint import loopback, refused_endpoint
-from atlassian_offline_mcp.observability.adapters.http import Recorded
+from atlassian_offline_mcp.observability.adapters.http import Recorded, client_span, server
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -51,6 +52,19 @@ PROBE = "probe"
 # The version of how this module turns texts into vectors; a change that alters any
 # vector raises it, so that no vector embedded before is reused.
 FORMAT = 1
+# The provider, as the GenAI conventions name it by the client's best knowledge: the API
+# that this module speaks, whichever server answers.
+PROVIDER = "openai"
+# The buckets of an operation's duration, in seconds, that the GenAI conventions advise.
+BUCKETS_S = (0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24, 20.48, 40.96, 81.92)
+# How long each embedding took, its attempts and waits included, as the GenAI
+# conventions measure an operation.
+OPERATION_DURATION = metrics.get_meter(__name__).create_histogram(
+    "gen_ai.client.operation.duration",
+    unit="s",
+    description="GenAI operation duration.",
+    explicit_bucket_boundaries_advisory=BUCKETS_S,
+)
 
 
 @dataclass(frozen=True)
@@ -236,41 +250,52 @@ def embed(
 
     ``dimensions``, when not 0, is the length that every vector must have. Raises
     RefusedError when the answer points at what was sent, and ModelError otherwise.
+    The embedding is a span ``embeddings <model>`` that holds its attempts, and its
+    duration is measured, as the GenAI conventions have them.
     """
-    status, body = send(endpoint, "POST", "embeddings", bounds, {"model": model, "input": texts})
-    if status in {401, 403}:
-        message = f"{model}: the endpoint refused its key ({status}); see {KEY_VARIABLE}"
-        raise ModelError(message)
-    if status == httpx.codes.NOT_FOUND:
-        message = (
-            f"{model}: not there, or the address is not the API's (Ollama's ends in /v1);"
-            f" with Ollama: ollama pull {model}"
+    measured = {
+        "gen_ai.operation.name": "embeddings",
+        "gen_ai.provider.name": PROVIDER,
+        "gen_ai.request.model": model,
+        **server(endpoint.http.base_url),
+    }
+    with client_span(f"embeddings {model}", OPERATION_DURATION, measured, {}):
+        status, body = send(
+            endpoint, "POST", "embeddings", bounds, {"model": model, "input": texts}
         )
-        raise ModelError(message)
-    if status != httpx.codes.OK:
-        message = f"{model}: the endpoint answered {status}"
-        raise (RefusedError if status in REFUSING else ModelError)(message)
-    try:
-        items = sorted(json.loads(body)["data"], key=lambda item: item["index"])
-        indexes = [item["index"] for item in items]
-        vectors = np.array([item["embedding"] for item in items])
-    except (ValueError, KeyError, TypeError, RecursionError) as error:
-        message = f"{model}: the endpoint's answer is not embeddings ({type(error).__name__})"
-        raise ModelError(message) from None
-    wanted = (len(texts), dimensions or vectors.shape[-1])
-    if (
-        indexes != list(range(len(texts)))
-        or vectors.dtype.kind not in "iuf"
-        or vectors.shape != wanted
-        or not 0 < wanted[1] <= MAX_DIMENSIONS
-    ):
-        message = f"{model}: the endpoint's answer is not one vector of {wanted[1]} per text"
-        raise ModelError(message)
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    if not np.all(np.isfinite(norms) & (norms > 0)):
-        message = f"{model}: the endpoint gave a vector of no length, or not of numbers"
-        raise ModelError(message)
-    return (vectors / norms).astype(np.float32)
+        if status in {401, 403}:
+            message = f"{model}: the endpoint refused its key ({status}); see {KEY_VARIABLE}"
+            raise ModelError(message)
+        if status == httpx.codes.NOT_FOUND:
+            message = (
+                f"{model}: not there, or the address is not the API's (Ollama's ends in /v1);"
+                f" with Ollama: ollama pull {model}"
+            )
+            raise ModelError(message)
+        if status != httpx.codes.OK:
+            message = f"{model}: the endpoint answered {status}"
+            raise (RefusedError if status in REFUSING else ModelError)(message)
+        try:
+            items = sorted(json.loads(body)["data"], key=lambda item: item["index"])
+            indexes = [item["index"] for item in items]
+            vectors = np.array([item["embedding"] for item in items])
+        except (ValueError, KeyError, TypeError, RecursionError) as error:
+            message = f"{model}: the endpoint's answer is not embeddings ({type(error).__name__})"
+            raise ModelError(message) from None
+        wanted = (len(texts), dimensions or vectors.shape[-1])
+        if (
+            indexes != list(range(len(texts)))
+            or vectors.dtype.kind not in "iuf"
+            or vectors.shape != wanted
+            or not 0 < wanted[1] <= MAX_DIMENSIONS
+        ):
+            message = f"{model}: the endpoint's answer is not one vector of {wanted[1]} per text"
+            raise ModelError(message)
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        if not np.all(np.isfinite(norms) & (norms > 0)):
+            message = f"{model}: the endpoint gave a vector of no length, or not of numbers"
+            raise ModelError(message)
+        return (vectors / norms).astype(np.float32)
 
 
 def ollama_name(name: str) -> str:
