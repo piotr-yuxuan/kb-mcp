@@ -31,17 +31,20 @@ from atlassian_offline_mcp.search.adapters import embedding
 from atlassian_offline_mcp.search.adapters.embedding import (
     BATCH,
     DOCUMENTS,
-    MAX_ANSWER_BYTES,
     SINGLE,
     ApiEmbedder,
-    Bounds,
-    ModelError,
     Prefixes,
     RefusedError,
     connect,
     digest,
     embed,
     embeddings,
+)
+from atlassian_offline_mcp.search.adapters.model_api import (
+    MAX_ANSWER_BYTES,
+    Bounds,
+    Endpoint,
+    ModelError,
     endpoint,
 )
 from tests.endpoint import (
@@ -87,7 +90,7 @@ WORDS = 3
 LIVE = os.environ.get("ATLASSIAN_OFFLINE_MCP_LIVE_MODEL")
 
 
-def answering(embeddings: Callable[[httpx.Request], httpx.Response]) -> embedding.Endpoint:
+def answering(embeddings: Callable[[httpx.Request], httpx.Response]) -> Endpoint:
     """Open an endpoint whose list of models is the scripted one, and whose embeddings are these."""
     models = Scripted()
 
@@ -97,7 +100,7 @@ def answering(embeddings: Callable[[httpx.Request], httpx.Response]) -> embeddin
     return over(handle)
 
 
-def over(handle: Callable[[httpx.Request], httpx.Response]) -> embedding.Endpoint:
+def over(handle: Callable[[httpx.Request], httpx.Response]) -> Endpoint:
     """Open an endpoint at Ollama's address that answers every request with ``handle``."""
     return endpoint(URL, None, remote_allowed=False, transport=httpx.MockTransport(handle))
 
@@ -107,7 +110,7 @@ def data(*rows: object) -> httpx.Response:
     return httpx.Response(200, json={"object": "list", "data": list(rows), "model": "tiny"})
 
 
-def recorded() -> tuple[embedding.Endpoint, list[float]]:
+def recorded() -> tuple[Endpoint, list[float]]:
     """Give a scripted endpoint whose waits are recorded, not slept."""
     waits: list[float] = []
     return replace(scripted(), sleep=waits.append), waits
@@ -777,7 +780,7 @@ def test_a_model_in_a_local_ollama_embeds_by_meaning() -> None:
 
 def counting_words(
     answers: Scripted, counts: Callable[[list[str]], bool] = lambda _: True
-) -> embedding.Endpoint:
+) -> Endpoint:
     """Open an endpoint answering as scripted, whose usage counts a token a word.
 
     It counts nothing for the texts that ``counts`` refuses.
@@ -824,7 +827,7 @@ def test_an_endpoint_that_counts_some_answers_alone_gives_none() -> None:
     assert embedder.tokens is None
 
 
-def usage(value: object) -> embedding.Endpoint:
+def usage(value: object) -> Endpoint:
     """Open an endpoint whose answer embeds one text and says this usage."""
     rows = [{"object": "embedding", "embedding": [1.0, 0.0], "index": 0}]
     return answering(lambda _: httpx.Response(200, json={"data": rows, "usage": value}))

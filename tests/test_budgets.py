@@ -10,7 +10,7 @@ import pytest
 from atlassian_offline_mcp.mcp.app.responses import cut
 from atlassian_offline_mcp.mcp.app.responses import page as fitted
 from atlassian_offline_mcp.mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
-from atlassian_offline_mcp.search.adapters.embedding import ModelError
+from atlassian_offline_mcp.search.adapters.model_api import ModelError
 from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
 from tests.endpoint import connector

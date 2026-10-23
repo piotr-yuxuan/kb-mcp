@@ -32,7 +32,7 @@ from atlassian_offline_mcp.evaluation.app.evaluation import (
 from atlassian_offline_mcp.evaluation.domain.evaluation import Question, Quoted, holm
 from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
 from atlassian_offline_mcp.mcp.app.tools import Library
-from atlassian_offline_mcp.search.adapters.embedding import ModelError
+from atlassian_offline_mcp.search.adapters.model_api import ModelError
 from atlassian_offline_mcp.search.adapters.sqlite_index import reading
 from atlassian_offline_mcp.search.app.indexing import build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning

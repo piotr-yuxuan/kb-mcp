@@ -17,7 +17,7 @@ from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
 from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters import vector_store
-from atlassian_offline_mcp.search.adapters.embedding import ModelError
+from atlassian_offline_mcp.search.adapters.model_api import ModelError
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.domain.search import Embedded

@@ -29,7 +29,8 @@ from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 import httpx
 import numpy as np
 
-from atlassian_offline_mcp.search.adapters.embedding import Endpoint, connect, endpoint
+from atlassian_offline_mcp.search.adapters.embedding import connect
+from atlassian_offline_mcp.search.adapters.model_api import Endpoint, endpoint
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator

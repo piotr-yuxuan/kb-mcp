@@ -344,7 +344,7 @@ its new file is built, so that the last good copy of every other stays.
 [`index_mirror`](../../src/atlassian_offline_mcp/search/app/indexing.py), as the `index`
 command does. It opens the embedding endpoint first, by
 [`open_endpoint`](../../src/atlassian_offline_mcp/cli/commands/_embedding.py), then
-[`endpoint`](../../src/atlassian_offline_mcp/search/adapters/embedding.py), the only way to
+[`endpoint`](../../src/atlassian_offline_mcp/search/adapters/model_api.py), the only way to
 a client: [`refused_endpoint`](../../src/atlassian_offline_mcp/kernel/endpoint.py) refuses
 an address that is not a literal one of this machine
 ([`loopback`](../../src/atlassian_offline_mcp/kernel/endpoint.py)) unless the run allows
@@ -365,7 +365,7 @@ fingerprint of all that its vectors depend on
 their dimensions, and texts in, unit vectors out. Only this module
 knows the API: a POST of the model and the texts to `/v1/embeddings`
 ([`embeddings`](../../src/atlassian_offline_mcp/search/adapters/embedding.py), through
-[`send`](../../src/atlassian_offline_mcp/search/adapters/embedding.py), within bounds), and
+[`send`](../../src/atlassian_offline_mcp/search/adapters/model_api.py), within bounds), and
 Ollama's own `/api/tags` for the digest. So any server that answers OpenAI's
 `/v1/embeddings` will do, Ollama being only the example ([use another OpenAI-compatible
 API](../how-to/embeddings.md#use-another-openai-compatible-api)).
@@ -405,7 +405,7 @@ beside the old index, yields its
 same transaction the meta rows (a random `build` id, the model, its fingerprint, the
 chunking), and renames the file over `<data>/index.sqlite` once complete. On any failure
 the new file goes and the old index stays: an endpoint that does not answer, or lacks the
-model, raises [`ModelError`](../../src/atlassian_offline_mcp/search/adapters/embedding.py),
+model, raises [`ModelError`](../../src/atlassian_offline_mcp/search/adapters/model_api.py),
 which [`index_mirror`](../../src/atlassian_offline_mcp/search/app/indexing.py) logs as
 `index.not_built`, with the hint to search by words alone. A file skipped or a piece
 refused is named in the [`Report`](../../src/atlassian_offline_mcp/search/app/indexing.py),

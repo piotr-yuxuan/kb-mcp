@@ -26,8 +26,8 @@ from atlassian_offline_mcp.search.adapters.embedding import (
     RefusedError,
     connect,
     embed,
-    endpoint,
 )
+from atlassian_offline_mcp.search.adapters.model_api import endpoint
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.http import (
     RETRIES,

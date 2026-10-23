@@ -8,7 +8,8 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.search.adapters.embedding import Endpoint, endpoint, prefixes
+from atlassian_offline_mcp.search.adapters.embedding import prefixes
+from atlassian_offline_mcp.search.adapters.model_api import Endpoint, endpoint
 from atlassian_offline_mcp.search.app.indexing import Indexing
 
 if TYPE_CHECKING:

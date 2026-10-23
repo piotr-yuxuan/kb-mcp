@@ -12,7 +12,8 @@ import structlog
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint, prefixes_said
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
+from atlassian_offline_mcp.search.adapters.embedding import connect
+from atlassian_offline_mcp.search.adapters.model_api import ModelError
 
 if TYPE_CHECKING:
     import argparse

@@ -17,7 +17,8 @@ import httpx
 import pytest
 
 from atlassian_offline_mcp.mcp.app.tools import Library
-from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect, endpoint
+from atlassian_offline_mcp.search.adapters.embedding import connect
+from atlassian_offline_mcp.search.adapters.model_api import ModelError, endpoint
 from atlassian_offline_mcp.search.adapters.sqlite_index import reading
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning, Nearest

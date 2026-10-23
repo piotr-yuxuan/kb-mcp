@@ -126,7 +126,7 @@ and no representation of the settings shows it
 ([`test_secrets_come_from_the_environment_and_are_never_shown`](../../tests/test_settings.py)).
 It is sent as `Authorization: Bearer`, to the endpoint alone and only when set
 ([`open_endpoint`](../../src/atlassian_offline_mcp/cli/commands/_embedding.py),
-[`endpoint`](../../src/atlassian_offline_mcp/search/adapters/embedding.py),
+[`endpoint`](../../src/atlassian_offline_mcp/search/adapters/model_api.py),
 [`test_the_key_is_sent_only_when_set_and_never_said`](../../tests/test_embedding.py)).
 
 The key travels with the mirror's text, so the rule that keeps the text keeps the key:
