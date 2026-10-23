@@ -768,13 +768,12 @@ def by_kind_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, objec
 
 
 def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
-    home: Path, tmp_path: Path, worklog: Path, telemetry: InMemory
+    home: Path, worklog: Path, telemetry: InMemory
 ) -> None:
     """Each document counted by kind and outcome, each work-log span in the row's step.
 
     Fresh, twelve entries and four transcripts are mirrored, each conversion timed by
-    kind; unchanged, all are kept and none timed, as the events say too. Each work-log
-    span is in the row's
+    kind; unchanged, all are kept and none timed. Each work-log span is in the row's
     ``sync.step``, which names the step and its outcome, in the run's root; each
     document's event is logged in ``worklog.convert``.
     """
@@ -783,20 +782,6 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
     first, spans = telemetry.measured(), telemetry.spans.get_finished_spans()
     assert main(command(home, config, "--yes")) == ExitStatus.OK
     second = telemetry.measured()
-    settings, step = chosen_settings(tmp_path, worklog), Worklog(worklog, archives=True)
-    with capture_logs() as fresh:
-        sync(context(settings, FIRST), [step])
-    with capture_logs() as unchanged:
-        sync(context(settings, FIRST), [step])
-    (read,) = logged_as(fresh, "worklog.read")
-    assert (read["entries"], read["transcripts"], read["html"]) == (12, 4, 1)
-    (ended,) = logged_as(fresh, "worklog.end")
-    assert (ended["documents"], ended["written"], ended["unchanged"]) == (16, 16, 0)
-    (ended,) = logged_as(unchanged, "worklog.end")
-    assert (ended["written"], ended["unchanged"]) == (0, 16)
-    for logged, outcome in ((fresh, "mirrored"), (unchanged, "kept")):
-        outcomes = {each["outcome"] for each in logged_as(logged, "worklog.document")}
-        assert outcomes == {outcome}
     assert by_kind_and_outcome(first) == {("entry", "mirrored"): 12, ("transcript", "mirrored"): 4}
     assert by_kind_and_outcome(second) == {("entry", "kept"): 12, ("transcript", "kept"): 4}
     timed = first["aom.mirror.conversion.duration"].data.data_points
@@ -823,3 +808,46 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
     documents = [each for each in emitted.logged if each[0] == "worklog.document"]
     assert len(documents) == WORKLOG_DOCUMENTS
     assert {span for _, _, _, span, _ in documents} == {converting}
+
+
+def ended_with(logged: list[dict[str, object]], *fields: str) -> tuple[object, ...]:
+    """Give the values of these fields of the one ``worklog.end`` logged."""
+    (ended,) = logged_as(logged, "worklog.end")
+    return tuple(ended[field] for field in fields)
+
+
+def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
+    tmp_path: Path, worklog: Path
+) -> None:
+    """``worklog.read``, ``worklog.document`` and ``worklog.end``, by their values.
+
+    Fresh, twelve entries, four transcripts and one HTML transcript read, none unread;
+    each document mirrored, by its kind and path; sixteen files written. Unchanged, each
+    kept and none written. A dry run says sixteen to convert on an empty mirror, none
+    after a run, and one file to remove once a transcript is deleted.
+    """
+    settings, step = chosen_settings(tmp_path, worklog), Worklog(worklog, archives=True)
+    dry = Context(settings, Pandoc.find(), lambda: FIRST, lambda _: None, dry_run=True)
+    with capture_logs() as planned:
+        sync(dry, [step])
+    with capture_logs() as fresh:
+        sync(context(settings, FIRST), [step])
+    with capture_logs() as unchanged:
+        sync(context(settings, FIRST), [step])
+    (worklog / "transcripts/misc/a.org").unlink()
+    with capture_logs() as planned_again:
+        sync(dry, [step])
+    (read,) = logged_as(fresh, "worklog.read")
+    assert (read["entries"], read["transcripts"], read["html"], read["problems"]) == (12, 4, 1, 0)
+    documents = logged_as(fresh, "worklog.document")
+    assert Counter(each["kind"] for each in documents) == {"entry": 12, "transcript": 4}
+    assert {each["outcome"] for each in documents} == {"mirrored"}
+    folders = {"entry": "worklog/entries/", "transcript": "worklog/transcripts/"}
+    assert all(str(each["path"]).startswith(folders[str(each["kind"])]) for each in documents)
+    fields = ("documents", "written", "unchanged", "removed", "problems")
+    assert ended_with(fresh, *fields) == (16, 16, 0, 0, 0)
+    assert ended_with(unchanged, *fields) == (16, 0, 16, 0, 0)
+    kept = {each["outcome"] for each in logged_as(unchanged, "worklog.document")}
+    assert kept == {"kept"}
+    assert ended_with(planned, "to_convert", "to_remove", "problems") == (16, 0, 0)
+    assert ended_with(planned_again, "to_convert", "to_remove", "problems") == (0, 1, 0)
