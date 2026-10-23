@@ -24,10 +24,12 @@ KEYS = [field.name for field in dataclasses.fields(FrontMatter)]
 TIME = "%Y-%m-%dT%H:%M:%SZ"
 OPENING = "---\n"
 CLOSING = "\n---\n"
-# The documents of the mirror, relative to <data>/docs, by the step that writes them;
-# names beginning with _ or . are not documents, and nothing under assets/ is.
-DOCUMENTS = ("confluence/*/*.md", "confluence/*/blog/*.md", "jira/*/*.md")
+# The documents of the mirror, relative to <data>/docs, by the step that writes them,
+# then all of them; names beginning with _ or . are not documents, and nothing under
+# assets/ is.
+ATLASSIAN = ("confluence/*/*.md", "confluence/*/blog/*.md", "jira/*/*.md")
 WORKLOG = tuple(f"{folder}/*.md" for folder in WORKLOG_FOLDERS.values())
+DOCUMENTS = (*ATLASSIAN, *WORKLOG)
 
 
 def dump(front_matter: FrontMatter, body: str) -> str:

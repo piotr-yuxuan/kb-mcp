@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.mirror.adapters.markdown import DOCUMENTS, WORKLOG, documents
+from atlassian_offline_mcp.mirror.adapters.markdown import ATLASSIAN, WORKLOG, documents
 from atlassian_offline_mcp.mirror.domain.mirror_layout import ASSET_NAME, ASSETS, TREE
 
 if TYPE_CHECKING:
@@ -37,7 +37,7 @@ def owned(docs: Path) -> set[PurePosixPath]:
     Hidden files, such as one left by an interrupted write, and any other file are not
     the mirror's.
     """
-    found = [*documents(docs, DOCUMENTS), *docs.glob(f"confluence/*/{TREE}")]
+    found = [*documents(docs, ATLASSIAN), *docs.glob(f"confluence/*/{TREE}")]
     assets = docs / ASSETS
     if assets.is_dir():
         found += [path for path in assets.iterdir() if ASSET_NAME.fullmatch(path.name)]

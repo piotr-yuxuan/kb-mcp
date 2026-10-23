@@ -1,10 +1,9 @@
 # Mirror the work log
 
 Your work log, a folder of org files, is mirrored as Markdown beside Confluence and Jira,
-under `<data>/docs/worklog/`. The index and the server do not read it yet: searching it
-comes with the second phase of plan 017. It is read in place, never written, and never
-through git: its folder may be a git repository or under a synchronised folder, as the
-data directory may not be.
+under `<data>/docs/worklog/`, indexed with them, and served to agents. It is read in
+place, never written, and never through git: its folder may be a git repository or
+under a synchronised folder, as the data directory may not be.
 
 ## 1. Point to the folder
 
@@ -81,9 +80,20 @@ stay apart.
   work log whole.
 - `archives = false` removes, at the next run, the files of the archive file's entries,
   of `transcripts/archive/` and of the entries tagged `ARCHIVE`.
-- Search: `index` rebuilds the index whole from the mirror each time, so a document's
-  old pieces leave search with its old text. Each piece's vector is kept in
-  `<data>/vectors.sqlite` by its model and its text, so only the pieces whose text
-  changed are embedded again; the vectors of text no longer mirrored stay there, unused.
-  The work log takes part once the index reads it, with the second phase of plan 017,
-  when `sync` also ends by rebuilding the index.
+- Search: `sync` ends by rebuilding the index whole from the mirror, as `index` does,
+  so a document's old pieces leave search with its old text, and a document removed
+  leaves search. Each piece's vector is kept in `<data>/vectors.sqlite` by its model and
+  its text, so only the pieces whose text changed are embedded again; the vectors of
+  text no longer mirrored stay there, unused.
+
+## 6. Search it
+
+`sync` ends with the index, so a server started afterwards, or already running, finds
+the work log from its next call on. `search` and `ask` narrow to it with
+`filters={"source": "worklog"}`; each hit's ref is the document's id, `e-…` for an entry
+and `t-…` for a transcript, which `read` opens. The server tells agents what each kind
+is: entries are your notes and the summaries an AI wrote, transcripts the word-by-word
+record, which they should prefer when quoting and check a summary against. Its text
+comes to them as untrusted reference data, as a page's does. `browse` lists spaces and
+projects, not the work log: `search(sort="updated", filters={"source": "worklog"})`
+lists what changed last in it.

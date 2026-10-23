@@ -118,7 +118,7 @@ ENTRIES = """
 SELECT d.* FROM documents d
 WHERE (d.path IN (SELECT value FROM json_each(:paths))
        OR d.key IN (SELECT value FROM json_each(:keys))
-       OR (d.source = 'confluence' AND d.id IN (SELECT value FROM json_each(:ids))))
+       OR (d.source IN ('confluence', 'worklog') AND d.id IN (SELECT value FROM json_each(:ids))))
   AND (:kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept)))
 """
 RECENT = """
@@ -402,7 +402,10 @@ class Reader:
         ids: Iterable[str] = (),
         filters: Filters | None = None,
     ) -> list[Entry]:
-        """Find the documents of these paths, issue keys and page ids, in no given order."""
+        """Find the documents of these paths, issue keys, and page or work-log ids, in no order.
+
+        An issue's id is never looked up, since a page may have the same.
+        """
         parameters = {
             "paths": json.dumps(list(paths)),
             "keys": json.dumps(list(keys)),

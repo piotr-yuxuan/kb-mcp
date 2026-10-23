@@ -9,6 +9,7 @@ injected or ``--yes`` given.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import time
 from collections import Counter
@@ -431,7 +432,8 @@ def test_the_text_gives_a_row_per_step_then_its_counts(
 ) -> None:
     """The work log's: documents, files, HTML left out, problems; a dry run's to convert.
 
-    Then the index's row: not run in a dry run, else index's counts.
+    Then the index's row: not run in a dry run, else index's counts, the work log's
+    documents among them.
     """
     config = settings_file(home, worklog)
     assert main(command(home, config, "--dry-run")) == 0
@@ -445,7 +447,7 @@ def test_the_text_gives_a_row_per_step_then_its_counts(
         "index: not run\n"
     )
     assert main(command(home, config, "--yes")) == 0
-    assert capsys.readouterr().out == (
+    assert re.fullmatch(
         "worklog: done\n"
         f"  documents: {WORKLOG_DOCUMENTS}\n"
         f"  files written: {WORKLOG_DOCUMENTS}\n"
@@ -454,8 +456,9 @@ def test_the_text_gives_a_row_per_step_then_its_counts(
         "  HTML left out: 1\n"
         "  problems: 0\n"
         "index: done\n"
-        "  documents: 0\n"
-        "  sections: 0\n"
+        f"  documents: {WORKLOG_DOCUMENTS}\n"
+        r"  sections: [1-9][0-9]*\n",
+        capsys.readouterr().out,
     )
 
 

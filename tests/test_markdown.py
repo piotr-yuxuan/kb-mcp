@@ -189,8 +189,10 @@ def test_front_matter_off_its_rules_is_refused(changes: dict[str, object]) -> No
         replace(PAGE, **changes)
 
 
-def test_the_documents_are_exactly_the_pages_posts_and_issues(tmp_path: Path) -> None:
-    """Trees, assets and hidden files are not documents."""
+def test_the_documents_are_exactly_the_pages_posts_issues_entries_and_transcripts(
+    tmp_path: Path,
+) -> None:
+    """Trees, assets and hidden files are not documents; the work log's are, after the rest."""
     for name in (
         "confluence/MFS/196845-probe.md",
         "confluence/MFS/blog/196900-news.md",
@@ -200,6 +202,10 @@ def test_the_documents_are_exactly_the_pages_posts_and_issues(tmp_path: Path) ->
         "jira/_drafts/PRB-9.md",
         "jira/PRB/PRB-1.md",
         "assets/0a1b.md",
+        "worklog/entries/e-0123456789abcdef-plan.md",
+        "worklog/entries/.e-0123456789abcdef-plan.md",
+        "worklog/transcripts/t-20261020-1-stand-up.md",
+        "worklog/other/t-20261020-1-stand-up.md",
     ):
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text("", "utf-8")
@@ -207,4 +213,6 @@ def test_the_documents_are_exactly_the_pages_posts_and_issues(tmp_path: Path) ->
         "confluence/MFS/196845-probe.md",
         "confluence/MFS/blog/196900-news.md",
         "jira/PRB/PRB-1.md",
+        "worklog/entries/e-0123456789abcdef-plan.md",
+        "worklog/transcripts/t-20261020-1-stand-up.md",
     ]

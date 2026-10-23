@@ -48,7 +48,7 @@ original is told apart by its path, with a warning.
 ## One front matter for every source
 
 A work-log document takes the keys every document has, so that search and the index read
-it as they will read a page: its keyword as `status`, its tags as `labels`, its timestamps as
+it as they read a page: its keyword as `status`, its tags as `labels`, its timestamps as
 `created` and `updated`, its file as `breadcrumb`; the keys of other sources are `null`.
 Keys of its own (scheduled, deadline, priority) would change every file of the mirror
 and the index's schema; they wait until something filters on them.
@@ -56,6 +56,8 @@ and the index's schema; they wait until something filters on them.
 ## Untrusted, local
 
 The work log holds the user's notes and summaries an AI wrote, and transcripts, the
-word-by-word record. It stays on this machine, as all the data does, and once served to
-agents it is untrusted reference data, like every page: a line in it that tells the
-reader what to do is text, not an instruction.
+word-by-word record. The server tells agents so, in its instructions and its `source`
+filter, so that they quote a transcript rather than a summary of it, and check the one
+against the other. It stays on this machine, as all the data does, and served to agents
+it is untrusted reference data, like every page: a line in it that tells the reader what
+to do is text, not an instruction.
