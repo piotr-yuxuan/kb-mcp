@@ -15,7 +15,7 @@ says of tasks.
 | `sync.step` | info | `step`, `outcome` | A row ends: `done`, `failed`, `sign in` or `not run` |
 | `sync.interrupted` | warning | `step` | Ctrl-C stopped the run in this row, none if every row had ended; no later row runs: exit 130 |
 | `sync.end` | info | `status`, `steps` | The rows end: the exit status, and each row as `<row>: <outcome>` |
-| `sync.refused` | error | `reason` | A target with nowhere to start, or a work log that is not a folder, before any row: exit 2 |
+| `sync.refused` | error | `reason` | What the run cannot go on with, found before the rows: an option of the period that does not read, a target with nowhere to start, a damaged record of what is covered, a work log that is not a folder: exit 2 |
 | `sync.pandoc_missing` | error | `reason` | Pandoc went from PATH once the run began: exit 1 |
 | `worklog.read` | info | `entries`, `transcripts`, `html`, `problems` | The work log is read: its entries, its transcripts, the HTML transcripts left out, the files not read |
 | `worklog.document` | debug | `path`, `id`, `title`, `kind`, `outcome` | A document's file is built: its path in the mirror, its id, its title, `entry` or `transcript`, and `mirrored`, converted, or `kept`, its revision held |
@@ -29,7 +29,7 @@ says of tasks.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `sync.step` | internal | `aom.step`, `aom.outcome` | A row, `download`, `mirror` or `worklog`, and how it ended; its step's own spans within |
+| `sync.step` | internal | `aom.step`, `aom.outcome` | A row, `download`, `mirror` or `worklog`, and how it ended; its step's own spans within. The row that Ctrl-C stops has no outcome, and the rows after it no span |
 | `worklog.read` | internal | | The work log's folder listed, its files read and split into documents |
 | `worklog.convert` | internal | | Each document's file built, through pandoc when no file holds its revision |
 | `worklog.write` | internal | | The work log's files that changed written, those of documents gone removed |
