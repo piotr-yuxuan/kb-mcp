@@ -392,16 +392,23 @@ def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
 @pytest.mark.parametrize(
     "variable", ["OTEL_EXPORTER_OTLP_ENDPOINT", "ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT"]
 )
+@pytest.mark.parametrize("command", [["index", "--yes"], ["check"]], ids=["index", "check"])
 @pytest.mark.usefixtures("runs")
-def test_a_command_that_writes_says_that_telemetry_is_on_and_what_turned_it_on(
-    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], variable: str
+def test_every_command_says_that_telemetry_is_on_and_what_turned_it_on(
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    variable: str,
+    command: list[str],
 ) -> None:
-    """Whatever layer sets the endpoint, one line of the summary names it, at every level but -q.
+    """Whatever layer sets the endpoint, one line names it on stderr, at every level but -q.
 
     OpenTelemetry's variable, which other programs share, may turn telemetry on unseen,
-    as may the setting's. Without an endpoint, no such line. Nothing listens there.
+    as may the setting's: a command that writes says so in its summary, one that only
+    reads alike, without a summary. Without an endpoint, no such line. Nothing listens
+    there.
     """
-    options = ["index", "--yes", "--config", str(home / "none.toml")]
+    options = [*command, "--config", str(home / "none.toml")]
     assert main(options) == 0
     assert not any(line.startswith("telemetry") for line in capsys.readouterr().err.splitlines())
     with nothing_listening() as url:

@@ -48,12 +48,16 @@ shows the endpoint that a run would use, and its layer:
 atlassian-offline-mcp check --summary detailed
 ```
 
-A command that writes, such as `download`, says before it acts that telemetry is on,
-where to, and which layer turned it on:
+Every command says on stderr, before it acts, that telemetry is on, where to, and which
+layer turned it on, `serve` included:
 
 ```
 telemetry: on, to http://127.0.0.1:4318 (config.toml)
 ```
+
+`OTEL_EXPORTER_OTLP_ENDPOINT`, set for another program, turns telemetry on for every
+command run in the same environment, `serve` too, which an agent starts with its own:
+the line then names the variable.
 
 A run then sends its traces, metrics and logs from INFO as it goes, metrics every 15
 seconds. If the container is not running, a run says `telemetry.undelivered` once, at

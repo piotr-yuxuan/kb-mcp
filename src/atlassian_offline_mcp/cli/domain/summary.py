@@ -64,9 +64,10 @@ def before(
     A command that writes begins with its summary: its name, each setting it reads and
     its value, in detail its layer too, and why the run does not apply it, by its
     ``unapplied``, whatever its layer, followed in detail by the entry's own of
-    ``OBSERVING``; then the lines of its ``described``; then, when telemetry is on,
-    whatever layer turned it on, ``telemetry: on, to <endpoint> (<layer>)``, since a
-    variable that other programs share may have done so unseen. Every command then
+    ``OBSERVING``; then the lines of its ``described``. Every command then says, when
+    telemetry is on, whatever layer turned it on, ``telemetry: on, to <endpoint>
+    (<layer>)``, since a variable that other programs share may have done so unseen,
+    such as in ``serve``, which an agent starts with its own environment; then it
     gives each value ignored: those that a stronger layer replaced and the variables
     that name no setting or are empty, as loaded; then, of the values that a layer
     gave, those that the run does not apply, by its ``unapplied``, and in detail those
@@ -115,19 +116,19 @@ def before(
         else f"ignored: {each.setting} ({each.layer}): {each.why}\n"
         for each in warned
     )
-    if not command.writes:
-        return noted, then
-    described = command.described(arguments, values) if command.described else ()
-    applied = {
-        setting: layer for setting, layer in loaded.layers.items() if setting not in unapplied
-    }
-    copied = command_line(arguments, values, applied, loaded.replaced, absolute)
     endpoint = loaded.settings.telemetry.endpoint
     telemetry = (
         ""
         if endpoint is None
         else f"telemetry: on, to {endpoint} ({loaded.layer('telemetry.endpoint')})\n"
     )
+    if not command.writes:
+        return telemetry + noted, then
+    described = command.described(arguments, values) if command.described else ()
+    applied = {
+        setting: layer for setting, layer in loaded.layers.items() if setting not in unapplied
+    }
+    copied = command_line(arguments, values, applied, loaded.replaced, absolute)
     return (
         f"{command.name}, with these settings:\n"
         + "".join(

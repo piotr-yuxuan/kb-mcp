@@ -103,9 +103,11 @@ not settings.
 
 ## Telemetry
 
-Off unless an endpoint is set. Whatever layer sets it, a command that writes says so
-before it acts, in a line of its summary, `telemetry: on, to <endpoint> (<layer>)`,
-unless `-q`; every command names the endpoint and its layer in `run.start`, at INFO.
+Off unless an endpoint is set. Whatever layer sets it, every command says so on stderr
+before it acts, `telemetry: on, to <endpoint> (<layer>)`, unless `-q`: in its summary
+if it writes, else before the values it ignores. So `serve`, which an agent starts with
+its own environment, says when `OTEL_EXPORTER_OTLP_ENDPOINT`, set there for another
+program, turns it on. `run.start` names the endpoint and its layer too, at INFO.
 Traces, metrics and the records from INFO go to the endpoint by OTLP over HTTP, in
 protobuf, to `/v1/traces`, `/v1/metrics` and `/v1/logs`, under the resource
 `service.name` `atlassian-offline-mcp`, `service.version` the program's version and

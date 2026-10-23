@@ -328,7 +328,8 @@ def test_on_all_arrives_at_this_machine_under_the_program_s_name_whatever_the_en
         }
         arguments = check(tmp_path, None if variable else endpoint)
         ran = guarded(tmp_path, port_of(endpoint), arguments, environment, LIMIT_S)
-    assert (ran.status, ran.err) == (0, "")
+    layer = "OTEL_EXPORTER_OTLP_ENDPOINT" if variable else "config.toml"
+    assert (ran.status, ran.err) == (0, f"telemetry: on, to {endpoint} ({layer})\n")
     run = logged(tmp_path)[0]["run"]
     assert {path for path, _ in collector.sent} == {TRACES, METRICS, LOGS}
     for resource in collector.resources():
@@ -344,6 +345,28 @@ def test_on_all_arrives_at_this_machine_under_the_program_s_name_whatever_the_en
         assert attributes(record.attributes)["command"] == "check"
     for _, body in collector.sent:
         assert [secret for secret in SECRETS if secret.encode() in body] == []
+
+
+@pytest.mark.parametrize("command", ["check", "serve"])
+def test_a_command_that_only_reads_says_that_opentelemetry_s_variable_turned_telemetry_on(
+    tmp_path: Path, command: str
+) -> None:
+    """One line on stderr, though the collector takes everything: the variable is shared.
+
+    An agent starts ``serve`` with its own environment, which may hold the variable for
+    another program. -q leaves the line out. ``serve``, with stdin at its end, serves
+    nothing, and so sends no span.
+    """
+    collector = Collector()
+    with collecting(collector) as endpoint:
+        arguments = [command, *check(tmp_path, None)[1:]]
+        environment = {"OTEL_EXPORTER_OTLP_ENDPOINT": endpoint}
+        ran = guarded(tmp_path, port_of(endpoint), arguments, environment, LIMIT_S)
+        quiet = guarded(tmp_path, port_of(endpoint), [*arguments, "-q"], environment, LIMIT_S)
+    on = f"telemetry: on, to {endpoint} (OTEL_EXPORTER_OTLP_ENDPOINT)\n"
+    assert (ran.status, ran.err) == (0, on)
+    assert (quiet.status, quiet.err) == (0, "")
+    assert {path for path, _ in collector.sent} >= {METRICS, LOGS}
 
 
 def test_a_run_is_one_trace_whose_root_holds_its_records_and_says_its_command_and_status(
@@ -425,14 +448,18 @@ def test_serve_is_no_trace_of_its_own(tmp_path: Path) -> None:
 def test_an_endpoint_that_refuses_ends_check_in_bounded_time_with_one_warning(
     tmp_path: Path,
 ) -> None:
-    """Nothing listens there: the run goes on without telemetry, and says so once."""
+    """Nothing listens there: the run goes on without telemetry, and says so once.
+
+    Before, as every run with an endpoint, it says that telemetry is on.
+    """
     with nothing_listening() as dead:
         endpoint = dead.removesuffix("/v1")
         ran = guarded(tmp_path, port_of(endpoint), check(tmp_path, endpoint), {}, LIMIT_S)
     assert ran.status == 0
     assert ran.seconds < REFUSING_S
-    assert len(ran.err.splitlines()) == 1
-    assert said(ran.err) == [("warning", "telemetry.undelivered")]
+    on, undelivered = ran.err.splitlines()
+    assert on == f"telemetry: on, to {endpoint} (config.toml)"
+    assert said(undelivered) == [("warning", "telemetry.undelivered")]
     assert ran.threads == []
     assert not any(provider.startswith("opentelemetry.sdk.") for provider in ran.providers)
 
@@ -442,15 +469,17 @@ def test_an_endpoint_that_never_answers_ends_check_in_bounded_time_with_one_warn
 ) -> None:
     """It takes the connection, and the exports, but never answers: the run drops them.
 
-    Neither stderr nor the collector gets a record of the SDK's own.
+    Neither stderr nor the collector gets a record of the SDK's own: stderr says that
+    telemetry is on, then that it went undelivered.
     """
     collector = Collector(silent=True)
     with collecting(collector) as endpoint:
         ran = guarded(tmp_path, port_of(endpoint), check(tmp_path, endpoint), {}, LIMIT_S)
     assert ran.status == 0
     assert ran.seconds < 3 * LIMIT_S
-    assert len(ran.err.splitlines()) == 1
-    assert said(ran.err) == [("warning", "telemetry.undelivered")]
+    on, undelivered = ran.err.splitlines()
+    assert on == f"telemetry: on, to {endpoint} (config.toml)"
+    assert said(undelivered) == [("warning", "telemetry.undelivered")]
     assert not any(scope.partition(".")[0] == SDK for scope, _ in collector.records())
 
 

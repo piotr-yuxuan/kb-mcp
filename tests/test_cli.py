@@ -766,7 +766,7 @@ def test_check_names_the_layer_of_telemetry_s_endpoint_the_setting_first(
     """OpenTelemetry's variable, below the file: shown as the layer, or said replaced.
 
     ``OTEL_SDK_DISABLED=true`` replaces whatever gave it, leaving it unset. Nothing
-    listens at either endpoint, which each run says once.
+    listens at either endpoint, which each run says once, after it says telemetry on.
     """
     with nothing_listening() as shared, nothing_listening() as set_here:
         variable, setting = shared.removesuffix("/v1"), set_here.removesuffix("/v1")
@@ -775,14 +775,17 @@ def test_check_names_the_layer_of_telemetry_s_endpoint_the_setting_first(
         assert main([*options, str(home / "none.toml")]) == 0
         out, err = capsys.readouterr()
         assert f"telemetry.endpoint: {variable} [OTEL_EXPORTER_OTLP_ENDPOINT]\n" in out
-        assert said_on(err) == [("warning", "telemetry.undelivered")]
+        on, undelivered = err.splitlines()
+        assert on == f"telemetry: on, to {variable} (OTEL_EXPORTER_OTLP_ENDPOINT)"
+        assert said_on(undelivered) == [("warning", "telemetry.undelivered")]
 
         config = home / "config.toml"
         config.write_text(f'[telemetry]\nendpoint = "{setting}"\n', "utf-8")
         assert main([*options, str(config)]) == 0
         out, err = capsys.readouterr()
         assert f"telemetry.endpoint: {setting} [config.toml]\n" in out
-        ignored, undelivered = err.splitlines()
+        on, ignored, undelivered = err.splitlines()
+        assert on == f"telemetry: on, to {setting} (config.toml)"
         assert ignored == (
             "ignored: telemetry.endpoint (OTEL_EXPORTER_OTLP_ENDPOINT): replaced by config.toml"
         )
@@ -795,21 +798,23 @@ def test_check_names_the_layer_of_telemetry_s_endpoint_the_setting_first(
     assert "ignored: telemetry.endpoint (config.toml): replaced by OTEL_SDK_DISABLED\n" in err
 
 
-def test_check_says_no_line_more_of_telemetry_and_names_its_layer_at_info(
+def test_check_says_that_telemetry_is_on_and_names_its_layer_at_info(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """A command that only reads has no summary: run.start names the endpoint and its layer.
+    """A command that only reads has no summary, but says that telemetry is on, and where.
 
-    OpenTelemetry's variable alone turns telemetry on; nothing listens there, which the
-    run says once, its only line at the default level.
+    run.start names the endpoint and its layer too. OpenTelemetry's variable alone turns
+    telemetry on; nothing listens there, which the run says once: two lines at the
+    default level.
     """
     with nothing_listening() as url:
         endpoint = url.removesuffix("/v1")
         monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
         options = ["check", "--config", str(home / "none.toml")]
         assert main(options) == 0
-        (line,) = capsys.readouterr().err.splitlines()
-        assert said_on(line) == [("warning", "telemetry.undelivered")]
+        on, undelivered = capsys.readouterr().err.splitlines()
+        assert on == f"telemetry: on, to {endpoint} (OTEL_EXPORTER_OTLP_ENDPOINT)"
+        assert said_on(undelivered) == [("warning", "telemetry.undelivered")]
         assert main([*options, "-v"]) == 0
         err = capsys.readouterr().err
     (started,) = [line for line in err.splitlines() if said_on(line) == [("info", "run.start")]]
