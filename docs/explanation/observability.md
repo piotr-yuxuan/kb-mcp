@@ -81,8 +81,9 @@ second must not take seventeen more because Grafana is down. So:
 
 - At its start, a run connects to the endpoint once, waiting 0.5 s at most; unreached,
   it goes on without telemetry, and says `telemetry.undelivered` once.
-- At its end, the providers shut down in parallel threads, joined for 5 seconds in all;
-  what is not sent by then is dropped, and one `telemetry.undelivered` says so.
+- At its end, the providers shut down in parallel threads, joined for 5 seconds in all,
+  or until Ctrl-C; what is not sent by then is dropped, and one `telemetry.undelivered`
+  says so. The run's work is done by then, so its status stays its own.
 - The SDK's own records go to the file alone: on stderr they would break `-q`, and
   exported, an export that fails would export its own failure.
 

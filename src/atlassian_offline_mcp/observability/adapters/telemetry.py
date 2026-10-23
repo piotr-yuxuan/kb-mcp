@@ -144,8 +144,9 @@ def exporting(endpoint: str, run: str, command: str) -> Iterator[None]:
     environment, ``OTEL_SERVICE_NAME`` and ``OTEL_RESOURCE_ATTRIBUTES`` included.
 
     On leaving, the providers shut down in parallel, ``LIMIT_S`` seconds in all, with
-    no exit hook of their own. One that is not shut down by then, or fails to, makes
-    one warning, ``telemetry.undelivered``: what is unsent is dropped, and the SDK's
+    no exit hook of their own, or until Ctrl-C, which goes no further. One that is not
+    shut down by then, or fails to, makes one warning, ``telemetry.undelivered``, which
+    says why: what is unsent is dropped, and the SDK's
     loggers say nothing more, since a thread of the SDK left running would else write
     on stderr by logging's last resort, once the run's sinks are gone. The API keeps
     the providers, shut down, as it takes them once a process.
@@ -187,14 +188,16 @@ def exporting(endpoint: str, run: str, command: str) -> Iterator[None]:
         root.removeHandler(sink)
         stopping = [Stopping(provider) for provider in (tracers, meters, loggers)]
         deadline = time.monotonic() + LIMIT_S
+        reason = f"not all sent within {LIMIT_S:g} s"
         for thread in stopping:
             thread.start()
-        for thread in stopping:
-            thread.join(max(deadline - time.monotonic(), 0))
+        try:
+            for thread in stopping:
+                thread.join(max(deadline - time.monotonic(), 0))
+        except KeyboardInterrupt:
+            reason = "interrupted"
         if not all(thread.stopped for thread in stopping):
             logging.getLogger(SDK).setLevel(logging.CRITICAL + 1)
             structlog.get_logger().warning(
-                "telemetry.undelivered",
-                endpoint=endpoint,
-                reason=f"not all sent within {LIMIT_S:g} s",
+                "telemetry.undelivered", endpoint=endpoint, reason=reason
             )

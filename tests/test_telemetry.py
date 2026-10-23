@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import signal
 import subprocess
 import sys
 import time
@@ -68,6 +69,8 @@ VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]
 LIMIT_S = 1.0
 REFUSING_S = 2.0
 SILENT_S = 3.0
+# A limit that only Ctrl-C cuts short, in seconds.
+AWAITED_S = 10.0
 # An endpoint that a run may not reach, by the guard, nor need to.
 ENDPOINT = "http://127.0.0.1:4318"
 # Every variable that names a proxy, in both cases, as requests and urllib read them.
@@ -449,3 +452,44 @@ def test_an_endpoint_that_never_answers_ends_check_in_bounded_time_with_one_warn
     assert len(ran.err.splitlines()) == 1
     assert said(ran.err) == [("warning", "telemetry.undelivered")]
     assert not any(scope.partition(".")[0] == SDK for scope, _ in collector.records())
+
+
+def test_ctrl_c_while_the_end_awaits_telemetry_ends_the_run_with_its_own_status(
+    tmp_path: Path,
+) -> None:
+    """The run's work is done: it exits at once, saying once why telemetry went undelivered.
+
+    The collector never answers, so the run waits at its end; Ctrl-C comes once every
+    signal's export has reached the collector, while the run awaits their answers. No
+    traceback follows.
+    """
+    collector = Collector(silent=True)
+    with collecting(collector) as endpoint:
+        given = {
+            "ports": [port_of(endpoint)],
+            "limit": AWAITED_S,
+            "report": str(tmp_path / "report.json"),
+            "arguments": check(tmp_path, endpoint),
+        }
+        began = time.monotonic()
+        with subprocess.Popen(
+            [sys.executable, "-m", "tests.guarded"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            env={"HOME": str(tmp_path)},
+            cwd=ROOT,
+        ) as child:
+            assert child.stdin is not None
+            child.stdin.write(json.dumps(given))
+            child.stdin.close()
+            while {path for path, _ in collector.sent} != {TRACES, METRICS, LOGS}:
+                assert time.monotonic() - began < AWAITED_S
+                time.sleep(0.05)
+            child.send_signal(signal.SIGINT)
+            _, err = child.communicate(timeout=AWAITED_S)
+    assert time.monotonic() - began < AWAITED_S
+    assert child.returncode == 0
+    assert said(err) == [("warning", "telemetry.undelivered")]
+    assert "reason=interrupted" in err

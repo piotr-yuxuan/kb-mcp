@@ -113,7 +113,8 @@ in. No trace context is sent to the site or to the embedding endpoint.
 
 A run first connects to the endpoint once, waiting 0.5 s at most; unreached, it goes on
 without telemetry, saying `telemetry.undelivered`. At its end, what is not sent within
-5 seconds is dropped, with one `telemetry.undelivered`.
+5 seconds, or before Ctrl-C, is dropped, with one `telemetry.undelivered`; the run's
+status stays its own.
 
 A run is one trace, whose root span is named after the command, but `serve`, each of
 whose requests is a trace. Grafana's dashboards, an overview and one each for `download`,
