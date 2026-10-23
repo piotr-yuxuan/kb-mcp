@@ -123,19 +123,21 @@ busy.
 
 Two rules, each written before its run, decided against `windows` and hybrid search.
 Plan 019's asked a chunking to quote the evidence significantly more often than
-`sections` (an adjusted p-value below 0.05 on Evidence@ask), which none did. Plan
-018's bar asked hybrid search for three things: a significant gain over words, no loss
-of more than 0.02 on identifier and keyword questions, and a 95th percentile within
-200 ms. With `windows`, hybrid search met two of the three, as plan 019 recorded: it
-beat words significantly (MRR@10 0.639 against 0.539, adjusted p 0.0008) and did better
-on identifiers (0.674 against 0.616) and keywords (0.855 against 0.812); its 95th
+`sections` (an adjusted p-value below 0.05 on Evidence@ask), which none did. Plan 018's
+bar asked hybrid search for three things: a significant gain over words, no loss of more
+than 0.02 on identifier and keyword questions, and a 95th percentile within 200 ms. With
+`windows`, hybrid search met two of the three, as plan 019 recorded: it beat words
+significantly (MRR@10 0.639 against 0.539, adjusted p 0.0008) and did better on
+identifiers (0.674 against 0.616) and keywords (0.855 against 0.812); its 95th
 percentile, 266 ms, missed the third. Knowing these numbers, the user chose `windows`
 and hybrid search as the defaults (plan 025): ranking matters more to them than speed,
 and 266 ms is good enough to them. Semantic search over `windows` scored higher still,
 on every measure of the table (MRR@10 0.674, Evidence@ask 0.500), in 256 ms at the 95th
-percentile; no test compared it with hybrid search, and the user chose hybrid. The
-rules and their verdicts stay as recorded, and `eval` still prints the rule's verdict
-on any set of questions.
+percentile; a paired randomisation test made afterwards on the results file's ranks,
+`eval`'s own (10,000 samples, seed 11), found the difference in MRR@10, 0.035, far from
+significant (p 0.29): meaning alone did better on 25 questions, hybrid on 22, and 58
+tied. The rules and their verdicts stay as recorded, and `eval` still prints the rule's
+verdict on any set of questions.
 
 What the choice gains, on the sandbox: the first expected document comes sooner
 (MRR@10 0.639, against 0.578 for hybrid search over `sections` and 0.539 for words

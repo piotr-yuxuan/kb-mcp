@@ -340,13 +340,16 @@ gone, so this comparison cannot be run again from the repository.
 ### Plan 019: four chunkings, and the defaults since
 
 The same questions, mirror and model, on 2026-10-22 and 23, with the index cut four
-ways; [chunking](chunking.md) holds every table, cost and test. `windows` ranked best
-of the four, by meaning alone and in hybrid mode. Over `windows`, hybrid search reached
+ways; [chunking](chunking.md) holds every table, cost and test. `windows` ranked best of
+the four, by meaning alone and in hybrid mode. Over `windows`, hybrid search reached
 MRR@10 0.639, against 0.578 over `sections` (adjusted p 0.0114) and 0.539 by words alone
 (adjusted p 0.0008), with 0.674 against words' 0.616 on identifier questions and 0.855
-against 0.812 on keyword questions; its 95th percentile of query time was 266 ms on
-this laptop's CPU. Semantic search over `windows` scored higher still (MRR@10 0.674,
-Evidence@ask 0.500 against 0.357), at 256 ms; no test compared the two modes.
+against 0.812 on keyword questions; its 95th percentile of query time was 266 ms on this
+laptop's CPU. Semantic search over `windows` scored higher still (MRR@10 0.674,
+Evidence@ask 0.500 against 0.357), at 256 ms; a paired randomisation test made
+afterwards on the results file's ranks, `eval`'s own (10,000 samples, seed 11), found
+the difference in MRR@10, 0.035, far from significant (p 0.29): meaning alone did better
+on 25 questions, hybrid on 22, and 58 tied.
 
 Neither rule chose `windows` and hybrid search. Plan 019's rule, which decides the
 chunking by the evidence that `ask` quotes, kept `sections`. Plan 018's bar, applied to
