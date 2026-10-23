@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
     from atlassian_offline_mcp.search.adapters.embedding import Embedder
+    from tests.conftest import InMemory
 
 GOLDEN = """
 - id: q1
@@ -549,3 +550,36 @@ def test_a_chunking_not_named_exits_2_offering_the_kernel_s(
         main(["eval", "--yes", str(data / "golden.yaml"), "--chunking", "window"])
     assert stopped.value.code == REFUSED
     assert ", ".join(f"'{name}'" for name in CHUNKINGS) in capsys.readouterr().err
+
+
+def test_each_target_s_scores_are_measured_by_its_chunking_ask_s_among_them(
+    data: Path, telemetry: InMemory
+) -> None:
+    """One model, two chunkings: each mode's measures as the results have them.
+
+    One question of three has evidence, so that Evidence@ask is measured too.
+    """
+    settings = Settings(data_dir=data, model="tiny")
+    targets = [Target(tiny(), "sections"), Target(tiny(), "windows")]
+    runs = evaluate(settings, golden(data), targets, ticking(), MOMENT)
+    points = {
+        tuple(
+            str(point.attributes[key]) for key in ("aom.chunking", "aom.mode", "aom.measure")
+        ): point.value
+        for point in telemetry.measured()["aom.eval.score"].data.data_points
+        if point.attributes
+    }
+    expected = {
+        (run.chunking, mode, measure): value
+        for run in runs
+        for mode in ("lexical", "semantic", "hybrid")
+        for measure, value in {
+            "recall@10": run.groups[mode]["all"].recall,
+            "mrr@10": run.groups[mode]["all"].reciprocal_rank,
+            "ndcg@10": run.groups[mode]["all"].ndcg,
+            "success@1": run.groups[mode]["all"].success,
+            "found@ask": run.asked_groups[mode]["all"].found,
+            "evidence@ask": run.asked_groups[mode]["all"].evidence,
+        }.items()
+    }
+    assert points == pytest.approx(expected)

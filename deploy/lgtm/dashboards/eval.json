@@ -1,7 +1,7 @@
 {
   "uid": "aom-eval",
   "title": "eval",
-  "description": "The eval runs in the time range: their scores by mode, and how long questions took.",
+  "description": "The eval runs in the time range: their scores by chunking and mode, and how long questions took.",
   "tags": [
     "atlassian-offline-mcp"
   ],
@@ -211,7 +211,7 @@
         "h": 8
       },
       "type": "bargauge",
-      "title": "Scores by mode, mean over the runs",
+      "title": "Scores by chunking and mode, mean over the runs",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -223,10 +223,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "avg by (aom_mode, aom_measure) (last_over_time(aom_eval_score_ratio{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "avg by (aom_chunking, aom_mode, aom_measure) (last_over_time(aom_eval_score_ratio{job=\"atlassian-offline-mcp\"}[$__range]))",
           "instant": true,
           "range": false,
-          "legendFormat": "{{aom_mode}}, {{aom_measure}}"
+          "legendFormat": "{{aom_chunking}}, {{aom_mode}}, {{aom_measure}}"
         }
       ],
       "fieldConfig": {
@@ -260,7 +260,7 @@
         "h": 8
       },
       "type": "bargauge",
-      "title": "Question time by mode, 95th percentile",
+      "title": "Question time by chunking and mode, 95th percentile",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -272,10 +272,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, aom_mode) (last_over_time(aom_eval_question_duration_seconds_bucket{job=\"atlassian-offline-mcp\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le, aom_chunking, aom_mode) (last_over_time(aom_eval_question_duration_seconds_bucket{job=\"atlassian-offline-mcp\"}[$__range])))",
           "instant": true,
           "range": false,
-          "legendFormat": "{{aom_mode}}"
+          "legendFormat": "{{aom_chunking}}, {{aom_mode}}"
         }
       ],
       "fieldConfig": {

@@ -77,8 +77,9 @@ HEADER = (
 DIVIDER = "|---|---|---|---|---|---|---|---|---|"
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
-# How long each question took to rank, by mode; each mode's measures on all the
-# questions, as the table's first row of the mode has them, by model, mode and measure.
+# How long each question took to rank, by chunking and mode; each mode's measures on
+# all the questions, as the tables' first rows of the mode have them, by model, chunking,
+# mode and measure.
 QUESTION_DURATION = METER.create_histogram(
     "aom.eval.question.duration", unit="s", description="How long a question took to rank"
 )
@@ -205,15 +206,16 @@ def evaluate(
 
     Each target is the span ``eval.model``; each question, timed in
     ``aom.eval.question.duration`` and said at DEBUG by ``eval.question``; each mode's
-    measures on all the questions but Section@10, which a golden file without evidence
-    lacks, are set in ``aom.eval.score``; ``eval.evaluated`` says at INFO each target
-    evaluated.
+    measures on all the questions, ask's among them, are set in ``aom.eval.score``, but
+    Section@10, and Evidence@ask when no question has evidence; ``eval.evaluated`` says
+    at INFO each target evaluated. Each names the target's chunking.
     """
     log = structlog.get_logger()
     runs: list[Run] = []
     for target in targets:
         name = target.embedder.name
-        with TRACER.start_as_current_span("eval.model", attributes={"gen_ai.request.model": name}):
+        named = {"gen_ai.request.model": name, "aom.chunking": target.chunking}
+        with TRACER.start_as_current_span("eval.model", attributes=named):
             run, library = prepared(target, settings, questions, clock, built_at)
             with task("questions", len(MODES) * len(questions)) as asked:
                 for mode in MODES:
@@ -223,7 +225,9 @@ def evaluate(
                         started = clock()
                         shown, note = library.ranked(question.text, mode, limit=CUTOFF)
                         spent.append(clock() - started)
-                        QUESTION_DURATION.record(spent[-1], {"aom.mode": mode})
+                        QUESTION_DURATION.record(
+                            spent[-1], {"aom.chunking": target.chunking, "aom.mode": mode}
+                        )
                         if note:
                             message = f"{name}, {mode}:{note}"
                             raise EvaluationError(message)
@@ -242,6 +246,7 @@ def evaluate(
                         log.debug(
                             "eval.question",
                             id=question.id,
+                            chunking=target.chunking,
                             mode=mode,
                             seconds=round(spent[-1], 3),
                             reciprocal_rank=run.per[mode][question.id].reciprocal_rank,
@@ -256,14 +261,19 @@ def evaluate(
                     moded = [run.per[mode][question.id].reciprocal_rank for question in questions]
                     run.pvalues[mode] = paired_test(lexical, moded)
                     every = run.groups[mode]["all"]
-                    scored = {"gen_ai.request.model": name, "aom.mode": mode}
+                    scored = {**named, "aom.mode": mode}
                     SCORE.set(every.recall, {**scored, "aom.measure": f"recall@{CUTOFF}"})
                     SCORE.set(every.reciprocal_rank, {**scored, "aom.measure": f"mrr@{CUTOFF}"})
                     SCORE.set(every.ndcg, {**scored, "aom.measure": f"ndcg@{CUTOFF}"})
                     SCORE.set(every.success, {**scored, "aom.measure": "success@1"})
+                    answered = run.asked_groups[mode]["all"]
+                    SCORE.set(answered.found, {**scored, "aom.measure": "found@ask"})
+                    if answered.evidence is not None:
+                        SCORE.set(answered.evidence, {**scored, "aom.measure": "evidence@ask"})
             log.info(
                 "eval.evaluated",
                 model=name,
+                chunking=target.chunking,
                 questions=len(questions),
                 embedded=run.embedded,
                 index_seconds=round(run.seconds, 3),

@@ -1,17 +1,17 @@
 # eval
 
 What `eval` records, besides what every command does ([README](README.md)). A run is one
-trace: its root `eval`, the connection to each model, then a span per model, which holds
-the build of its index, as `index` records it, and the searches of every question in
-every mode, as `serve` records them. A question is timed and logged, never a span of
-its own.
+trace: its root `eval`, the connection to each model, then a span per target, a model and
+a chunking, which holds the build of its index, as `index` records it, and the searches
+and answers of every question in every mode, as `serve` records them. A question is
+timed and logged, never a span of its own.
 
 ## Events
 
 | Event | Level | Fields | When |
 |---|---|---|---|
-| `eval.question` | debug | `id`, `mode`, `seconds`, `reciprocal_rank` | A golden question is ranked in a mode: its id, never its text |
-| `eval.evaluated` | info | `model`, `questions`, `embedded`, `index_seconds` | A model is evaluated: the questions, the texts embedded for its index, how long the index took |
+| `eval.question` | debug | `id`, `chunking`, `mode`, `seconds`, `reciprocal_rank` | A golden question is ranked in a mode, then answered as `ask` answers: its id, never its text; the seconds are the ranking's |
+| `eval.evaluated` | info | `model`, `chunking`, `questions`, `embedded`, `index_seconds` | A target is evaluated: the questions, the texts embedded for its index, how long the index took |
 | `eval.refused` | error | `reason` | The golden file is refused, by the field at fault: exit 2 |
 | `eval.not_evaluated` | error | `reason` | A model fails, or a mode by meaning fell back to words, which would measure words twice: exit 1 |
 | `index.document` | debug | `path`, `type`, `sections` | A file of the mirror is indexed for the model |
@@ -24,7 +24,7 @@ its own.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `eval.model` | internal | `gen_ai.request.model` | A model: its index built, then every question ranked in every mode |
+| `eval.model` | internal | `gen_ai.request.model`, `aom.chunking` | A target, a model and a chunking: its index built, then every question ranked and answered in every mode |
 | `index.files` | internal | | The mirror's files read and indexed by words |
 | `index.embed` | internal | | The pieces by meaning: their vectors read from the vector store, or embedded |
 | `search.lexical` | internal | | A search by words |
@@ -37,8 +37,8 @@ its own.
 
 | Instrument | Kind | Unit | Attributes | What |
 |---|---|---|---|---|
-| `aom.eval.question.duration` | histogram | `s` | `aom.mode` | How long each question took to rank |
-| `aom.eval.score` | gauge | `1` | `gen_ai.request.model`, `aom.mode`, `aom.measure` | Each mode's measure on all the questions: `recall@10`, `mrr@10`, `ndcg@10`, `success@1`; Section@10, which a golden file without evidence lacks, is in the results file alone |
+| `aom.eval.question.duration` | histogram | `s` | `aom.chunking`, `aom.mode` | How long each question took to rank |
+| `aom.eval.score` | gauge | `1` | `gen_ai.request.model`, `aom.chunking`, `aom.mode`, `aom.measure` | Each mode's measure on all the questions: `recall@10`, `mrr@10`, `ndcg@10`, `success@1`, `found@ask` and `evidence@ask`; Section@10, which a golden file without evidence lacks, is in the results file alone, as is Evidence@ask without evidence |
 | `aom.index.files` | counter | `{file}` | `aom.outcome` | The mirror's files, `indexed` or `skipped` |
 | `aom.index.pieces` | counter | `{piece}` | `aom.outcome` | The pieces by meaning, `indexed` with a vector or `refused` one |
 | `aom.serve.fallbacks` | counter | `{fallback}` | `aom.mode` | A search by meaning ranked by words alone, as a server counts it |
