@@ -13,7 +13,7 @@ import logging
 import secrets
 import time
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from importlib.metadata import version
 from typing import TYPE_CHECKING
@@ -41,6 +41,18 @@ if TYPE_CHECKING:
 # exporters and requests take a tenth of a second to import, which a run without would
 # pay for nothing.
 TELEMETRY = "atlassian_offline_mcp.observability.adapters.telemetry"
+
+
+@dataclass(frozen=True)
+class Invocation:
+    """What a run is asked to do: its command, by name, and what ``run.start`` says of it.
+
+    ``described`` holds the command line's fields, such as the arguments and the
+    settings.
+    """
+
+    command: str
+    described: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -77,10 +89,9 @@ def observed(
     output: Output,
     folder: Path | None,
     endpoint: str | None,
-    command: str,
-    described: Mapping[str, object],
+    invocation: Invocation,
 ) -> Iterator[Run]:
-    """Observe a run of ``command``: its logs on stderr at its level, and in its own file.
+    """Observe a run as ``invocation`` has it: its logs on stderr at its level, and in a file.
 
     Within ``early``, whose stderr this one replaces while it lasts. The run's id, 16
     random hex digits, is made first, so that a run without a file has one too. Stderr
@@ -88,12 +99,12 @@ def observed(
     says. The file, ``log_file``'s in ``folder``, holds all from DEBUG, under the run's
     id; a run that reads no settings has no ``folder``, and one that cannot be written
     gives one warning, ``log.unwritable``, and no file. The run then writes
-    ``run.start``: the version, ``described``, the command line's fields such as the
-    arguments and the settings, the log file and the telemetry endpoint, if any. It ends
-    with ``run.end``, its status as the body set it, or ``run.interrupted`` by Ctrl-C, or
-    ``run.failed`` with the exception's traceback; each says how many seconds it lasted.
-    The run's status is then ``ExitStatus.INTERRUPTED`` or ``ExitStatus.FAILED``: the
-    interruption or the exception goes no further.
+    ``run.start``: the version, the invocation's ``described``, the log file and the
+    telemetry endpoint, if any. It ends with ``run.end``, its status as the body set it,
+    or ``run.interrupted`` by Ctrl-C, or ``run.failed`` with the exception's traceback;
+    each says how many seconds it lasted. The run's status is then
+    ``ExitStatus.INTERRUPTED`` or ``ExitStatus.FAILED``: the interruption or the
+    exception goes no further.
 
     On a terminal, unless -q, the tasks' progress is drawn on stderr as bars, and their
     events ``progress`` are kept off it; elsewhere, these events show it from -v.
@@ -107,6 +118,7 @@ def observed(
     """
     root = logging.getLogger()
     log = structlog.get_logger()
+    command = invocation.command
     run = Run(secrets.token_hex(8))
     with ExitStack() as stack:
         for handler in [handler for handler in root.handlers if isinstance(handler, ConsoleLines)]:
@@ -134,7 +146,7 @@ def observed(
         log.info(
             "run.start",
             version=version(PROGRAM),
-            **described,
+            **invocation.described,
             log_file=None if path is None else str(path),
             telemetry=endpoint,
         )

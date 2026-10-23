@@ -17,7 +17,7 @@ from atlassian_offline_mcp.config.app.settings import load_settings
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.output import Output
-from atlassian_offline_mcp.observability.app.observed import observed
+from atlassian_offline_mcp.observability.app.observed import Invocation, observed
 
 if TYPE_CHECKING:
     import argparse
@@ -94,11 +94,13 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
         output,
         None if loaded is None else loaded.settings.logs.dir,
         None if loaded is None else loaded.settings.telemetry.endpoint,
-        command.name,
-        {
-            "arguments": list(given),
-            "settings": None if loaded is None else to_jsonable_python(loaded),
-        },
+        Invocation(
+            command.name,
+            {
+                "arguments": list(given),
+                "settings": None if loaded is None else to_jsonable_python(loaded),
+            },
+        ),
     ) as run:
         module = importlib.import_module(command.run)
         status, result = module.run(arguments, loaded)
