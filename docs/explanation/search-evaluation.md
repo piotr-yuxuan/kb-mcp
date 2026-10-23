@@ -392,8 +392,13 @@ stay as written: what changed is the choice made after them, which is the user's
 ## Reproducing it
 
 Every step runs from a checkout of this repository, with `uv`, on any machine: this
-laptop, or another such as the user's machine, whose GPU should change the times. Two things
-come first:
+laptop, or another such as the user's machine, whose GPU should change the times. The
+sandbox's commands name `--config <missing file>`, a path where no file is, so that the
+machine's settings file changes nothing: otherwise `mirror` would write its `site` into
+the mirror's addresses, and `index`, `model check` and `eval` would take its model and
+endpoint, `index` its chunking and mode too. The variables `ATLASSIAN_OFFLINE_MCP_…`
+still apply: leave them unset, but where a command sets them. On your own corpus, your
+settings are the point: leave the flag out. Two things come first:
 
 - **Ollama on the host**, running, with the model pulled: `eval` searches by meaning,
   and so, by default, does `index`. Install Ollama on the host, not in a container (a
@@ -405,7 +410,7 @@ come first:
   ```
 
   ```bash
-  uv run atlassian-offline-mcp model check
+  uv run atlassian-offline-mcp model check --config <missing file>
   ```
 
   `model check` says the model's dimensions and digest, or what to run when the
@@ -424,12 +429,19 @@ corpus's pages are in the space `QM`, its tickets in the project `ENG`, its idea
 sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" uv run atlassian-offline-mcp download --yes --config <missing file> --data-dir <data> --since 1y --space MFS --space QM --project ENG --project PRB'
 ```
 
+The credentials file lies at the root of the checkout that made it, never in git
+(`.gitignore` excludes `*.sops*`), and only the keys it was encrypted for open it. On
+another machine, bring the file and a key; or make a file of your own for the sandbox's
+account, with a new token, by [the sops how-to](../how-to/api-token-with-sops.md), under
+the same generic names; or skip `download` and `mirror`: copy `<data>/docs` (7 MB)
+from a machine that has it into the new data directory, and go on from `index`.
+
 ```bash
-uv run atlassian-offline-mcp mirror --data-dir <data>
+uv run atlassian-offline-mcp mirror --config <missing file> --data-dir <data>
 ```
 
 ```bash
-uv run atlassian-offline-mcp index --data-dir <data>
+uv run atlassian-offline-mcp index --config <missing file> --data-dir <data>
 ```
 
 `index` should report 1,474 documents (263 pages and 1,211 issues), as in plans 011 and
@@ -444,7 +456,7 @@ uv run python spikes/golden_refs.py --data <data> --out <data>/eval/sandbox.yaml
 Then measure every chunking in every mode:
 
 ```bash
-uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --data-dir <data> --model qwen3-embedding:0.6b
+uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing file> --data-dir <data> --model qwen3-embedding:0.6b
 ```
 
 ### Comparing chunkings and modes
@@ -459,7 +471,7 @@ the tests of each mode against words. To compare the defaults with the chunking 
 plan 019's rule kept:
 
 ```bash
-uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --summary detailed
+uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --summary detailed
 ```
 
 The first run embeds each chunking's pieces that the store lacks, which took 31
@@ -503,8 +515,10 @@ uv run python -c 'import json, sys; [print(run["model"], run["chunking"], mode, 
 3. Write the bar before the first run, as above.
 4. Keep the golden file in `<data>/eval/`, never in a repository: it holds your
    company's content.
-5. Run `eval`, read the groups as well as the totals, and keep the results files to
-   compare later runs.
+5. Run `eval` as in [comparing chunkings and modes](#comparing-chunkings-and-modes),
+   on your golden file and without `--config`; read the groups as well as the totals,
+   and the query time in `Query, 95th` against the 200 ms of plan 018's bar; keep the
+   results files to compare later runs.
 
 ## Sources
 
