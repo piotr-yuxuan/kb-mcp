@@ -1,7 +1,7 @@
 """The guides' command lines: each that runs the program parses as the program reads it.
 
-Plan 015 checks its two how-tos, ``AGENTS.md`` and the guides it changed; plan 020 is to
-check every page.
+Plan 015 checks its two how-tos, ``AGENTS.md`` and the guides it changed, plan 017 its
+two; plan 020 is to check every page.
 """
 
 from __future__ import annotations
@@ -27,6 +27,8 @@ PAGES = (
     "docs/how-to/first-download.md",
     "docs/how-to/golden-questions.md",
     "docs/how-to/shell-completions.md",
+    "docs/how-to/sync.md",
+    "docs/how-to/work-log.md",
 )
 # A block of shell commands in Markdown.
 BASH = re.compile(r"^```bash\n(.*?)^```", re.MULTILINE | re.DOTALL)

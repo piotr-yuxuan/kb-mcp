@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict
 import structlog
 from opentelemetry import metrics, trace
 
+from atlassian_offline_mcp.kernel.content import WORKLOG_ID
 from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.meaning import Nearest
@@ -75,9 +76,12 @@ FALLBACKS = metrics.get_meter(__name__).create_counter(
 
 
 class SearchFilters(TypedDict, total=False):
-    """What narrows a search. Values match without regard to case; dates are ISO 8601."""
+    """What narrows a search. Values match without regard to case; dates are ISO 8601.
 
-    source: Literal["confluence", "jira"]
+    source worklog: the user's entries (notes, AI summaries) and transcripts (verbatim).
+    """
+
+    source: Literal["confluence", "jira", "worklog"]
     space: str
     project: str
     status: str
@@ -351,9 +355,10 @@ class Library:
             raise UnanswerableError(str(error)) from None
 
     def _find(self, reader: Reader, ref: str) -> Entry | None:
-        """Find a document by path, issue key, page id or address, in that preference."""
+        """Find a document by path, issue key, page or work-log id, or address, in that order."""
         named, path = identifiers(ref), ref.strip()
-        found = reader.entries(paths=[path], keys=named.keys[:1], ids=named.ids[:1])
+        ids = [path] if WORKLOG_ID.fullmatch(path) else named.ids[:1]
+        found = reader.entries(paths=[path], keys=named.keys[:1], ids=ids)
         return min(found, key=lambda entry: (entry.path != path, not entry.front.key), default=None)
 
     def search(
@@ -364,7 +369,7 @@ class Library:
         limit: int = SEARCH_LIMIT,
         cursor: str | None = None,
     ) -> str:
-        """Search the offline mirror of Confluence and Jira, the best documents first.
+        """Search the offline mirror of Confluence, Jira and the work log, the best first.
 
         Words match without regard to case or accents; issue keys, page ids and page
         addresses in the query put their documents first. With sort="updated" and no
@@ -526,7 +531,8 @@ class Library:
     ) -> str:
         """Read a mirrored document, or one of its sections, from a character offset.
 
-        ref: a page id, an issue key, a page or issue address, or a path in the mirror.
+        ref: a page id, an issue key, a work-log id, a page or issue address, or a path in
+        the mirror.
         A long document comes in slices, each ending with the call that reads on.
         """
         bounded(ref=(ref, LONGEST["ref"]))

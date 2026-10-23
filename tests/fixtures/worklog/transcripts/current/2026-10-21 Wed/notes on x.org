@@ -1,0 +1,2 @@
+* Notes on the ledger
+Kim: the ledger migration waits on the schema owner.

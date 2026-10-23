@@ -17,7 +17,7 @@ Each context may use those below it, never those above:
 | `mcp` | The tools agents call (`Library`), and answers within their budgets |
 | `search` | The index of the mirror, by words and by meaning, and ranking |
 | `mirror` | The raw store's newest snapshots as Markdown, with their front matter |
-| `sources` | Where documents come from: today `atlassian/`, Confluence and Jira, with the sign-in (the saved session or an API token) and the raw store |
+| `sources` | Where documents come from: `atlassian/`, Confluence and Jira, with the sign-in (the saved session or an API token) and the raw store; `worklog/`, the user's work log, read in place |
 | `config` | The settings, their file, and the guard on where data lives |
 | `observability` | What a run tells of itself: structured logs, progress on the terminal, traces and metrics |
 | `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses, how a run reports, whether an endpoint is this machine, the names of the chunkings and of the server's tools |
@@ -41,6 +41,9 @@ Some choices are not obvious:
   get through `Library.ranked`; inside `search` it would make a cycle.
 - **`site_html.py` is in `mirror/adapters/`**, beside its only user. It is still an
   adapter: a fix for the real site's HTML goes there.
+- **`sync`'s steps are `cli/app/sync.py`**, a use case of `cli`: a step combines a
+  source and the mirror, which only `cli` sits above. Its choices are pure, in
+  `cli/domain/sync.py`, so that its declaration stays light.
 - **The MCP SDK is known to two modules**: `cli/commands/serve.py`, which registers the
   methods of `mcp.app.tools.Library` as tools, with what `mcp.app.surface` composes, and
   `evaluation/adapters/mcp_client.py`, the client through which `eval-agents` reaches

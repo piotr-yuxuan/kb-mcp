@@ -15,7 +15,7 @@ sent to the embedding endpoint, and nothing of it is recorded.
 | `index.file_skipped` | warning | `path`, `reason` | A file cannot be read, its front matter is refused, or its document is there already: exit 1 |
 | `index.piece_refused` | warning | `path` | The endpoint refuses a piece of this document, left without a vector: exit 1 |
 | `index.lacks_files` | warning | `count` | How many files the index lacks |
-| `index.not_built` | error | `reason`, `hint` | No mirror, or the endpoint or the model fails: the index in place stays, exit 1 |
+| `index.not_built` | error | `reason`, `hint` | No mirror, the endpoint or the model fails, or the index cannot be written (a full disk): the index in place stays, exit 1; in `sync`, its row fails |
 | `http.get` | debug | `url`, `status`, `error`, `seconds` | Each request for the endpoint's list of models |
 | `http.post` | debug | `url`, `status`, `error`, `seconds` | Each request for embeddings |
 

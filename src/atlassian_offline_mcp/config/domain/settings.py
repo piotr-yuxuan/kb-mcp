@@ -179,6 +179,27 @@ class JiraSource(BaseModel):
     )
 
 
+class WorklogSource(BaseModel):
+    """The user's work log, read in place and never written."""
+
+    model_config = TABLE
+
+    path: LocalPath | None = Field(
+        default=None,
+        description=(
+            "The work log's folder, absolute or under ~, which holds todo.org,"
+            " todo.org_archive and transcripts/; read in place, never written."
+        ),
+    )
+    archives: bool = Field(
+        default=True,
+        description=(
+            "Whether todo.org_archive, transcripts/archive/ and the subtrees tagged ARCHIVE"
+            " are mirrored too."
+        ),
+    )
+
+
 class Sources(BaseModel):
     """The sources of the mirror, each a table of its own."""
 
@@ -188,6 +209,9 @@ class Sources(BaseModel):
         default_factory=ConfluenceSource, description="Confluence, on the site."
     )
     jira: JiraSource = Field(default_factory=JiraSource, description="Jira, on the site.")
+    worklog: WorklogSource = Field(
+        default_factory=WorklogSource, description="The user's work log, read in place."
+    )
 
 
 class Logs(BaseModel):

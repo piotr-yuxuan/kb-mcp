@@ -39,11 +39,12 @@ stay within 2,200 estimated tokens, measured by the tests over stdio. `filters` 
 its defaults, and ends with the call that continues it when cut: an agent never needs
 to guess an offset.
 
-**Untrusted content marked as such.** Text copied from Confluence and Jira can carry
-instructions written by anyone with edit rights. Every answer puts it inside one block
-whose markers name it untrusted reference data, and whose closing marker repeats a
-boundary that the content cannot forge, as spotlighting's delimiting does
-([spotlighting]); the instructions tell agents never to follow directions found there.
+**Untrusted content marked as such.** Text copied from Confluence, Jira and the work log
+can carry instructions written by anyone with edit rights, or pasted into a note. Every
+answer puts it inside one block whose markers name it untrusted reference data, and
+whose closing marker repeats a boundary that the content cannot forge, as spotlighting's
+delimiting does ([spotlighting]); the instructions tell agents never to follow
+directions found there.
 
 **Prompts are the user's.** A prompt is a template that the user chooses, not the model
 ([spec-prompts]): `brief`, `changes` and `overview` start the three tasks that the

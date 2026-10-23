@@ -133,7 +133,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(aom_mirror_conversion_duration_seconds_bucket{job=\"atlassian-offline-mcp\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(aom_mirror_conversion_duration_seconds_bucket{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"mirror\"}[$__range])))",
           "instant": true,
           "range": false
         }
@@ -178,7 +178,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\", aom_outcome=\"failed\"}[$__range]))",
+          "expr": "sum(last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\", aom_outcome=\"failed\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"mirror\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -223,7 +223,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_outcome) (last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum by (aom_outcome) (last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"mirror\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_outcome}}"

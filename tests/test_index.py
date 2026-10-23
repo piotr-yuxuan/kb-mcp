@@ -18,7 +18,7 @@ import pytest
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
-from atlassian_offline_mcp.search.app.indexing import build_index
+from atlassian_offline_mcp.search.app.indexing import Indexing, build_index, index_mirror
 from tests.mirrors import FILLERS, MOMENT, fillers, issue, location, page, write
 from tests.test_cli import logged_as
 from tests.test_observed import CONTROL, said
@@ -208,6 +208,47 @@ def test_no_mirror_is_a_failure(data: Path, capsys: CaptureFixture[str]) -> None
     assert str(failed["reason"]).startswith("no mirror at")
     assert "hint" not in failed
     assert list(data.iterdir()) == []
+
+
+def test_a_database_error_is_a_failure_and_keeps_the_old_index(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """The database's error while building, as of a full disk, simulated: exit 1, said.
+
+    The index in place stays as it was, and no traceback is written.
+    """
+    write(data / "docs", page("196845", "Kafka"))
+    assert index(data, capsys)[0] == 0
+    before = (data / "index.sqlite").read_bytes()
+
+    def full(*_: object) -> None:
+        message = "database or disk is full"
+        raise sqlite3.OperationalError(message)
+
+    monkeypatch.setattr(sqlite_index.Writer, "add", full)
+    status, _, err = index(data, capsys)
+    assert status == 1
+    assert ("error", "index.not_built") in said(err)
+    assert "Traceback" not in err
+    assert (data / "index.sqlite").read_bytes() == before
+
+
+def test_a_bug_in_the_database_s_use_is_not_taken_for_a_failure_to_write(
+    data: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A ProgrammingError is a bug: it propagates, rather than being said as not built."""
+
+    def misused(*_: object) -> None:
+        message = "misused cursor"
+        raise sqlite3.ProgrammingError(message)
+
+    write(data / "docs", page("196845", "Kafka"))
+    monkeypatch.setattr(sqlite_index.Writer, "add", misused)
+    indexing = Indexing(
+        data / "docs", data / "index.sqlite", data / "vectors.sqlite", "tiny", "sections", None
+    )
+    with pytest.raises(sqlite3.ProgrammingError):
+        index_mirror(indexing, MOMENT)
 
 
 def test_by_words_alone_no_endpoint_is_asked_even_one_elsewhere(

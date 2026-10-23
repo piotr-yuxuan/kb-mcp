@@ -23,6 +23,8 @@ EVERY_SETTING = (
     "embedding_api_key",
     "sources.confluence.spaces",
     "sources.jira.projects",
+    "sources.worklog.path",
+    "sources.worklog.archives",
     "logs.dir",
     "telemetry.endpoint",
 )

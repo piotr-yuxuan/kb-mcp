@@ -51,7 +51,12 @@ WRITING = {
     "index": ([], "index"),
     "login": (["--site", SITE], "login"),
     "mirror": ([], "mirror"),
+    "sync": ([], "sync"),
 }
+# The work log's folder, which every test's environment names, so that sync has a source.
+WORKLOG_PATH = "ATLASSIAN_OFFLINE_MCP_SOURCES__WORKLOG__PATH"
+# Jira's projects, so that sync has an Atlassian source too.
+PROJECTS = {"ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS": '["PRB"]'}
 # An embedding endpoint off this machine, over https and over http.
 ELSEWHERE = {"ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": "https://embeddings.example/v1"}
 IN_CLEAR = {"ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": "http://embeddings.example/v1"}
@@ -76,6 +81,12 @@ REFUSED_FIRST = [
     (["eval", "missing.yaml"], {}, "missing.yaml: not a file"),
     (["eval", str(Path(__file__).parent)], {}, f"{Path(__file__).parent}: not a file"),
     (["mirror"], {"PATH": ""}, "pandoc: not found on PATH"),
+    (["sync", "--include", "jira"], {}, "--include jira: not configured"),
+    (["sync", "--exclude", "worklog"], {}, "nothing to sync"),
+    (["sync"], PROJECTS, "site: not set"),
+    (["sync", "--site", SITE, "--since", "yesterday"], PROJECTS, "--since"),
+    (["sync", "--site", SITE], PROJECTS | WITHOUT_EMAIL, "email: not set"),
+    (["sync"], {"PATH": ""}, "pandoc: not found on PATH"),
 ]
 
 
@@ -97,10 +108,14 @@ class Interrupting(Terminal):
 
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
-    """Give each test a scratch home directory, so that none reads or writes the user's."""
+    """Give each test a scratch home directory, so that none reads or writes the user's.
+
+    Its work log is the home itself, so that sync has a source to take.
+    """
     scratch = tmp_path / "home"
     scratch.mkdir()
     monkeypatch.setenv("HOME", str(scratch))
+    monkeypatch.setenv(WORKLOG_PATH, str(scratch))
     return scratch
 
 
@@ -233,7 +248,12 @@ def test_quiet_leaves_out_the_summary_of_a_refusal_but_keeps_it_for_a_question(
 
 @pytest.mark.parametrize(
     ("name", "skip"),
-    [*((name, "--yes") for name in sorted(WRITING)), ("mirror", "-y"), ("download", "--dry-run")],
+    [
+        *((name, "--yes") for name in sorted(WRITING)),
+        ("mirror", "-y"),
+        ("download", "--dry-run"),
+        ("sync", "--dry-run"),
+    ],
 )
 def test_yes_or_a_dry_run_runs_without_reading_stdin(
     name: str,

@@ -1,13 +1,15 @@
-"""What the runs that embed share: the embedding endpoint and its model's prefixes.
+"""What the runs that embed share: the endpoint, how the index is built, the prefixes.
 
 Apart from the entry, so that a run that embeds nothing loads none of this.
 """
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.search.adapters.embedding import Endpoint, endpoint, prefixes
+from atlassian_offline_mcp.search.app.indexing import Indexing
 
 if TYPE_CHECKING:
     import argparse
@@ -25,6 +27,20 @@ def open_endpoint(arguments: argparse.Namespace, settings: Settings) -> Endpoint
         settings.embedding_url,
         key.get_secret_value() if key else None,
         remote_allowed=arguments.allow_remote_embeddings,
+    )
+
+
+def indexing_of(arguments: argparse.Namespace, settings: Settings) -> Indexing:
+    """Say how this run builds the index, from its settings and as the run allows it.
+
+    By words alone in the lexical mode, which opens no endpoint; else with the setting's
+    model, through the endpoint that ``open_endpoint`` opens once the build begins.
+    """
+    opening = (
+        None if settings.search_mode == "lexical" else partial(open_endpoint, arguments, settings)
+    )
+    return Indexing(
+        settings.docs, settings.index, settings.vectors, settings.model, settings.chunking, opening
     )
 
 

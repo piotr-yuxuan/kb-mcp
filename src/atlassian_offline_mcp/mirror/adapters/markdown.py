@@ -14,18 +14,22 @@ import yaml
 
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
 from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+from atlassian_offline_mcp.mirror.domain.mirror_layout import WORKLOG_FOLDERS
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterable, Iterator
     from pathlib import Path
 
 KEYS = [field.name for field in dataclasses.fields(FrontMatter)]
 TIME = "%Y-%m-%dT%H:%M:%SZ"
 OPENING = "---\n"
 CLOSING = "\n---\n"
-# The documents of the mirror, relative to <data>/docs; names beginning with _ or . are
-# not documents, and nothing under assets/ is.
-DOCUMENTS = ("confluence/*/*.md", "confluence/*/blog/*.md", "jira/*/*.md")
+# The documents of the mirror, relative to <data>/docs, by the step that writes them,
+# then all of them; names beginning with _ or . are not documents, and nothing under
+# assets/ is.
+ATLASSIAN = ("confluence/*/*.md", "confluence/*/blog/*.md", "jira/*/*.md")
+WORKLOG = tuple(f"{folder}/*.md" for folder in WORKLOG_FOLDERS.values())
+DOCUMENTS = (*ATLASSIAN, *WORKLOG)
 
 
 def dump(front_matter: FrontMatter, body: str) -> str:
@@ -86,12 +90,12 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
     return front_matter, text[end + len(CLOSING) :].removeprefix("\n")
 
 
-def documents(docs: Path) -> Iterator[Path]:
-    """Yield every document file of the mirror under ``docs``, in a stable order.
+def documents(docs: Path, patterns: Iterable[str] = DOCUMENTS) -> Iterator[Path]:
+    """Yield every document file under ``docs`` that the patterns find, in a stable order.
 
     No name on the way to a document begins with ``_`` or ``.``.
     """
-    for pattern in DOCUMENTS:
+    for pattern in patterns:
         for path in sorted(docs.glob(pattern)):
             names = path.relative_to(docs).parts
             if path.is_file() and not any(name.startswith(("_", ".")) for name in names):

@@ -133,7 +133,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_download_bytes_total{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum(last_over_time(aom_download_bytes_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"download\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -223,7 +223,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_outcome) (last_over_time(aom_download_documents_total{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum by (aom_outcome) (last_over_time(aom_download_documents_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"download\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_outcome}}"
@@ -269,7 +269,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_outcome) (last_over_time(aom_download_files_total{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum by (aom_outcome) (last_over_time(aom_download_files_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"download\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_outcome}}"

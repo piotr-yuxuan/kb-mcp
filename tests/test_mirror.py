@@ -18,6 +18,7 @@ import pytest
 
 from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
 from atlassian_offline_mcp.mirror.adapters.markdown import load
+from atlassian_offline_mcp.mirror.adapters.mirror_files import sync, worklog_owned
 from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
 from atlassian_offline_mcp.mirror.app.mirror import Outcome, mirror
 from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
@@ -445,6 +446,21 @@ def test_a_clean_run_removes_only_the_files_the_mirror_owns(sandbox: Sandbox) ->
     files = sandbox.files()
     assert all(relative in files for relative in foreign)
     assert not [relative for relative in stale if relative in files]
+
+
+def test_the_mirror_leaves_the_work_log_s_files_and_the_work_log_the_mirror_s(
+    sandbox: Sandbox,
+) -> None:
+    """Each step removes only the files it owns; neither removes the other's."""
+    sandbox.run()
+    worklog = ["worklog/entries/e-0123456789abcdef-notes.md", "worklog/transcripts/t-20261020-1.md"]
+    for relative in worklog:
+        (sandbox.docs / relative).parent.mkdir(parents=True, exist_ok=True)
+        (sandbox.docs / relative).write_text("a work-log file", "utf-8")
+    mirrored = set(sandbox.files()) - set(worklog)
+    assert sandbox.run().changes.removed == 0
+    assert sync(sandbox.docs, {}, worklog_owned, remove=True).removed == len(worklog)
+    assert set(sandbox.files()) == mirrored
 
 
 def test_the_tree_links_only_files_that_were_built(sandbox: Sandbox) -> None:

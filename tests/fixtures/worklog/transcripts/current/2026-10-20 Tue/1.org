@@ -1,0 +1,5 @@
+#+TITLE: Payments stand-up
+#+FILETAGS: :standup:
+
+Alex: Morning. The payout gateway rollback finished at nine forty.
+Sam: Good. The retry_budget stays at three -- as agreed yesterday.
