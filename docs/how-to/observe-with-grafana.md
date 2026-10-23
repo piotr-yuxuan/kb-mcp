@@ -83,11 +83,12 @@ dashboard each for `download`, `mirror`, `index`, `serve`, `eval`, `eval-agents`
   bridge by surface and tool, those that failed or timed out, the tokens handed over
   and the calls' time by surface, the runs that `grade` judged by surface and outcome,
   each `grade` counting every run again, then the errors and the steps as traces.
-- **sync**: over the last 24 hours, the runs by exit status, the time spent, the work
-  log's documents by outcome and kind, their conversion time at the 95th percentile,
-  then the runs' warnings and errors, their traces, and each step as a span. The
-  dashboards of download and mirror keep to their own commands' runs, so a sync's
-  download and mirror are not counted there; its steps' spans and logs are in sync's.
+- **sync**: over the last 24 hours, the runs, by exit status too, the time spent, what
+  each step counted (the download's documents and files, the mirror's documents, the
+  work log's by kind), the work log's conversion time at the 95th percentile, then the
+  runs' warnings and errors, their traces, and each step as a span. The dashboards of
+  download and mirror keep to their own commands' runs: a sync's download and mirror
+  count on sync's.
 - **serve**: over the last hour, rates: tool calls per second by tool, their time and
   the answers' size at the 95th percentile, the searches that fell back to words, the
   queries' embedding time, then the warnings and the calls as traces.

@@ -1,7 +1,7 @@
 {
   "uid": "aom-sync",
   "title": "sync",
-  "description": "The sync runs in the time range: how they ended, the work log's documents and how long each took to convert, and each step.",
+  "description": "The sync runs in the time range: how they ended, what each step counted (the download's documents and files, the mirror's documents, the work log's by kind), the work log's conversion time, then the warnings and errors, the runs and their steps.",
   "tags": [
     "atlassian-offline-mcp"
   ],
@@ -23,17 +23,216 @@
   "links": [],
   "panels": [
     {
-      "title": "Runs by exit status",
-      "type": "bargauge",
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "type": "stat",
+      "title": "Runs",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "type": "stat",
+      "title": "Time spent",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(last_over_time(aom_run_duration_seconds_sum{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "type": "stat",
+      "title": "Work-log conversion time, 95th percentile",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(aom_mirror_conversion_duration_seconds_bucket{job=\"atlassian-offline-mcp\", aom_kind!=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range])))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "type": "stat",
+      "title": "Failed work-log documents",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\", aom_kind!=\"\", aom_outcome=\"failed\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 5,
       "gridPos": {
         "x": 0,
-        "y": 0,
-        "w": 8,
+        "y": 4,
+        "w": 12,
         "h": 8
+      },
+      "type": "bargauge",
+      "title": "Runs by exit status",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true
       },
       "targets": [
         {
@@ -50,95 +249,36 @@
       ]
     },
     {
-      "title": "Time spent",
-      "type": "stat",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
+      "id": 6,
       "gridPos": {
-        "x": 8,
-        "y": 0,
-        "w": 8,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_sum{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
-          "instant": true,
-          "range": false
-        }
-      ]
-    },
-    {
-      "title": "Work-log conversion time, 95th percentile",
-      "type": "stat",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 16,
-        "y": 0,
-        "w": 8,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(aom_mirror_conversion_duration_seconds_bucket{job=\"atlassian-offline-mcp\", aom_kind!=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range])))",
-          "instant": true,
-          "range": false
-        }
-      ]
-    },
-    {
-      "title": "Failed work-log documents",
-      "type": "stat",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 8,
+        "x": 12,
         "y": 4,
-        "w": 8,
-        "h": 4
+        "w": 12,
+        "h": 8
       },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\", aom_kind!=\"\", aom_outcome=\"failed\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
-          "instant": true,
-          "range": false
-        }
-      ]
-    },
-    {
-      "title": "Work-log documents by outcome and kind",
       "type": "bargauge",
+      "title": "Work-log documents by kind and outcome",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "gridPos": {
-        "x": 0,
-        "y": 8,
-        "w": 24,
-        "h": 8
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true
       },
       "targets": [
         {
@@ -155,17 +295,163 @@
       ]
     },
     {
-      "title": "Failed or skipped, from the logs",
+      "id": 7,
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 8,
+        "h": 8
+      },
+      "type": "bargauge",
+      "title": "Documents downloaded by outcome",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (aom_outcome) (last_over_time(aom_download_documents_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{aom_outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "gridPos": {
+        "x": 8,
+        "y": 12,
+        "w": 8,
+        "h": 8
+      },
+      "type": "bargauge",
+      "title": "Files by outcome",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (aom_outcome) (last_over_time(aom_download_files_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{aom_outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "gridPos": {
+        "x": 16,
+        "y": 12,
+        "w": 8,
+        "h": 8
+      },
+      "type": "bargauge",
+      "title": "Mirrored documents by outcome",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (aom_outcome) (last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\", aom_kind=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{aom_outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 10
+      },
       "type": "logs",
+      "title": "Failed or skipped, from the logs",
       "datasource": {
         "type": "loki",
         "uid": "loki"
       },
-      "gridPos": {
-        "x": 0,
-        "y": 16,
-        "w": 24,
-        "h": 10
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
       },
       "targets": [
         {
@@ -180,17 +466,18 @@
       ]
     },
     {
-      "title": "Runs, as traces",
+      "id": 11,
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 24,
+        "h": 10
+      },
       "type": "table",
+      "title": "Runs, as traces",
       "datasource": {
         "type": "tempo",
         "uid": "tempo"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 26,
-        "w": 24,
-        "h": 10
       },
       "targets": [
         {
@@ -207,17 +494,18 @@
       ]
     },
     {
-      "title": "Steps, as spans",
+      "id": 12,
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 10
+      },
       "type": "table",
+      "title": "Steps, as spans",
       "datasource": {
         "type": "tempo",
         "uid": "tempo"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 36,
-        "w": 24,
-        "h": 10
       },
       "targets": [
         {
