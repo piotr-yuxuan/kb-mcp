@@ -9,6 +9,7 @@ trace keeps its size however many documents it fetches, each a trace of its own.
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from pathlib import Path
@@ -18,12 +19,17 @@ import httpx
 
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
+from atlassian_offline_mcp.kernel.content import Page
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
+from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.reference import README, Emitted, documented, operations, undocumented
+from tests.samples import v2_space
 from tests.test_download import SITE, FakeSite
+from tests.test_mirror import FETCHED, SPACE_ID, listing_page, page_responses
+from tests.test_mirror_command import fake_pandoc
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
@@ -145,3 +151,45 @@ def test_a_run_s_trace_keeps_its_size_each_document_a_trace_linked_to_it(
         sizes.append(sum(1 for span in emitted.spans if span.trace_id == root.trace_id))
     three, thirty = sizes
     assert three == thirty
+
+
+def test_mirror_records_as_documented(
+    telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """Built, failed, unplaced; then pandoc gone once the run began.
+
+    A space lists a page, built, and one that pandoc fails on; a third page's space is
+    not listed. The pandoc on PATH passes its input through, unless it holds BREAK.
+    """
+    data = tmp_path / "data"
+    store = RawStore(data / "raw")
+    listed = [listing_page("100", "Home", None, None), listing_page("101", "Broken", None, None)]
+    with store.writing():
+        store.put_space(v2_space(id=SPACE_ID), listed, [], [])
+        store.put(Page, page_responses("100", "Home", 1, "<p>Home.</p>", []), FETCHED, {})
+        store.put(Page, page_responses("101", "Broken", 1, "<p>BREAK</p>", []), FETCHED, {})
+        elsewhere = page_responses("102", "Elsewhere", 1, "<p>Away.</p>", [], spaceId="999")
+        store.put(Page, elsewhere, FETCHED, {})
+    script = 'input=$(cat); case "$input" in *BREAK*) exit 3;; esac; printf "%s" "$input"'
+    folder = fake_pandoc(tmp_path / "bin", script)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    arguments = [
+        "mirror",
+        "--yes",
+        "--config",
+        str(tmp_path / "none.toml"),
+        "--data-dir",
+        str(data),
+    ]
+    emitted = Emitted()
+    with emitted.gathering(telemetry, "mirror"):
+        assert main(arguments) == ExitStatus.FAILED
+
+    def gone() -> Pandoc:
+        message = "pandoc: not found on PATH"
+        raise PandocMissingError(message)
+
+    monkeypatch.setattr(Pandoc, "find", gone)
+    with emitted.gathering(telemetry, "mirror"):
+        assert main(arguments) == ExitStatus.FAILED
+    assert undocumented("mirror", emitted) == []

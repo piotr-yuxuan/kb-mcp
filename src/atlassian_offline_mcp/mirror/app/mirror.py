@@ -3,16 +3,22 @@
 It reads the store, builds every file of ``docs/reference/data-layout.md``'s Markdown
 mirror and its bytes, then hands them to ``mirror_files``, which writes those that
 changed. What cannot be read or converted is reported, and a run that reports anything
-removes nothing, so that the last good copy of each file stays.
+removes nothing, so that the last good copy of each file stays. Reading, building and
+writing are each a span; each document built is counted and timed, never a span, as
+``docs/reference/telemetry/mirror.md`` lists it.
 """
 
 from __future__ import annotations
 
 import posixpath
+import time
 from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import UTC
 from typing import TYPE_CHECKING
+
+import structlog
+from opentelemetry import metrics, trace
 
 from atlassian_offline_mcp.kernel.content import (
     BlogPost,
@@ -64,6 +70,16 @@ UNKNOWN_AUTHOR = "unknown author"
 # second name no content.
 DOCUMENT_ERRORS = (ValueError, PandocFailedError)
 NAMED_ERRORS = (RefusedError, MarkupError, PandocFailedError)
+TRACER = trace.get_tracer(__name__)
+METER = metrics.get_meter(__name__)
+# The documents whose file a run built, or failed to; how long each took to build, pandoc
+# writing its Markdown included. A span each would make a run's trace too large.
+DOCUMENTS = METER.create_counter(
+    "aom.mirror.documents", unit="{document}", description="Documents built, by outcome"
+)
+CONVERSION_DURATION = METER.create_histogram(
+    "aom.mirror.conversion.duration", unit="s", description="How long a document's file took"
+)
 
 
 @dataclass(frozen=True)
@@ -262,39 +278,66 @@ def mirror(
 ) -> Outcome:
     """Mirror the raw store into ``docs``, with ``markdown`` writing HTML as Markdown.
 
-    The task ``documents`` reports the documents' files built, each by its path.
+    The task ``documents`` reports the documents' files built, each by its path. The
+    spans ``mirror.read``, ``mirror.build`` and ``mirror.write`` hold reading the store,
+    building the files and writing them; ``mirror.placed`` and ``mirror.written`` say at
+    INFO how many documents were placed and files written, ``mirror.document`` at DEBUG
+    each document built, by its path, id and title.
     """
+    log = structlog.get_logger()
     problems: list[Problem] = []
-    catalogue, damaged, times = read_catalogue(store, problems)
-    placed, retired = place(store, catalogue, times, problems)
-    mirrored, assets = index(placed, store, site)
+    with TRACER.start_as_current_span("mirror.read"):
+        catalogue, damaged, times = read_catalogue(store, problems)
+        placed, retired = place(store, catalogue, times, problems)
+        mirrored, assets = index(placed, store, site)
+    log.info("mirror.placed", documents=len(placed), assets=len(assets), problems=len(problems))
     wanted: dict[PurePosixPath, bytes | Path] = {**assets}
     unsupported: Counter[str] = Counter()
-    with task("documents", len(placed)) as built:
-        for each in built.each(placed, lambda one: str(one.path)):
-            context = Context(each.handle, each.path, mirrored, unsupported=unsupported)
+    with TRACER.start_as_current_span("mirror.build"):
+        with task("documents", len(placed)) as built:
+            for each in built.each(placed, lambda one: str(one.path)):
+                context = Context(each.handle, each.path, mirrored, unsupported=unsupported)
+                began = time.perf_counter()
+                try:
+                    wanted[each.path] = document_file(each, catalogue, context, markdown)
+                    DOCUMENTS.add(1, {"aom.outcome": "mirrored"})
+                except DOCUMENT_ERRORS as error:
+                    reason = str(error) if isinstance(error, NAMED_ERRORS) else type(error).__name__
+                    problems.append(Problem(where(store, each.stored), reason))
+                    DOCUMENTS.add(1, {"aom.outcome": "failed"})
+                seconds = time.perf_counter() - began
+                CONVERSION_DURATION.record(seconds)
+                log.debug(
+                    "mirror.document",
+                    path=str(each.path),
+                    id=each.handle,
+                    title=each.document.title,
+                    seconds=round(seconds, 3),
+                )
+        for space in catalogue.spaces.values():
+            tree = tree_path(space.key)
+            # Only the files built: a page whose file failed is not yet mirrored.
+            links = {
+                each.document.id: posixpath.relpath(each.path, tree.parent)
+                for each in placed
+                if isinstance(each.document, Page)
+                and each.document.space_id == space.id
+                and each.path in wanted
+            }
             try:
-                wanted[each.path] = document_file(each, catalogue, context, markdown)
-            except DOCUMENT_ERRORS as error:
-                reason = str(error) if isinstance(error, NAMED_ERRORS) else type(error).__name__
-                problems.append(Problem(where(store, each.stored), reason))
-    for space in catalogue.spaces.values():
-        tree = tree_path(space.key)
-        # Only the files built: a page whose file failed is not yet mirrored.
-        links = {
-            each.document.id: posixpath.relpath(each.path, tree.parent)
-            for each in placed
-            if isinstance(each.document, Page)
-            and each.document.space_id == space.id
-            and each.path in wanted
-        }
-        try:
-            if space.id not in damaged:
-                wanted[tree] = markdown(catalogue.tree(space, links)).encode()
-        except PandocFailedError as error:
-            problems.append(Problem(f"confluence/spaces/{space.id}", str(error)))
+                if space.id not in damaged:
+                    wanted[tree] = markdown(catalogue.tree(space, links)).encode()
+            except PandocFailedError as error:
+                problems.append(Problem(f"confluence/spaces/{space.id}", str(error)))
     written = sum(1 for each in placed if each.path in wanted)
     # A moved document's old file goes once its new one is built, never before.
     gone = [old for old, new in retired.items() if new is None or new in wanted]
-    changes = sync(docs, wanted, remove=not problems, retired=gone)
+    with TRACER.start_as_current_span("mirror.write"):
+        changes = sync(docs, wanted, remove=not problems, retired=gone)
+    log.info(
+        "mirror.written",
+        written=changes.written,
+        unchanged=changes.unchanged,
+        removed=changes.removed,
+    )
     return Outcome(written, changes, unsupported, tuple(problems))
