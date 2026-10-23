@@ -92,7 +92,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     call.add_argument("arguments", help="the tool's arguments, as one JSON object")
     call.set_defaults(
         step="call",
-        command=Command("eval-agents call", RUN, flags=called_flags, actions=called_actions),
+        command=Command(
+            "eval-agents call",
+            RUN,
+            flags=called_flags,
+            actions=called_actions,
+            unlogged=("arguments",),
+        ),
     )
 
     answer = steps.add_parser("answer", help="keep a run's answer, once")

@@ -724,6 +724,8 @@ def test_calls_and_runs_are_measured_as_the_call_logs_and_the_results_say(
 ) -> None:
     """Ask answered on B, a search that A's tool refuses; graded, A without an answer.
 
+    B's answer quotes the evidence, a success; A's run, without one, a failure.
+
     Each call is counted by surface, tool and status, its tokens and seconds measured
     as its line of the call log has them; each run is counted by its outcome.
     """
@@ -732,7 +734,12 @@ def test_calls_and_runs_are_measured_as_the_call_logs_and_the_results_say(
     a, b = first(out, "A"), first(out, "B")
     assert main(bridged(out, b, "ask", {"question": QUESTIONS["q1"]})) == 0
     assert main(bridged(out, a, "search", {"query": "kafka", "filters": {"space": "NOPE"}})) == 0
-    assert main(["eval-agents", "answer", str(out), b, json.dumps(VALID)]) == 0
+    # B quotes its question's expected document, its evidence, or a sentence of it.
+    asked = next(each["question"] for each in runs_of(out) if each["id"] == b)
+    ref, phrase = EXPECTED[asked]
+    quote = {"ref": ref, "text": phrase or "Leave for a meal."}
+    reply = {"found": True, "answer": quote["text"], "sources": [ref], "quotes": [quote]}
+    assert main(["eval-agents", "answer", str(out), b, json.dumps(reply)]) == 0
     for run in (a, b):
         harness(out, run, status="returned", model=MODEL, tokens=1000)
     assert main(["eval-agents", "grade", str(out), "--yes"]) == 0
@@ -762,27 +769,36 @@ def test_calls_and_runs_are_measured_as_the_call_logs_and_the_results_say(
     assert {key: point.sum for key, point in seconds.items()} == pytest.approx(
         {key: line["seconds"] for key, line in by_tool.items()}
     )
-    results = json.loads((out / "results.json").read_text("utf-8"))
     judged = points("aom.eval.agent.runs", "aom.surface", "aom.outcome")
     assert {key: point.value for key, point in judged.items()} == {
-        (outcome["surface"], outcome["result"]): 1 for outcome in results["outcomes"]
+        ("A", "failure"): 1,
+        ("B", "success"): 1,
     }
-    assert ("A", "failure") in judged
 
 
-def test_an_answer_is_not_logged_as_it_quotes_the_mirror(world: World) -> None:
-    """Its run's start names the step and the run, and ``[not logged]`` for the JSON."""
+def test_a_call_s_and_an_answer_s_json_are_not_logged_where_given(world: World) -> None:
+    """Their runs' starts name the step and the run, and ``[not logged]`` for the JSON.
+
+    The JSON is masked in its place, the last argument, even where an argument before it
+    is equal to it: a second answer, the directory's path, refused as one is kept.
+    """
     out = world.root / "runs"
     assert prepared(world, out, "--sample", "1") == 0
     run = first(out, "B")
+    assert main(bridged(out, run, "ask", {"question": SENTINEL})) == 0
     given = json.dumps(VALID | {"quotes": [{"ref": "196845", "text": SENTINEL}]})
     assert main(["eval-agents", "answer", str(out), run, given]) == 0
+    assert main(["eval-agents", "answer", str(out), run, str(out)]) == REFUSED
+    files = sorted(world.logs.glob("eval-agents-*.jsonl"))
     starts = [
-        json.loads(line)
-        for path in world.logs.glob("eval-agents-*.jsonl")
+        json.loads(line)["arguments"]
+        for path in files
         for line in path.read_text("utf-8").splitlines()
         if '"run.start"' in line
     ]
-    (answered,) = (each for each in starts if "answer" in each["arguments"])
-    assert answered["arguments"] == ["eval-agents", "answer", str(out), run, "[not logged]"]
-    assert not any(SENTINEL in path.read_text("utf-8") for path in world.logs.iterdir())
+    assert [each for each in starts if each[1] != "prepare"] == [
+        ["eval-agents", "call", str(out), run, "ask", "[not logged]"],
+        ["eval-agents", "answer", str(out), run, "[not logged]"],
+        ["eval-agents", "answer", str(out), run, "[not logged]"],
+    ]
+    assert not any(SENTINEL in path.read_text("utf-8") for path in files)

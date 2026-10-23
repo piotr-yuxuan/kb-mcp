@@ -118,7 +118,7 @@ run, tool, status, the tokens handed over and its seconds, and `grade` each run'
 outcome. `call` and `answer` read the settings of the shell that runs the agents for
 this alone: where their logs and telemetry go. With telemetry on, each first says so on
 stderr, `telemetry: on, to <endpoint> (<layer>)`, as every command does, which the agent
-reads with the answer, and waits half a second at most for the endpoint. An answer's
-JSON, which quotes the mirror, is not logged. With [Grafana](observe-with-grafana.md),
-the dashboard `eval-agents` shows the calls, their tokens and time by surface, and the
-runs judged by outcome.
+reads with the answer, and waits half a second at most for the endpoint. Neither a
+call's JSON nor an answer's is logged: the runs' directory keeps them. With
+[Grafana](observe-with-grafana.md), the dashboard `eval-agents` shows the calls, their
+tokens and time by surface, and the runs judged by outcome.
