@@ -1,4 +1,4 @@
-"""Log files' names, and which of them a run removes: those past 30 days, by their name."""
+"""Log files' names, and which of them a run removes: its command's past 30 days, by name."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def test_a_run_s_file_expires_once_its_run_started_over_30_days_ago(
     command: str, age: timedelta, *, gone: bool
 ) -> None:
     """Older than 30 days goes; 30 days to the second, younger, or ahead of the clock, stays."""
-    assert expired(log_file_name(command, NOW - age, 4242), NOW) is gone
+    assert expired(log_file_name(command, NOW - age, 4242), command, NOW) is gone
 
 
 @pytest.mark.parametrize(
@@ -55,8 +55,15 @@ def test_a_run_s_file_expires_once_its_run_started_over_30_days_ago(
         "check-20200101T000000-7.jsonl",
         "check-20201301T000000Z-7.jsonl",
         "check-20200230T000000Z-7.jsonl",
+        f"index-{OLD}-7.jsonl",
+        f"nightly-backup-{OLD}-7.jsonl",
+        f"check-backup-{OLD}-7.jsonl",
     ],
 )
 def test_no_other_file_expires_however_old_it_says_it_is(name: str) -> None:
-    """Another suffix, a part missing, another way to write the start, or no such time."""
-    assert not expired(name, NOW)
+    """Another suffix, a part missing, another way to write the start, or no such time.
+
+    Nor does another command's, or another program's of the same shape, as a folder
+    shared with it may hold: a run of ``check`` removes ``check``'s alone.
+    """
+    assert not expired(name, "check", NOW)

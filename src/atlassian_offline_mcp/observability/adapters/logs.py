@@ -155,8 +155,9 @@ def log_file(folder: Path, command: str, run: str, now: datetime, cap: int = CAP
     sink of the root logger, for all that ``route_through_logging`` lets through, and its
     path is given: ``<folder>/<command>-<UTC start>-<pid>.jsonl``, which the user alone
     can read, as ``folder`` when it is made here; one that exists keeps its mode, since
-    the user may have chosen it. Before the file is opened, the log files in ``folder``
-    whose run started over 30 days before ``now`` are removed. Each line adds ``run``
+    the user may have chosen it. Before the file is opened, the log files of
+    ``command`` in ``folder`` whose run started over 30 days before ``now`` are
+    removed: another command's wait for its own next run. Each line adds ``run``
     and ``command``, which replace an event's own of these names, and, within a span, its
     ``trace_id`` and ``span_id``; a traceback shows no frame's locals. Past ``cap`` bytes
     of lines, a line ``log.capped`` ends the file; a line that cannot be written, as on
@@ -165,7 +166,7 @@ def log_file(folder: Path, command: str, run: str, now: datetime, cap: int = CAP
     """
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     for old in folder.iterdir():
-        if expired(old.name, now):
+        if expired(old.name, command, now):
             old.unlink(missing_ok=True)
     path = folder / log_file_name(command, now, os.getpid())
     with open(path, "a", encoding="utf-8", opener=partial(os.open, mode=0o600)) as stream:

@@ -220,10 +220,14 @@ def test_a_traceback_is_structured_and_shows_no_frame_s_locals(tmp_path: Path) -
     assert all(frame.get("locals") is None for frame in stack["frames"])
 
 
-def test_a_run_first_removes_the_log_files_past_30_days_and_leaves_the_rest(
+def test_a_run_first_removes_its_command_s_log_files_past_30_days_and_leaves_the_rest(
     tmp_path: Path,
 ) -> None:
-    """Of this pattern, a run started over 30 days before now goes; any other file stays."""
+    """Of its command's, a run started over 30 days before now goes; any other file stays.
+
+    Another command's waits for that command's next run; another program's, of the same
+    shape, in a folder that it shares, is not this program's to remove.
+    """
     folder = tmp_path / "logs"
     folder.mkdir()
 
@@ -232,9 +236,11 @@ def test_a_run_first_removes_the_log_files_past_30_days_and_leaves_the_rest(
 
     gone = [
         name("check", timedelta(days=30, seconds=1)),
-        name("download", timedelta(days=400), 99999),
+        name("check", timedelta(days=400), 99999),
     ]
     kept = [
+        name("download", timedelta(days=400), 99999),
+        name("nightly-backup", timedelta(days=400), 42),
         name("index", timedelta(days=30)),
         name("check", timedelta(days=2)),
         name("eval", -timedelta(days=1)),

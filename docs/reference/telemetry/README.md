@@ -27,8 +27,10 @@ such as `download-20261022T210509Z-4242.jsonl`. `--help`, `--version`, a complet
   holds titles, ids, paths and queries.
 - **What.** One JSON object a line, every event and record from DEBUG, from `run.start`
   to the run's end.
-- **How long.** A run first removes the files of this pattern whose run started more
-  than 30 days before; past 256 MiB, a line `log.capped` ends the file.
+- **How long.** A run first removes its command's files of this pattern whose run
+  started more than 30 days before, another command's waiting for its own next run, so
+  that a folder shared with another program keeps that program's files; past 256 MiB,
+  a line `log.capped` ends the file.
 - **When it cannot be written,** from the start or later, as on a full disk, the run
   says `log.unwritable` once and goes on without.
 
