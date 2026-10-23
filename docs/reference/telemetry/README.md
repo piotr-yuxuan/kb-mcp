@@ -65,6 +65,14 @@ is coloured on a terminal, unless `NO_COLOR` is set, and shows text from the sit
 mirror inert, without control or bidirectional characters, cut to its width. Stdout
 holds the result alone, or, for `serve`, the protocol.
 
+A line on stderr gives the time, the level, the event and the logger, then the event's
+fields as `key=value`, by name, a value with spaces in quotes; a traceback follows the
+line of `run.failed`:
+
+```
+2026-10-22T21:05:09.123456Z [warning  ] search.fallback                [atlassian_offline_mcp.mcp.app.tools] mode=hybrid reason=...
+```
+
 On a terminal, unless `-q`, the tasks of a run are bars, with what is done of how much,
 the time spent, the time left and the item at hand; `serve` has none. Each task logs
 `progress` every 10 seconds at most, and at its end, to the file, and to stderr from
