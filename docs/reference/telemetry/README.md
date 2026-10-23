@@ -29,7 +29,8 @@ as `download-20261022T210509Z-4242.jsonl`. `--help`, `--version`, a completion a
   to the run's end.
 - **How long.** A run first removes the files of this pattern whose run started more
   than 30 days before; past 256 MiB, a line `log.capped` ends the file.
-- **When it cannot be written,** the run says `log.unwritable` once and goes on without.
+- **When it cannot be written,** from the start or later, as on a full disk, the run
+  says `log.unwritable` once and goes on without.
 
 ## Fields
 
@@ -131,7 +132,7 @@ What any command may log.
 | `run.refused` | error | `reason` | The command refuses its arguments or the settings, before the run: exit 2. On stderr alone |
 | `settings.refused` | error | `reason` | The settings break a rule, before the run: exit 2. On stderr alone |
 | `progress` | info | `task`, `done`, `total`, `remaining` | A task's heartbeat, every 10 s at most, and at its end; `remaining` in whole seconds |
-| `log.unwritable` | warning | `folder`, `reason` | The log folder cannot be written: no file |
+| `log.unwritable` | warning | `folder`, `reason` | The log folder cannot be written: no file, or nothing more in it |
 | `log.capped` | warning | | The file reached its cap: nothing more is written to it |
 | `telemetry.undelivered` | warning | `endpoint`, `reason` | The endpoint cannot be reached, or did not take everything at the end |
 | `telemetry.shutdown_failed` | debug | `provider` | A provider of the SDK failed to shut down at the end, what it raised following |

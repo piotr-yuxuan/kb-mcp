@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import errno
 import inspect
+import io
 import json
 import logging
 import os
@@ -12,12 +14,14 @@ import stat
 import sys
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import pytest
 import structlog
 from opentelemetry.sdk.trace import TracerProvider
+from structlog.testing import capture_logs
 
+from atlassian_offline_mcp.observability.adapters import logs
 from atlassian_offline_mcp.observability.adapters.logs import (
     default_log_folder,
     log_file,
@@ -27,6 +31,7 @@ from atlassian_offline_mcp.observability.adapters.logs import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
 NOW = datetime(2026, 10, 22, 21, 5, 9, tzinfo=UTC)
@@ -46,6 +51,23 @@ def through_logging() -> Iterator[None]:
     structlog.reset_defaults()
     for name, level in levels.items():
         logging.getLogger(name).setLevel(level)
+
+
+class FullDisk(io.RawIOBase):
+    """A file on a full disk: it takes no byte, each write failing for want of room."""
+
+    def __init__(self, name: str) -> None:
+        """Be the file of this path."""
+        super().__init__()
+        self.name = name
+
+    @override
+    def writable(self) -> bool:
+        return True
+
+    @override
+    def write(self, _: object) -> int:
+        raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
 
 
 def lines(path: Path) -> list[dict[str, object]]:
@@ -247,6 +269,37 @@ def test_past_the_cap_a_line_log_capped_ends_the_file(tmp_path: Path) -> None:
     ]
     sizes = [len(f"{line}\n".encode()) for line in written[:-1]]
     assert sum(sizes) <= cap < sum(sizes) + max(sizes)
+
+
+def test_a_file_that_stops_taking_lines_ends_saying_so_once_elsewhere(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """As on a full disk: the first line that fails ends the file, and no other is tried.
+
+    ``log.unwritable`` names the folder and the reason, once, to the other sinks;
+    logging prints no error of its own, and the file's close at the run's end raises
+    nothing, though the lines it held were never written.
+    """
+    full = FullDisk(str(tmp_path / "check.jsonl"))
+    monkeypatch.setattr(
+        logs,
+        "open",
+        lambda *_, **__: io.TextIOWrapper(io.BufferedWriter(full), encoding="utf-8"),
+        raising=False,
+    )
+    with capture_logs() as events, log_file(tmp_path, "check", RUN, NOW):
+        for count in range(3):
+            logging.getLogger("some.library").warning("line %d", count)
+    assert full.closed
+    assert events == [
+        {
+            "event": "log.unwritable",
+            "log_level": "warning",
+            "folder": str(tmp_path),
+            "reason": str(OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))),
+        }
+    ]
+    assert capsys.readouterr().err == ""
 
 
 def test_the_cap_is_256_mib_unless_another_is_given() -> None:

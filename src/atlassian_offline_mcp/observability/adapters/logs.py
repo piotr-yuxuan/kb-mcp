@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import logging
 import os
-from contextlib import contextmanager
+import sys
+from contextlib import contextmanager, suppress
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO, override
@@ -50,13 +51,34 @@ class CappedFile(logging.StreamHandler[TextIO]):
     """Write each record as a line to a stream, until the lines would pass ``cap`` bytes.
 
     The line that would pass the cap is replaced by one of its own, the event
-    ``log.capped``, and nothing is written after it.
+    ``log.capped``, and nothing is written after it. A line that cannot be written, as
+    on a full disk, ends the file too, said once by ``log.unwritable`` elsewhere.
     """
 
     def __init__(self, stream: TextIO, cap: int) -> None:
-        """Write to ``stream``, in UTF-8, which its owner closes."""
+        """Write to ``stream``, a file, in UTF-8, which its owner closes."""
         super().__init__(stream)
         self.room = cap
+
+    @override
+    def handleError(self, record: logging.LogRecord) -> None:
+        """End the file at the first line that it cannot take, and say so to the other sinks.
+
+        On an OSError, the stream is closed, what it held unwritten dropped, so that its
+        owner's close raises nothing; ``log.unwritable`` names its folder and the
+        reason. Any other error, such as a field that cannot be rendered, is reported
+        as logging does.
+        """
+        error = sys.exception()
+        if not isinstance(error, OSError):
+            super().handleError(record)
+            return
+        self.room = -1
+        with suppress(OSError):
+            self.stream.close()
+        structlog.get_logger().warning(
+            "log.unwritable", folder=str(Path(self.stream.name).parent), reason=str(error)
+        )
 
     @override
     def emit(self, record: logging.LogRecord) -> None:
@@ -137,8 +159,9 @@ def log_file(folder: Path, command: str, run: str, now: datetime, cap: int = CAP
     whose run started over 30 days before ``now`` are removed. Each line adds ``run``
     and ``command``, which replace an event's own of these names, and, within a span, its
     ``trace_id`` and ``span_id``; a traceback shows no frame's locals. Past ``cap`` bytes
-    of lines, a line ``log.capped`` ends the file. Raises OSError when ``folder`` cannot
-    be made or written.
+    of lines, a line ``log.capped`` ends the file; a line that cannot be written, as on
+    a full disk, ends it too, with one ``log.unwritable`` to the other sinks. Raises
+    OSError when ``folder`` cannot be made or written.
     """
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     for old in folder.iterdir():
