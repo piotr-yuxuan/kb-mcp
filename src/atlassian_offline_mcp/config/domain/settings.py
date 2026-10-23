@@ -573,6 +573,35 @@ def environment_entries(
     return entries, ignored
 
 
+# OpenTelemetry's own variables, which other programs share: its endpoint, a layer of
+# telemetry's below the settings file, and the switch that turns it off, above all.
+SHARED_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
+SDK_DISABLED = "OTEL_SDK_DISABLED"
+# Telemetry's endpoint, by its path among the settings.
+ENDPOINT = ("telemetry", "endpoint")
+
+
+def shared_entries(environ: Mapping[str, str]) -> tuple[list[Entry], list[Entry], list[Ignored]]:
+    """Give OpenTelemetry's own variables of an environment as entries of telemetry's endpoint.
+
+    ``OTEL_EXPORTER_OTLP_ENDPOINT`` gives an entry of the layer below the settings file,
+    unless the setting would refuse its value: it is then ignored, with the rule that it
+    breaks. ``OTEL_SDK_DISABLED``, when true as the SDK reads it, gives one of the layer
+    above all, which leaves the endpoint unset: telemetry off. Give the entries below,
+    those above, then what was ignored.
+    """
+    below: list[Entry] = []
+    ignored: list[Ignored] = []
+    shared = environ.get(SHARED_ENDPOINT)
+    if shared is not None:
+        try:
+            below.append(Entry(ENDPOINT, telemetry_address(shared), SHARED_ENDPOINT))
+        except ValueError as error:
+            ignored.append(Ignored(".".join(ENDPOINT), SHARED_ENDPOINT, f"not {error}"))
+    disabled = environ.get(SDK_DISABLED, "").strip().lower() == "true"
+    return below, [Entry(ENDPOINT, None, SDK_DISABLED)] if disabled else [], ignored
+
+
 # Each path setting at its default, an entry of no layer, the weakest, so that
 # ``settings_of`` makes ``~`` the home in it as in a path given.
 PATH_DEFAULTS = [
