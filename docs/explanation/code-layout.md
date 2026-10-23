@@ -51,7 +51,7 @@ Each context but the kernel holds the same layers, as sub-packages, from the top
 | Layer | What it holds |
 |---|---|
 | `main` | The entry point: the parser, built from every declaration (in `cli` only) |
-| `commands` | One run per subcommand, with its result as text; `_shared`, the entry that loads the settings, refuses what it can before anything is asked, says what it ignores, asks before a run that writes, runs the chosen one and writes its result; `_embedding`, which the runs that embed share (in `cli` only) |
+| `commands` | One run per subcommand, with its result as text; `_shared`, the entry of every run but `completion`'s, that loads the settings, refuses what it can before anything is asked, says what it ignores, asks before a run that writes, runs the chosen one and writes its result; `_embedding`, which the runs that embed share (in `cli` only) |
 | `options` | One light declaration per subcommand: its help, its options, the run it names, the settings it reads, whether it writes, and the pure checks that refuse a run before anything is asked (in `cli` only) |
 | `app` | Use cases: they combine effects and rules, and know nothing of the command line |
 | `adapters` | Effects: the network, the browser, files, SQLite, subprocesses, the terminal |
@@ -62,9 +62,10 @@ A context holds only the layers it needs; `mcp` has only `app`.
 A subcommand is a pair of modules: `cli/options/<name>.py` declares it, and the module
 of `cli/commands/` that its declaration names runs it. `--help`, and shell completion at
 every Tab, build the whole parser, so they import every declaration; `main` imports the
-entry and the chosen run, by name, only once the arguments are parsed. So a declaration
-stays light: contract G keeps the packages that runs need out of `cli.main` and
-`cli.options`.
+entry and the chosen run, by name, only once the arguments are parsed, and for a run
+that is not observed, such as `completion`'s, which shells run at each start, the run
+alone. So a declaration stays light: contract G keeps the packages that runs need out
+of `cli.main` and `cli.options`.
 
 ## The contracts
 
@@ -83,12 +84,12 @@ stays light: contract G keeps the packages that runs need out of `cli.main` and
 
 A orders the contexts, which B, applied per context, does not; C and D carry the order
 of the layers across contexts, which B cannot. All but F count indirect imports too.
-None sees an import by name, as `main` makes of the entry and the run: a test of
-`tests/test_cli.py` checks, in a fresh interpreter, that `--help` and a completion
-import none of G's packages. And a contract forbids only the root of another package,
-which OpenTelemetry's API and SDK share: so `tests/test_code_layout.py` keeps the SDK,
-its exporters and its instrumentation within `observability`, while the other contexts
-use the API alone.
+None sees an import by name, as `main` makes of the entry and the run, or of the run
+alone: a test of `tests/test_cli.py` checks, in a fresh interpreter, that `--help` and a
+completion import none of G's packages. And a contract forbids only the root of another
+package, which OpenTelemetry's API and SDK share: so `tests/test_code_layout.py` keeps
+the SDK, its exporters and its instrumentation within `observability`, while the other
+contexts use the API alone.
 
 ## Where a new module goes
 

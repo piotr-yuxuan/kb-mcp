@@ -1,4 +1,4 @@
-"""The entry of every run: it loads the settings, runs the chosen subcommand, writes its result."""
+"""The entry of every observed run: it loads the settings, runs the command, writes its result."""
 
 from __future__ import annotations
 
