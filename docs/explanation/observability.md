@@ -49,15 +49,14 @@ would carry the data off the machine, and the resource ignores `OTEL_SERVICE_NAM
 `OTEL_RESOURCE_ATTRIBUTES`, so that dashboards find the runs under one name.
 `OTEL_EXPORTER_OTLP_ENDPOINT`, which other programs share, is read below the settings
 file, and ignored, with a word, when it breaks the rule; as it can turn telemetry on
-unseen, every command says, before it acts, that telemetry is on, where to and by
-which layer, `serve` too, which an agent starts with its own environment, and every run
-names both in `run.start`. Every other `OTEL_` variable
-but `OTEL_SDK_DISABLED` is taken out of the run's environment before OpenTelemetry is
-imported: the API reads some on its own, and a provider named there would install the
-SDK with telemetry off, or end the run if unknown. The SDK is imported only once
-an endpoint is set: a run without telemetry opens no socket and starts no thread for
-it. No trace context goes to the site or to the embedding endpoint, which have no use
-for this machine's traces.
+unseen, every command says, before it acts, that telemetry is on, where to and by which
+layer, `serve` too, which an agent starts with its own environment, and every run names
+both in `run.start`. Every other `OTEL_` variable but `OTEL_SDK_DISABLED` is taken out
+of the run's environment before OpenTelemetry is imported: the API reads some on its
+own, and a provider named there would install the SDK with telemetry off, or end the run
+if unknown. The SDK is imported only once an endpoint is set: a run without telemetry
+opens no socket and starts no thread for it. No trace context goes to the site or to the
+embedding endpoint, which have no use for this machine's traces.
 
 The container follows the same rule: its two ports on the loopback address alone,
 Grafana's anonymous Admin kept from other host names against DNS rebinding, nothing that
