@@ -223,7 +223,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_outcome) (last_over_time(aom_index_files_total{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum by (aom_outcome) (last_over_time(aom_index_files_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"index\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_outcome}}"
@@ -269,7 +269,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_outcome) (last_over_time(aom_index_pieces_total{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum by (aom_outcome) (last_over_time(aom_index_pieces_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"index\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_outcome}}"

@@ -5,7 +5,8 @@ what turns away other host names and keeps the stack from calling home, and keep
 Where podman or Docker has a compose provider, its ``compose config`` accepts the file.
 Each dashboard, found in its folder, draws on the image's own data sources only, and
 charts no metric but those of the reference, ``docs/reference/telemetry/``, named as
-Prometheus names what it receives over OTLP.
+Prometheus names what it receives over OTLP; a command's keeps to its own runs what
+other commands record too.
 """
 
 from __future__ import annotations
@@ -15,11 +16,15 @@ import os
 import re
 import subprocess
 from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING
 
 import pytest
 import yaml
 
 from tests.reference import README, documented, operations
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 LGTM = Path(__file__).parents[1] / "deploy" / "lgtm"
 COMPOSE = LGTM / "compose.yaml"
@@ -187,6 +192,28 @@ def test_each_dashboard_is_json_drawing_on_the_image_s_three_sources(path: Path)
     assert {(source["uid"], source["type"]) for source in named} == SOURCES
 
 
+def series(instruments: Mapping[str, tuple[str, str, frozenset[str]]]) -> set[str]:
+    """Give the names of the series that Prometheus makes of ``instruments``, by kind and unit."""
+    named = set()
+    for name, (kind, unit, _) in instruments.items():
+        words = re.split(r"[^a-z0-9]+", name)
+        word = "ratio" if (kind, unit) == ("gauge", "1") else UNIT_WORDS.get(unit)
+        stem = "_".join([*words, word] if word and word not in words else words)
+        named |= {stem + suffix for suffix in SERIES[kind]}
+    return named
+
+
+def prometheus_queries(path: Path) -> list[tuple[str, set[str]]]:
+    """Give each Prometheus query of the dashboard at ``path``, with the metrics it names."""
+    board = json.loads(path.read_text("utf-8"))
+    return [
+        (target["expr"], set(NAME.findall(NOT_METRICS.sub(" ", target["expr"]))) - OPERATORS)
+        for panel in board["panels"]
+        for target in panel["targets"]
+        if target["datasource"]["uid"] == "prometheus"
+    ]
+
+
 @pytest.mark.parametrize("path", PATHS, ids=lambda path: path.name)
 def test_each_dashboard_charts_only_metrics_of_the_reference(path: Path) -> None:
     """Every name of a metric in every Prometheus query is one that an instrument gives.
@@ -195,23 +222,28 @@ def test_each_dashboard_charts_only_metrics_of_the_reference(path: Path) -> None
     every command's and each command's, its pages found in their folder.
     """
     pages = [documented(page) for page in (README, *operations())]
-    instruments = {
-        name: (kind, unit) for page in pages for name, (kind, unit, _) in page.instruments.items()
-    }
-    known = set()
-    for name, (kind, unit) in instruments.items():
-        words = re.split(r"[^a-z0-9]+", name)
-        word = "ratio" if (kind, unit) == ("gauge", "1") else UNIT_WORDS.get(unit)
-        stem = "_".join([*words, word] if word and word not in words else words)
-        known |= {stem + suffix for suffix in SERIES[kind]}
-    board = json.loads(path.read_text("utf-8"))
-    queries = [
-        target["expr"]
-        for panel in board["panels"]
-        for target in panel["targets"]
-        if target["datasource"]["uid"] == "prometheus"
-    ]
-    for query in queries:
-        metrics = set(NAME.findall(NOT_METRICS.sub(" ", query))) - OPERATORS
+    known = series({name: each for page in pages for name, each in page.instruments.items()})
+    for query, metrics in prometheus_queries(path):
         assert metrics, query
         assert metrics <= known, query
+
+
+@pytest.mark.parametrize("command", sorted({path.stem for path in PATHS} & set(operations())))
+def test_a_command_s_dashboard_charts_what_others_record_too_for_its_own_runs(
+    command: str,
+) -> None:
+    """A query of an instrument that another command's page lists too keeps to its runs.
+
+    It names its command, ``aom_command``, or a metric that no other command records, as
+    ``serve``'s keep to the runs that served a call: else an ``eval`` run's pieces, which
+    it indexes, would count as an ``index`` run's.
+    """
+    own = documented(command).instruments
+    others = {
+        name for page in operations() if page != command for name in documented(page).instruments
+    }
+    shared = series({name: own[name] for name in own.keys() & others})
+    alone = series({name: own[name] for name in own.keys() - others})
+    for query, metrics in prometheus_queries(DASHBOARDS / f"{command}.json"):
+        if metrics & shared:
+            assert f'aom_command="{command}"' in query or metrics & alone, query

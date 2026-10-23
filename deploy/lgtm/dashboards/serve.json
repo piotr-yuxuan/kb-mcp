@@ -166,7 +166,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(aom_serve_fallbacks_total{job=\"atlassian-offline-mcp\"}[$__rate_interval]))",
+          "expr": "sum(rate(aom_serve_fallbacks_total{job=\"atlassian-offline-mcp\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"atlassian-offline-mcp\"})",
           "instant": false,
           "range": true,
           "legendFormat": "fallbacks"
