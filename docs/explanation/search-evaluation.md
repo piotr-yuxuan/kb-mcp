@@ -51,9 +51,10 @@ data:
 curl -s 'https://mteb-leaderboard-backend.hf.space/v1/benchmarks/MTEB(eng,%20v2)/scores' | python3 -c 'import json, sys; [print(row["model"]["name"], row["scoresByTaskType"].get("Retrieval")) for row in json.load(sys.stdin)["rows"]]'
 ```
 
-On 2026-10-21, for the candidates that Ollama's library offers (Retrieval scores, out
-of 100; the last column is a rough proxy for the compute per token, the parameters
-outside the embedding table):
+The program asks any OpenAI-compatible embeddings API, Ollama by default, so the
+candidates were those that Ollama's library offers. On 2026-10-21, their Retrieval
+scores, out of 100 (the last column is a rough proxy for the compute per token, the
+parameters outside the embedding table):
 
 | Model, Ollama tag | Multilingual v2 | English v2 | French subsets | Non-embedding parameters |
 |---|---|---|---|---|

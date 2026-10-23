@@ -11,9 +11,10 @@ subagents; it spends that session's subscription, so the user says when it runs.
 The index the server answers from, and a golden file whose refs the mirror holds, as for
 `eval` ([golden questions](golden-questions.md)). The server that the bridge starts
 reads the same settings as the commands below: run them all from one shell. By default
-it searches in hybrid mode, so Ollama must be running with the model, and the index
-built by meaning ([search by meaning](agents.md#search-by-meaning)); else `ask` answers
-by words and says so in its answer. Neither `calls/` nor `results.json` keeps that, but
+it searches in hybrid mode, so the endpoint must serve the model, Ollama or any other
+OpenAI-compatible API, and the index built by meaning ([search by
+meaning](agents.md#search-by-meaning)); else `ask` answers by words and says so in its
+answer. Neither `calls/` nor `results.json` keeps that, but
 the server's own log file does, `serve-<start>-<pid>.jsonl` in `logs.dir`, by the
 warning `search.fallback`, and with telemetry on the counter `aom.serve.fallbacks`
 counts it ([serve](../reference/telemetry/serve.md)). Run `model check` before the runs,

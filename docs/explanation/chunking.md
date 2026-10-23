@@ -43,7 +43,8 @@ before plan 019 has no chunking recorded, and was cut by `sections`.
 
 Cuts are made in characters, at four a token, the same for every model: plan 018 dropped
 `tokenizers`, `tiktoken` holds another model's vocabulary ([tiktoken]), and neither the
-OpenAI API nor Ollama's tokenises on request. Ollama reports the tokens of each answer
+OpenAI API nor Ollama's tokenises on request. Ollama, the default of the
+OpenAI-compatible endpoints that the adapter asks, reports the tokens of each answer
 (`usage.prompt_tokens`, [ollama-usage]), which the adapter reads and sums, refusing an
 answer whose count is no count. If a run's characters per reported token fell outside
 3.2 to 4.8, the constant would be set once from that ratio, before the run that decides.

@@ -4,9 +4,10 @@ Plan 020 walks the checkout for Markdown and reads each page as GitHub renders i
 relative link reaches a file, or a heading, of the checkout; a link into ``src/`` whose
 text is code names what that file defines; the map, ``docs/README.md``, links each page
 of the four folders; each command line of the program in a bash block parses, as plans
-015 and 017 first checked on their own pages; and the reference of the MCP server names,
-as plan 019 first checked, each tool and prompt that a server lists over stdio, with
-their parameters.
+015 and 017 first checked on their own pages; a page that names Ollama says that any
+OpenAI-compatible API works; and the reference of the MCP server names, as plan 019
+first checked, each tool and prompt that a server lists over stdio, with their
+parameters.
 """
 
 from __future__ import annotations
@@ -73,6 +74,10 @@ HEADING = re.compile(r"^(#{2,3}) (.+)$", re.MULTILINE)
 # The one page whose console blocks may run the program: the lesson's own subcommand,
 # which no commit declares.
 FIRST_CHANGE = "docs/tutorials/first-change.md"
+# Ollama, named in any case, and what a page that names it says too: it is the example
+# of the embedding APIs that work, never the only one.
+OLLAMA = re.compile(r"ollama", re.IGNORECASE)
+COMPATIBLE = "OpenAI-compatible"
 
 
 class Link(NamedTuple):
@@ -318,6 +323,24 @@ def test_each_documented_command_line_of_the_program_parses(checkout: frozenset[
                     refused.append(f"{page}:{line}: {said.getvalue().splitlines()[-1]}")
     assert refused == []
     assert [page for page in PAGES if not checked[page]] == []
+
+
+def test_each_page_that_names_ollama_says_that_any_openai_compatible_api_works(
+    checkout: frozenset[str],
+) -> None:
+    """Outside the plans' records, a page that names Ollama says "OpenAI-compatible" too.
+
+    The user asked the docs to take Ollama as the example, not as the requirement. A page
+    that fails is cited at its first mention of Ollama, in any case, code included.
+    """
+    unsaid = []
+    for page in sorted(path for path in checkout if path.endswith(".md")):
+        text = (ROOT / page).read_text("utf-8")
+        named = OLLAMA.search(text)
+        if named and COMPATIBLE not in text and not page.startswith("docs/work/"):
+            line = text.count("\n", 0, named.start()) + 1
+            unsaid.append(f"{page}:{line}: names Ollama, and nowhere {COMPATIBLE}")
+    assert unsaid == []
 
 
 def test_the_reference_names_each_tool_and_prompt_served_and_each_of_their_parameters(
