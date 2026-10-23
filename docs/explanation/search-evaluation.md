@@ -398,7 +398,7 @@ stay as written: what changed is the choice made after them, which is the user's
 
 Every step runs from a checkout of this repository, with `uv`, on any machine: this
 laptop, or another such as the user's machine, whose GPU should change the times. The
-sandbox's commands name `--config <missing file>`, a path where no file is, so that the
+sandbox's commands name `--config <missing-file>`, a path where no file is, so that the
 machine's settings file changes nothing: otherwise `mirror` would write its `site` into
 the mirror's addresses, and `index`, `model check` and `eval` would take its model and
 endpoint, `index` its chunking and mode too. The variables `ATLASSIAN_OFFLINE_MCP_…`
@@ -415,7 +415,7 @@ settings are the point: leave the flag out. Two things come first:
   ```
 
   ```bash
-  uv run atlassian-offline-mcp model check --config <missing file>
+  uv run atlassian-offline-mcp model check --config <missing-file>
   ```
 
   `model check` says the model's dimensions and digest, or what to run when the
@@ -442,11 +442,11 @@ the same generic names; or skip `download` and `mirror`: copy `<data>/docs` (7 M
 from a machine that has it into the new data directory, and go on from `index`.
 
 ```bash
-uv run atlassian-offline-mcp mirror --config <missing file> --data-dir <data>
+uv run atlassian-offline-mcp mirror --config <missing-file> --data-dir <data>
 ```
 
 ```bash
-uv run atlassian-offline-mcp index --config <missing file> --data-dir <data>
+uv run atlassian-offline-mcp index --config <missing-file> --data-dir <data>
 ```
 
 `index` should report 1,474 documents (263 pages and 1,211 issues), as in plans 011 and
@@ -461,7 +461,7 @@ uv run python spikes/golden_refs.py --data <data> --out <data>/eval/sandbox.yaml
 Then measure every chunking in every mode:
 
 ```bash
-uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing file> --data-dir <data> --model qwen3-embedding:0.6b
+uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b
 ```
 
 ### Comparing chunkings and modes
@@ -476,7 +476,7 @@ the tests of each mode against words. To compare the defaults with the chunking 
 plan 019's rule kept:
 
 ```bash
-uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --summary detailed
+uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --summary detailed
 ```
 
 The first run embeds each chunking's pieces that the store lacks, which took 31

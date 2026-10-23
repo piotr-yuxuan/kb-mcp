@@ -3,15 +3,17 @@
 Plan 020 walks the checkout for Markdown and reads each page as GitHub renders it: a
 relative link reaches a file, or a heading, of the checkout; a link into ``src/`` whose
 text is code names what that file defines; the map, ``docs/README.md``, links each page
-of the four folders. Plan 015 checks that the command lines of its two how-tos,
-``AGENTS.md`` and the guides it changed parse, plan 017 those of its two; plan 019 that
-the reference names each tool and prompt served.
+of the four folders; each command line of the program in a bash block parses, as plans
+015 and 017 first checked on their own pages. Plan 019 checks that the reference names
+each tool and prompt served.
 """
 
 from __future__ import annotations
 
 import ast
+import contextlib
 import inspect
+import io
 import itertools
 import posixpath
 import re
@@ -33,6 +35,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 ROOT = Path(__file__).parents[1]
+# The pages whose command lines plans 015 and 017 checked: each still holds one checked.
 PAGES = (
     "AGENTS.md",
     "docs/how-to/agents.md",
@@ -55,13 +58,17 @@ UNSLUGGED = re.compile(r"[^\w\- ]")
 KINDS = frozenset({"tutorials", "how-to", "reference", "explanation"})
 # A fragment naming lines, as GitHub's view of a file reads it: lines move, names stay.
 LINES = re.compile(r"L\d+(-L\d+)?")
-# A block of shell commands in Markdown.
-BASH = re.compile(r"^```bash\n(.*?)^```", re.MULTILINE | re.DOTALL)
 # The program's name as a word of its own, not part of a path or of another name.
 PROGRAM = re.compile(r"(?<![\w/.~-])atlassian-offline-mcp(?![\w/.-])")
-# What ends the arguments of a command: a quote, as around the command that sops runs, a
-# parenthesis, a pipe, a list, a redirection.
-END = re.compile(r"['\")|;&>]")
+# A line of a block of shell, with the lines that its continuations join to it.
+SHELL_LINE = re.compile(r"^(?:.*\\\n)*.*$", re.MULTILINE)
+# A word that sets a variable for the command that follows it.
+ASSIGNMENT = re.compile(r"[A-Za-z_]\w*=")
+# Words that end a command's arguments: a pipe, a list, a redirection.
+OPERATORS = frozenset({"|", "||", "&", "&&", ";", "<", ">", ">>"})
+# The one page whose console blocks may run the program: the lesson's own subcommand,
+# which no commit declares.
+FIRST_CHANGE = "docs/tutorials/first-change.md"
 
 
 class Link(NamedTuple):
@@ -243,29 +250,70 @@ def test_the_map_links_each_page_of_the_four_kinds_and_docs_holds_no_other(
     assert others == ["docs/README.md"]
 
 
-@pytest.mark.parametrize("page", PAGES)
-def test_each_command_line_of_the_program_parses(page: str) -> None:
-    """With continuations joined, the arguments of the program's last name in a line parse.
+def program_arguments(words: list[str]) -> list[str] | None:
+    """Give the arguments that a command line's words give the program, or None.
 
-    The last, as in ``claude mcp add ... atlassian-offline-mcp -- atlassian-offline-mcp``,
-    whose server bears the program's name; no arguments mean ``serve``. --help may exit 0.
+    The program is the command word after any ``NAME=value``, after ``uv run``, inside
+    the quoted command of ``sops exec-env <file> '...'`` or of ``eval "$(...)"``, or
+    after the ``--`` of ``claude mcp add``; its arguments end at a shell's operator.
     """
-    text = (ROOT / page).read_text("utf-8")
-    lines = [
-        END.split(PROGRAM.split(line)[-1])[0]
-        for block in BASH.findall(text)
-        for line in block.replace("\\\n", " ").splitlines()
-        if PROGRAM.search(line)
-    ]
-    assert lines, page
+    while words and ASSIGNMENT.match(words[0]):
+        words = words[1:]
+    match words:
+        case ["atlassian-offline-mcp", *arguments]:
+            return list(itertools.takewhile(lambda word: word not in OPERATORS, arguments))
+        case ["uv", "run", *command]:
+            return program_arguments(command)
+        case ["sops", "exec-env", *_, command]:
+            return program_arguments(shlex.split(command))
+        case ["claude", "mcp", "add", *added] if "--" in added:
+            return program_arguments(added[added.index("--") + 1 :])
+        case ["eval", command] if command.startswith("$(") and command.endswith(")"):
+            return program_arguments(shlex.split(command[2:-1]))
+    return None
+
+
+def test_each_documented_command_line_of_the_program_parses(checkout: frozenset[str]) -> None:
+    """In a bash block of any page but the plans', the program's arguments parse.
+
+    Continuations joined, words split as a shell does, the arguments that
+    ``program_arguments`` finds parse with the command's own parser, no arguments meaning
+    ``serve``; --help and --version exit 0, which passes. A console block that names the
+    program is refused outside the tutorial of a first change, whose subcommand no
+    commit declares.
+    """
     refused = []
-    for given in lines:
-        try:
-            parser().parse_args(shlex.split(given) or ["serve"])
-        except SystemExit as stopped:
-            if stopped.code != 0:
-                refused.append(given)
+    checked: Counter[str] = Counter()
+    blocks = [
+        (page, block)
+        for page in sorted(path for path in checkout if path.endswith(".md"))
+        if not page.startswith("docs/work/")
+        for block in PARSER.parse((ROOT / page).read_text("utf-8"))
+        if block.type == "fence" and block.info in {"bash", "console"}
+    ]
+    for page, block in blocks:
+        for found in SHELL_LINE.finditer(block.content):
+            given = found[0].replace("\\\n", " ")
+            if not PROGRAM.search(given):
+                continue
+            line = block.map[0] + 2 + block.content.count("\n", 0, found.start())
+            if block.info == "console":
+                if page != FIRST_CHANGE:
+                    refused.append(f"{page}:{line}: the program in a console block")
+                continue
+            arguments = program_arguments(shlex.split(given))
+            if arguments is None:
+                continue
+            checked[page] += 1
+            said = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(said):
+                    parser().parse_args(arguments or ["serve"])
+            except SystemExit as stopped:
+                if stopped.code != 0:
+                    refused.append(f"{page}:{line}: {said.getvalue().splitlines()[-1]}")
     assert refused == []
+    assert [page for page in PAGES if not checked[page]] == []
 
 
 def test_the_reference_names_each_tool_and_prompt_served_and_each_of_their_parameters() -> None:
