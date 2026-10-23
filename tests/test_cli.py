@@ -12,6 +12,7 @@ import stat
 import subprocess
 import sys
 import tomllib
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, override
 
@@ -1119,6 +1120,31 @@ def test_check_writes_one_log_file_at_the_platform_s_default_from_run_start_to_r
     assert (end["level"], end["event"], end["status"]) == ("info", "run.end", 0)
     assert isinstance(end["seconds"], float)
     assert end["seconds"] >= 0
+
+
+def test_a_run_removes_every_command_s_log_files_past_30_days_but_not_another_program_s(
+    home: Path,
+) -> None:
+    """``check`` removes ``doctor``'s and ``serve``'s as its own, by plan 016.
+
+    A command that is rarely run, such as ``doctor``, so keeps none past 30 days. A file
+    of the same shape named after no command, another program's in a shared folder,
+    stays, as does a command's of yesterday.
+    """
+    folder = user_log_folder(home.resolve())
+    folder.mkdir(parents=True)
+    old = "20200101T000000Z"
+    gone = [f"check-{old}-7.jsonl", f"doctor-{old}-8.jsonl", f"serve-{old}-9.jsonl"]
+    kept = [
+        f"backup-{old}-7.jsonl",
+        f"index-{datetime.now(UTC) - timedelta(days=1):%Y%m%dT%H%M%SZ}-7.jsonl",
+    ]
+    for name in [*gone, *kept]:
+        (folder / name).write_text("{}\n", encoding="utf-8")
+    assert main(["check", "--config", str(home / "none.toml"), "--site", SITE]) == 0
+    (written,) = {path.name for path in folder.iterdir()} - set(kept)
+    assert written.startswith("check-")
+    assert written not in gone
 
 
 def test_help_version_completions_and_completion_write_no_log_file(

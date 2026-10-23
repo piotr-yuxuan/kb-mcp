@@ -26,7 +26,7 @@ from atlassian_offline_mcp.observability.domain.log_files import expired, log_fi
 from atlassian_offline_mcp.observability.domain.redaction import redact_secrets
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Collection, Iterator, Mapping
     from datetime import datetime
 
 # The program's name, as pyproject.toml names its script, which names its log folder.
@@ -148,29 +148,31 @@ def route_through_logging() -> None:
 
 
 @contextmanager
-def log_file(folder: Path, command: str, run: str, now: datetime, cap: int = CAP) -> Iterator[Path]:
+def log_file(
+    folder: Path, command: str, run: str, now: datetime, commands: Collection[str]
+) -> Iterator[Path]:
     """Write every event and record, from DEBUG, as JSON lines into the run's own file.
 
     The run of ``command``, whose id is ``run``, starts at ``now``. Within, the file is a
     sink of the root logger, for all that ``route_through_logging`` lets through, and its
     path is given: ``<folder>/<command>-<UTC start>-<pid>.jsonl``, which the user alone
     can read, as ``folder`` when it is made here; one that exists keeps its mode, since
-    the user may have chosen it. Before the file is opened, the log files of
-    ``command`` in ``folder`` whose run started over 30 days before ``now`` are
-    removed: another command's wait for its own next run. Each line adds ``run``
-    and ``command``, which replace an event's own of these names, and, within a span, its
-    ``trace_id`` and ``span_id``; a traceback shows no frame's locals. Past ``cap`` bytes
-    of lines, a line ``log.capped`` ends the file; a line that cannot be written, as on
-    a full disk, ends it too, with one ``log.unwritable`` to the other sinks. Raises
-    OSError when ``folder`` cannot be made or written.
+    the user may have chosen it. Before the file is opened, the log files in ``folder``
+    of any of ``commands``, the program's, whose run started over 30 days before ``now``
+    are removed, not only ``command``'s; another program's, named otherwise, stay.
+    Each line adds ``run`` and ``command``, which replace an event's own of these names,
+    and, within a span, its ``trace_id`` and ``span_id``; a traceback shows no frame's
+    locals. Past ``CAP`` bytes of lines, a line ``log.capped`` ends the file; a line
+    that cannot be written, as on a full disk, ends it too, with one ``log.unwritable``
+    to the other sinks. Raises OSError when ``folder`` cannot be made or written.
     """
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     for old in folder.iterdir():
-        if expired(old.name, command, now):
+        if expired(old.name, commands, now):
             old.unlink(missing_ok=True)
     path = folder / log_file_name(command, now, os.getpid())
     with open(path, "a", encoding="utf-8", opener=partial(os.open, mode=0o600)) as stream:
-        handler = CappedFile(stream, cap)
+        handler = CappedFile(stream, CAP)
         handler.setFormatter(
             structlog.stdlib.ProcessorFormatter(
                 foreign_pre_chain=SHARED,

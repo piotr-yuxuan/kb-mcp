@@ -55,13 +55,16 @@ class Invocation:
 
     ``described`` holds the command line's fields, such as the arguments and the
     settings. A ``dry_run`` only says what it would do; a run that is not ``traced`` is
-    no trace of its own, such as a server's, each of whose requests is one.
+    no trace of its own, such as a server's, each of whose requests is one. The
+    program's ``commands``, by name, are those whose log files past 30 days the run
+    removes from its folder: none by default.
     """
 
     command: str
     described: Mapping[str, object] = field(default_factory=dict)
     dry_run: bool = False
     traced: bool = True
+    commands: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -150,7 +153,9 @@ def observed(
         stack.enter_context(progress.drawn(Bars(console, shown=bars)))
         path = None
         try:
-            path = stack.enter_context(log_file(folder, command, run.id, datetime.now(UTC)))
+            path = stack.enter_context(
+                log_file(folder, command, run.id, datetime.now(UTC), invocation.commands)
+            )
         except OSError as error:
             log.warning("log.unwritable", folder=str(folder), reason=str(error))
         if endpoint is not None:

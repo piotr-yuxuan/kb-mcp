@@ -57,7 +57,8 @@ def parser(
     """Return the command's parser, of this class, with every subcommand declared.
 
     Its help ends with who asks before acting, the subcommands whose declaration says
-    they write, and every exit status with what it means.
+    they write, and every exit status with what it means. What it parses holds
+    ``commands``, every subcommand's name, whose old log files a run removes.
     """
     program = parser_class(
         prog=PROGRAM,
@@ -71,6 +72,7 @@ def parser(
     found = sorted(module.name for module in pkgutil.iter_modules(options.__path__))
     for name in (name for name in found if not name.startswith("_")):
         importlib.import_module(f"{options.__name__}.{name}").register(subparsers)
+    program.set_defaults(commands=frozenset(subparsers.choices))
     writing = ", ".join(
         name
         for name, declared in subparsers.choices.items()

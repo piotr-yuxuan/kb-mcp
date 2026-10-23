@@ -40,8 +40,9 @@ by default the user's log folder as platformdirs places it:
 judges it as it does the data directory, and names `logs.dir` when it refuses it.
 `observability.adapters.logs.log_file` alone writes there: one file a run,
 `<command>-<start>-<pid>.jsonl`, 0600, in a folder that it makes 0700, and it removes
-the run's command's files of that pattern whose run started more than 30 days before.
-The program reads none back. [The telemetry reference](telemetry/README.md) gives the file's fields.
+the files of that pattern, named after any of the program's commands, whose run
+started more than 30 days before. The program reads none back. [The telemetry
+reference](telemetry/README.md) gives the file's fields.
 
 ## The ontology, and where details of the site live
 

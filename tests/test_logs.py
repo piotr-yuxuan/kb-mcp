@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import errno
-import inspect
 import io
 import json
 import logging
@@ -36,6 +35,8 @@ if TYPE_CHECKING:
 
 NOW = datetime(2026, 10, 22, 21, 5, 9, tzinfo=UTC)
 RUN = "0123456789abcdef"
+# Commands of the program, as the command line gives them, some of them.
+COMMANDS = frozenset({"check", "download", "index", "login"})
 SENTINEL = "sentinel-token-3f8a"
 BASIC = base64.b64encode(f"tests@example.invalid:{SENTINEL}".encode()).decode()
 # The loggers whose levels a test changes, the root's first.
@@ -78,7 +79,7 @@ def lines(path: Path) -> list[dict[str, object]]:
 def test_the_file_is_named_by_command_utc_start_and_process(tmp_path: Path) -> None:
     """``<folder>/<command>-<UTC %Y%m%dT%H%M%SZ>-<pid>.jsonl``, whatever the start's offset."""
     paris = NOW.astimezone(timezone(timedelta(hours=2)))
-    with log_file(tmp_path, "check", RUN, paris) as path:
+    with log_file(tmp_path, "check", RUN, paris, COMMANDS) as path:
         pass
     assert path == tmp_path / f"check-20261022T210509Z-{os.getpid()}.jsonl"
     assert path.is_file()
@@ -89,7 +90,7 @@ def test_the_folder_and_the_file_are_the_user_s_alone(tmp_path: Path) -> None:
     folder = tmp_path / "state" / "logs"
     mask = os.umask(0)
     try:
-        with log_file(folder, "check", RUN, NOW) as path:
+        with log_file(folder, "check", RUN, NOW, COMMANDS) as path:
             pass
     finally:
         os.umask(mask)
@@ -103,7 +104,7 @@ def test_a_folder_that_exists_keeps_its_mode(tmp_path: Path) -> None:
     folder.mkdir()
     shared = stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
     folder.chmod(shared)
-    with log_file(folder, "check", RUN, NOW) as path:
+    with log_file(folder, "check", RUN, NOW, COMMANDS) as path:
         pass
     assert stat.S_IMODE(folder.stat().st_mode) == shared
     assert stat.S_IMODE(path.stat().st_mode) == stat.S_IRUSR | stat.S_IWUSR
@@ -112,7 +113,7 @@ def test_a_folder_that_exists_keeps_its_mode(tmp_path: Path) -> None:
 def test_events_and_libraries_records_share_the_file_from_debug(tmp_path: Path) -> None:
     """Each line: timestamp in UTC, level, event, logger, run, command, and the event's own."""
     before = datetime.now(UTC)
-    with log_file(tmp_path, "download", RUN, NOW) as path:
+    with log_file(tmp_path, "download", RUN, NOW, COMMANDS) as path:
         structlog.get_logger().debug("download.document", id="65601", title="Plan")
         logging.getLogger("some.library").info("connected to %s", "the site")
     after = datetime.now(UTC)
@@ -141,7 +142,7 @@ def test_events_and_libraries_records_share_the_file_from_debug(tmp_path: Path) 
 
 def test_the_run_s_fields_replace_an_event_s_own(tmp_path: Path) -> None:
     """``run`` and ``command`` are always the run's."""
-    with log_file(tmp_path, "check", RUN, NOW) as path:
+    with log_file(tmp_path, "check", RUN, NOW, COMMANDS) as path:
         structlog.get_logger().info("run.start", run="another", command="index")
     (line,) = lines(path)
     assert (line["run"], line["command"]) == (RUN, "check")
@@ -152,7 +153,7 @@ def test_a_line_within_a_span_carries_its_ids_in_hex_and_one_outside_none(
 ) -> None:
     """As OTLP's JSON writes them: the trace's in 32 hex digits, the span's in 16."""
     tracer = TracerProvider(shutdown_on_exit=False).get_tracer(__name__)
-    with log_file(tmp_path, "download", RUN, NOW) as path:
+    with log_file(tmp_path, "download", RUN, NOW, COMMANDS) as path:
         with tracer.start_as_current_span("download.document") as span:
             structlog.get_logger().debug("download.document", id="65601")
             logging.getLogger("some.library").info("connected")
@@ -173,7 +174,7 @@ def test_a_line_within_a_span_carries_its_ids_in_hex_and_one_outside_none(
 )
 def test_http_libraries_reach_the_file_from_warning(tmp_path: Path, library: str) -> None:
     """Their requests at DEBUG and INFO, with queries, stay out; their warnings go in."""
-    with log_file(tmp_path, "download", RUN, NOW) as path:
+    with log_file(tmp_path, "download", RUN, NOW, COMMANDS) as path:
         logging.getLogger(library).debug("sending headers")
         logging.getLogger(library).info("GET https://example.invalid/media?token=%s", SENTINEL)
         logging.getLogger(library).warning("retrying")
@@ -182,7 +183,7 @@ def test_http_libraries_reach_the_file_from_warning(tmp_path: Path, library: str
 
 def test_secrets_are_redacted_before_the_file(tmp_path: Path) -> None:
     """Under headers.Authorization or as a token, neither sentinel nor its base64 is written."""
-    with log_file(tmp_path, "login", RUN, NOW) as path:
+    with log_file(tmp_path, "login", RUN, NOW, COMMANDS) as path:
         structlog.get_logger().warning(
             "sign_in.refused",
             status=401,
@@ -204,7 +205,7 @@ def test_a_traceback_is_structured_and_shows_no_frame_s_locals(tmp_path: Path) -
 
     The title is a local of the test's frame, and of json's frames as their argument.
     """
-    with log_file(tmp_path, "index", RUN, NOW) as path:
+    with log_file(tmp_path, "index", RUN, NOW, COMMANDS) as path:
         try:
             title = SENTINEL
             json.loads(title)
@@ -220,13 +221,14 @@ def test_a_traceback_is_structured_and_shows_no_frame_s_locals(tmp_path: Path) -
     assert all(frame.get("locals") is None for frame in stack["frames"])
 
 
-def test_a_run_first_removes_its_command_s_log_files_past_30_days_and_leaves_the_rest(
+def test_a_run_first_removes_the_program_s_log_files_past_30_days_and_leaves_the_rest(
     tmp_path: Path,
 ) -> None:
-    """Of its command's, a run started over 30 days before now goes; any other file stays.
+    """Of any of its commands, a run started over 30 days before now goes; the rest stays.
 
-    Another command's waits for that command's next run; another program's, of the same
-    shape, in a folder that it shares, is not this program's to remove.
+    Another command's goes too, so that a command not run again keeps none past 30 days;
+    another program's, of the same shape, in a folder that it shares, is not this
+    program's to remove.
     """
     folder = tmp_path / "logs"
     folder.mkdir()
@@ -236,11 +238,12 @@ def test_a_run_first_removes_its_command_s_log_files_past_30_days_and_leaves_the
 
     gone = [
         name("check", timedelta(days=30, seconds=1)),
-        name("check", timedelta(days=400), 99999),
+        name("download", timedelta(days=400), 99999),
+        name("login", timedelta(days=31)),
     ]
     kept = [
-        name("download", timedelta(days=400), 99999),
         name("nightly-backup", timedelta(days=400), 42),
+        name("backup", timedelta(days=400), 42),
         name("index", timedelta(days=30)),
         name("check", timedelta(days=2)),
         name("eval", -timedelta(days=1)),
@@ -250,14 +253,17 @@ def test_a_run_first_removes_its_command_s_log_files_past_30_days_and_leaves_the
     ]
     for file_name in [*gone, *kept]:
         (folder / file_name).write_text("{}\n", encoding="utf-8")
-    with log_file(folder, "check", RUN, NOW) as path:
+    with log_file(folder, "check", RUN, NOW, COMMANDS) as path:
         assert {file.name for file in folder.iterdir()} == {*kept, path.name}
 
 
-def test_past_the_cap_a_line_log_capped_ends_the_file(tmp_path: Path) -> None:
+def test_past_the_cap_a_line_log_capped_ends_the_file(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
     """The earliest lines, whole, as many as fit in the cap; then log.capped; then none."""
     cap = 100_000
-    with log_file(tmp_path, "download", RUN, NOW, cap=cap) as path:
+    monkeypatch.setattr(logs, "CAP", cap)
+    with log_file(tmp_path, "download", RUN, NOW, COMMANDS) as path:
         for count in range(1000):
             structlog.get_logger().debug("download.document", count=f"{count:03}")
         logging.getLogger("some.library").warning("after the cap")
@@ -293,7 +299,7 @@ def test_a_file_that_stops_taking_lines_ends_saying_so_once_elsewhere(
         lambda *_, **__: io.TextIOWrapper(io.BufferedWriter(full), encoding="utf-8"),
         raising=False,
     )
-    with capture_logs() as events, log_file(tmp_path, "check", RUN, NOW):
+    with capture_logs() as events, log_file(tmp_path, "check", RUN, NOW, COMMANDS):
         for count in range(3):
             logging.getLogger("some.library").warning("line %d", count)
     assert full.closed
@@ -308,9 +314,9 @@ def test_a_file_that_stops_taking_lines_ends_saying_so_once_elsewhere(
     assert capsys.readouterr().err == ""
 
 
-def test_the_cap_is_256_mib_unless_another_is_given() -> None:
+def test_the_cap_is_256_mib() -> None:
     """256 MiB, where a first download of 20,000 documents writes about 40 MB."""
-    assert inspect.signature(log_file).parameters["cap"].default == 256 * 2**20
+    assert logs.CAP == 256 * 2**20
 
 
 def test_the_default_folder_is_the_platform_s_log_folder_for_the_user(

@@ -45,7 +45,8 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
     The run's status is returned.
 
     From the run's import to its result written, the run is ``observed``: its logs go to
-    stderr at its level and to its log file, in the settings' log folder, and its start
+    stderr at its level and to its log file, in the settings' log folder, where every
+    command's files past 30 days go, as the parser's ``commands`` name them; its start
     names the arguments ``given``, the settings as one JSON document, secrets masked,
     and the layer of telemetry's endpoint, which says what turned telemetry on, or off;
     its telemetry goes to the settings' endpoint, if any, as one trace unless its
@@ -105,6 +106,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
             },
             dry_run=command.dry_run and arguments.dry_run,
             traced=command.traced,
+            commands=arguments.commands,
         ),
     ) as run:
         module = importlib.import_module(command.run)

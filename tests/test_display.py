@@ -214,7 +214,7 @@ def test_secrets_are_redacted_before_the_console() -> None:
 def test_the_sdk_s_own_records_stay_off_the_console(tmp_path: Path) -> None:
     """They go to the file alone, whatever their level; a library named alike is shown."""
     console = piped()
-    with drawn(console), log_file(tmp_path, "check", RUN, NOW) as path:
+    with drawn(console), log_file(tmp_path, "check", RUN, NOW, {"check"}) as path:
         logging.getLogger("opentelemetry").error("export failed")
         logging.getLogger("opentelemetry.sdk.trace.export").error("export failed again")
         logging.getLogger("opentelemetry_like").error("not the SDK")
