@@ -596,7 +596,7 @@ def test_check_in_short_shows_each_setting_given_and_its_value(
 ) -> None:
     """From any layer, by its path; a secret said to be set; the settings at defaults left out."""
     config = home / "config.toml"
-    config.write_text('site = "https://file.example.invalid"\nsearch_mode = "hybrid"\n', "utf-8")
+    config.write_text('site = "https://file.example.invalid"\nsearch_mode = "semantic"\n', "utf-8")
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES", '["ENG", "OPS"]')
     for name, value in SECRETS.items():
         monkeypatch.setenv(name, value)
@@ -605,7 +605,7 @@ def test_check_in_short_shows_each_setting_given_and_its_value(
         "site: https://file.example.invalid\n"
         "api_token: set\n"
         f"data_dir: {(home / 'from-flag').resolve()}\n"
-        "search_mode: hybrid\n"
+        "search_mode: semantic\n"
         "embedding_api_key: set\n"
         "sources.confluence.spaces: ENG, OPS\n"
     )
