@@ -49,6 +49,7 @@ if TYPE_CHECKING:
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
+    from opentelemetry.sdk.metrics.export import Metric
 
     from tests.conftest import InMemory
 
@@ -406,6 +407,7 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
         synced = sync(context(settings, FIRST, failing), [step])
     assert (synced.steps[0].outcome, synced.exit_status) == ("failed", ExitStatus.FAILED)
     assert logged_as(logged, "worklog.nothing_removed")
+    assert [each["outcome"] for each in logged_as(logged, "sync.step")] == ["failed"]
     assert gone.exists()
     todo.write_text(todo.read_text("utf-8").replace("Drafted, failing, on", "Drafted on"), "utf-8")
     assert sync(context(settings, FIRST), [step]).exit_status == ExitStatus.OK
@@ -669,34 +671,6 @@ def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
 STEP_PAGES = ("download", "mirror")
 
 
-def own_records(emitted: Emitted) -> Emitted:
-    """Keep what a sync records of its own; check that the steps' records are on their pages.
-
-    What a step's page lists, and sync's page does not, is the step's: each such event is
-    recorded with listed fields alone, each span by its listed name, and is left out.
-    """
-    mine = documented("sync")
-    steps = [documented(page) for page in STEP_PAGES]
-    events = {name: fields for page in steps for name, fields in page.events.items()}
-    events = {name: fields for name, fields in events.items() if name not in mine.events}
-    spans = {name for page in steps for name in page.spans} - set(mine.spans)
-    instruments = {name for page in steps for name in page.instruments} - set(mine.instruments)
-    assert all(
-        recorded <= events[name] for name, recorded in emitted.events.items() if name in events
-    )
-    kept = Emitted()
-    for name, fields in emitted.events.items():
-        if name not in events:
-            kept.events[name] |= fields
-    kept.logged = [each for each in emitted.logged if each[0] not in events]
-    kept.records = [each for each in emitted.records if each[0] not in events]
-    kept.spans = [each for each in emitted.spans if each.name not in spans]
-    kept.instruments.update(
-        (name, value) for name, value in emitted.instruments.items() if name not in instruments
-    )
-    return kept
-
-
 @pytest.mark.usefixtures("signed_in")
 def test_what_sync_records_is_what_its_page_says(
     home: Path, worklog: Path, telemetry: InMemory, monkeypatch: MonkeyPatch
@@ -704,8 +678,10 @@ def test_what_sync_records_is_what_its_page_says(
     """Runs that between them record each event, span and instrument of sync's page.
 
     A full run, a dry run, one interrupted, one refused, one without pandoc, one meeting
-    a problem and two transcripts of one id, one whose pandoc gives no version. No line
-    of the log files holds a document's text.
+    a problem and two transcripts of one id, one whose pandoc gives no version. What a
+    step's page lists, and sync's does not, is the step's: each such event is recorded
+    with listed fields alone, and is left out of sync's, as are the step's spans and
+    instruments. No line of the log files holds a document's text.
     """
     config = settings_file(home, worklog, atlassian=True)
     period = ("--since", "2026-10-02")
@@ -733,7 +709,28 @@ def test_what_sync_records_is_what_its_page_says(
     absent = settings_file(home, home / "absent")
     with emitted.gathering(telemetry, "sync"):
         assert main(command(home, absent, "--yes")) == ExitStatus.REFUSED
-    assert undocumented("sync", own_records(emitted)) == []
+    mine, steps = documented("sync"), [documented(page) for page in STEP_PAGES]
+    theirs = {name: fields for page in steps for name, fields in page.events.items()}
+    theirs = {name: fields for name, fields in theirs.items() if name not in mine.events}
+    unlisted = {
+        name: sorted(recorded - theirs[name])
+        for name, recorded in emitted.events.items()
+        if name in theirs and recorded - theirs[name]
+    }
+    assert unlisted == {}, "a step's event with fields its page does not list"
+    spans = {name for page in steps for name in page.spans} - set(mine.spans)
+    instruments = {name for page in steps for name in page.instruments} - set(mine.instruments)
+    own = Emitted()
+    for name, fields in emitted.events.items():
+        if name not in theirs:
+            own.events[name] |= fields
+    own.logged = [each for each in emitted.logged if each[0] not in theirs]
+    own.records = [each for each in emitted.records if each[0] not in theirs]
+    own.spans = [each for each in emitted.spans if each.name not in spans]
+    own.instruments.update(
+        (name, value) for name, value in emitted.instruments.items() if name not in instruments
+    )
+    assert undocumented("sync", own) == []
     logs = "".join(path.read_text("utf-8") for path in home.rglob("sync-*.jsonl"))
     assert '"event": "worklog.document"' in logs  # the files hold DEBUG, titles too
     assert "Nothing dated here yet" in (worklog / "todo.org").read_text("utf-8")
@@ -750,3 +747,55 @@ def missing() -> Pandoc:
     """Fail as when pandoc went from PATH once the run began."""
     message = "pandoc: not found on PATH"
     raise PandocMissingError(message)
+
+
+def by_kind_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, object], object]:
+    """Give the work log's documents counted, by kind and outcome."""
+    return {
+        (point.attributes["aom.kind"], point.attributes["aom.outcome"]): point.value
+        for point in measured["aom.mirror.documents"].data.data_points
+        if point.attributes and "aom.kind" in point.attributes
+    }
+
+
+def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
+    home: Path, worklog: Path, telemetry: InMemory
+) -> None:
+    """Each document counted by kind and outcome, each work-log span in the row's step.
+
+    Fresh, twelve entries and four transcripts are mirrored, each conversion timed by
+    kind; unchanged, all are kept and none timed. Each work-log span is in the row's
+    ``sync.step``, which names the step and its outcome, in the run's root; each
+    document's event is logged in ``worklog.convert``.
+    """
+    config = settings_file(home, worklog)
+    assert main(command(home, config, "--yes")) == ExitStatus.OK
+    first, spans = telemetry.measured(), telemetry.spans.get_finished_spans()
+    assert main(command(home, config, "--yes")) == ExitStatus.OK
+    second = telemetry.measured()
+    assert by_kind_and_outcome(first) == {("entry", "mirrored"): 12, ("transcript", "mirrored"): 4}
+    assert by_kind_and_outcome(second) == {("entry", "kept"): 12, ("transcript", "kept"): 4}
+    timed = first["aom.mirror.conversion.duration"].data.data_points
+    assert {point.attributes["aom.kind"]: point.count for point in timed} == {
+        "entry": 12,
+        "transcript": 4,
+    }
+    assert "aom.mirror.conversion.duration" not in second
+    (row,) = [span for span in spans if span.name == "sync.step"]
+    assert (row.attributes["aom.step"], row.attributes["aom.outcome"]) == ("worklog", "done")
+    (root,) = [span for span in spans if span.name == "sync"]
+    assert row.parent is not None
+    assert row.parent.span_id == root.context.span_id
+    worklog_spans = {span.name: span for span in spans if span.name.startswith("worklog.")}
+    assert set(worklog_spans) == {"worklog.read", "worklog.convert", "worklog.write"}
+    assert all(
+        span.parent is not None and span.parent.span_id == row.context.span_id
+        for span in worklog_spans.values()
+    )
+    emitted = Emitted()
+    with emitted.gathering(telemetry, "sync"):
+        assert main(command(home, config, "--yes", "-vv")) == ExitStatus.OK
+    (converting,) = [span.span_id for span in emitted.spans if span.name == "worklog.convert"]
+    documents = [each for each in emitted.logged if each[0] == "worklog.document"]
+    assert len(documents) == WORKLOG_DOCUMENTS
+    assert {span for _, _, _, span, _ in documents} == {converting}
