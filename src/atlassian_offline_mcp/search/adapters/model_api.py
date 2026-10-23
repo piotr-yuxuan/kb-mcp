@@ -21,6 +21,8 @@ from atlassian_offline_mcp.observability.adapters.http import Recorded
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from atlassian_offline_mcp.kernel.endpoint import Service
+
 MAX_ANSWER_BYTES = 64 * 1024 * 1024
 # Statuses worth another attempt: the endpoint busy, or failing for a while.
 RETRIED = frozenset({429, 500, 502, 503, 504})
@@ -37,17 +39,18 @@ class Bounds:
 
 
 class ModelError(Exception):
-    """An embedding that the endpoint did not give; the message says why and what to do."""
+    """An answer that a model server did not give; the message says why and what to do."""
 
 
 @dataclass(frozen=True)
 class Endpoint:
-    """An open client to the embedding API, what this run allows, and its clock.
+    """An open client to a model server, the service it is, what this run allows, its clock.
 
     Closed after use, as a context manager.
     """
 
     http: httpx.Client
+    service: Service
     remote_allowed: bool
     sleep: Callable[[float], None] = field(default=time.sleep)
     clock: Callable[[], float] = field(default=time.monotonic)
@@ -62,9 +65,14 @@ class Endpoint:
 
 
 def endpoint(
-    url: str, key: str | None, *, remote_allowed: bool, transport: httpx.BaseTransport | None = None
+    url: str,
+    key: str | None,
+    service: Service,
+    *,
+    remote_allowed: bool,
+    transport: httpx.BaseTransport | None = None,
 ) -> Endpoint:
-    """Open a client to the API at ``url``, with ``key`` as its bearer token, if any.
+    """Open a client to the service's API at ``url``, with ``key`` as its bearer token, if any.
 
     Raises SettingsError for an address that is not a literal address of this machine,
     unless ``remote_allowed``, and for plain http to one even then. On this machine the
@@ -72,7 +80,7 @@ def endpoint(
     are never followed. Each request sent is observed, as ``Recorded`` has it.
     ``transport`` replaces the network, for tests.
     """
-    refusal = refused_endpoint(url, remote_allowed=remote_allowed)
+    refusal = refused_endpoint(url, service, remote_allowed=remote_allowed)
     if refusal is not None:
         raise SettingsError(refusal)
     here = loopback(url)
@@ -87,7 +95,7 @@ def endpoint(
         follow_redirects=False,
         transport=Recorded(network, httpx.URL(url).host),
     )
-    return Endpoint(http, remote_allowed)
+    return Endpoint(http, service, remote_allowed)
 
 
 def send(
@@ -124,7 +132,7 @@ def send(
         if answer is not None and (answer[0] not in RETRIED or attempt + 1 == bounds.attempts):
             return answer
     message = (
-        f"no answer from the embedding endpoint ({reason}); is it running?"
-        " With Ollama: ollama serve"
+        f"no answer from {endpoint.service.name} ({reason}); is it running?"
+        f" {endpoint.service.start}"
     )
     raise ModelError(message)

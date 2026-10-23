@@ -27,6 +27,7 @@ from atlassian_offline_mcp.config.domain.settings import (
     Settings,
     SettingsError,
 )
+from atlassian_offline_mcp.kernel.endpoint import EMBEDDINGS, Service
 from atlassian_offline_mcp.search.adapters import embedding
 from atlassian_offline_mcp.search.adapters.embedding import (
     BATCH,
@@ -46,6 +47,7 @@ from atlassian_offline_mcp.search.adapters.model_api import (
     Endpoint,
     ModelError,
     endpoint,
+    send,
 )
 from tests.endpoint import (
     DIGEST,
@@ -102,7 +104,9 @@ def answering(embeddings: Callable[[httpx.Request], httpx.Response]) -> Endpoint
 
 def over(handle: Callable[[httpx.Request], httpx.Response]) -> Endpoint:
     """Open an endpoint at Ollama's address that answers every request with ``handle``."""
-    return endpoint(URL, None, remote_allowed=False, transport=httpx.MockTransport(handle))
+    return endpoint(
+        URL, None, EMBEDDINGS, remote_allowed=False, transport=httpx.MockTransport(handle)
+    )
 
 
 def data(*rows: object) -> httpx.Response:
@@ -331,7 +335,9 @@ def test_the_key_is_sent_only_when_set_and_never_said() -> None:
         return httpx.Response(401)
 
     for key in ("a-secret-key", None):
-        opened = endpoint(URL, key, remote_allowed=False, transport=httpx.MockTransport(refuse))
+        opened = endpoint(
+            URL, key, EMBEDDINGS, remote_allowed=False, transport=httpx.MockTransport(refuse)
+        )
         with pytest.raises(ModelError, match=embedding.KEY_VARIABLE) as refused:
             embed(opened, "tiny", ["undo"], SINGLE)
         assert "a-secret-key" not in str(refused.value)
@@ -366,6 +372,21 @@ def test_a_missing_model_and_no_answer_say_what_to_run() -> None:
 
     with pytest.raises(ModelError, match=r"no answer .*\(ConnectError\).*ollama serve"):
         digest(over(down), "tiny")
+
+
+def test_no_answer_names_its_service_and_how_to_start_it() -> None:
+    """Another service's client says that service's name and its own way to start it."""
+    other = Service("the other server", "other.url", "--allow-remote-other", "Start: other serve")
+
+    def down(request: httpx.Request) -> httpx.Response:
+        message = "refused"
+        raise httpx.ConnectError(message, request=request)
+
+    opened = endpoint(URL, None, other, remote_allowed=False, transport=httpx.MockTransport(down))
+    with opened, pytest.raises(ModelError) as failed:
+        send(opened, "GET", "anything", SINGLE)
+    said = "no answer from the other server (ConnectError); is it running? Start: other serve"
+    assert str(failed.value) == said
 
 
 def test_the_captured_answers_of_ollama_parse() -> None:
@@ -403,6 +424,7 @@ def test_the_fingerprint_changes_with_anything_that_makes_vectors(
     elsewhere = endpoint(
         "http://127.0.0.2:8080/v1",
         None,
+        EMBEDDINGS,
         remote_allowed=False,
         transport=httpx.MockTransport(Scripted()),
     )
@@ -470,7 +492,9 @@ def test_a_model_that_ollama_serves_from_elsewhere_is_refused_unless_allowed() -
     for spelt in ("tiny:cloud", "TINY:CLOUD", "registry.ollama.ai/library/tiny:cloud"):
         with pytest.raises(ModelError, match="from elsewhere"):
             digest(over(cloud), spelt)
-    allowed = endpoint(URL, None, remote_allowed=True, transport=httpx.MockTransport(cloud))
+    allowed = endpoint(
+        URL, None, EMBEDDINGS, remote_allowed=True, transport=httpx.MockTransport(cloud)
+    )
     assert digest(allowed, "tiny:cloud") == "ee"
 
 
@@ -601,10 +625,10 @@ def test_each_family_takes_its_card_s_prefixes(model: str, query: str, document:
 def test_a_remote_endpoint_needs_the_flag_and_https() -> None:
     """Off this machine: refused without the run's word, and over plain http even with it."""
     with pytest.raises(SettingsError, match="not an address of this machine"):
-        endpoint("https://embeddings.example/v1", None, remote_allowed=False)
+        endpoint("https://embeddings.example/v1", None, EMBEDDINGS, remote_allowed=False)
     with pytest.raises(SettingsError, match="https only"):
-        endpoint("http://embeddings.example/v1", None, remote_allowed=True)
-    with endpoint("https://embeddings.example/v1", None, remote_allowed=True) as opened:
+        endpoint("http://embeddings.example/v1", None, EMBEDDINGS, remote_allowed=True)
+    with endpoint("https://embeddings.example/v1", None, EMBEDDINGS, remote_allowed=True) as opened:
         assert opened.remote_allowed
 
 
@@ -629,7 +653,9 @@ def test_an_allowed_remote_endpoint_goes_through_the_environment_s_proxy(
         monkeypatch.setenv("HTTPS_PROXY", f"http://127.0.0.1:{port}")
         try:
             with (
-                endpoint("https://embeddings.example/v1", None, remote_allowed=True) as opened,
+                endpoint(
+                    "https://embeddings.example/v1", None, EMBEDDINGS, remote_allowed=True
+                ) as opened,
                 pytest.raises(ModelError),
             ):
                 embed(opened, "tiny", ["undo"], Bounds(LISTENED_S, 1))
@@ -757,7 +783,7 @@ def test_a_model_in_a_local_ollama_embeds_by_meaning() -> None:
     model = str(LIVE)
     REACHABLE.add(httpx.URL(DEFAULT_EMBEDDING_URL).port or 0)
     try:
-        with endpoint(DEFAULT_EMBEDDING_URL, None, remote_allowed=False) as opened:
+        with endpoint(DEFAULT_EMBEDDING_URL, None, EMBEDDINGS, remote_allowed=False) as opened:
             embedder = connect(opened, model)
             documents = embedder.documents(
                 [

@@ -29,6 +29,7 @@ from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 import httpx
 import numpy as np
 
+from atlassian_offline_mcp.kernel.endpoint import EMBEDDINGS
 from atlassian_offline_mcp.search.adapters.embedding import connect
 from atlassian_offline_mcp.search.adapters.model_api import Endpoint, endpoint
 
@@ -130,6 +131,7 @@ def scripted(answers: Scripted | None = None, *, remote_allowed: bool = False) -
     return endpoint(
         URL,
         None,
+        EMBEDDINGS,
         remote_allowed=remote_allowed,
         transport=httpx.MockTransport(answers or Scripted()),
     )

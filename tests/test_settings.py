@@ -29,7 +29,7 @@ from atlassian_offline_mcp.config.domain.settings import (
     settings_of,
     unsafe_location,
 )
-from atlassian_offline_mcp.kernel.endpoint import loopback
+from atlassian_offline_mcp.kernel.endpoint import Service, loopback, refused_endpoint
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 
 if TYPE_CHECKING:
@@ -1052,3 +1052,15 @@ def test_archives_false_in_the_environment_turns_archives_off(
     """The variable is stronger than the file, as for every setting."""
     assert check_work_log(tmp_path, monkeypatch, 'path = "~/todo"', {ARCHIVES: "false"}) == 0
     assert "sources.worklog.archives: False\n" in capsys.readouterr().out
+
+
+def test_a_refusal_names_its_own_service_s_setting_and_flag() -> None:
+    """Each service is refused in its own words: its setting, then the flag that allows it."""
+    other = Service("the other server", "other.url", "--allow-remote-other", "other serve")
+    url = "http://10.0.0.1:9931/v1"
+    elsewhere = refused_endpoint(url, other, remote_allowed=False) or ""
+    assert elsewhere.startswith("other.url: not an address of this machine")
+    assert elsewhere.endswith("or pass --allow-remote-other")
+    https_only = "other.url: an endpoint off this machine is reached over https only"
+    assert refused_endpoint(url, other, remote_allowed=True) == https_only
+    assert refused_endpoint("http://127.0.0.1:9931/v1", other, remote_allowed=False) is None

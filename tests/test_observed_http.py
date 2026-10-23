@@ -20,6 +20,7 @@ import pytest
 from opentelemetry.trace import SpanKind, StatusCode
 from structlog.testing import capture_logs
 
+from atlassian_offline_mcp.kernel.endpoint import EMBEDDINGS
 from atlassian_offline_mcp.search.adapters.embedding import (
     DOCUMENTS,
     SINGLE,
@@ -264,7 +265,9 @@ def test_the_embeddings_endpoint_s_requests_are_observed_alike_its_key_never_sho
 
     The POST writes ``http.post``; the key, a bearer token, is in no span nor event.
     """
-    opened = endpoint(URL, KEY, remote_allowed=False, transport=httpx.MockTransport(Scripted()))
+    opened = endpoint(
+        URL, KEY, EMBEDDINGS, remote_allowed=False, transport=httpx.MockTransport(Scripted())
+    )
     with opened, capture_logs() as events:
         connect(opened, "tiny")
     spans = telemetry.spans.get_finished_spans()
