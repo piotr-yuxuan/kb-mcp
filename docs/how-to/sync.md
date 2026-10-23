@@ -53,7 +53,7 @@ The steps, in order:
    pieces whose text changed are embedded again, as [search by
    meaning](agents.md#search-by-meaning) says. An endpoint off this machine needs
    `--allow-remote-embeddings`, as for `index`, and is refused before anything runs
-   without it.
+   without it, unless a dry run.
 
 Each step runs even when an earlier one failed, since the next reads what is on disk:
 the work log is mirrored when the site asks to sign in again, and the index is built
