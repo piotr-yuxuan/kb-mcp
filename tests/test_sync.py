@@ -20,7 +20,7 @@ import pytest
 from structlog.testing import capture_logs
 
 from atlassian_offline_mcp.cli.app import sync as sync_app
-from atlassian_offline_mcp.cli.app.sync import Atlassian, Context, Row, Worklog, sync
+from atlassian_offline_mcp.cli.app.sync import Atlassian, Context, Index, Row, Worklog, sync
 from atlassian_offline_mcp.cli.domain.sync import SOURCES, chosen
 from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.config.domain.settings import Settings
@@ -33,6 +33,7 @@ from atlassian_offline_mcp.mirror.adapters.pandoc import (
     PandocMissingError,
 )
 from atlassian_offline_mcp.mirror.app import mirror as mirror_app
+from atlassian_offline_mcp.search.app.indexing import Indexing
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
@@ -258,6 +259,15 @@ def context(settings: Settings, now: datetime, pandoc: Pandoc | None = None) -> 
     return Context(settings, pandoc or Pandoc.find(), lambda: now, lambda _: None, dry_run=False)
 
 
+def by_words(settings: Settings) -> Index:
+    """Give the index's step as sync builds it in the lexical mode: no endpoint."""
+    return Index(
+        Indexing(
+            settings.docs, settings.index, settings.vectors, settings.model, settings.chunking, None
+        )
+    )
+
+
 def logged_as(logged: list[dict[str, object]], event: str) -> list[dict[str, object]]:
     """Give each event of this name that ``capture_logs`` held."""
     return [each for each in logged if each["event"] == event]
@@ -295,11 +305,12 @@ def test_a_later_sync_catches_up_on_an_old_page_edited_today_and_nothing_stored(
 def test_the_site_asking_to_sign_in_still_lets_the_work_log_run_exit_3(
     tmp_path: Path, worklog: Path
 ) -> None:
-    """No session saved: the download says to sign in, the mirror and the work log run."""
+    """No session saved: the download says to sign in; the mirror, work log and index run."""
     settings = Settings(data_dir=tmp_path / "data", site=SITE)
     steps = [
         Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
         Worklog(worklog, archives=True),
+        by_words(settings),
     ]
     with capture_logs() as logged:
         synced = sync(context(settings, FIRST), steps)
@@ -307,6 +318,7 @@ def test_the_site_asking_to_sign_in_still_lets_the_work_log_run_exit_3(
         ("download", "sign in"),
         ("mirror", "done"),
         ("worklog", "done"),
+        ("index", "done"),
     ]
     assert synced.exit_status == ExitStatus.SIGN_IN_AGAIN
     assert logged_as(logged, "download.sign_in_needed")
@@ -316,7 +328,7 @@ def test_the_site_asking_to_sign_in_still_lets_the_work_log_run_exit_3(
 def test_ctrl_c_in_the_download_exits_130_and_no_later_step_runs(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The download interrupted, the mirror and the work log not run."""
+    """The download interrupted; the mirror, the work log and the index not run."""
 
     def interrupted(*_: object) -> Outcome:
         raise KeyboardInterrupt
@@ -327,20 +339,22 @@ def test_ctrl_c_in_the_download_exits_130_and_no_later_step_runs(
         Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
         Worklog(worklog, archives=True),
     ]
-    synced = sync(context(settings, FIRST), steps)
+    synced = sync(context(settings, FIRST), [*steps, by_words(settings)])
     assert [(row.step, row.outcome) for row in synced.steps] == [
         ("download", "interrupted"),
         ("mirror", "not run"),
         ("worklog", "not run"),
+        ("index", "not run"),
     ]
     assert synced.exit_status == ExitStatus.INTERRUPTED
     assert not settings.docs.exists()
+    assert not settings.index.exists()
 
 
 def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The mirror fails, said by place; the work log still runs."""
+    """The mirror fails, said by place; the work log and the index still run."""
     problem = mirror_app.Problem("confluence/pages/1001/000001", "pandoc: exit status 9")
     monkeypatch.setattr(sync_app, "download", lambda *_: Outcome(Report(), [], ExitStatus.OK))
     monkeypatch.setattr(
@@ -354,11 +368,12 @@ def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
         Worklog(worklog, archives=True),
     ]
     with capture_logs() as logged:
-        synced = sync(context(settings, FIRST), steps)
+        synced = sync(context(settings, FIRST), [*steps, by_words(settings)])
     assert [(row.step, row.outcome) for row in synced.steps] == [
         ("download", "done"),
         ("mirror", "failed"),
         ("worklog", "done"),
+        ("index", "done"),
     ]
     assert synced.exit_status == ExitStatus.FAILED
     (said,) = logged_as(logged, "mirror.not_mirrored")
