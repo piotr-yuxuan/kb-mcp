@@ -20,8 +20,6 @@ import os
 import sys
 from pathlib import Path
 
-from opentelemetry import metrics, trace
-
 from atlassian_offline_mcp.cli.main import main
 
 # The status that a run reaching for the network ends with.
@@ -61,6 +59,9 @@ if ports:
     importlib.import_module(TELEMETRY).LIMIT_S = float(given["limit"])
 sys.addaudithook(guard)
 status = main(given["arguments"])
+# Imported once the run is over: earlier, OpenTelemetry would read the variables that a
+# run takes out of its environment before importing it.
+trace, metrics = (importlib.import_module(f"opentelemetry.{name}") for name in ("trace", "metrics"))
 kinds = [type(trace.get_tracer_provider()), type(metrics.get_meter_provider())]
 left = {
     "threads": started,

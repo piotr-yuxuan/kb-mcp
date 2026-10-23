@@ -51,6 +51,16 @@ SILENT_S = 3.0
 ENDPOINT = "http://127.0.0.1:4318"
 # Every variable that names a proxy, in both cases, as requests and urllib read them.
 PROXIES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+# OpenTelemetry's variables that the API reads on its import, or at the first call for a
+# provider, each naming its choice among the entry points that the SDK installs.
+PROVIDERS = {
+    "OTEL_PYTHON_TRACER_PROVIDER": "sdk_tracer_provider",
+    "OTEL_PYTHON_METER_PROVIDER": "sdk_meter_provider",
+    "OTEL_PYTHON_LOGGER_PROVIDER": "sdk_logger_provider",
+    "OTEL_PYTHON_CONTEXT": "contextvars_context",
+}
+# The same, each naming what is installed nowhere.
+UNKNOWN_PROVIDERS = dict.fromkeys(PROVIDERS, "elsewhere")
 
 
 @dataclass(frozen=True)
@@ -161,6 +171,8 @@ def test_an_exported_record_has_the_event_as_body_its_fields_and_the_span_around
         (False, {}),
         (True, {"OTEL_SDK_DISABLED": "true"}),
         (False, {"OTEL_EXPORTER_OTLP_ENDPOINT": ENDPOINT, "OTEL_SDK_DISABLED": "TRUE"}),
+        (False, PROVIDERS),
+        (False, UNKNOWN_PROVIDERS),
     ],
 )
 def test_off_check_installs_no_provider_starts_no_thread_and_opens_no_socket(
@@ -169,41 +181,50 @@ def test_off_check_installs_no_provider_starts_no_thread_and_opens_no_socket(
     """Without an endpoint, or with one that ``OTEL_SDK_DISABLED`` turns off: nothing is sent.
 
     Any socket at all would end the run, with status 3; no thread starts, the SDK is not
-    even imported, and the API's providers are its own, which trace and measure nothing.
+    even imported, and the API's providers are its own, which trace and measure nothing,
+    whatever provider OpenTelemetry's variables name, the SDK's or one installed nowhere.
+    Stderr says only what the settings ignored.
     """
     endpoint = ENDPOINT if setting else None
     ran = guarded(tmp_path, 0, check(tmp_path, endpoint), environment, LIMIT_S)
     assert ran.status == 0
-    assert "network" not in ran.err
+    assert all(line.startswith("ignored: ") for line in ran.err.splitlines())
     assert ran.threads == []
     assert not ran.sdk
     assert ran.providers
     assert not any(provider.startswith("opentelemetry.sdk.") for provider in ran.providers)
 
 
+@pytest.mark.parametrize("variable", [False, True])
 def test_on_all_arrives_at_this_machine_under_the_program_s_name_whatever_the_environment(
-    tmp_path: Path,
+    tmp_path: Path, *, variable: bool
 ) -> None:
     """No proxy is taken, and OpenTelemetry's variables name neither the service nor where.
 
-    Every proxy and every signal's own endpoint name a port where nothing listens, which
-    the run dies reaching; the service's name and attributes name another, and gRPC is
-    asked for. Traces, metrics and the records from INFO arrive, each record with the
-    event as body and its command, none of the SDK's own.
+    The endpoint is the setting's, or ``OTEL_EXPORTER_OTLP_ENDPOINT``'s. Every proxy and
+    every signal's own endpoint name a port where nothing listens, which the run dies
+    reaching; the service's name and attributes name another, and gRPC is asked for;
+    the API's variables name the SDK's providers, and the sampler none. Traces, metrics
+    and the records from INFO arrive, each record with the event as body and its
+    command, none of the SDK's own.
     """
     collector = Collector()
     with nothing_listening() as dead, collecting(collector) as endpoint:
         elsewhere = dead.removesuffix("/v1")
         environment = {
             **dict.fromkeys(PROXIES, elsewhere),
+            **PROVIDERS,
+            "OTEL_TRACES_SAMPLER": "always_off",
             "OTEL_SERVICE_NAME": "elsewhere",
             "OTEL_RESOURCE_ATTRIBUTES": "service.name=elsewhere,service.instance.id=elsewhere",
             "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": f"{elsewhere}/v1/traces",
             "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": f"{elsewhere}/v1/metrics",
             "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": f"{elsewhere}/v1/logs",
+            **({"OTEL_EXPORTER_OTLP_ENDPOINT": endpoint} if variable else {}),
         }
-        ran = guarded(tmp_path, port_of(endpoint), check(tmp_path, endpoint), environment, LIMIT_S)
+        arguments = check(tmp_path, None if variable else endpoint)
+        ran = guarded(tmp_path, port_of(endpoint), arguments, environment, LIMIT_S)
     assert (ran.status, ran.err) == (0, "")
     run = logged(tmp_path)[0]["run"]
     assert {path for path, _ in collector.sent} == {TRACES, METRICS, LOGS}

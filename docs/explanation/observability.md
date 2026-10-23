@@ -48,7 +48,10 @@ loopback address, so none is offered: the exporters ignore the proxy variables, 
 would carry the data off the machine, and the resource ignores `OTEL_SERVICE_NAME` and
 `OTEL_RESOURCE_ATTRIBUTES`, so that dashboards find the runs under one name.
 `OTEL_EXPORTER_OTLP_ENDPOINT`, which other programs share, is read below the settings
-file, and ignored, with a word, when it breaks the rule. The SDK is imported only once
+file, and ignored, with a word, when it breaks the rule. Every other `OTEL_` variable but
+`OTEL_SDK_DISABLED` is taken out of the run's environment before OpenTelemetry is
+imported: the API reads some on its own, and a provider named there would install the
+SDK with telemetry off, or end the run if unknown. The SDK is imported only once
 an endpoint is set: a run without telemetry opens no socket and starts no thread for
 it. No trace context goes to the site or to the embedding endpoint, which have no use
 for this machine's traces.

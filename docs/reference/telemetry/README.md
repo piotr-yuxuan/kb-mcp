@@ -91,9 +91,14 @@ the time spent, the time left and the item at hand; `serve` has none. Each task 
 | `OTEL_SDK_DISABLED` | `true` turns telemetry off, whatever gives the endpoint |
 | `NO_COLOR` | Set, stderr has no colour |
 
-`OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`, `OTEL_EXPORTER_OTLP_PROTOCOL` and each
-signal's own endpoint change nothing, nor do the proxy variables: telemetry goes to the
-endpoint itself. The file's level and how long files are kept are not settings.
+Of OpenTelemetry's variables, a run reads these two alone. It takes every other `OTEL_`
+variable out of its environment as it starts, before OpenTelemetry is imported, so that
+none changes what is sent or where, nor ends the run: `OTEL_SERVICE_NAME`,
+`OTEL_RESOURCE_ATTRIBUTES`, `OTEL_EXPORTER_OTLP_PROTOCOL`, each signal's own endpoint,
+the headers, the sampler, the API's providers (`OTEL_PYTHON_TRACER_PROVIDER` and the
+others) and its context among them. Nor do the proxy variables change anything:
+telemetry goes to the endpoint itself. The file's level and how long files are kept are
+not settings.
 
 ## Telemetry
 
