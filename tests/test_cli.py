@@ -61,8 +61,11 @@ RUNS_PACKAGES = frozenset(
     }
 )
 # What other runs import and ``completion`` must not, by plan 015: a command loads only
-# its own code, and shells run this one at each start. The entry loads pydantic for all.
-OTHER_RUNS_PACKAGES = frozenset({"httpx", "mcp", "numpy", "playwright"})
+# its own code, and shells run this one at each start. The entry loads pydantic for all,
+# and, since plan 016, structlog, Rich and the OpenTelemetry API, but not its SDK.
+OTHER_RUNS_PACKAGES = frozenset(
+    {"httpx", "lxml", "mcp", "numpy", "opentelemetry.sdk", "playwright", "requests", "yaml"}
+)
 # A subcommand's declaration, which names its run, a module of its own.
 DECLARED = """
 from pathlib import Path
