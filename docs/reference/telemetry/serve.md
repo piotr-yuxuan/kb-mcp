@@ -32,7 +32,7 @@ no task.
 | `prompts/get <prompt>` | server | `mcp.method.name`, `mcp.protocol.version`, `jsonrpc.request.id`, `gen_ai.prompt.name`, `error.type`, `rpc.response.status_code` | The SDK's: a prompt written, `brief`, `changes` or `overview`; `error.type` `-32602` when an argument is refused |
 | `search.lexical` | internal | | A search by words, the documents named first |
 | `search.semantic` | internal | | A search by meaning: the model connected once an index, the query embedded, the nearest pieces |
-| `embeddings <model>` | client | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type` | An embedding by the GenAI conventions, its attempts included |
+| `embeddings <model>` | client | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type`, `gen_ai.usage.input_tokens` | An embedding by the GenAI conventions, its attempts included, and the tokens that the endpoint counted, if it did |
 | `GET` | client | `http.request.method`, `server.address`, `server.port`, `url.full`, `http.response.status_code`, `error.type` | The endpoint's list of models, by the HTTP conventions |
 | `POST` | client | `http.request.method`, `server.address`, `server.port`, `url.full`, `http.response.status_code`, `error.type` | Each attempt at an embedding, by the HTTP conventions |
 
@@ -44,4 +44,5 @@ no task.
 | `aom.serve.answer.size` | histogram | `By` | `gen_ai.tool.name` | How long each answer is |
 | `aom.serve.fallbacks` | counter | `{fallback}` | `aom.mode` | The searches asked by meaning ranked by words alone; 0 from the server's start |
 | `gen_ai.client.operation.duration` | histogram | `s` | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type` | Each embedding, its attempts and waits included, by the GenAI conventions |
+| `gen_ai.client.token.usage` | histogram | `{token}` | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `gen_ai.token.type` | The tokens that each embedding's answer counted, `input` by type, when the endpoint counts them, by the GenAI conventions |
 | `http.client.request.duration` | histogram | `s` | `http.request.method`, `server.address`, `server.port`, `http.response.status_code`, `error.type` | Each request, by the HTTP conventions |

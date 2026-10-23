@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Protocol, Self
 import httpx
 import numpy as np
 import truststore
-from opentelemetry import metrics
+from opentelemetry import metrics, trace
 
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.endpoint import loopback, refused_endpoint
@@ -64,6 +64,15 @@ OPERATION_DURATION = metrics.get_meter(__name__).create_histogram(
     unit="s",
     description="GenAI operation duration.",
     explicit_bucket_boundaries_advisory=BUCKETS_S,
+)
+# The tokens that each embedding's answer counted, in the buckets that the GenAI
+# conventions advise, when the endpoint counts them.
+TOKEN_BUCKETS = tuple(4**power for power in range(14))  # 1 to 67,108,864
+TOKEN_USAGE = metrics.get_meter(__name__).create_histogram(
+    "gen_ai.client.token.usage",
+    unit="{token}",
+    description="Number of input and output tokens used.",
+    explicit_bucket_boundaries_advisory=TOKEN_BUCKETS,
 )
 
 
@@ -266,8 +275,10 @@ def embeddings(
     that is not an object, or any value there but an integer of 0 or more, refuses the
     answer. Raises RefusedError when the answer points at what was sent, and ModelError
     otherwise.
-    The embedding is a span ``embeddings <model>`` that holds its attempts, and its
-    duration is measured, as the GenAI conventions have them.
+
+    The embedding is a span ``embeddings <model>`` that holds its attempts and the
+    tokens counted, if any; its duration and those tokens are measured, as the GenAI
+    conventions have them.
     """
     measured = {
         "gen_ai.operation.name": "embeddings",
@@ -315,6 +326,9 @@ def embeddings(
         ):
             message = f"{model}: the endpoint's usage is not a count of tokens"
             raise ModelError(message)
+        if tokens is not None:
+            trace.get_current_span().set_attribute("gen_ai.usage.input_tokens", tokens)
+            TOKEN_USAGE.record(tokens, {**measured, "gen_ai.token.type": "input"})
         norms = np.linalg.norm(vectors, axis=1, keepdims=True)
         if not np.all(np.isfinite(norms) & (norms > 0)):
             message = f"{model}: the endpoint gave a vector of no length, or not of numbers"

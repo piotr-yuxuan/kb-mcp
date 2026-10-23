@@ -66,6 +66,8 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
+    from tests.conftest import InMemory
+
 QWEN = "qwen3-embedding:0.6b"
 NOT_READY = 1
 REFUSED = 2
@@ -841,6 +843,24 @@ def usage(value: object) -> embedding.Endpoint:
 def test_a_count_of_tokens_is_read_and_null_is_none(value: object, tokens: int | None) -> None:
     """An integer of 0 or more is the count; null says none, as no count or no usage does."""
     assert embeddings(usage(value), "tiny", ["one"], SINGLE).tokens == tokens
+
+
+@pytest.mark.parametrize(("value", "said"), [({"prompt_tokens": 21}, [21]), (None, [])])
+def test_the_embedding_s_span_and_measure_say_the_tokens_counted_if_any(
+    telemetry: InMemory, value: object, said: list[int]
+) -> None:
+    """As the GenAI conventions name them: none without a count, so none recorded as 0."""
+    embeddings(usage(value), "tiny", ["one"], SINGLE)
+    (span,) = (
+        each for each in telemetry.spans.get_finished_spans() if each.name == "embeddings tiny"
+    )
+    attributes = span.attributes or {}
+    assert [attributes[key] for key in attributes if key == "gen_ai.usage.input_tokens"] == said
+    measured = telemetry.measured().get("gen_ai.client.token.usage")
+    points = measured.data.data_points if measured else []
+    assert [(point.sum, (point.attributes or {})["gen_ai.token.type"]) for point in points] == [
+        (count, "input") for count in said
+    ]
 
 
 @pytest.mark.parametrize(
