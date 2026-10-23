@@ -54,6 +54,7 @@ RUNS_PACKAGES = frozenset(
         "pydantic",
         "pydantic_core",
         "pydantic_settings",
+        "requests",
         "rich",
         "structlog",
         "yaml",
