@@ -56,6 +56,8 @@ marked for contributors.
 
 ## Explanation
 
+- [Internals](explanation/internals.md): how the site becomes answers, stage by stage,
+  and how a page edited on the site reaches the index, its vectors and the server.
 - [Trade-offs](explanation/trade-offs.md): each decision of the design, why it was
   taken, what it costs, the alternative rejected and the plan that settled it.
 - [The code's layout](explanation/code-layout.md), for contributors: the contexts, the

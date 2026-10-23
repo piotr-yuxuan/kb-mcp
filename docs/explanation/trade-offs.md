@@ -3,9 +3,9 @@
 Each decision that shapes atlassian-offline-mcp, as one section: what was decided, why,
 what it costs, the alternative rejected, and the plan that settled it, whose record in
 [`docs/work/changelog/`](../work/changelog/) holds the full reasoning and the measures.
-[The data layout](../reference/data-layout.md) says what each part writes; this page
-says why the parts are as they are. A decision costs something by definition: each
-section names its price, so that the next person to weigh it knows what was paid.
+[The internals](internals.md) say how the parts work together; this page says why they
+are as they are. A decision costs something by definition: each section names its price,
+so that the next person to weigh it knows what was paid.
 
 ## Reads only
 
