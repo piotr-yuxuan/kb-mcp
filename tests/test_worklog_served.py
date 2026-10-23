@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.mcp.app.surface import guides
 from atlassian_offline_mcp.mcp.app.tools import Library
 from tests.answers import parts
 from tests.mirrors import page, write
@@ -77,7 +78,7 @@ def test_the_source_filter_keeps_to_the_work_log(home: Path) -> None:
 
 
 def test_a_transcript_found_is_read_by_the_ref_its_hit_shows(home: Path) -> None:
-    """The ref opens the transcript, its text inside the block; the brief prompt finds it too."""
+    """The ref opens the transcript, its text inside the block; the brief prompt takes it too."""
     served = library(home)
     (ref,) = refs(served.search(UNIQUE, filters={"source": "worklog"}))
     before, block, after = parts(served.read(ref))
@@ -86,6 +87,8 @@ def test_a_transcript_found_is_read_by_the_ref_its_hit_shows(home: Path) -> None
     path = served.resolve(ref)
     assert path is not None
     assert path.startswith("worklog/transcripts/")
+    (brief,) = [guide for guide in guides(served) if guide.name == "brief"]
+    assert f"read(ref={json.dumps(path)})" in brief.render(ref=ref)
 
 
 def test_an_entry_s_injected_line_is_inside_the_block(home: Path) -> None:
@@ -102,14 +105,21 @@ def test_the_server_says_what_entries_and_transcripts_are(home: Path) -> None:
     """Instructions and the source filter, as a client sees them over stdio.
 
     Entries: the user's notes and AI-written summaries. Transcripts: the word-by-word
-    record, to prefer when quoting and to check a summary against.
+    record, to prefer when quoting and to check a summary against. Each kind is named
+    before what it is, and the entries first, so that the roles cannot be swapped.
     """
     instructions, tools, _ = seen(home)
     (said,) = [s for s in re.split(r"(?<=\.)\s", instructions) if "transcripts" in s]
-    for words in ("entries", "notes", "summaries", "word-by-word", "quoting", "check a summary"):
-        assert words in said, words
+    told = ["entries", "notes", "summaries", "transcripts", "word-by-word", "quoting"]
+    assert all(words in said for words in [*told, "check a summary"]), said
+    assert [said.index(words) for words in told] == sorted(said.index(words) for words in told)
+    assert said.index("quoting") < said.index("check a summary")
     (search,) = [tool for tool in tools.tools if tool.name == "search"]
     filters = search.input_schema["$defs"]["SearchFilters"]
     assert "worklog" in filters["properties"]["source"]["enum"]
-    assert "entries" in filters["description"]
-    assert "transcripts" in filters["description"]
+    described = filters["description"]
+    kinds = ["worklog", "entries", "notes", "summaries", "transcripts", "verbatim"]
+    assert all(words in described for words in kinds), described
+    assert [described.index(words) for words in kinds] == sorted(
+        described.index(words) for words in kinds
+    )
