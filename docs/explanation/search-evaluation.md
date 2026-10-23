@@ -431,7 +431,7 @@ corpus's pages are in the space `QM`, its tickets in the project `ENG`, its idea
 `PRB`; plan 011's mirror also held the 13 probe pages of plan 001 in `MFS`:
 
 ```bash
-sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" uv run atlassian-offline-mcp download --yes --config <missing file> --data-dir <data> --since 1y --space MFS --space QM --project ENG --project PRB'
+sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" uv run atlassian-offline-mcp download --yes --config <missing-file> --data-dir <data> --since 1y --space MFS --space QM --project ENG --project PRB'
 ```
 
 The credentials file lies at the root of the checkout that made it, never in git
