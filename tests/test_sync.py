@@ -392,9 +392,12 @@ def test_sync_and_its_dry_run_leave_the_work_log_as_it_was(
 
 
 def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
-    tmp_path: Path, worklog: Path
+    tmp_path: Path, worklog: Path, telemetry: InMemory
 ) -> None:
-    """Until the next clean run; standard error says that nothing was removed."""
+    """Until the next clean run; the logs say that nothing was removed.
+
+    The row's event and span say that it failed, and the entry is counted failed.
+    """
     settings = chosen_settings(tmp_path, worklog)
     step = Worklog(worklog, archives=True)
     sync(context(settings, FIRST), [step])
@@ -403,11 +406,17 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     todo = worklog / "todo.org"
     todo.write_text(todo.read_text("utf-8").replace("Drafted on", "Drafted, failing, on"), "utf-8")
     failing = Counting(Pandoc.find().path, failing="failing")
+    telemetry.spans.clear()
+    telemetry.measured()
     with capture_logs() as logged:
         synced = sync(context(settings, FIRST, failing), [step])
     assert (synced.steps[0].outcome, synced.exit_status) == ("failed", ExitStatus.FAILED)
     assert logged_as(logged, "worklog.nothing_removed")
     assert [each["outcome"] for each in logged_as(logged, "sync.step")] == ["failed"]
+    spans = telemetry.spans.get_finished_spans()
+    (row,) = [span for span in spans if span.name == "sync.step"]
+    assert row.attributes["aom.outcome"] == "failed"
+    assert by_kind_and_outcome(telemetry.measured()).get(("entry", "failed")) == 1
     assert gone.exists()
     todo.write_text(todo.read_text("utf-8").replace("Drafted, failing, on", "Drafted on"), "utf-8")
     assert sync(context(settings, FIRST), [step]).exit_status == ExitStatus.OK
@@ -759,12 +768,13 @@ def by_kind_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, objec
 
 
 def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
-    home: Path, worklog: Path, telemetry: InMemory
+    home: Path, tmp_path: Path, worklog: Path, telemetry: InMemory
 ) -> None:
     """Each document counted by kind and outcome, each work-log span in the row's step.
 
     Fresh, twelve entries and four transcripts are mirrored, each conversion timed by
-    kind; unchanged, all are kept and none timed. Each work-log span is in the row's
+    kind; unchanged, all are kept and none timed, as the events say too. Each work-log
+    span is in the row's
     ``sync.step``, which names the step and its outcome, in the run's root; each
     document's event is logged in ``worklog.convert``.
     """
@@ -773,6 +783,20 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
     first, spans = telemetry.measured(), telemetry.spans.get_finished_spans()
     assert main(command(home, config, "--yes")) == ExitStatus.OK
     second = telemetry.measured()
+    settings, step = chosen_settings(tmp_path, worklog), Worklog(worklog, archives=True)
+    with capture_logs() as fresh:
+        sync(context(settings, FIRST), [step])
+    with capture_logs() as unchanged:
+        sync(context(settings, FIRST), [step])
+    (read,) = logged_as(fresh, "worklog.read")
+    assert (read["entries"], read["transcripts"], read["html"]) == (12, 4, 1)
+    (ended,) = logged_as(fresh, "worklog.end")
+    assert (ended["documents"], ended["written"], ended["unchanged"]) == (16, 16, 0)
+    (ended,) = logged_as(unchanged, "worklog.end")
+    assert (ended["written"], ended["unchanged"]) == (0, 16)
+    for logged, outcome in ((fresh, "mirrored"), (unchanged, "kept")):
+        outcomes = {each["outcome"] for each in logged_as(logged, "worklog.document")}
+        assert outcomes == {outcome}
     assert by_kind_and_outcome(first) == {("entry", "mirrored"): 12, ("transcript", "mirrored"): 4}
     assert by_kind_and_outcome(second) == {("entry", "kept"): 12, ("transcript", "kept"): 4}
     timed = first["aom.mirror.conversion.duration"].data.data_points
