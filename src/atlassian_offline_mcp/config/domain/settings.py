@@ -272,7 +272,8 @@ class Settings(BaseSettings):
         default=DEFAULT_CHUNKING,
         description=(
             f"How index cuts documents into the pieces it embeds: {', '.join(CHUNKINGS)};"
-            " search follows the index."
+            " search follows the index. The default is plan 019's rule's; windows ranked"
+            " best on its sandbox."
         ),
     )
     embedding_url: EmbeddingUrl = Field(

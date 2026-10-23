@@ -111,7 +111,8 @@ also beat words significantly (MRR@10 0.639 against 0.539, adjusted p 0.0008), o
 identifiers too (0.674 against 0.616): two of the three counts of plan 018's bar for
 hybrid as the default, its 95th percentile (266 ms here) being the third. The rule set
 before this run decides the chunking alone, so the defaults stay `sections` and
-`lexical`, and the user is told. The cold builds took 31 minutes for `sections` and 52
+`lexical`: they are the rule's, not the best measured, and [the agents'
+guide](../how-to/agents.md) says how to set the best measured. The cold builds took 31 minutes for `sections` and 52
 for `section-paths`, and 27 for the part of `small-to-big` that the others had not
 embedded; `windows` were embedded across two runs, the machine being busy.
 

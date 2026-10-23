@@ -40,9 +40,11 @@ Never give an agent `<data>/session/` (your saved sign-in) or `<data>/raw/`: onl
 `search` ranks by words unless the setting `search_mode` says otherwise: `hybrid`
 fuses words and meaning, `semantic` ranks by meaning alone, and `lexical`, the default,
 needs nothing more. On plan 002's sandbox questions, hybrid search with the default
-model did not beat words significantly and did worse on identifiers, so words stay
-the default until your own questions say otherwise (see
-[evaluating search](../explanation/search-evaluation.md)). Meaning comes from an
+model and the default chunking did not beat words significantly and did worse on
+identifiers, so words stay the default until your own questions say otherwise (see
+[evaluating search](../explanation/search-evaluation.md)). The defaults are thus not
+the best measured: with `chunking = "windows"`, hybrid search did beat words there,
+identifiers included (see below). Meaning comes from an
 embedding model that this program does not run itself: it asks any OpenAI-compatible
 embeddings API, by default [Ollama](https://ollama.com) on this machine. To search by
 meaning, install Ollama on the host, not in a container (a container on macOS cannot
@@ -113,6 +115,20 @@ How an index cuts documents into the pieces it embeds is the setting `chunking`:
 `sections` by default, 011's pieces of each section, or `windows`, `section-paths` or
 `small-to-big`, which [chunking](../explanation/chunking.md) compares. Run `index` after
 changing it; `search`, `ask` and `status` follow the index, whatever the setting says.
+
+`sections` is the default by plan 019's rule, set before the measures, which asked a
+chunking to quote the evidence more often than `sections` to replace it; none did. It is
+not the best measured: on the sandbox, `windows` ranked better, significantly (hybrid
+MRR@10 0.639 against 0.578, and 0.539 by words alone), with half the pieces and a tenth
+more tokens to embed, though its 95th percentile of a query was 266 ms on this laptop's
+CPU. To rank as best measured there, with Ollama running:
+
+```toml
+search_mode = "hybrid"
+chunking = "windows"
+```
+
+then run `index`.
 
 To check which mode, model and chunking fit your own content, write [golden
 questions](golden-questions.md) and run `eval`.
