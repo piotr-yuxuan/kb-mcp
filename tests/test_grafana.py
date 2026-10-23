@@ -4,8 +4,9 @@ The variable gives Grafana's address, ``http://127.0.0.1:3000`` as ``deploy/lgtm
 publishes it, once the container runs and the commands have sent it their telemetry, as
 plan 016's stack check does. Every dashboard of the folder is then found in Grafana,
 every query of its panels answers without error, and every panel has data but those of
-failures, which a sound run need not have. Under another host name, Grafana answers
-nothing but a redirect to its own.
+failures, which a sound run need not have. As every panel of logs is one of failures,
+Loki is asked apart whether it holds the runs' records. Under another host name, Grafana
+answers nothing but a redirect to its own.
 """
 
 from __future__ import annotations
@@ -32,6 +33,13 @@ FAILURES = "Failed"
 ANOTHER_HOST = "rebound.example"
 # How long Grafana has to answer each request, in seconds.
 WAIT_S = 30
+# How many records the runs exported over the dashboards' range, as Loki counts them.
+RECORDS = {
+    "refId": "A",
+    "datasource": {"type": "loki", "uid": "loki"},
+    "expr": 'sum(count_over_time({service_name="atlassian-offline-mcp"}[24h]))',
+    "queryType": "range",
+}
 
 pytestmark = pytest.mark.skipif(
     GRAFANA is None, reason="set ATLASSIAN_OFFLINE_MCP_GRAFANA to Grafana's address"
@@ -77,6 +85,21 @@ def test_each_dashboard_is_found_and_each_panel_but_failures_has_data(
         if not any(column for frame in frames for column in frame["data"]["values"]):
             empty.append(panel["title"])
     assert [title for title in empty if not title.startswith(FAILURES)] == []
+
+
+def test_loki_holds_the_runs_records(grafana: httpx.Client) -> None:
+    """Each run exports ``run.start`` and ``run.end``, at INFO, so a stack check leaves some.
+
+    Loki throttles its writes once its disk is 90% full: this is what fails then.
+    """
+    (path, *_) = PATHS
+    asked = {"queries": [RECORDS], **json.loads(path.read_text("utf-8"))["time"]}
+    answered = grafana.post("/api/ds/query", json=asked)
+    assert answered.status_code == httpx.codes.OK, answered.text
+    (result,) = answered.json()["results"].values()
+    assert result.get("error") is None
+    counts = [count for frame in result.get("frames", []) for count in frame["data"]["values"][-1]]
+    assert any(count > 0 for count in counts)
 
 
 def test_grafana_turns_away_another_host_name(grafana: httpx.Client) -> None:

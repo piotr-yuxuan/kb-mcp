@@ -100,8 +100,8 @@ file in a span carries its `trace_id`, which Tempo's search by trace id opens.
 
 Once the container has received a run of each command, the opt-in test asks Grafana for
 every dashboard of the folder and every query of their panels: each must answer without
-error, and each panel but those of failures must have data; another host name must be
-turned away:
+error, and each panel but those of failures must have data; Loki must hold the runs'
+records; another host name must be turned away:
 
 ```bash
 ATLASSIAN_OFFLINE_MCP_GRAFANA=http://127.0.0.1:3000 uv run pytest tests/test_grafana.py
@@ -109,8 +109,8 @@ ATLASSIAN_OFFLINE_MCP_GRAFANA=http://127.0.0.1:3000 uv run pytest tests/test_gra
 
 `serve`'s panels are rates, which need two exports within their interval, a minute:
 keep the server running for half a minute or more, with calls on both sides of its
-first export, 15 seconds after it starts. If the log panels stay empty, look at the
-disk: Loki stops taking logs once the disk that holds the container is 90% full.
+first export, 15 seconds after it starts. If Loki holds no record, look at the disk:
+Loki stops taking logs once the disk that holds the container is 90% full.
 
 ## 6. Stop, discard, upgrade
 
