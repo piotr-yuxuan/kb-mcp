@@ -223,8 +223,8 @@ def sync(context: Context, steps: Sequence[Atlassian | Worklog | Index]) -> Sync
         log.warning("sync.interrupted", step=planned[stopped] if stopped < len(planned) else None)
         outcomes.add("interrupted")
         rows.added.extend(
-            Row(name, "interrupted" if index == stopped else "not run", None)
-            for index, name in enumerate(planned[stopped:], stopped)
+            Row(name, "interrupted" if number == stopped else "not run", None)
+            for number, name in enumerate(planned[stopped:], stopped)
         )
     outcomes.update(row.outcome for row in rows.added)
     status = next((status for outcome, status in RANKED if outcome in outcomes), ExitStatus.OK)
