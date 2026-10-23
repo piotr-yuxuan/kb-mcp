@@ -31,6 +31,7 @@ from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.answers import estimate, parts
 from tests.endpoint import Scripted, connector, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.reference import Emitted, undocumented
 from tests.test_observed import said as said_on
 
 if TYPE_CHECKING:
@@ -40,6 +41,8 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
     from _pytest.tmpdir import TempPathFactory
+
+    from tests.conftest import InMemory
 
 QUESTIONS = {
     "q1": "How long does Kafka keep its logs?",
@@ -684,3 +687,33 @@ def test_the_answer_of_a_run_without_a_result_is_not_read(
     assert main(["eval-agents", "--format", "json", "grade", str(out), "--yes"]) == 0
     outcomes = json.loads(capsys.readouterr().out)["outcomes"]
     assert (outcomes[0]["result"], outcomes[0]["reason"]) == ("no result", status)
+
+
+def test_eval_agents_records_as_documented(
+    world: World, telemetry: InMemory, monkeypatch: MonkeyPatch
+) -> None:
+    """Each step as an agent or the orchestrator runs it, and their refusals and failures.
+
+    Plan 016's criterion 10: prepared; a call answered, then one refused; an answer kept;
+    graded, then graded past the estimates; a directory refused; a surface whose server
+    lists nothing in time. The servers that the steps start record in processes of their
+    own, as ``serve.md`` lists it.
+    """
+    out = world.root / "runs"
+    emitted = Emitted()
+    with emitted.gathering(telemetry, "eval-agents"):
+        assert prepared(world, out, "--sample", "1") == 0
+        run = first(out, "B")
+        assert main(bridged(out, run, "ask", {"question": QUESTIONS["q1"]})) == 0
+        assert main(bridged(out, run, "nope", {})) == REFUSED
+        assert main(["eval-agents", "answer", str(out), run, json.dumps(VALID)]) == 0
+        for each in runs_of(out):
+            harness(out, each["id"], status="returned", model=MODEL, tokens=1000)
+        assert main(["eval-agents", "grade", str(out), "--yes"]) == 0
+        for each in runs_of(out):
+            harness(out, each["id"], status="returned", model=MODEL, tokens=10**9)
+        assert main(["eval-agents", "grade", str(out), "--yes"]) == FAILED
+        assert prepared(world, out) == REFUSED
+        monkeypatch.setattr(agents, "LISTING_S", 0.001)
+        assert prepared(world, world.root / "unlisted") == FAILED
+    assert undocumented("eval-agents", emitted) == []

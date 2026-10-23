@@ -64,19 +64,19 @@ when it reports them; leave them out otherwise. Three failures in a row stop the
 atlassian-offline-mcp eval-agents grade pilot --yes
 ```
 
-`grade` reads the call logs, the answers and the harness files, refuses one not as
-its steps or the above write it, naming the file and the field (repair or remove that
-file, and mark its run `invalid`, before grading again), and grades each answer: citation recall
-and precision, quotes grounded in the documents that their refs name, and evidence
-quoted. A run succeeds when its answer says the base holds it, every quote is grounded,
-and each expected document's evidence is within a quote. A run returned without an
-answer kept is a failure; one `failed`, `invalid`, or whose call timed out or lost its
-server gives no result, and its question leaves the tests, counted. It writes
+`grade` reads the call logs, the answers and the harness files, refuses one not as its
+steps or the above write it, naming the file and the field (repair or remove that file,
+and mark its run `invalid`, before grading again), and grades each answer: citation
+recall and precision, quotes grounded in the documents that their refs name, and
+evidence quoted. A run succeeds when its answer says the base holds it, every quote is
+grounded, and each expected document's evidence is within a quote. A run returned
+without an answer kept is a failure; one `failed`, `invalid`, or whose call timed out or
+lost its server gives no result, and its question leaves the tests, counted. It writes
 `results.json`, of ids and numbers, the prompts' SHA-256 and the models reported, never
 a question's text, and says B against A on success, calls and tokens handed over, each
-with its interval, and whether `ask` stays among the default tools. `--summary
-detailed` adds each run. It exits 1 when the runs spent past twice their estimates:
-stop, and set the estimates from what was spent.
+with its interval, and whether `ask` stays among the default tools. `--summary detailed`
+adds each run. It exits 1 when the runs spent past twice their estimates: stop, and set
+the estimates from what was spent.
 
 ```bash
 atlassian-offline-mcp eval-agents --format json grade pilot --yes
@@ -109,3 +109,13 @@ and are reported only.
 | `answers/<run>.json` | `answer` | the answer kept |
 | `harness/<run>.json` | the orchestrator | status, model and tokens as the harness reports them |
 | `results.json` | `grade` | ids and numbers, never a question's text |
+
+## What the steps record
+
+Each step is a run of `eval-agents`, with its log file and, once telemetry is on, its
+trace, as [its page](../reference/telemetry/eval-agents.md) lists: each call says its
+run, tool, status, the tokens handed over and its seconds, and `grade` each run's
+outcome. `call` and `answer` read the settings of the shell that runs the agents for
+this alone: where their logs and telemetry go. With [Grafana](observe-with-grafana.md),
+the dashboard `eval-agents` shows the calls, their tokens and time by surface, and the
+runs judged by outcome.

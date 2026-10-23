@@ -42,6 +42,7 @@ from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.tools import TOOLS
 from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.mirror.adapters import markdown
+from atlassian_offline_mcp.observability.adapters.progress import task
 
 if TYPE_CHECKING:
     import argparse
@@ -138,6 +139,7 @@ def graded(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, R
     """Grade the runs and judge ask; exit 2 for a refused file, 1 past twice the estimates.
 
     Refs resolve as read resolves them, and quotes are sought in the mirror's bodies.
+    The task ``runs`` reports the runs judged, each by its id.
     """
     settings = loaded.settings
     library = Library(settings.index, settings.docs)
@@ -148,10 +150,11 @@ def graded(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, R
 
     try:
         runs = readied(arguments.directory)
-        outcomes = [
-            judged(arguments.directory, run, runs.question(run.question), library.resolve, body)
-            for run in runs.runs
-        ]
+        with task("runs", len(runs.runs)) as judging:
+            outcomes = [
+                judged(arguments.directory, run, runs.question(run.question), library.resolve, body)
+                for run in judging.each(runs.runs, lambda one: one.id)
+            ]
     except (AgentsError, UnanswerableError) as error:
         structlog.get_logger().error("eval.agent.refused", reason=str(error))
         return ExitStatus.REFUSED, None

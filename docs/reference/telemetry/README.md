@@ -127,8 +127,8 @@ status stays its own.
 
 A run is one trace, whose root span is named after the command, but `serve`, each of
 whose requests is a trace, and `completion`, which records nothing. Grafana's
-dashboards, an overview and one each for `download`, `mirror`, `index`, `serve` and
-`eval`, are in `deploy/lgtm/dashboards/`.
+dashboards, an overview and one each for `download`, `mirror`, `index`, `serve`, `eval`
+and `eval-agents`, are in `deploy/lgtm/dashboards/`.
 
 ## Events
 

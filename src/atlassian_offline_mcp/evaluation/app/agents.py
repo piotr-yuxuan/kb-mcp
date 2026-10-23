@@ -25,6 +25,8 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
+import structlog
+from opentelemetry import metrics, trace
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from atlassian_offline_mcp.config.adapters.settings_file import git_root
@@ -85,6 +87,28 @@ LISTING_S = 60.0
 # The outcomes of a run that the tests compare; the others leave its question out.
 GRADED = ("success", "failure")
 OWN = ConfigDict(strict=True, extra="forbid", frozen=True)
+TRACER = trace.get_tracer(__name__)
+METER = metrics.get_meter(__name__)
+# Each call through the bridge, by surface, tool and status; its seconds, its server's
+# start included, and the estimated tokens that it handed over, by surface and tool;
+# each run judged, by surface and outcome.
+CALLED = METER.create_counter(
+    "aom.eval.agent.calls", unit="{call}", description="Calls through the bridge, by status"
+)
+CALL_DURATION = METER.create_histogram(
+    "aom.eval.agent.call.duration",
+    unit="s",
+    description="How long a call through the bridge took, its server's start included",
+    explicit_bucket_boundaries_advisory=(0.5, 1, 2, 5, 10, 20, 30, 60, 120),
+)
+HANDED_OVER = METER.create_histogram(
+    "aom.eval.agent.tokens",
+    unit="{token}",
+    description="The estimated tokens that a call through the bridge handed over",
+)
+JUDGED = METER.create_counter(
+    "aom.eval.agent.runs", unit="{run}", description="Runs judged, by outcome"
+)
 
 
 class AgentsError(Exception):
@@ -186,7 +210,8 @@ def prepare(
 
     Each question is asked on both surfaces, each surface first for every other one.
     The directory must be new or empty, and where data may be. Raises AgentsError, and
-    TimeoutError or ServerError when a surface's server lists nothing.
+    TimeoutError or ServerError when a surface's server lists nothing. ``eval.agent.prepared``
+    says at INFO the runs written.
     """
     place = directory.resolve()
     problem = unsafe_location(place, asking.home, git_root(place))
@@ -245,6 +270,7 @@ def prepare(
         ),
     )
     (directory / "runs.json").write_text(written.model_dump_json(indent=1), encoding="utf-8")
+    structlog.get_logger().info("eval.agent.prepared", runs=len(runs), model=asking.model)
     return written
 
 
@@ -306,6 +332,10 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
     Refused, before any server starts: a run not there, arguments not one JSON object, a
     tool not of the run's surface, a call past the run's bound. The log line holds the
     tool, the arguments, the answer's estimated tokens, the seconds and the status.
+
+    The call is the span ``eval.agent.call``, which holds the client's; it is counted by
+    status in ``aom.eval.agent.calls``, its seconds and tokens measured, and
+    ``eval.agent.call`` says it at INFO, the arguments aside.
     """
     runs = readied(directory)
     run = runs.run(name)
@@ -326,13 +356,16 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
             raise AgentsError(message)
         started = time.monotonic()
         server = [*runs.server, "--tools", ",".join(run.tools)]
-        try:
-            answered = called(server, tool, arguments, runs.call_s)
-            done = Called("refused" if answered.refused else "answered", answered.text)
-        except TimeoutError:
-            done = Called("timeout", f"no answer within {runs.call_s:g} seconds")
-        except ServerError as error:
-            done = Called("failed", str(error))
+        named = {"aom.surface": run.surface, "gen_ai.tool.name": tool}
+        with TRACER.start_as_current_span("eval.agent.call", attributes=named) as span:
+            try:
+                answered = called(server, tool, arguments, runs.call_s)
+                done = Called("refused" if answered.refused else "answered", answered.text)
+            except TimeoutError:
+                done = Called("timeout", f"no answer within {runs.call_s:g} seconds")
+            except ServerError as error:
+                done = Called("failed", str(error))
+            span.set_attribute("aom.status", done.status)
         line = Logged(
             tool=tool,
             arguments=arguments,
@@ -342,6 +375,17 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
         )
         with log.open("a", encoding="utf-8") as kept:
             kept.write(line.model_dump_json() + "\n")
+    CALLED.add(1, {**named, "aom.status": done.status})
+    CALL_DURATION.record(line.seconds, named)
+    HANDED_OVER.record(line.tokens, named)
+    structlog.get_logger().info(
+        "eval.agent.call",
+        agent_run=run.id,
+        tool=tool,
+        status=done.status,
+        tokens=line.tokens,
+        seconds=round(line.seconds, 3),
+    )
     return done
 
 
@@ -350,7 +394,8 @@ def answer(directory: Path, name: str, given: str) -> Answer:
 
     A refused answer names the field at fault, never its value, and may be sent once
     more; a second refusal is kept as the agent's failure. A run whose answer is kept,
-    or whose failure is, takes none more. Raises AgentsError.
+    or whose failure is, takes none more. Raises AgentsError. ``eval.agent.answered``
+    says at INFO the answer kept.
     """
     run = readied(directory).run(name)
     (directory / "answers").mkdir(exist_ok=True)
@@ -371,6 +416,7 @@ def answer(directory: Path, name: str, given: str) -> Answer:
             message = f"answer refused, {refusal(error)}; {said}"
             raise AgentsError(message) from None
         kept.write_text(accepted.model_dump_json(), encoding="utf-8")
+    structlog.get_logger().info("eval.agent.answered", agent_run=run.id)
     return accepted
 
 
@@ -405,6 +451,8 @@ def judged(
     that timed out or whose server failed, gives no result. Returned without an answer
     accepted is the agent's failure; with one, it is graded. Raises AgentsError for a
     harness file, a call log or an answer not as written, naming the file and the field.
+    The run is counted by its outcome in ``aom.eval.agent.runs``, and ``eval.agent.run``
+    says it at DEBUG.
     """
     harness_file = directory / "harness" / f"{run.id}.json"
     kept = directory / "answers" / f"{run.id}.json"
@@ -439,7 +487,7 @@ def judged(
         result, reason = "failure", "no answer accepted"
     else:
         result, reason = ("success", "") if graded.success else ("failure", "not a success")
-    return Outcome(
+    outcome = Outcome(
         run=run.id,
         question=run.question,
         surface=run.surface,
@@ -453,6 +501,21 @@ def judged(
         graded=graded,
         prompt_sha256=run.prompt_sha256,
     )
+    JUDGED.add(1, {"aom.surface": run.surface, "aom.outcome": result})
+    structlog.get_logger().debug(
+        "eval.agent.run",
+        agent_run=run.id,
+        question_id=run.question,
+        surface=run.surface,
+        model=outcome.model,
+        outcome=result,
+        reason=reason,
+        calls=outcome.calls,
+        tokens=outcome.handed,
+        model_tokens=outcome.model_tokens,
+        seconds=round(outcome.seconds, 3),
+    )
+    return outcome
 
 
 @dataclass(frozen=True)
@@ -471,7 +534,8 @@ def concluded(directory: Path, runs: Runs, outcomes: Sequence[Outcome]) -> Resul
     """Judge B against A on the questions whose both runs were graded; keep the results.
 
     ``results.json`` holds ids, numbers, the prompts' SHA-256 and the models reported,
-    never a question's text.
+    never a question's text. ``eval.agent.graded`` says at INFO the runs counted and
+    whether ask stays.
     """
     by_question: dict[str, dict[str, Outcome]] = {}
     for outcome in outcomes:
@@ -510,4 +574,11 @@ def concluded(directory: Path, runs: Runs, outcomes: Sequence[Outcome]) -> Resul
         **asdict(results),
     }
     (directory / "results.json").write_text(json.dumps(kept, indent=1), encoding="utf-8")
+    structlog.get_logger().info(
+        "eval.agent.graded",
+        counted=results.counted,
+        pairs=results.pairs,
+        left_out=results.left_out,
+        keeps_ask=verdict.keeps_ask,
+    )
     return results
