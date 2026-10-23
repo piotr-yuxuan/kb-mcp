@@ -96,7 +96,7 @@ def early() -> Iterator[None]:
 @contextmanager
 def observed(
     output: Output,
-    folder: Path | None,
+    folder: Path,
     endpoint: str | None,
     invocation: Invocation,
 ) -> Iterator[Run]:
@@ -105,16 +105,15 @@ def observed(
     Its events go through the standard library, as ``route_through_logging`` has them,
     never to stdout, and stay so after it; within ``early``, which puts structlog back,
     it replaces early's stderr while it lasts. The run's id, 16 random hex digits, is
-    made first, so that a run without a file has one too. Stderr
-    is drawn at ``output``'s level, through a console that is a terminal as ``output``
-    says. The file, ``log_file``'s in ``folder``, holds all from DEBUG, under the run's
-    id; a run that reads no settings has no ``folder``, and one that cannot be written
-    gives one warning, ``log.unwritable``, and no file. The run then writes
-    ``run.start``: the version, the invocation's ``described``, the log file and the
-    telemetry endpoint, if any. It ends with ``run.end``, its status as the body set it,
-    or ``run.interrupted`` by Ctrl-C, or ``run.failed`` with the exception's traceback;
-    each says how many seconds it lasted. The run's status is then
-    ``ExitStatus.INTERRUPTED`` or ``ExitStatus.FAILED``: the interruption or the
+    made first, so that a run without a file has one too. Stderr is drawn at
+    ``output``'s level, through a console that is a terminal as ``output`` says. The
+    file, ``log_file``'s in ``folder``, holds all from DEBUG, under the run's id; a
+    folder that cannot be written gives one warning, ``log.unwritable``, and no file.
+    The run then writes ``run.start``: the version, the invocation's ``described``, the
+    log file, if any, and the telemetry endpoint, if any. It ends with ``run.end``, its
+    status as the body set it, or ``run.interrupted`` by Ctrl-C, or ``run.failed`` with
+    the exception's traceback; each says how many seconds it lasted. The run's status
+    is then ``ExitStatus.INTERRUPTED`` or ``ExitStatus.FAILED``: the interruption or the
     exception goes no further.
 
     On a terminal, unless -q, the tasks' progress is drawn on stderr as bars, and their
@@ -150,11 +149,10 @@ def observed(
         stack.callback(root.removeHandler, stderr)
         stack.enter_context(progress.drawn(Bars(console, shown=bars)))
         path = None
-        if folder is not None:
-            try:
-                path = stack.enter_context(log_file(folder, command, run.id, datetime.now(UTC)))
-            except OSError as error:
-                log.warning("log.unwritable", folder=str(folder), reason=str(error))
+        try:
+            path = stack.enter_context(log_file(folder, command, run.id, datetime.now(UTC)))
+        except OSError as error:
+            log.warning("log.unwritable", folder=str(folder), reason=str(error))
         if endpoint is not None:
             try:
                 exporting = importlib.import_module(TELEMETRY).exporting

@@ -12,7 +12,7 @@ import structlog
 
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.output import Output
-from atlassian_offline_mcp.observability.adapters.logs import QUIET
+from atlassian_offline_mcp.observability.adapters.logs import QUIET, default_log_folder
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.observability.app.observed import Invocation, early, observed
 
@@ -78,7 +78,7 @@ def test_a_run_s_stderr_takes_the_place_of_early_s_and_gives_it_back(
 ) -> None:
     """At the run's level while it lasts, each line once; from WARNING again after."""
     with early():
-        with observed(output("debug"), None, None, Invocation("check")):
+        with observed(output("debug"), default_log_folder(), None, Invocation("check")):
             structlog.get_logger().debug("run.inside")
         structlog.get_logger().info("early.info")
         structlog.get_logger().warning("early.warning")
@@ -112,13 +112,18 @@ def test_a_run_outside_early_logs_through_the_standard_library_all_the_same(
 
 
 def test_a_run_has_an_id_with_or_without_a_file_whose_lines_carry_it(tmp_path: Path) -> None:
-    """16 random hex digits, from the run's start, whether or not it writes a log file."""
-    with early(), observed(output("info"), None, None, Invocation("completion")) as alone:
+    """16 random hex digits, from the run's start, whether or not it writes a log file.
+
+    A run whose log folder cannot be made, a file being in its way, writes none.
+    """
+    blocking, logs = tmp_path / "blocking", tmp_path / "logs"
+    blocking.write_text("", "utf-8")
+    with early(), observed(output("info"), blocking / "logs", None, Invocation("check")) as alone:
         assert re.fullmatch("[0-9a-f]{16}", alone.id)
-    with early(), observed(output("info"), tmp_path, None, Invocation("check")) as filed:
+    with early(), observed(output("info"), logs, None, Invocation("check")) as filed:
         assert re.fullmatch("[0-9a-f]{16}", filed.id)
     assert filed.id != alone.id
-    (path,) = tmp_path.iterdir()
+    (path,) = logs.iterdir()
     assert {json.loads(line)["run"] for line in path.read_text("utf-8").splitlines()} == {filed.id}
 
 
@@ -137,7 +142,8 @@ def test_a_run_ends_with_its_body_s_status_or_as_failed_or_interrupted(
     ending: tuple[str, str],
 ) -> None:
     """What the body lets through is said, and goes no further: its status says it."""
-    with early(), observed(output("info"), None, None, Invocation("check")) as run:
+    folder = default_log_folder()
+    with early(), observed(output("info"), folder, None, Invocation("check")) as run:
         run.status = 3
         if raised is not None:
             raise raised
@@ -165,7 +171,11 @@ def test_progress_is_bars_on_a_terminal_unless_quiet_else_its_events_from_info(
 ) -> None:
     """Never both on stderr: with bars, the events progress go to the file alone."""
     monkeypatch.setenv("NO_COLOR", "1")
-    with early(), observed(reported, None, None, Invocation("index")), task("files", 2) as files:
+    with (
+        early(),
+        observed(reported, default_log_folder(), None, Invocation("index")),
+        task("files", 2) as files,
+    ):
         files.advance(2)
     err = CONTROL.sub("", capsys.readouterr().err)
     assert (FILES_DONE.search(err) is not None) is bar

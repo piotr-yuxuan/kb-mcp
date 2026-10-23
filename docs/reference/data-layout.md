@@ -32,9 +32,10 @@ No code builds these paths otherwise.
 
 ## The log folder
 
-Outside the data directory, each run that reads the settings writes one file of JSON
-lines into the setting `logs.dir`, by default the user's log folder as platformdirs
-places it: `~/Library/Logs/atlassian-offline-mcp` on macOS,
+Outside the data directory, each run but `completion`'s, unless it is refused or
+declined before it starts, writes one file of JSON lines into the setting `logs.dir`,
+by default the user's log folder as platformdirs places it:
+`~/Library/Logs/atlassian-offline-mcp` on macOS,
 `$XDG_STATE_HOME/atlassian-offline-mcp/log` on Linux. `load_settings` resolves and
 judges it as it does the data directory, and names `logs.dir` when it refuses it.
 `observability.adapters.logs.log_file` alone writes there: one file a run,

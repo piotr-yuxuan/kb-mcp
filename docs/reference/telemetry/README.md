@@ -13,9 +13,9 @@ with its page and this one, finding the pages in this folder.
 
 ## The log file
 
-Each run that reads the settings writes one file,
-`<logs.dir>/<command>-<start>-<pid>.jsonl`, the start in UTC as `%Y%m%dT%H%M%SZ`, such
-as `download-20261022T210509Z-4242.jsonl`. `--help`, `--version`, a completion and
+Each run, once its settings are read, unless it is then refused or declined, writes one
+file, `<logs.dir>/<command>-<start>-<pid>.jsonl`, the start in UTC as `%Y%m%dT%H%M%SZ`,
+such as `download-20261022T210509Z-4242.jsonl`. `--help`, `--version`, a completion and
 `completion`, which reads no settings, write none.
 
 - **Where.** `logs.dir`, by default the user's log folder as platformdirs places it:
