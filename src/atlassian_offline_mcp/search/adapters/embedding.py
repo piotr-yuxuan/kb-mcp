@@ -24,6 +24,7 @@ import truststore
 
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.endpoint import loopback, refused_endpoint
+from atlassian_offline_mcp.observability.adapters.http import Recorded
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -167,19 +168,23 @@ def endpoint(
     Raises SettingsError for an address that is not a literal address of this machine,
     unless ``remote_allowed``, and for plain http to one even then. On this machine the
     environment's proxies are ignored, since one would carry the text away; redirects
-    are never followed. ``transport`` replaces the network, for tests.
+    are never followed. Each request sent is observed, as ``Recorded`` has it.
+    ``transport`` replaces the network, for tests.
     """
     refusal = refused_endpoint(url, remote_allowed=remote_allowed)
     if refusal is not None:
         raise SettingsError(refusal)
     here = loopback(url)
+    network = httpx.Client(
+        verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT),
+        trust_env=not here,
+        transport=transport,
+    )
     http = httpx.Client(
         base_url=url,
         headers={"Authorization": f"Bearer {key}"} if key else {},
-        verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT),
-        trust_env=not here,
         follow_redirects=False,
-        transport=transport,
+        transport=Recorded(network, httpx.URL(url).host),
     )
     return Endpoint(http, remote_allowed)
 

@@ -1,8 +1,9 @@
 """Requests observed: a span, a duration and an event each, by OpenTelemetry's conventions.
 
 Plan 016: the site's client, over the scripted site, reports every request it sends,
-a redirect's included, and never a header nor another host's query. What is traced
-and measured is read from the SDK's in-memory exporters.
+a redirect's included, and never a header nor another host's query; so does the
+embeddings endpoint's, over the scripted endpoint. What is traced and measured is read
+from the SDK's in-memory exporters.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import pytest
 from opentelemetry.trace import SpanKind, StatusCode
 from structlog.testing import capture_logs
 
+from atlassian_offline_mcp.search.adapters.embedding import connect, endpoint
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.http import (
     RETRIES,
@@ -24,7 +26,7 @@ from atlassian_offline_mcp.sources.atlassian.adapters.http import (
     Site,
     SiteError,
 )
-from tests.endpoint import REACHABLE
+from tests.endpoint import REACHABLE, URL, Scripted
 from tests.test_download import PICTURE, SITE, FakeSite
 
 if TYPE_CHECKING:
@@ -43,6 +45,7 @@ MEDIA = "https://api.media.atlassian.com/file/abc/binary"
 GRANT = "media-grant-sentinel-51f0"
 COOKIE = "cookie-sentinel-8c2d"
 CREDENTIAL = "credential-sentinel-07b9"
+KEY = "key-sentinel-3e6a"
 LISTENED_S = 10
 
 
@@ -229,3 +232,39 @@ def test_the_site_s_client_still_goes_through_the_environment_s_proxy(
             REACHABLE.discard(port)
     assert asked
     assert asked[0].startswith(f"CONNECT {HOST}:443".encode())
+
+
+def test_the_embeddings_endpoint_s_requests_are_observed_alike_its_key_never_shown(
+    telemetry: InMemory,
+) -> None:
+    """Connecting lists the models, then embeds a probe: a GET, then a POST, each a span.
+
+    The POST writes ``http.post``; the key, a bearer token, is in no span nor event.
+    """
+    opened = endpoint(URL, KEY, remote_allowed=False, transport=httpx.MockTransport(Scripted()))
+    with opened, capture_logs() as events:
+        connect(opened, "tiny")
+    spans = telemetry.spans.get_finished_spans()
+    requests = [span for span in spans if "http.request.method" in dict(span.attributes or {})]
+    assert [(span.name, span.kind) for span in requests] == [
+        ("GET", SpanKind.CLIENT),
+        ("POST", SpanKind.CLIENT),
+    ]
+    listed, embedded = (dict(span.attributes or {}) for span in requests)
+    here = {"server.address": "127.0.0.1", "server.port": 11434, "http.response.status_code": 200}
+    assert listed == {
+        "http.request.method": "GET",
+        "url.full": "http://127.0.0.1:11434/api/tags",
+        **here,
+    }
+    assert embedded == {
+        "http.request.method": "POST",
+        "url.full": "http://127.0.0.1:11434/v1/embeddings",
+        **here,
+    }
+    said = [(event["event"], event["url"]) for event in events if "url" in event]
+    assert said == [
+        ("http.get", "http://127.0.0.1:11434/api/tags"),
+        ("http.post", "http://127.0.0.1:11434/v1/embeddings"),
+    ]
+    assert KEY not in f"{events} {[dict(span.attributes or {}) for span in spans]}"
