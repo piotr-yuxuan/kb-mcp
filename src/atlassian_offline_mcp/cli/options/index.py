@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping
 
+# What the index's build reads, beside the data directory; sync's index step reads them too.
+INDEX_SETTINGS = ("model", "search_mode", "chunking", "embedding_url", "embedding_api_key")
+
 
 def by_words_alone(
     _arguments: argparse.Namespace, settings: Mapping[str, object]
@@ -50,14 +53,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         command=Command(
             "index",
             "atlassian_offline_mcp.cli.commands.index",
-            reads=(
-                "data_dir",
-                "model",
-                "search_mode",
-                "chunking",
-                "embedding_url",
-                "embedding_api_key",
-            ),
+            reads=("data_dir", *INDEX_SETTINGS),
             flags=flags,
             actions=(*actions, remote),
             writes=True,

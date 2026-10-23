@@ -18,21 +18,12 @@ from atlassian_offline_mcp.cli.options._common import (
     token_without_email,
 )
 from atlassian_offline_mcp.cli.options.download import add_period_options, period_refused
-from atlassian_offline_mcp.cli.options.index import by_words_alone
+from atlassian_offline_mcp.cli.options.index import INDEX_SETTINGS, by_words_alone
 from atlassian_offline_mcp.kernel.content import SOURCE_NAMES
 
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping
-
-# The settings of the index's step, which embeds as ``index`` does.
-INDEX_SETTINGS = (
-    "model",
-    "search_mode",
-    "chunking",
-    "embedding_url",
-    "embedding_api_key",
-)
 
 
 def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
@@ -40,8 +31,8 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 
     A source included but not configured, or none left; with Confluence or Jira, no
     site, an API token without its email, or an option of the period that does not read;
-    an embedding endpoint that ``index`` would refuse. The period's options are not read
-    when no source uses them.
+    an embedding endpoint that ``index`` would refuse, unless a dry run, which builds no
+    index. The period's options are not read when no source uses them.
     """
     taken, left = chosen(arguments, settings)
     unready = [
@@ -50,7 +41,7 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
         if source.name in (arguments.include or ()) and left.get(source.name) == "not configured"
     ]
     faults = [*unready, None if taken else "nothing to sync: no source is configured and chosen"]
-    faults.append(endpoint_by_meaning(arguments, settings))
+    faults.append(None if arguments.dry_run else endpoint_by_meaning(arguments, settings))
     if any(source.step == "atlassian" for source in taken):
         faults += [
             site_not_set(arguments, settings),

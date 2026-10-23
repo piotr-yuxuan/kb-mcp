@@ -16,7 +16,7 @@ says of tasks.
 | `sync.step` | info | `step`, `outcome` | A row ends: `done`, `failed`, `sign in` or `not run` |
 | `sync.interrupted` | warning | `step` | Ctrl-C stopped the run in this row, none if every row had ended; no later row runs: exit 130 |
 | `sync.end` | info | `status`, `steps` | The rows end: the exit status, and each row as `<row>: <outcome>` |
-| `sync.refused` | error | `reason` | What the run cannot go on with, found before the rows: an option of the period that does not read, a target with nowhere to start, a damaged record of what is covered, a work log that is not a folder: exit 2. An embedding endpoint that `index` would refuse is refused before, as `run.refused` |
+| `sync.refused` | error | `reason` | What the run cannot go on with, found before the rows: an option of the period that does not read, a target with nowhere to start, a damaged record of what is covered, a work log that is not a folder: exit 2. An embedding endpoint that `index` would refuse is refused before, as `run.refused`, but in a dry run |
 | `sync.pandoc_missing` | error | `reason` | Pandoc went from PATH once the run began: exit 1 |
 | `worklog.read` | info | `entries`, `transcripts`, `html`, `problems` | The work log is read: its entries, its transcripts, the HTML transcripts left out, the files not read |
 | `worklog.document` | debug | `path`, `id`, `title`, `kind`, `outcome` | A document's file is built: its path in the mirror, its id, its title, `entry` or `transcript`, and `mirrored`, converted, or `kept`, its revision held |

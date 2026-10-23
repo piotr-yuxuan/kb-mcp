@@ -82,8 +82,8 @@ atlassian-offline-mcp sync --dry-run --since 7d
 
 `--dry-run` plans the download as `download --dry-run` does, and counts the work log:
 its documents, those it would convert, and the files it would remove. The mirror and
-the index do not run, so the index's settings are said not applied. It writes nothing,
-and does not ask.
+the index do not run, so the index's settings are said not applied, and an endpoint off
+this machine is not refused. It writes nothing, and does not ask.
 
 ## 5. Read the result
 

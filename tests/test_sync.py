@@ -24,6 +24,7 @@ from atlassian_offline_mcp.cli.app import sync as sync_app
 from atlassian_offline_mcp.cli.app.sync import Atlassian, Context, Index, Row, Worklog, sync
 from atlassian_offline_mcp.cli.domain.sync import SOURCES, chosen
 from atlassian_offline_mcp.cli.main import main, parser
+from atlassian_offline_mcp.cli.options.sync import refused
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.kernel.content import SOURCE_NAMES
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
@@ -68,6 +69,8 @@ CONFIGURED = {
     "sources.jira.projects": ("PRB",),
     "sources.worklog.path": Path("/work/todo"),
     "sources.worklog.archives": True,
+    "search_mode": "lexical",
+    "embedding_url": "https://embeddings.example/v1",
 }
 ALL = ["confluence", "jira", "worklog"]
 # The work log's documents in the fixture: twelve entries and four transcripts.
@@ -631,6 +634,23 @@ def test_an_endpoint_elsewhere_is_refused_before_any_step(
     assert "embedding_url: not an address of this machine" in capsys.readouterr().err
     assert not signed_in.asked
     assert not (home / "data" / "docs").exists()
+
+
+@pytest.mark.parametrize(
+    ("given", "mode", "said"),
+    [
+        ((), "lexical", None),
+        (("--allow-remote-embeddings",), "hybrid", None),
+        (("--dry-run",), "hybrid", None),
+        ((), "hybrid", "embedding_url: not an address of this machine"),
+    ],
+)
+def test_an_endpoint_elsewhere_is_refused_only_where_the_index_would_call_it(
+    given: tuple[str, ...], mode: str, said: str | None
+) -> None:
+    """By words alone, with the run's word, or in a dry run, which builds no index: not refused."""
+    fault = refused(arguments(*given), CONFIGURED | {"search_mode": mode})
+    assert fault is None if said is None else fault is not None and said in fault
 
 
 def test_an_index_not_built_fails_its_row_and_keeps_the_others(
