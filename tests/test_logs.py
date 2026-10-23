@@ -257,6 +257,23 @@ def test_a_run_first_removes_the_program_s_log_files_past_30_days_and_leaves_the
         assert {file.name for file in folder.iterdir()} == {*kept, path.name}
 
 
+def test_an_old_entry_that_cannot_be_removed_stays_and_the_run_still_has_its_file(
+    tmp_path: Path,
+) -> None:
+    """Removing is no condition of the file: the folder can be written, so it is.
+
+    Such as a folder named as a log file past 30 days, which no unlink removes, or a
+    file of another user in a shared folder: every later run would else lose its file.
+    """
+    folder = tmp_path / "logs"
+    stuck = folder / "check-20190101T000000Z-1.jsonl"
+    stuck.mkdir(parents=True)
+    with log_file(folder, "check", RUN, NOW, COMMANDS) as path:
+        logging.getLogger("some.library").warning("written")
+    assert stuck.is_dir()
+    assert [line["event"] for line in lines(path)] == ["written"]
+
+
 def test_past_the_cap_a_line_log_capped_ends_the_file(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

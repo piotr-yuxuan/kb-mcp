@@ -159,17 +159,19 @@ def log_file(
     can read, as ``folder`` when it is made here; one that exists keeps its mode, since
     the user may have chosen it. Before the file is opened, the log files in ``folder``
     of any of ``commands``, the program's, whose run started over 30 days before ``now``
-    are removed, not only ``command``'s; another program's, named otherwise, stay.
-    Each line adds ``run`` and ``command``, which replace an event's own of these names,
-    and, within a span, its ``trace_id`` and ``span_id``; a traceback shows no frame's
-    locals. Past ``CAP`` bytes of lines, a line ``log.capped`` ends the file; a line
-    that cannot be written, as on a full disk, ends it too, with one ``log.unwritable``
-    to the other sinks. Raises OSError when ``folder`` cannot be made or written.
+    are removed, not only ``command``'s; another program's, named otherwise, stay, as
+    does one that cannot be removed, such as a folder. Each line adds ``run`` and
+    ``command``, which replace an event's own of these names, and, within a span, its
+    ``trace_id`` and ``span_id``; a traceback shows no frame's locals. Past ``CAP``
+    bytes of lines, a line ``log.capped`` ends the file; a line that cannot be written,
+    as on a full disk, ends it too, with one ``log.unwritable`` to the other sinks.
+    Raises OSError when ``folder`` cannot be made or written.
     """
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     for old in folder.iterdir():
         if expired(old.name, commands, now):
-            old.unlink(missing_ok=True)
+            with suppress(OSError):
+                old.unlink()
     path = folder / log_file_name(command, now, os.getpid())
     with open(path, "a", encoding="utf-8", opener=partial(os.open, mode=0o600)) as stream:
         handler = CappedFile(stream, CAP)
