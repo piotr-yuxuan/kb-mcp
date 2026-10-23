@@ -119,6 +119,32 @@ def test_on_a_terminal_a_text_is_cut_to_its_width_and_piped_it_is_whole() -> Non
     assert f"title={title}" in written(console)
 
 
+def test_on_a_terminal_the_program_s_own_text_is_whole_and_inert() -> None:
+    """The event, a reason, an error, a path and a library's message are never cut.
+
+    Wider than the terminal, which wraps them, each is whole, its controls taken out,
+    while a title from the site beside them is cut.
+    """
+    long = "b" * 60
+    terminal = Console(file=io.StringIO(), force_terminal=True, color_system=None, width=40)
+    with drawn(terminal):
+        structlog.get_logger().error(
+            f"eval.{long}",
+            reason=f"/golden/{long}.yaml: not a\x07 file",
+            error=f"{long}\N{RIGHT-TO-LEFT OVERRIDE}",
+            path=f"/given/{long}",
+            title="A" * 120,
+        )
+        logging.getLogger("some.library").warning("retrying %s", f"{long}\x07")
+    event, record = written(terminal).splitlines()
+    assert f" eval.{long} " in event
+    assert f"reason='/golden/{long}.yaml: not a file'" in event
+    assert f"error={long} " in event
+    assert f"path=/given/{long} " in event
+    assert f"title={'A' * 39}…" in event
+    assert record.endswith(f"retrying {long} [some.library]")
+
+
 @pytest.mark.parametrize(
     ("terminal", "no_color", "coloured"),
     [(True, "", True), (True, "1", False), (False, "", False)],

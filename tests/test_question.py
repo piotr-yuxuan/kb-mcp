@@ -323,11 +323,11 @@ def test_what_needs_no_network_is_refused_before_anything_is_asked(
     """On terminals, a yes waiting: exit 2 naming the fault, and no summary nor question.
 
     The fault is one error, run.refused. stdin is left unread, the run is never reached,
-    and the data is as it was, with no log file. The terminal is wide enough for every
-    fault, as the display cuts each text to its width, and uncoloured.
+    and the data is as it was, with no log file. The terminal is uncoloured, and narrower
+    than some faults, which are whole all the same.
     """
     arguments, variables, named = refusal
-    for variable, value in {**variables, "NO_COLOR": "1", "COLUMNS": "1000"}.items():
+    for variable, value in {**variables, "NO_COLOR": "1"}.items():
         monkeypatch.setenv(variable, value)
     (home / "data").mkdir()
     before = tree(home)

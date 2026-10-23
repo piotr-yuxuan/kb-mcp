@@ -34,14 +34,20 @@ if TYPE_CHECKING:
     from rich.console import Console
     from rich.progress import Task
 
+# The fields of an event that carry text of the site or of the mirror: its titles,
+# headings, queries, excerpts and references. A line on a terminal cuts these to its
+# width; every other, such as the event, a reason, an error or a path, is whole.
+SITE_TEXT = frozenset({"title", "heading", "query", "snippet", "ref"})
+
 
 class ConsoleLines(logging.Handler):
     """Draw each record on a console as structlog's console layout has it, its text inert.
 
     A line holds the time, the level, the event, the logger, then the event's fields.
-    Each text among them first passes ``printable()``, cut to the console's width on a
-    terminal, whole elsewhere, so that text from the site or the mirror moves no cursor
-    and reorders nothing; the line is drawn as Rich's ``Text``, never as markup, and is
+    Each text among them first passes ``printable()``, so that text from the site or the
+    mirror moves no cursor and reorders nothing: those of ``SITE_TEXT`` cut to the
+    console's width on a terminal, whole elsewhere, and the others whole everywhere, the
+    terminal wrapping them. The line is drawn as Rich's ``Text``, never as markup, and is
     coloured on a terminal without ``NO_COLOR`` alone. A traceback follows its line, with
     no frame's locals. The SDK's own records are left to the file.
     """
@@ -58,7 +64,9 @@ class ConsoleLines(logging.Handler):
                 processors=[
                     structlog.stdlib.ProcessorFormatter.remove_processors_meta,
                     lambda _logger, _method, event: {
-                        key: printable(value, width=width) if isinstance(value, str) else value
+                        key: printable(value, width=width if key in SITE_TEXT else sys.maxsize)
+                        if isinstance(value, str)
+                        else value
                         for key, value in event.items()
                     },
                     structlog.dev.ConsoleRenderer(
