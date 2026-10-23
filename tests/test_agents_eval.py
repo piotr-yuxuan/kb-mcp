@@ -31,6 +31,7 @@ from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.answers import estimate, parts
 from tests.endpoint import Scripted, connector, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.test_observed import said as said_on
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -594,7 +595,9 @@ def test_grade_exits_1_past_twice_the_estimates(world: World, capsys: CaptureFix
         harness(out, run["id"], status="returned", tokens=10**9)
     capsys.readouterr()
     assert main(["eval-agents", "grade", str(out), "--yes"]) == FAILED
-    assert "past 2 times the estimates" in capsys.readouterr().err
+    said = capsys.readouterr().err
+    assert said_on(said) == [("error", "eval.agent.past_estimates")]
+    assert f"model_tokens={2 * 10**9}" in said
     assert (out / "results.json").exists()
 
 
@@ -661,7 +664,9 @@ def test_grade_exits_1_past_twice_the_tokens_handed_over(
         (out / "calls" / f"{run['id']}.jsonl").write_text(json.dumps(line) + "\n", "utf-8")
     capsys.readouterr()
     assert main(["eval-agents", "grade", str(out), "--yes"]) == FAILED
-    assert "2,000,000 tokens handed over" in capsys.readouterr().err
+    said = capsys.readouterr().err
+    assert said_on(said) == [("error", "eval.agent.past_estimates")]
+    assert f"handed={2 * 10**6}" in said
 
 
 @pytest.mark.parametrize("status", ["failed", "invalid"])

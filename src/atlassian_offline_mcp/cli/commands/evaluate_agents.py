@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import structlog
+
 from atlassian_offline_mcp.cli.domain.eval_agents import (
     CALL_S,
     CALLS,
@@ -73,7 +75,7 @@ def prepared(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus,
         questions = read_golden(golden, Library(settings.index, settings.docs).resolve)
         asked = chosen(questions, arguments.sample, arguments.seed)
     except (GoldenError, OSError, UnanswerableError, AgentsError) as error:
-        sys.stderr.write(f"refused: {error}\n")
+        structlog.get_logger().error("eval.agent.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     if arguments.dry_run:
         return ExitStatus.OK, Prepared(2 * len(asked), arguments.out, written=False)
@@ -101,10 +103,12 @@ def prepared(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus,
     try:
         runs = prepare(asked, arguments.out, asking, TOOLS)
     except AgentsError as error:
-        sys.stderr.write(f"refused: {error}\n")
+        structlog.get_logger().error("eval.agent.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     except (TimeoutError, ServerError) as error:
-        sys.stderr.write(f"not prepared: a surface's server listed nothing ({error!r})\n")
+        structlog.get_logger().error(
+            "eval.agent.not_prepared", reason=f"a surface's server listed nothing ({error!r})"
+        )
         return ExitStatus.FAILED, None
     return ExitStatus.OK, Prepared(len(runs.runs), arguments.out, written=True)
 
@@ -114,7 +118,7 @@ def bridged(arguments: argparse.Namespace, _loaded: Loaded) -> tuple[ExitStatus,
     try:
         done = call(arguments.directory, arguments.run, arguments.tool, arguments.arguments)
     except AgentsError as error:
-        sys.stderr.write(f"refused: {error}\n")
+        structlog.get_logger().error("eval.agent.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     failed = done.status in {"timeout", "failed"}
     return ExitStatus.FAILED if failed else ExitStatus.OK, done
@@ -125,7 +129,7 @@ def answered(arguments: argparse.Namespace, _loaded: Loaded) -> tuple[ExitStatus
     try:
         kept = answer(arguments.directory, arguments.run, arguments.answer)
     except AgentsError as error:
-        sys.stderr.write(f"refused: {error}\n")
+        structlog.get_logger().error("eval.agent.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     return ExitStatus.OK, kept
 
@@ -149,16 +153,19 @@ def graded(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, R
             for run in runs.runs
         ]
     except (AgentsError, UnanswerableError) as error:
-        sys.stderr.write(f"refused: {error}\n")
+        structlog.get_logger().error("eval.agent.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     results = concluded(arguments.directory, runs, outcomes)
     done = [outcome for outcome in outcomes if outcome.result != "pending"]
     handed = sum(outcome.handed for outcome in done)
     spent = sum(outcome.model_tokens or 0 for outcome in done)
     if handed > PAST * HANDED * len(done) or spent > PAST * (INPUT + OUTPUT) * len(done):
-        sys.stderr.write(
-            f"past {PAST} times the estimates: {handed:,} tokens handed over, {spent:,} model"
-            " tokens; stop the runs, and set the estimates from these\n"
+        structlog.get_logger().error(
+            "eval.agent.past_estimates",
+            times=PAST,
+            handed=handed,
+            model_tokens=spent,
+            hint="stop the runs, and set the estimates from these",
         )
         return ExitStatus.FAILED, results
     return ExitStatus.OK, results
