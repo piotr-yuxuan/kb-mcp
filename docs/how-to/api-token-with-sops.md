@@ -100,3 +100,4 @@ token signs in as you, wherever it is, until it expires.
 A run given the revoked token stops at its first request with exit status 3, and says
 `check ATLASSIAN_OFFLINE_MCP_EMAIL and ATLASSIAN_OFFLINE_MCP_API_TOKEN`. Without a token
 in its environment, a run signs in by the session that `login` saved, if any.
+[Credentials](../explanation/credentials.md) explains where each secret goes.

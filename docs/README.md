@@ -64,6 +64,9 @@ marked for contributors.
   layers within each, the contracts that keep them, and where a new module goes.
 - [Sources](explanation/sources.md): why Confluence, Jira and the work log are put
   together as they are, and why the work log is read in place.
+- [Credentials](explanation/credentials.md): the browser session, the API token and the
+  embedding endpoint's key: where each is kept and sent, what agents get, what is never
+  logged, and what none of it guards against.
 - [Observability](explanation/observability.md): why the logs may hold titles, why
   telemetry is off by default and stays on this machine, and how secrets stay out of
   every sink.

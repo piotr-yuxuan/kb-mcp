@@ -131,6 +131,7 @@ or as soon as that folder may have been copied:
 A run signed in by the session then stops at once with exit status 3, and says to run
 `login` again. Running `login` again replaces the saved cookies, but does not end the
 session that they held: only the first step does.
+[Credentials](../explanation/credentials.md) explains what the folder holds and why.
 
 [security]: https://id.atlassian.com/manage-profile/security
 [devices]: https://support.atlassian.com/atlassian-account/docs/manage-recently-used-devices-for-your-atlassian-account/
