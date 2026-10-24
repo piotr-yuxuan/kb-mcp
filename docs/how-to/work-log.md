@@ -68,6 +68,12 @@ whose text did not change is not converted again, and its file keeps its dates, 
 edit to one entry moves no other. pandoc converts each document; a transcript's lines
 stay apart.
 
+`sync` then rebuilds the index, by default in hybrid mode, which needs the embedding
+model, Ollama on this machine ([search by meaning](agents.md#search-by-meaning)):
+without it, the index's row fails and `sync` exits 1, the work log mirrored all the
+same. The first such run embeds the whole mirror; `search_mode = "lexical"` indexes by
+words alone, without a model.
+
 ## 5. What a change does at the next sync
 
 - An entry edited, closed, retagged, ticked or archived keeps its id and its file. The

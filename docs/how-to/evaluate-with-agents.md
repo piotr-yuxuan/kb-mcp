@@ -8,10 +8,13 @@ subagents; it spends that session's subscription, so the user says when it runs.
 
 ## What it needs
 
-The index the server answers from, with vectors if `search_mode` searches by meaning,
-and a golden file whose refs the mirror holds, as for `eval` ([golden
-questions](golden-questions.md)). The server that the bridge starts reads the same
-settings as the commands below: run them all from one shell.
+The index the server answers from, and a golden file whose refs the mirror holds, as for
+`eval` ([golden questions](golden-questions.md)). The server that the bridge starts
+reads the same settings as the commands below: run them all from one shell. By default
+it searches in hybrid mode, so Ollama must be running with the model, and the index
+built by meaning ([search by meaning](agents.md#search-by-meaning)); else `ask` answers
+by words, saying so only in its answer, which neither the call logs nor `results.json`
+keep. `search_mode = "lexical"` measures words alone.
 
 ## Prepare the runs
 

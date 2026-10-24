@@ -58,6 +58,9 @@ and the index's schema; they wait until something filters on them.
 The work log holds the user's notes and summaries an AI wrote, and transcripts, the
 word-by-word record. The server tells agents so, in its instructions and its `source`
 filter, so that they quote a transcript rather than a summary of it, and check the one
-against the other. It stays on this machine, as all the data does, and served to agents
-it is untrusted reference data, like every page: a line in it that tells the reader what
-to do is text, not an instruction.
+against the other. It stays on this machine, as all the data does: by default `sync`
+sends its text to the embedding endpoint, which must be a loopback address unless the
+run is given `--allow-remote-embeddings` ([search by
+meaning](../how-to/agents.md#search-by-meaning)). Served to agents it is untrusted
+reference data, like every page: a line in it that tells the reader what to do is text,
+not an instruction.
