@@ -371,7 +371,7 @@ def test_the_environment_s_chunking_replaces_the_file_s(
     data: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """``ATLASSIAN_OFFLINE_MCP_CHUNKING`` is stronger than the file, and the index says so."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_CHUNKING", "windows")
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_CHUNKING", "small-to-big")
     with serving(Scripted()) as url:
         options = config(data, "tiny", url)
         settings = Path(options[1])
@@ -380,7 +380,7 @@ def test_the_environment_s_chunking_replaces_the_file_s(
     with reading(data / "index.sqlite") as reader:
         embedded = reader.embedded()
     assert embedded is not None
-    assert embedded.chunking == "windows"
+    assert embedded.chunking == "small-to-big"
 
 
 def test_an_index_cut_by_a_chunking_this_version_lacks_is_refused(data: Path) -> None:
