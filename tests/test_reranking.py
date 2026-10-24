@@ -264,6 +264,16 @@ def test_the_captured_answers_of_llama_server_parse() -> None:
     assert served(answering(lambda _: httpx.Response(200, content=models))) == (RERANKER,)
 
 
+def test_the_captured_answer_of_a_server_without_reranking_says_how_to_start_it() -> None:
+    """llama-server started without --reranking answers 501, as captured: not a reranker."""
+    body = (RERANKING_FIXTURES / "unsupported.json").read_bytes()
+    status = json.loads(body)["error"]["code"]
+    opened = answering(lambda _: httpx.Response(status, content=body))
+    with pytest.raises(RerankError, match="not started with --reranking") as refused:
+        rerank(opened, RERANKER, QUERY, TEXTS, SEARCH)
+    assert refused.value.kind == "bad_answer"
+
+
 def test_the_models_served_are_listed_or_none_from_a_server_without_a_list() -> None:
     """Each model's name; nothing when the server lists none; a bad list refused."""
     assert served(reranks(Reranks(models=("one", "two")))) == ("one", "two")
