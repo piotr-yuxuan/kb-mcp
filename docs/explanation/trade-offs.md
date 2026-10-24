@@ -25,21 +25,30 @@ and the server's tools are read-only too.
 
 ## Refresh by hand
 
-The mirror changes only when someone runs `download`, then `mirror` and `index`. Nothing
-runs on a schedule, and the server never fetches from the site.
+The mirror changes only when someone runs `sync`, which downloads and mirrors the site,
+mirrors the work log, then rebuilds the index
+([`sync`](../../src/atlassian_offline_mcp/cli/app/sync.py)), or its stages one at a time:
+`download`, `mirror`, `index`. Nothing runs on a schedule, and the server never fetches
+from the site.
 
 - **Why.** The user chooses when the site is read, and is there when a session has
   expired: through single sign-on, only a person can sign in again. Coverage makes a run
   by hand cheap: without `--since`, a run catches up from the start of the period
   already covered ([`window`](../../src/atlassian_offline_mcp/sources/atlassian/domain/coverage.py)),
-  so nobody keeps track of when the last run was.
+  so nobody keeps track of when the last run was. One command makes the refresh one
+  thing to remember, while each stage still runs alone, to redo one after a fix.
 - **Cost.** The mirror is as old as its last run. Each answer gives every document's
   mirror date, the time its snapshot was fetched, and `status` the newest, so that an
-  agent can tell how old its evidence is.
-- **Rejected.** A schedule (cron, launchd) or a server that refreshes itself. A refresh
-  started from an MCP tool, after the user's approval, is planned (009), not built.
+  agent can tell how old its evidence is. And catching up is not free: each run lists
+  every space whole and searches each project over the whole period covered, which grows
+  with each run that reaches further back, and reads the work log whole.
+- **Rejected.** A schedule (cron, launchd) or a server that refreshes itself. For
+  `sync`, a catch-up from the last run's time, which would leave a lasting hole after a
+  run that failed. A refresh started from an MCP tool, after the user's approval, is
+  planned (009), not built.
 - **Settled** by the programme with the user, before plan 001; catching up without
-  dates by [plan 007](../work/changelog/007-incremental-refresh.md#decisions).
+  dates by [plan 007](../work/changelog/007-incremental-refresh.md#decisions); `sync` by
+  [plan 017](../work/changelog/017-modular-sources.md#what-sync-does).
 
 ## Cookies and API tokens
 
