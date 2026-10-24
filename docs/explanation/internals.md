@@ -1,16 +1,22 @@
 # Internals
 
-How the program turns a site into answers for agents: four stages, each a command, each
-reading what the one before it wrote. Only the first reads the site; every later stage
-can be run again offline, from what is on the disk. This page follows the data through
-them, then follows one change, from a page edited on the site to the next search. The
-formats of what each stage writes are in [the data layout](../reference/data-layout.md);
-where the code of each lives, in [the code's layout](code-layout.md); why it is built
-so, in [the trade-offs](trade-offs.md).
+How the program turns its sources into answers for agents: Confluence and Jira, on the
+site, and the user's work log, a folder of org files on this machine
+([sources](sources.md) says why these three are put together as they are). Four stages,
+each a command, each reading what the one before it wrote; `sync` runs the first three
+in turn, with the work log's own step, in one command. Of the stages, only `download`
+reads the site; every later one can be run again offline, from what is on the disk. This
+page follows the data through them, then follows one change, from a page edited on the
+site, or an entry of the work log closed, to the next search. The formats of what each
+stage writes are in [the data layout](../reference/data-layout.md); where the code of
+each lives, in [the code's layout](code-layout.md), and the code itself, step by step,
+in [the walkthrough](code-walkthrough.md); why it is built so, in [the
+trade-offs](trade-offs.md).
 
 ```mermaid
 flowchart LR
     site["Confluence and Jira Cloud"]
+    worklog["work log, org files"]
     raw[("raw store")]
     docs[("Markdown mirror")]
     vectors[("vector store")]
@@ -20,6 +26,7 @@ flowchart LR
     agents["coding agents"]
     site -- "download, GET only" --> raw
     raw -- "mirror, offline" --> docs
+    worklog -- "sync, read in place" --> docs
     docs -- "index" --> index
     endpoint -- "vectors of new texts" --> vectors
     vectors -- "index" --> index
@@ -33,8 +40,45 @@ flowchart LR
 |---|---|---|---|---|
 | `download` | the site, GET only | `<data>/raw/` | a lock, and each snapshot renamed into place | the document is counted and skipped; the run goes on |
 | `mirror` | the raw store | `<data>/docs/` | each file renamed into place | the document is reported, its last good file kept |
+| the work log, in `sync` | its folder, in place | `<data>/docs/worklog/` | each file renamed into place | the file or document is named by its path; no file is removed |
 | `index` | the mirror; the endpoint, for new texts | `<data>/index.sqlite`, `<data>/vectors.sqlite` | the index built aside, then renamed into place | the file is skipped and named; without the endpoint, the old index stays |
 | `serve` | the index; the endpoint, for queries | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why |
+
+## Sync: the stages in one command
+
+[`sync`](../../src/atlassian_offline_mcp/cli/app/sync.py) runs, in this order, the stages
+that a refresh needs: one download of every space and project that the settings' tables
+name, then `mirror`
+([`atlassian`](../../src/atlassian_offline_mcp/cli/app/sync.py)); the work log's step
+([`worklog`](../../src/atlassian_offline_mcp/cli/app/sync.py)); then the index, from the
+whole mirror, whichever sources the run took
+([`index`](../../src/atlassian_offline_mcp/cli/app/sync.py)). Each calls the same function
+as its own command:
+[`download`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py),
+[`mirror`](../../src/atlassian_offline_mcp/mirror/app/mirror.py),
+[`mirror_worklog`](../../src/atlassian_offline_mcp/mirror/app/worklog.py) and
+[`index_mirror`](../../src/atlassian_offline_mcp/search/app/indexing.py). A source is a
+record that names its table and its step
+([`SOURCES`](../../src/atlassian_offline_mcp/cli/domain/sync.py)), and `--include` and
+`--exclude` choose among those configured
+([`chosen`](../../src/atlassian_offline_mcp/cli/domain/sync.py));
+[sources](sources.md#modular-and-no-more) says why no interface spans them.
+
+- **Writes** what its stages write, each as the sections below say.
+- **One step's failure** stops no other: each step reads what is on disk, so the work
+  log is mirrored while the site asks to sign in again, and the index is built from what
+  the mirror holds. What can be refused is refused before the first step: a space or
+  project with nowhere to start
+  ([`PeriodError`](../../src/atlassian_offline_mcp/sources/atlassian/domain/period.py)),
+  or a work log that is not a folder
+  ([`SyncRefusedError`](../../src/atlassian_offline_mcp/cli/app/sync.py)). Ctrl-C ends
+  the step it stops and runs no later one. The exit status ranks how the steps ended:
+  interrupted, then to sign in again, then failed
+  ([`RANKED`](../../src/atlassian_offline_mcp/cli/domain/sync.py)).
+- **Offline**, all but its download: `sync --include worklog` reads nothing from the
+  site.
+
+`download`, `mirror` and `index` stay, for one stage at a time.
 
 ## Download: from the site to the raw store
 
@@ -96,10 +140,42 @@ pandoc write it as Markdown, one process a document
 - **Offline**, everything: the mirror is rebuilt from the raw store, byte for byte, as
   long as pandoc's version is the same.
 
+## The work log: from org files to Markdown
+
+[`mirror_worklog`](../../src/atlassian_offline_mcp/mirror/app/worklog.py), a step of
+`sync`, reads the work log's folder in place and never writes there, following a link
+only inside it ([`listed`](../../src/atlassian_offline_mcp/sources/worklog/adapters/files.py)).
+It has no raw store: its files are already on this machine, and reading them whole costs
+less than keeping a copy. They become documents, one per top-level entry of `todo.org`
+and of its archive ([`entries`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py))
+and one per transcript
+([`transcripts`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)), each
+with an id that org's own edits leave alone. A document's revision is a digest of what
+pandoc reads, with pandoc's version and options
+([`revision`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py),
+[`Pandoc.org_converter`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)): a
+document whose file holds that revision keeps the file as it is, dates included; another
+is converted again
+([`Pandoc.org_markdown`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)).
+
+- **Writes**, into `<data>/docs/worklog/` alone, through the mirror's
+  [`sync`](../../src/atlassian_offline_mcp/mirror/adapters/mirror_files.py): each file
+  whose bytes differ, renamed into place, and the files of documents gone removed
+  ([`worklog_owned`](../../src/atlassian_offline_mcp/mirror/adapters/mirror_files.py)).
+- **One document's failure**, a file that links out of the folder
+  ([`listed`](../../src/atlassian_offline_mcp/sources/worklog/adapters/files.py)), is
+  over 32 MiB or is not UTF-8
+  ([`source`](../../src/atlassian_offline_mcp/sources/worklog/adapters/files.py)), or a
+  conversion that fails, is named by its path, never by its content; the run goes on,
+  and then removes no file, so that the last good copy of each stays.
+- **Offline**, everything: the work log is on this machine.
+
 ## Index: from Markdown to words and vectors
 
 [`build_index`](../../src/atlassian_offline_mcp/search/app/indexing.py) reads the files
-of the mirror alone, never the raw store (an import contract holds it). It cuts each
+of the mirror alone, never the raw store (an import contract holds it): Confluence's,
+Jira's and the work log's alike
+([`DOCUMENTS`](../../src/atlassian_offline_mcp/mirror/adapters/markdown.py)). It cuts each
 body into sections before each heading
 ([`sections`](../../src/atlassian_offline_mcp/search/domain/search.py)), indexes them by
 words, and, unless `search_mode = "lexical"`, cuts each document into pieces by the
@@ -180,10 +256,12 @@ not answer or lacks the model. A failed connection is not tried again for 30 sec
 ([`QUIET_S`](../../src/atlassian_offline_mcp/search/app/meaning.py)), so that searches in
 the meantime answer at once.
 
-## How a change on the site reaches search
+## How a change reaches search
 
-Follow one page, edited on the site, to the answers of the next search. Nothing in the
-program watches for changes: each step below is a command run by hand.
+Follow one page, edited on the site, to the answers of the next search, and beside it
+one entry of the work log, closed in `todo.org`. Nothing in the program watches for
+changes: `download`, `mirror` and `index`, each run by hand, or one `sync`, which runs
+them in turn, take the steps below.
 
 ### 1. A new snapshot, or a tombstone
 
@@ -205,6 +283,8 @@ Jira has a new update time, its revision, and is fetched the same way.
 - **Not yet seen**: a change that makes no new version, such as labels changed or a
   file attached without an edit, and Jira's deletions; [the data
   layout](../reference/data-layout.md#snapshots) lists these limits.
+- **A work-log entry closed** makes no snapshot: the work log has no raw store, and
+  `sync` reads its folder whole at each run (below).
 
 ### 2. The mirror's file rewritten or removed
 
@@ -214,6 +294,22 @@ other file keeps its bytes and its time. A changed title renames the file, as it
 holds the title, and the old name goes. A moved page's file goes to its new space's
 folder. A confirmed deletion removes the file, even in a run that reports problems with
 other documents.
+
+The work log's step does the same from the folder itself. Closing an entry turns its
+keyword to `DONE`, or another that means done, and adds a `CLOSED:` line under its
+heading. Its id is taken from its `:ID:`, else its title and `:CREATED:`, else its
+title, never from its keyword or planning lines
+([`entries`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)), so its
+file keeps its name. Its text changed, so its revision did
+([`revision`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)): the
+entry is converted again, its `status` becomes `DONE`, and its `updated` the latest of
+its timestamps up to the file's time of change, usually the closing one
+([`Document.dates`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+Every other entry keeps its file as it was, dates included, though `todo.org`'s time
+changed ([`mirror_worklog`](../../src/atlassian_offline_mcp/mirror/app/worklog.py)). An
+entry archived to `todo.org_archive` keeps its id too: its file is rewritten, labelled
+`ARCHIVE`, or removed when `archives = false`;
+[sources](sources.md#identity-that-survives-orgs-edits) says why identity is kept so.
 
 ### 3. The index rebuilt aside, then renamed in
 
@@ -239,7 +335,9 @@ widens the texts embedded again:
 - **A chunking whose cuts shift.** `windows` cut the whole body at fixed steps from its
   start, so an edit shifts every window after it, all new texts, while the windows
   before it are reused. `sections`, `section-paths` and `small-to-big` cut each section
-  apart, so an edit re-embeds the pieces of its own section.
+  apart, so an edit re-embeds the pieces of its own section. Closing a work-log entry
+  writes its `CLOSED:` line just under its heading, so by `windows` nearly every piece
+  of that entry is new, and no other entry's.
 - **A renamed title or heading.** Each piece's text begins with the title, so a new
   title re-embeds the whole page. A renamed heading re-embeds the windows from it on by
   `windows`; its section's pieces by `sections`; and by `section-paths` and
