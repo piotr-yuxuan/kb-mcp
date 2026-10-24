@@ -86,7 +86,17 @@ needs: where no terminal can answer, a command that writes is refused without it
 
 `mirror` and `index` read only the data directory, and need no token.
 
-## When you are done with it
+## Revoke the token
 
-Revoke the token on the same page once you no longer need it, or if it may have
-leaked; a new one only needs the file edited again with `sops edit`.
+Revoke it once you no longer need it, or as soon as it may have leaked: a copy of the
+token signs in as you, wherever it is, until it expires.
+
+1. On [your account's API tokens][tokens], choose "Revoke" beside the token. Atlassian
+   refuses it from then on, wherever a copy of it is.
+2. Take it out of the sops file with `sops edit ~/secrets/atlassian.sops.json`, or put
+   a new token in its place. The command keeps nothing of a token, in no file and in no
+   log, so there is nothing else of it to remove.
+
+A run given the revoked token stops at its first request with exit status 3, and says
+`check ATLASSIAN_OFFLINE_MCP_EMAIL and ATLASSIAN_OFFLINE_MCP_API_TOKEN`. Without a token
+in its environment, a run signs in by the session that `login` saved, if any.

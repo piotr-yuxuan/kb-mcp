@@ -110,6 +110,31 @@ on stderr) or you answered no, 2 for refused settings or options, or no terminal
 on, 3 when you must sign in again, 130 when stopped by Ctrl-C. `atlassian-offline-mcp
 --help` lists them. Running the same command again fetches only what changed since.
 
+## End the session
+
+The session that `login` saved signs in as you, from this machine or from any copy of
+`~/atlassian-offline-mcp/session/`, until it expires. End it when you leave the machine,
+or as soon as that folder may have been copied:
+
+1. On [your Atlassian account's security page][security], view and manage your recent
+   devices, then log out of all devices but the browser you are using, as
+   [Atlassian's guide][devices] describes. The sign-in window's Chrome is one of them:
+   Atlassian ends its session on its side, wherever the cookies were copied. Your other
+   browsers are signed out too.
+2. Remove the folder, which holds the cookies and the sign-in window's own browser
+   profile:
+
+   ```bash
+   rm -r ~/atlassian-offline-mcp/session
+   ```
+
+A run signed in by the session then stops at once with exit status 3, and says to run
+`login` again. Running `login` again replaces the saved cookies, but does not end the
+session that they held: only the first step does.
+
+[security]: https://id.atlassian.com/manage-profile/security
+[devices]: https://support.atlassian.com/atlassian-account/docs/manage-recently-used-devices-for-your-atlassian-account/
+
 ## What can come back to the personal laptop
 
 The run reports in `~/atlassian-offline-mcp/runs/` hold counts and the paths of fields
