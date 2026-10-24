@@ -20,8 +20,11 @@ marked for contributors.
   environment alone.
 - [Shell completions](how-to/shell-completions.md): subcommands, options and their
   values completed by bash or zsh.
-- [Coding agents](how-to/agents.md): the MCP server, search by meaning and the mirror's
-  files, for Claude Code and VS Code Copilot.
+- [Coding agents](how-to/agents.md): the MCP server and the mirror's files, for Claude
+  Code and VS Code Copilot.
+- [Embeddings](how-to/embeddings.md): search by meaning, with Ollama on this machine as
+  the example of any OpenAI-compatible API; the model, the endpoint and the chunking; or
+  words alone.
 - [Golden questions](how-to/golden-questions.md): questions about your own content, to
   measure with `eval` which search mode, model and chunking suit it.
 - [Observe runs with Grafana](how-to/observe-with-grafana.md): traces, metrics and logs
