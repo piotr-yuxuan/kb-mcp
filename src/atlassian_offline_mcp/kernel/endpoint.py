@@ -17,8 +17,13 @@ class Service:
 
     name: str  # what it is, as a sentence names it
     setting: str  # the setting that holds its address
-    flag: str  # the option that lets a run reach one off this machine
+    flag: str | None  # the option that lets a run reach one off this machine; None: none may
     start: str  # how to start it, said when it does not answer
+
+    @property
+    def otherwise(self) -> str:
+        """Offer the flag as a refusal ends; nothing for a service this machine alone serves."""
+        return f", or pass {self.flag}" if self.flag else ""
 
 
 EMBEDDINGS = Service(
@@ -26,6 +31,13 @@ EMBEDDINGS = Service(
     setting="embedding_url",
     flag="--allow-remote-embeddings",
     start="With Ollama: ollama serve",
+)
+# Local only, by the user's word (plan 022): no flag lets a run rerank off this machine.
+RERANKING = Service(
+    name="the reranking server",
+    setting="rerank.url",
+    flag=None,
+    start="With llama.cpp: llama-server -m <model> --reranking --port 9931",
 )
 
 
@@ -67,15 +79,15 @@ def refused_endpoint(url: str, service: Service, *, remote_allowed: bool) -> str
     """Say why a run may not send the mirror's text to a service, or None when it may.
 
     An address that is not a literal one of this machine needs the run's word,
-    ``remote_allowed``, and https even then. The message names the service's setting
-    and its flag.
+    ``remote_allowed``, and https even then. The message names the service's setting,
+    and its flag when it has one.
     """
     if loopback(url):
         return None
     if not remote_allowed:
         return (
             f"{service.setting}: not an address of this machine, where the mirror's text"
-            f" would go; write 127.0.0.1 for this one, or pass {service.flag}"
+            f" would go; write 127.0.0.1 for this one{service.otherwise}"
         )
     if not url.startswith("https://"):
         return f"{service.setting}: an endpoint off this machine is reached over https only"

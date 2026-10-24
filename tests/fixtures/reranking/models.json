@@ -1,0 +1,61 @@
+{
+    "models": [
+        {
+            "name": "qwen3-reranker-0.6b",
+            "model": "qwen3-reranker-0.6b",
+            "modified_at": "",
+            "size": "",
+            "digest": "",
+            "type": "model",
+            "description": "",
+            "tags": [
+                ""
+            ],
+            "capabilities": [
+                "completion"
+            ],
+            "parameters": "",
+            "details": {
+                "parent_model": "",
+                "format": "gguf",
+                "family": "",
+                "families": [
+                    ""
+                ],
+                "parameter_size": "",
+                "quantization_level": ""
+            }
+        }
+    ],
+    "object": "list",
+    "data": [
+        {
+            "id": "qwen3-reranker-0.6b",
+            "aliases": [
+                "qwen3-reranker-0.6b"
+            ],
+            "tags": [],
+            "object": "model",
+            "architecture": {
+                "input_modalities": [
+                    "text"
+                ],
+                "output_modalities": [
+                    "text"
+                ]
+            },
+            "created": 1792861113,
+            "owned_by": "llamacpp",
+            "meta": {
+                "vocab_type": 2,
+                "n_vocab": 151669,
+                "n_ctx": 8192,
+                "n_ctx_train": 40960,
+                "n_embd": 1024,
+                "n_params": 595778560,
+                "size": 633207232,
+                "ftype": "Q8_0"
+            }
+        }
+    ]
+}

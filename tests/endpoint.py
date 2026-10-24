@@ -1,4 +1,4 @@
-"""A scripted OpenAI-compatible endpoint that lists its models as Ollama does.
+"""Scripted model servers: embeddings as Ollama answers them, reranking as llama.cpp's.
 
 Its model is the tiny model of the tests: words of one concept share an axis, so that a
 query without a word of its target still finds it; every other word, and every mark,
@@ -6,7 +6,9 @@ shares one axis apart. ``Scripted`` answers ``/v1/embeddings`` and ``/api/tags``
 models it is given, records what it is asked, and fails as it is told; it runs behind
 ``httpx.MockTransport`` (``scripted``), or behind a server on this machine
 (``serving``) for the commands and the stdio server. Its answers take their shape from
-Ollama's, captured in ``fixtures/ollama``.
+Ollama's, captured in ``fixtures/ollama``. ``Reranks`` answers ``/v1/rerank`` and
+``/v1/models`` as ``llama-server --reranking`` does, scoring by ``relevance``, its
+answers shaped as those captured in ``fixtures/reranking``; ``reranks`` opens it.
 
 ``REACHABLE`` holds the ports of this machine that tests have opened: the only places
 that the guard of ``conftest`` lets a test connect to.
@@ -29,7 +31,7 @@ from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 import httpx
 import numpy as np
 
-from atlassian_offline_mcp.kernel.endpoint import EMBEDDINGS
+from atlassian_offline_mcp.kernel.endpoint import EMBEDDINGS, RERANKING
 from atlassian_offline_mcp.search.adapters.embedding import connect
 from atlassian_offline_mcp.search.adapters.model_api import Endpoint, endpoint
 
@@ -41,6 +43,9 @@ if TYPE_CHECKING:
 REACHABLE: set[int] = set()
 FIXTURES = Path(__file__).parent / "fixtures" / "ollama"
 URL = "http://127.0.0.1:11434/v1"
+RERANKING_FIXTURES = Path(__file__).parent / "fixtures" / "reranking"
+RERANK_URL = "http://127.0.0.1:9931/v1"
+RERANKER = "qwen3-reranker-0.6b"
 DIMENSIONS = 16
 # Words of one concept mean the same to the tiny model; each concept has its own axis.
 CONCEPTS = (
@@ -145,6 +150,67 @@ def tiny(answers: Scripted | None = None, model: str = "tiny") -> ApiEmbedder:
 def connector(answers: Scripted | None = None) -> Callable[[str], ApiEmbedder]:
     """Give what connects a search by meaning to the models, as scripted."""
     return functools.partial(connect, scripted(answers))
+
+
+def relevance(query: str, document: str) -> float:
+    """Score as the scripted reranker does: the share of the query's words in the document."""
+    asked = set(re.findall(r"\w+", query.lower()))
+    return len(asked & set(re.findall(r"\w+", document.lower()))) / (len(asked) or 1)
+
+
+@dataclass
+class Reranks:
+    """A llama.cpp server started with ``--reranking``, scoring by ``relevance``, or as told."""
+
+    models: tuple[str, ...] = (RERANKER,)  # the models it lists
+    statuses: list[int] = field(default_factory=list)  # the next rerankings' status
+    asked: list[dict[str, Any]] = field(default_factory=list)  # each reranking's request
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        """Answer one request as ``llama-server`` would, or as told."""
+        routes = {("GET", "/v1/models"): self.list_models, ("POST", "/v1/rerank"): self.rerank}
+        route = routes.get((request.method, request.url.path))
+        return httpx.Response(404) if route is None else route(request)
+
+    def list_models(self, _: httpx.Request) -> httpx.Response:
+        """List the models, in rows shaped as ``llama-server``'s."""
+        template = json.loads((RERANKING_FIXTURES / "models.json").read_text(encoding="utf-8"))
+        rows = [template["data"][0] | {"id": name, "aliases": [name]} for name in self.models]
+        return httpx.Response(200, json={"object": "list", "data": rows})
+
+    def rerank(self, request: httpx.Request) -> httpx.Response:
+        """Score each document, or fail as told, in an answer shaped as ``llama-server``'s.
+
+        As llama.cpp does, the results come highest first, cut to ``top_n``; the tokens
+        counted are the words of every pair.
+        """
+        asked = json.loads(request.content)
+        self.asked.append(asked)
+        if self.statuses:
+            return httpx.Response(self.statuses.pop(0))
+        documents = asked["documents"]
+        scores = [relevance(asked["query"], document) for document in documents]
+        ranked = sorted(range(len(documents)), key=lambda index: -scores[index])
+        pairs = (f"{asked['query']} {document}" for document in documents)
+        words = sum(len(re.findall(r"\w+", pair)) for pair in pairs)
+        answer = json.loads((RERANKING_FIXTURES / "rerank.json").read_text(encoding="utf-8"))
+        answer["model"] = asked["model"]
+        answer["usage"] = {"prompt_tokens": words, "total_tokens": words}
+        answer["results"] = [
+            {"index": index, "relevance_score": scores[index]} for index in ranked[: asked["top_n"]]
+        ]
+        return httpx.Response(200, json=answer)
+
+
+def reranks(answers: Reranks | None = None) -> Endpoint:
+    """Open an endpoint at the reranking server's address whose answers are scripted."""
+    return endpoint(
+        RERANK_URL,
+        None,
+        RERANKING,
+        remote_allowed=False,
+        transport=httpx.MockTransport(answers or Reranks()),
+    )
 
 
 class Quiet(WSGIRequestHandler):
