@@ -861,7 +861,7 @@ def test_what_sync_records_is_what_its_page_says(
     with listed fields alone, and is left out of sync's, as are the step's spans and
     instruments. No line of the log files holds a document's text. Under the defaults,
     hybrid search over windows, the index embeds by the scripted endpoint, which serves
-    the default model; by words alone, it does not.
+    the default model; by words alone, it does not. Either way, the index is built.
     """
     if mode is None:
         monkeypatch.delenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE")
@@ -893,9 +893,10 @@ def test_what_sync_records_is_what_its_page_says(
         absent = settings_file(home, home / "absent")
         with emitted.gathering(telemetry, "sync"):
             assert main(command(home, absent, "--yes")) == ExitStatus.REFUSED
-    assert any(span.name == f"embeddings {DEFAULT_MODEL}" for span in emitted.spans) is (
-        mode is None
-    )
+    assert (
+        any(span.name == f"embeddings {DEFAULT_MODEL}" for span in emitted.spans),
+        "index.not_built" in emitted.events,
+    ) == (mode is None, False)
     mine, steps = documented("sync"), [documented(page) for page in STEP_PAGES]
     theirs = {
         name: fields
