@@ -133,10 +133,14 @@ percentile, 266 ms, missed the third. Knowing these numbers, the user chose `win
 and hybrid search as the defaults (plan 025): ranking matters more to them than speed,
 and 266 ms is good enough to them. Semantic search over `windows` scored higher still,
 on every measure of the table (MRR@10 0.674, Evidence@ask 0.500), in 256 ms at the 95th
-percentile; a paired randomisation test made afterwards on the results file's ranks,
-`eval`'s own (10,000 samples, seed 11), found the difference in MRR@10, 0.035, far from
-significant (p 0.29): meaning alone did better on 25 questions, hybrid on 22, and 58
-tied. The rules and their verdicts stay as recorded, and `eval` still prints the rule's
+percentile. Only its MRR@10 was tested against hybrid search, afterwards, by `eval`'s
+own paired randomisation test (10,000 samples, seed 11) on the ranks that the results
+file keeps: the difference, 0.035, was not significant (p 0.27); meaning alone did
+better on 25 questions, hybrid on 22, and 58 tied. Its leads in Evidence@ask (0.500
+against 0.357) and Found@ask (0.910 against 0.852) were not tested, since the results
+file keeps `ask`'s measures by group, not by question. [Comparing chunkings and
+modes](search-evaluation.md#comparing-chunkings-and-modes) gives the lines of that test.
+The rules and their verdicts stay as recorded, and `eval` still prints the rule's
 verdict on any set of questions.
 
 What the choice gains, on the sandbox: the first expected document comes sooner

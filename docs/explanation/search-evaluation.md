@@ -346,10 +346,12 @@ MRR@10 0.639, against 0.578 over `sections` (adjusted p 0.0114) and 0.539 by wor
 (adjusted p 0.0008), with 0.674 against words' 0.616 on identifier questions and 0.855
 against 0.812 on keyword questions; its 95th percentile of query time was 266 ms on this
 laptop's CPU. Semantic search over `windows` scored higher still (MRR@10 0.674,
-Evidence@ask 0.500 against 0.357), at 256 ms; a paired randomisation test made
-afterwards on the results file's ranks, `eval`'s own (10,000 samples, seed 11), found
-the difference in MRR@10, 0.035, far from significant (p 0.29): meaning alone did better
-on 25 questions, hybrid on 22, and 58 tied.
+Evidence@ask 0.500 against 0.357), at 256 ms. On MRR@10 alone, `eval`'s paired
+randomisation test, run afterwards on the ranks that the results file keeps (10,000
+samples, seed 11), found the difference, 0.035, not significant (p 0.27): meaning alone
+did better on 25 questions, hybrid on 22, and 58 tied. The difference in Evidence@ask
+was not tested, since the results file keeps `ask`'s measures by group alone; [comparing
+chunkings and modes](#comparing-chunkings-and-modes) gives the lines of the test.
 
 Neither rule chose `windows` and hybrid search. Plan 019's rule, which decides the
 chunking by the evidence that `ask` quotes, kept `sections`. Plan 018's bar, applied to
@@ -507,6 +509,34 @@ milliseconds:
 ```bash
 uv run python -c 'import json, sys; [print(run["model"], run["chunking"], mode, round(times[1] * 1000), "ms") for run in json.load(open(sys.argv[1]))["runs"] for mode, times in run["times"].items()]' <data>/eval/results/<time>.json
 ```
+
+`eval` tests each mode against words alone, never two modes against each other. The
+results file keeps, under `ranks`, each question's rank of each expected document by
+mode, `null` past the tenth, from which each question's MRR@10 follows. These lines run
+`eval`'s own paired test of semantic search against hybrid search over `windows` (the
+first model's run, if there are several), and print the difference in MRR@10 and the
+p-value, then the questions where meaning alone did better, worse and the same; on plan
+019's file, `20261023T001258Z.json`, they print `0.035 0.27`, then `25 22 58`:
+
+```bash
+uv run python - <data>/eval/results/<time>.json <<'EOF'
+import json, sys
+from statistics import fmean
+from atlassian_offline_mcp.evaluation.domain.evaluation import paired_test
+runs = json.load(open(sys.argv[1]))["runs"]
+ranks = next(run["ranks"] for run in runs if run["chunking"] == "windows")
+mrr = {
+    mode: [max((1 / rank for rank in each if rank), default=0.0) for each in by_question.values()]
+    for mode, by_question in ranks.items()
+}
+gains = [after - before for before, after in zip(mrr["hybrid"], mrr["semantic"])]
+print(round(fmean(gains), 3), round(paired_test(mrr["hybrid"], mrr["semantic"]), 2))
+print(sum(gain > 0 for gain in gains), sum(gain < 0 for gain in gains), gains.count(0))
+EOF
+```
+
+`ask`'s measures, Found@ask and Evidence@ask, are kept by group alone, so no such test
+can be run on them.
 
 ### On another corpus, such as your work set
 

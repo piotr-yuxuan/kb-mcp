@@ -52,7 +52,7 @@ Why hybrid search over windows: on plan 002's sandbox questions it ranked better
 hybrid search over sections or words alone, significantly (MRR@10 0.639, against 0.578
 and 0.539), at 266 ms for the 95th percentile of a query on the development laptop's
 CPU. Semantic search over windows ranked higher still there (0.674), but not
-significantly: p 0.29 against hybrid, in a paired test made afterwards. The rules
+significantly: p 0.27 against hybrid, in a paired test made afterwards. The rules
 written before those measures kept words and sections, for want of speed and of evidence
 quoted; the user chose these defaults knowing that, as ranking matters more to them than
 speed.
