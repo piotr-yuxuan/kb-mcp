@@ -27,7 +27,7 @@ from atlassian_offline_mcp.cli.app.sync import Atlassian, Context, Index, Row, W
 from atlassian_offline_mcp.cli.domain.sync import SOURCES, chosen
 from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.cli.options.sync import refused
-from atlassian_offline_mcp.config.domain.settings import Settings
+from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL, Settings
 from atlassian_offline_mcp.kernel.content import SOURCE_NAMES
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes
@@ -43,8 +43,8 @@ from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report, Targets
-from tests.endpoint import Scripted, serving
-from tests.reference import Emitted, documented, undocumented
+from tests.endpoint import DIGEST, Scripted, serving
+from tests.reference import Emitted, documented, pattern, undocumented
 from tests.test_cli import logged_as as logged_in_files
 from tests.test_download import CAP, PAGES, SITE, FakeSite
 from tests.test_question import QUESTION, Terminal
@@ -849,8 +849,9 @@ STEP_PAGES = ("download", "mirror", "index")
 
 
 @pytest.mark.usefixtures("signed_in")
+@pytest.mark.parametrize("mode", ["lexical", None], ids=["words alone", "the defaults"])
 def test_what_sync_records_is_what_its_page_says(
-    home: Path, worklog: Path, telemetry: InMemory, monkeypatch: MonkeyPatch
+    home: Path, worklog: Path, telemetry: InMemory, monkeypatch: MonkeyPatch, mode: str | None
 ) -> None:
     """Runs that between them record each event, span and instrument of sync's page.
 
@@ -858,44 +859,59 @@ def test_what_sync_records_is_what_its_page_says(
     a problem and two transcripts of one id, one whose pandoc gives no version. What a
     step's page lists, and sync's does not, is the step's: each such event is recorded
     with listed fields alone, and is left out of sync's, as are the step's spans and
-    instruments. No line of the log files holds a document's text.
+    instruments. No line of the log files holds a document's text. Under the defaults,
+    hybrid search over windows, the index embeds by the scripted endpoint, which serves
+    the default model; by words alone, it does not.
     """
+    if mode is None:
+        monkeypatch.delenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE")
     config = settings_file(home, worklog, atlassian=True)
     period = ("--since", "2026-10-02")
     emitted = Emitted()
-    with emitted.gathering(telemetry, "sync"):
-        assert main(command(home, config, "--yes", "-vv", *period)) == ExitStatus.FAILED
-    with emitted.gathering(telemetry, "sync"):
-        assert main(command(home, config, "--dry-run", *period)) == ExitStatus.OK
-    shutil.copytree(worklog / "transcripts/current", worklog / "transcripts/archive/2026/x")
-    (worklog / "transcripts/misc/a.org").write_bytes(b"* Caf\xe9\n")
-    with emitted.gathering(telemetry, "sync"):
-        assert main(command(home, config, "--yes", "--include", "worklog")) == ExitStatus.FAILED
-    with monkeypatch.context() as patch:
-        patch.setattr(sync_app, "download", interrupting)
+    with serving(Scripted(models={DEFAULT_MODEL: DIGEST})) as url:
+        monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL", url)
         with emitted.gathering(telemetry, "sync"):
-            assert main(command(home, config, "--yes", *period)) == ExitStatus.INTERRUPTED
-    with monkeypatch.context() as patch:
-        patch.setattr(Pandoc, "org_converter", lambda _: unconverted())
+            assert main(command(home, config, "--yes", "-vv", *period)) == ExitStatus.FAILED
         with emitted.gathering(telemetry, "sync"):
-            assert main(command(home, config, "--yes", "--include", "worklog")) == 1
-    with monkeypatch.context() as patch:
-        patch.setattr(Pandoc, "find", missing)
+            assert main(command(home, config, "--dry-run", *period)) == ExitStatus.OK
+        shutil.copytree(worklog / "transcripts/current", worklog / "transcripts/archive/2026/x")
+        (worklog / "transcripts/misc/a.org").write_bytes(b"* Caf\xe9\n")
         with emitted.gathering(telemetry, "sync"):
-            assert main(command(home, config, "--yes", "--include", "worklog")) == 1
-    absent = settings_file(home, home / "absent")
-    with emitted.gathering(telemetry, "sync"):
-        assert main(command(home, absent, "--yes")) == ExitStatus.REFUSED
+            assert main(command(home, config, "--yes", "--include", "worklog")) == ExitStatus.FAILED
+        with monkeypatch.context() as patch:
+            patch.setattr(sync_app, "download", interrupting)
+            with emitted.gathering(telemetry, "sync"):
+                assert main(command(home, config, "--yes", *period)) == ExitStatus.INTERRUPTED
+        with monkeypatch.context() as patch:
+            patch.setattr(Pandoc, "org_converter", lambda _: unconverted())
+            with emitted.gathering(telemetry, "sync"):
+                assert main(command(home, config, "--yes", "--include", "worklog")) == 1
+        with monkeypatch.context() as patch:
+            patch.setattr(Pandoc, "find", missing)
+            with emitted.gathering(telemetry, "sync"):
+                assert main(command(home, config, "--yes", "--include", "worklog")) == 1
+        absent = settings_file(home, home / "absent")
+        with emitted.gathering(telemetry, "sync"):
+            assert main(command(home, absent, "--yes")) == ExitStatus.REFUSED
+    assert any(span.name == f"embeddings {DEFAULT_MODEL}" for span in emitted.spans) is (
+        mode is None
+    )
     mine, steps = documented("sync"), [documented(page) for page in STEP_PAGES]
-    theirs = {name: fields for page in steps for name, fields in page.events.items()}
-    theirs = {name: fields for name, fields in theirs.items() if name not in mine.events}
+    theirs = {
+        name: fields
+        for page in steps
+        for name, fields in page.events.items()
+        if name not in mine.events
+    }
     unlisted = {
         name: sorted(recorded - theirs[name])
         for name, recorded in emitted.events.items()
         if name in theirs and recorded - theirs[name]
     }
     assert unlisted == {}, "a step's event with fields its page does not list"
-    spans = {name for page in steps for name in page.spans} - set(mine.spans)
+    spans = [
+        pattern(name, "sync") for page in steps for name in page.spans if name not in mine.spans
+    ]
     instruments = {name for page in steps for name in page.instruments} - set(mine.instruments)
     own = Emitted()
     for name, fields in emitted.events.items():
@@ -903,7 +919,9 @@ def test_what_sync_records_is_what_its_page_says(
             own.events[name] |= fields
     own.logged = [each for each in emitted.logged if each[0] not in theirs]
     own.records = [each for each in emitted.records if each[0] not in theirs]
-    own.spans = [each for each in emitted.spans if each.name not in spans]
+    own.spans = [
+        each for each in emitted.spans if not any(listed.fullmatch(each.name) for listed in spans)
+    ]
     own.instruments.update(
         (name, value) for name, value in emitted.instruments.items() if name not in instruments
     )
