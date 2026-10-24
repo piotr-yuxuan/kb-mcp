@@ -158,6 +158,7 @@ def test_each_setting_is_read_by_its_kind() -> None:
         ("logs",): "table",
         ("logs", "dir"): "path",
         ("telemetry",): "table",
+        ("rerank",): "table",
         ("sources",): "table",
         ("sources", "confluence"): "table",
         ("sources", "confluence", "spaces"): "list",

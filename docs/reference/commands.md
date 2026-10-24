@@ -35,6 +35,7 @@ positional arguments:
     login        sign in once, in a Chrome window
     mirror       write the Markdown mirror from the raw store
     model        check the embedding model and its endpoint
+    reranker     check the reranking server and its model
     serve        serve the mirror over MCP on stdio
     sync         bring the configured sources up to date: download, mirror, the work
                  log, then the index
@@ -441,6 +442,38 @@ options:
 
 With --format json: name and dimensions, the model's; url, the endpoint; digest, the
 model's, empty when the endpoint reports none.
+```
+
+## `reranker`
+
+```text
+usage: atlassian-offline-mcp reranker [-h] [--config CONFIG] [--data-dir DATA_DIR]
+                                      [--site SITE] [-q | -v |
+                                      --log-level {debug,info,warning,error}]
+                                      [--format {text,json}]
+                                      [--summary {short,detailed}]
+                                      {check} [name]
+
+positional arguments:
+  {check}
+  name                  the model to check; by default, the setting
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       the settings file
+  --data-dir DATA_DIR   the data directory, overriding the settings
+  --site SITE           the site, as https://<name>.atlassian.net
+  -q                    say errors alone, and write no result as text
+  -v                    the level info, or debug with -vv
+  --log-level {debug,info,warning,error}
+                        say what is of this level or above; warning by default
+  --format {text,json}  write the result as text, or as one JSON document
+  --summary {short,detailed}
+                        write what matters of the result, or all of it
+
+With --format json: model, the one checked; url, the server; served, the models that
+it lists; answering and unrelated, the probe's scores; depth and seconds, a request of
+rerank.depth texts as long as a search sends, timed.
 ```
 
 ## `serve`

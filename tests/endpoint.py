@@ -228,7 +228,7 @@ class Threaded(ThreadingMixIn, WSGIServer):
 
 
 @contextmanager
-def serving(answers: Scripted) -> Iterator[str]:
+def serving(answers: Callable[[httpx.Request], httpx.Response]) -> Iterator[str]:
     """Serve the scripted answers on a port of this machine; give the API's address.
 
     Each request reaches the answers with the headers it was sent with.

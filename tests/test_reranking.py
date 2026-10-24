@@ -1,18 +1,33 @@
-"""The reranking adapter: llama.cpp's rerank API, its bounds, its failures by kind."""
+"""Reranking: llama.cpp's rerank API, its settings, and the check of its server."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import httpx
 import pytest
 
-from atlassian_offline_mcp.config.domain.settings import SettingsError
+from atlassian_offline_mcp.cli.commands.reranker import (
+    ANSWER,
+    PROBE,
+    UNRELATED,
+    Checked,
+    text,
+)
+from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.config.domain.settings import Rerank, Settings, SettingsError
 from atlassian_offline_mcp.kernel.endpoint import RERANKING
-from atlassian_offline_mcp.kernel.reranking import LONGEST_QUERY, LONGEST_TEXT, MOST_TEXTS
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
+from atlassian_offline_mcp.kernel.reranking import (
+    BOUND_S,
+    LONGEST_QUERY,
+    LONGEST_TEXT,
+    MOST_TEXTS,
+)
 from atlassian_offline_mcp.search.adapters.model_api import endpoint
 from atlassian_offline_mcp.search.adapters.reranking import (
     EVALUATION,
@@ -27,14 +42,23 @@ from tests.endpoint import (
     RERANKER,
     RERANKING_FIXTURES,
     Reranks,
+    nothing_listening,
     relevance,
     reranks,
+    serving,
 )
+from tests.reference import Emitted, undocumented
+from tests.test_settings import from_file, loaded_from
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from pathlib import Path
+
+    from _pytest.capture import CaptureFixture
+    from _pytest.monkeypatch import MonkeyPatch
 
     from atlassian_offline_mcp.search.adapters.model_api import Endpoint
+    from tests.conftest import InMemory
 
 QUERY = "how do I roll back a release"
 TEXTS = (
@@ -308,3 +332,157 @@ def test_a_reranker_served_on_this_machine_ranks_the_answer_first() -> None:
     assert answering_it > unrelated
     assert scored.tokens
     assert LIVE in names
+
+
+def test_reranking_is_off_by_default_at_the_guide_s_server_and_model() -> None:
+    """Off until plan 022's run decides; llama-server where the guide starts it; depth 30."""
+    assert from_file({}).rerank == Rerank(enabled=False, url=RERANK_URL, model=RERANKER, depth=30)
+
+
+@pytest.mark.parametrize(
+    ("values", "named"),
+    [
+        ({"depth": 1}, "rerank.depth (config.toml):"),
+        ({"depth": MOST_TEXTS + 1}, "rerank.depth (config.toml):"),
+        ({"model": "a model"}, "rerank.model (config.toml): the name of a reranking model"),
+        ({"url": "http://localhost:9931/v1"}, "rerank.url (config.toml): an address of this"),
+        ({"url": "http://10.0.0.1:9931/v1"}, "rerank.url (config.toml): an address of this"),
+        ({"url": "https://example.com/v1"}, "rerank.url (config.toml): an address of this"),
+        ({"enabled": True, "url": "https://example.com/v1"}, "rerank.url (config.toml):"),
+    ],
+)
+def test_unusable_rerank_settings_are_refused_by_name_with_no_flag_offered(
+    values: dict[str, object], named: str
+) -> None:
+    """Too shallow or deep, a name no model has, an address elsewhere, on or off: refused."""
+    with pytest.raises(SettingsError, match=re.escape(named)) as refused:
+        from_file({"rerank": values})
+    assert "--allow" not in str(refused.value)
+
+
+def test_the_variable_overrides_the_file(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """The environment is stronger than the settings file, as for every setting."""
+    variable, stronger = "ATLASSIAN_OFFLINE_MCP_RERANK__DEPTH", 20
+    monkeypatch.setenv(variable, str(stronger))
+    loaded = loaded_from(tmp_path, "[rerank]\ndepth = 10\n")
+    assert loaded.settings.rerank.depth == stronger
+    assert loaded.layer("rerank.depth") == variable
+
+
+def test_the_reranking_service_names_a_real_setting() -> None:
+    """The setting that its refusals name is the settings' own."""
+    table, name = RERANKING.setting.split(".")
+    assert table in Settings.model_fields
+    assert name in Rerank.model_fields
+
+
+def reranker_check(home: Path, url: str, *arguments: str) -> int:
+    """Run ``reranker check`` from a scratch home, its settings naming the server at ``url``."""
+    config = home / "config.toml"
+    config.write_text(f'[rerank]\nurl = "{url}"\ndepth = 4\n', encoding="utf-8")
+    options = ["--config", str(config), "--data-dir", str(home / "data")]
+    return main(["reranker", "check", *arguments, *options])
+
+
+@pytest.fixture
+def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
+    """Give a scratch home, for the settings' checks."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    return tmp_path
+
+
+def test_the_check_gives_the_probe_s_scores_and_times_a_request_at_the_depth(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The answer above the unrelated passage, then rerank.depth texts as long as any, timed."""
+    answers = Reranks()
+    with serving(answers) as url:
+        assert reranker_check(home, url) == 0
+    out = capsys.readouterr().out.splitlines()
+    answer, unrelated = relevance(PROBE, ANSWER), relevance(PROBE, UNRELATED)
+    assert out[0] == (
+        f"{RERANKER}, at {url}: the answer scores {answer:.4f}, an unrelated passage"
+        f" {unrelated:.4f}"
+    )
+    assert out[1].startswith(f"4 texts of {LONGEST_TEXT} characters: ")
+    assert out[2:] == []
+    probe, timed = answers.asked
+    assert probe["documents"] == [ANSWER, UNRELATED]
+    assert [len(each) for each in timed["documents"]] == [LONGEST_TEXT] * 4
+
+
+def test_the_check_gives_one_document_in_json(home: Path, capsys: CaptureFixture[str]) -> None:
+    """Under --format json, what was checked, the scores and the time."""
+    with serving(Reranks()) as url:
+        assert reranker_check(home, url, "--format", "json") == 0
+    checked = json.loads(capsys.readouterr().out)
+    assert set(checked) == {"model", "url", "served", "answering", "unrelated", "depth", "seconds"}
+    assert (checked["model"], checked["url"], checked["served"]) == (RERANKER, url, [RERANKER])
+    assert checked["answering"] > checked["unrelated"]
+
+
+def test_the_check_says_when_the_server_lists_another_name(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A single-model server reranks with its own model whatever the name: said, not refused."""
+    with serving(Reranks(models=("bge-reranker-v2-m3",))) as url:
+        assert reranker_check(home, url) == 0
+    said = capsys.readouterr().out.splitlines()[-1]
+    assert said.startswith("the server lists bge-reranker-v2-m3: it reranks with its own model")
+
+
+def test_the_check_says_when_a_request_at_the_depth_is_slower_than_the_bound() -> None:
+    """Past the user's 5 seconds, lower the depth; at them, nothing said."""
+    checked = Checked(RERANKER, RERANK_URL, (RERANKER,), 0.9, 0.1, 30, BOUND_S + 0.1)
+    said = text(checked, "short").splitlines()
+    assert said[-1] == "slower than 5 s, the bound on a search: lower rerank.depth"
+    at_bound = text(replace(checked, seconds=BOUND_S), "short").splitlines()
+    assert not at_bound[-1].startswith("slower")
+
+
+def even(request: httpx.Request) -> httpx.Response:
+    """Answer as a server that scores every text alike, as one not reranking might."""
+    if request.url.path == "/v1/models":
+        return Reranks()(request)
+    count = len(json.loads(request.content)["documents"])
+    scores = [{"index": index, "relevance_score": 0.5} for index in range(count)]
+    return httpx.Response(200, json={"results": scores})
+
+
+@pytest.mark.parametrize(
+    ("server", "said"),
+    [
+        (even, "scores as high as the answer; is the server started with --reranking"),
+        (Reranks(statuses=[501]), "not started with --reranking (501)"),
+        (lambda _: httpx.Response(404), "not started with --reranking (404)"),
+    ],
+)
+def test_the_check_fails_on_a_server_that_does_not_rerank(
+    home: Path,
+    capsys: CaptureFixture[str],
+    server: Callable[[httpx.Request], httpx.Response],
+    said: str,
+) -> None:
+    """Even scores, llama-server started without --reranking, no such route: exit 1, why."""
+    with serving(server) as url:
+        assert reranker_check(home, url) == ExitStatus.FAILED
+    assert said in capsys.readouterr().err
+
+
+def test_the_check_says_how_to_start_a_server_that_does_not_answer(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Nothing listening: exit 1, and the command that starts the server."""
+    with nothing_listening() as url:
+        assert reranker_check(home, url) == ExitStatus.FAILED
+    assert "With llama.cpp: llama-server -m <model> --reranking" in capsys.readouterr().err
+
+
+def test_reranker_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None:
+    """A server that reranks; then none listening."""
+    emitted = Emitted()
+    with serving(Reranks()) as url, emitted.gathering(telemetry, "reranker"):
+        assert reranker_check(tmp_path, url) == 0
+    with nothing_listening() as url, emitted.gathering(telemetry, "reranker"):
+        assert reranker_check(tmp_path, url) == ExitStatus.FAILED
+    assert undocumented("reranker", emitted) == []

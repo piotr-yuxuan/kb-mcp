@@ -61,7 +61,8 @@ the command and those who change its code, unless it is marked for contributors.
   [`eval-agents`](reference/telemetry/eval-agents.md),
   [`index`](reference/telemetry/index.md), [`login`](reference/telemetry/login.md),
   [`mirror`](reference/telemetry/mirror.md), [`model`](reference/telemetry/model.md),
-  [`serve`](reference/telemetry/serve.md) and [`sync`](reference/telemetry/sync.md).
+  [`reranker`](reference/telemetry/reranker.md), [`serve`](reference/telemetry/serve.md)
+  and [`sync`](reference/telemetry/sync.md).
 
 ## Explanation
 
