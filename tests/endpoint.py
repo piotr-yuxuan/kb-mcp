@@ -160,13 +160,21 @@ class Threaded(ThreadingMixIn, WSGIServer):
 
 @contextmanager
 def serving(answers: Scripted) -> Iterator[str]:
-    """Serve the scripted answers on a port of this machine; give the API's address."""
+    """Serve the scripted answers on a port of this machine; give the API's address.
+
+    Each request reaches the answers with the headers it was sent with.
+    """
 
     def application(environ: dict[str, Any], start_response: Callable[..., object]) -> list[bytes]:
         length = int(environ.get("CONTENT_LENGTH") or 0)
         request = httpx.Request(
             environ["REQUEST_METHOD"],
             f"http://127.0.0.1{environ['PATH_INFO']}",
+            headers={
+                name.removeprefix("HTTP_").replace("_", "-"): value
+                for name, value in environ.items()
+                if name.startswith("HTTP_")
+            },
             content=environ["wsgi.input"].read(length),
         )
         response = answers(request)
