@@ -13,8 +13,12 @@ The index the server answers from, and a golden file whose refs the mirror holds
 reads the same settings as the commands below: run them all from one shell. By default
 it searches in hybrid mode, so Ollama must be running with the model, and the index
 built by meaning ([search by meaning](agents.md#search-by-meaning)); else `ask` answers
-by words, saying so only in its answer, which neither the call logs nor `results.json`
-keep. `search_mode = "lexical"` measures words alone.
+by words and says so in its answer. Neither `calls/` nor `results.json` keeps that, but
+the server's own log file does, `serve-<start>-<pid>.jsonl` in `logs.dir`, by the
+warning `search.fallback`, and with telemetry on the counter `aom.serve.fallbacks`
+counts it ([serve](../reference/telemetry/serve.md)). Run `model check` before the runs,
+and look for `search.fallback` in those files after them. `search_mode = "lexical"`
+measures words alone.
 
 ## Prepare the runs
 
