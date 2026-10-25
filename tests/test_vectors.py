@@ -309,6 +309,30 @@ def test_an_index_built_before_the_row_reads_as_cut_by_sections(data: Path) -> N
         assert reader.summary().chunking == "sections"
 
 
+@pytest.mark.parametrize("chunking", CHUNKINGS)
+def test_an_index_names_the_store_s_key_of_each_piece_s_vector(
+    data: Path, chunking: Chunking
+) -> None:
+    """Its keys are the store's keys of the texts that its chunking embeds, and no other."""
+    embedder = counting()
+    chunked(data, embedder, chunking)
+    with reading(data / "index.sqlite") as reader:
+        keys = reader.keys()
+    assert keys == {vector_store.key(tiny().fingerprint, text) for text in embedder.texts}
+
+
+def test_an_index_built_before_keys_reads_as_before_but_cannot_say_them(data: Path) -> None:
+    """Without the column, its pieces and summary read as ever; its keys are refused."""
+    build(data, counting())
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        connection.execute("ALTER TABLE pieces DROP COLUMN key")
+        connection.commit()
+    with reading(data / "index.sqlite") as reader:
+        assert len(reader.pieces().documents) == reader.summary().pieces > 0
+        with pytest.raises(UnavailableIndexError, match="before pieces recorded their keys"):
+            reader.keys()
+
+
 def test_a_window_belongs_to_the_section_of_its_middle_and_spans_the_body(data: Path) -> None:
     """A window across sections: its section holds its middle, its span reads the body."""
     body = "# Rollback\n\nUndo the payout.\n\n## Release\n\n" + "The deploy goes out. " * 120

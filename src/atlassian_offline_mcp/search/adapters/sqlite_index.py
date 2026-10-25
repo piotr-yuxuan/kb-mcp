@@ -3,7 +3,8 @@
 Only this module knows SQL. ``building`` writes a new index beside the old one and
 renames it into place once complete; ``reading`` opens one read-only for one use, so
 that a replaced file is read from the next use on. An index built with a model also
-holds the vector of each piece of each section, and names the model.
+holds the vector of each piece of each section, with its key in the vector store, and
+names the model.
 """
 
 from __future__ import annotations
@@ -79,7 +80,7 @@ CREATE VIRTUAL TABLE chunks USING fts5(
 CREATE TABLE pieces (
   rowid INTEGER PRIMARY KEY,
   section INTEGER NOT NULL, start INTEGER NOT NULL, stop INTEGER NOT NULL,
-  vector BLOB NOT NULL
+  key TEXT NOT NULL, vector BLOB NOT NULL
 );
 """
 # The documents that pass a search's filters, as a JSON list of rowids.
@@ -257,10 +258,14 @@ class Writer:
         self._next_section += len(sections)
         return first
 
-    def add_pieces(self, pieces: Iterable[tuple[int, int, int, bytes]]) -> None:
-        """Add pieces: each its section's rowid, its span in the section's body, its vector."""
+    def add_pieces(self, pieces: Iterable[tuple[int, int, int, str, bytes]]) -> None:
+        """Add pieces: each its section's rowid, its span in the section's body, its vector.
+
+        Each vector comes with its key in the vector store, which only pruning reads.
+        """
         self._connection.executemany(
-            "INSERT INTO pieces (section, start, stop, vector) VALUES (?, ?, ?, ?)", pieces
+            "INSERT INTO pieces (section, start, stop, key, vector) VALUES (?, ?, ?, ?, ?)",
+            pieces,
         )
 
     def skip(self) -> None:
@@ -463,6 +468,18 @@ class Reader:
         # Indexes of 011 and 018 have no chunking: their pieces were cut by sections.
         chunking = cast("Chunking", meta.get("chunking", "sections"))
         return Embedded(meta["model"], meta["fingerprint"], int(meta["dimensions"]), chunking)
+
+    def keys(self) -> set[str]:
+        """Give the vector store's keys of the pieces' vectors: what the index reads of it.
+
+        An index of this schema built before pieces recorded their keys reads as any
+        other, but cannot say them: raise UnavailableIndexError.
+        """
+        columns = {row["name"] for row in self._connection.execute("PRAGMA table_info(pieces)")}
+        if "key" not in columns:
+            message = "built before pieces recorded their keys"
+            raise UnavailableIndexError(message)
+        return {row[0] for row in self._connection.execute("SELECT DISTINCT key FROM pieces")}
 
     def pieces(self) -> Pieces:
         """Read every piece's vector, with where the piece is: what meaning searches."""

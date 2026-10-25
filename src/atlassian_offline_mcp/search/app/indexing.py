@@ -174,7 +174,7 @@ def build_index(
             with TRACER.start_as_current_span("index.embed"):
                 with vector_store.opened(embedding.store) as store:
                     found, report.embedded = store.vectors(texts, embedding.embedder.documents)
-                kept = [(*piece[:3], found[piece[3]]) for piece in pending if piece[3] in found]
+                kept = [(*piece[:4], found[piece[3]]) for piece in pending if piece[3] in found]
                 writer.add_pieces(kept)
             report.pieces = len(kept)
             report.characters = sum(len(text) for text in texts.values())
