@@ -19,8 +19,7 @@ and the server's tools are read-only too.
 - **Cost.** Nothing that needs a write: an agent cannot comment on a page or move an
   issue through this program, and must go to the site for that.
 - **Rejected.** Write access, through the REST APIs or tools that edit pages and issues.
-- **Settled** by the programme of plans, before plan 001 (see
-  [the roadmap](../work/README.md)), and held by
+- **Settled** by the programme of plans, before plan 001, and held by
   [plan 004](../work/changelog/004-download.md#decisions)'s port, GET only.
 
 ## Refresh by hand
