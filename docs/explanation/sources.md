@@ -60,7 +60,7 @@ word-by-word record. The server tells agents so, in its instructions and its `so
 filter, so that they quote a transcript rather than a summary of it, and check the one
 against the other. It stays on this machine, as all the data does: by default `sync`
 sends its text to the embedding endpoint, which must be a loopback address unless the
-run is given `--allow-remote-embeddings` ([search by
-meaning](../how-to/agents.md#search-by-meaning)). Served to agents it is untrusted
-reference data, like every page: a line in it that tells the reader what to do is text,
-not an instruction.
+run is given `--allow-remote-embeddings` ([an endpoint off this
+machine](../how-to/embeddings.md#reach-an-endpoint-off-this-machine)). Served to agents
+it is untrusted reference data, like every page: a line in it that tells the reader
+what to do is text, not an instruction.

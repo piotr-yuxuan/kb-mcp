@@ -15,8 +15,8 @@ files.
   ```
 
   By default `index` embeds the mirror with a model that Ollama serves, so set that up
-  first ([search by meaning](#search-by-meaning), below), or set `search_mode =
-  "lexical"` to index and search by words alone. Build the index again after each
+  first, as [embeddings](embeddings.md) says, or set `search_mode = "lexical"` to index
+  and search by words alone. Build the index again after each
   `mirror`; a running server reads the new index from its next call on. `status` tells
   when the index was built. `mirror`, `index` and `eval` write under the data
   directory, so each first says what it will do and asks `Proceed? [y/N]`; `--yes` runs
