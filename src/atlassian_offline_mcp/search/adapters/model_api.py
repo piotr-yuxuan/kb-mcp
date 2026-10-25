@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Self
 
 import httpx
 import truststore
+from opentelemetry import metrics
 
 from atlassian_offline_mcp.config.domain.settings import SettingsError
 from atlassian_offline_mcp.kernel.endpoint import loopback, refused_endpoint
@@ -24,6 +25,25 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.kernel.endpoint import Service
 
 MAX_ANSWER_BYTES = 64 * 1024 * 1024
+# The buckets of an operation's duration, in seconds, that the GenAI conventions advise.
+BUCKETS_S = (0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24, 20.48, 40.96, 81.92)
+# How long each embedding took, its attempts and waits included, as the GenAI
+# conventions measure an operation.
+OPERATION_DURATION = metrics.get_meter(__name__).create_histogram(
+    "gen_ai.client.operation.duration",
+    unit="s",
+    description="GenAI operation duration.",
+    explicit_bucket_boundaries_advisory=BUCKETS_S,
+)
+# The tokens that each embedding's answer counted, in the buckets that the GenAI
+# conventions advise, when the endpoint counts them.
+TOKEN_BUCKETS = tuple(4**power for power in range(14))  # 1 to 67,108,864
+TOKEN_USAGE = metrics.get_meter(__name__).create_histogram(
+    "gen_ai.client.token.usage",
+    unit="{token}",
+    description="Number of input and output tokens used.",
+    explicit_bucket_boundaries_advisory=TOKEN_BUCKETS,
+)
 # Statuses worth another attempt: the endpoint busy, or failing for a while.
 RETRIED = frozenset({429, 500, 502, 503, 504})
 # Seconds waited before the second attempt, and before the third.
