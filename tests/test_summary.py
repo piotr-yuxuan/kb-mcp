@@ -380,9 +380,12 @@ def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
     assert main([*options, "--summary", "detailed"]) == 0
     said = capsys.readouterr().err
     assert "ignored" not in said
-    assert said.split(f"atlassian-offline-mcp {command} \\\n")[0].endswith(
-        f"  logs.dir: {logs} [config.toml]\n  telemetry.endpoint: (not set) [OTEL_SDK_DISABLED]\n"
-    )
+    listed = said.split(f"atlassian-offline-mcp {command} \\\n")[0].splitlines()
+    # A setting's line ends with its layer; the command's own lines, if any, follow.
+    assert [line for line in listed if line.endswith("]")][-2:] == [
+        f"  logs.dir: {logs} [config.toml]",
+        "  telemetry.endpoint: (not set) [OTEL_SDK_DISABLED]",
+    ]
     assert [path.name.partition("-")[0] for path in logs.iterdir()] == [command]
     assert main(options) == 0
     said = capsys.readouterr().err

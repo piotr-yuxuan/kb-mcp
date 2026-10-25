@@ -185,12 +185,13 @@ def test_the_command_in_short_counts_the_pieces_and_those_embedded_now(
     """After the documents and sections: every piece the first time, none the next."""
     with serving(Scripted()) as url:
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
-        *_, pieces, embedded = capsys.readouterr().out.splitlines()
+        lines = capsys.readouterr().out.splitlines()
+        pieces, embedded = lines[2:4]
         assert pieces.startswith("pieces: ")
         assert pieces != "pieces: 0"
         assert embedded == f"embedded now: {pieces.removeprefix('pieces: ')}"
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
-    assert capsys.readouterr().out.endswith(f"{pieces}\nembedded now: 0\n")
+    assert capsys.readouterr().out.splitlines()[2:4] == [pieces, "embedded now: 0"]
 
 
 def test_the_command_reports_its_files_then_its_texts_to_embed(
@@ -199,7 +200,7 @@ def test_the_command_reports_its_files_then_its_texts_to_embed(
     """In the log file, each task's last event progress: all done; the next run embeds none."""
     with serving(Scripted()) as url:
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
-        pieces = int(capsys.readouterr().out.splitlines()[-2].removeprefix("pieces: "))
+        pieces = int(capsys.readouterr().out.splitlines()[2].removeprefix("pieces: "))
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
     files = FILLER_PAGES + 1
     assert [

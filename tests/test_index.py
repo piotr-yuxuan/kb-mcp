@@ -263,7 +263,13 @@ def test_a_bug_in_the_database_s_use_is_not_taken_for_a_failure_to_write(
     write(data / "docs", page("196845", "Kafka"))
     monkeypatch.setattr(sqlite_index.Writer, "add", misused)
     indexing = Indexing(
-        data / "docs", data / "index.sqlite", data / "vectors.sqlite", "tiny", "sections", None
+        data / "docs",
+        data / "index.sqlite",
+        data / "vectors.sqlite",
+        data / "eval" / "indexes",
+        "tiny",
+        "sections",
+        None,
     )
     with pytest.raises(sqlite3.ProgrammingError):
         index_mirror(indexing, MOMENT)

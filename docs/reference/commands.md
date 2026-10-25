@@ -347,7 +347,9 @@ options:
 
 With --format json: report, the documents by type, the sections, the files skipped,
 the pieces by meaning, the texts embedded now and the files with a piece refused;
-index, its path; model, the one that embedded, null by words alone.
+index, its path; model, the one that embedded, null by words alone; pruned, what the
+prune of the vector store kept and deleted, or why it did not prune, null by words
+alone.
 ```
 
 ## `login`

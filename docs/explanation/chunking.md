@@ -167,8 +167,9 @@ MB against 38 MB. What it costs:
 - **The first `index` after upgrading** embeds every window of the mirror: no window's
   text is a section's, and vectors are kept by text, so none is found in the store
   (unless an `eval` of `windows` with the same model embedded them already). On the
-  sandbox that is 1.11 times the tokens of `sections`. The sections' vectors stay in
-  `<data>/vectors.sqlite`, which only grows.
+  sandbox that is 1.11 times the tokens of `sections`. The prune after it deletes the
+  sections' vectors from `<data>/vectors.sqlite`, unless an evaluation's index cut by
+  `sections` keeps them (plan 023).
 
 To go back to either rule's choice: `chunking = "sections"`, then `index`; or
 `search_mode = "lexical"`, which needs no model and embeds nothing.
@@ -191,7 +192,8 @@ chunking:
 - **`small-to-big`'s unit costs nothing to embed**: the section that `ask` returns is
   read from the index when asked, never embedded.
 - **A text that two chunkings share is embedded once**, and what an evaluation embeds
-  for the chunkings not in use stays in `vectors.sqlite`, which only grows: deleting it
+  for the chunkings not in use stays in `vectors.sqlite` while its index under
+  `<data>/eval/indexes/` exists, which each prune keeps (plan 023): deleting the store
   costs a full embedding of the chunking in use, and nothing else.
 
 Counted on the sandbox's mirror, offline, with the tests' scripted model (the counts

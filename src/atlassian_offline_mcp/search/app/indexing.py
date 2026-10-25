@@ -5,7 +5,8 @@ store when it holds the piece's text, else from the model, then kept there. A pi
 whose text the model refuses has no vector, and its document is named. Reading the files
 and embedding are each a span; files and pieces are counted, as
 ``docs/reference/telemetry/index.md`` lists it. ``index_mirror`` is the build that
-``index`` and ``sync`` run alike: it opens the endpoint, if any, then builds.
+``index`` and ``sync`` run alike: it opens the endpoint, if any, then builds, then
+prunes the vector store to what the indexes on disk read.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from atlassian_offline_mcp.mirror.adapters import markdown
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
+from atlassian_offline_mcp.search.app.pruning import prune
 from atlassian_offline_mcp.search.domain.chunking import CHUNKERS
 from atlassian_offline_mcp.search.domain.search import Embedded, sections
 
@@ -34,6 +36,7 @@ if TYPE_CHECKING:
 
     from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.search.adapters.embedding import Embedder, Endpoint
+    from atlassian_offline_mcp.search.app.pruning import Pruned
 
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
@@ -88,12 +91,14 @@ class Indexing:
     """What a build of the index reads and writes, and how it embeds.
 
     ``endpoint`` opens the embedding endpoint, as the run allows it, or is None for an
-    index by words alone, which never calls it.
+    index by words alone, which never calls it. ``evaluation_indexes`` holds the indexes
+    that eval builds, whose vectors a prune keeps.
     """
 
     docs: Path
     index: Path
     vectors: Path
+    evaluation_indexes: Path
     model: str
     chunking: Chunking
     endpoint: Callable[[], Endpoint] | None
@@ -101,11 +106,16 @@ class Indexing:
 
 @dataclass(frozen=True)
 class Indexed:
-    """What a build did, the index it wrote, and the model that embedded, None by words alone."""
+    """What a build did, the index it wrote, and the model that embedded, None by words alone.
+
+    ``pruned`` says what the prune of the vector store that followed did, None by words
+    alone, which never opens the store.
+    """
 
     report: Report
     index: Path
     model: str | None
+    pruned: Pruned | None = None
 
 
 def build_index(
@@ -206,7 +216,9 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
     one, such as a full disk or a lock), the index in place stays, with its vectors,
     nothing is returned, and ``index.not_built`` is an error. Each file skipped and each
     piece that the endpoint refused is a warning, as is the count of files that the index
-    lacks.
+    lacks. Built by meaning, the index is followed by a prune of the vector store, held
+    back when the build skipped a file or indexed no document, as the index then lacks
+    what the mirror still holds.
     """
     log = structlog.get_logger()
     opened = None if indexing.endpoint is None else indexing.endpoint()
@@ -231,4 +243,16 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
         log.warning("index.piece_refused", path=path)
     if report.skipped:
         log.warning("index.lacks_files", count=len(report.skipped))
-    return Indexed(report, indexing.index, None if embedding is None else indexing.model)
+    incomplete = (
+        "the build skipped a file, so the index lacks documents of the mirror"
+        if report.skipped
+        else ""
+        if report.types
+        else "the build indexed no document"
+    )
+    pruned = (
+        None
+        if embedding is None
+        else prune(indexing.vectors, indexing.index, indexing.evaluation_indexes, incomplete)
+    )
+    return Indexed(report, indexing.index, None if embedding is None else indexing.model, pruned)

@@ -233,7 +233,9 @@ def by_meaning(data: Path, url: str, mode: str = "hybrid") -> list[str]:
 def test_index_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """By meaning, a file skipped and a piece refused; during a prune; no endpoint; no mirror.
+    """By meaning: a file skipped and a piece refused, during a prune, whole, during a build.
+
+    Then no endpoint, and no mirror.
 
     The mirror holds a few pages, one with a front matter refused, and one whose second
     section the endpoint refuses to embed, cut by sections.
@@ -265,6 +267,15 @@ def test_index_records_as_documented(
     with serving(Scripted()) as url, emitted.gathering(telemetry, "index"):
         assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
     pruning.join()
+    broken.unlink()
+    with serving(Scripted()) as url, emitted.gathering(telemetry, "index"):
+        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
+    with (
+        vector_store.shared(data / "vectors.sqlite"),
+        serving(Scripted()) as url,
+        emitted.gathering(telemetry, "index"),
+    ):
+        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
     with emitted.gathering(telemetry, "index"):
         empty = tmp_path / "empty"
         assert main(["index", "--yes", *by_meaning(empty, URL, "lexical")]) == ExitStatus.FAILED
