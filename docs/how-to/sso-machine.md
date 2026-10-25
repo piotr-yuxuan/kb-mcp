@@ -1,4 +1,4 @@
-# First download behind single sign-on
+# Mirror the site on a managed machine
 
 What to do on the user's machine to download last week's Confluence pages and Jira
 issues, with their pictures. It needs the code of plan 004 (the branch `004-download`,

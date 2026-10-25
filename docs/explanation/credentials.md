@@ -4,7 +4,8 @@ How the program holds the three secrets that it may be given: the session that `
 saves from a browser, an Atlassian API token with its account's email, and the embedding
 endpoint's API key. For each, where it comes from, where it is kept and why, and where
 it may travel; then what agents get, what is never logged, and what none of it guards
-against. How to sign in is in [first download behind single sign-on](../how-to/first-download.md) and
+against. How to sign in is in
+[mirror the site on a managed machine](../how-to/sso-machine.md) and
 [the API token's how-to](../how-to/api-token-with-sops.md); why the program signs in so,
 in [the trade-offs](trade-offs.md#cookies-and-api-tokens).
 
@@ -73,7 +74,7 @@ why the data directory may lie neither under a synchronised folder nor in a git 
 tree, where it would be copied off the machine or committed
 ([`unsafe_location`](../../src/atlassian_offline_mcp/config/domain/settings.py)), and
 why agents never get it. To end it, see
-[end the session](../how-to/first-download.md#end-the-session).
+[end the session](../how-to/sso-machine.md#end-the-session).
 
 ## The API token
 
@@ -242,5 +243,5 @@ mistake. None of it stops someone who is already on the machine as you:
   the mirror's text and the key, or telemetry's records. The rule cannot see it.
 - **A copy made before the end.** A session or a token copied elsewhere signs in as you
   until it expires, or until you
-  [end the session](../how-to/first-download.md#end-the-session) or
+  [end the session](../how-to/sso-machine.md#end-the-session) or
   [revoke the token](../how-to/api-token-with-sops.md#revoke-the-token).

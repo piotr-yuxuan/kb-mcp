@@ -9,8 +9,8 @@ marked for contributors.
 
 ## How-to guides
 
-- [First download behind single sign-on](how-to/first-download.md): the settings, the sign-in in your
-  browser and a first download, on the user's machine.
+- [Mirror the site on a managed machine](how-to/sso-machine.md): the settings, the sign-in
+  in your browser and a first download, on the user's machine.
 - [Bring every source up to date](how-to/sync.md): `sync`, which downloads and mirrors
   each source that the settings name, then rebuilds the index, in one command.
 - [Mirror the work log](how-to/work-log.md): a folder of org files mirrored as Markdown

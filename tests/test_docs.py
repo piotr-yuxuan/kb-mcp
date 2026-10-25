@@ -42,10 +42,10 @@ PAGES = (
     "docs/how-to/agents.md",
     "docs/how-to/api-token-with-sops.md",
     "docs/how-to/evaluate-with-agents.md",
-    "docs/how-to/first-download.md",
     "docs/how-to/golden-questions.md",
     "docs/how-to/shell-completions.md",
     "docs/how-to/sync.md",
+    "docs/how-to/sso-machine.md",
     "docs/how-to/work-log.md",
 )
 # Folders whose Markdown is seeded into the sandbox site: its content, not pages here.

@@ -20,7 +20,8 @@ says what it will do and asks first, unless given `--yes`.
 
 Guides:
 
-- [First download behind single sign-on](docs/how-to/first-download.md): settings, sign-in, download.
+- [Mirror the site on a managed machine](docs/how-to/sso-machine.md): settings, sign-in,
+  download.
 - [Sign in with an API token kept by sops](docs/how-to/api-token-with-sops.md).
 - [Shell completions](docs/how-to/shell-completions.md) in bash and zsh.
 - [Coding agents](docs/how-to/agents.md): the MCP server, search by meaning, and the
