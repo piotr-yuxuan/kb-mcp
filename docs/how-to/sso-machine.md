@@ -1,8 +1,12 @@
 # Mirror the site on a managed machine
 
-What to do on the user's machine to download last week's Confluence pages and Jira
-issues, with their pictures. It needs the code of plan 004 (the branch `004-download`,
-or `main` once it is merged), uv, and Google Chrome.
+How to mirror Confluence and Jira on the user's machine, where you sign in through your
+company and the data must stay on the machine: the settings, a check of the machine, the
+sign-in in Chrome, a first download of last week's pages and issues with their pictures,
+then ending the session, and what may come back to the personal laptop. It needs uv and
+Google Chrome, and pandoc for the mirror.
+[Your first mirror](../tutorials/first-mirror.md) is the lesson of it all on any site,
+with `sync`, the index and an agent.
 
 ## 1. Install the command
 
