@@ -12,6 +12,9 @@ the command and those who change its code, unless it is marked for contributors.
 - [Your first mirror](tutorials/first-mirror.md): install the command, mirror one
   Confluence space, build its index, and ask Claude Code a question that it answers from
   the mirror.
+- [Your first change](tutorials/first-change.md), for contributors: the checks, then a
+  subcommand written test first, its rule kept apart from its effects, two checks that
+  refuse a mistake, and the reference generated again.
 
 ## How-to guides
 
