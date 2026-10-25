@@ -167,15 +167,15 @@ def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = PIECE
     return found
 
 
-def around(piece: tuple[int, int], section: tuple[int, int]) -> tuple[int, int]:
-    """Give a piece's section whole when it fits UNIT characters, else UNIT of it about the piece.
+def around(piece: tuple[int, int], section: tuple[int, int], size: int = UNIT) -> tuple[int, int]:
+    """Give a piece's section whole when it fits ``size`` characters, else ``size`` about it.
 
-    The UNIT characters are centred on the piece's middle, then moved to stay within the
-    section. Every span, given or returned, is in the document's body.
+    The ``size`` characters are centred on the piece's middle, then moved to stay within
+    the section. Every span, given or returned, is in the document's body.
     """
     first, last = section
-    start = max(first, min((piece[0] + piece[1]) // 2 - UNIT // 2, last - UNIT))
-    return section if last - first <= UNIT else (start, start + UNIT)
+    start = max(first, min((piece[0] + piece[1]) // 2 - size // 2, last - size))
+    return section if last - first <= size else (start, start + size)
 
 
 @dataclass(frozen=True)

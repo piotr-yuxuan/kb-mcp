@@ -16,7 +16,7 @@ import math
 import re
 import unicodedata
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, TypedDict
 
@@ -24,10 +24,18 @@ import structlog
 from opentelemetry import metrics, trace
 
 from atlassian_offline_mcp.kernel.content import WORKLOG_ID
+from atlassian_offline_mcp.kernel.reranking import DEPTHS
 from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.meaning import Nearest
 from atlassian_offline_mcp.search.domain.chunking import CHUNKERS, UNIT, around
+from atlassian_offline_mcp.search.domain.reranking import (
+    BODY,
+    HEADING,
+    TITLE,
+    split_order,
+    written,
+)
 from atlassian_offline_mcp.search.domain.search import (
     MAX_WORDS,
     Filters,
@@ -47,6 +55,7 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.config.domain.settings import SearchMode as Mode
     from atlassian_offline_mcp.search.adapters.sqlite_index import Reader
     from atlassian_offline_mcp.search.app.meaning import Meaning
+    from atlassian_offline_mcp.search.app.reranking import Reranking
     from atlassian_offline_mcp.search.domain.search import Entry, Plan
 
 SEARCH_LIMIT = 8
@@ -111,7 +120,9 @@ class Ranking:
     meaning: dict[str, tuple[int, int, int]]  # for each document shown by meaning, the
     # section number of its best piece, and the piece's start and end in the body
     counted: str = "found"  # what the count line calls the documents counted
-    note: str = ""  # the sentence saying why meaning, though asked for, was not used
+    note: str = ""  # the sentences saying why meaning, or reranking, was not used
+    pinned: int = 0  # the documents that the query names, first, by identifier
+    order: tuple[int, ...] = ()  # how the documents after those were reranked, by place
 
 
 @dataclass(frozen=True)
@@ -123,6 +134,7 @@ class Asked:
     filters: Filters
     by_update: bool
     mode: Mode
+    order: tuple[int, ...] | None = None  # the order that a cursor carries: None, none yet
 
 
 def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
@@ -145,19 +157,20 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
         words = rank((one for one, _ in found), first, by_update=by_update)
         whole = all(every for _, every in found)
     if asked.mode == "lexical" or by_update:
-        return Ranking(words, whole, {})
+        return Ranking(words, whole, {}, pinned=len(first))
     with TRACER.start_as_current_span("search.semantic"):
         near = meaning.nearest(reader, asked.query, filters) if meaning else Nearest({}, NOT_SET_UP)
     if near.reason:
         FALLBACKS.add(1, {"aom.mode": asked.mode})
         structlog.get_logger().warning("search.fallback", mode=asked.mode, reason=near.reason)
         note = f" Ranked by words alone: {near.reason}."
-        return Ranking(words, whole, {}, note=note)
+        return Ranking(words, whole, {}, note=note, pinned=len(first))
     scores = {path: score for path, (score, *_) in near.found.items()}
     by_meaning = rank([scores], first, by_update=False)
     shown = {path: tuple(where) for path, (_, *where) in near.found.items()}
     if asked.mode == "semantic":
-        return Ranking(by_meaning, whole=True, meaning=shown, counted="nearest in meaning")
+        counted = "nearest in meaning"
+        return Ranking(by_meaning, whole=True, meaning=shown, counted=counted, pinned=len(first))
     updated = {path: s.updated for one, _ in found for path, s in one.items()}
     updated |= {path: score.updated for path, score in scores.items()}
     # Both lists begin with the documents named; the rest is fused.
@@ -166,7 +179,8 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
     places = {path: at for at, path in enumerate(words)}
     higher = [path for at, path in enumerate(by_meaning) if at < places.get(path, math.inf)]
     by_higher = {path: shown[path] for path in higher if path in shown}
-    return Ranking([*first, *fused], whole, by_higher, counted="found by words or meaning")
+    counted = "found by words or meaning"
+    return Ranking([*first, *fused], whole, by_higher, counted=counted, pinned=len(first))
 
 
 def passage_of(reader: Reader, entry: Entry, ranked: Ranking, planned: Plan) -> Passage:
@@ -253,6 +267,47 @@ def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -
     return found
 
 
+def reranked(reader: Reader, asked: Asked, ranked: Ranking, reranking: Reranking | None) -> Ranking:
+    """Reorder the documents after those named, as many as the reranking's depth, by score.
+
+    A page that continues another keeps the order that its cursor carries, reranked or
+    not, and asks nothing. A first page asks the reranking server about the next
+    documents, each by its title, the heading of its section and BODY characters about
+    its best place (``place_of``); with fewer than two, it asks nothing. A reranking that
+    fails keeps the order given, and the note says why. Sorted by update, nothing moves.
+    Raises UnanswerableError for a cursor whose order passes the documents now found.
+    """
+    if asked.by_update or (asked.order is None and reranking is None):
+        return ranked
+    start = ranked.pinned
+    order = asked.order
+    if order is None:
+        candidates = ranked.paths[start : start + reranking.depth]
+        if len(candidates) < DEPTHS.start:
+            return ranked
+        entries = {entry.path: entry for entry in reader.entries(paths=candidates)}
+        texts = []
+        for path in candidates:
+            number, place = place_of(reader, ranked, asked.planned, path)
+            first, last = around(place, reader.bounds(path)[number - 1], BODY)
+            title, heading = entries[path].front.title, reader.heading(path, number)
+            texts.append(f"{title[:TITLE]}\n{heading[:HEADING]}\n{reader.text(path, first, last)}")
+        reordering = reranking.reorder(asked.query, texts)
+        if reordering.order is None:
+            return replace(ranked, note=f"{ranked.note} Not reranked: {reordering.reason}.")
+        order = reordering.order
+    if len(ranked.paths) < start + len(order):
+        message = "cursor: the ranking changed since; call again without the cursor"
+        raise UnanswerableError(message)
+    moved = ranked.paths[start : start + len(order)]
+    paths = [
+        *ranked.paths[:start],
+        *(moved[place] for place in order),
+        *ranked.paths[start + len(order) :],
+    ]
+    return replace(ranked, paths=paths, order=order)
+
+
 def checked(filters: SearchFilters | None) -> dict[str, str]:
     """Refuse a filter that is not one, or a value too long; give the filters given."""
     given: dict[str, str] = {**(filters or {})}
@@ -324,6 +379,20 @@ def start_of(cursor: str | None, built_at: datetime) -> int:
     return int(offset)
 
 
+def continued(cursor: str | None, built_at: datetime) -> tuple[int, tuple[int, ...] | None]:
+    """Read a cursor of search or ask: its offset, and the order of the documents reranked.
+
+    The order is None for no cursor, a first page, and empty for a cursor that carries
+    none. Refuses a cursor not given, as ``start_of`` does.
+    """
+    try:
+        base, order = split_order(cursor)
+    except ValueError:
+        message = "cursor: give the one that the previous answer ended with"
+        raise UnanswerableError(message) from None
+    return start_of(base, built_at), order
+
+
 def cursor_at(offset: int, built_at: datetime) -> str:
     """Write the cursor that continues a list at ``offset``, for this build of the index."""
     return f"{offset}@{built_at.strftime(CURSOR_TIME)}"
@@ -347,16 +416,23 @@ class Library:
     """The four tools, over the index at one path."""
 
     def __init__(
-        self, index: Path, docs: Path, meaning: Meaning | None = None, mode: Mode = "lexical"
+        self,
+        index: Path,
+        docs: Path,
+        meaning: Meaning | None = None,
+        mode: Mode = "lexical",
+        reranking: Reranking | None = None,
     ) -> None:
         """Answer from the index at ``index``, built from the mirror at ``docs``.
 
-        Search ranks in ``mode``; by meaning, through ``meaning``, when it is given.
+        Search ranks in ``mode``; by meaning, through ``meaning``, when it is given; its
+        first documents are reranked through ``reranking``, when it is given.
         """
         self._index = index
         self._docs = docs
         self._meaning = meaning
         self._mode = mode
+        self._reranking = reranking
 
     @contextmanager
     def _reading(self) -> Iterator[Reader]:
@@ -393,14 +469,15 @@ class Library:
         planned, by_update = plan(query), sort == "updated"
         with self._reading() as reader:
             built_at = reader.built_at()
-            offset, size = start_of(cursor, built_at), clamp(limit, SEARCH_LIMITS)
+            (offset, order), size = continued(cursor, built_at), clamp(limit, SEARCH_LIMITS)
             kept = narrowed(reader, given)
             if not planned.words and not by_update:
                 return responses.answer(NO_WORDS)
             ranked = Ranking([], whole=True, meaning={})
             if planned.words:
-                asked = Asked(query, planned, kept, by_update, self._mode)
-                ranked = ranking(reader, self._meaning, asked)
+                asked = Asked(query, planned, kept, by_update, self._mode, order)
+                first = ranking(reader, self._meaning, asked)
+                ranked = reranked(reader, asked, first, self._reranking)
                 total, whole = len(ranked.paths), ranked.whole
                 paths = ranked.paths[offset : offset + size]
                 shown = sorted(reader.entries(paths=paths), key=lambda e: paths.index(e.path))
@@ -419,7 +496,7 @@ class Library:
                 items.append(responses.hit(number, entry, passage, opening))
 
         def more(count: int) -> str:
-            after = cursor_at(offset + count, built_at)
+            after = cursor_at(offset + count, built_at) + written(ranked.order)
             return responses.call(
                 self.search, query=query, filters=filters, sort=sort, limit=limit, cursor=after
             )
@@ -466,11 +543,12 @@ class Library:
         planned = plan(question)
         with self._reading() as reader:
             built_at = reader.built_at()
-            offset = start_of(cursor, built_at)
-            asked = Asked(question, planned, narrowed(reader, given), by_update=False, mode=mode)
+            offset, order = continued(cursor, built_at)
+            kept = narrowed(reader, given)
+            asked = Asked(question, planned, kept, by_update=False, mode=mode, order=order)
             if not planned.words:
                 return responses.answer(NO_QUESTION), [], Ranking([], whole=True, meaning={})
-            ranked = ranking(reader, self._meaning, asked)
+            ranked = reranked(reader, asked, ranking(reader, self._meaning, asked), self._reranking)
             paths = ranked.paths[offset : offset + ASK_DOCUMENTS]
             entries = {entry.path: entry for entry in reader.entries(paths=paths)}
             chosen = excerpts(reader, ranked, planned, paths)
@@ -488,7 +566,7 @@ class Library:
         ]
 
         def more(count: int) -> str:
-            after = cursor_at(offset + count, built_at)
+            after = cursor_at(offset + count, built_at) + written(ranked.order)
             return responses.call(self.ask, question=question, filters=filters, cursor=after)
 
         allowed = responses.BUDGET - responses.tokens(ranked.note)
@@ -525,7 +603,7 @@ class Library:
         planned = plan(query)
         with self._reading() as reader:
             asked = Asked(query, planned, Filters(), by_update=False, mode=mode)
-            ranked = ranking(reader, self._meaning, asked)
+            ranked = reranked(reader, asked, ranking(reader, self._meaning, asked), self._reranking)
             entries = {entry.path: entry for entry in reader.entries(paths=ranked.paths[:limit])}
             shown = []
             for path in ranked.paths[:limit]:
