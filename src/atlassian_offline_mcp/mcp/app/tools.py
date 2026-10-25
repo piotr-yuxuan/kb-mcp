@@ -194,47 +194,59 @@ def folded(text: str) -> str:
     return "".join(unicodedata.normalize("NFD", char)[0] for char in text)
 
 
+def place_of(
+    reader: Reader, ranked: Ranking, planned: Plan, path: str
+) -> tuple[int, tuple[int, int]]:
+    """Give a document's section, by its number, and its best place there, as a span of the body.
+
+    A document ranked by meaning gives its best piece. One ranked by words gives the
+    occurrence of the question's rarest word with the most other words within UNIT / 2
+    of it, in its best section for the question's words, or the start of its first.
+    Words are found as the index finds them: without regard to case or accents, between
+    characters that are no letter nor digit. Candidates being the rarest word's
+    occurrences, a section of many hits costs as many bisections.
+    """
+    if path in ranked.meaning:
+        number, start, end = ranked.meaning[path]
+        return number, (start, end)
+    alone = (rf"(?<![^\W_]){re.escape(folded(word))}(?![^\W_])" for word in planned.words)
+    words = re.compile("|".join(alone), re.IGNORECASE)
+    best = reader.passage(path, planned.match) if planned.words else None
+    number = best.number if best else 1
+    first, last = reader.bounds(path)[number - 1]
+    spots: dict[str, list[int]] = {}  # where each word of the question is
+    for each in words.finditer(folded(reader.text(path, first, last))):
+        spots.setdefault(each[0].casefold(), []).append(each.start())
+    hit = first + max(
+        min(spots.values(), key=len, default=[0]),
+        key=lambda at: sum(
+            bisect.bisect_left(places, at - UNIT // 2) < bisect.bisect_right(places, at + UNIT // 2)
+            for places in spots.values()
+        ),
+    )
+    return number, (hit, hit + 1)
+
+
 def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -> list[Passage]:
     """Give the passage that ask quotes of each document, verbatim, in the order given.
 
-    A document ranked by meaning gives the unit of its best piece, by the index's
-    chunking. One ranked by words gives its best section for the question's words, or
-    its first: whole up to UNIT characters, else UNIT of it about the occurrence of its
-    rarest word of the question with the most other words within UNIT / 2 of it, by
-    ``around``, then cut to whole lines where a line break falls in the half that the
-    cut shortens. Words are found as the index finds them: without regard to case or
-    accents, between characters that are no letter nor digit. Candidates being the
-    rarest word's occurrences, a section of many hits costs as many bisections.
+    About each document's best place (``place_of``): by meaning, the unit of its best
+    piece, by the index's chunking; by words, its section whole up to UNIT characters,
+    else UNIT of it about the place, by ``around``, then cut to whole lines where a line
+    break falls in the half that the cut shortens.
     """
     embedded = reader.embedded()
     unit = CHUNKERS[embedded.chunking].unit if embedded else None
-    alone = (rf"(?<![^\W_]){re.escape(folded(word))}(?![^\W_])" for word in planned.words)
-    words = re.compile("|".join(alone), re.IGNORECASE)
     found = []
     for path in paths:
-        bounds = reader.bounds(path)
+        number, place = place_of(reader, ranked, planned, path)
+        first, last = reader.bounds(path)[number - 1]
         if unit and path in ranked.meaning:
-            number, start, end = ranked.meaning[path]
-            first, last = unit((start, end), bounds[number - 1])
-            text = reader.text(path, first, last)
+            start, end = unit(place, (first, last))
+            text = reader.text(path, start, end)
         else:
-            best = reader.passage(path, planned.match) if planned.words else None
-            number = best.number if best else 1
-            first, last = bounds[number - 1]
-            section = reader.text(path, first, last)
-            spots: dict[str, list[int]] = {}  # where each word of the question is
-            for each in words.finditer(folded(section)):
-                spots.setdefault(each[0].casefold(), []).append(each.start())
-            hit = first + max(
-                min(spots.values(), key=len, default=[0]),
-                key=lambda at: sum(
-                    bisect.bisect_left(places, at - UNIT // 2)
-                    < bisect.bisect_right(places, at + UNIT // 2)
-                    for places in spots.values()
-                ),
-            )
-            start, end = around((hit, hit + 1), (first, last))
-            text = section[start - first : end - first]
+            start, end = around(place, (first, last))
+            text = reader.text(path, start, end)
             text = text if end == last else text[: text.rfind("\n", UNIT // 2) + 1 or UNIT]
             text = text if start == first else text[text.find("\n", 0, UNIT // 2) + 1 :]
         found.append(Passage(number, reader.heading(path, number), text))
