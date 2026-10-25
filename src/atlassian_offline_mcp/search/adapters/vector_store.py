@@ -112,10 +112,14 @@ def opened(path: Path) -> Iterator[VectorStore]:
     """Open the store at ``path``, creating it when there is none; close it after use.
 
     Two runs may use the store at once, an index and an evaluation: in WAL mode, reads
-    hold no lock and leave no transaction open, and a write waits for the other's.
+    hold no lock and leave no transaction open, and a write waits for the other's. A new
+    store can give the pages that a prune frees back to the file system; one made before
+    plan 023 keeps them for later writes, as only a ``VACUUM`` could change its mode.
     """
     connection = sqlite3.connect(path, timeout=WAIT_S)
     try:
+        # Before WAL, whose first write fixes a new store's mode for good.
+        connection.execute("PRAGMA auto_vacuum = INCREMENTAL")
         connection.execute("PRAGMA journal_mode = WAL")
         connection.execute(CREATE)
         connection.commit()

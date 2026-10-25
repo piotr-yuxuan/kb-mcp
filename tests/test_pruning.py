@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 import subprocess
 import sys
 import threading
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -28,6 +30,8 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.search.adapters.embedding import Embedder
 
 FILLER_PAGES = 5
+# SQLite's auto_vacuum mode in which a store gives free pages back when told to.
+INCREMENTAL = 2
 # How long a test waits for another thread or process to reach a point, in seconds.
 PATIENCE_S = 10.0
 
@@ -140,3 +144,29 @@ def test_a_build_killed_while_it_holds_the_lock_leaves_it_free(data: Path) -> No
         child.wait(PATIENCE_S)
     with vector_store.exclusive(data / "v.db") as held:
         assert held
+
+
+def modes(path: Path) -> tuple[int, str]:
+    """Give a store's auto_vacuum mode and journal mode, as SQLite numbers and names them."""
+    with closing(sqlite3.connect(path)) as connection:
+        vacuum = connection.execute("PRAGMA auto_vacuum").fetchone()[0]
+        return vacuum, connection.execute("PRAGMA journal_mode").fetchone()[0]
+
+
+def made_before_023(path: Path) -> None:
+    """Make an empty store as ``opened`` made one before plan 023: WAL, then the table."""
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute(vector_store.CREATE)
+        connection.commit()
+
+
+def test_a_new_store_gives_space_back_and_an_older_one_keeps_its_mode(tmp_path: Path) -> None:
+    """Incremental for a store made now, WAL either way; one made before 023 stays as it was."""
+    with vector_store.opened(tmp_path / "new.db"):
+        pass
+    made_before_023(tmp_path / "old.db")
+    with vector_store.opened(tmp_path / "old.db"):
+        pass
+    assert modes(tmp_path / "new.db") == (INCREMENTAL, "wal")
+    assert modes(tmp_path / "old.db") == (0, "wal")
