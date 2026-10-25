@@ -172,6 +172,9 @@ def opened(path: Path) -> Iterator[VectorStore]:
     hold no lock and leave no transaction open, and a write waits for the other's. A new
     store can give the pages that a prune frees back to the file system; one made before
     plan 023 keeps them for later writes, as only a ``VACUUM`` could change its mode.
+    Setting the mode on an existing store in that mode takes the write lock, so that
+    opening it waits for another run's write, and a read-only file is refused: every run
+    that opens the store writes to it anyway.
     """
     connection = sqlite3.connect(path, timeout=WAIT_S)
     try:
