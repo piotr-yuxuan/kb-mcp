@@ -47,6 +47,16 @@ says. Meaning needs an embedding model, served on this machine by Ollama or by a
 other OpenAI-compatible API: [embeddings](embeddings.md) says how to set one up, which
 model and chunking to choose, and how to search by words alone.
 
+## Rerank the first documents
+
+A reranking server beside Ollama can reorder the first documents that `search` and
+`ask` find, by a model that reads the question with each: off by default, [the
+how-to](reranking.md) sets it up. When it fails, a search keeps its own order and its
+answer says why ("Not reranked: ..."), as a search by meaning says why it fell back to
+words; when the server itself failed, searches do not ask it again for 30 seconds. A
+next page keeps the order of the first, which its cursor carries: when the answer says
+that the ranking changed since, search again without the cursor.
+
 ## Ask, and prompts
 
 `ask` answers a question in one call with passages to quote: one per document, as many

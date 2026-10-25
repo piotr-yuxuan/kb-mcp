@@ -34,6 +34,9 @@ the command and those who change its code, unless it is marked for contributors.
 - [Embeddings](how-to/embeddings.md): search by meaning, with Ollama on this machine as
   the example of any OpenAI-compatible API; the model, the endpoint and the chunking; or
   words alone.
+- [Rerank search with a local server](how-to/reranking.md): llama.cpp's `llama-server`
+  on this machine reorders the first documents that `search` and `ask` find; install
+  it, check it, turn it on and measure it.
 - [Golden questions](how-to/golden-questions.md): questions about your own content, to
   measure with `eval` which search mode, model and chunking suit it.
 - [Observe runs with Grafana](how-to/observe-with-grafana.md): traces, metrics and logs
@@ -90,6 +93,9 @@ the command and those who change its code, unless it is marked for contributors.
   meaning, and how the four chunkings were compared.
 - [Evaluating search](explanation/search-evaluation.md): how the embedding model was
   chosen, and how ranking by words, by meaning or by both is measured.
+- [Reranking](explanation/reranking.md): how a server on this machine reorders the first
+  documents found, why only those, what a search does when it fails, and the bar for
+  turning it on by default.
 
 ## Elsewhere in the repository
 

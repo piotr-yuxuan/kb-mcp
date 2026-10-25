@@ -540,6 +540,36 @@ EOF
 `ask`'s measures, Found@ask and Evidence@ask, are kept by group alone, so no such test
 can be run on them.
 
+### Measuring reranking
+
+Plan 022's bar decides whether reranking is on by default, and at which depth
+([reranking](reranking.md#the-bar-fixed-before-the-run)). With the sandbox's data
+directory as above, Ollama running with the model, and the reranking server started as
+[the how-to](../how-to/reranking.md#start-the-server) starts it, at its address and
+under its alias, which are the settings' defaults:
+
+```bash
+uv run atlassian-offline-mcp reranker check --config <missing-file>
+```
+
+```bash
+uv run atlassian-offline-mcp eval-rerank <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data>
+```
+
+It measures the defaults, hybrid search over `windows` with `qwen3-embedding:0.6b`,
+first not reranked, then reranked at depths 10, 20, 30 and 50: 110 texts scored for
+each of the 105 questions, 2.6 to 4.6 million tokens. By the estimate in
+[reranking](reranking.md#why-only-the-first-documents), that takes about 20 to 35
+minutes on the user's machine; at the 85 tokens a second of llama.cpp 0.6.0 on a laptop's
+CPU, 8 to 15 hours. The output has a table with a row per depth, `none` the order not
+reranked, the first stage's Recall@N, a line per depth with each clause's verdict, and
+the bar's: `By the bar: rerank N documents.` or `By the bar: reranking stays off.` The
+times are the machine's own, and the bar's third clause reads the user's machine's alone.
+
+On another machine, copy the data directory there: the sandbox's content is invented.
+Its `vectors.sqlite` spares the embedding when Ollama there lists the same digest for
+the model; otherwise the first run embeds the windows again.
+
 ### On another corpus, such as your work set
 
 1. Write golden questions as agents ask them: keywords and names as often as

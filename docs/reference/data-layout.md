@@ -377,8 +377,12 @@ that the index names, and only while the endpoint's fingerprint for it is the in
 
 No model runs in this program (plan 018): `search.adapters.embedding` alone asks an
 OpenAI-compatible endpoint, the setting `embedding_url` (by default Ollama's
-`http://127.0.0.1:11434/v1`), and refuses one that is not a literal loopback address
-unless the command is given `--allow-remote-embeddings`. A model's fingerprint is the
+`http://127.0.0.1:11434/v1`), and `search.adapters.reranking` alone a reranking server,
+the setting `rerank.url` (by default `http://127.0.0.1:9931/v1`, plan 022). Both
+connect through `search.adapters.model_api`, which refuses an address that is not a
+literal loopback one by the kernel's rule (`kernel.endpoint`): for embeddings unless
+the command is given `--allow-remote-embeddings`, for reranking always. Nothing that
+the reranking server answers is stored. A model's fingerprint is the
 SHA-256 of its name, the digest that Ollama lists for it (`/api/tags`, empty from a
 server that lists none), its dimensions, its query and document prefixes, and the
 adapter's format version. `<data>/vectors.sqlite` keeps the vectors embedded, keyed
@@ -414,7 +418,13 @@ lock, and adds its files to what the prune follows. Under `<data>/eval/`,
 indexes that `eval` builds, one per model and chunking, and `results/<UTC time>.json`
 its numbers: the golden file's SHA-256, models, chunkings, measures of `search` and of
 `ask`, costs, ranks and tests, by question id, never a question's text, and for each
-model the chunking that plan 019's rule chooses. `eval-agents` writes into a directory
+model the chunking that plan 019's rule chooses. `results/<UTC time>-rerank.json` are
+`eval-rerank`'s (plan 022): the golden file's SHA-256, the mode, the models, the
+chunking and the ids that the reranking server lists; for each depth, 0 for the order
+not reranked, the measures of `search` and of `ask` by group, the times, the tokens and
+the ranks by question id, and for depth 0 Recall@N at each depth measured; then the
+bar's verdicts and the depth it chooses, or `null` when the depths measured are not
+the bar's. `eval-agents` writes into a directory
 of its own, given by `--out`, never under `<data>/` unless placed there: its layout is
 in [evaluating with agents](../how-to/evaluate-with-agents.md).
 A `<data>/models/` folder left by plan 011 is read by nothing.
