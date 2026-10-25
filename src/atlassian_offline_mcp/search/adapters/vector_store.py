@@ -61,7 +61,7 @@ def as_bytes(vector: NDArray[np.float32]) -> bytes:
 
 @dataclass(frozen=True)
 class Swept:
-    """What a prune of the store did: the vectors deleted, and its size before and after.
+    """What a prune of the store did: the vectors deleted and those left, and its size.
 
     ``shrinks`` says whether the store gives freed pages back to the file system at all,
     as one made before plan 023 never does; ``unreclaimed``, why this prune's stayed in
@@ -69,6 +69,7 @@ class Swept:
     """
 
     deleted: int
+    kept: int
     bytes_before: int
     bytes_after: int
     shrinks: bool
@@ -150,9 +151,17 @@ class VectorStore:
             unreclaimed = str(error)
         else:
             unreclaimed = ""
+        kept = connection.execute("SELECT count(*) FROM vectors").fetchone()[0]
         after = connection.execute(SIZE).fetchone()[0]
         shrinks = connection.execute("PRAGMA auto_vacuum").fetchone()[0] == INCREMENTAL
-        return Swept(deleted, before, after, shrinks, unreclaimed)
+        return Swept(deleted, kept, before, after, shrinks, unreclaimed)
+
+    def count(self, keys: Iterable[str]) -> int:
+        """Count the vectors that the store holds for these keys."""
+        return self._connection.execute(
+            "SELECT count(*) FROM vectors WHERE key IN (SELECT value FROM json_each(?))",
+            (json.dumps(list(keys)),),
+        ).fetchone()[0]
 
 
 @contextmanager

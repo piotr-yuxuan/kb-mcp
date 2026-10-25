@@ -67,9 +67,10 @@ SAID: dict[Outcome, tuple[str, str, tuple[str, ...]]] = {
 class Pruned:
     """What a prune did: its outcome, the vectors kept and deleted, and the store's size.
 
-    ``kept_for_evaluation`` counts the vectors that the evaluation's indexes alone read.
-    ``shrinks`` says whether the store gives freed pages back to the file system at all,
-    as one made before plan 023 never does; ``reclaimed``, whether this prune's were.
+    ``kept`` counts the vectors left in the store, ``kept_for_evaluation`` those of them
+    that the evaluation's indexes alone read. ``shrinks`` says whether the store gives
+    freed pages back to the file system at all, as one made before plan 023 never does;
+    ``reclaimed``, whether this prune's went back.
     ``reason`` and ``file`` say why it did not prune, or why the space stayed.
     """
 
@@ -128,21 +129,22 @@ def prune(store: Path, index: Path, evaluation_indexes: Path, incomplete: str = 
             kept = read | evaluation
             try:
                 with vector_store.opened(store) as opened:
+                    alone = opened.count(evaluation)
                     swept = opened.prune(kept)
             except sqlite3.Error as error:
                 return said(Pruned("failed", reason=str(error)), span, started)
-        VECTORS.add(len(kept), {"aom.outcome": "kept"})
+        VECTORS.add(swept.kept, {"aom.outcome": "kept"})
         VECTORS.add(swept.deleted, {"aom.outcome": "pruned"})
         STORE_SIZE.set(swept.bytes_after)
         pruned = Pruned(
             "pruned",
-            kept=len(kept),
-            kept_for_evaluation=len(evaluation),
+            kept=swept.kept,
+            kept_for_evaluation=alone,
             deleted=swept.deleted,
             bytes_before=swept.bytes_before,
             bytes_after=swept.bytes_after,
             shrinks=swept.shrinks,
-            reclaimed=not swept.unreclaimed,
+            reclaimed=swept.shrinks and not swept.unreclaimed,
             reason=swept.unreclaimed,
         )
         return said(pruned, span, started)

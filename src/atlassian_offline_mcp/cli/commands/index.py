@@ -67,7 +67,11 @@ def text(indexed: Indexed, summary: Summary) -> str:
             f" {pruned.bytes_before / MB:.1f} to {pruned.bytes_after / MB:.1f} MB in"
             f" {pruned.seconds:.1f} s"
             + ("" if pruned.shrinks else SHRINKS_NOT)
-            + ("" if pruned.reclaimed else f"; space not reclaimed: {pruned.reason}")
+            + (
+                ""
+                if pruned.reclaimed or not pruned.shrinks
+                else f"; space not reclaimed: {pruned.reason}"
+            )
             + "\n"
         )
     )

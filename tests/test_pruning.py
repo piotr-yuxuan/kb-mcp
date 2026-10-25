@@ -215,7 +215,7 @@ def test_a_prune_deletes_what_is_not_kept_and_gives_its_pages_back(tmp_path: Pat
         swept = store.prune(keys[::2])
         assert store.get(keys) == store.get(keys[::2])
         assert len(store.get(keys)) == len(keys[::2])
-    assert swept.deleted == len(keys[1::2])
+    assert (swept.deleted, swept.kept) == (len(keys[1::2]), len(keys[::2]))
     assert swept.shrinks
     assert swept.unreclaimed == ""
     assert swept.bytes_after < 0.6 * swept.bytes_before
@@ -713,3 +713,36 @@ def test_an_index_by_words_alone_in_place_holds_the_prune_back(data: Path) -> No
     done = prune(data / "vectors.sqlite", data / "index.sqlite", data / "eval" / "indexes")
     assert (done.outcome, done.file) == ("held back", str(data / "index.sqlite"))
     assert other in stored(data / "vectors.sqlite")
+
+
+def test_the_vectors_counted_kept_are_those_left_in_the_store(data: Path) -> None:
+    """The store deleted since an evaluation: the index's vectors come back, not its own."""
+    pruned(index_mirror(indexing(data), MOMENT))
+    evaluated(data, data / "vectors.sqlite", "windows")
+    (data / "vectors.sqlite").unlink()
+    done = pruned(index_mirror(indexing(data), MOMENT))
+    assert (done.kept, done.kept_for_evaluation) == (len(stored(data / "vectors.sqlite")), 0)
+    assert done.kept == len(read_by(data / "index.sqlite"))
+
+
+def test_a_store_made_before_023_is_said_not_to_shrink(data: Path) -> None:
+    """Pruned, its space not given back, nor said to be: the summary says how to change it."""
+    made_before_023(data / "vectors.sqlite")
+    indexed = index_mirror(indexing(data), MOMENT)
+    done = pruned(indexed)
+    assert (done.outcome, done.shrinks, done.reclaimed) == ("pruned", False, False)
+    assert indexed is not None
+    detailed = index_command.text(indexed, "detailed")
+    assert detailed.endswith(f"{index_command.SHRINKS_NOT}\n")
+
+
+def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: MonkeyPatch) -> None:
+    """Pruned, the space not reclaimed: the outcome holds why, and so does the summary."""
+    pruned(index_mirror(indexing(data), MOMENT))
+    swept = vector_store.Swept(1, 10, 8192, 8192, shrinks=True, unreclaimed="disk is full")
+    monkeypatch.setattr(vector_store.VectorStore, "prune", lambda *_: swept)
+    indexed = index_mirror(indexing(data), MOMENT)
+    done = pruned(indexed)
+    assert (done.outcome, done.reclaimed, done.reason) == ("pruned", False, "disk is full")
+    assert indexed is not None
+    assert "; space not reclaimed: disk is full\n" in index_command.text(indexed, "detailed")
