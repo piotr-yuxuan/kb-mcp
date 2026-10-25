@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 import subprocess
@@ -10,7 +11,7 @@ import threading
 import time
 from contextlib import closing
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 import pytest
 from structlog.testing import capture_logs
@@ -170,3 +171,143 @@ def test_a_new_store_gives_space_back_and_an_older_one_keeps_its_mode(tmp_path: 
         pass
     assert modes(tmp_path / "new.db") == (INCREMENTAL, "wal")
     assert modes(tmp_path / "old.db") == (0, "wal")
+
+
+def seeded(path: Path, count: int) -> list[str]:
+    """Fill a store with vectors the size of 1,024 float32, whose pages a prune can free.
+
+    The fakes' 16 dimensions fit inside B-tree pages, so that deleting some of them frees
+    no whole page. Return the keys, in the order put.
+    """
+    keys = [vector_store.key("fingerprint", f"text {number}") for number in range(count)]
+    with vector_store.opened(path) as store:
+        store.put({key: os.urandom(4 * 1024) for key in keys})
+    return keys
+
+
+def freelist(path: Path) -> int:
+    """Give how many pages of a store are free, in its file and not given back."""
+    with closing(sqlite3.connect(path)) as connection:
+        return connection.execute("PRAGMA freelist_count").fetchone()[0]
+
+
+def test_a_prune_deletes_what_is_not_kept_and_gives_its_pages_back(tmp_path: Path) -> None:
+    """Half the vectors deleted give back about half the store; none of the kept is lost."""
+    keys = seeded(tmp_path / "v.db", 2000)
+    with vector_store.opened(tmp_path / "v.db") as store:
+        swept = store.prune(keys[::2])
+        assert store.get(keys) == store.get(keys[::2])
+        assert len(store.get(keys)) == len(keys[::2])
+    assert swept.deleted == len(keys[1::2])
+    assert swept.shrinks
+    assert swept.unreclaimed == ""
+    assert swept.bytes_after < 0.6 * swept.bytes_before
+    assert freelist(tmp_path / "v.db") == 0
+    assert not (tmp_path / "v.db-wal").exists()
+
+
+def test_a_store_made_before_023_is_pruned_but_keeps_its_size(tmp_path: Path) -> None:
+    """Its rows go; its pages stay free in the file, for later writes to reuse."""
+    made_before_023(tmp_path / "v.db")
+    keys = seeded(tmp_path / "v.db", 2000)
+    with vector_store.opened(tmp_path / "v.db") as store:
+        swept = store.prune(keys[::2])
+    assert swept.deleted == len(keys[1::2])
+    assert not swept.shrinks
+    assert swept.bytes_after == swept.bytes_before
+    assert freelist(tmp_path / "v.db") > 0
+
+
+class InterruptedAtCommit(sqlite3.Connection):
+    """A connection interrupted when it commits, as Ctrl-C could."""
+
+    @override
+    def commit(self) -> None:
+        raise KeyboardInterrupt
+
+
+class InterruptedAtVacuum(sqlite3.Connection):
+    """A connection interrupted when it is told to give pages back, its deletions committed."""
+
+    @override
+    def execute(self, sql: str, parameters: object = (), /) -> sqlite3.Cursor:
+        if sql == "PRAGMA incremental_vacuum":
+            raise KeyboardInterrupt
+        return super().execute(sql, parameters)
+
+
+class FailingAtVacuum(sqlite3.Connection):
+    """A connection whose vacuum fails, as a full disk could make it."""
+
+    @override
+    def execute(self, sql: str, parameters: object = (), /) -> sqlite3.Cursor:
+        if sql == "PRAGMA incremental_vacuum":
+            message = "database or disk is full"
+            raise sqlite3.OperationalError(message)
+        return super().execute(sql, parameters)
+
+
+def test_a_prune_interrupted_before_its_commit_deletes_nothing(tmp_path: Path) -> None:
+    """The deletions are one transaction: interrupted, it rolls back whole."""
+    keys = seeded(tmp_path / "v.db", 200)
+    with (
+        closing(sqlite3.connect(tmp_path / "v.db", factory=InterruptedAtCommit)) as connection,
+        pytest.raises(KeyboardInterrupt),
+    ):
+        vector_store.VectorStore(connection).prune(keys[:10])
+    with vector_store.opened(tmp_path / "v.db") as store:
+        assert len(store.get(keys)) == len(keys)
+
+
+def test_a_prune_interrupted_before_its_vacuum_is_finished_by_the_next(tmp_path: Path) -> None:
+    """Its deletions stand, their pages free; the next prune, deleting nothing, frees them."""
+    keys = seeded(tmp_path / "v.db", 2000)
+    with (
+        closing(sqlite3.connect(tmp_path / "v.db", factory=InterruptedAtVacuum)) as connection,
+        pytest.raises(KeyboardInterrupt),
+    ):
+        vector_store.VectorStore(connection).prune(keys[::2])
+    assert freelist(tmp_path / "v.db") > 0
+    with vector_store.opened(tmp_path / "v.db") as store:
+        assert len(store.get(keys)) == len(keys[::2])
+        swept = store.prune(keys[::2])
+    assert swept.deleted == 0
+    assert freelist(tmp_path / "v.db") == 0
+
+
+def test_a_vacuum_that_fails_leaves_the_deletions_and_says_why(tmp_path: Path) -> None:
+    """The space stays in the file; the vectors not kept are gone all the same."""
+    keys = seeded(tmp_path / "v.db", 2000)
+    with closing(sqlite3.connect(tmp_path / "v.db", factory=FailingAtVacuum)) as connection:
+        swept = vector_store.VectorStore(connection).prune(keys[::2])
+    assert swept.deleted == len(keys[1::2])
+    assert swept.unreclaimed == "database or disk is full"
+    assert freelist(tmp_path / "v.db") > 0
+    with vector_store.opened(tmp_path / "v.db") as store:
+        assert len(store.get(keys)) == len(keys[::2])
+
+
+def test_a_reader_keeps_its_snapshot_while_a_prune_runs(tmp_path: Path) -> None:
+    """A read transaction opened before sees the store as it was, others the deletions."""
+    keys = seeded(tmp_path / "v.db", 2000)
+    seen: list[int] = []
+    count = "SELECT count(*) FROM vectors"
+    with closing(sqlite3.connect(tmp_path / "v.db", autocommit=False)) as reader:
+        before = reader.execute(count).fetchone()[0]
+
+        class Watched(sqlite3.Connection):
+            """A connection that lets the readers read just before it gives pages back."""
+
+            @override
+            def execute(self, sql: str, parameters: object = (), /) -> sqlite3.Cursor:
+                if sql == "PRAGMA incremental_vacuum":
+                    seen.append(reader.execute(count).fetchone()[0])
+                    with closing(sqlite3.connect(tmp_path / "v.db")) as other:
+                        seen.append(other.execute(count).fetchone()[0])
+                return super().execute(sql, parameters)
+
+        with closing(sqlite3.connect(tmp_path / "v.db", factory=Watched)) as connection:
+            vector_store.VectorStore(connection).prune(keys[::2])
+        seen.append(reader.execute(count).fetchone()[0])
+    assert seen == [before, len(keys[::2]), before]
+    assert before == len(keys)

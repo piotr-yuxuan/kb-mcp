@@ -3,8 +3,8 @@
 A vector is keyed by the SHA-256 of its model's fingerprint and the text embedded, so a
 text is embedded once per model however often the index is rebuilt, and a vector is
 never reused for another model or another version of one. Each ``put`` commits, so an
-interrupted build keeps what it embedded. The store only grows; deleting the file costs
-a full embedding, and nothing else.
+interrupted build keeps what it embedded, until a prune finds that no index reads it.
+Deleting the file costs a full embedding, and nothing else.
 
 Its lock, beside it, keeps a prune from deleting what a build in progress embeds: each
 build holds it shared, a prune exclusive. ``flock`` locks an open file, so the kernel
@@ -20,6 +20,7 @@ import json
 import sqlite3
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -42,6 +43,10 @@ WAIT_S = 60
 # How often a build waiting for a prune asks for the lock again, in seconds.
 POLL_S = 0.1
 CREATE = "CREATE TABLE IF NOT EXISTS vectors (key TEXT PRIMARY KEY, vector BLOB NOT NULL)"
+# The auto_vacuum mode in which a store gives free pages back when told: a new store's.
+INCREMENTAL = 2
+# The store's size as its pages count it, its WAL aside.
+SIZE = "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()"
 
 
 def key(fingerprint: str, text: str) -> str:
@@ -52,6 +57,22 @@ def key(fingerprint: str, text: str) -> str:
 def as_bytes(vector: NDArray[np.float32]) -> bytes:
     """Write a vector as the store and the index hold it."""
     return vector.astype(LAYOUT).tobytes()
+
+
+@dataclass(frozen=True)
+class Swept:
+    """What a prune of the store did: the vectors deleted, and its size before and after.
+
+    ``shrinks`` says whether the store gives freed pages back to the file system at all,
+    as one made before plan 023 never does; ``unreclaimed``, why this prune's stayed in
+    the file, empty when they did not.
+    """
+
+    deleted: int
+    bytes_before: int
+    bytes_after: int
+    shrinks: bool
+    unreclaimed: str = ""
 
 
 class VectorStore:
@@ -105,6 +126,33 @@ class VectorStore:
                 embedded += len(batch)
                 embedding.advance(len(chosen))
         return found, embedded
+
+    def prune(self, kept: Iterable[str]) -> Swept:
+        """Delete every vector whose key is not kept, then give the pages freed back.
+
+        The deletions are one transaction, committed first, as the vacuum refuses to run
+        in one; when they fail, sqlite3.Error is raised, and nothing is deleted. Then
+        ``incremental_vacuum`` gives back every free page, those an earlier prune left
+        included, read to its end in one call, as each of its steps frees one page; it
+        does nothing in a store made before plan 023. A vacuum that fails leaves the
+        deletions standing, and says why.
+        """
+        connection = self._connection
+        before = connection.execute(SIZE).fetchone()[0]
+        deleted = connection.execute(
+            "DELETE FROM vectors WHERE key NOT IN (SELECT value FROM json_each(?))",
+            (json.dumps(list(kept)),),
+        ).rowcount
+        connection.commit()
+        try:
+            connection.execute("PRAGMA incremental_vacuum").fetchall()
+        except sqlite3.Error as error:
+            unreclaimed = str(error)
+        else:
+            unreclaimed = ""
+        after = connection.execute(SIZE).fetchone()[0]
+        shrinks = connection.execute("PRAGMA auto_vacuum").fetchone()[0] == INCREMENTAL
+        return Swept(deleted, before, after, shrinks, unreclaimed)
 
 
 @contextmanager
