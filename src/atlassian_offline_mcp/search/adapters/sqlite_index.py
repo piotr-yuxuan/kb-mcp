@@ -275,14 +275,27 @@ class Writer:
         self.skipped += 1
 
 
-def indexes_in(folder: Path) -> list[Path]:
-    """List the indexes under a folder, at any depth, in order; none if it does not exist.
+def unlisted(error: OSError) -> None:
+    """Stop a walk at a folder that cannot be listed, as an index there would go unseen."""
+    raise error
 
-    The file of a build is no index: ``building`` makes it empty, renames it into place
-    once complete, and a build killed before its end leaves it behind.
+
+def indexes_in(folder: Path) -> list[Path]:
+    """List the indexes under a folder, at any depth and through links, in order.
+
+    None if the folder does not exist; OSError when one under it cannot be listed. The
+    file of a build is no index: ``building`` makes it empty, renames it into place once
+    complete, and a build killed before its end leaves it behind.
     """
-    found = folder.rglob("*.sqlite")
-    return sorted(path for path in found if not path.name.startswith(BUILDING))
+    if not folder.is_dir():
+        return []
+    walked = folder.walk(on_error=unlisted, follow_symlinks=True)
+    return sorted(
+        root / name
+        for root, _folders, names in walked
+        for name in names
+        if name.endswith(".sqlite") and not name.startswith(BUILDING)
+    )
 
 
 @contextmanager
@@ -484,12 +497,13 @@ class Reader:
     def keys(self) -> set[str]:
         """Give the vector store's keys of the pieces' vectors: what the index reads of it.
 
-        An index of this schema built before pieces recorded their keys reads as any
-        other, but cannot say them: raise UnavailableIndexError.
+        An index built by words alone names no vector, and one of this schema built before
+        pieces recorded their keys reads as any other: neither can say which vectors a
+        prune must keep, so raise UnavailableIndexError.
         """
         columns = {row["name"] for row in self._connection.execute("PRAGMA table_info(pieces)")}
-        if "key" not in columns:
-            message = "built before pieces recorded their keys"
+        if self.embedded() is None or "key" not in columns:
+            message = "built by words alone, or before pieces recorded their keys"
             raise UnavailableIndexError(message)
         return {row[0] for row in self._connection.execute("SELECT DISTINCT key FROM pieces")}
 

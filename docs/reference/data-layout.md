@@ -394,8 +394,9 @@ so that deleting an evaluation's index lets the next prune drop its vectors, and
 edited piece's old text, a deleted document's, a model replaced, a build interrupted
 before its index was renamed in. The prune is held back, deleting nothing, when the
 build skipped a file or indexed no document, or when an index there cannot say which
-vectors it reads (built before plan 023, or not an index): `eval` rebuilds those of the
-models and chunkings it is given, else delete them. A build holds
+vectors it reads (built by words alone or before plan 023, damaged, not an index, or in a
+folder that cannot be listed; links are followed): `eval` rebuilds those of the models
+and chunkings it is given, else delete them. A build holds
 `<data>/vectors.sqlite.lock` shared by `flock` until its index is in place, and a prune
 takes it exclusive or is deferred to the next `index`. A store made from plan 023 on
 gives the pages freed back to the file system (`auto_vacuum = INCREMENTAL`); one made

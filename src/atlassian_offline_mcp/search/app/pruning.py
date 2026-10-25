@@ -36,8 +36,9 @@ STORE_SIZE = METER.create_gauge(
 type Outcome = Literal["pruned", "deferred", "held back", "failed"]
 DEFERRED = "a build is using the vector store; the next index prunes it"
 UNREADABLE = (
-    "it cannot say which vectors it reads: rebuild it, with index or with eval --model and"
-    " --chunking, or delete it"
+    "it cannot say which vectors it reads, built by words alone or before plan 023, damaged,"
+    " or in a folder that cannot be listed: rebuild the index with index, an evaluation's"
+    " with eval and its model and chunking, or delete it"
 )
 # How each outcome is said: its level, its event and the fields of its event.
 SAID: dict[Outcome, tuple[str, str, tuple[str, ...]]] = {
@@ -101,8 +102,9 @@ def prune(store: Path, index: Path, evaluation_indexes: Path, incomplete: str = 
 
     ``incomplete`` says why the build that just ended is not the mirror whole (a file
     skipped, no document), which holds the prune back, as an index that cannot say which
-    vectors it reads does: it would delete what the mirror still needs. A build holding
-    the store's lock defers it. The store's own failure to delete fails it, nothing
+    vectors it reads does, being by words alone, damaged, or in a folder that cannot be
+    listed: it would delete what the mirror still needs. A build holding the store's
+    lock defers it. The store's own failure to delete fails it, nothing
     deleted; the span ``index.prune`` holds it.
     """
     started = time.monotonic()
@@ -113,13 +115,14 @@ def prune(store: Path, index: Path, evaluation_indexes: Path, incomplete: str = 
             if not held:
                 return said(Pruned("deferred", reason=DEFERRED), span, started)
             keys: dict[Path, set[str]] = {}
-            for path in [index, *sqlite_index.indexes_in(evaluation_indexes)]:
-                try:
+            path = evaluation_indexes  # what the listing reads, before any index
+            try:
+                for path in [index, *sqlite_index.indexes_in(evaluation_indexes)]:
                     with sqlite_index.reading(path) as reader:
                         keys[path] = reader.keys()
-                except sqlite_index.UnavailableIndexError:
-                    held_back = Pruned("held back", reason=UNREADABLE, file=str(path))
-                    return said(held_back, span, started)
+            except sqlite_index.UnavailableIndexError, sqlite3.DatabaseError, OSError:
+                held_back = Pruned("held back", reason=UNREADABLE, file=str(path))
+                return said(held_back, span, started)
             read = keys.pop(index)
             evaluation = set().union(*keys.values()) - read
             kept = read | evaluation

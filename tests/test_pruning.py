@@ -27,7 +27,7 @@ from atlassian_offline_mcp.evaluation.app.evaluation import Target, evaluate
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.adapters.sqlite_index import indexes_in, reading
 from atlassian_offline_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
-from atlassian_offline_mcp.search.app.pruning import DEFERRED, Pruned
+from atlassian_offline_mcp.search.app.pruning import DEFERRED, UNREADABLE, Pruned, prune
 from tests.endpoint import Scripted, scripted, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.test_evaluate import golden, ticking
@@ -516,7 +516,7 @@ def test_an_evaluation_index_without_keys_holds_the_prune_back(
         connection.commit()
     status, result, err = held_back(data, capsys)
     assert (status, result["outcome"], result["file"]) == (0, "held back", str(windows))
-    assert "rebuild it, with index or with eval --model" in result["reason"]
+    assert result["reason"] == UNREADABLE
     assert ("warning", "index.prune_skipped") in said(err)
 
 
@@ -650,3 +650,66 @@ def test_an_index_interrupted_while_it_prunes_is_in_place(
         index_mirror(indexing(data), later)
     with reading(data / "index.sqlite") as reader:
         assert reader.built_at() == later
+
+
+def kept_whole(data: Path) -> str:
+    """Put in the store a vector that no index reads; give its key, which a prune deletes."""
+    other = vector_store.key("another model", "a text")
+    with vector_store.opened(data / "vectors.sqlite") as opened:
+        opened.put({other: bytes(64)})
+    return other
+
+
+def test_a_damaged_evaluation_index_holds_the_prune_back(data: Path) -> None:
+    """A page of its pieces overwritten: the file is named, and nothing is deleted."""
+    pruned(index_mirror(indexing(data), MOMENT))
+    windows = evaluated(data, data / "vectors.sqlite", "windows")
+    with closing(sqlite3.connect(windows)) as connection:
+        root = connection.execute("SELECT rootpage FROM sqlite_master WHERE name = 'pieces'")
+        page_number = root.fetchone()[0]
+        size = connection.execute("PRAGMA page_size").fetchone()[0]
+    with windows.open("r+b") as file:
+        file.seek((page_number - 1) * size)
+        file.write(b"\xff" * size)
+    other = kept_whole(data)
+    done = pruned(index_mirror(indexing(data), MOMENT))
+    assert (done.outcome, done.file, done.reason) == ("held back", str(windows), UNREADABLE)
+    assert other in stored(data / "vectors.sqlite")
+
+
+def test_an_evaluation_index_through_a_link_keeps_its_vectors(data: Path) -> None:
+    """Its folder a link to another place: the prune follows it, and keeps what it reads."""
+    pruned(index_mirror(indexing(data), MOMENT))
+    elsewhere = data.parent / "elsewhere"
+    windows = evaluated(data, data / "vectors.sqlite", "windows")
+    elsewhere.mkdir()
+    windows.parent.rename(elsewhere / "windows")
+    windows.parent.symlink_to(elsewhere / "windows")
+    done = pruned(index_mirror(indexing(data), MOMENT))
+    assert done.outcome == "pruned"
+    assert read_by(windows) <= stored(data / "vectors.sqlite")
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root lists every folder")
+def test_a_folder_that_cannot_be_listed_holds_the_prune_back(data: Path) -> None:
+    """An index there would go unseen, and its vectors deleted: nothing is."""
+    pruned(index_mirror(indexing(data), MOMENT))
+    windows = evaluated(data, data / "vectors.sqlite", "windows")
+    other = kept_whole(data)
+    windows.parent.chmod(0)
+    try:
+        done = pruned(index_mirror(indexing(data), MOMENT))
+    finally:
+        windows.parent.chmod(0o700)
+    assert (done.outcome, done.file) == ("held back", str(data / "eval" / "indexes"))
+    assert other in stored(data / "vectors.sqlite")
+
+
+def test_an_index_by_words_alone_in_place_holds_the_prune_back(data: Path) -> None:
+    """Renamed in by a lexical build since: it names no vector, so none is deleted."""
+    pruned(index_mirror(indexing(data), MOMENT))
+    other = kept_whole(data)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    done = prune(data / "vectors.sqlite", data / "index.sqlite", data / "eval" / "indexes")
+    assert (done.outcome, done.file) == ("held back", str(data / "index.sqlite"))
+    assert other in stored(data / "vectors.sqlite")
