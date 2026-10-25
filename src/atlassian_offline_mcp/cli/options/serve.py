@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.domain.command import Command
 from atlassian_offline_mcp.cli.options._common import (
@@ -13,6 +14,9 @@ from atlassian_offline_mcp.cli.options._common import (
 )
 from atlassian_offline_mcp.kernel.tools import TOOLS, Tool
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 
 def tool_names(value: str) -> tuple[Tool, ...]:
     """Read --tools: names of tools, comma-separated, in the server's order whatever theirs."""
@@ -21,6 +25,13 @@ def tool_names(value: str) -> tuple[Tool, ...]:
         message = f"one or more of {', '.join(TOOLS)}, comma-separated"
         raise argparse.ArgumentTypeError(message)
     return tuple(tool for tool in TOOLS if tool in names)
+
+
+def reranking_off(_arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
+    """Say that the reranking server's settings are not applied while reranking is off."""
+    if settings["rerank.enabled"]:
+        return {}
+    return dict.fromkeys(("rerank.url", "rerank.model", "rerank.depth"), "reranking off")
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -40,9 +51,19 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         command=Command(
             "serve",
             "atlassian_offline_mcp.cli.commands.serve",
-            reads=("data_dir", "search_mode", "embedding_url", "embedding_api_key"),
+            reads=(
+                "data_dir",
+                "search_mode",
+                "embedding_url",
+                "embedding_api_key",
+                "rerank.enabled",
+                "rerank.url",
+                "rerank.model",
+                "rerank.depth",
+            ),
             flags=flags,
             actions=(*actions, remote, tools),
+            unapplied=reranking_off,
             refused=endpoint_by_meaning,
             traced=False,
         )

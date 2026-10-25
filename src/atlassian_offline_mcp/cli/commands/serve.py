@@ -24,11 +24,15 @@ from mcp_types import INVALID_PARAMS, ToolAnnotations
 from opentelemetry import metrics
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
+from atlassian_offline_mcp.kernel.endpoint import RERANKING
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mcp.app.surface import surface
 from atlassian_offline_mcp.mcp.app.tools import FALLBACKS, Library, UnanswerableError
 from atlassian_offline_mcp.search.adapters.embedding import connect
+from atlassian_offline_mcp.search.adapters.model_api import endpoint
+from atlassian_offline_mcp.search.adapters.reranking import SEARCH, rerank
 from atlassian_offline_mcp.search.app.meaning import Meaning
+from atlassian_offline_mcp.search.app.reranking import Reranking
 
 if TYPE_CHECKING:
     import argparse
@@ -118,16 +122,25 @@ def checking(render: Callable[..., str]) -> Callable[..., str]:
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None]:
     """Serve the tools named, and the prompts that they allow, until the client closes stdin.
 
-    The lexical mode never opens the embedding endpoint. The protocol is the output:
+    The lexical mode never opens the embedding endpoint, nor does a server not reranking
+    open the reranking server's. The protocol is the output:
     no result is given. ``aom.serve.fallbacks`` is 0 from the start, so that a chart of
     it has data before any search falls back.
     """
     settings = loaded.settings
     FALLBACKS.add(0, {"aom.mode": settings.search_mode})
     opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
-    with opened or contextlib.nullcontext():
+    rerank_settings = settings.rerank
+    reranker = (
+        endpoint(rerank_settings.url, None, RERANKING, remote_allowed=False)
+        if rerank_settings.enabled
+        else None
+    )
+    with opened or contextlib.nullcontext(), reranker or contextlib.nullcontext():
         meaning = None if opened is None else Meaning(functools.partial(connect, opened))
-        library = Library(settings.index, settings.docs, meaning, settings.search_mode)
+        score = functools.partial(rerank, reranker, rerank_settings.model, bounds=SEARCH)
+        reranking = None if reranker is None else Reranking(score, rerank_settings.depth)
+        library = Library(settings.index, settings.docs, meaning, settings.search_mode, reranking)
         offered = surface(library, arguments.tools)
         tools = [
             Tool.from_function(

@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
+import json
 import re
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
+from mcp.client.stdio import StdioServerParameters
 
 from atlassian_offline_mcp.kernel.reranking import LONGEST_TEXT, MOST_TEXTS
 from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.search.adapters.reranking import Reranked, RerankError
+from atlassian_offline_mcp.search.app.indexing import build_index
 from atlassian_offline_mcp.search.app.reranking import Reranking
 from atlassian_offline_mcp.search.domain.reranking import PLACES, split_order, written
 from tests.answers import built, continuation, follow, parts
-from tests.mirrors import issue, page
+from tests.endpoint import Reranks, relevance, serving
+from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.test_serve import GUARDED, ROOT, talk
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -255,3 +261,67 @@ def test_a_cursor_writes_the_deepest_order_and_reads_it_back() -> None:
     assert split_order(f"8@x{written(deepest)}") == ("8@x", deepest)
     assert split_order("8@x") == ("8@x", ())
     assert split_order(None) == (None, None)
+
+
+# Pages of an index served over stdio: the more of "kafka retention" a text holds, the
+# higher the scripted reranker scores it.
+STDIO = (
+    "kafka kafka kafka kafka kafka\n",
+    "kafka retention\n",
+    "kafka kafka\n",
+    "retention kafka\n",
+)
+
+
+def stdio_root(tmp_path: Path, rerank: str) -> tuple[Path, Path]:
+    """Index four pages by words; give a scratch home, whose settings hold ``rerank``."""
+    home, data = tmp_path / "home", tmp_path / "data"
+    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
+    fillers(data / "docs")
+    for number, text in enumerate(STDIO):
+        write(data / "docs", page(str(920000 + number), f"Stdio {number}"), text)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    settings = f'data_dir = {json.dumps(str(data))}\nsearch_mode = "lexical"\n[rerank]\n{rerank}'
+    (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text(settings, "utf-8")
+    return home, data
+
+
+def served_over_stdio(home: Path, *allowed: str) -> StdioServerParameters:
+    """Run serve as an agent does, killed on any use of the network but at ``allowed``."""
+    arguments = ["-c", GUARDED, *allowed]
+    return StdioServerParameters(
+        command=sys.executable, args=arguments, env={"HOME": str(home)}, cwd=ROOT
+    )
+
+
+def test_serve_reranks_its_searches_through_the_server_of_the_settings(tmp_path: Path) -> None:
+    """Enabled: one request to the reranking server, and the hits in the order it scores."""
+    answers = Reranks()
+    with serving(answers) as url:
+        home, data = stdio_root(tmp_path, f"enabled = true\nurl = {json.dumps(url)}\ndepth = 4\n")
+        port = url.split(":")[2].split("/")[0]
+        _, _, results = talk(
+            served_over_stdio(home, port), [("search", {"query": "kafka retention"})]
+        )
+    found = results[0]["content"][0]["text"]
+    (asked,) = answers.asked
+    scores = [relevance(asked["query"], text) for text in asked["documents"]]
+    plain = Library(data / "index.sqlite", data / "docs", None, "lexical")
+    before = [shown.path for shown in plain.ranked("kafka retention", "lexical", limit=4)[0]]
+    after = [before[place] for place in sorted(range(len(before)), key=lambda at: -scores[at])]
+    assert titles(found)[: len(after)] == [title(data, path) for path in after]
+    assert "Not reranked" not in found
+
+
+def test_serve_not_reranking_opens_no_socket_and_says_its_settings_go_unused(
+    tmp_path: Path,
+) -> None:
+    """Disabled: no network at all, a search answered, and rerank.url not applied."""
+    home, _ = stdio_root(tmp_path, 'url = "http://127.0.0.1:9/v1"\n')
+    errlog = tmp_path / "stderr.txt"
+    with errlog.open("w", encoding="utf-8") as stderr:
+        _, _, results = talk(served_over_stdio(home), [("search", {"query": "kafka"})], stderr)
+    assert results[0]["isError"] is False
+    said = errlog.read_text("utf-8")
+    assert "rerank.url" in said
+    assert "reranking off" in said
