@@ -19,6 +19,7 @@ from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.indexing import Indexing, build_index, index_mirror
+from tests.endpoint import nothing_listening
 from tests.mirrors import FILLERS, MOMENT, fillers, issue, location, page, write
 from tests.test_cli import logged_as
 from tests.test_observed import CONTROL, said
@@ -118,6 +119,23 @@ def test_the_command_gives_its_report_index_and_model_as_json(
     assert document["report"]["types"] == {"page": 1}
     assert document["index"] == str((data / "index.sqlite").resolve())
     assert document["model"] is None
+
+
+def test_by_default_the_command_needs_the_endpoint_unless_words_alone_are_set(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 025, criterion 2: no mode set and no endpoint answering, exit 1 naming the way out.
+
+    That way is search_mode = "lexical": with it, the same run indexes by words alone.
+    """
+    write(data / "docs", page("196845", "Kafka"), BODY)
+    with nothing_listening() as url:
+        endpoint = f"embedding_url = {json.dumps(url)}\n"
+        status, _, err = index(data, capsys, endpoint)
+        assert status == 1
+        assert 'search_mode = "lexical"' in err
+        status, out, _ = index(data, capsys, f'search_mode = "lexical"\n{endpoint}')
+    assert (status, out) == (0, "documents: 1\nsections: 2\n")
 
 
 def test_line_endings_read_back_as_written(data: Path) -> None:

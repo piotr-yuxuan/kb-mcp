@@ -93,6 +93,15 @@ def documented(page: str) -> Documented:
     )
 
 
+def pattern(name: str, command: str) -> re.Pattern[str]:
+    """Give a listed span's name as the pattern that a recorded span's name matches whole.
+
+    ``<command>`` stands for the command's name, another placeholder for any one word,
+    such as ``<model>``.
+    """
+    return re.compile(PLACEHOLDER.sub(r"\\S+", re.escape(name.replace("<command>", command))))
+
+
 def operations() -> list[str]:
     """Give the commands that the reference has a page for, found in its folder."""
     return sorted(path.stem for path in PAGES.glob("*.md") if path.stem != README)
@@ -265,12 +274,7 @@ def undocumented(command: str, emitted: Emitted) -> list[str]:
         if name in events and fields - events[name]
     ]
     spans = every.spans | own.spans
-    # A span's name as a pattern: ``<command>`` the command's name, another placeholder
-    # any one word, such as ``<model>``.
-    patterns = {
-        name: re.compile(PLACEHOLDER.sub(r"\\S+", re.escape(name.replace("<command>", command))))
-        for name in spans
-    }
+    patterns = {name: pattern(name, command) for name in spans}
     for span in emitted.spans:
         names = [name for name, matching in patterns.items() if matching.fullmatch(span.name)]
         if len(names) != 1:

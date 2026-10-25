@@ -384,10 +384,10 @@ vector there, and is asked again at the next build. Under `<data>/eval/`,
 `indexes/<chunking>/<model>.sqlite` (each `/` and `:` of the name written `_`) are the
 indexes that `eval` builds, one per model and chunking, and `results/<UTC time>.json`
 its numbers: the golden file's SHA-256, models, chunkings, measures of `search` and of
-`ask`, costs, ranks and tests, by question id, never a question's text, and each
-model's default chunking by plan 019's rule. `eval-agents` writes into a directory of
-its own, given by `--out`, never under `<data>/` unless placed there: its layout is in
-[evaluating with agents](../how-to/evaluate-with-agents.md).
+`ask`, costs, ranks and tests, by question id, never a question's text, and for each
+model the chunking that plan 019's rule chooses. `eval-agents` writes into a directory
+of its own, given by `--out`, never under `<data>/` unless placed there: its layout is
+in [evaluating with agents](../how-to/evaluate-with-agents.md).
 A `<data>/models/` folder left by plan 011 is read by nothing.
 
 ## The session

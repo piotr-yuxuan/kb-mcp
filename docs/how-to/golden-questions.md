@@ -37,13 +37,20 @@ what `<data>/vectors.sqlite` lacks, and measures every mode on each:
   the tokens that the endpoint reported, its bytes, and the times of `search` and
   `ask`.
 
+In the table of `search`, `Query, median` and `Query, 95th` give each mode's time to
+rank one question, in milliseconds; plan 018's bar asked 200 ms at most of the 95th
+percentile. [Evaluating
+search](../explanation/search-evaluation.md#comparing-chunkings-and-modes) says how to
+read them and compare runs.
+
 Lexical search ignores the model and the chunking, so its rows come once. By plan 019's
 rule, the output then names each model's default chunking: in hybrid mode, a challenger
 replaces `sections` when it beats it on Evidence@ask with an adjusted p-value below
 0.05 (Holm, over every challenger's tests on MRR@10 and Evidence@ask), loses at most
 0.02 of MRR@10, and costs at most three times its tokens; the best Evidence@ask wins,
-within 0.01 the cheapest. The numbers, never the questions, go to
-`<data>/eval/results/`.
+within 0.01 the cheapest. That line is the rule's verdict on your questions, not the
+setting: `chunking` defaults to `windows`, chosen knowing that the rule kept `sections`
+on the sandbox. The numbers, never the questions, go to `<data>/eval/results/`.
 
 `--model` names models to measure, the setting's by default, all served by the
 endpoint; `--chunking` names chunkings, every one by default:

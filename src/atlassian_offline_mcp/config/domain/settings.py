@@ -50,13 +50,14 @@ DEFAULT_MODEL = "qwen3-embedding:0.6b"
 DEFAULT_EMBEDDING_URL = "http://127.0.0.1:11434/v1"
 # How search ranks: by words, by meaning, or by both fused.
 type SearchMode = Literal["lexical", "semantic", "hybrid"]
-# Plan 011 found hybrid better than lexical with its in-process model; with the model of
-# plan 018, hybrid neither beat lexical significantly nor held identifiers, so by the bar
-# set before that run, and the user's word, words stay the default.
-DEFAULT_SEARCH_MODE: SearchMode = "lexical"
-# How index cuts documents into the pieces it embeds: 011's sections, until plan 019's
-# evaluation decides by its rule.
-DEFAULT_CHUNKING: Chunking = "sections"
+# Plan 018's bar kept words. With plan 019's windows, hybrid met two of its three counts,
+# beating words significantly and holding identifiers, but its 95th percentile query
+# time missed 200 ms. Plan 025: the user chose hybrid, ranking mattering more than speed.
+DEFAULT_SEARCH_MODE: SearchMode = "hybrid"
+# How index cuts documents into the pieces it embeds. Plan 019's rule kept sections, as
+# no chunking beat them on the evidence quoted; windows ranked significantly better, and
+# by plan 025 the user chose them.
+DEFAULT_CHUNKING: Chunking = "windows"
 # The layer of a setting that no layer gives, as it is named.
 DEFAULT_LAYER = "default"
 # The settings that the file held at its top before plan 015, and their tables now.
@@ -290,14 +291,17 @@ class Settings(BaseSettings):
     )
     search_mode: SearchMode = Field(
         default=DEFAULT_SEARCH_MODE,
-        description="How search ranks: by words (lexical), by meaning (semantic), or both.",
+        description=(
+            "How search ranks: by words (lexical), by meaning (semantic), or both (hybrid),"
+            " the default; all but lexical need the embedding endpoint."
+        ),
     )
     chunking: Chunking = Field(
         default=DEFAULT_CHUNKING,
         description=(
             f"How index cuts documents into the pieces it embeds: {', '.join(CHUNKINGS)};"
-            " search follows the index. The default is plan 019's rule's; windows ranked"
-            " best on its sandbox."
+            " search follows the index. By default windows, which ranked best on plan"
+            " 019's sandbox."
         ),
     )
     embedding_url: EmbeddingUrl = Field(

@@ -4,8 +4,10 @@ An index by meaning holds a vector per piece of each document, and a search by m
 finds the pieces nearest the question. How documents are cut into pieces, and what text
 each vector stands for, is the chunking: the setting `chunking`, which `index` cuts by
 and records in the index, so that `search`, `ask` and `status` follow the index, not the
-setting. Plan 019 compared four, on plan 002's sandbox questions, and chose the default
-by a rule set before the run: `sections` stays.
+setting. Plan 019 compared four, on plan 002's sandbox questions, by a rule set before
+the run, which kept `sections`. `windows` ranked best of the four, and is the default
+since plan 025, by the user's choice: [the defaults](#the-defaults-the-users-choice)
+say why.
 
 ## The four chunkings
 
@@ -57,13 +59,14 @@ whatever the vector store held, and their tokens; the texts embedded in the run,
 seconds and the tokens reported; the index's bytes; and the times of `search` and `ask`.
 Vectors are kept by model and text, so a text that two chunkings share is embedded once.
 
-The default is chosen in hybrid mode with the setting's model: a challenger qualifies
-when it beats `sections` on Evidence@ask with a p-value below 0.05 once adjusted by Holm
-over the six tests of three challengers on MRR@10 and Evidence@ask, loses at most 0.02
-of MRR@10, and costs at most three times `sections`' tokens; the best Evidence@ask wins,
-and within 0.01 the cheaper; else `sections` stays. Three times, because
-`small-to-big` repeats each piece's context, about 2.1 times `sections`' tokens; only a
-cold build three times as long is refused. The work set should decide again.
+Plan 019's rule, which `eval` still applies, chooses in hybrid mode with the setting's
+model: a challenger qualifies when it beats `sections` on Evidence@ask with a p-value
+below 0.05 once adjusted by Holm over the six tests of three challengers on MRR@10 and
+Evidence@ask, loses at most 0.02 of MRR@10, and costs at most three times `sections`'
+tokens; the best Evidence@ask wins, and within 0.01 the cheaper; else `sections` stays.
+Three times, because `small-to-big` repeats each piece's context, about 2.1 times
+`sections`' tokens; only a cold build three times as long is refused. The work set
+should decide again.
 
 ## On the sandbox
 
@@ -107,14 +110,67 @@ with half the pieces, a smaller index and 1.11 times the tokens, and by meaning 
 its passages held the evidence more often (0.500 against 0.329); in hybrid mode the
 evidence quoted barely moved (0.357 against 0.333), perhaps because a document that
 words rank higher there gets its section, not its window. With `windows`, hybrid search
-also beat words significantly (MRR@10 0.639 against 0.539, adjusted p 0.0008), on
-identifiers too (0.674 against 0.616): two of the three counts of plan 018's bar for
-hybrid as the default, its 95th percentile (266 ms here) being the third. The rule set
-before this run decides the chunking alone, so the defaults stay `sections` and
-`lexical`: they are the rule's, not the best measured, and [the agents'
-guide](../how-to/agents.md) says how to set the best measured. The cold builds took 31 minutes for `sections` and 52
-for `section-paths`, and 27 for the part of `small-to-big` that the others had not
-embedded; `windows` were embedded across two runs, the machine being busy.
+also beat words significantly (MRR@10 0.639 against 0.539, adjusted p 0.0008), and
+held identifiers (0.674 against 0.616) and keywords (0.855 against 0.812): two of the
+three counts of plan 018's bar for hybrid as the default, its 95th percentile (266 ms
+here) being the third. The rule set before this run decides the chunking alone, so by
+the rules the defaults stayed `sections` and `lexical`. The cold builds took 31 minutes
+for `sections` and 52 for `section-paths`, and 27 for the part of `small-to-big` that
+the others had not embedded; `windows` were embedded across two runs, the machine being
+busy.
+
+## The defaults: the user's choice
+
+Two rules, each written before its run, decided against `windows` and hybrid search.
+Plan 019's asked a chunking to quote the evidence significantly more often than
+`sections` (an adjusted p-value below 0.05 on Evidence@ask), which none did. Plan 018's
+bar asked hybrid search for three things: a significant gain over words, no loss of more
+than 0.02 on identifier and keyword questions, and a 95th percentile within 200 ms. With
+`windows`, hybrid search met two of the three, as plan 019 recorded: it beat words
+significantly (MRR@10 0.639 against 0.539, adjusted p 0.0008) and did better on
+identifiers (0.674 against 0.616) and keywords (0.855 against 0.812); its 95th
+percentile, 266 ms, missed the third. Knowing these numbers, the user chose `windows`
+and hybrid search as the defaults (plan 025): ranking matters more to them than speed,
+and 266 ms is good enough to them. Semantic search over `windows` scored higher still,
+on every measure of the table (MRR@10 0.674, Evidence@ask 0.500), in 256 ms at the 95th
+percentile. Only its MRR@10 was tested against hybrid search, afterwards, by `eval`'s
+own paired randomisation test (10,000 samples, seed 11) on the ranks that the results
+file keeps: the difference, 0.035, was not significant (p 0.27); meaning alone did
+better on 25 questions, hybrid on 22, and 58 tied. Its leads in Evidence@ask (0.500
+against 0.357) and Found@ask (0.910 against 0.852) were not tested, since the results
+file keeps `ask`'s measures by group, not by question. [Comparing chunkings and
+modes](search-evaluation.md#comparing-chunkings-and-modes) gives the lines of that test.
+The rules and their verdicts stay as recorded, and `eval` still prints the rule's
+verdict on any set of questions.
+
+What the choice gains, on the sandbox: the first expected document comes sooner
+(MRR@10 0.639, against 0.578 for hybrid search over `sections` and 0.539 for words
+alone), both gains significant once adjusted, with half the pieces and an index of 21
+MB against 38 MB. What it costs:
+
+- **Speed.** A hybrid query asks the model to embed the question first: its 95th
+  percentile was 266 ms on this laptop's CPU, where words alone took 14 ms in plan
+  018's run. The user's machine's GPU is not measured yet; [reproducing
+  it](search-evaluation.md#reproducing-it) says how.
+- **A model by default.** `index` and the MCP server need the embedding endpoint,
+  Ollama by default, unless `search_mode = "lexical"`: without it, `index` stops and
+  names that setting, and the server answers by words, saying why.
+- **Evidence.** In hybrid mode, `ask`'s passages held the evidence barely more often
+  than by `sections` (0.357 against 0.333, not significant).
+- **Documents found.** `ask`'s passages held fewer of the expected documents: Found@ask
+  0.852, against 0.914 for hybrid search over `sections` and 0.795 for words alone, the
+  lowest of the eight runs by meaning; Recall@10 was a little lower too (0.857 against
+  0.862). Neither difference was tested.
+- **Edits.** A change to a page re-embeds more windows than sections, as the next
+  section shows.
+- **The first `index` after upgrading** embeds every window of the mirror: no window's
+  text is a section's, and vectors are kept by text, so none is found in the store
+  (unless an `eval` of `windows` with the same model embedded them already). On the
+  sandbox that is 1.11 times the tokens of `sections`. The sections' vectors stay in
+  `<data>/vectors.sqlite`, which only grows.
+
+To go back to either rule's choice: `chunking = "sections"`, then `index`; or
+`search_mode = "lexical"`, which needs no model and embeds nothing.
 
 ## When pages change
 

@@ -166,7 +166,7 @@ def test_an_index_by_words_alone_ignores_the_model_and_the_endpoint_given(
     """Those that a layer gave: the file's model, the variable's key; not the default address."""
     (home / "data" / "docs").mkdir(parents=True)
     config = home / "config.toml"
-    config.write_text('model = "tiny"\n', "utf-8")
+    config.write_text('model = "tiny"\nsearch_mode = "lexical"\n', "utf-8")
     monkeypatch.setenv(KEY, SECRETS[KEY])
     assert main(["index", "--yes", "--config", str(config), "--data-dir", str(home / "data")]) == 0
     out, err = capsys.readouterr()
@@ -227,6 +227,7 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
     err = capsys.readouterr().err
     assert f"\n  model: {DEFAULT_MODEL} (not applied: replaced by --model)\n" in err
     assert "ignored: " not in err
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "lexical")
     assert main(["index", "--yes", "--config", none]) == 0
     summary = capsys.readouterr().err.split("atlassian-offline-mcp index")[0]
     marked = [
@@ -534,7 +535,7 @@ def test_an_empty_list_that_replaced_no_value_given_is_neither_ignored_nor_named
 def test_the_command_to_copy_is_followed_by_the_settings_that_no_flag_sets(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Run again elsewhere, the command would index by words: each one is named, and its layer.
+    """Run again elsewhere, the command would index by the defaults: each is named, with its layer.
 
     With every setting at its default but the file's path, which --config carries,
     nothing is named.

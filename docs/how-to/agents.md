@@ -14,10 +14,13 @@ files.
   atlassian-offline-mcp index
   ```
 
-  Build the index again after each `mirror`; a running server reads the new index from
-  its next call on. `status` tells when the index was built. `mirror`, `index` and
-  `eval` write under the data directory, so each first says what it will do and asks
-  `Proceed? [y/N]`; `--yes` runs it without the question, as a script needs.
+  By default `index` embeds the mirror with a model that Ollama serves, so set that up
+  first ([search by meaning](#search-by-meaning), below), or set `search_mode =
+  "lexical"` to index and search by words alone. Build the index again after each
+  `mirror`; a running server reads the new index from its next call on. `status` tells
+  when the index was built. `mirror`, `index` and `eval` write under the data
+  directory, so each first says what it will do and asks `Proceed? [y/N]`; `--yes` runs
+  it without the question, as a script needs.
 - The server is the command with no arguments. It speaks MCP over stdio, reads only
   `<data>/index.sqlite` and the mirror, and writes nothing; its one network connection,
   when it searches by meaning, is to the embedding endpoint on this machine (below). It
@@ -37,20 +40,28 @@ Never give an agent `<data>/session/` (your saved sign-in) or `<data>/raw/`: onl
 
 ## Search by meaning
 
-`search` ranks by words unless the setting `search_mode` says otherwise: `hybrid`
-fuses words and meaning, `semantic` ranks by meaning alone, and `lexical`, the default,
-needs nothing more. On plan 002's sandbox questions, hybrid search with the default
-model and the default chunking did not beat words significantly and did worse on
-identifiers, so words stay the default until your own questions say otherwise (see
-[evaluating search](../explanation/search-evaluation.md)). The defaults are thus not
-the best measured: with `chunking = "windows"`, hybrid search did beat words there,
-identifiers included (see below). Meaning comes from an
-embedding model that this program does not run itself: it asks any OpenAI-compatible
-embeddings API, by default [Ollama](https://ollama.com) on this machine. To search by
-meaning, install Ollama on the host, not in a container (a container on macOS cannot
-use the Mac's GPU), start it (the Ollama app, `brew services start ollama`, or
-`ollama serve`), set `search_mode = "hybrid"`, then pull the model, check it and build
-the index:
+`search` ranks by the setting `search_mode`: `hybrid`, the default, fuses the ranking
+by words with the ranking by meaning; `semantic` ranks by meaning alone; `lexical` by
+words alone, and needs no model. Meaning comes from an embedding model that this
+program does not run itself: it asks any OpenAI-compatible embeddings API, by default
+[Ollama](https://ollama.com) on this machine. So by default `index` and the server need
+Ollama: without it, `index` stops and names `search_mode = "lexical"`, and the server
+answers by words, saying why.
+
+Why hybrid search over windows: on plan 002's sandbox questions it ranked better than
+hybrid search over sections or words alone, significantly (MRR@10 0.639, against 0.578
+and 0.539), at 266 ms for the 95th percentile of a query on the development laptop's
+CPU. Semantic search over windows ranked higher still there (0.674), but not
+significantly: p 0.27 against hybrid, in a paired test made afterwards. The rules
+written before those measures kept words and sections, for want of speed and of evidence
+quoted; the user chose these defaults knowing that, as ranking matters more to them than
+speed.
+[Evaluating search](../explanation/search-evaluation.md) and
+[chunking](../explanation/chunking.md) explain the measures, the rules and the choice.
+
+To set up search by meaning, install Ollama on the host, not in a container (a
+container on macOS cannot use the Mac's GPU), start it (the Ollama app, `brew services
+start ollama`, or `ollama serve`), then pull the model, check it and build the index:
 
 ```bash
 ollama pull qwen3-embedding:0.6b
@@ -109,26 +120,35 @@ https; for the MCP server, that means registering it as `atlassian-offline-mcp s
 --allow-remote-embeddings`. A model that Ollama serves from its cloud (such as a
 `:cloud` tag) is refused the same way, since Ollama would forward the text. A tunnel or
 a forwarded port to another machine defeats the check: do not point `embedding_url` at
-one. By words alone, the default, no endpoint is asked at all.
+one. By words alone (`search_mode = "lexical"`), no endpoint is asked at all.
 
 How an index cuts documents into the pieces it embeds is the setting `chunking`:
-`sections` by default, 011's pieces of each section, or `windows`, `section-paths` or
-`small-to-big`, which [chunking](../explanation/chunking.md) compares. Run `index` after
-changing it; `search`, `ask` and `status` follow the index, whatever the setting says.
+`windows` by default, overlapping windows of 300 tokens across each document's body, or
+`sections`, 011's pieces of each section, `section-paths` or `small-to-big`, which
+[chunking](../explanation/chunking.md) compares. Run `index` after changing it;
+`search`, `ask` and `status` follow the index, whatever the setting says.
 
-`sections` is the default by plan 019's rule, set before the measures, which asked a
-chunking to quote the evidence more often than `sections` to replace it; none did. It is
-not the best measured: on the sandbox, `windows` ranked better, significantly (hybrid
-MRR@10 0.639 against 0.578, and 0.539 by words alone), with half the pieces and a tenth
-more tokens to embed, though its 95th percentile of a query was 266 ms on this laptop's
-CPU. To rank as best measured there, with Ollama running:
+`windows` is the default by the user's choice. Plan 019's rule, set before the
+measures, kept `sections`: it asked a chunking to quote the evidence significantly
+more often than `sections` (adjusted p below 0.05) to replace it, and none did. On the
+sandbox, `windows` ranked better, significantly (hybrid MRR@10 0.639 against 0.578),
+with half the pieces and a tenth more tokens to embed; an edit re-embeds more windows
+than sections, as later windows shift.
+
+The first `index` after upgrading to these defaults embeds every window of the mirror,
+since vectors are kept by text and no window's text is a section's (unless an `eval`
+of `windows` with the same model embedded them already): on the sandbox, 1.11 times
+the tokens of a first build by sections, with Ollama running throughout. The sections'
+vectors stay in `<data>/vectors.sqlite`, which only grows. To keep an earlier
+version's behaviour instead, set either of these, then run `index`:
 
 ```toml
-search_mode = "hybrid"
-chunking = "windows"
+search_mode = "lexical"  # words alone, as earlier versions searched: no model
 ```
 
-then run `index`.
+```toml
+chunking = "sections"  # hybrid search over the pieces of earlier versions
+```
 
 To check which mode, model and chunking fit your own content, write [golden
 questions](golden-questions.md) and run `eval`.

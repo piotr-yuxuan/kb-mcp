@@ -228,12 +228,15 @@ def by_meaning(data: Path, url: str, mode: str = "hybrid") -> list[str]:
     return ["--config", str(settings), "--data-dir", str(data)]
 
 
-def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None:
+def test_index_records_as_documented(
+    telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
     """Indexed by meaning, a file skipped and a piece refused; no endpoint; no mirror.
 
     The mirror holds a few pages, one with a front matter refused, and one whose second
-    section the endpoint refuses to embed.
+    section the endpoint refuses to embed, cut by sections.
     """
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_CHUNKING", "sections")
     data = tmp_path / "data"
     fillers(data / "docs", 5)
     body = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"

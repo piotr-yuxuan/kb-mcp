@@ -243,12 +243,14 @@ def test_an_endpoint_that_stops_answering_leaves_the_index_in_place(
 
 
 def test_a_piece_the_model_refuses_is_named_and_asked_again(
-    data: Path, capsys: CaptureFixture[str]
+    data: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The others are embedded, the index replaced, the exit 1; the next build asks again.
 
     The piece's document is named by the warning index.piece_refused, in the log file too.
+    Cut by sections, a piece a section, so that the piece refused is one section's.
     """
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_CHUNKING", "sections")
     refused = "Rollback\nRelease\nThe deploy of the seller service."
     answers = Scripted(refused={refused})
     with serving(answers) as url:
@@ -369,7 +371,7 @@ def test_the_environment_s_chunking_replaces_the_file_s(
     data: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """``ATLASSIAN_OFFLINE_MCP_CHUNKING`` is stronger than the file, and the index says so."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_CHUNKING", "windows")
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_CHUNKING", "small-to-big")
     with serving(Scripted()) as url:
         options = config(data, "tiny", url)
         settings = Path(options[1])
@@ -378,7 +380,7 @@ def test_the_environment_s_chunking_replaces_the_file_s(
     with reading(data / "index.sqlite") as reader:
         embedded = reader.embedded()
     assert embedded is not None
-    assert embedded.chunking == "windows"
+    assert embedded.chunking == "small-to-big"
 
 
 def test_an_index_cut_by_a_chunking_this_version_lacks_is_refused(data: Path) -> None:

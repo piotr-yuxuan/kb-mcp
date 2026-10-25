@@ -409,7 +409,8 @@ def read_until(terminal: int, wanted: bytes) -> bytes:
 def test_on_a_pseudo_terminal_no_leaves_the_data_then_yes_builds_the_index(home: Path) -> None:
     """The child asks on its terminal: n does nothing and exits 1; y builds, exit 0.
 
-    The settings come from the environment, so that the child's arguments are literal.
+    The settings come from the environment, so that the child's arguments are literal;
+    by words alone, so that the child calls no embedding endpoint.
     """
     data = home / "data"
     (data / "docs").mkdir(parents=True)
@@ -417,6 +418,7 @@ def test_on_a_pseudo_terminal_no_leaves_the_data_then_yes_builds_the_index(home:
         "HOME": str(home),
         "PATH": os.environ["PATH"],
         "ATLASSIAN_OFFLINE_MCP_DATA_DIR": str(data),
+        "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "lexical",
     }
     outcomes = []
     for answer in (b"n\n", b"y\n"):

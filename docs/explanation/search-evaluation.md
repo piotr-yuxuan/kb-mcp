@@ -11,8 +11,8 @@ Two questions need two kinds of evidence:
    model on thousands of queries over many collections, which no project can afford to
    repeat. Plan 018 chose its model this way.
 2. **Which way of searching, on this content, for these questions?** Only our own
-   corpus can answer that, with golden questions whose answers are known. Plans 011 and
-   018 measured this on a sandbox corpus; your work set is the next step.
+   corpus can answer that, with golden questions whose answers are known. Plans 011,
+   018 and 019 measured this on a sandbox corpus; your work set is the next step.
 
 ## Choosing a model from published results
 
@@ -264,7 +264,14 @@ the model, queries within 200 ms at the 95th percentile among them. Plan 018 wro
 again before its run, one bar of all three for keeping hybrid the default. Writing the bar first keeps the decision
 from bending to the numbers once they are known: a set that favours meaning (39
 paraphrases, written so that words cannot find their answers) would otherwise tempt a
-reading in meaning's favour.
+reading in meaning's favour. Plan 019 wrote one for the chunking the same way
+([chunking](chunking.md)).
+
+A rule written first binds the reading of the numbers, not the user's choice. Once the
+numbers are known, the user may weigh what the rule left out, such as ranking against
+speed, provided the rule's verdict stays on record and the choice is said to be
+theirs; plan 018's bar said as much, leaving the decision to the user if it failed.
+The defaults since plan 025 are such a choice (below).
 
 ### Query time
 
@@ -322,13 +329,37 @@ MRR@10 against lexical: semantic +0.054 (p = 0.197, adjusted 0.305), hybrid +0.0
 Against the bar, hybrid failed on all three counts: its gain was not significant; it
 lost 0.061 on identifier questions (keyword: 0.019, within the bar); and its 95th
 percentile was 212 ms on this CPU. **Words became the default again**, by the user's
-word on that rule; `search_mode = "hybrid"` turns meaning on.
+word on that rule, until plan 025 (below).
 
 Against plan 011's bge-small, question by question on the same set (from the two
 results files, with the script above): semantic +0.020 (p = 0.57; 31 questions better,
 31 worse), hybrid -0.028 (p = 0.28; 16 better, 24 worse). Neither is significant. Plan
 011's results file is kept on the development laptop only, and its in-process model is
 gone, so this comparison cannot be run again from the repository.
+
+### Plan 019: four chunkings, and the defaults since
+
+The same questions, mirror and model, on 2026-10-22 and 23, with the index cut four
+ways; [chunking](chunking.md) holds every table, cost and test. `windows` ranked best of
+the four, by meaning alone and in hybrid mode. Over `windows`, hybrid search reached
+MRR@10 0.639, against 0.578 over `sections` (adjusted p 0.0114) and 0.539 by words alone
+(adjusted p 0.0008), with 0.674 against words' 0.616 on identifier questions and 0.855
+against 0.812 on keyword questions; its 95th percentile of query time was 266 ms on this
+laptop's CPU. Semantic search over `windows` scored higher still (MRR@10 0.674,
+Evidence@ask 0.500 against 0.357), at 256 ms. On MRR@10 alone, `eval`'s paired
+randomisation test, run afterwards on the ranks that the results file keeps (10,000
+samples, seed 11), found the difference, 0.035, not significant (p 0.27): meaning alone
+did better on 25 questions, hybrid on 22, and 58 tied. The difference in Evidence@ask
+was not tested, since the results file keeps `ask`'s measures by group alone; [comparing
+chunkings and modes](#comparing-chunkings-and-modes) gives the lines of the test.
+
+Neither rule chose `windows` and hybrid search. Plan 019's rule, which decides the
+chunking by the evidence that `ask` quotes, kept `sections`. Plan 018's bar, applied to
+`windows`, was met on the gain and on identifier and keyword questions but not on
+speed, so words would have stayed.
+Knowing these numbers, the user made `windows` and hybrid search the defaults (plan
+025), as ranking matters more to them than speed. The rules and their verdicts above
+stay as written: what changed is the choice made after them, which is the user's.
 
 ### What these runs show, and what they do not
 
@@ -342,8 +373,10 @@ gone, so this comparison cannot be run again from the repository.
   ([Cormack, Clarke and Büttcher, 2009](https://doi.org/10.1145/1571941.1572114))
   weighs the two rankings equally. With Qwen3, whose ranking was weaker than words' on
   identifiers (0.501 against 0.616), fusion pulled hybrid below words there, and below
-  semantic search overall. Tuning the fusion on these same questions would fit it to
-  them; it waits for more questions.
+  semantic search overall. Over `windows` (plan 019), meaning held identifiers itself
+  (0.673 against 0.616), and so did hybrid search (0.674), but fusion still left hybrid
+  below semantic search overall (MRR@10 0.639 against 0.674). Tuning the fusion on these
+  same questions would fit it to them; it waits for more questions.
 - **The leaderboard's English lead did not show here.** On the 90 English questions,
   Qwen3's semantic MRR@10 (0.568) was no better than bge-small's (0.587). The sandbox's
   documents are invented, written by the same plan as the questions, and small; the
@@ -354,12 +387,41 @@ gone, so this comparison cannot be run again from the repository.
   past the gate of 30 minutes); plan 011's in-process int8 Qwen3 took 892 seconds on the
   same machine. A laptop's GPU should be faster, by an estimate of 15 to 45
   minutes for 20,000 pieces; nothing measured it yet. Later builds embed only what
-  changed.
+  changed. A hybrid query, which embeds the question, took 266 ms at the 95th
+  percentile over `windows` on this CPU; the user's machine's time is for the next run to
+  say.
 - **The work set decides.** Everything here rests on one invented corpus and the
   questions written with it. Your own documents and the questions agents really send
   are the evidence that should settle the default.
 
 ## Reproducing it
+
+Every step runs from a checkout of this repository, with `uv`, on any machine: this
+laptop, or another such as the user's machine, whose GPU should change the times. The
+sandbox's commands name `--config <missing file>`, a path where no file is, so that the
+machine's settings file changes nothing: otherwise `mirror` would write its `site` into
+the mirror's addresses, and `index`, `model check` and `eval` would take its model and
+endpoint, `index` its chunking and mode too. The variables `ATLASSIAN_OFFLINE_MCP_…`
+still apply: leave them unset, but where a command sets them. On your own corpus, your
+settings are the point: leave the flag out. Two things come first:
+
+- **Ollama on the host**, running, with the model pulled: `eval` searches by meaning,
+  and so, by default, does `index`. Install Ollama on the host, not in a container (a
+  container on macOS cannot use the Mac's GPU), and start it (the Ollama app, `brew
+  services start ollama`, or `ollama serve`). Then pull the model and check it:
+
+  ```bash
+  ollama pull qwen3-embedding:0.6b
+  ```
+
+  ```bash
+  uv run atlassian-offline-mcp model check --config <missing file>
+  ```
+
+  `model check` says the model's dimensions and digest, or what to run when the
+  endpoint or the model is missing.
+- **A mirror and a golden file**: the sandbox's, built next, or your own corpus's (the
+  last section).
 
 ### The sandbox run
 
@@ -372,32 +434,109 @@ corpus's pages are in the space `QM`, its tickets in the project `ENG`, its idea
 sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" uv run atlassian-offline-mcp download --yes --config <missing file> --data-dir <data> --since 1y --space MFS --space QM --project ENG --project PRB'
 ```
 
+The credentials file lies at the root of the checkout that made it, never in git
+(`.gitignore` excludes `*.sops*`), and only the keys it was encrypted for open it. On
+another machine, bring the file and a key; or make a file of your own for the sandbox's
+account, with a new token, by [the sops how-to](../how-to/api-token-with-sops.md), under
+the same generic names; or skip `download` and `mirror`: copy `<data>/docs` (7 MB)
+from a machine that has it into the new data directory, and go on from `index`.
+
 ```bash
-uv run atlassian-offline-mcp mirror --data-dir <data>
+uv run atlassian-offline-mcp mirror --config <missing file> --data-dir <data>
 ```
 
 ```bash
-uv run atlassian-offline-mcp index --data-dir <data>
+uv run atlassian-offline-mcp index --config <missing file> --data-dir <data>
 ```
 
 `index` should report 1,474 documents (263 pages and 1,211 issues), as in plans 011 and
 018; without `ENG`, 31 questions name tickets that the mirror lacks, which `eval`
-refuses by name.
+refuses by name. By default it also embeds the mirror's windows, which `eval` then
+finds in `<data>/vectors.sqlite` and does not embed again.
 
 ```bash
 uv run python spikes/golden_refs.py --data <data> --out <data>/eval/sandbox.yaml
 ```
 
-Then, with Ollama running and the model pulled, measure every mode:
+Then measure every chunking in every mode:
 
 ```bash
-uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --data-dir <data> --model qwen3-embedding:0.6b
+uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing file> --data-dir <data> --model qwen3-embedding:0.6b
 ```
 
-`eval` builds its own index per model under `<data>/eval/indexes/`, embeds only what
-`<data>/vectors.sqlite` lacks, prints the tables, and writes the numbers (never the
-questions) to `<data>/eval/results/`. Name several models with `--model` to compare
-them in one run, with Holm's correction over all its tests.
+### Comparing chunkings and modes
+
+`eval` builds its own index per model and chunking under `<data>/eval/indexes/`,
+measures the three modes on each, embeds only what `<data>/vectors.sqlite` lacks,
+prints the tables, and writes the numbers (never the questions) to
+`<data>/eval/results/`. It measures every chunking, whatever the setting `chunking`
+says, unless `--chunking` names some; and the setting's model unless `--model` names
+others, several to compare them in one run. `--summary detailed` adds every group and
+the tests of each mode against words. To compare the defaults with the chunking that
+plan 019's rule kept:
+
+```bash
+uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --summary detailed
+```
+
+The first run embeds each chunking's pieces that the store lacks, which took 31
+minutes for `sections` on this laptop's CPU; a later run embeds only what changed, and
+the sandbox run of all four chunkings took 6 minutes once every vector was kept.
+
+For each model and chunking, the output has a part headed `## <model>, <chunking>`:
+
+- In its table of `search`, the row of a mode and the group `all` gives MRR@10 and the
+  other measures, then `Query, median` and `Query, 95th`: the median and the 95th
+  percentile of the time to rank one question, in milliseconds (see *Query time*,
+  above). The row `hybrid` is the defaults' when the chunking is `windows`. Plan 018's
+  bar asked for 200 ms at most; this laptop's CPU took 266 ms there.
+- With `--summary detailed`, `MRR@10, hybrid against lexical: p = ..., adjusted (Holm)
+  ...` tests hybrid search against words on that chunking. The rows of `lexical` come
+  with the first chunking alone, since words ignore the chunking.
+- At the end, `Default chunking for <model>, by the rule: ...`, with each challenger's
+  tests against `sections`: the verdict of plan 019's rule on these questions, which is
+  not the setting.
+
+Holm's correction adjusts the tests of one run together, so its adjusted p-values depend
+on how many chunkings and models the run measures: a run of two chunkings adjusts less
+than the sandbox run of four. Compare runs of the same shape, or read the raw p-values
+beside them.
+
+The results file keeps each run's times in seconds, `[median, 95th]` by mode under
+`times` (and under `ask_times` for `ask`). This prints the 95th percentiles in
+milliseconds:
+
+```bash
+uv run python -c 'import json, sys; [print(run["model"], run["chunking"], mode, round(times[1] * 1000), "ms") for run in json.load(open(sys.argv[1]))["runs"] for mode, times in run["times"].items()]' <data>/eval/results/<time>.json
+```
+
+`eval` tests each mode against words alone, never two modes against each other. The
+results file keeps, under `ranks`, each question's rank of each expected document by
+mode, `null` past the tenth, from which each question's MRR@10 follows. These lines run
+`eval`'s own paired test of semantic search against hybrid search over `windows` (the
+first model's run, if there are several), and print the difference in MRR@10 and the
+p-value, then the questions where meaning alone did better, worse and the same; on plan
+019's file, `20261023T001258Z.json`, they print `0.035 0.27`, then `25 22 58`:
+
+```bash
+uv run python - <data>/eval/results/<time>.json <<'EOF'
+import json, sys
+from statistics import fmean
+from atlassian_offline_mcp.evaluation.domain.evaluation import paired_test
+runs = json.load(open(sys.argv[1]))["runs"]
+ranks = next(run["ranks"] for run in runs if run["chunking"] == "windows")
+mrr = {
+    mode: [max((1 / rank for rank in each if rank), default=0.0) for each in by_question.values()]
+    for mode, by_question in ranks.items()
+}
+gains = [after - before for before, after in zip(mrr["hybrid"], mrr["semantic"])]
+print(round(fmean(gains), 3), round(paired_test(mrr["hybrid"], mrr["semantic"]), 2))
+print(sum(gain > 0 for gain in gains), sum(gain < 0 for gain in gains), gains.count(0))
+EOF
+```
+
+`ask`'s measures, Found@ask and Evidence@ask, are kept by group alone, so no such test
+can be run on them.
 
 ### On another corpus, such as your work set
 
@@ -409,8 +548,10 @@ them in one run, with Holm's correction over all its tests.
 3. Write the bar before the first run, as above.
 4. Keep the golden file in `<data>/eval/`, never in a repository: it holds your
    company's content.
-5. Run `eval`, read the groups as well as the totals, and keep the results files to
-   compare later runs.
+5. Run `eval` as in [comparing chunkings and modes](#comparing-chunkings-and-modes),
+   on your golden file and without `--config`; read the groups as well as the totals,
+   and the query time in `Query, 95th` against the 200 ms of plan 018's bar; keep the
+   results files to compare later runs.
 
 ## Sources
 
