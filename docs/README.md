@@ -91,7 +91,7 @@ the command and those who change its code, unless it is marked for contributors.
 
 ## Elsewhere in the repository
 
-- [The README](../README.md): what the command does, and its first command.
+- [The README](../README.md): what the command does and needs, and its first command.
 - [The roadmap](work/README.md), for contributors: the design settled so far and the
   programme of plans, each plan's record in [`plans/`](work/plans/) while it is built,
   then in [`changelog/`](work/changelog/).
