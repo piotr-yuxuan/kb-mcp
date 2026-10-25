@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.config.domain.settings import Loaded
     from atlassian_offline_mcp.kernel.output import Summary
     from atlassian_offline_mcp.search.app.indexing import Indexed
+    from atlassian_offline_mcp.search.app.pruning import Pruned
 
 # Bytes in a megabyte, as the summary says the vector store's size.
 MB = 1_000_000
@@ -38,48 +39,47 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Inde
     return ExitStatus.OK if indexed and indexed.report.whole else ExitStatus.FAILED, indexed
 
 
+def prune_text(pruned: Pruned | None, summary: Summary) -> str:
+    """Say what the prune that followed a build by meaning did; nothing by words alone.
+
+    Short gives the vectors deleted and the vector store's size. Detailed gives the
+    vectors kept, of which for the evaluation alone, those deleted, the store's size
+    before and after, and whether it gives space back; or why it did not prune.
+    """
+    if pruned is None:
+        return ""
+    if summary == "short":
+        if pruned.outcome != "pruned":
+            return f"vectors pruned: none, {pruned.outcome}\n"
+        return f"vectors pruned: {pruned.deleted}\nvector store: {pruned.bytes_after / MB:.1f} MB\n"
+    if pruned.outcome != "pruned":
+        place = f" ({pruned.file})" if pruned.file else ""
+        return f"vector store not pruned, {pruned.outcome}: {pruned.reason}{place}\n"
+    written = (
+        f"kept {pruned.kept} vectors ({pruned.kept_for_evaluation} for the evaluation"
+        f" alone), pruned {pruned.deleted}; the vector store from"
+        f" {pruned.bytes_before / MB:.1f} to {pruned.bytes_after / MB:.1f} MB in"
+        f" {pruned.seconds:.1f} s"
+    )
+    if not pruned.shrinks:
+        written += SHRINKS_NOT
+    elif not pruned.reclaimed:
+        written += f"; space not reclaimed: {pruned.reason}"
+    return f"{written}\n"
+
+
 def text(indexed: Indexed, summary: Summary) -> str:
     """Write the documents indexed and their sections; then the pieces by meaning, if any.
 
-    Short gives their counts and the texts embedded now, then the vectors that the prune
-    deleted and the vector store's size. Detailed gives the documents by type, the index,
-    the model with its prefixes, then what the prune kept and deleted, or why it did not.
+    Short gives their counts and the texts embedded now, detailed the documents by type,
+    the index, and the model with its prefixes; then each what the prune did.
     """
-    report, pruned = indexed.report, indexed.pruned
-    briefly = (
-        ""
-        if pruned is None
-        else f"vectors pruned: none, {pruned.outcome}\n"
-        if pruned.outcome != "pruned"
-        else f"vectors pruned: {pruned.deleted}\nvector store: {pruned.bytes_after / MB:.1f} MB\n"
-    )
-    fully = (
-        ""
-        if pruned is None
-        else (
-            f"vector store not pruned, {pruned.outcome}: {pruned.reason}"
-            + (f" ({pruned.file})\n" if pruned.file else "\n")
-        )
-        if pruned.outcome != "pruned"
-        else (
-            f"kept {pruned.kept} vectors ({pruned.kept_for_evaluation} for the evaluation"
-            f" alone), pruned {pruned.deleted}; the vector store from"
-            f" {pruned.bytes_before / MB:.1f} to {pruned.bytes_after / MB:.1f} MB in"
-            f" {pruned.seconds:.1f} s"
-            + ("" if pruned.shrinks else SHRINKS_NOT)
-            + (
-                ""
-                if pruned.reclaimed or not pruned.shrinks
-                else f"; space not reclaimed: {pruned.reason}"
-            )
-            + "\n"
-        )
-    )
+    report = indexed.report
     if summary == "short":
         written = f"documents: {report.types.total()}\nsections: {report.sections}\n"
         if indexed.model is not None:
             written += f"pieces: {report.pieces}\nembedded now: {report.embedded}\n"
-        return written + briefly
+        return written + prune_text(indexed.pruned, summary)
     types = ", ".join(f"{name}: {count}" for name, count in sorted(report.types.items()))
     written = (
         f"indexed {report.types.total()} documents ({types or 'none'}),"
@@ -91,4 +91,4 @@ def text(indexed: Indexed, summary: Summary) -> str:
             f" ({prefixes_said(indexed.model)}); {report.embedded} embedded now,"
             " the others kept\n"
         )
-    return written + fully
+    return written + prune_text(indexed.pruned, summary)

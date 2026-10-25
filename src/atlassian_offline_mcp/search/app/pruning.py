@@ -35,6 +35,8 @@ STORE_SIZE = METER.create_gauge(
 
 type Outcome = Literal["pruned", "deferred", "held back", "failed"]
 DEFERRED = "a build is using the vector store; the next index prunes it"
+SKIPPED = "the build skipped a file, so the index lacks documents of the mirror"
+NO_DOCUMENT = "the build indexed no document"
 UNREADABLE = (
     "it cannot say which vectors it reads, built by words alone or before plan 023, damaged,"
     " or in a folder that cannot be listed: rebuild the index with index, an evaluation's"
@@ -98,20 +100,24 @@ def said(pruned: Pruned, span: Span, started: float) -> Pruned:
     return pruned
 
 
-def prune(store: Path, index: Path, evaluation_indexes: Path, incomplete: str = "") -> Pruned:
+def prune(
+    store: Path, index: Path, evaluation_indexes: Path, *, skipped: int, documents: int
+) -> Pruned:
     """Delete from the store every vector that neither the index nor the evaluation reads.
 
-    ``incomplete`` says why the build that just ended is not the mirror whole (a file
-    skipped, no document), which holds the prune back, as an index that cannot say which
-    vectors it reads does, being by words alone, damaged, or in a folder that cannot be
-    listed: it would delete what the mirror still needs. A build holding the store's
-    lock defers it. The store's own failure to delete fails it, nothing
-    deleted; the span ``index.prune`` holds it.
+    ``skipped`` and ``documents`` count what the build that just ended skipped and
+    indexed: a file skipped, or no document, holds the prune back, as the index then
+    lacks what the mirror still holds; so does an index that cannot say which vectors it
+    reads, being by words alone, damaged, or in a folder that cannot be listed. Either
+    way, it would delete what the mirror still needs. A build holding the store's lock
+    defers it. The store's own failure to delete fails it, nothing deleted; the span
+    ``index.prune`` holds it.
     """
     started = time.monotonic()
     with TRACER.start_as_current_span("index.prune") as span:
-        if incomplete:
-            return said(Pruned("held back", reason=incomplete), span, started)
+        if skipped or not documents:
+            reason = SKIPPED if skipped else NO_DOCUMENT
+            return said(Pruned("held back", reason=reason), span, started)
         with vector_store.exclusive(store) as held:
             if not held:
                 return said(Pruned("deferred", reason=DEFERRED), span, started)

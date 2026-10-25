@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from contextlib import closing
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, override
@@ -27,12 +27,19 @@ from atlassian_offline_mcp.evaluation.app.evaluation import Target, evaluate
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.adapters.sqlite_index import indexes_in, reading
 from atlassian_offline_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
-from atlassian_offline_mcp.search.app.pruning import DEFERRED, UNREADABLE, Pruned, prune
+from atlassian_offline_mcp.search.app.pruning import (
+    DEFERRED,
+    NO_DOCUMENT,
+    SKIPPED,
+    UNREADABLE,
+    Pruned,
+    prune,
+)
 from tests.endpoint import Scripted, scripted, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.test_evaluate import golden, ticking
 from tests.test_observed import said
-from tests.test_vectors import Counting
+from tests.test_vectors import BODY, Counting
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping, Sequence
@@ -435,7 +442,7 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     points = telemetry.measured()["aom.vectors"].data.data_points
     counts = {point.attributes["aom.outcome"]: point.value for point in points if point.attributes}
     assert counts == {"kept": len(stored(fresh)), "pruned": deleted}
-    assert json.loads(to_json(indexed))["pruned"]["deleted"] == deleted
+    assert json.loads(to_json(indexed))["pruned"] == asdict(done)
     assert f"vectors pruned: {deleted}\nvector store: " in index_command.text(indexed, "short")
     detailed = index_command.text(indexed, "detailed")
     assert f"kept {len(stored(fresh))} vectors ({len(alone)} for the evaluation alone)" in detailed
@@ -527,8 +534,9 @@ def test_a_file_that_is_no_index_holds_the_prune_back(
     stray = data / "eval" / "indexes" / "x.sqlite"
     stray.parent.mkdir(parents=True)
     stray.write_bytes(os.urandom(512))
-    status, result, _ = held_back(data, capsys)
+    status, result, err = held_back(data, capsys)
     assert (status, result["outcome"], result["file"]) == (0, "held back", str(stray))
+    assert ("warning", "index.prune_skipped") in said(err)
 
 
 def test_a_build_that_skipped_a_file_holds_the_prune_back(
@@ -537,9 +545,14 @@ def test_a_build_that_skipped_a_file_holds_the_prune_back(
     """Its index lacks a document of the mirror, whose vectors stay; exit 1, as without it."""
     broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
     broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
-    status, result, _ = held_back(data, capsys)
-    assert (status, result["outcome"], result["file"]) == (1, "held back", None)
-    assert result["reason"].startswith("the build skipped a file")
+    status, result, err = held_back(data, capsys)
+    assert (status, result["outcome"], result["file"], result["reason"]) == (
+        1,
+        "held back",
+        None,
+        SKIPPED,
+    )
+    assert ("warning", "index.prune_skipped") in said(err)
 
 
 def test_a_mirror_with_no_document_holds_the_prune_back(
@@ -548,12 +561,9 @@ def test_a_mirror_with_no_document_holds_the_prune_back(
     """An empty mirror would leave nothing to keep: the store stays whole; exit 0."""
     for file in (data / "docs").rglob("*.md"):
         file.unlink()
-    status, result, _ = held_back(data, capsys)
-    assert (status, result["outcome"], result["reason"]) == (
-        0,
-        "held back",
-        "the build indexed no document",
-    )
+    status, result, err = held_back(data, capsys)
+    assert (status, result["outcome"], result["reason"]) == (0, "held back", NO_DOCUMENT)
+    assert ("warning", "index.prune_skipped") in said(err)
 
 
 def test_words_alone_leave_the_store_untouched(data: Path, capsys: CaptureFixture[str]) -> None:
@@ -710,7 +720,8 @@ def test_an_index_by_words_alone_in_place_holds_the_prune_back(data: Path) -> No
     pruned(index_mirror(indexing(data), MOMENT))
     other = kept_whole(data)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
-    done = prune(data / "vectors.sqlite", data / "index.sqlite", data / "eval" / "indexes")
+    evaluation = data / "eval" / "indexes"
+    done = prune(data / "vectors.sqlite", data / "index.sqlite", evaluation, skipped=0, documents=1)
     assert (done.outcome, done.file) == ("held back", str(data / "index.sqlite"))
     assert other in stored(data / "vectors.sqlite")
 
@@ -746,3 +757,23 @@ def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: Mo
     assert (done.outcome, done.reclaimed, done.reason) == ("pruned", False, "disk is full")
     assert indexed is not None
     assert "; space not reclaimed: disk is full\n" in index_command.text(indexed, "detailed")
+
+
+def test_pieces_that_the_endpoint_refused_do_not_hold_the_prune_back(data: Path) -> None:
+    """They have no vector to keep: the build is whole enough, and the prune runs."""
+    path = write(data / "docs", page("196845", "Rollback"), BODY)
+    refused = Scripted(refused={"Rollback\nRelease\nThe deploy of the seller service."})
+    indexed = index_mirror(replace(indexing(data), endpoint=lambda: scripted(refused)), MOMENT)
+    assert indexed is not None
+    assert indexed.report.unembedded == [path]
+    assert pruned(indexed).outcome == "pruned"
+
+
+def test_a_prune_gives_the_space_of_what_it_deleted_back(data: Path) -> None:
+    """2,000 vectors the size of 1,024 float32 that no index reads: the store shrinks."""
+    pruned(index_mirror(indexing(data), MOMENT))
+    orphans = seeded(data / "vectors.sqlite", 2000)
+    done = pruned(index_mirror(indexing(data), MOMENT))
+    assert done.deleted == len(orphans)
+    assert done.bytes_after < done.bytes_before
+    assert (done.shrinks, done.reclaimed) == (True, True)

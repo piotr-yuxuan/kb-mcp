@@ -243,16 +243,15 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
         log.warning("index.piece_refused", path=path)
     if report.skipped:
         log.warning("index.lacks_files", count=len(report.skipped))
-    incomplete = (
-        "the build skipped a file, so the index lacks documents of the mirror"
-        if report.skipped
-        else ""
-        if report.types
-        else "the build indexed no document"
-    )
     pruned = (
         None
         if embedding is None
-        else prune(indexing.vectors, indexing.index, indexing.evaluation_indexes, incomplete)
+        else prune(
+            indexing.vectors,
+            indexing.index,
+            indexing.evaluation_indexes,
+            skipped=len(report.skipped),
+            documents=report.types.total(),
+        )
     )
     return Indexed(report, indexing.index, None if embedding is None else indexing.model, pruned)
