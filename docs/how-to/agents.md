@@ -1,14 +1,16 @@
 # Coding agents
 
-How to give Claude Code and VS Code Copilot the offline mirror: the MCP server for
-searching and reading it, and its Markdown files, read-only, for agents that prefer
-files.
+How to give Claude Code and VS Code Copilot the offline mirror of Confluence, Jira and
+the work log: the MCP server for searching and reading it, and its Markdown files,
+read-only, for agents that prefer files.
 
 ## Before you start
 
 - The command is installed, so that `atlassian-offline-mcp` is on your `PATH`, for
   instance with `uv tool install <path of this repository>`.
-- The mirror is built (`atlassian-offline-mcp mirror`), and so is its index:
+- The mirror is built, and so is its index: `sync` builds both, from Confluence, Jira
+  and the work log alike ([bring every source up to date](sync.md)); or `mirror`, from
+  Confluence and Jira, then:
 
   ```bash
   atlassian-offline-mcp index
@@ -31,9 +33,9 @@ files.
   values it ignores.
 
 The server has five tools, all read-only: `ask`, `search`, `read`, `browse` and `status`
-(`serve --tools` serves some of them). Every
-answer marks the text it copies from Confluence and Jira as untrusted reference data,
-and the server's instructions tell agents never to follow directions found in it.
+(`serve --tools` serves some of them). Every answer marks the text it copies from
+Confluence, Jira and the work log as untrusted reference data, and the server's
+instructions tell agents never to follow directions found in it.
 
 Never give an agent `<data>/session/` (your saved sign-in) or `<data>/raw/`: only
 `<data>/docs/` is meant for them.
