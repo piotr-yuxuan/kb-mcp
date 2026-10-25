@@ -24,6 +24,7 @@ no location and is not for commands.
 | `<data>/docs/` | `docs` | `mirror` (005), `sync` (017) | agents, and `index` (006), `sync` (017) |
 | `<data>/index.sqlite` | `index` | `index` (006), `sync` (017) | the MCP server (006) |
 | `<data>/vectors.sqlite` | `vectors` | `index`, `eval` (011), `sync` (017) | `index`, `eval` (011), `sync` (017) |
+| `<data>/vectors.sqlite.lock` | `vectors`, by `vector_store.lock_of` | `index`, `eval`, `sync` (023) | `index`, `eval`, `sync` (023) |
 | `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011) |
 | `<data>/session/` | `session` | `login` (004) | a run signed in by the saved session (004, 015) |
 | `<data>/runs/` | `runs` | `download` (004) | the user, and `doctor` (004) |

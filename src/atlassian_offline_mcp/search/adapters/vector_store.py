@@ -5,17 +5,25 @@ text is embedded once per model however often the index is rebuilt, and a vector
 never reused for another model or another version of one. Each ``put`` commits, so an
 interrupted build keeps what it embedded. The store only grows; deleting the file costs
 a full embedding, and nothing else.
+
+Its lock, beside it, keeps a prune from deleting what a build in progress embeds: each
+build holds it shared, a prune exclusive. ``flock`` locks an open file, so the kernel
+releases the lock when the file is closed or its process ends, killed included.
 """
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
+import itertools
 import json
 import sqlite3
+import time
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 import numpy as np
+import structlog
 
 from atlassian_offline_mcp.observability.adapters.progress import task
 
@@ -31,6 +39,8 @@ LAYOUT = np.dtype("<f4")
 BATCH = 256
 # How long a write waits for another run's, in seconds: about one batch's embedding.
 WAIT_S = 60
+# How often a build waiting for a prune asks for the lock again, in seconds.
+POLL_S = 0.1
 CREATE = "CREATE TABLE IF NOT EXISTS vectors (key TEXT PRIMARY KEY, vector BLOB NOT NULL)"
 
 
@@ -112,3 +122,50 @@ def opened(path: Path) -> Iterator[VectorStore]:
         yield VectorStore(connection)
     finally:
         connection.close()
+
+
+def lock_of(store: Path) -> Path:
+    """Name the lock of the store at ``store``, beside it."""
+    return store.with_name(f"{store.name}.lock")
+
+
+@contextmanager
+def shared(store: Path) -> Iterator[None]:
+    """Hold the store's lock shared, as a build does from its start until its index is in.
+
+    A prune holds it exclusive for seconds: a build that starts meanwhile says so,
+    ``vectors.lock_wait``, then waits, and raises TimeoutError, naming the lock, once
+    WAIT_S seconds have passed.
+    """
+    lock = lock_of(store)
+    with lock.open("a") as file:
+        for attempt in itertools.count():
+            try:
+                fcntl.flock(file, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                if attempt == 0:
+                    structlog.get_logger().info("vectors.lock_wait", lock=str(lock))
+                if attempt * POLL_S >= WAIT_S:
+                    message = f"{lock}: a prune of the vector store held it for {WAIT_S} s"
+                    raise TimeoutError(message) from None
+                time.sleep(POLL_S)
+            else:
+                break
+        yield
+
+
+@contextmanager
+def exclusive(store: Path) -> Iterator[bool]:
+    """Hold the store's lock exclusive, as a prune does, unless a build holds it.
+
+    Never waits: say whether the lock is held, so that a prune that finds a build in
+    progress can be deferred.
+    """
+    with lock_of(store).open("a") as file:
+        try:
+            fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            held = False
+        else:
+            held = True
+        yield held

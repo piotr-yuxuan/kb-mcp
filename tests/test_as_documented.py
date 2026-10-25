@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -29,6 +30,7 @@ from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.kernel.content import Page
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
+from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.browser import SignInFailedError
@@ -231,7 +233,7 @@ def by_meaning(data: Path, url: str, mode: str = "hybrid") -> list[str]:
 def test_index_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Indexed by meaning, a file skipped and a piece refused; no endpoint; no mirror.
+    """By meaning, a file skipped and a piece refused; during a prune; no endpoint; no mirror.
 
     The mirror holds a few pages, one with a front matter refused, and one whose second
     section the endpoint refuses to embed, cut by sections.
@@ -249,6 +251,20 @@ def test_index_records_as_documented(
         assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
     with nothing_listening() as url, emitted.gathering(telemetry, "index"):
         assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
+    taken = threading.Event()
+
+    def prune_briefly() -> None:
+        with vector_store.exclusive(data / "vectors.sqlite") as held:
+            assert held
+            taken.set()
+            time.sleep(0.3)
+
+    pruning = threading.Thread(target=prune_briefly)
+    pruning.start()
+    assert taken.wait(10)
+    with serving(Scripted()) as url, emitted.gathering(telemetry, "index"):
+        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
+    pruning.join()
     with emitted.gathering(telemetry, "index"):
         empty = tmp_path / "empty"
         assert main(["index", "--yes", *by_meaning(empty, URL, "lexical")]) == ExitStatus.FAILED

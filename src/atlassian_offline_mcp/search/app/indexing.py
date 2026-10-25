@@ -117,7 +117,10 @@ def build_index(
     there already is skipped, and named in the report with a reason that holds no
     content. The index replaces the old one only once complete. Raises ModelError when
     the embedding fails; the old index then stays. A piece whose text the model refuses
-    is left without a vector, and its document named in the report. The task ``files``
+    is left without a vector, and its document named in the report. With an embedding,
+    the build holds the vector store's lock shared, from before it reads the mirror until
+    its index is in place, so that no prune deletes what it embeds; it waits for a prune
+    in progress, and raises TimeoutError past ``vector_store.WAIT_S``. The task ``files``
     reports the files read, each by its path, then the vector store its own. The spans
     ``index.files`` and ``index.embed`` hold reading the files and embedding the pieces;
     ``index.document`` says each file indexed at DEBUG, ``index.built`` the counts at
@@ -137,7 +140,10 @@ def build_index(
     # key and document
     texts: dict[str, str] = {}  # what each key's vector embeds
     log = structlog.get_logger()
-    with sqlite_index.building(index, built_at, embedded) as writer:
+    with (
+        vector_store.shared(embedding.store) if embedding else contextlib.nullcontext(),
+        sqlite_index.building(index, built_at, embedded) as writer,
+    ):
         files = {file.relative_to(docs).as_posix(): file for file in markdown.documents(docs)}
         with TRACER.start_as_current_span("index.files"), task("files", len(files)) as indexed:
             for path in indexed.each(files, str):
