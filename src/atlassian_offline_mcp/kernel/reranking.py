@@ -19,3 +19,5 @@ DEPTHS = range(2, MOST_TEXTS + 1)
 # The user's bound on a search with reranking, at the 95th percentile on the user's machine
 # ("Happy to wait 5s"), which plan 022's bar and the reranker's check read.
 BOUND_S = 5.0
+# The depths that plan 022's bar decides among, measured by eval-rerank by default.
+BAR_DEPTHS = (10, 20, 30, 50)

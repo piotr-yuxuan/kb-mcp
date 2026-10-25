@@ -31,6 +31,8 @@ positional arguments:
                  chunking
     eval-agents  evaluate ask through agents: prepare their runs, bridge their calls,
                  grade
+    eval-rerank  measure search reranked at each depth on golden questions, against
+                 the bar
     index        build the search index from the mirror
     login        sign in once, in a Chrome window
     mirror       write the Markdown mirror from the raw store
@@ -44,13 +46,14 @@ options:
   -h, --help     show this help message and exit
   --version      show the version
 
-The commands that write under the data directory (download, eval, eval-agents, index,
-login, mirror, sync) first say what they will do, with the command to copy, then ask;
---yes, or --dry-run where taken, runs them without asking, and with no terminal to ask
-on, they are refused. Exit statuses: 0 done; 1 something failed (a document, a file, a
-check, the endpoint), or the question was declined; 2 refused before acting: settings,
-options or input, or no terminal to ask on; 3 sign in again: no session saved, it no
-longer holds, or the site refused the API token; 130 stopped by Ctrl-C.
+The commands that write under the data directory (download, eval, eval-agents, eval-
+rerank, index, login, mirror, sync) first say what they will do, with the command to
+copy, then ask; --yes, or --dry-run where taken, runs them without asking, and with no
+terminal to ask on, they are refused. Exit statuses: 0 done; 1 something failed (a
+document, a file, a check, the endpoint), or the question was declined; 2 refused
+before acting: settings, options or input, or no terminal to ask on; 3 sign in again:
+no session saved, it no longer holds, or the site refused the API token; 130 stopped
+by Ctrl-C.
 ```
 
 ## `check`
@@ -318,6 +321,44 @@ options:
   --data-dir DATA_DIR  the data directory, overriding the settings
   --site SITE          the site, as https://<name>.atlassian.net
   -y, --yes            run without asking first, as a script does
+```
+
+## `eval-rerank`
+
+```text
+usage: atlassian-offline-mcp eval-rerank [-h] [--config CONFIG] [--data-dir DATA_DIR]
+                                         [--site SITE] [-q | -v |
+                                         --log-level {debug,info,warning,error}]
+                                         [--format {text,json}]
+                                         [--summary {short,detailed}] [-y]
+                                         [--allow-remote-embeddings] [--depth DEPTH]
+                                         golden
+
+positional arguments:
+  golden                a YAML file of golden questions
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       the settings file
+  --data-dir DATA_DIR   the data directory, overriding the settings
+  --site SITE           the site, as https://<name>.atlassian.net
+  -q                    say errors alone, and write no result as text
+  -v                    the level info, or debug with -vv
+  --log-level {debug,info,warning,error}
+                        say what is of this level or above; warning by default
+  --format {text,json}  write the result as text, or as one JSON document
+  --summary {short,detailed}
+                        write what matters of the result, or all of it
+  -y, --yes             run without asking first, as a script does
+  --allow-remote-embeddings
+                        let this run send the mirror's text to an embedding endpoint
+                        off this machine
+  --depth DEPTH         documents reranked, as one arm; by default 10, 20, 30, 50, the
+                        bar's
+
+With --format json: arms, each depth's measures of search and ask by group, with its
+ranks, times, tokens and Recall@N, depth 0 the order not reranked; decision, the bar's
+verdicts and default depth; results, the file that keeps them.
 ```
 
 ## `index`

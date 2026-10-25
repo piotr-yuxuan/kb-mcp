@@ -107,13 +107,14 @@ SUBCOMMANDS = parser(Declaring).subcommands
 POSITIONALS = {
     "eval": ["golden.yaml"],
     "eval-agents": ["grade", "runs"],
+    "eval-rerank": ["golden.yaml"],
     "model": ["check"],
     "reranker": ["check"],
 }
 # The subcommands whose output is their own, by plan 015: the protocol, a script.
 OWN_OUTPUT = {"serve", "completion"}
 # The subcommands that write under the data directory, and so ask first, by plan 015.
-WRITING = {"download", "eval", "eval-agents", "index", "login", "mirror", "sync"}
+WRITING = {"download", "eval", "eval-agents", "eval-rerank", "index", "login", "mirror", "sync"}
 # The subcommands that take --dry-run, by plans 015 and 017.
 DRY_RUN = {"download", "sync"}
 SECRETS = {

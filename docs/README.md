@@ -59,6 +59,7 @@ the command and those who change its code, unless it is marked for contributors.
   [`doctor`](reference/telemetry/doctor.md),
   [`download`](reference/telemetry/download.md), [`eval`](reference/telemetry/eval.md),
   [`eval-agents`](reference/telemetry/eval-agents.md),
+  [`eval-rerank`](reference/telemetry/eval-rerank.md),
   [`index`](reference/telemetry/index.md), [`login`](reference/telemetry/login.md),
   [`mirror`](reference/telemetry/mirror.md), [`model`](reference/telemetry/model.md),
   [`reranker`](reference/telemetry/reranker.md), [`serve`](reference/telemetry/serve.md)

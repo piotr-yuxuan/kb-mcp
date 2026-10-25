@@ -434,6 +434,10 @@ class Library:
         self._mode = mode
         self._reranking = reranking
 
+    def rerank_with(self, reranking: Reranking | None) -> Library:
+        """Give a library over the same index, reranking through ``reranking``, for evaluations."""
+        return Library(self._index, self._docs, self._meaning, self._mode, reranking)
+
     @contextmanager
     def _reading(self) -> Iterator[Reader]:
         try:
