@@ -24,6 +24,7 @@ from atlassian_offline_mcp.cli.commands import index as index_command
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.evaluation.app.evaluation import Target, evaluate
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.adapters.sqlite_index import indexes_in, reading
 from atlassian_offline_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
@@ -37,7 +38,7 @@ from atlassian_offline_mcp.search.app.pruning import (
 )
 from tests.endpoint import Scripted, scripted, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
-from tests.test_evaluate import golden, ticking
+from tests.test_evaluate import GOLDEN, golden, ticking
 from tests.test_observed import said
 from tests.test_vectors import BODY, Counting
 
@@ -465,12 +466,7 @@ def test_a_second_index_with_nothing_changed_embeds_and_deletes_nothing(data: Pa
 def test_a_real_evaluation_s_vectors_outlive_the_next_index(tmp_path: Path) -> None:
     """The evaluation writes its indexes where the prune looks: their vectors all stay."""
     data = tmp_path / "data"
-    fillers(data / "docs", FILLER_PAGES)
-    canteen = "# Holiday canteen\n\nLeave for a **meal**.\n"
-    write(data / "docs", page("4002", "Holiday canteen"), canteen)
-    write(data / "docs", page("4003", "Words"), "revert release\n")
-    write(data / "docs", issue("PROJ-7", "Kafka upgrade"))
-    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    evaluable(data)
     settings = Settings(data_dir=data, model="tiny")
     chunkings: tuple[Chunking, ...] = ("windows", "section-paths")
     targets = [Target(tiny(), chunking) for chunking in chunkings]
@@ -777,3 +773,32 @@ def test_a_prune_gives_the_space_of_what_it_deleted_back(data: Path) -> None:
     assert done.deleted == len(orphans)
     assert done.bytes_after < done.bytes_before
     assert (done.shrinks, done.reclaimed) == (True, True)
+
+
+def evaluable(data: Path) -> None:
+    """Write the documents that the evaluation's golden questions name, and index them."""
+    fillers(data / "docs", FILLER_PAGES)
+    canteen = "# Holiday canteen\n\nLeave for a **meal**.\n"
+    write(data / "docs", page("4002", "Holiday canteen"), canteen)
+    write(data / "docs", page("4003", "Words"), "revert release\n")
+    write(data / "docs", issue("PROJ-7", "Kafka upgrade"))
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+
+
+def test_an_evaluation_that_waits_too_long_for_a_prune_is_not_evaluated(
+    tmp_path: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """Its build gives up on the lock past the wait: eval says so and exits 1."""
+    data = tmp_path / "data"
+    evaluable(data)
+    golden_file = tmp_path / "golden.yaml"
+    golden_file.write_text(GOLDEN, encoding="utf-8")
+    monkeypatch.setattr(vector_store, "WAIT_S", 0.3)
+    config = tmp_path / "config.toml"
+    with serving(Scripted()) as url, vector_store.exclusive(data / "vectors.sqlite") as held:
+        assert held
+        config.write_text(f'model = "tiny"\nembedding_url = {json.dumps(url)}\n', encoding="utf-8")
+        arguments = ["eval", str(golden_file), "--yes", "--chunking", "sections"]
+        status = main([*arguments, "--config", str(config), "--data-dir", str(data)])
+    assert status == ExitStatus.FAILED
+    assert ("error", "eval.not_evaluated") in said(capsys.readouterr().err)

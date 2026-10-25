@@ -5,7 +5,8 @@ trace: its root `eval`, the connections, one a target, then a span per target, a
 and a chunking, which holds the build of its index, as `index` records it, and the
 searches and answers of every question in every mode, as `serve` records them. A
 question is timed and logged, never a span of its own. A build that waits for a prune of
-the vector store records `vectors.lock_wait`, as [index.md](index.md) lists it.
+the vector store records `vectors.lock_wait`, as [index.md](index.md) lists it, and
+one that waits past 60 s is `eval.not_evaluated`.
 
 ## Events
 
