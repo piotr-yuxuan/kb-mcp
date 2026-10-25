@@ -207,7 +207,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_duration_seconds_bucket{job=\"atlassian-offline-mcp\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"atlassian-offline-mcp\"}))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_duration_seconds_bucket{job=\"atlassian-offline-mcp\", gen_ai_operation_name=\"embeddings\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"atlassian-offline-mcp\"}))",
           "instant": false,
           "range": true,
           "legendFormat": "embedding"
@@ -328,6 +328,88 @@
           "tableType": "traces"
         }
       ]
+    },
+    {
+      "id": 9,
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 12,
+        "h": 8
+      },
+      "type": "timeseries",
+      "title": "Reranking time, 95th percentile",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_duration_seconds_bucket{job=\"atlassian-offline-mcp\", gen_ai_operation_name=\"rerank\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"atlassian-offline-mcp\"}))",
+          "instant": false,
+          "range": true,
+          "legendFormat": "reranking"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "id": 10,
+      "gridPos": {
+        "x": 12,
+        "y": 44,
+        "w": 12,
+        "h": 8
+      },
+      "type": "timeseries",
+      "title": "Searches not reranked per second, by why",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (aom_rerank_fallback) (rate(aom_rerank_fallbacks_total{job=\"atlassian-offline-mcp\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"atlassian-offline-mcp\"})",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{aom_rerank_fallback}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
     }
   ]
 }

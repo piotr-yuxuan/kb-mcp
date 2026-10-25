@@ -490,7 +490,12 @@ class Library:
             # On the call's span, the SDK's: the mode, the documents found, whether words
             # stood in for meaning. Said here, as the docstring is the agent's to read.
             trace.get_current_span().set_attributes(
-                {"aom.mode": self._mode, "aom.hits": total, "aom.fallback": bool(ranked.note)}
+                {
+                    "aom.mode": self._mode,
+                    "aom.hits": total,
+                    "aom.fallback": bool(ranked.note),
+                    "aom.reranked": bool(ranked.order),
+                }
             )
             items = []
             for number, entry in enumerate(shown, offset + 1):
@@ -533,6 +538,7 @@ class Library:
                 "aom.mode": self._mode,
                 "aom.hits": len(ranked.paths),
                 "aom.fallback": bool(ranked.note),
+                "aom.reranked": bool(ranked.order),
                 "aom.passages": len(pairs),
             }
         )

@@ -27,16 +27,16 @@ if TYPE_CHECKING:
 MAX_ANSWER_BYTES = 64 * 1024 * 1024
 # The buckets of an operation's duration, in seconds, that the GenAI conventions advise.
 BUCKETS_S = (0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24, 20.48, 40.96, 81.92)
-# How long each embedding took, its attempts and waits included, as the GenAI
-# conventions measure an operation.
+# How long each operation of a model server took, an embedding or a reranking, its
+# attempts and waits included, as the GenAI conventions measure an operation.
 OPERATION_DURATION = metrics.get_meter(__name__).create_histogram(
     "gen_ai.client.operation.duration",
     unit="s",
     description="GenAI operation duration.",
     explicit_bucket_boundaries_advisory=BUCKETS_S,
 )
-# The tokens that each embedding's answer counted, in the buckets that the GenAI
-# conventions advise, when the endpoint counts them.
+# The tokens that each answer of a model server counted, in the buckets that the GenAI
+# conventions advise, when the server counts them.
 TOKEN_BUCKETS = tuple(4**power for power in range(14))  # 1 to 67,108,864
 TOKEN_USAGE = metrics.get_meter(__name__).create_histogram(
     "gen_ai.client.token.usage",

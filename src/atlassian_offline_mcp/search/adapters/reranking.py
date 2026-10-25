@@ -18,9 +18,19 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import httpx
+import structlog
+from opentelemetry import trace
 
 from atlassian_offline_mcp.kernel.reranking import LONGEST_QUERY, LONGEST_TEXT, MOST_TEXTS
-from atlassian_offline_mcp.search.adapters.model_api import WAITS_S, Bounds, ModelError, send
+from atlassian_offline_mcp.observability.adapters.http import client_span, server
+from atlassian_offline_mcp.search.adapters.model_api import (
+    OPERATION_DURATION,
+    TOKEN_USAGE,
+    WAITS_S,
+    Bounds,
+    ModelError,
+    send,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -32,6 +42,9 @@ if TYPE_CHECKING:
 # embeddings of documents do.
 SEARCH = Bounds(30, 1)
 EVALUATION = Bounds(300, len(WAITS_S) + 1)
+# The provider, as the GenAI conventions name it by the client's best knowledge: the
+# server whose API, and whose quirks, this module knows.
+PROVIDER = "llama.cpp"
 # Statuses that may point at what was sent: llama.cpp fails a whole request for one
 # document that it cannot score.
 REFUSING = frozenset({400, 413, 422, 500})
@@ -81,6 +94,11 @@ def rerank(
     ``unanswered`` when no attempt got a whole answer, ``refused`` for a status that may
     point at what was sent, and ``bad_answer`` for anything else; its message names the
     model and the error, never the answer, which echoes the query.
+
+    The reranking is a span ``rerank <model>``, whose kind of operation is this
+    project's, the GenAI conventions naming none for reranking; its duration and the
+    tokens counted, if any, are measured as theirs, and ``rerank.request`` says it at
+    DEBUG, the texts' count and length, never their text.
     """
     longest = max(map(len, texts), default=0)
     if not 0 < len(texts) <= MOST_TEXTS or longest > LONGEST_TEXT or len(query) > LONGEST_QUERY:
@@ -89,39 +107,56 @@ def rerank(
             f" of {len(query)}, passes the bounds of one request"
         )
         raise ValueError(message)
-    documents = [inert(text) for text in texts]
-    asked = {"model": model, "query": inert(query), "documents": documents, "top_n": len(texts)}
-    try:
-        status, body = send(endpoint, "POST", "rerank", bounds, asked)
-    except ModelError as error:
-        raise RerankError(str(error), "unanswered") from None
-    if status in NOT_A_RERANKER:
-        message = (
-            f"{model}: not a reranker at this address, or a server not started with"
-            f" --reranking ({status})"
+    measured = {
+        "gen_ai.operation.name": "rerank",
+        "gen_ai.provider.name": PROVIDER,
+        "gen_ai.request.model": model,
+        **server(endpoint.http.base_url),
+    }
+    characters = sum(map(len, texts))
+    traced = {"aom.rerank.texts": len(texts), "aom.rerank.characters": characters}
+    with client_span(f"rerank {model}", OPERATION_DURATION, measured, traced):
+        documents = [inert(text) for text in texts]
+        asked = {"model": model, "query": inert(query), "documents": documents, "top_n": len(texts)}
+        try:
+            status, body = send(endpoint, "POST", "rerank", bounds, asked)
+        except ModelError as error:
+            raise RerankError(str(error), "unanswered") from None
+        if status in NOT_A_RERANKER:
+            message = (
+                f"{model}: not a reranker at this address, or a server not started with"
+                f" --reranking ({status})"
+            )
+            raise RerankError(message, "bad_answer")
+        if status != httpx.codes.OK:
+            message = f"{model}: the reranking server answered {status}"
+            raise RerankError(message, "refused" if status in REFUSING else "bad_answer")
+        try:
+            answer = json.loads(body)
+            found = sorted((item["index"], item["relevance_score"]) for item in answer["results"])
+            usage = answer.get("usage")
+        except (ValueError, KeyError, TypeError, RecursionError) as error:
+            message = (
+                f"{model}: the reranking server's answer is not scores ({type(error).__name__})"
+            )
+            raise RerankError(message, "bad_answer") from None
+        tokens = usage.get("prompt_tokens") if type(usage) is dict else None
+        if (
+            [index for index, _ in found] != list(range(len(texts)))
+            or not all(type(index) is int for index, _ in found)
+            or not all(type(score) in {int, float} and math.isfinite(score) for _, score in found)
+            or (usage is not None and type(usage) is not dict)
+            or (tokens is not None and (type(tokens) is not int or tokens < 0))
+        ):
+            message = f"{model}: the reranking server's answer is not one score per text"
+            raise RerankError(message, "bad_answer")
+        if tokens is not None:
+            trace.get_current_span().set_attribute("gen_ai.usage.input_tokens", tokens)
+            TOKEN_USAGE.record(tokens, {**measured, "gen_ai.token.type": "input"})
+        structlog.get_logger().debug(
+            "rerank.request", model=model, texts=len(texts), characters=characters, tokens=tokens
         )
-        raise RerankError(message, "bad_answer")
-    if status != httpx.codes.OK:
-        message = f"{model}: the reranking server answered {status}"
-        raise RerankError(message, "refused" if status in REFUSING else "bad_answer")
-    try:
-        answer = json.loads(body)
-        found = sorted((item["index"], item["relevance_score"]) for item in answer["results"])
-        usage = answer.get("usage")
-    except (ValueError, KeyError, TypeError, RecursionError) as error:
-        message = f"{model}: the reranking server's answer is not scores ({type(error).__name__})"
-        raise RerankError(message, "bad_answer") from None
-    tokens = usage.get("prompt_tokens") if type(usage) is dict else None
-    if (
-        [index for index, _ in found] != list(range(len(texts)))
-        or not all(type(index) is int for index, _ in found)
-        or not all(type(score) in {int, float} and math.isfinite(score) for _, score in found)
-        or (usage is not None and type(usage) is not dict)
-        or (tokens is not None and (type(tokens) is not int or tokens < 0))
-    ):
-        message = f"{model}: the reranking server's answer is not one score per text"
-        raise RerankError(message, "bad_answer")
-    return Reranked([float(score) for _, score in found], tokens)
+        return Reranked([float(score) for _, score in found], tokens)
 
 
 def served(endpoint: Endpoint) -> tuple[str, ...]:

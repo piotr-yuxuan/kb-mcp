@@ -287,6 +287,7 @@ def test_the_call_s_span_says_the_mode_the_documents_found_and_the_passages_quot
         "aom.mode": "lexical",
         "aom.hits": ENOUGH,
         "aom.fallback": False,
+        "aom.reranked": False,
         "aom.passages": shown,
     }
     assert 0 < shown < ASK_DOCUMENTS

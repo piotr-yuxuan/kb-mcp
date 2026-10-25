@@ -37,7 +37,7 @@ from atlassian_offline_mcp.sources.atlassian.adapters.browser import SignInFaile
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.collector import Collector, collecting
-from tests.endpoint import URL, Scripted, nothing_listening, serving, tiny
+from tests.endpoint import URL, Reranks, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.reference import README, Emitted, documented, operations, undocumented
 from tests.samples import v2_space
@@ -287,7 +287,8 @@ def test_index_records_as_documented(
 def test_serve_records_as_documented(tmp_path: Path) -> None:
     """By meaning, each tool and a call refused; then, the endpoint stopped, by words alone.
 
-    The second also lists the prompts, and writes one.
+    The second also lists the prompts, and writes one. Both rerank: the first through a
+    scripted reranking server, the second through none, which falls back.
 
     The first server is spoken to as an agent does, from ``initialize``; the second by
     the SDK's client, from ``server/discover``. Each runs in a fresh interpreter, as
@@ -313,6 +314,7 @@ def test_serve_records_as_documented(tmp_path: Path) -> None:
         async with Client(command) as client:
             with anyio.fail_after(WAIT_S):
                 await client.call_tool("search", {"query": "vacation lunch"})
+                await client.call_tool("search", {"query": "lorem"})  # words find, to rerank
                 await client.list_prompts()
                 await client.get_prompt("brief", {"ref": "PROJ-7"})
 
@@ -321,6 +323,7 @@ def test_serve_records_as_documented(tmp_path: Path) -> None:
         home, collector = tmp_path / name, Collector()
         with (
             nothing_listening() if stopped else serving(Scripted()) as url,
+            nothing_listening() if stopped else serving(Reranks()) as reranking,
             collecting(collector) as endpoint,
         ):
             folder = home / ".config" / "atlassian-offline-mcp"
@@ -328,10 +331,12 @@ def test_serve_records_as_documented(tmp_path: Path) -> None:
             (folder / "config.toml").write_text(
                 f'data_dir = {json.dumps(str(data))}\nmodel = "tiny"\nsearch_mode = "hybrid"\n'
                 f"embedding_url = {json.dumps(url)}\n"
-                f"[telemetry]\nendpoint = {json.dumps(endpoint)}\n",
+                f"[telemetry]\nendpoint = {json.dumps(endpoint)}\n"
+                f"[rerank]\nenabled = true\nurl = {json.dumps(reranking)}\ndepth = 4\n",
                 encoding="utf-8",
             )
-            ports = [int(each.rpartition(":")[2].partition("/")[0]) for each in (url, endpoint)]
+            places = (url, reranking, endpoint)
+            ports = [int(each.rpartition(":")[2].partition("/")[0]) for each in places]
             given = {"ports": ports, "limit": LIMIT_S, "report": str(home / "report.json")}
             command = StdioServerParameters(
                 command=sys.executable,

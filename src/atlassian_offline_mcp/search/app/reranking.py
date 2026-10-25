@@ -13,6 +13,9 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import structlog
+from opentelemetry import metrics
+
 from atlassian_offline_mcp.search.adapters.reranking import RerankError
 from atlassian_offline_mcp.search.app.meaning import QUIET_S
 
@@ -20,6 +23,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from atlassian_offline_mcp.search.adapters.reranking import Reranked
+
+# The searches that kept the order given, by why: the failure's kind, or "quiet" while
+# one is remembered.
+FALLBACKS = metrics.get_meter(__name__).create_counter(
+    "aom.rerank.fallbacks", unit="{fallback}", description="Searches not reranked"
+)
 
 
 @dataclass(frozen=True)
@@ -53,15 +62,20 @@ class Reranking:
     def reorder(self, query: str, texts: Sequence[str]) -> Reordered:
         """Order the texts by their relevance to the query, the highest first, ties as given.
 
-        The request is made outside the lock, which guards only the failure remembered.
+        The request is made outside the lock, which guards only the failure remembered. A
+        search not reranked is counted in ``aom.rerank.fallbacks`` by why, and a failure
+        said by the warning ``rerank.fallback``, once: the next ones are quiet.
         """
         with self._lock:
             reason, until = self._failure
         if self._clock() < until:
+            FALLBACKS.add(1, {"aom.rerank.fallback": "quiet"})
             return Reordered(None, reason, "quiet")
         try:
             scores = self._score(query, texts).scores
         except RerankError as error:
+            FALLBACKS.add(1, {"aom.rerank.fallback": error.kind})
+            structlog.get_logger().warning("rerank.fallback", kind=error.kind, reason=str(error))
             if error.kind != "refused":
                 with self._lock:
                     self._failure = (str(error), self._clock() + QUIET_S)
