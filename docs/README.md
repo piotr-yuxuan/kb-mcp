@@ -1,11 +1,17 @@
 # Documentation
 
 The pages of atlassian-offline-mcp, sorted as [Diataxis](https://diataxis.fr/) sorts
-documentation: by what you need from a page at the moment you open it. A how-to guide
-leads you to a goal you already have; reference gives the facts to look up as you work;
-explanation says why things are as they are. Each kind has its folder here. A page
-serves both those who use the command and those who change its code, unless it is
-marked for contributors.
+documentation: by what you need from a page at the moment you open it. A tutorial is a
+lesson, followed step by step to learn by doing; a how-to guide leads you to a goal you
+already have; reference gives the facts to look up as you work; explanation says why
+things are as they are. Each kind has its folder here. A page serves both those who use
+the command and those who change its code, unless it is marked for contributors.
+
+## Tutorials
+
+- [Your first mirror](tutorials/first-mirror.md): install the command, mirror one
+  Confluence space, build its index, and ask Claude Code a question that it answers from
+  the mirror.
 
 ## How-to guides
 

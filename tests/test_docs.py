@@ -5,9 +5,10 @@ relative link reaches a file, or a heading, of the checkout; a link into ``src/`
 text is code names what that file defines; the map, ``docs/README.md``, links each page
 of the four folders; each command line of the program in a bash block parses, as plans
 015 and 017 first checked on their own pages; a page that names Ollama says that any
-OpenAI-compatible API works; Docker's command follows each of Podman's; and the
-reference of the MCP server names, as plan 019 first checked, each tool and prompt that
-a server lists over stdio, with their parameters.
+OpenAI-compatible API works; Docker's command follows each of Podman's; the reference
+of the MCP server names, as plan 019 first checked, each tool and prompt that a server
+lists over stdio, with their parameters; and the tutorial of a first mirror pulls the
+model that the settings default to.
 """
 
 from __future__ import annotations
@@ -30,13 +31,15 @@ from markdown_it import MarkdownIt
 from mcp.client.stdio import StdioServerParameters
 
 from atlassian_offline_mcp.cli.main import parser
+from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL
 from tests.test_serve import talk
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
 ROOT = Path(__file__).parents[1]
-# The pages whose command lines plans 015 and 017 checked: each still holds one checked.
+# The pages whose command lines plans 015 and 017 checked, and the tutorial of a first
+# mirror: each still holds one checked.
 PAGES = (
     "AGENTS.md",
     "docs/how-to/agents.md",
@@ -47,6 +50,7 @@ PAGES = (
     "docs/how-to/sync.md",
     "docs/how-to/sso-machine.md",
     "docs/how-to/work-log.md",
+    "docs/tutorials/first-mirror.md",
 )
 # Folders whose Markdown is seeded into the sandbox site: its content, not pages here.
 SEEDED = frozenset({"sandbox/corpus", "sandbox/jira"})
@@ -82,6 +86,9 @@ COMPATIBLE = "OpenAI-compatible"
 CONTAINER = re.compile(r"(?<![\w-])(podman|docker) ([a-z][\w-]*)")
 # Podman's virtual machine on macOS, which Docker Desktop starts by itself.
 PODMAN_ONLY = frozenset({"machine"})
+# The tutorial of a first mirror, and the model that a line of its shell pulls.
+FIRST_MIRROR = "docs/tutorials/first-mirror.md"
+PULL = re.compile(r"^ollama pull (\S+)$", re.MULTILINE)
 
 
 class Link(NamedTuple):
@@ -441,3 +448,23 @@ def test_the_reference_names_each_tool_and_prompt_served_and_each_of_their_param
             if f"`{parameter}`" not in bodies.get((part, name), "")
         )
     assert problems == []
+
+
+def test_the_first_mirror_pulls_the_model_that_the_settings_default_to() -> None:
+    """Each ``ollama pull`` in a bash block of the tutorial names the default model.
+
+    So the learner who follows it word for word has the model that ``sync`` indexes
+    with. A line that pulls another is cited, and so is a page that pulls none.
+    """
+    pulled = [
+        (block.map[0] + 2 + block.content.count("\n", 0, found.start()), found[1])
+        for block in PARSER.parse((ROOT / FIRST_MIRROR).read_text("utf-8"))
+        if block.type == "fence" and block.info == "bash"
+        for found in PULL.finditer(block.content)
+    ]
+    assert pulled, f"{FIRST_MIRROR}: no ollama pull in a bash block"
+    assert [
+        f"{FIRST_MIRROR}:{line}: pulls {model}, not {DEFAULT_MODEL}"
+        for line, model in pulled
+        if model != DEFAULT_MODEL
+    ] == []
