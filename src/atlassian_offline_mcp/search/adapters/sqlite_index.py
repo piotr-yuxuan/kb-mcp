@@ -40,6 +40,8 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.search.domain.search import Section
 
+# What the file of a build begins with, beside its index, until it is renamed into place.
+BUILDING = ".index-"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id.
 SCHEMA = "3"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
@@ -273,6 +275,16 @@ class Writer:
         self.skipped += 1
 
 
+def indexes_in(folder: Path) -> list[Path]:
+    """List the indexes under a folder, at any depth, in order; none if it does not exist.
+
+    The file of a build is no index: ``building`` makes it empty, renames it into place
+    once complete, and a build killed before its end leaves it behind.
+    """
+    found = folder.rglob("*.sqlite")
+    return sorted(path for path in found if not path.name.startswith(BUILDING))
+
+
 @contextmanager
 def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -> Iterator[Writer]:
     """Build a new index at ``path``, in one transaction, into a file beside it.
@@ -281,7 +293,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
     into place once complete. On any failure the index already at ``path`` stays, and
     the new file is removed.
     """
-    descriptor, name = tempfile.mkstemp(prefix=".index-", suffix=".sqlite", dir=path.parent)
+    descriptor, name = tempfile.mkstemp(prefix=BUILDING, suffix=".sqlite", dir=path.parent)
     os.close(descriptor)
     temporary = Path(name)
     try:

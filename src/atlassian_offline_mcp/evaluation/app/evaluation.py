@@ -295,14 +295,14 @@ def prepared(
 ) -> tuple[Run, Library]:
     """Build a target's index, and give its run, costs counted, and a library over it.
 
-    The index is ``<evaluations>/indexes/<chunking>/<model>.sqlite``, its model's ``/``
+    The index is ``<evaluation_indexes>/<chunking>/<model>.sqlite``, its model's ``/``
     and ``:`` written ``_``. Raises EvaluationError when a document that a question names
     is not in it, and ModelError for a model that fails. The library has read the
     index's vectors already, so that no question's time holds the reading.
     """
     embedder, name = target.embedder, target.embedder.name
     safe = name.replace("/", "_").replace(":", "_")
-    index = settings.evaluations / "indexes" / target.chunking / f"{safe}.sqlite"
+    index = settings.evaluation_indexes / target.chunking / f"{safe}.sqlite"
     index.parent.mkdir(parents=True, exist_ok=True)
     started = clock()
     embedding = Embedding(embedder, settings.vectors, chunking=target.chunking)
