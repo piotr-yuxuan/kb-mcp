@@ -74,9 +74,9 @@ ASSIGNMENT = re.compile(r"[A-Za-z_]\w*=")
 # Words that end one command and begin the next: a pipe or a list.
 SEPARATORS = frozenset({"|", "|&", "||", "&", "&&", ";"})
 # A word from which on a command's words are the shell's: `<`, or an output redirection
-# with or without its file, such as `>`, `2>sync.log`, `2>&1` or `&>/dev/null`. A
+# with or without its file, such as `>`, `2>sync.log` or the `2>` of `2>&1`. A
 # placeholder such as `<missing-file>` stays an argument.
-REDIRECTION = re.compile(r"<<?|(\d*|&)>.*")
+REDIRECTION = re.compile(r"<<?|\d*>.*")
 # The reference of the MCP server's tools and prompts, and its headings: a part, then
 # a tool or a prompt of that part.
 MCP_TOOLS = "docs/reference/mcp-tools.md"
@@ -294,10 +294,11 @@ def test_the_map_links_each_page_of_the_four_kinds_and_docs_holds_no_other(
 def shell_words(line: str) -> list[str]:
     """Split a line into words as a shell does, leaving a comment out.
 
-    A ``;`` or a ``|`` is a word of its own even where no space parts it from the word
-    before, as in ``check; sync``.
+    A run of ``;``, ``|`` and ``&``, such as ``&&``, is a word of its own even where no
+    space parts it from the word before, as in ``check; sync``; so ``2>&1`` is three
+    words, of which the first ends the arguments.
     """
-    lexer = shlex.shlex(line, posix=True, punctuation_chars=";|")
+    lexer = shlex.shlex(line, posix=True, punctuation_chars=";|&")
     lexer.whitespace_split = True
     return list(lexer)
 
