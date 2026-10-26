@@ -263,13 +263,14 @@ def test_ask_s_cursor_carries_the_order_too(root: Path, monkeypatch: MonkeyPatch
     assert len(scorer.asked) == 1
 
 
-def test_a_first_page_not_reranked_continues_unreranked(root: Path) -> None:
-    """Fallen back first: its cursor carries no order, so its pages follow words."""
+def test_a_first_page_not_reranked_continues_unreranked(root: Path, telemetry: InMemory) -> None:
+    """Fallen back first: its cursor carries no order, so its pages follow words, not reranked."""
     scorer = Scripted()
     scorer.failing = RerankError(REFUSED, "refused")
     served = library(root, Reranking(scorer, DEPTH))
     first = served.search(QUERY, limit=2)
     scorer.failing = None
+    assert reranked_said(telemetry, "search", lambda: follow(served, first) or "") is False
     assert pages(served, first) == titles(library(root, None).search(QUERY, limit=50))
     assert len(scorer.asked) == 1
 
@@ -304,9 +305,9 @@ def test_a_cursor_s_shorter_order_applies_to_as_many_documents(root: Path) -> No
     """An order of two from the first document: those two swapped, the next as words put it."""
     scorer = Scripted()
     served = library(root, Reranking(scorer, DEPTH))
-    built = cursor_of(served.search(QUERY, limit=2)).partition("@")[2].partition(".")[0]
+    stamp = cursor_of(served.search(QUERY, limit=2)).partition("@")[2].partition(".")[0]
     before = order(library(root, None))
-    shown = titles(served.search(QUERY, limit=3, cursor=f"0@{built}.BA"))
+    shown = titles(served.search(QUERY, limit=3, cursor=f"0@{stamp}.BA"))
     assert shown == [title(root, path) for path in (before[1], before[0], before[2])]
     assert len(scorer.asked) == 1
 
