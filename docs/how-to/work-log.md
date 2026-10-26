@@ -69,10 +69,10 @@ edit to one entry moves no other. pandoc converts each document; a transcript's 
 stay apart.
 
 `sync` then rebuilds the index, by default in hybrid mode, which needs the embedding
-model, Ollama on this machine ([search by meaning](agents.md#search-by-meaning)):
-without it, the index's row fails and `sync` exits 1, the work log mirrored all the
-same. The first such run embeds the whole mirror; `search_mode = "lexical"` indexes by
-words alone, without a model.
+model, served by Ollama on this machine or any other OpenAI-compatible API
+([embeddings](embeddings.md)): without it, the index's row fails and `sync` exits 1,
+the work log mirrored all the same. The first such run embeds the whole mirror;
+`search_mode = "lexical"` indexes by words alone, without a model.
 
 ## 5. What a change does at the next sync
 

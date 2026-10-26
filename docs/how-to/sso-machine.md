@@ -1,8 +1,12 @@
-# First download behind single sign-on
+# Mirror the site on a managed machine
 
-What to do on the user's machine to download last week's Confluence pages and Jira
-issues, with their pictures. It needs the code of plan 004 (the branch `004-download`,
-or `main` once it is merged), uv, and Google Chrome.
+How to mirror Confluence and Jira on the user's machine, where you sign in through your
+company and the data must stay on the machine: the settings, a check of the machine, the
+sign-in in Chrome, a first download of last week's pages and issues with their pictures,
+then ending the session, and what may come back to the personal laptop. It needs uv and
+Google Chrome, and pandoc for the mirror.
+[Your first mirror](../tutorials/first-mirror.md) is the lesson of it all on any site,
+with `sync`, the index and an agent.
 
 ## 1. Install the command
 
@@ -109,6 +113,32 @@ The counts are printed and saved in `~/atlassian-offline-mcp/runs/`. The exit st
 on stderr) or you answered no, 2 for refused settings or options, or no terminal to ask
 on, 3 when you must sign in again, 130 when stopped by Ctrl-C. `atlassian-offline-mcp
 --help` lists them. Running the same command again fetches only what changed since.
+
+## End the session
+
+The session that `login` saved signs in as you, from this machine or from any copy of
+`~/atlassian-offline-mcp/session/`, until it expires. End it when you leave the machine,
+or as soon as that folder may have been copied:
+
+1. On [your Atlassian account's security page][security], view and manage your recent
+   devices, then log out of all devices but the browser you are using, as
+   [Atlassian's guide][devices] describes. The sign-in window's Chrome is one of them:
+   Atlassian ends its session on its side, wherever the cookies were copied. Your other
+   browsers are signed out too.
+2. Remove the folder, which holds the cookies and the sign-in window's own browser
+   profile:
+
+   ```bash
+   rm -r ~/atlassian-offline-mcp/session
+   ```
+
+A run signed in by the session then stops at once with exit status 3, and says to run
+`login` again. Running `login` again replaces the saved cookies, but does not end the
+session that they held: only the first step does.
+[Credentials](../explanation/credentials.md) explains what the folder holds and why.
+
+[security]: https://id.atlassian.com/manage-profile/security
+[devices]: https://support.atlassian.com/atlassian-account/docs/manage-recently-used-devices-for-your-atlassian-account/
 
 ## What can come back to the personal laptop
 

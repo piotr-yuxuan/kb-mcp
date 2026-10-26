@@ -64,6 +64,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "import-linter" },
+    { name = "markdown-it-py" },
     { name = "opentelemetry-proto" },
     { name = "pytest" },
     { name = "ruff" },
@@ -97,6 +98,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "import-linter", specifier = ">=2.15,<3" },
+    { name = "markdown-it-py", specifier = ">=4,<5" },
     { name = "opentelemetry-proto", specifier = ">=1.45,<2" },
     { name = "pytest", specifier = ">=9,<10" },
     { name = "ruff", specifier = ">=0.16,<0.17" },

@@ -36,7 +36,7 @@ own evaluation.
 **Language matters too.** The leaderboard has an English benchmark (`MTEB(eng, v2)`)
 and a multilingual one (`MTEB(Multilingual, v2)`), and filters by language: with
 `fra-Latn`, only the tasks with French data count. Our content was in English and
-French; once the user said that French was not needed for now, English retrieval
+French; once the maintainer said that French was not needed for now, English retrieval
 decided.
 
 ### How the numbers were read
@@ -51,9 +51,10 @@ data:
 curl -s 'https://mteb-leaderboard-backend.hf.space/v1/benchmarks/MTEB(eng,%20v2)/scores' | python3 -c 'import json, sys; [print(row["model"]["name"], row["scoresByTaskType"].get("Retrieval")) for row in json.load(sys.stdin)["rows"]]'
 ```
 
-On 2026-10-21, for the candidates that Ollama's library offers (Retrieval scores, out
-of 100; the last column is a rough proxy for the compute per token, the parameters
-outside the embedding table):
+The program asks any OpenAI-compatible embeddings API, Ollama by default, so the
+candidates were those that Ollama's library offers. On 2026-10-21, their Retrieval
+scores, out of 100 (the last column is a rough proxy for the compute per token, the
+parameters outside the embedding table):
 
 | Model, Ollama tag | Multilingual v2 | English v2 | French subsets | Non-embedding parameters |
 |---|---|---|---|---|
@@ -67,9 +68,9 @@ outside the embedding table):
 | bge-small-en-v1.5 (plan 011's default) | 36.26 | 53.86 | 30.36 | |
 
 Qwen3-Embedding-0.6B led in English and multilingual retrieval, at about four times
-EmbeddingGemma's compute; EmbeddingGemma led in French. The user chose Qwen3, also for
-its 32,768-token window, which leaves room for the chunking strategies to be compared
-next.
+EmbeddingGemma's compute; EmbeddingGemma led in French. The maintainer chose Qwen3,
+also for its 32,768-token window, which leaves room for the chunking strategies to be
+compared next.
 
 ### What to distrust in a leaderboard
 
@@ -267,10 +268,11 @@ paraphrases, written so that words cannot find their answers) would otherwise te
 reading in meaning's favour. Plan 019 wrote one for the chunking the same way
 ([chunking](chunking.md)).
 
-A rule written first binds the reading of the numbers, not the user's choice. Once the
-numbers are known, the user may weigh what the rule left out, such as ranking against
-speed, provided the rule's verdict stays on record and the choice is said to be
-theirs; plan 018's bar said as much, leaving the decision to the user if it failed.
+A rule written first binds the reading of the numbers, not the maintainer's choice.
+Once the numbers are known, the maintainer may weigh what the rule left out, such as
+ranking against speed, provided the rule's verdict stays on record and the choice is
+said to be theirs; plan 018's bar said as much, leaving the decision to the maintainer
+if it failed.
 The defaults since plan 025 are such a choice (below).
 
 ### Query time
@@ -328,8 +330,8 @@ MRR@10 against lexical: semantic +0.054 (p = 0.197, adjusted 0.305), hybrid +0.0
 
 Against the bar, hybrid failed on all three counts: its gain was not significant; it
 lost 0.061 on identifier questions (keyword: 0.019, within the bar); and its 95th
-percentile was 212 ms on this CPU. **Words became the default again**, by the user's
-word on that rule, until plan 025 (below).
+percentile was 212 ms on this CPU. **Words became the default again**, by the
+maintainer's word on that rule, until plan 025 (below).
 
 Against plan 011's bge-small, question by question on the same set (from the two
 results files, with the script above): semantic +0.020 (p = 0.57; 31 questions better,
@@ -357,9 +359,9 @@ Neither rule chose `windows` and hybrid search. Plan 019's rule, which decides t
 chunking by the evidence that `ask` quotes, kept `sections`. Plan 018's bar, applied to
 `windows`, was met on the gain and on identifier and keyword questions but not on
 speed, so words would have stayed.
-Knowing these numbers, the user made `windows` and hybrid search the defaults (plan
-025), as ranking matters more to them than speed. The rules and their verdicts above
-stay as written: what changed is the choice made after them, which is the user's.
+Knowing these numbers, the maintainer made `windows` and hybrid search the defaults
+(plan 025), as ranking matters more to them than speed. The rules and their verdicts
+above stay as written: what changed is the choice made after them, the maintainer's.
 
 ### What these runs show, and what they do not
 
@@ -398,7 +400,7 @@ stay as written: what changed is the choice made after them, which is the user's
 
 Every step runs from a checkout of this repository, with `uv`, on any machine: this
 laptop, or another such as the user's machine, whose GPU should change the times. The
-sandbox's commands name `--config <missing file>`, a path where no file is, so that the
+sandbox's commands name `--config <missing-file>`, a path where no file is, so that the
 machine's settings file changes nothing: otherwise `mirror` would write its `site` into
 the mirror's addresses, and `index`, `model check` and `eval` would take its model and
 endpoint, `index` its chunking and mode too. The variables `ATLASSIAN_OFFLINE_MCP_…`
@@ -415,7 +417,7 @@ settings are the point: leave the flag out. Two things come first:
   ```
 
   ```bash
-  uv run atlassian-offline-mcp model check --config <missing file>
+  uv run atlassian-offline-mcp model check --config <missing-file>
   ```
 
   `model check` says the model's dimensions and digest, or what to run when the
@@ -431,7 +433,7 @@ corpus's pages are in the space `QM`, its tickets in the project `ENG`, its idea
 `PRB`; plan 011's mirror also held the 13 probe pages of plan 001 in `MFS`:
 
 ```bash
-sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" uv run atlassian-offline-mcp download --yes --config <missing file> --data-dir <data> --since 1y --space MFS --space QM --project ENG --project PRB'
+sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" uv run atlassian-offline-mcp download --yes --config <missing-file> --data-dir <data> --since 1y --space MFS --space QM --project ENG --project PRB'
 ```
 
 The credentials file lies at the root of the checkout that made it, never in git
@@ -442,11 +444,11 @@ the same generic names; or skip `download` and `mirror`: copy `<data>/docs` (7 M
 from a machine that has it into the new data directory, and go on from `index`.
 
 ```bash
-uv run atlassian-offline-mcp mirror --config <missing file> --data-dir <data>
+uv run atlassian-offline-mcp mirror --config <missing-file> --data-dir <data>
 ```
 
 ```bash
-uv run atlassian-offline-mcp index --config <missing file> --data-dir <data>
+uv run atlassian-offline-mcp index --config <missing-file> --data-dir <data>
 ```
 
 `index` should report 1,474 documents (263 pages and 1,211 issues), as in plans 011 and
@@ -461,7 +463,7 @@ uv run python spikes/golden_refs.py --data <data> --out <data>/eval/sandbox.yaml
 Then measure every chunking in every mode:
 
 ```bash
-uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing file> --data-dir <data> --model qwen3-embedding:0.6b
+uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b
 ```
 
 ### Comparing chunkings and modes
@@ -476,7 +478,7 @@ the tests of each mode against words. To compare the defaults with the chunking 
 plan 019's rule kept:
 
 ```bash
-uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --summary detailed
+uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --summary detailed
 ```
 
 The first run embeds each chunking's pieces that the store lacks, which took 31

@@ -16,10 +16,18 @@ Follow the `workflow:plans` skill with these parameters:
   - `uv run pytest`;
   - `uv run --with-requirements sandbox/seed_corpus.py --with pytest pytest sandbox`,
     which needs pandoc on `PATH`.
-- The design and the shared contracts are in `docs/work/README.md` and
-  `docs/reference/data-layout.md`; where code goes, in `docs/explanation/code-layout.md`.
-  Only the adapter of a representation reads its JSON, and only one module knows the
-  site's HTML.
+- The design: why each decision was taken and what it costs, in
+  [the trade-offs](docs/explanation/trade-offs.md); how the stages work together, in
+  [the internals](docs/explanation/internals.md); the shared contracts, in
+  [the data layout](docs/reference/data-layout.md); where code goes, in
+  [the code's layout](docs/explanation/code-layout.md); the plans, in
+  [the roadmap](docs/work/README.md). Only the adapter of a representation reads its
+  JSON, and only one module knows the site's HTML.
+- A new page goes in the folder of `docs/` named by its Diataxis kind, and
+  [the map](docs/README.md) links it in the commit that writes it. The reference of
+  commands and settings is generated from the code: after changing a command, an option
+  or a setting, run `uv run python -m tests.reference_pages` and commit the pages it
+  rewrites; else the reference test fails, naming them.
 - What runs log, trace and measure: `docs/reference/telemetry/`, changed with the code.
 - At most three review rounds.
 

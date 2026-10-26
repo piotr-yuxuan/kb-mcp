@@ -50,12 +50,14 @@ The steps, in order:
 3. **The index**: rebuilt from the whole mirror, whatever sources the run took, by the
    settings `index` reads: `search_mode`, `model`, `chunking` and the embedding
    endpoint. By default, in hybrid mode, it needs the endpoint and its model, Ollama on
-   this machine, as [search by meaning](agents.md#search-by-meaning) says: without
-   them, its row fails once the other steps have run, and `sync` exits 1. It embeds
-   what `<data>/vectors.sqlite` lacks: every piece of the mirror the first time, then
-   only the pieces whose text changed. By words alone, `search_mode = "lexical"`, it
-   calls no endpoint. An endpoint off this machine needs `--allow-remote-embeddings`, as
-   for `index`, and is refused before anything runs without it, unless a dry run.
+   this machine or any other OpenAI-compatible API, as [embeddings](embeddings.md)
+   says: without them, its row fails once the other steps have run, and `sync` exits 1.
+   It embeds what `<data>/vectors.sqlite` lacks: every piece of the mirror the first
+   time, then only the pieces whose text changed, as [building the
+   index](embeddings.md#3-build-the-index) says. By words alone,
+   `search_mode = "lexical"`, it calls no endpoint. An endpoint off this machine needs
+   `--allow-remote-embeddings`, as for `index`, and is refused before anything runs
+   without it, unless a dry run.
 
 Each step runs even when an earlier one failed, since the next reads what is on disk:
 the work log is mirrored when the site asks to sign in again, and the index is built
