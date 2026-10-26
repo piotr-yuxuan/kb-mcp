@@ -258,7 +258,10 @@ You have a mirror of one space on your machine, an index that ranks it by words 
 meaning, and an agent that answers from it and says how old its evidence is. From here:
 
 - [Bring every source up to date](../how-to/sync.md): `sync` again, without `--since`,
-  catches up from where the last run ended; more spaces, and Jira projects.
+  catches up from the start of what earlier runs covered, fetching only the revisions
+  not yet stored, so that a run that failed leaves no hole
+  ([refresh by hand](../explanation/trade-offs.md#refresh-by-hand)); more spaces, and
+  Jira projects.
 - [Mirror the site on a managed machine](../how-to/sso-machine.md): single sign-on, the
   data directory off synchronised folders, and ending the session.
 - [Sign in with an API token kept by sops](../how-to/api-token-with-sops.md), where
