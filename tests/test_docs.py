@@ -69,8 +69,12 @@ PROGRAM = re.compile(r"(?<![\w/.~-])atlassian-offline-mcp(?![\w/.-])")
 SHELL_LINE = re.compile(r"^(?:.*\\\n)*.*$", re.MULTILINE)
 # A word that sets a variable for the command that follows it.
 ASSIGNMENT = re.compile(r"[A-Za-z_]\w*=")
-# Words that end a command's arguments: a pipe, a list, a redirection.
-OPERATORS = frozenset({"|", "||", "&", "&&", ";", "<", ">", ">>"})
+# Words that end one command and begin the next: a pipe or a list.
+SEPARATORS = frozenset({"|", "|&", "||", "&", "&&", ";"})
+# A word from which on a command's words are the shell's: `<`, or an output redirection
+# with or without its file, such as `>`, `2>sync.log`, `2>&1` or `&>/dev/null`. A
+# placeholder such as `<missing-file>` stays an argument.
+REDIRECTION = re.compile(r"<<?|(\d*|&)>.*")
 # The reference of the MCP server's tools and prompts, and its headings: a part, then
 # a tool or a prompt of that part.
 MCP_TOOLS = "docs/reference/mcp-tools.md"
@@ -271,39 +275,59 @@ def test_the_map_links_each_page_of_the_four_kinds_and_docs_holds_no_other(
     assert others == ["docs/README.md"]
 
 
-def program_arguments(words: list[str]) -> list[str] | None:
-    """Give the arguments that a command line's words give the program, or None.
+def shell_words(line: str) -> list[str]:
+    """Split a line into words as a shell does, leaving a comment out.
 
-    The program is the command word after any ``NAME=value``, after ``uv run``, inside
-    the quoted command of ``sops exec-env <file> '...'`` or of ``eval "$(...)"``, or
-    after the ``--`` of ``claude mcp add``; its arguments end at a shell's operator.
+    A ``;`` or a ``|`` is a word of its own even where no space parts it from the word
+    before, as in ``check; sync``.
     """
-    while words and ASSIGNMENT.match(words[0]):
-        words = words[1:]
-    match words:
-        case ["atlassian-offline-mcp", *arguments]:
-            return list(itertools.takewhile(lambda word: word not in OPERATORS, arguments))
-        case ["uv", "run", *command]:
-            return program_arguments(command)
-        case ["sops", "exec-env", *_, command]:
-            return program_arguments(shlex.split(command))
-        case ["claude", "mcp", "add", *added] if "--" in added:
-            return program_arguments(added[added.index("--") + 1 :])
-        case ["eval", command] if command.startswith("$(") and command.endswith(")"):
-            return program_arguments(shlex.split(command[2:-1]))
-    return None
+    lexer = shlex.shlex(line, posix=True, punctuation_chars=";|")
+    lexer.whitespace_split = True
+    return list(lexer)
+
+
+def program_arguments(words: list[str]) -> list[list[str]]:
+    """Give the arguments that each command of a line's words gives the program.
+
+    The words split into commands at a pipe or a list. In a command that names the
+    program, it is the command word after any ``NAME=value``, after ``uv run``, inside
+    the quoted command of ``sops exec-env <file> '...'`` or of ``eval "$(...)"``, or
+    after the ``--`` of ``claude mcp add``; its arguments end at a redirection. Raises
+    ValueError for a command that names the program in any other form.
+    """
+    given: list[list[str]] = []
+    for between, grouped in itertools.groupby(words, lambda word: word in SEPARATORS):
+        command = list(grouped)
+        if between or not any(PROGRAM.search(word) for word in command):
+            continue
+        match list(itertools.dropwhile(ASSIGNMENT.match, command)):
+            case ["atlassian-offline-mcp", *arguments]:
+                kept = itertools.takewhile(lambda word: not REDIRECTION.fullmatch(word), arguments)
+                given.append(list(kept))
+            case ["uv", "run", *inner]:
+                given += program_arguments(inner)
+            case ["sops", "exec-env", *_, inner]:
+                given += program_arguments(shell_words(inner))
+            case ["claude", "mcp", "add", *added] if "--" in added:
+                given += program_arguments(added[added.index("--") + 1 :])
+            case ["eval", inner] if inner.startswith("$(") and inner.endswith(")"):
+                given += program_arguments(shell_words(inner[2:-1]))
+            case _:
+                message = "names the program in a form that program_arguments does not read"
+                raise ValueError(message)
+    return given
 
 
 def test_each_documented_command_line_of_the_program_parses(checkout: frozenset[str]) -> None:
     """In a bash block of any page but the plans', the program's arguments parse.
 
     Continuations joined, words split as a shell does, a comment left out, the arguments
-    that ``program_arguments`` finds parse with the command's own parser, no arguments
-    meaning ``serve``; --help and --version exit 0, which passes. A line that names the
-    program is refused when the shell could not split it, or when ``program_arguments``
-    finds no command in it, so that a form it does not read is never passed unread. A
-    console block that names the program is refused outside the tutorial of a first
-    change, whose subcommand no commit declares.
+    that ``program_arguments`` finds in each command of a line parse with the command's
+    own parser, no arguments meaning ``serve``; --help and --version exit 0, which
+    passes. A line is refused when the shell could not split it, or when a command of it
+    names the program in a form that ``program_arguments`` does not read, so that no
+    such form is passed unread. A console block that names the program is refused
+    outside the tutorial of a first change, whose subcommand no commit declares.
     """
     refused = []
     checked: Counter[str] = Counter()
@@ -325,24 +349,22 @@ def test_each_documented_command_line_of_the_program_parses(checkout: frozenset[
                     refused.append(f"{page}:{line}: the program in a console block")
                 continue
             try:
-                arguments = program_arguments(shlex.split(given, comments=True))
+                commands = program_arguments(shell_words(given))
             except ValueError as error:
-                refused.append(f"{page}:{line}: the shell cannot split it: {error}")
+                refused.append(f"{page}:{line}: {error}")
                 continue
-            if arguments is None:
-                refused.append(
-                    f"{page}:{line}: names the program in a form that program_arguments"
-                    " does not read"
-                )
-                continue
-            checked[page] += 1
-            said = io.StringIO()
-            try:
-                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(said):
-                    parser().parse_args(arguments or ["serve"])
-            except SystemExit as stopped:
-                if stopped.code != 0:
-                    refused.append(f"{page}:{line}: {said.getvalue().splitlines()[-1]}")
+            checked[page] += len(commands)
+            for arguments in commands:
+                said = io.StringIO()
+                try:
+                    with (
+                        contextlib.redirect_stdout(io.StringIO()),
+                        contextlib.redirect_stderr(said),
+                    ):
+                        parser().parse_args(arguments or ["serve"])
+                except SystemExit as stopped:
+                    if stopped.code != 0:
+                        refused.append(f"{page}:{line}: {said.getvalue().splitlines()[-1]}")
     assert refused == []
     assert [page for page in PAGES if not checked[page]] == []
 
