@@ -119,7 +119,8 @@ The command reads the site as you, with a session that you open once in Chrome:
 atlassian-offline-mcp login
 ```
 
-Before it acts, it says what it will do, and asks:
+Before it acts, it says what it will do: each setting that it reads, then the same
+command in full, to copy. Its first lines:
 
 ```text
 login, with these settings:
