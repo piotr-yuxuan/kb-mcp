@@ -72,9 +72,11 @@ TEXTS = (
 TICK_S = 11.0
 # Reads of a trickled answer before its deadline of 30 seconds is passed, at most.
 READS = 4
-# A short deadline, and how long a hung server keeps silent: far longer.
+# A short deadline, and how long a hung server keeps silent: far longer. httpx's own
+# deadline, which the request's must replace, is longer still than the first.
 DEADLINE_S = 1.0
 HUNG_S = 10.0
+HTTPX_DEFAULT_S = 5.0
 # Text that an answer may echo, and that no message may hold.
 ECHO = "the query, echoed"
 # A model served by a local llama-server on the default address, for the opt-in test.
@@ -226,12 +228,14 @@ def test_a_server_that_accepts_and_says_nothing_is_given_up_at_the_deadline() ->
 
     with serving(hang) as url, endpoint(url, None, RERANKING, remote_allowed=False) as opened:
         started = time.monotonic()
-        with pytest.raises(RerankError) as failed:
-            rerank(opened, RERANKER, QUERY, TEXTS, Bounds(DEADLINE_S, 1))
+        try:
+            with pytest.raises(RerankError) as failed:
+                rerank(opened, RERANKER, QUERY, TEXTS, Bounds(DEADLINE_S, 1))
+        finally:
+            released.set()
         waited = time.monotonic() - started
-        released.set()
     assert failed.value.kind == "unanswered"
-    assert DEADLINE_S <= waited < 2 * DEADLINE_S
+    assert DEADLINE_S <= waited < HTTPX_DEFAULT_S - DEADLINE_S
 
 
 def test_a_search_makes_one_attempt_and_an_evaluation_waits_and_tries_again() -> None:
