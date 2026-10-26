@@ -70,10 +70,11 @@ Check that the command reaches it:
 atlassian-offline-mcp model check
 ```
 
-You should see the model's dimensions, its endpoint and its digest:
+You should see the model's dimensions, its endpoint and its digest, which names the
+version that you pulled, written `<digest>` here:
 
 ```text
-qwen3-embedding:0.6b: 1024 dimensions, from http://127.0.0.1:11434/v1; digest ac6da0dfba84; its prefixes known
+qwen3-embedding:0.6b: 1024 dimensions, from http://127.0.0.1:11434/v1; digest <digest>; its prefixes known
 ```
 
 ## 3. Name the site and the space

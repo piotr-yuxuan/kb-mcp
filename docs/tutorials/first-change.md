@@ -4,8 +4,9 @@ For contributors. In this tutorial we add a subcommand, `count`, which prints ho
 documents the mirror holds of each source. On the way we run the checks that every
 change passes, watch two of them refuse a change, and set it right. `count` is for
 learning: the repository has no such command, and we put it aside at the end. Follow the
-steps in order: each shows what you should see. Where your output shows other numbers,
-that is your clone's state, not a fault.
+steps in order: each shows what you should see. Counts that grow with the code, of files
+and of tests, are written `<n>`, and the time a run takes `<time>`; where your output
+shows other numbers, that is your clone's state, not a fault.
 
 ## What you need
 
@@ -61,7 +62,7 @@ uv run ruff format --check
 ```
 
 ```text
-536 files already formatted
+<n> files already formatted
 ```
 
 Import Linter keeps the code's layout: which part may import which, as
@@ -86,7 +87,7 @@ uv run pytest
 It ends with:
 
 ```text
-1908 passed, 11 skipped in 240.57s (0:04:00)
+<n> passed, <n> skipped in <time>
 ```
 
 The last check runs the tests of the sandbox's corpus, with its own requirements:
@@ -98,7 +99,7 @@ uv run --with-requirements sandbox/seed_corpus.py --with pytest pytest sandbox
 It ends with:
 
 ```text
-71 passed in 125.50s (0:02:05)
+<n> passed in <time>
 ```
 
 ## 3. Write the test first
@@ -353,7 +354,7 @@ E       AssertionError: docs/reference/commands.md is not what the code generate
 The run ends with:
 
 ```text
-1 failed, 1922 passed, 11 skipped in 251.19s (0:04:11)
+1 failed, <n> passed, <n> skipped in <time>
 ```
 
 [The reference of commands](../reference/commands.md) is generated from the parser, and
