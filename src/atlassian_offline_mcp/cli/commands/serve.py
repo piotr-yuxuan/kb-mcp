@@ -130,16 +130,15 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None
     settings = loaded.settings
     FALLBACKS.add(0, {"aom.mode": settings.search_mode})
     opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
-    rerank_settings = settings.rerank
-    reranker = (
-        endpoint(rerank_settings.url, None, RERANKING, remote_allowed=False)
-        if rerank_settings.enabled
-        else None
-    )
-    with opened or contextlib.nullcontext(), reranker or contextlib.nullcontext():
+    with opened or contextlib.nullcontext(), contextlib.ExitStack() as stack:
         meaning = None if opened is None else Meaning(functools.partial(connect, opened))
-        score = functools.partial(rerank, reranker, rerank_settings.model, bounds=SEARCH)
-        reranking = None if reranker is None else Reranking(score, rerank_settings.depth)
+        reranking = None
+        if settings.rerank.enabled:
+            reranker = stack.enter_context(
+                endpoint(settings.rerank.url, None, RERANKING, remote_allowed=False)
+            )
+            score = functools.partial(rerank, reranker, settings.rerank.model, bounds=SEARCH)
+            reranking = Reranking(score, settings.rerank.depth)
         library = Library(settings.index, settings.docs, meaning, settings.search_mode, reranking)
         offered = surface(library, arguments.tools)
         tools = [
