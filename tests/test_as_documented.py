@@ -259,7 +259,9 @@ def test_index_records_as_documented(
         with vector_store.exclusive(data / "vectors.sqlite") as held:
             assert held
             taken.set()
-            time.sleep(1.0)  # long enough for index to start and wait
+            deadline = time.monotonic() + 10
+            while "vectors.lock_wait" not in emitted.events and time.monotonic() < deadline:
+                time.sleep(0.01)
 
     pruning = threading.Thread(target=prune_briefly)
     pruning.start()

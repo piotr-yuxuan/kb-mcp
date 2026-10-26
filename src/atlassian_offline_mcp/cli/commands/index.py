@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.cli.commands._embedding import indexing_of, prefixes_said
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.search.app.indexing import index_mirror
+from atlassian_offline_mcp.search.app.indexing import refresh
 
 if TYPE_CHECKING:
     import argparse
@@ -35,7 +35,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Inde
     an error; each file skipped and each piece that the endpoint refused is a warning,
     as is the count of files that the index lacks.
     """
-    indexed = index_mirror(indexing_of(arguments, loaded.settings), datetime.now(UTC))
+    indexed = refresh(indexing_of(arguments, loaded.settings), datetime.now(UTC))
     return ExitStatus.OK if indexed and indexed.report.whole else ExitStatus.FAILED, indexed
 
 

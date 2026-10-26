@@ -27,7 +27,7 @@ from atlassian_offline_mcp.evaluation.app.evaluation import Target, evaluate
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.adapters.sqlite_index import indexes_in, reading
-from atlassian_offline_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
+from atlassian_offline_mcp.search.app.indexing import Embedding, Indexing, build_index, refresh
 from atlassian_offline_mcp.search.app.pruning import (
     DEFERRED,
     NO_DOCUMENT,
@@ -405,7 +405,7 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     )
     write(data / "docs", page("200", "Edited", breadcrumb=HOME), f"{EDITED}The text before.\n")
     store, fresh = data / "vectors.sqlite", data.parent / "fresh.db"
-    pruned(index_mirror(indexing(data), MOMENT))
+    pruned(refresh(indexing(data), MOMENT))
     for each in (store, fresh):
         evaluated(data, each, "windows")
         evaluated(data, each, "section-paths")
@@ -419,7 +419,7 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     before = stored(store)
     telemetry.spans.clear()
     telemetry.measured()
-    indexed = index_mirror(indexing(data), MOMENT)
+    indexed = refresh(indexing(data), MOMENT)
     done = pruned(indexed)
     assert stored(store) == stored(fresh)
     alone = stored(fresh) - read_by(data / "index.sqlite")
@@ -440,9 +440,12 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     assert done.bytes_after <= done.bytes_before
     [span] = [each for each in telemetry.spans.get_finished_spans() if each.name == "index.prune"]
     assert span.attributes == {"aom.outcome": "pruned", "aom.deleted": deleted}
-    points = telemetry.measured()["aom.vectors"].data.data_points
+    measured = telemetry.measured()
+    points = measured["aom.vectors"].data.data_points
     counts = {point.attributes["aom.outcome"]: point.value for point in points if point.attributes}
     assert counts == {"kept": len(stored(fresh)), "pruned": deleted}
+    [size] = measured["aom.vectors.bytes"].data.data_points
+    assert size.value == done.bytes_after
     assert json.loads(to_json(indexed))["pruned"] == asdict(done)
     assert f"vectors pruned: {deleted}\nvector store: " in index_command.text(indexed, "short")
     detailed = index_command.text(indexed, "detailed")
@@ -452,15 +455,15 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
 
 def test_a_second_index_with_nothing_changed_embeds_and_deletes_nothing(data: Path) -> None:
     """Then, an evaluation's index deleted, the next deletes the vectors that it alone read."""
-    pruned(index_mirror(indexing(data), MOMENT))
+    pruned(refresh(indexing(data), MOMENT))
     windows = evaluated(data, data / "vectors.sqlite", "windows")
-    again = index_mirror(indexing(data), MOMENT)
+    again = refresh(indexing(data), MOMENT)
     assert again is not None
     assert again.report.embedded == 0
     assert pruned(again).deleted == 0
     alone = read_by(windows) - read_by(data / "index.sqlite")
     windows.unlink()
-    assert pruned(index_mirror(indexing(data), MOMENT)).deleted == len(alone) > 0
+    assert pruned(refresh(indexing(data), MOMENT)).deleted == len(alone) > 0
 
 
 def test_a_real_evaluation_s_vectors_outlive_the_next_index(tmp_path: Path) -> None:
@@ -471,7 +474,7 @@ def test_a_real_evaluation_s_vectors_outlive_the_next_index(tmp_path: Path) -> N
     chunkings: tuple[Chunking, ...] = ("windows", "section-paths")
     targets = [Target(tiny(), chunking) for chunking in chunkings]
     evaluate(settings, golden(data), targets, ticking(), MOMENT)
-    pruned(index_mirror(indexing(data), MOMENT))
+    pruned(refresh(indexing(data), MOMENT))
     for chunking in chunkings:
         assert read_by(settings.evaluation_indexes / chunking / "tiny.sqlite") <= stored(
             settings.vectors
@@ -598,7 +601,7 @@ class Paused(Counting):
 
 def test_a_prune_during_a_build_is_deferred_and_done_by_the_next(data: Path) -> None:
     """While an evaluation's build embeds, nothing is deleted; once it is in, its vectors stay."""
-    pruned(index_mirror(indexing(data), MOMENT))
+    pruned(refresh(indexing(data), MOMENT))
     other = vector_store.key("another model", "a text")
     with vector_store.opened(data / "vectors.sqlite") as opened:
         opened.put({other: bytes(64)})
@@ -608,7 +611,7 @@ def test_a_prune_during_a_build_is_deferred_and_done_by_the_next(data: Path) -> 
     build = threading.Thread(target=build_index, args=(data / "docs", windows, MOMENT, embedding))
     build.start()
     assert paused.inside.wait(PATIENCE_S)
-    indexed = index_mirror(indexing(data), MOMENT)
+    indexed = refresh(indexing(data), MOMENT)
     paused.resume.set()
     build.join(PATIENCE_S)
     deferred = pruned(indexed)
@@ -618,7 +621,7 @@ def test_a_prune_during_a_build_is_deferred_and_done_by_the_next(data: Path) -> 
     said_fully = index_command.text(indexed, "detailed")
     assert said_fully.endswith(f"vector store not pruned, deferred: {DEFERRED}\n")
     assert other in stored(data / "vectors.sqlite")
-    done = pruned(index_mirror(indexing(data), MOMENT))
+    done = pruned(refresh(indexing(data), MOMENT))
     assert (done.outcome, done.deleted) == ("pruned", 1)
     assert read_by(windows) <= stored(data / "vectors.sqlite")
 
@@ -633,7 +636,7 @@ def test_a_store_that_cannot_delete_fails_the_prune_not_the_index(
         raise sqlite3.OperationalError(message)
 
     monkeypatch.setattr(vector_store.VectorStore, "prune", locked)
-    indexed = index_mirror(indexing(data), MOMENT)
+    indexed = refresh(indexing(data), MOMENT)
     assert indexed is not None
     assert indexed.report.whole
     assert pruned(indexed) == Pruned(
@@ -645,7 +648,7 @@ def test_an_index_interrupted_while_it_prunes_is_in_place(
     data: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Ctrl-C during the prune: the new index stays, as it was renamed in before."""
-    pruned(index_mirror(indexing(data), MOMENT))
+    pruned(refresh(indexing(data), MOMENT))
 
     def interrupted(*_: object) -> vector_store.Swept:
         raise KeyboardInterrupt
@@ -653,7 +656,7 @@ def test_an_index_interrupted_while_it_prunes_is_in_place(
     monkeypatch.setattr(vector_store.VectorStore, "prune", interrupted)
     later = MOMENT + timedelta(hours=1)
     with pytest.raises(KeyboardInterrupt):
-        index_mirror(indexing(data), later)
+        refresh(indexing(data), later)
     with reading(data / "index.sqlite") as reader:
         assert reader.built_at() == later
 
@@ -668,7 +671,7 @@ def kept_whole(data: Path) -> str:
 
 def test_a_damaged_evaluation_index_holds_the_prune_back(data: Path) -> None:
     """A page of its pieces overwritten: the file is named, and nothing is deleted."""
-    pruned(index_mirror(indexing(data), MOMENT))
+    pruned(refresh(indexing(data), MOMENT))
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     with closing(sqlite3.connect(windows)) as connection:
         root = connection.execute("SELECT rootpage FROM sqlite_master WHERE name = 'pieces'")
@@ -678,20 +681,20 @@ def test_a_damaged_evaluation_index_holds_the_prune_back(data: Path) -> None:
         file.seek((page_number - 1) * size)
         file.write(b"\xff" * size)
     other = kept_whole(data)
-    done = pruned(index_mirror(indexing(data), MOMENT))
+    done = pruned(refresh(indexing(data), MOMENT))
     assert (done.outcome, done.file, done.reason) == ("held back", str(windows), UNREADABLE)
     assert other in stored(data / "vectors.sqlite")
 
 
 def test_an_evaluation_index_through_a_link_keeps_its_vectors(data: Path) -> None:
     """Its folder a link to another place: the prune follows it, and keeps what it reads."""
-    pruned(index_mirror(indexing(data), MOMENT))
+    pruned(refresh(indexing(data), MOMENT))
     elsewhere = data.parent / "elsewhere"
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     elsewhere.mkdir()
     windows.parent.rename(elsewhere / "windows")
     windows.parent.symlink_to(elsewhere / "windows")
-    done = pruned(index_mirror(indexing(data), MOMENT))
+    done = pruned(refresh(indexing(data), MOMENT))
     assert done.outcome == "pruned"
     assert read_by(windows) <= stored(data / "vectors.sqlite")
 
@@ -699,12 +702,12 @@ def test_an_evaluation_index_through_a_link_keeps_its_vectors(data: Path) -> Non
 @pytest.mark.skipif(os.geteuid() == 0, reason="root lists every folder")
 def test_a_folder_that_cannot_be_listed_holds_the_prune_back(data: Path) -> None:
     """An index there would go unseen, and its vectors deleted: nothing is."""
-    pruned(index_mirror(indexing(data), MOMENT))
+    pruned(refresh(indexing(data), MOMENT))
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     other = kept_whole(data)
     windows.parent.chmod(0)
     try:
-        done = pruned(index_mirror(indexing(data), MOMENT))
+        done = pruned(refresh(indexing(data), MOMENT))
     finally:
         windows.parent.chmod(0o700)
     assert (done.outcome, done.file) == ("held back", str(data / "eval" / "indexes"))
@@ -713,7 +716,7 @@ def test_a_folder_that_cannot_be_listed_holds_the_prune_back(data: Path) -> None
 
 def test_an_index_by_words_alone_in_place_holds_the_prune_back(data: Path) -> None:
     """Renamed in by a lexical build since: it names no vector, so none is deleted."""
-    pruned(index_mirror(indexing(data), MOMENT))
+    pruned(refresh(indexing(data), MOMENT))
     other = kept_whole(data)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     evaluation = data / "eval" / "indexes"
@@ -724,10 +727,10 @@ def test_an_index_by_words_alone_in_place_holds_the_prune_back(data: Path) -> No
 
 def test_the_vectors_counted_kept_are_those_left_in_the_store(data: Path) -> None:
     """The store deleted since an evaluation: the index's vectors come back, not its own."""
-    pruned(index_mirror(indexing(data), MOMENT))
+    pruned(refresh(indexing(data), MOMENT))
     evaluated(data, data / "vectors.sqlite", "windows")
     (data / "vectors.sqlite").unlink()
-    done = pruned(index_mirror(indexing(data), MOMENT))
+    done = pruned(refresh(indexing(data), MOMENT))
     assert (done.kept, done.kept_for_evaluation) == (len(stored(data / "vectors.sqlite")), 0)
     assert done.kept == len(read_by(data / "index.sqlite"))
 
@@ -735,7 +738,7 @@ def test_the_vectors_counted_kept_are_those_left_in_the_store(data: Path) -> Non
 def test_a_store_made_before_023_is_said_not_to_shrink(data: Path) -> None:
     """Pruned, its space not given back, nor said to be: the summary says how to change it."""
     made_before_023(data / "vectors.sqlite")
-    indexed = index_mirror(indexing(data), MOMENT)
+    indexed = refresh(indexing(data), MOMENT)
     done = pruned(indexed)
     assert (done.outcome, done.shrinks, done.reclaimed) == ("pruned", False, False)
     assert indexed is not None
@@ -745,10 +748,10 @@ def test_a_store_made_before_023_is_said_not_to_shrink(data: Path) -> None:
 
 def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: MonkeyPatch) -> None:
     """Pruned, the space not reclaimed: the outcome holds why, and so does the summary."""
-    pruned(index_mirror(indexing(data), MOMENT))
+    pruned(refresh(indexing(data), MOMENT))
     swept = vector_store.Swept(1, 10, 8192, 8192, shrinks=True, unreclaimed="disk is full")
     monkeypatch.setattr(vector_store.VectorStore, "prune", lambda *_: swept)
-    indexed = index_mirror(indexing(data), MOMENT)
+    indexed = refresh(indexing(data), MOMENT)
     done = pruned(indexed)
     assert (done.outcome, done.reclaimed, done.reason) == ("pruned", False, "disk is full")
     assert indexed is not None
@@ -759,7 +762,7 @@ def test_pieces_that_the_endpoint_refused_do_not_hold_the_prune_back(data: Path)
     """They have no vector to keep: the build is whole enough, and the prune runs."""
     path = write(data / "docs", page("196845", "Rollback"), BODY)
     refused = Scripted(refused={"Rollback\nRelease\nThe deploy of the seller service."})
-    indexed = index_mirror(replace(indexing(data), endpoint=lambda: scripted(refused)), MOMENT)
+    indexed = refresh(replace(indexing(data), endpoint=lambda: scripted(refused)), MOMENT)
     assert indexed is not None
     assert indexed.report.unembedded == [path]
     assert pruned(indexed).outcome == "pruned"
@@ -767,9 +770,9 @@ def test_pieces_that_the_endpoint_refused_do_not_hold_the_prune_back(data: Path)
 
 def test_a_prune_gives_the_space_of_what_it_deleted_back(data: Path) -> None:
     """2,000 vectors the size of 1,024 float32 that no index reads: the store shrinks."""
-    pruned(index_mirror(indexing(data), MOMENT))
+    pruned(refresh(indexing(data), MOMENT))
     orphans = seeded(data / "vectors.sqlite", 2000)
-    done = pruned(index_mirror(indexing(data), MOMENT))
+    done = pruned(refresh(indexing(data), MOMENT))
     assert done.deleted == len(orphans)
     assert done.bytes_after < done.bytes_before
     assert (done.shrinks, done.reclaimed) == (True, True)

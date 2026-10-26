@@ -4,9 +4,10 @@ With an embedding, each piece of each section also gets its vector: from the vec
 store when it holds the piece's text, else from the model, then kept there. A piece
 whose text the model refuses has no vector, and its document is named. Reading the files
 and embedding are each a span; files and pieces are counted, as
-``docs/reference/telemetry/index.md`` lists it. ``index_mirror`` is the build that
-``index`` and ``sync`` run alike: it opens the endpoint, if any, then builds, then
-prunes the vector store to what the indexes on disk read.
+``docs/reference/telemetry/index.md`` lists it. ``refresh`` is what ``index`` and
+``sync`` run alike: ``index_mirror``'s build, which opens the endpoint, if any, then
+builds, followed by meaning by the prune of the vector store to what the indexes on
+disk read.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from __future__ import annotations
 import contextlib
 import sqlite3
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 import structlog
@@ -216,9 +217,7 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
     one, such as a full disk or a lock), the index in place stays, with its vectors,
     nothing is returned, and ``index.not_built`` is an error. Each file skipped and each
     piece that the endpoint refused is a warning, as is the count of files that the index
-    lacks. Built by meaning, the index is followed by a prune of the vector store, held
-    back when the build skipped a file or indexed no document, as the index then lacks
-    what the mirror still holds.
+    lacks.
     """
     log = structlog.get_logger()
     opened = None if indexing.endpoint is None else indexing.endpoint()
@@ -243,15 +242,24 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
         log.warning("index.piece_refused", path=path)
     if report.skipped:
         log.warning("index.lacks_files", count=len(report.skipped))
-    pruned = (
-        None
-        if embedding is None
-        else prune(
-            indexing.vectors,
-            indexing.index,
-            indexing.evaluation_indexes,
-            skipped=len(report.skipped),
-            documents=report.types.total(),
-        )
+    return Indexed(report, indexing.index, None if embedding is None else indexing.model)
+
+
+def refresh(indexing: Indexing, built_at: datetime) -> Indexed | None:
+    """Build the index as ``index_mirror`` does; then, by meaning, prune the vector store.
+
+    An index by words alone never opens the store, and prunes nothing. The prune holds
+    back after a build that skipped a file or indexed no document, as the index then
+    lacks what the mirror still holds.
+    """
+    indexed = index_mirror(indexing, built_at)
+    if indexed is None or indexed.model is None:
+        return indexed
+    pruned = prune(
+        indexing.vectors,
+        indexing.index,
+        indexing.evaluation_indexes,
+        skipped=len(indexed.report.skipped),
+        documents=indexed.report.types.total(),
     )
-    return Indexed(report, indexing.index, None if embedding is None else indexing.model, pruned)
+    return replace(indexed, pruned=pruned)
