@@ -413,9 +413,12 @@ def test_each_documented_command_line_of_the_program_parses(checkout: frozenset[
 
 def test_the_check_of_documented_commands_refuses_a_prefix_of_an_option() -> None:
     """The command's parser takes ``--dry`` for sync's ``--dry-run``; the check's does not."""
-    with pytest.raises(SystemExit) as stopped, contextlib.redirect_stderr(io.StringIO()):
+    assert parser().parse_args(["sync", "--dry"]).dry_run is True
+    said = io.StringIO()
+    with pytest.raises(SystemExit) as stopped, contextlib.redirect_stderr(said):
         parser(Unabbreviated).parse_args(["sync", "--dry"])
     assert stopped.value.code == ExitStatus.REFUSED
+    assert said.getvalue().endswith("unrecognized arguments: --dry\n")
 
 
 @pytest.mark.parametrize(
