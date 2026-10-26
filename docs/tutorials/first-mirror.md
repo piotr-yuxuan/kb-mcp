@@ -202,7 +202,8 @@ index: done
 ```
 
 On macOS, `sync` may not exit once its download is done: a known issue, which plan 013
-is to fix ([the roadmap](../work/README.md) lists the plans).
+is to diagnose and fix, parked for now
+([the roadmap](../work/README.md#plans) lists it).
 
 Look at what it wrote:
 
