@@ -8,7 +8,8 @@ runs in this program: it runs in llama.cpp's `llama-server`, a dependency of its
 which you install and start, as you do Ollama or whichever OpenAI-compatible API serves
 the embeddings, and which this program reaches on this machine alone, never elsewhere.
 
-Reranking is off by default until its measure on the user's machine says otherwise (below).
+Reranking is on by default, by the user's choice: without the server, searches still
+answer, in their own order, and say why; it can be turned off, and measured (below).
 
 ## Install llama.cpp
 
@@ -103,52 +104,150 @@ line also comes when the server lists another name than `rerank.model`. It exits
 saying what to run, when nothing answers, when the server is not a reranker, or when
 the unrelated passage scores as high as the answer.
 
-## Turn it on
+## On by default, and how to turn it off
 
-In the settings file:
+Reranking is on by default, by the user's choice (`rerank.enabled`, true). The MCP
+server reads the setting when it starts: restart your agent's server after a change.
+Searches and asks rerank the `rerank.depth` documents, 30 by default, that follow those
+that a query names by key or id, which stay first.
+
+Without the server, nothing fails, as without Ollama a search by meaning answers by
+words and says why. When llama-server is not running, the connection is refused at
+once: a search or an ask answers in its own order, and its header ends with why:
+
+```
+Not reranked: no answer from the reranking server (ConnectError); is it running? With llama.cpp: llama-server -m <model> --reranking --port 9931.
+```
+
+For the next 30 seconds, searches do not ask the server again, and answer at once with
+the same note. A server that is running but slow costs one search up to 30 seconds,
+then the same 30 seconds without asking. A refusal of one request (400, 413, 422 or
+500) is that request's: the next search asks again.
+
+To turn it off, in the settings file:
 
 ```toml
 [rerank]
-enabled = true
-depth = 30
+enabled = false
 ```
 
-Or for one run, `ATLASSIAN_OFFLINE_MCP_RERANK__ENABLED=true`. The MCP server reads it
-when it starts: restart your agent's server. Searches and asks then rerank the `depth`
-documents that follow those that a query names by key or id, which stay first. When the
-server fails, a search keeps its order and its answer says why ("Not reranked: ...");
-when the server itself failed, searches do not ask it again for 30 seconds.
+Or `ATLASSIAN_OFFLINE_MCP_RERANK__ENABLED=false` in the server's environment, or
+`--no-rerank` on the command that starts the server, which wins over both:
+
+```bash
+atlassian-offline-mcp serve --no-rerank
+```
+
+Off, the server never connects to the reranking server, and says when it starts that
+`rerank.url`, `rerank.model` or `rerank.depth`, if set, are not applied.
 
 `rerank.url` takes an address of this machine alone: any other is refused, and no flag
 allows one, so that the mirror's text stays here.
 
 ## Measure it
 
-Plan 022 fixed a bar before any run: reranking turns on by default, at the depth it
-gives, only if it significantly improves the first answer (MRR@10), loses little on
-questions that name things, and keeps a search within 5 seconds at the 95th percentile
-on the user's machine. The [explanation](../explanation/reranking.md) gives the bar in full.
+Plan 022 fixed a bar before any run: reranking at a depth is worth it if it
+significantly improves the first answer (MRR@10), loses little on questions that name
+things, and keeps a search within 5 seconds at the 95th percentile on the machine that
+serves agents. The [explanation](../explanation/reranking.md#the-bar-fixed-before-the-run)
+gives the bar in full, and
+[evaluating search](../explanation/search-evaluation.md#the-measures-on-one-worked-example)
+what each measure means. Two measures, of different cost, tell how reranking does on
+your machine and your questions.
 
-With [golden questions](golden-questions.md), Ollama serving the embeddings and the
-reranking server running:
+Both need [golden questions](golden-questions.md), the index built, Ollama serving the
+embedding model and the reranking server running. Check both servers first; each check
+says what to run when one does not answer:
+
+```bash
+atlassian-offline-mcp model check
+```
+
+```bash
+atlassian-offline-mcp reranker check
+```
+
+Each measure is then one command, which asks before it runs (`--yes` runs it at once,
+as a script does). It measures the settings' model, chunking and search mode, first
+not reranked, then reranked, and stops with exit 1, saying why, when a server does not
+answer or a search falls back, since a search not reranked would measure something
+else; a golden file or a sample refused exits 2. It writes a table to stdout and its
+results, ids and numbers only, never a question's text, to
+`<data>/eval/results/<UTC time>-rerank.json`: keep them to compare later runs. With
+`--format json`, the same comes as one JSON document, whose `decision.depth` is the
+bar's depth, or null when none qualifies.
+
+### Short: one depth, on a sample
+
+After changing the model, the server, its version or `rerank.depth`, to see whether
+reranking still helps and how long it takes here:
+
+```bash
+atlassian-offline-mcp eval-rerank ~/atlassian-offline-mcp/eval/golden.yaml --depth 30 --sample 20
+```
+
+It asks 20 questions, chosen by a fixed seed (`--seed` chooses another sample): each
+once in the order not reranked, then reranked at depth 30, 600 texts scored in all.
+One to two minutes on the user's machine by the estimate in the
+[explanation](../explanation/reranking.md#why-only-the-first-documents); on a laptop's
+CPU with llama.cpp 0.6.0, about 12 minutes, at 36 seconds a search.
+
+In its table, compare the row of depth 30 with the row `none`, group `all`, and with
+`--summary detailed` each group:
+
+- `Search, 95th`: within 5,000 ms, the bar's bound, on the machine that serves agents.
+  Past 30,000 ms, searches would give up on the server and answer in their own order:
+  lower `rerank.depth`, or turn reranking off.
+- `MRR@10` and `Success@1`: reranking should raise them. On 20 questions, a difference
+  smaller than about 0.12 may be chance either way; a larger fall is the sign to run
+  the long measure.
+- The rows of the groups `identifier` and `keyword`: a loss past 0.05 of MRR@10 is what
+  the bar refuses.
+- The line `Recall of the order not reranked`: at `@30`, the share of the expected
+  documents within the first 30 found, the most that reranking 30 can bring into the
+  first ten.
+
+It ends `No verdict: the bar decides on depths 10, 20, 30, 50 alone.`: only the long
+measure applies the bar.
+
+### Long: four depths, and the bar's verdict
+
+To decide, on this machine, whether reranking stays on, and at which depth:
 
 ```bash
 atlassian-offline-mcp eval-rerank ~/atlassian-offline-mcp/eval/golden.yaml
 ```
 
-It measures the setting's model, chunking and search mode, first not reranked, then
-reranked at depths 10, 20, 30 and 50, and writes a table, the bar's verdict on each
-depth and the results file (`<data>/eval/results/<time>-rerank.json`, numbers and ids
-only). `--depth`, repeated, measures other depths, on which the bar gives no verdict.
-The times are this machine's, so the run that decides is made on the machine that
-serves agents. [Evaluating search](../explanation/search-evaluation.md#measuring-reranking)
-gives the sandbox's run, the one that sets the defaults.
+Every question, not reranked, then reranked at depths 10, 20, 30 and 50, 110 texts
+scored for each question: 20 to 35 minutes for 105 questions on the user's machine by the
+estimate. On a laptop's CPU with llama.cpp 0.6.0, each depth took about an hour, and
+depth 50 could not end, one request passing the run's deadline of 300 seconds: the
+long measure is for the machine that serves agents.
+
+Under the table, a line for each depth gives each clause of the bar:
+
+```
+Depth <N>: MRR@10 adjusted p = <p>; gains <yes or no>; groups lose identifier <loss>, keyword <loss>, hold <yes or no>; within 5 s here <yes or no>
+```
+
+`gains` is clause 1, the MRR@10 higher with a Holm-adjusted p below 0.05; `hold`,
+clause 2, each group losing 0.05 at most; `within 5 s here`, clause 3, by this
+machine's times. Then, for the depths that qualify, each one's p-value against the
+best, and the last line, which says what to do:
+
+- `By the bar, with this machine's times: rerank N documents.`: set `rerank.depth` to
+  N, and keep reranking on.
+- `By the bar, with this machine's times: turn reranking off.`: no depth qualifies;
+  set `enabled = false`, unless you keep it on knowing that the bar was not met.
+
+The verdict holds for the model, the server's version, the golden questions and the
+machine it was measured with: measure again when one of them changes.
 
 ## Change the model
 
 Nothing that this program stores depends on the reranker, so no index is rebuilt: start
-`llama-server` with another file and its alias, set `rerank.model`, and run
-`eval-rerank` again, since the bar's verdict belongs to a model.
+`llama-server` with another file and its alias, set `rerank.model`, and measure again,
+short then long, since the bar's verdict belongs to a model.
 
 Any server that answers llama.cpp's rerank request at `/v1/rerank`, on this machine,
 should work; only `llama-server` is tested. Text Embeddings Inference answers another

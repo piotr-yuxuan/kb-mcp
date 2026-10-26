@@ -19,7 +19,11 @@ the server's own log file does, `serve-<start>-<pid>.jsonl` in `logs.dir`, by th
 warning `search.fallback`, and with telemetry on the counter `aom.serve.fallbacks`
 counts it ([serve](../reference/telemetry/serve.md)). Run `model check` before the runs,
 and look for `search.fallback` in those files after them. `search_mode = "lexical"`
-measures words alone.
+measures words alone. It also reranks by default, so the reranking server must be
+running ([reranking](reranking.md)); else answers keep their order and say "Not
+reranked", which the warning `rerank.fallback` and the counter `aom.rerank.fallbacks`
+record. Run `reranker check` before the runs too; `enabled = false` under `[rerank]`
+measures without reranking.
 
 ## Prepare the runs
 

@@ -420,7 +420,8 @@ its numbers: the golden file's SHA-256, models, chunkings, measures of `search` 
 `ask`, costs, ranks and tests, by question id, never a question's text, and for each
 model the chunking that plan 019's rule chooses. `results/<UTC time>-rerank.json` are
 `eval-rerank`'s (plan 022): the golden file's SHA-256, the mode, the models, the
-chunking and the ids that the reranking server lists; for each depth, 0 for the order
+chunking, the ids that the reranking server lists, and the sample, its number of
+questions and its seed, or `null` for every question; for each depth, 0 for the order
 not reranked, the measures of `search` and of `ask` by group, the times, the tokens and
 the ranks by question id, and for depth 0 Recall@N at each depth measured; then the
 bar's verdicts and the depth it chooses, or `null` when the depths measured are not

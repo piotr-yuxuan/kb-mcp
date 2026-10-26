@@ -3,9 +3,10 @@
 Search finds documents in two stages when reranking is on. The first is this program's
 own, by words, by meaning or both; the second sends the first documents it found, with
 the question, to a reranking server on this machine, and shows them in the order of the
-server's scores. Plan 022 added it, with a bar for turning it on by default written
-before any run. It stays off until the run on the user's machine, the machine that serves
-agents, says otherwise. [The how-to](../how-to/reranking.md) sets it up.
+server's scores. Plan 022 added it, with a bar written before any run, and it is on by
+default, by the user's choice: the bar's verdict, measured on the machine that serves
+agents, tells whether to keep it there, and at which depth.
+[The how-to](../how-to/reranking.md) sets it up, turns it off and measures it.
 
 ## Two ways a model can read a question
 
@@ -36,7 +37,7 @@ first stage's.
 
 Scoring every document of the mirror for each question would take hours. So the first
 stage chooses, and the reranker reorders the first `rerank.depth` documents it found,
-30 until the bar decides; the rest follow in their order.
+30 by default; the rest follow in their order.
 
 - **The first stage sets the ceiling.** A document that the first stage puts past the
   depth is never scored, so reranking cannot bring it into the first ten. Recall@N, the
@@ -77,6 +78,15 @@ searches do not ask; a refusal (400, 413, 422 or 500) is the request's, not the
 server's, so the next search asks again. [Telemetry](../reference/telemetry/serve.md)
 counts each search not reranked, by why.
 
+Since reranking is on by default, the server is a dependency of the defaults, as Ollama
+is, and is treated alike: neither is checked when the MCP server starts, and neither
+stops a search. Without llama-server, the connection is refused at once, so a search
+costs no wait, and for the next 30 seconds none asks again; without Ollama, a search
+by meaning ranks by words, saying why, and none asks again for as long. A server that
+answers too slowly costs more: one search waits its 30 seconds, then the next ones go
+without for 30. Where no reranking server will run, turning reranking off spares the
+note on every answer.
+
 ## The bar, fixed before the run
 
 "Data-driven inspires me confidence", the user said: the defaults follow a rule
@@ -91,8 +101,10 @@ written before any measure, applied by `eval-rerank` on the golden questions to 
 3. on the user's machine, a search with it takes at most 5 seconds at the 95th percentile.
 
 Among the depths that qualify, the smallest whose MRR@10 is not shown lower than the
-best's (the same test, p of 0.05 or more) becomes `rerank.depth`, and
-`rerank.enabled` turns true. If none qualifies, reranking stays off by default. Values
+best's (the same test, p of 0.05 or more) is the depth to set as `rerank.depth`. If
+none qualifies, `eval-rerank` says to turn reranking off. The bar was written to decide
+the default; the user then chose reranking on by default, so its verdict is now advice
+for the machine measured. Values
 compare as reported: means to three decimals, a group's loss as the difference of its
 two means so shown, p-values to four decimals, times in whole milliseconds. A loss of
 0.050 qualifies, 0.051 does not; a group that the golden questions do not name has no
@@ -117,8 +129,8 @@ loss to show, and `eval-rerank` says `n/a`.
   small and written with its questions. "Not significant" means not shown.
 - **Which machine decides.** Ranks are the same on every machine; times are not. A run
   elsewhere reads clause 3 by its own times, and says so: its clauses 1 and 2 hold for
-  every machine, its verdict for that machine alone. The user's machine's run sets the
-  defaults.
+  every machine, its verdict for that machine alone. The user's machine's run tells whether
+  reranking stays on there.
 
 Evidence@ask is reported beside, not a clause: under `ask`'s fixed budget it follows
 the order that MRR@10 measures, and a further noisy clause would refuse more harmless

@@ -363,6 +363,36 @@ Knowing these numbers, the maintainer made `windows` and hybrid search the defau
 (plan 025), as ranking matters more to them than speed. The rules and their verdicts
 above stay as written: what changed is the choice made after them, the maintainer's.
 
+### Plan 022: reranking, on a laptop
+
+The same questions and defaults, hybrid search over `windows`, on 2026-10-26, reranked
+by Qwen3-Reranker-0.6B through llama.cpp 0.6.0 on this laptop's CPU, one depth a run
+as the machine was shared ([reranking](reranking.md) explains the bar):
+
+| Depth | MRR@10 | Identifier | Keyword | Success@1 | Evidence@ask | Search, median | Search, 95th |
+|---|---|---|---|---|---|---|---|
+| none | 0.639 | 0.674 | 0.855 | 0.505 | 0.357 | 173 ms | 244 ms |
+| 10 | 0.542 | 0.664 | 0.650 | 0.362 | 0.357 | 28,956 ms | 41,276 ms |
+| 20 | 0.557 | 0.643 | 0.665 | 0.390 | 0.386 | 36,514 ms | 60,373 ms |
+| 30 | 0.554 | 0.636 | 0.664 | 0.390 | 0.395 | 36,257 ms | 77,230 ms |
+
+Every depth measured ranked worse than the order not reranked: MRR@10 fell by 0.082 to
+0.097, with paired tests' p of 0.013, 0.0569 and 0.0526 at depths 10, 20 and 30,
+before Holm's correction over the four depths. Keyword questions lost most, about 0.2:
+their words had already put the answer first. Looking at questions whose answer lost
+first place, the order follows the scores, and a text scores the same alone as beside
+another, so neither the program nor batching is at fault: the model scores many
+passages on the subject near 1 without their answering, such as an incident report at
+0.9996 above the page that answers at 0.9985. Evidence@ask rose a little at 20 and 30
+(0.386 and 0.395 against 0.357), untested. Depth 50 could not be measured: after 50
+questions, a request passed the run's deadline of 300 seconds three times.
+
+So no depth met the bar here: clauses 1 and 2, which hold for any machine, failed at
+10, 20 and 30, and clause 3, by this laptop's times, at every depth. The user chose
+reranking on by default all the same, with a way to turn it off, and a measure to run
+on the machine that serves agents: a GPU, a later llama.cpp or another model may change
+the times, the scores of another corpus the ranks.
+
 ### What these runs show, and what they do not
 
 - **Meaning finds more.** In every run, search by meaning raised recall (from 0.78 to
@@ -542,11 +572,11 @@ can be run on them.
 
 ### Measuring reranking
 
-Plan 022's bar decides whether reranking is on by default, and at which depth
-([reranking](reranking.md#the-bar-fixed-before-the-run)). With the sandbox's data
-directory as above, Ollama running with the model, and the reranking server started as
-[the how-to](../how-to/reranking.md#start-the-server) starts it, at its address and
-under its alias, which are the settings' defaults:
+Plan 022's bar says whether reranking is worth keeping on a machine, and at which
+depth ([reranking](reranking.md#the-bar-fixed-before-the-run)); the user chose it on by
+default. With the sandbox's data directory as above, Ollama running with the model, and
+the reranking server started as [the how-to](../how-to/reranking.md#start-the-server)
+starts it, at its address and under its alias, which are the settings' defaults:
 
 ```bash
 uv run atlassian-offline-mcp reranker check --config <missing-file>
@@ -560,13 +590,15 @@ It measures the defaults, hybrid search over `windows` with `qwen3-embedding:0.6
 first not reranked, then reranked at depths 10, 20, 30 and 50: 110 texts scored for
 each of the 105 questions, 2.6 to 4.6 million tokens. By the estimate in
 [reranking](reranking.md#why-only-the-first-documents), that takes about 20 to 35
-minutes on the user's machine; at the 85 tokens a second of llama.cpp 0.6.0 on a laptop's
-CPU, 8 to 15 hours. The output has a table with a row per depth, `none` the order not
-reranked, the first stage's Recall@N, a line per depth with each clause's verdict and
-each group's loss, each qualifying depth's p-value against the best, and the bar's
-last line, `By the bar, with this machine's times: rerank N documents.` or `...:
-reranking stays off.` Its third clause reads the times of the machine that ran it:
-only the user's machine's run sets the defaults.
+minutes on the user's machine; on a laptop's CPU with llama.cpp 0.6.0, depths 10, 20 and 30
+took 50, 64 and 74 minutes, a run each, and depth 50 could not end. The output has a
+table with a row per depth, `none` the order not reranked, the first stage's Recall@N,
+a line per depth with each clause's verdict and each group's loss, each qualifying
+depth's p-value against the best, and the bar's last line, `By the bar, with this machine's times: rerank N documents.` or `...: turn
+reranking off.` Its third clause reads the times of the machine that ran it: only the
+user's machine's run tells whether reranking stays on there.
+[The how-to](../how-to/reranking.md#measure-it) also gives a short measure, one depth
+on a sample of the questions, and what to check in each.
 
 On another machine, copy the data directory there: the sandbox's content is invented.
 Its `vectors.sqlite` spares the embedding when Ollama there lists the same digest for
