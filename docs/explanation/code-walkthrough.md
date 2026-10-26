@@ -86,7 +86,7 @@ Then what sync cannot run with. Its
 [`SOURCES`](../../src/atlassian_offline_mcp/cli/domain/sync.py), and refuses the first of
 these that it finds: a source that `--include` names and the settings do not configure;
 nothing to sync, no source being both configured and chosen; an embedding endpoint off
-this machine without `--allow-remote-embeddings`
+this machine without `--allow-remote-embeddings`, or over plain http even with it
 ([`endpoint_by_meaning`](../../src/atlassian_offline_mcp/cli/options/_common.py)), except
 in a dry run, which builds no index; and, with Confluence or Jira taken, a site not set
 ([`site_not_set`](../../src/atlassian_offline_mcp/cli/options/_common.py)), an API token
