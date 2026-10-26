@@ -13,6 +13,7 @@ guide to embeddings pull the model that the settings default to.
 
 from __future__ import annotations
 
+import argparse
 import ast
 import contextlib
 import io
@@ -23,7 +24,7 @@ import shlex
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple, override
 from urllib.parse import unquote, urlsplit
 
 import pytest
@@ -32,6 +33,7 @@ from mcp.client.stdio import StdioServerParameters
 
 from atlassian_offline_mcp.cli.main import parser
 from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from tests.test_serve import talk
 
 if TYPE_CHECKING:
@@ -115,6 +117,20 @@ class Page(NamedTuple):
 
     links: list[Link]
     anchors: frozenset[str]
+
+
+class Unabbreviated(argparse.ArgumentParser):
+    """A parser that takes an option by its whole name alone, never by a prefix of it.
+
+    argparse gives each subcommand's parser the class of its parent, so that no level of
+    the command takes a prefix: a flag renamed by extension, as ``--since`` would be to
+    ``--since-date``, fails each page that still writes the old name.
+    """
+
+    @override
+    def __init__(self, *arguments: Any, **keywords: Any) -> None:
+        """Build the parser as argparse does, with abbreviations refused."""
+        super().__init__(*arguments, **{**keywords, "allow_abbrev": False})
 
 
 @pytest.fixture(scope="module")
@@ -323,11 +339,12 @@ def test_each_documented_command_line_of_the_program_parses(checkout: frozenset[
 
     Continuations joined, words split as a shell does, a comment left out, the arguments
     that ``program_arguments`` finds in each command of a line parse with the command's
-    own parser, no arguments meaning ``serve``; --help and --version exit 0, which
-    passes. A line is refused when the shell could not split it, or when a command of it
-    names the program in a form that ``program_arguments`` does not read, so that no
-    such form is passed unread. A console block that names the program is refused
-    outside the tutorial of a first change, whose subcommand no commit declares.
+    own parser, no prefix taken for an option, no arguments meaning ``serve``; --help
+    and --version exit 0, which passes. A line is refused when the shell could not split
+    it, or when a command of it names the program in a form that ``program_arguments``
+    does not read, so that no such form is passed unread. A console block that names the
+    program is refused outside the tutorial of a first change, whose subcommand no commit
+    declares.
     """
     refused = []
     checked: Counter[str] = Counter()
@@ -361,12 +378,19 @@ def test_each_documented_command_line_of_the_program_parses(checkout: frozenset[
                         contextlib.redirect_stdout(io.StringIO()),
                         contextlib.redirect_stderr(said),
                     ):
-                        parser().parse_args(arguments or ["serve"])
+                        parser(Unabbreviated).parse_args(arguments or ["serve"])
                 except SystemExit as stopped:
                     if stopped.code != 0:
                         refused.append(f"{page}:{line}: {said.getvalue().splitlines()[-1]}")
     assert refused == []
     assert [page for page in PAGES if not checked[page]] == []
+
+
+def test_the_check_of_documented_commands_refuses_a_prefix_of_an_option() -> None:
+    """The command's parser takes ``--dry`` for sync's ``--dry-run``; the check's does not."""
+    with pytest.raises(SystemExit) as stopped, contextlib.redirect_stderr(io.StringIO()):
+        parser(Unabbreviated).parse_args(["sync", "--dry"])
+    assert stopped.value.code == ExitStatus.REFUSED
 
 
 def test_each_page_that_names_ollama_says_that_any_openai_compatible_api_works(
