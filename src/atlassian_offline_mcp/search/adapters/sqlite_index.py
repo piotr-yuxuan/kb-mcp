@@ -282,20 +282,24 @@ def indexes_in(folder: Path) -> list[Path]:
     """List the indexes under a folder, at any depth, in order; none if it does not exist.
 
     A prune must see each, or it deletes the vectors that it reads: a folder that cannot
-    be reached or listed, and a link, which is not followed, raise OSError naming it. The
-    file of a build is no index: ``building`` makes it empty, renames it into place once
-    complete, and a build killed before its end leaves it behind.
+    be reached or listed, an entry below the folder that is a link, which is not
+    followed, and a parent that is a dangling link, as to a disk away, raise OSError
+    naming it; the folder itself and its parent may be links. Only regular files are
+    indexes, and the file of a build is none: ``building`` makes it empty, renames it
+    into place once complete, and a build killed before its end leaves it behind.
     """
     try:
         folder.lstat()
     except FileNotFoundError:
+        if folder.parent.is_symlink() and not folder.parent.exists():
+            raise
         return []
     errors: list[OSError] = []
     found: list[Path] = []
     for root, _folders, names in folder.walk(on_error=errors.append):
         paths = [root / name for name in names]
         errors += [OSError(errno.ELOOP, LINK, str(path)) for path in paths if path.is_symlink()]
-        found += [path for path in paths if path.suffix == ".sqlite"]
+        found += [path for path in paths if path.suffix == ".sqlite" and path.is_file()]
     if errors:
         raise errors[0]
     return sorted(path for path in found if not path.name.startswith(BUILDING))

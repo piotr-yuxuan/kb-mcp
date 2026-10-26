@@ -73,10 +73,44 @@ def test_the_indexes_under_a_folder_leave_builds_out(tmp_path: Path) -> None:
         path.write_bytes(b"")
     assert indexes_in(folder) == sorted(wanted)
     assert indexes_in(tmp_path / "missing") == []
-    (folder / "linked").symlink_to(folder / "sections")
+
+
+@pytest.mark.parametrize("target", ["sections", "sections/tiny.sqlite", "gone"])
+def test_a_link_below_the_folder_is_named_and_not_followed(tmp_path: Path, target: str) -> None:
+    """To a folder, to an index, dangling: each raises, naming the link, lest a cycle not end."""
+    folder = tmp_path / "indexes"
+    (folder / "sections").mkdir(parents=True)
+    (folder / "sections" / "tiny.sqlite").write_bytes(b"")
+    (folder / "linked").symlink_to(folder / target)
     with pytest.raises(OSError, match="a link, which is not followed") as raised:
         indexes_in(folder)
     assert raised.value.filename == str(folder / "linked")
+
+
+def test_the_folder_and_its_parent_may_be_links_but_not_dangling_ones(tmp_path: Path) -> None:
+    """Reached through links, the indexes are listed; a parent whose target is gone raises."""
+    disk = tmp_path / "disk"
+    (disk / "indexes" / "sections").mkdir(parents=True)
+    (disk / "indexes" / "sections" / "tiny.sqlite").write_bytes(b"")
+    (tmp_path / "eval").symlink_to(disk)
+    listed = [tmp_path / "eval" / "indexes" / "sections" / "tiny.sqlite"]
+    assert indexes_in(tmp_path / "eval" / "indexes") == listed
+    (tmp_path / "top").symlink_to(disk / "indexes")
+    assert indexes_in(tmp_path / "top") == [tmp_path / "top" / "sections" / "tiny.sqlite"]
+    (disk / "indexes").rename(disk / "elsewhere")
+    assert indexes_in(tmp_path / "eval" / "indexes") == []
+    disk.rename(tmp_path / "away")
+    with pytest.raises(FileNotFoundError):
+        indexes_in(tmp_path / "eval" / "indexes")
+
+
+def test_only_regular_files_are_indexes(tmp_path: Path) -> None:
+    """A FIFO named as an index is none: reading it would block the prune, and the lock."""
+    folder = tmp_path / "indexes"
+    folder.mkdir()
+    os.mkfifo(folder / "x.sqlite")
+    (folder / "tiny.sqlite").write_bytes(b"")
+    assert indexes_in(folder) == [folder / "tiny.sqlite"]
 
 
 @pytest.fixture
@@ -716,6 +750,24 @@ def test_a_dangling_link_among_the_evaluation_s_indexes_holds_the_prune_back(
     other = kept_whole(data)
     done = pruned(refresh(indexing(data), MOMENT))
     assert (done.outcome, done.file) == ("held back", str(folder / "windows"))
+    assert other in stored(data / "vectors.sqlite")
+
+
+def test_an_evaluation_folder_on_a_disk_away_holds_the_prune_back(data: Path) -> None:
+    """<data>/eval a link whose target is gone: its indexes unseen, nothing is deleted."""
+    pruned(refresh(indexing(data), MOMENT))
+    evaluated(data, data / "vectors.sqlite", "windows")
+    (data / "eval").rename(data.parent / "disk")
+    (data / "eval").symlink_to(data.parent / "disk")
+    pruned(refresh(indexing(data), MOMENT))
+    (data.parent / "disk").rename(data.parent / "away")
+    other = kept_whole(data)
+    done = pruned(refresh(indexing(data), MOMENT))
+    assert (done.outcome, done.file, done.reason) == (
+        "held back",
+        str(data / "eval" / "indexes"),
+        UNLISTED,
+    )
     assert other in stored(data / "vectors.sqlite")
 
 

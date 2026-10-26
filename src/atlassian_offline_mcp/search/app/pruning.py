@@ -43,9 +43,9 @@ UNREADABLE = (
     " chunking, or delete it"
 )
 UNLISTED = (
-    "it cannot be reached or listed, or it is a link, which is not followed: make it"
-    " readable, or put the folder in place of the link; deleting it would let the next prune"
-    " delete the vectors of the indexes it holds"
+    "it cannot be reached or listed, or it is a link below the evaluation's folder, which"
+    " is not followed: make it readable, or put what it points to in its place; deleting it"
+    " would let the next prune delete the vectors of the indexes it holds"
 )
 # How each outcome is said: its level, its event and the fields of its event.
 SAID: dict[Outcome, tuple[str, str, tuple[str, ...]]] = {

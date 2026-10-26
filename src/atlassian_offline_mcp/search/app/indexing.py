@@ -6,8 +6,8 @@ whose text the model refuses has no vector, and its document is named. Reading t
 and embedding are each a span; files and pieces are counted, as
 ``docs/reference/telemetry/index.md`` lists it. ``refresh`` is what ``index`` and
 ``sync`` run alike: ``index_mirror``'s build, which opens the endpoint, if any, then
-builds, followed by meaning by the prune of the vector store to what the indexes on
-disk read.
+builds; then, for an index by meaning, the prune of the vector store to what the indexes
+on disk read.
 """
 
 from __future__ import annotations
@@ -109,8 +109,8 @@ class Indexing:
 class Indexed:
     """What a build did, the index it wrote, and the model that embedded, None by words alone.
 
-    ``pruned`` says what the prune of the vector store that followed did, None by words
-    alone, which never opens the store.
+    ``pruned`` says what the prune of the vector store that followed did: None by words
+    alone, which never opens the store, and from ``index_mirror``, which does not prune.
     """
 
     report: Report
