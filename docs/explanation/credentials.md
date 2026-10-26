@@ -142,9 +142,10 @@ redirect is never followed
 
 ## On the wire
 
-Every request to the site goes through one port,
-[`Site`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py), with the
-same rules whichever way the run signs in:
+Every request that the program makes with the saved session or the token goes through
+one port, [`Site`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py),
+with the same rules whichever way the run signs in; the one other request that it makes
+to the site, `doctor`'s, carries neither, as the end of this section says:
 
 - **GET alone.** The port makes no other request, so the program changes nothing on the
   site, whatever its account may do
@@ -180,7 +181,9 @@ The trust store is the wire's one opening onto what requests carry. Where a comp
 inspects TLS, the operating system trusts its proxy's certificate, and the proxy reads
 every request, the cookies and the token's header included. `doctor` says whether the
 public certificate authorities verify the site, which they do not where TLS is inspected
-([`verified_by_public_cas`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py)).
+([`verified_by_public_cas`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py)),
+by a GET of its own, outside `Site`: on a client that trusts certifi's bundle of those
+authorities alone, and that carries no cookie and no token.
 
 ## What agents get
 
