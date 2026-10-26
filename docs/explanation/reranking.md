@@ -62,8 +62,10 @@ stage chooses, and the reranker reorders the first `rerank.depth` documents it f
 - **The next page keeps the order.** A cursor carries the order the first page gave,
   one character per document reranked, so a next page asks nothing: a second request
   would cost the time again, could fail where the first did not, and near-ties may come
-  back swapped. If the first stage has since changed, the cursor is refused, and the
-  agent searches again.
+  back swapped. A cursor names the index's build, so a rebuilt index refuses it, as it
+  refuses any cursor; within one build, the order applies to as many documents as it
+  holds, and one longer than the documents now found is refused: the agent searches
+  again.
 
 ## When the server fails
 

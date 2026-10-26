@@ -9,8 +9,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 from mcp.client.stdio import StdioServerParameters
+from opentelemetry import trace
 
 from atlassian_offline_mcp.kernel.reranking import LONGEST_TEXT, MOST_TEXTS
+from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.search.adapters.reranking import Reranked, RerankError
 from atlassian_offline_mcp.search.app.indexing import build_index
@@ -25,7 +27,10 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    from _pytest.monkeypatch import MonkeyPatch
     from _pytest.tempdir import TempPathFactory
+
+    from tests.conftest import InMemory
 
 QUERY = "release rollback"
 DEPTH = 4
@@ -35,6 +40,7 @@ PAGES = 6
 LONG = "Lorem ipsum dolor sit amet. " * 160  # 4,480 characters
 DOWN = "no answer from the reranking server (ConnectError); is it running?"
 REFUSED = "qwen3-reranker-0.6b: the reranking server answered 400"
+SMALL_BUDGET = 300  # estimated tokens of an answer: a few passages a page
 
 
 def body(number: int) -> str:
@@ -189,6 +195,34 @@ def test_a_refusal_is_the_request_s_and_the_next_search_asks_again(root: Path) -
     assert order(served) == expected(root, order(library(root, None)))
 
 
+def reranked_said(served: Library, telemetry: InMemory) -> object:
+    """Search within a call's span, as the SDK opens one; give its ``aom.reranked``."""
+    telemetry.spans.clear()
+    with trace.get_tracer(__name__).start_as_current_span("tools/call search"):
+        served.search(QUERY)
+    (call,) = (
+        span for span in telemetry.spans.get_finished_spans() if span.name == "tools/call search"
+    )
+    return (call.attributes or {}).get("aom.reranked")
+
+
+def test_the_call_s_span_says_reranked_and_the_counter_why_not(
+    root: Path, telemetry: InMemory
+) -> None:
+    """Reranked: true; then not, counted by the failure's kind, then quiet within 30 s."""
+    scorer = Scripted()
+    served = library(root, Reranking(scorer, DEPTH, clock=lambda: 0.0))
+    assert reranked_said(served, telemetry) is True
+    scorer.failing = RerankError(DOWN, "unanswered")
+    assert [reranked_said(served, telemetry) for _ in range(2)] == [False, False]
+    counted = {
+        point.attributes["aom.rerank.fallback"]: point.value
+        for point in telemetry.measured()["aom.rerank.fallbacks"].data.data_points
+        if point.attributes
+    }
+    assert counted == {"unanswered": 1, "quiet": 1}
+
+
 def pages(served: Library, answer: str) -> list[str]:
     """Follow an answer's cursors to its end; give every title, in order."""
     found = titles(answer)
@@ -206,6 +240,20 @@ def test_a_cursor_carries_the_order_and_its_pages_ask_nothing(root: Path) -> Non
     every = pages(served, first)
     assert every == titles(library(root, Reranking(Scripted(), DEPTH)).search(QUERY, limit=50))
     assert len(every) == len(set(every))
+    assert len(scorer.asked) == 1
+
+
+def test_ask_s_cursor_carries_the_order_too(root: Path, monkeypatch: MonkeyPatch) -> None:
+    """Pages of a small budget: every document, in the reranked order, once; one request."""
+    monkeypatch.setattr(responses, "BUDGET", SMALL_BUDGET)
+    wanted = [title(root, path) for path in expected(root, order(library(root, None)))]
+    scorer = Scripted()
+    served = library(root, Reranking(scorer, DEPTH))
+    first = served.ask(QUERY)
+    scorer.failing = RerankError(DOWN, "unanswered")
+    every = [line.split(" | ")[0] for line in pages(served, first)]
+    assert len(titles(first)) < len(every)
+    assert every == wanted
     assert len(scorer.asked) == 1
 
 
