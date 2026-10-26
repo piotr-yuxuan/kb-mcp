@@ -83,14 +83,17 @@ before anything is written.
 Then what sync cannot run with. Its
 [`refused`](../../src/atlassian_offline_mcp/cli/options/sync.py) takes the sources by
 [`chosen`](../../src/atlassian_offline_mcp/cli/domain/sync.py), from the three records of
-[`SOURCES`](../../src/atlassian_offline_mcp/cli/domain/sync.py), and refuses a site not set
+[`SOURCES`](../../src/atlassian_offline_mcp/cli/domain/sync.py), and refuses the first of
+these that it finds: a source that `--include` names and the settings do not configure;
+nothing to sync, no source being both configured and chosen; an embedding endpoint off
+this machine without `--allow-remote-embeddings`
+([`endpoint_by_meaning`](../../src/atlassian_offline_mcp/cli/options/_common.py)), except
+in a dry run, which builds no index; and, with Confluence or Jira taken, a site not set
 ([`site_not_set`](../../src/atlassian_offline_mcp/cli/options/_common.py)), an API token
 without its email
-([`token_without_email`](../../src/atlassian_offline_mcp/cli/options/_common.py)), an
+([`token_without_email`](../../src/atlassian_offline_mcp/cli/options/_common.py)) or an
 option of the period that does not read
-([`period_refused`](../../src/atlassian_offline_mcp/cli/options/download.py)), and an
-embedding endpoint off this machine without `--allow-remote-embeddings`
-([`endpoint_by_meaning`](../../src/atlassian_offline_mcp/cli/options/_common.py)); `enter`
+([`period_refused`](../../src/atlassian_offline_mcp/cli/options/download.py)). `enter`
 adds pandoc missing from `PATH`. Each is exit 2, said on stderr alone: no run has
 started, so there is no log file.
 
@@ -284,8 +287,9 @@ users and listings into a
 [`place`](../../src/atlassian_offline_mcp/mirror/app/mirror.py) reads the newest snapshot
 of each document
 ([`RawStore.latest`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py)),
-leaves out those confirmed gone, and names each one's file by
-[`confluence_path`](../../src/atlassian_offline_mcp/mirror/domain/mirror_layout.py): the
+leaves out those confirmed gone, unless a listing taken since names them again, puts a
+page or a post in the space whose freshest listing names it, and names each one's file
+by [`confluence_path`](../../src/atlassian_offline_mcp/mirror/domain/mirror_layout.py): the
 space's key, then the id and the title's
 [`slug`](../../src/atlassian_offline_mcp/mirror/domain/mirror_layout.py).
 
@@ -319,8 +323,13 @@ A document whose conversion fails is reported by its place in the store, and the
 go on. The space's tree, `_tree.md`, is written from the listings
 ([`Catalogue.tree`](../../src/atlassian_offline_mcp/mirror/domain/catalogue.py)). Last,
 [`sync`](../../src/atlassian_offline_mcp/mirror/adapters/mirror_files.py) writes each file
-whose bytes differ, through a hidden file renamed into place, and, when nothing was
-reported, removes the files of documents gone.
+whose bytes differ, through a hidden file renamed into place. Then, when nothing was
+reported, it removes every file that it owns
+([`owned`](../../src/atlassian_offline_mcp/mirror/adapters/mirror_files.py): documents,
+trees and assets) and no longer wants, such as the file of a document gone or moved, or
+the old name of one whose title changed. When something was reported, it removes only
+the files of documents confirmed gone, and the old file of a document that moved once
+its new file is built, so that the last good copy of every other stays.
 
 ### 8. Pieces and their embeddings
 
