@@ -11,7 +11,7 @@ so that the next person to weigh it knows what was paid.
 
 Every request to the site is a GET, and nothing is ever written to Confluence or Jira.
 [`Site`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py), the one
-port to the site, builds no other request ([`Site.once`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py)),
+port for the session and the token, builds no other request ([`Site.once`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py)),
 and the server's tools are read-only too.
 
 - **Why.** A mirror needs nothing more, and a program that only reads can do the site no

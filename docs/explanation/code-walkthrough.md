@@ -173,7 +173,7 @@ header goes to the site's host alone
 
 Every request then goes through
 [`Site`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py), the one port
-to the site, and is a [`Request`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py):
+for the session and the token, and is a [`Request`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py):
 a path on the site and its parameters, with no host to send the sign-in elsewhere.
 [`Site.json`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py) and
 [`Site.file`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py) call
