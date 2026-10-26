@@ -105,7 +105,9 @@ run asks again for whatever failed before.
   [`StoreBusyError`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py).
   A snapshot is written into a hidden folder and renamed into place
   ([`RawStore.put`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py)):
-  complete or absent, and never written again.
+  complete or absent. Its responses are never written again; its record gains the files
+  that a later run fetches, such as one that failed
+  ([`RawStore.add_blobs`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py)).
 - **One document's failure** is counted, logged with its id, and skipped; the run goes
   on. A response that its adapter refuses is stored all the same, raw, for a fixed
   adapter to read. Only ten GETs in a row without an answer

@@ -211,7 +211,9 @@ decides: updated within the period, and its revision not stored
 it is fetched, by the GETs of
 [`snapshot_requests`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/confluence_v2.py):
 the page in its storage format with its labels, the page as the site renders it, and
-its attachments.
+its attachments. Updated within the period and its revision stored,
+[`Download.complete`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
+fetches only the files that its snapshot should have and lacks.
 
 Once the space is listed,
 [`Download.probe_absent`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
@@ -272,9 +274,14 @@ stores the responses exactly as received. It reads only the id and the revision,
 which also checks that the view is of the page's version, as two GETs may straddle an
 edit; writes each response and the store's record into a hidden folder; and renames it
 to `<data>/raw/confluence/pages/<id>/<revision>/`, so that a snapshot is complete or
-absent. A revision stored is never written again: the next run's
+absent. Its responses are never written again: the next run's
 [`RawStore.has`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py)
-finds it and fetches nothing. The layout: [snapshots](../reference/data-layout.md#snapshots).
+finds the revision and asks for none of them. Its files may still grow:
+[`Download.complete`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
+downloads the kept files that the snapshot lacks, one that failed, say, and adds them to
+its record
+([`RawStore.add_blobs`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py)).
+The layout: [snapshots](../reference/data-layout.md#snapshots).
 
 ### 7. HTML, pandoc and front matter
 
