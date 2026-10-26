@@ -45,7 +45,7 @@ from the site.
   `sync`, a catch-up from the last run's time, which would leave a lasting hole after a
   run that failed. A refresh started from an MCP tool, after the user's approval, is
   planned (009), not built.
-- **Settled** by the programme with the user, before plan 001; catching up without
+- **Settled** by the programme with the maintainer, before plan 001; catching up without
   dates by [plan 007](../work/changelog/007-incremental-refresh.md#decisions); `sync` by
   [plan 017](../work/changelog/017-modular-sources.md#what-sync-does).
 
@@ -82,7 +82,7 @@ takes the token when one is set, else the session.
 the mirror, the index and the vectors are all derived from it, offline.
 
 - **Why.** The site's responses and HTML "can and will unexpectedly change", in the
-  user's words. A response that a change breaks is still stored
+  maintainer's words. A response that a change breaks is still stored
   ([`Download.keep`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
   stores a snapshot that its adapter refuses), and once the adapter is fixed, `mirror`
   reads it again without fetching anything. A fix to the conversion is a rebuild, never
@@ -116,7 +116,7 @@ naming its path, never its value.
   missing; models of the site's JSON in Pydantic, which plan 015 left for later, if at
   all.
 - **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions), at the
-  user's request.
+  maintainer's request.
 
 ## Markdown beside MCP
 
@@ -152,7 +152,7 @@ Words are indexed by SQLite's full-text engine, FTS5, in one file,
   hand, and every `index` reads the whole mirror again.
 - **Rejected.** The Porter stemmer, which knows English alone where the content mixes
   English and French ([plan 011](../work/changelog/011-search-strategies.md#deliberately-not-done)).
-  No plan weighed another engine: the programme settled FTS5 with the user.
+  No plan weighed another engine: the programme settled FTS5 with the maintainer.
 - **Settled** by the programme, and built by
   [plan 006](../work/changelog/006-search-mcp.md#the-index).
 
@@ -172,21 +172,21 @@ mode and chunking on golden questions, whose answers are known.
   became the default again. Plan 019 compared four chunkings: `windows` ranked best by
   hybrid search, but its rule, which asked for the evidence quoted significantly more
   often, kept `sections`. Plan 025 made hybrid search over `windows` the default, the
-  user's choice over both rules, knowing their numbers, which
-  [the defaults](chunking.md#the-defaults-the-users-choice) give: ranking mattered more
-  to them than speed.
+  maintainer's choice over both rules, knowing their numbers, which
+  [the defaults](chunking.md#the-defaults-the-maintainers-choice) give: ranking
+  mattered more to them than speed.
 - **Cost.** A model by default: `index` and the server need an embedding endpoint
   unless `search_mode = "lexical"`. A query's 95th percentile on the development
   laptop's processor missed the bar of 200 ms set before the runs. And the sandbox's
-  questions are not the user's: the work set will decide again
+  questions are not a real site's: the work set will decide again
   ([evaluating search](search-evaluation.md)).
 - **Rejected.** Words alone and `sections`, which the rules of 018 and 019 kept; meaning
-  alone, which scored higher still over `windows` on the sandbox, where the user chose
-  hybrid search.
+  alone, which scored higher still over `windows` on the sandbox, where the maintainer
+  chose hybrid search.
 - **Settled** by [plan 011](../work/changelog/011-search-strategies.md#search) for the
   modes and the measure; the defaults by [plan
-  025](../work/changelog/025-windows-and-hybrid.md#settled-by-the-user), the user's
-  choice.
+  025](../work/changelog/025-windows-and-hybrid.md#settled-by-the-user), the
+  maintainer's choice.
 
 ## Embeddings by any OpenAI-compatible API, not in process
 
@@ -209,7 +209,7 @@ which is only the example: any such server works.
 - **Rejected.** Models in process with onnxruntime, from pinned files, as plan 011 built
   them; Ollama's own `/api/embed`, which other servers do not offer; a setting that
   allows a remote endpoint, which would allow it on every run without a word.
-- **Settled** by the user, in
+- **Settled** by the maintainer, in
   [plan 018](../work/changelog/018-embeddings-via-ollama.md#settled-by-the-user-not-reopened).
 
 ## Budgets and untrusted-data markers
@@ -243,14 +243,15 @@ argcomplete. Each subcommand is declared apart from its run, so that `--help` an
 completion import no run's packages: [`parser`](../../src/atlassian_offline_mcp/cli/main.py)
 registers every declaration, and imports a run only once the arguments are parsed.
 
-- **Why.** The user's choice: argparse needs no dependency, and argcomplete completes
-  subcommands, options and their values. argcomplete runs the program at every Tab, so a
-  declaration must stay light; an import contract keeps the runs' packages out of it.
+- **Why.** The maintainer's choice: argparse needs no dependency, and argcomplete
+  completes subcommands, options and their values. argcomplete runs the program at every
+  Tab, so a declaration must stay light; an import contract keeps the runs' packages out
+  of it.
 - **Cost.** A subcommand is two modules, its declaration and its run. argcomplete patches
   argparse's internals, so a new Python may break completion; fish is not supported.
 - **Rejected.** Subparsers registered lazily, which neither argcomplete nor `--help`
   would see.
-- **Settled** by the user, in
+- **Settled** by the maintainer, in
   [plan 015](../work/changelog/015-cli-and-configuration.md#settled-by-the-user).
 
 ## File, then environment, then flags
@@ -271,7 +272,7 @@ merges them and keeps each value's layer.
   give a token or a key.
 - **Rejected.** pydantic-settings' own sources, which would add a flag per field,
   secrets included, and cannot say which layer gave a value.
-- **Settled** by the user, in
+- **Settled** by the maintainer, in
   [plan 015](../work/changelog/015-cli-and-configuration.md#the-settings-one-model-three-layers).
 
 ## Telemetry off, logs that may hold titles
@@ -280,16 +281,16 @@ Each run writes a log file of JSON lines, from DEBUG, in the user's log folder; 
 hold titles, ids, paths and queries. Traces, metrics and logs go out by OpenTelemetry
 only once an endpoint is set, and only to this machine.
 
-- **Why.** In the user's words, the logs "will most likely never leave any machine": they
-  are there for detailed observability when needed, so they hold what explains a run.
-  Telemetry carries the same titles and queries, hence off by default, and to a literal
-  loopback address alone, as embeddings are.
+- **Why.** In the maintainer's words, the logs "will most likely never leave any
+  machine": they are there for detailed observability when needed, so they hold what
+  explains a run. Telemetry carries the same titles and queries, hence off by default,
+  and to a literal loopback address alone, as embeddings are.
 - **Cost.** The log folder holds the company's titles: it passes the data directory's
   guard, its files are readable by their owner alone, and they go after 30 days. Seeing
   telemetry needs a container, Grafana's LGTM.
 - **Rejected.** Logs without titles, which could not say which document was slow or
   failed; telemetry on by default, or to a collector elsewhere.
-- **Settled** by the user, in
+- **Settled** by the maintainer, in
   [plan 016](../work/changelog/016-observability-and-progress.md#settled-by-the-user);
   [observability](observability.md) explains it further.
 
