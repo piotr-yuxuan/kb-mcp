@@ -8,10 +8,16 @@ from typing import TYPE_CHECKING
 import pytest
 
 from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.evaluation.app import reranked as measuring
 from atlassian_offline_mcp.evaluation.app.evaluation import read_golden
 from atlassian_offline_mcp.evaluation.app.reranked import Counted
 from atlassian_offline_mcp.evaluation.domain import reranking as bar
-from atlassian_offline_mcp.evaluation.domain.reranking import Depthed, default_reranking
+from atlassian_offline_mcp.evaluation.domain.reranking import (
+    Decision,
+    Depthed,
+    Verdict,
+    default_reranking,
+)
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.reranking import BAR_DEPTHS
 from atlassian_offline_mcp.mcp.app.tools import Library
@@ -60,10 +66,11 @@ def test_every_depth_gaining_on_every_question_qualifies_and_the_smallest_is_tak
 
 @pytest.mark.parametrize("group", sorted(GROUPS))
 @pytest.mark.parametrize(
-    ("before", "after", "loss"), [(0.6004, 0.5496, 0.050), (0.6006, 0.5504, 0.051)]
+    ("before", "after", "loss", "holding"),
+    [(0.6004, 0.5496, 0.050, True), (0.6006, 0.5504, 0.051, False)],
 )
 def test_a_group_may_lose_0_05_as_reported_and_no_more(
-    group: str, before: float, after: float, loss: float
+    group: str, before: float, after: float, loss: float, *, holding: bool
 ) -> None:
     """The loss between the means as the table shows them: 0.600 to 0.550, 0.601 to 0.550."""
     lost = arm(1.0, **{group: after})
@@ -72,7 +79,7 @@ def test_a_group_may_lose_0_05_as_reported_and_no_more(
     )
     assert decision is not None
     assert [verdict.losses[group] for verdict in decision.verdicts] == [loss] * 4
-    assert [verdict.holds for verdict in decision.verdicts] == [loss <= bar.GROUP_LOSS] * 4
+    assert [verdict.holds for verdict in decision.verdicts] == [holding] * 4
 
 
 def test_a_depth_shown_lower_does_not_gain() -> None:
@@ -136,6 +143,30 @@ def test_the_smallest_depth_not_shown_worse_than_the_best_is_taken(
     assert decision is not None
     assert decision.depth == BAR_DEPTHS[chosen]
     assert decision.against_best == dict(zip(BAR_DEPTHS, [pvalue, 1.0, 1.0, 1.0], strict=True))
+
+
+def test_a_depth_that_does_not_qualify_is_neither_the_best_nor_taken(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """10 ranks highest but gains nothing significant: 20, the best qualifying, is taken."""
+    gains = {(0.0, 0.6): 0.001, (0.0, 0.55): 0.001, (0.0, 0.52): 0.001}
+    scripted_tests(monkeypatch, gains | {(0.6, 0.55): 0.3})
+    decision = default_reranking(
+        PLAIN, depths(d10=arm(0.7), d20=arm(0.6), d30=arm(0.55), d50=arm(0.52))
+    )
+    assert decision is not None
+    assert [verdict.qualifies for verdict in decision.verdicts] == [False, True, True, True]
+    assert decision.against_best == {20: 1.0, 30: 0.3, 50: 1.0}
+    assert decision.depth == BAR_DEPTHS[1]
+
+
+def test_a_gain_too_small_to_show_is_no_gain(monkeypatch: MonkeyPatch) -> None:
+    """Means of 0.0004 and 0 both read 0.000: no gain, however small the p-value."""
+    scripted_tests(monkeypatch, {(0.0, 0.0004): 0.001})
+    small = arm(0.0004)
+    decision = default_reranking(PLAIN, depths(d10=small, d20=small, d30=small, d50=small))
+    assert decision is not None
+    assert [verdict.beats for verdict in decision.verdicts] == [False] * 4
 
 
 def test_another_set_of_depths_gets_no_verdict() -> None:
@@ -233,6 +264,34 @@ def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_fir
         for size in (2, 3)
     }
     assert record["arms"][0]["recall"] == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("chosen", "said"), [(20, "rerank 20 documents."), (None, "reranking stays off.")]
+)
+def test_the_bar_s_verdicts_are_written_by_this_machine_s_times(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch, chosen: int | None, said: str
+) -> None:
+    """Each clause, a group's loss or n/a, each p-value against the best, the depth chosen."""
+    verdicts = (
+        Verdict(10, 0.2, beats=False, losses={"keyword": 0.051}, fast=True),
+        Verdict(20, 0.004, beats=True, losses={"identifier": 0.0, "keyword": -0.012}, fast=True),
+    )
+    decision = Decision(verdicts, chosen, {20: 1.0, 30: 0.3})
+    monkeypatch.setattr(measuring, "default_reranking", lambda _plain, _arms: decision)
+    with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
+        assert evaluated(data, url, rerank_url) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert (
+        "Depth 10: MRR@10 adjusted p = 0.2000; gains no; groups lose identifier n/a,"
+        " keyword 0.051, hold no; within 5 s here yes"
+    ) in lines
+    assert (
+        "Depth 20: MRR@10 adjusted p = 0.0040; gains yes; groups lose identifier 0.000,"
+        " keyword -0.012, hold yes; within 5 s here yes"
+    ) in lines
+    assert "Depth 30 against the best qualifying: MRR@10 p = 0.3000" in lines
+    assert f"By the bar, with this machine's times: {said}" in lines
 
 
 def test_an_arm_that_falls_back_stops_the_run_naming_the_depth(

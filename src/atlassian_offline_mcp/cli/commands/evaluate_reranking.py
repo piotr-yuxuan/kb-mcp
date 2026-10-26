@@ -25,6 +25,7 @@ from atlassian_offline_mcp.evaluation.app.reranked import (
     measured,
     recorded,
 )
+from atlassian_offline_mcp.evaluation.domain.reranking import GROUPS
 from atlassian_offline_mcp.kernel.endpoint import RERANKING
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.reranking import BAR_DEPTHS, BOUND_S
@@ -144,10 +145,16 @@ def text(evaluated: Evaluated, summary: Summary) -> str:
         bar = ", ".join(map(str, BAR_DEPTHS))
         lines.append(f"No verdict: the bar decides on depths {bar} alone.")
     else:
+        losses = {
+            each.depth: ", ".join(
+                f"{name} {each.losses[name]:.3f}" if name in each.losses else f"{name} n/a"
+                for name in GROUPS
+            )
+            for each in decision.verdicts
+        }
         lines += [
             f"Depth {each.depth}: MRR@10 adjusted p = {each.adjusted:.4f}; gains"
-            f" {'yes' if each.beats else 'no'}; groups lose"
-            f" {', '.join(f'{name} {loss:.3f}' for name, loss in each.losses.items()) or 'n/a'},"
+            f" {'yes' if each.beats else 'no'}; groups lose {losses[each.depth]},"
             f" hold {'yes' if each.holds else 'no'};"
             f" within {BOUND_S:g} s here {'yes' if each.fast else 'no'}"
             for each in decision.verdicts
