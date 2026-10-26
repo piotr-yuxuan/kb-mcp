@@ -906,3 +906,16 @@ def test_an_evaluation_that_waits_too_long_for_a_prune_is_not_evaluated(
         status = main([*arguments, "--config", str(config), "--data-dir", str(data)])
     assert status == ExitStatus.FAILED
     assert ("error", "eval.not_evaluated") in said(capsys.readouterr().err)
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="APFS refuses names that are not UTF-8")
+def test_a_file_named_in_bytes_that_are_not_utf_8_is_said_all_the_same(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Held back by it, the prune names it, those bytes as U+FFFD, and the JSON is written."""
+    folder = data / "eval" / "indexes"
+    folder.mkdir(parents=True)
+    (folder / os.fsdecode(b"w\xff\xfe.sqlite")).write_bytes(b"not an index")
+    status, result, _ = held_back(data, capsys)
+    assert (status, result["outcome"]) == (0, "held back")
+    assert result["file"] == f"{folder}/w\ufffd\ufffd.sqlite"

@@ -9,6 +9,7 @@ lists what it records.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import time
 from dataclasses import asdict, dataclass, replace
@@ -94,6 +95,11 @@ class Pruned:
     file: str | None = None
 
 
+def shown(path: Path | str) -> str:
+    """Write a path as text that every output takes, its bytes not UTF-8 as U+FFFD."""
+    return os.fsencode(path).decode(errors="replace")
+
+
 def said(pruned: Pruned, span: Span, started: float) -> Pruned:
     """Record a prune's outcome on its span and as its event; give it with its seconds."""
     pruned = replace(pruned, seconds=round(time.monotonic() - started, 3))
@@ -134,10 +140,10 @@ def prune(
                     with sqlite_index.reading(path) as reader:
                         keys[path] = reader.keys()
             except OSError as error:
-                unlisted = Pruned("held back", reason=UNLISTED, file=str(error.filename or path))
+                unlisted = Pruned("held back", reason=UNLISTED, file=shown(error.filename or path))
                 return said(unlisted, span, started)
             except sqlite_index.UnavailableIndexError, sqlite3.DatabaseError:
-                held_back = Pruned("held back", reason=UNREADABLE, file=str(path))
+                held_back = Pruned("held back", reason=UNREADABLE, file=shown(path))
                 return said(held_back, span, started)
             read = keys.pop(index)
             evaluation = set().union(*keys.values()) - read
