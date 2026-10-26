@@ -36,7 +36,7 @@ own evaluation.
 **Language matters too.** The leaderboard has an English benchmark (`MTEB(eng, v2)`)
 and a multilingual one (`MTEB(Multilingual, v2)`), and filters by language: with
 `fra-Latn`, only the tasks with French data count. Our content was in English and
-French; once the user said that French was not needed for now, English retrieval
+French; once the maintainer said that French was not needed for now, English retrieval
 decided.
 
 ### How the numbers were read
@@ -68,9 +68,9 @@ parameters outside the embedding table):
 | bge-small-en-v1.5 (plan 011's default) | 36.26 | 53.86 | 30.36 | |
 
 Qwen3-Embedding-0.6B led in English and multilingual retrieval, at about four times
-EmbeddingGemma's compute; EmbeddingGemma led in French. The user chose Qwen3, also for
-its 32,768-token window, which leaves room for the chunking strategies to be compared
-next.
+EmbeddingGemma's compute; EmbeddingGemma led in French. The maintainer chose Qwen3,
+also for its 32,768-token window, which leaves room for the chunking strategies to be
+compared next.
 
 ### What to distrust in a leaderboard
 
@@ -268,10 +268,11 @@ paraphrases, written so that words cannot find their answers) would otherwise te
 reading in meaning's favour. Plan 019 wrote one for the chunking the same way
 ([chunking](chunking.md)).
 
-A rule written first binds the reading of the numbers, not the user's choice. Once the
-numbers are known, the user may weigh what the rule left out, such as ranking against
-speed, provided the rule's verdict stays on record and the choice is said to be
-theirs; plan 018's bar said as much, leaving the decision to the user if it failed.
+A rule written first binds the reading of the numbers, not the maintainer's choice.
+Once the numbers are known, the maintainer may weigh what the rule left out, such as
+ranking against speed, provided the rule's verdict stays on record and the choice is
+said to be theirs; plan 018's bar said as much, leaving the decision to the maintainer
+if it failed.
 The defaults since plan 025 are such a choice (below).
 
 ### Query time
@@ -329,8 +330,8 @@ MRR@10 against lexical: semantic +0.054 (p = 0.197, adjusted 0.305), hybrid +0.0
 
 Against the bar, hybrid failed on all three counts: its gain was not significant; it
 lost 0.061 on identifier questions (keyword: 0.019, within the bar); and its 95th
-percentile was 212 ms on this CPU. **Words became the default again**, by the user's
-word on that rule, until plan 025 (below).
+percentile was 212 ms on this CPU. **Words became the default again**, by the
+maintainer's word on that rule, until plan 025 (below).
 
 Against plan 011's bge-small, question by question on the same set (from the two
 results files, with the script above): semantic +0.020 (p = 0.57; 31 questions better,
@@ -358,9 +359,9 @@ Neither rule chose `windows` and hybrid search. Plan 019's rule, which decides t
 chunking by the evidence that `ask` quotes, kept `sections`. Plan 018's bar, applied to
 `windows`, was met on the gain and on identifier and keyword questions but not on
 speed, so words would have stayed.
-Knowing these numbers, the user made `windows` and hybrid search the defaults (plan
-025), as ranking matters more to them than speed. The rules and their verdicts above
-stay as written: what changed is the choice made after them, which is the user's.
+Knowing these numbers, the maintainer made `windows` and hybrid search the defaults
+(plan 025), as ranking matters more to them than speed. The rules and their verdicts
+above stay as written: what changed is the choice made after them, the maintainer's.
 
 ### What these runs show, and what they do not
 
