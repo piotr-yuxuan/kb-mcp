@@ -138,9 +138,10 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
     assert {("debug", "http.get"), ("debug", "http.post")} <= set(said(err))
     assert ("debug", "serve.call") in said(served_err)
     # The protocol's messages, as the client received them, values included.
-    for shown in (out, err, repr(received)):
-        assert found(shown.encode()) == []
-        assert COOKIE not in shown
+    sinks = {"stdout": out, "stderr": err, "protocol": repr(received)}
+    leaked = {sink: found(shown.encode()) for sink, shown in sinks.items()}
+    assert {sink: secrets for sink, secrets in leaked.items() if secrets} == {}
+    assert [sink for sink, shown in sinks.items() if COOKIE in shown] == []
     for files in (files_by_token, left(tmp_path)):
         assert {path: found(content) for path, content in files.items() if found(content)} == {}
         assert [path for path, content in files.items() if COOKIE.encode() in content] == [session]
