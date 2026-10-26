@@ -88,8 +88,9 @@ the mirror, the index and the vectors are all derived from it, offline.
   reads it again without fetching anything. A fix to the conversion is a rebuild, never
   a download.
 - **Cost.** Disk: every revision fetched stays as received, a page with both its bodies,
-  storage and view, and each attached file once, by its digest. No snapshot is ever
-  rewritten or removed.
+  storage and view, and each attached file once, by its digest. A snapshot's responses are
+  never rewritten, and no snapshot is removed; its record gains the files that a later run
+  fetches ([`RawStore.add_blobs`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py)).
 - **Rejected.** Converting while downloading, which would fetch everything again after
   each fix of the conversion.
 - **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions).
