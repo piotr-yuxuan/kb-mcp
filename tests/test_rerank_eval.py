@@ -80,6 +80,8 @@ def test_a_group_may_lose_0_05_as_reported_and_no_more(
     assert decision is not None
     assert [verdict.losses[group] for verdict in decision.verdicts] == [loss] * 4
     assert [verdict.holds for verdict in decision.verdicts] == [holding] * 4
+    assert [verdict.qualifies for verdict in decision.verdicts] == [holding] * 4
+    assert decision.depth == (BAR_DEPTHS[0] if holding else None)
 
 
 def test_a_depth_shown_lower_does_not_gain() -> None:
@@ -148,11 +150,11 @@ def test_the_smallest_depth_not_shown_worse_than_the_best_is_taken(
 def test_a_depth_that_does_not_qualify_is_neither_the_best_nor_taken(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """10 ranks highest but gains nothing significant: 20, the best qualifying, is taken."""
-    gains = {(0.0, 0.6): 0.001, (0.0, 0.55): 0.001, (0.0, 0.52): 0.001}
+    """10 ranks highest and gains, but is too slow: 20, the best qualifying, is taken."""
+    gains = {(0.0, 0.7): 0.001, (0.0, 0.6): 0.001, (0.0, 0.55): 0.001, (0.0, 0.52): 0.001}
     scripted_tests(monkeypatch, gains | {(0.6, 0.55): 0.3})
     decision = default_reranking(
-        PLAIN, depths(d10=arm(0.7), d20=arm(0.6), d30=arm(0.55), d50=arm(0.52))
+        PLAIN, depths(d10=arm(0.7, 5001), d20=arm(0.6), d30=arm(0.55), d50=arm(0.52))
     )
     assert decision is not None
     assert [verdict.qualifies for verdict in decision.verdicts] == [False, True, True, True]
@@ -274,7 +276,7 @@ def test_the_bar_s_verdicts_are_written_by_this_machine_s_times(
 ) -> None:
     """Each clause, a group's loss or n/a, each p-value against the best, the depth chosen."""
     verdicts = (
-        Verdict(10, 0.2, beats=False, losses={"keyword": 0.051}, fast=True),
+        Verdict(10, 0.004, beats=True, losses={"keyword": 0.051}, fast=False),
         Verdict(20, 0.004, beats=True, losses={"identifier": 0.0, "keyword": -0.012}, fast=True),
     )
     decision = Decision(verdicts, chosen, {20: 1.0, 30: 0.3})
@@ -283,8 +285,8 @@ def test_the_bar_s_verdicts_are_written_by_this_machine_s_times(
         assert evaluated(data, url, rerank_url) == 0
     lines = capsys.readouterr().out.splitlines()
     assert (
-        "Depth 10: MRR@10 adjusted p = 0.2000; gains no; groups lose identifier n/a,"
-        " keyword 0.051, hold no; within 5 s here yes"
+        "Depth 10: MRR@10 adjusted p = 0.0040; gains yes; groups lose identifier n/a,"
+        " keyword 0.051, hold no; within 5 s here no"
     ) in lines
     assert (
         "Depth 20: MRR@10 adjusted p = 0.0040; gains yes; groups lose identifier 0.000,"
