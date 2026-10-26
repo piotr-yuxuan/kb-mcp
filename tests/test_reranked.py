@@ -24,7 +24,7 @@ from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.test_serve import GUARDED, ROOT, talk
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
@@ -195,26 +195,32 @@ def test_a_refusal_is_the_request_s_and_the_next_search_asks_again(root: Path) -
     assert order(served) == expected(root, order(library(root, None)))
 
 
-def reranked_said(served: Library, telemetry: InMemory) -> object:
-    """Search within a call's span, as the SDK opens one; give its ``aom.reranked``."""
+def reranked_said(telemetry: InMemory, tool: str, call: Callable[[], str]) -> object:
+    """Call a tool within its call's span, as the SDK opens one; give its ``aom.reranked``."""
     telemetry.spans.clear()
-    with trace.get_tracer(__name__).start_as_current_span("tools/call search"):
-        served.search(QUERY)
-    (call,) = (
-        span for span in telemetry.spans.get_finished_spans() if span.name == "tools/call search"
+    with trace.get_tracer(__name__).start_as_current_span(f"tools/call {tool}"):
+        call()
+    (span,) = (
+        each for each in telemetry.spans.get_finished_spans() if each.name == f"tools/call {tool}"
     )
-    return (call.attributes or {}).get("aom.reranked")
+    return (span.attributes or {}).get("aom.reranked")
 
 
 def test_the_call_s_span_says_reranked_and_the_counter_why_not(
     root: Path, telemetry: InMemory
 ) -> None:
-    """Reranked: true; then not, counted by the failure's kind, then quiet within 30 s."""
+    """Reranked: search, ask, a next page by its cursor; then not, counted by why."""
     scorer = Scripted()
     served = library(root, Reranking(scorer, DEPTH, clock=lambda: 0.0))
-    assert reranked_said(served, telemetry) is True
+    assert reranked_said(telemetry, "search", lambda: served.search(QUERY)) is True
+    assert reranked_said(telemetry, "ask", lambda: served.ask(QUERY)) is True
+    first = served.search(QUERY, limit=2)
+    asked = len(scorer.asked)
+    assert reranked_said(telemetry, "search", lambda: follow(served, first) or "") is True
+    assert len(scorer.asked) == asked
     scorer.failing = RerankError(DOWN, "unanswered")
-    assert [reranked_said(served, telemetry) for _ in range(2)] == [False, False]
+    searched = [reranked_said(telemetry, "search", lambda: served.search(QUERY)) for _ in "ab"]
+    assert searched == [False, False]
     counted = {
         point.attributes["aom.rerank.fallback"]: point.value
         for point in telemetry.measured()["aom.rerank.fallbacks"].data.data_points
@@ -292,6 +298,17 @@ def test_a_cursor_whose_order_is_none_or_too_long_is_refused(
     base = cursor_of(served.search(QUERY, limit=2)).partition(".")[0]
     with pytest.raises(UnanswerableError, match=said):
         served.search(QUERY, limit=2, cursor=base + order_written)
+
+
+def test_a_cursor_s_shorter_order_applies_to_as_many_documents(root: Path) -> None:
+    """An order of two from the first document: those two swapped, the next as words put it."""
+    scorer = Scripted()
+    served = library(root, Reranking(scorer, DEPTH))
+    built = cursor_of(served.search(QUERY, limit=2)).partition("@")[2].partition(".")[0]
+    before = order(library(root, None))
+    shown = titles(served.search(QUERY, limit=3, cursor=f"0@{built}.BA"))
+    assert shown == [title(root, path) for path in (before[1], before[0], before[2])]
+    assert len(scorer.asked) == 1
 
 
 def test_a_browse_cursor_carrying_an_order_is_refused(root: Path) -> None:
