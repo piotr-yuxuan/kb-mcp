@@ -71,12 +71,22 @@ PROGRAM = re.compile(r"(?<![\w/.~-])atlassian-offline-mcp(?![\w/.-])")
 SHELL_LINE = re.compile(r"^(?:.*\\\n)*.*$", re.MULTILINE)
 # A word that sets a variable for the command that follows it.
 ASSIGNMENT = re.compile(r"[A-Za-z_]\w*=")
+# A word of a line of shell, its quotes and escapes kept, so that a quoted `;`, `>` or
+# `#` stays text; or a run of `;`, `|` and `&`, which no space need part from the word
+# before. An `&` that touches a `>`, as in `2>&1` and `&>`, is the redirection's; a
+# quote left open takes the rest of the line, for shlex to refuse.
+SHELL_WORD = re.compile(
+    r"""(?: >& | &> | [^\s'"\\;|&] | \\.? | '[^']*' | "(?:[^"\\]|\\.)*" | ['"].* )+
+    | [;|&]+""",
+    re.VERBOSE,
+)
 # Words that end one command and begin the next: a pipe or a list.
 SEPARATORS = frozenset({"|", "|&", "||", "&", "&&", ";"})
-# A word from which on a command's words are the shell's: `<`, or an output redirection
-# with or without its file, such as `>`, `2>sync.log` or the `2>` of `2>&1`. A
-# placeholder such as `<missing-file>` stays an argument.
-REDIRECTION = re.compile(r"<<?|\d*>.*")
+# A redirection, which the shell takes out of a command's words: `<`, or an output
+# redirection with its file, such as `2>sync.log` or `2>&1`, or without it, such as `>`,
+# the next word then being its file. A placeholder such as `<missing-file>` stays an
+# argument.
+REDIRECTION = re.compile(r"[\d&]?>>?&?(?P<file>.*)|<<?")
 # The reference of the MCP server's tools and prompts, and its headings: a part, then
 # a tool or a prompt of that part.
 MCP_TOOLS = "docs/reference/mcp-tools.md"
@@ -291,47 +301,61 @@ def test_the_map_links_each_page_of_the_four_kinds_and_docs_holds_no_other(
     assert others == ["docs/README.md"]
 
 
-def shell_words(line: str) -> list[str]:
-    """Split a line into words as a shell does, leaving a comment out.
+def shell_commands(line: str) -> list[list[str]]:
+    """Split a line into its commands, each the words that a shell gives it.
 
-    A run of ``;``, ``|`` and ``&``, such as ``&&``, is a word of its own even where no
-    space parts it from the word before, as in ``check; sync``; so ``2>&1`` is three
-    words, of which the first ends the arguments.
+    A command ends at a pipe or a list; a word that begins with ``#`` begins a comment,
+    left out; a redirection is left out with its file, and the words after it stay the
+    command's, as the shell passes them on. Then the quotes come off each word, so that
+    a quoted ``;``, ``>`` or ``#`` is text. Raises ValueError for a quote left open.
     """
-    lexer = shlex.shlex(line, posix=True, punctuation_chars=";|&")
-    lexer.whitespace_split = True
-    return list(lexer)
+    commands: list[list[str]] = [[]]
+    words = iter(SHELL_WORD.findall(line))
+    for word in words:
+        if word.startswith("#"):
+            break
+        if word in SEPARATORS:
+            commands.append([])
+        elif redirection := REDIRECTION.fullmatch(word):
+            if not redirection["file"]:
+                next(words, None)
+        else:
+            commands[-1] += shlex.split(word)
+    return [command for command in commands if command]
 
 
-def program_arguments(words: list[str]) -> list[list[str]]:
-    """Give the arguments that each command of a line's words gives the program.
+def program_arguments(commands: list[list[str]]) -> list[list[str]]:
+    """Give the arguments that each of a line's commands gives the program.
 
-    The words split into commands at a pipe or a list. In a command that names the
-    program, it is the command word after any ``NAME=value``, after ``uv run``, inside
-    the quoted command of ``sops exec-env <file> '...'`` or of ``eval "$(...)"``, or
-    after the ``--`` of ``claude mcp add``; its arguments end at a redirection. Raises
-    ValueError for a command that names the program in any other form.
+    In a command that names the program, it is the command word after any
+    ``NAME=value``, after ``uv run``, inside the quoted command of ``sops exec-env
+    <file> '...'`` or of ``eval "$(...)"``, or after the ``--`` of ``claude mcp add``.
+    Raises ValueError for a command that names the program in any other form, or whose
+    inner command does not name it in one of these.
     """
     given: list[list[str]] = []
-    for between, grouped in itertools.groupby(words, lambda word: word in SEPARATORS):
-        command = list(grouped)
-        if between or not any(PROGRAM.search(word) for word in command):
+    for command in commands:
+        if not any(PROGRAM.search(word) for word in command):
             continue
         match list(itertools.dropwhile(ASSIGNMENT.match, command)):
             case ["atlassian-offline-mcp", *arguments]:
-                kept = itertools.takewhile(lambda word: not REDIRECTION.fullmatch(word), arguments)
-                given.append(list(kept))
-            case ["uv", "run", *inner]:
-                given += program_arguments(inner)
-            case ["sops", "exec-env", *_, inner]:
-                given += program_arguments(shell_words(inner))
+                given.append(arguments)
+                continue
+            case ["uv", "run", *words]:
+                inner = [words]
+            case ["sops", "exec-env", *_, quoted]:
+                inner = shell_commands(quoted)
             case ["claude", "mcp", "add", *added] if "--" in added:
-                given += program_arguments(added[added.index("--") + 1 :])
-            case ["eval", inner] if inner.startswith("$(") and inner.endswith(")"):
-                given += program_arguments(shell_words(inner[2:-1]))
+                inner = [added[added.index("--") + 1 :]]
+            case ["eval", text] if text.startswith("$(") and text.endswith(")"):
+                inner = shell_commands(text[2:-1])
             case _:
-                message = "names the program in a form that program_arguments does not read"
-                raise ValueError(message)
+                inner = []
+        found = program_arguments(inner)
+        if not found:
+            message = "names the program in a form that program_arguments does not read"
+            raise ValueError(message)
+        given += found
     return given
 
 
@@ -367,7 +391,7 @@ def test_each_documented_command_line_of_the_program_parses(checkout: frozenset[
                     refused.append(f"{page}:{line}: the program in a console block")
                 continue
             try:
-                commands = program_arguments(shell_words(given))
+                commands = program_arguments(shell_commands(given))
             except ValueError as error:
                 refused.append(f"{page}:{line}: {error}")
                 continue
@@ -392,6 +416,94 @@ def test_the_check_of_documented_commands_refuses_a_prefix_of_an_option() -> Non
     with pytest.raises(SystemExit) as stopped, contextlib.redirect_stderr(io.StringIO()):
         parser(Unabbreviated).parse_args(["sync", "--dry"])
     assert stopped.value.code == ExitStatus.REFUSED
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        (
+            "atlassian-offline-mcp check && atlassian-offline-mcp sync --simulate",
+            [["check"], ["sync", "--simulate"]],
+        ),
+        ("cd ~&& atlassian-offline-mcp sync --simulate", [["sync", "--simulate"]]),
+        (
+            "atlassian-offline-mcp sync --since 7d&&atlassian-offline-mcp syncs",
+            [["sync", "--since", "7d"], ["syncs"]],
+        ),
+        ("atlassian-offline-mcp sync|atlassian-offline-mcp syncs", [["sync"], ["syncs"]]),
+        (
+            "atlassian-offline-mcp sync --format json 2>/dev/null | jq .exit_status",
+            [["sync", "--format", "json"]],
+        ),
+        (
+            "atlassian-offline-mcp sync 2>&1 | tee x; atlassian-offline-mcp check &>check.log",
+            [["sync"], ["check"]],
+        ),
+        ("atlassian-offline-mcp sync >&2", [["sync"]]),
+        ("atlassian-offline-mcp sync 2>sync.log --simulate", [["sync", "--simulate"]]),
+        ("atlassian-offline-mcp sync &>sync.log --simulate", [["sync", "--simulate"]]),
+        ("atlassian-offline-mcp sync 2>&1 --simulate", [["sync", "--simulate"]]),
+        ("atlassian-offline-mcp sync > sync.log --simulate", [["sync", "--simulate"]]),
+        (
+            "atlassian-offline-mcp sync --summary detailed#x # look first, it's cheap",
+            [["sync", "--summary", "detailed#x"]],
+        ),
+        ("# atlassian-offline-mcp sync asks before it writes", []),
+        (
+            "atlassian-offline-mcp search '>5 minutes' ';' '#x' --simulate",
+            [["search", ">5 minutes", ";", "#x", "--simulate"]],
+        ),
+        (
+            "atlassian-offline-mcp eval --golden <missing-file>",
+            [["eval", "--golden", "<missing-file>"]],
+        ),
+        (
+            "sops exec-env ~/a.sops.json 'atlassian-offline-mcp downlod --yes' 2>download.log",
+            [["downlod", "--yes"]],
+        ),
+        (
+            "sops exec-env ~/a.sops.json 'atlassian-offline-mcp check; atlassian-offline-mcp sync'",
+            [["check"], ["sync"]],
+        ),
+        (
+            """sops exec-env ~/a.sops.json 'A="$B" uv run atlassian-offline-mcp check' | tee x""",
+            [["check"]],
+        ),
+        ('eval "$(atlassian-offline-mcp completion zsh)"', [["completion", "zsh"]]),
+        ("claude mcp add --scope user atlassian-offline-mcp -- atlassian-offline-mcp", [[]]),
+    ],
+)
+def test_the_check_of_documented_commands_reads_a_line_as_a_shell_does(
+    line: str, expected: list[list[str]]
+) -> None:
+    """Each command of a line gives the program the words that bash would give it.
+
+    A pipe or a list ends a command, spaced or not; a redirection is not the program's,
+    though the words after it are; a comment begins at a word that begins with ``#``; a
+    quoted word is text, whatever it holds.
+    """
+    assert program_arguments(shell_commands(line)) == expected
+
+
+@pytest.mark.parametrize(
+    ("line", "refusal"),
+    [
+        ("time atlassian-offline-mcp sync", "names the program"),
+        ("uv run --no-sync atlassian-offline-mcp sync", "names the program"),
+        ("sops exec-env ~/a.sops.json 'time atlassian-offline-mcp sync' >x", "names the program"),
+        (
+            "claude mcp add atlassian-offline-mcp -- ~/.local/bin/atlassian-offline-mcp serve",
+            "names the program",
+        ),
+        ("atlassian-offline-mcp sync --since '7d", "No closing quotation"),
+    ],
+)
+def test_the_check_of_documented_commands_refuses_a_line_it_cannot_read(
+    line: str, refusal: str
+) -> None:
+    """A command that names the program in a form the check does not read is refused."""
+    with pytest.raises(ValueError, match=refusal):
+        program_arguments(shell_commands(line))
 
 
 def test_each_page_that_names_ollama_says_that_any_openai_compatible_api_works(
