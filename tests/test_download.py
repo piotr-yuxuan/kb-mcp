@@ -393,7 +393,7 @@ def test_the_report_names_nothing_the_site_served(tmp_path: Path) -> None:
 
 
 def test_a_run_sends_the_site_nothing_but_gets(tmp_path: Path) -> None:
-    """Listings, documents, files, probes and authors alike: the site changes nothing."""
+    """Listings, documents, files and authors alike: the site changes nothing."""
     fake = FakeSite()
     methods: list[str] = []
 
