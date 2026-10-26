@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 MB = 1_000_000
 # What a vector store made before plan 023 does with the pages that a prune frees.
 SHRINKS_NOT = (
-    "; made before plan 023, it never shrinks: its free pages serve later writes, and"
+    "; made by an earlier version, it never shrinks: its free pages serve later writes, and"
     " deleting it once, at the cost of a full embedding, gives a store that does"
 )
 

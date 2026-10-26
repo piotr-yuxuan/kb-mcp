@@ -32,6 +32,7 @@ from atlassian_offline_mcp.search.app.pruning import (
     DEFERRED,
     NO_DOCUMENT,
     SKIPPED,
+    UNLISTED,
     UNREADABLE,
     Pruned,
     prune,
@@ -72,6 +73,10 @@ def test_the_indexes_under_a_folder_leave_builds_out(tmp_path: Path) -> None:
         path.write_bytes(b"")
     assert indexes_in(folder) == sorted(wanted)
     assert indexes_in(tmp_path / "missing") == []
+    (folder / "linked").symlink_to(folder / "sections")
+    with pytest.raises(OSError, match="a link, which is not followed") as raised:
+        indexes_in(folder)
+    assert raised.value.filename == str(folder / "linked")
 
 
 @pytest.fixture
@@ -686,32 +691,76 @@ def test_a_damaged_evaluation_index_holds_the_prune_back(data: Path) -> None:
     assert other in stored(data / "vectors.sqlite")
 
 
-def test_an_evaluation_index_through_a_link_keeps_its_vectors(data: Path) -> None:
-    """Its folder a link to another place: the prune follows it, and keeps what it reads."""
+def test_a_link_among_the_evaluation_s_indexes_holds_the_prune_back(data: Path) -> None:
+    """Not followed, lest a cycle of links never end: it is named, and nothing is deleted."""
     pruned(refresh(indexing(data), MOMENT))
     elsewhere = data.parent / "elsewhere"
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     elsewhere.mkdir()
     windows.parent.rename(elsewhere / "windows")
     windows.parent.symlink_to(elsewhere / "windows")
+    other = kept_whole(data)
     done = pruned(refresh(indexing(data), MOMENT))
-    assert done.outcome == "pruned"
-    assert read_by(windows) <= stored(data / "vectors.sqlite")
+    assert (done.outcome, done.file, done.reason) == ("held back", str(windows.parent), UNLISTED)
+    assert other in stored(data / "vectors.sqlite")
+
+
+def test_a_dangling_link_among_the_evaluation_s_indexes_holds_the_prune_back(
+    data: Path,
+) -> None:
+    """Its target gone, as an unmounted disk's: it is named, and nothing is deleted."""
+    pruned(refresh(indexing(data), MOMENT))
+    folder = data / "eval" / "indexes"
+    folder.mkdir(parents=True)
+    (folder / "windows").symlink_to(data.parent / "unmounted" / "windows")
+    other = kept_whole(data)
+    done = pruned(refresh(indexing(data), MOMENT))
+    assert (done.outcome, done.file) == ("held back", str(folder / "windows"))
+    assert other in stored(data / "vectors.sqlite")
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root lists every folder")
-def test_a_folder_that_cannot_be_listed_holds_the_prune_back(data: Path) -> None:
+@pytest.mark.parametrize("closed", ["eval", "eval/indexes/windows"])
+def test_a_folder_that_cannot_be_listed_holds_the_prune_back(data: Path, closed: str) -> None:
     """An index there would go unseen, and its vectors deleted: nothing is."""
     pruned(refresh(indexing(data), MOMENT))
-    windows = evaluated(data, data / "vectors.sqlite", "windows")
+    evaluated(data, data / "vectors.sqlite", "windows")
     other = kept_whole(data)
-    windows.parent.chmod(0)
+    (data / closed).chmod(0)
     try:
         done = pruned(refresh(indexing(data), MOMENT))
     finally:
-        windows.parent.chmod(0o700)
-    assert (done.outcome, done.file) == ("held back", str(data / "eval" / "indexes"))
+        (data / closed).chmod(0o700)
+    unseen = data / "eval" / "indexes" if closed == "eval" else data / closed
+    assert (done.outcome, done.file, done.reason) == ("held back", str(unseen), UNLISTED)
     assert other in stored(data / "vectors.sqlite")
+
+
+def test_an_evaluation_index_without_a_model_holds_the_prune_back(data: Path) -> None:
+    """Its meta lacks the model: it cannot say what it reads, and the prune does not fail."""
+    pruned(refresh(indexing(data), MOMENT))
+    windows = evaluated(data, data / "vectors.sqlite", "windows")
+    with closing(sqlite3.connect(windows)) as connection:
+        connection.execute("DELETE FROM meta WHERE name IN ('model', 'fingerprint')")
+        connection.commit()
+    other = kept_whole(data)
+    done = pruned(refresh(indexing(data), MOMENT))
+    assert (done.outcome, done.file, done.reason) == ("held back", str(windows), UNREADABLE)
+    assert other in stored(data / "vectors.sqlite")
+
+
+def test_each_outcome_is_said_short_and_in_detail() -> None:
+    """Deferred, held back with its file, failed: the outcome, and in detail why."""
+    file = "/data/eval/indexes/x.sqlite"
+    cases = {
+        Pruned("deferred", reason=DEFERRED): f"deferred: {DEFERRED}",
+        Pruned("held back", reason=UNREADABLE, file=file): f"held back: {UNREADABLE} ({file})",
+        Pruned("failed", reason="database is locked"): "failed: database is locked",
+    }
+    for done, why in cases.items():
+        assert index_command.prune_text(done, "short") == f"vectors pruned: none, {done.outcome}\n"
+        assert index_command.prune_text(done, "detailed") == f"vector store not pruned, {why}\n"
+    assert index_command.prune_text(None, "short") == ""
 
 
 def test_an_index_by_words_alone_in_place_holds_the_prune_back(data: Path) -> None:

@@ -34,13 +34,18 @@ STORE_SIZE = METER.create_gauge(
 )
 
 type Outcome = Literal["pruned", "deferred", "held back", "failed"]
-DEFERRED = "a build is using the vector store; the next index prunes it"
+DEFERRED = "a build, or another prune, is using the vector store; the next index prunes it"
 SKIPPED = "the build skipped a file, so the index lacks documents of the mirror"
 NO_DOCUMENT = "the build indexed no document"
 UNREADABLE = (
-    "it cannot say which vectors it reads, built by words alone or before plan 023, damaged,"
-    " or in a folder that cannot be listed: rebuild the index with index, an evaluation's"
-    " with eval and its model and chunking, or delete it"
+    "it cannot say which vectors it reads, built by words alone or by an earlier version, or"
+    " damaged: rebuild the index with index, an evaluation's with eval and its model and"
+    " chunking, or delete it"
+)
+UNLISTED = (
+    "it cannot be reached or listed, or it is a link, which is not followed: make it"
+    " readable, or put the folder in place of the link; deleting it would let the next prune"
+    " delete the vectors of the indexes it holds"
 )
 # How each outcome is said: its level, its event and the fields of its event.
 SAID: dict[Outcome, tuple[str, str, tuple[str, ...]]] = {
@@ -108,8 +113,9 @@ def prune(
     ``skipped`` and ``documents`` count what the build that just ended skipped and
     indexed: a file skipped, or no document, holds the prune back, as the index then
     lacks what the mirror still holds; so does an index that cannot say which vectors it
-    reads, being by words alone, damaged, or in a folder that cannot be listed. Either
-    way, it would delete what the mirror still needs. A build holding the store's lock
+    reads, being by words alone or damaged, and a folder that cannot be listed, or a
+    link, among the evaluation's. Either way, it would delete what the mirror still
+    needs. A build holding the store's lock
     defers it. The store's own failure to delete fails it, nothing deleted; the span
     ``index.prune`` holds it.
     """
@@ -127,7 +133,10 @@ def prune(
                 for path in [index, *sqlite_index.indexes_in(evaluation_indexes)]:
                     with sqlite_index.reading(path) as reader:
                         keys[path] = reader.keys()
-            except sqlite_index.UnavailableIndexError, sqlite3.DatabaseError, OSError:
+            except OSError as error:
+                unlisted = Pruned("held back", reason=UNLISTED, file=str(error.filename or path))
+                return said(unlisted, span, started)
+            except sqlite_index.UnavailableIndexError, sqlite3.DatabaseError:
                 held_back = Pruned("held back", reason=UNREADABLE, file=str(path))
                 return said(held_back, span, started)
             read = keys.pop(index)

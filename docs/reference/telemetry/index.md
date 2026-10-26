@@ -21,8 +21,8 @@ given back.
 | `index.lacks_files` | warning | `count` | How many files the index lacks |
 | `vectors.lock_wait` | info | `lock` | A prune holds the vector store's lock: the build waits for it, at most 60 s, past which the index is not built |
 | `index.pruned` | info | `kept`, `kept_for_evaluation`, `deleted`, `bytes_before`, `bytes_after`, `seconds`, `shrinks`, `reclaimed`, `reason` | The vector store is pruned: the vectors kept, those that the evaluation's indexes alone read, those deleted; its size before and after, in bytes; whether it gives freed pages back at all, and whether these went back, else why not |
-| `index.prune_deferred` | info | `reason` | A build holds the vector store's lock: nothing is deleted, and the next `index` prunes |
-| `index.prune_skipped` | warning | `outcome`, `reason`, `file` | Nothing is deleted: `held back` when the build skipped a file or indexed no document, or an index cannot say which vectors it reads, by words alone, built before plan 023, damaged or in a folder that cannot be listed (the file, or the folder); `failed` when the store could not delete. The exit status stays the build's |
+| `index.prune_deferred` | info | `reason` | A build, or another prune, holds the vector store's lock: nothing is deleted, and the next `index` prunes |
+| `index.prune_skipped` | warning | `outcome`, `reason`, `file` | Nothing is deleted: `held back` when the build skipped a file or indexed no document, an index cannot say which vectors it reads, by words alone, built before plan 023 or damaged (the file), or a folder of the evaluation's cannot be listed, or is a link (the folder); `failed` when the store could not delete. The exit status stays the build's |
 | `index.not_built` | error | `reason`, `hint` | No mirror, the endpoint or the model fails, or the index cannot be written (a full disk): the index in place stays, exit 1; in `sync`, its row fails |
 | `http.get` | debug | `url`, `status`, `error`, `seconds` | Each request for the endpoint's list of models |
 | `http.post` | debug | `url`, `status`, `error`, `seconds` | Each request for embeddings |

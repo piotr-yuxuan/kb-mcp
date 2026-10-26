@@ -9,6 +9,7 @@ names the model.
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import sqlite3
@@ -42,6 +43,8 @@ if TYPE_CHECKING:
 
 # What the file of a build begins with, beside its index, until it is renamed into place.
 BUILDING = ".index-"
+# Why a link among indexes is not followed: a cycle of them would not end.
+LINK = "a link, which is not followed"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id.
 SCHEMA = "3"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
@@ -275,27 +278,27 @@ class Writer:
         self.skipped += 1
 
 
-def unlisted(error: OSError) -> None:
-    """Stop a walk at a folder that cannot be listed, as an index there would go unseen."""
-    raise error
-
-
 def indexes_in(folder: Path) -> list[Path]:
-    """List the indexes under a folder, at any depth and through links, in order.
+    """List the indexes under a folder, at any depth, in order; none if it does not exist.
 
-    None if the folder does not exist; OSError when one under it cannot be listed. The
+    A prune must see each, or it deletes the vectors that it reads: a folder that cannot
+    be reached or listed, and a link, which is not followed, raise OSError naming it. The
     file of a build is no index: ``building`` makes it empty, renames it into place once
     complete, and a build killed before its end leaves it behind.
     """
-    if not folder.is_dir():
+    try:
+        folder.lstat()
+    except FileNotFoundError:
         return []
-    walked = folder.walk(on_error=unlisted, follow_symlinks=True)
-    return sorted(
-        root / name
-        for root, _folders, names in walked
-        for name in names
-        if name.endswith(".sqlite") and not name.startswith(BUILDING)
-    )
+    errors: list[OSError] = []
+    found: list[Path] = []
+    for root, _folders, names in folder.walk(on_error=errors.append):
+        paths = [root / name for name in names]
+        errors += [OSError(errno.ELOOP, LINK, str(path)) for path in paths if path.is_symlink()]
+        found += [path for path in paths if path.suffix == ".sqlite"]
+    if errors:
+        raise errors[0]
+    return sorted(path for path in found if not path.name.startswith(BUILDING))
 
 
 @contextmanager
@@ -502,7 +505,8 @@ class Reader:
         prune must keep, so raise UnavailableIndexError.
         """
         columns = {row["name"] for row in self._connection.execute("PRAGMA table_info(pieces)")}
-        if self.embedded() is None or "key" not in columns:
+        model = self._connection.execute("SELECT value FROM meta WHERE name = 'model'").fetchone()
+        if not model or not model[0] or "key" not in columns:
             message = "built by words alone, or before pieces recorded their keys"
             raise UnavailableIndexError(message)
         return {row[0] for row in self._connection.execute("SELECT DISTINCT key FROM pieces")}
