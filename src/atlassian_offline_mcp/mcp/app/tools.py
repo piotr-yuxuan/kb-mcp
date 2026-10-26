@@ -24,7 +24,7 @@ import structlog
 from opentelemetry import metrics, trace
 
 from atlassian_offline_mcp.kernel.content import WORKLOG_ID
-from atlassian_offline_mcp.kernel.reranking import DEPTHS
+from atlassian_offline_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.meaning import Nearest
@@ -64,7 +64,7 @@ BROWSE_LIMIT = 50
 BROWSE_LIMITS = (1, 200)
 READ_CHARS = 12_000
 CHARS_LIMITS = (1, 40_000)
-LONGEST = {"query": 500, "ref": 300, "value": 100, "cursor": 100}
+LONGEST = {"query": LONGEST_QUERY, "ref": 300, "value": 100, "cursor": 100}
 VALUES_SHOWN = 100
 CURSOR_TIME = "%Y%m%dT%H%M%SZ"
 NO_WORDS = (
