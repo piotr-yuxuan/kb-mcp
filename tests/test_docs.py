@@ -296,11 +296,13 @@ def program_arguments(words: list[str]) -> list[str] | None:
 def test_each_documented_command_line_of_the_program_parses(checkout: frozenset[str]) -> None:
     """In a bash block of any page but the plans', the program's arguments parse.
 
-    Continuations joined, words split as a shell does, the arguments that
-    ``program_arguments`` finds parse with the command's own parser, no arguments meaning
-    ``serve``; --help and --version exit 0, which passes. A console block that names the
-    program is refused outside the tutorial of a first change, whose subcommand no
-    commit declares.
+    Continuations joined, words split as a shell does, a comment left out, the arguments
+    that ``program_arguments`` finds parse with the command's own parser, no arguments
+    meaning ``serve``; --help and --version exit 0, which passes. A line that names the
+    program is refused when the shell could not split it, or when ``program_arguments``
+    finds no command in it, so that a form it does not read is never passed unread. A
+    console block that names the program is refused outside the tutorial of a first
+    change, whose subcommand no commit declares.
     """
     refused = []
     checked: Counter[str] = Counter()
@@ -321,8 +323,16 @@ def test_each_documented_command_line_of_the_program_parses(checkout: frozenset[
                 if page != FIRST_CHANGE:
                     refused.append(f"{page}:{line}: the program in a console block")
                 continue
-            arguments = program_arguments(shlex.split(given))
+            try:
+                arguments = program_arguments(shlex.split(given, comments=True))
+            except ValueError as error:
+                refused.append(f"{page}:{line}: the shell cannot split it: {error}")
+                continue
             if arguments is None:
+                refused.append(
+                    f"{page}:{line}: names the program in a form that program_arguments"
+                    " does not read"
+                )
                 continue
             checked[page] += 1
             said = io.StringIO()
