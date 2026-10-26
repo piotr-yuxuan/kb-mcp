@@ -169,11 +169,17 @@ same rules whichever way the run signs in:
 - **A 401 means sign in again.** It stops the run, rather than failing one document
   ([`SignInNeededError`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py),
   [`test_a_401_means_sign_in_is_needed`](../../tests/test_http.py)), with exit status 3.
+- **Through the environment's proxy.** The site's requests go through the proxy that
+  `HTTPS_PROXY`, `HTTP_PROXY` or `ALL_PROXY` names, unless `NO_PROXY` names the site,
+  and on macOS, with none set, through the system's proxy settings, as httpx reads them
+  ([`client`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py) leaves
+  them on). Over https, such a proxy sees the site's host and the times of the requests,
+  not what they carry.
 
-The trust store is the wire's one opening. Where a company inspects TLS, the operating
-system trusts its proxy's certificate, and the proxy reads every request, the cookies
-and the token's header included. `doctor` says whether the public certificate
-authorities verify the site, which they do not where TLS is inspected
+The trust store is the wire's one opening onto what requests carry. Where a company
+inspects TLS, the operating system trusts its proxy's certificate, and the proxy reads
+every request, the cookies and the token's header included. `doctor` says whether the
+public certificate authorities verify the site, which they do not where TLS is inspected
 ([`verified_by_public_cas`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py)).
 
 ## What agents get

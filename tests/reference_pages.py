@@ -228,6 +228,18 @@ A run takes every other `OTEL_` variable out of its environment as it starts, be
 OpenTelemetry reads any
 ([`READ`](../../src/atlassian_offline_mcp/observability/__init__.py)); the reference of
 [telemetry](telemetry/README.md#settings-and-variables) says why.
+
+The libraries that a run uses read variables of their own, which no test finds; these
+change what a run does:
+
+- `HTTPS_PROXY`, `HTTP_PROXY` and `ALL_PROXY`, unless `NO_PROXY` names the host, as
+  httpx reads them: the site's requests go through that proxy, and so do those to an
+  embedding endpoint off this machine; one on it, and telemetry, ignore them. On macOS,
+  with none set, Python reads the system's proxy settings instead.
+  [Credentials](../explanation/credentials.md#on-the-wire) says what a proxy sees.
+- `XDG_STATE_HOME`, on Linux: the log folder is under it, as platformdirs places it.
+- `COLUMNS`, `FORCE_COLOR`, `PYTHON_COLORS` and `TERM`, among others: the width and the
+  colours of `--help`, as argparse reads them, and of stderr, as Rich does.
 """
 
 

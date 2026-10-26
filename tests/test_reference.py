@@ -1,10 +1,12 @@
-"""The reference of commands and settings is what the code generates, and misses no variable.
+"""The reference of commands and settings is what the code generates, and names src's variables.
 
 Plan 020: ``tests.reference_pages`` writes ``docs/reference/commands.md`` from the
 parser and ``docs/reference/settings.md`` from the settings' model; each page must be,
 byte for byte, what it gives now. A variable that a run reads besides the settings is
 written there by hand, so each all-capitals text of ``src/`` with an underscore, which
-may name one, must be on the settings page, or below with why it names none.
+may name one, must be on the settings page, or below with why it names none. The
+variables that libraries read are not found so: the page names by hand those that change
+a run.
 """
 
 from __future__ import annotations
