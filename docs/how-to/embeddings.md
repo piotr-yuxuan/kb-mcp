@@ -20,18 +20,13 @@ itself: it asks any OpenAI-compatible embeddings API, by default Ollama at
 `http://127.0.0.1:11434/v1`. Without one, `index` stops and names
 `search_mode = "lexical"`, and the server answers by words, saying why.
 
-Hybrid search over windows is the default by the user's choice: on plan 002's sandbox
-questions it ranked better than hybrid search over sections or words alone,
-significantly (MRR@10 0.639, against 0.578 and 0.539), at 266 ms for the 95th
-percentile of a query on the development laptop's CPU. Semantic search over windows
-ranked higher still there (0.674), but not significantly: p 0.27 against hybrid, in a
-paired test of MRR@10 alone made afterwards, whose lines are in [comparing chunkings and
-modes](../explanation/search-evaluation.md#comparing-chunkings-and-modes). The rules
-written before those measures kept words and sections, for want of speed and of
-evidence quoted; the user chose these defaults knowing that, as ranking matters more to
-them than speed ([plan 025](../work/changelog/025-windows-and-hybrid.md)).
-[Evaluating search](../explanation/search-evaluation.md) and
-[chunking](../explanation/chunking.md) explain the measures, the rules and the choice.
+Hybrid search over windows is the default by the user's choice
+([plan 025](../work/changelog/025-windows-and-hybrid.md)): on plan 002's sandbox
+questions it ranked better than hybrid search over sections or words alone, and ranking
+mattered more than speed.
+[The defaults](../explanation/chunking.md#the-defaults-the-users-choice) give the
+measures, and the rules written before them that kept words and sections;
+[evaluating search](../explanation/search-evaluation.md), how they were made.
 
 ## 1. Run Ollama on the host
 
@@ -155,12 +150,10 @@ How an index cuts documents into the pieces it embeds is the setting `chunking`:
 `sections`, 011's pieces of each section, `section-paths` or `small-to-big`, which
 [chunking](../explanation/chunking.md) compares.
 
-`windows` is the default by the user's choice. Plan 019's rule, set before the
-measures, kept `sections`: it asked a chunking to quote the evidence significantly
-more often than `sections` (adjusted p below 0.05) to replace it, and none did. On the
-sandbox, `windows` ranked better, significantly (hybrid MRR@10 0.639 against 0.578),
-with half the pieces and a tenth more tokens to embed; an edit re-embeds more windows
-than sections, as later windows shift.
+`windows` is the default by the user's choice: on the sandbox it ranked better than
+`sections`, with half the pieces, where plan 019's rule, set before the measures, kept
+`sections` ([the defaults](../explanation/chunking.md#the-defaults-the-users-choice)).
+An edit re-embeds more windows than sections, as later windows shift.
 
 ```toml
 chunking = "sections"

@@ -169,15 +169,16 @@ mode and chunking on golden questions, whose answers are known.
   plan wrote its bar before its run.
 - **The record.** Plan 011 made hybrid search the default on the sandbox's questions.
   With the model of plan 018, hybrid search no longer beat words by 018's bar, and words
-  became the default again. Plan 019 compared four chunkings: `windows` ranked best
-  (MRR@10 0.639 by hybrid search, against 0.578 over `sections` and 0.539 by words), but
-  its rule, which asked for the evidence quoted significantly more often, kept
-  `sections`. Plan 025 made hybrid search over `windows` the default, the user's choice
-  over both rules, knowing their numbers: ranking mattered more to them than speed.
+  became the default again. Plan 019 compared four chunkings: `windows` ranked best by
+  hybrid search, but its rule, which asked for the evidence quoted significantly more
+  often, kept `sections`. Plan 025 made hybrid search over `windows` the default, the
+  user's choice over both rules, knowing their numbers, which
+  [the defaults](chunking.md#the-defaults-the-users-choice) give: ranking mattered more
+  to them than speed.
 - **Cost.** A model by default: `index` and the server need an embedding endpoint
-  unless `search_mode = "lexical"`. A query took 266 ms at the 95th percentile on the
-  development laptop's processor, against a bar of 200 ms set before the runs. And
-  the sandbox's questions are not the user's: the work set will decide again
+  unless `search_mode = "lexical"`. A query's 95th percentile on the development
+  laptop's processor missed the bar of 200 ms set before the runs. And the sandbox's
+  questions are not the user's: the work set will decide again
   ([evaluating search](search-evaluation.md)).
 - **Rejected.** Words alone and `sections`, which the rules of 018 and 019 kept; meaning
   alone, which scored higher still over `windows` on the sandbox, where the user chose
