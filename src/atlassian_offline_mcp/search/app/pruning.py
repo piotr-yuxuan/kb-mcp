@@ -61,6 +61,7 @@ SAID: dict[Outcome, tuple[str, str, tuple[str, ...]]] = {
             "bytes_after",
             "seconds",
             "shrinks",
+            "converted",
             "reclaimed",
             "reason",
         ),
@@ -90,6 +91,7 @@ class Pruned:
     bytes_after: int = 0
     seconds: float = 0.0
     shrinks: bool = False
+    converted: bool = False
     reclaimed: bool = False
     reason: str = ""
     file: str | None = None
@@ -165,6 +167,7 @@ def prune(
             bytes_before=swept.bytes_before,
             bytes_after=swept.bytes_after,
             shrinks=swept.shrinks,
+            converted=swept.converted,
             reclaimed=swept.shrinks and not swept.unreclaimed,
             reason=swept.unreclaimed,
         )

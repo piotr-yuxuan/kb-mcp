@@ -270,16 +270,45 @@ def test_a_prune_deletes_what_is_not_kept_and_gives_its_pages_back(tmp_path: Pat
     assert not (tmp_path / "v.db-wal").exists()
 
 
-def test_a_store_made_before_023_is_pruned_but_keeps_its_size(tmp_path: Path) -> None:
-    """Its rows go; its pages stay free in the file, for later writes to reuse."""
+def test_a_store_made_before_023_is_converted_at_its_first_prune(tmp_path: Path) -> None:
+    """Its rows deleted, it is rewritten once to give space back; the next prune does not."""
     made_before_023(tmp_path / "v.db")
     keys = seeded(tmp_path / "v.db", 2000)
     with vector_store.opened(tmp_path / "v.db") as store:
         swept = store.prune(keys[::2])
-    assert swept.deleted == len(keys[1::2])
-    assert not swept.shrinks
-    assert swept.bytes_after == swept.bytes_before
-    assert freelist(tmp_path / "v.db") > 0
+        again = store.prune(keys[::2])
+    assert (swept.deleted, swept.converted, swept.shrinks) == (len(keys[1::2]), True, True)
+    assert swept.bytes_after < 0.6 * swept.bytes_before
+    assert (again.converted, again.deleted) == (False, 0)
+    assert modes(tmp_path / "v.db") == (INCREMENTAL, "wal")
+    assert freelist(tmp_path / "v.db") == 0
+
+
+class FailingAtConversion(sqlite3.Connection):
+    """A connection whose VACUUM fails, as one without the space for its copy would."""
+
+    @override
+    def execute(self, sql: str, parameters: object = (), /) -> sqlite3.Cursor:
+        if sql == "VACUUM":
+            message = "database or disk is full"
+            raise sqlite3.OperationalError(message)
+        return super().execute(sql, parameters)
+
+
+def test_a_conversion_that_fails_keeps_the_deletions_and_is_tried_again(
+    tmp_path: Path,
+) -> None:
+    """Not converted, the store says why; its deletions stand; the next prune converts it."""
+    made_before_023(tmp_path / "v.db")
+    keys = seeded(tmp_path / "v.db", 2000)
+    with closing(sqlite3.connect(tmp_path / "v.db", factory=FailingAtConversion)) as connection:
+        swept = vector_store.VectorStore(connection).prune(keys[::2])
+    assert (swept.deleted, swept.converted, swept.shrinks) == (len(keys[1::2]), False, False)
+    assert swept.unreclaimed == "database or disk is full"
+    with vector_store.opened(tmp_path / "v.db") as store:
+        assert len(store.get(keys)) == len(keys[::2])
+        again = store.prune(keys[::2])
+    assert (again.deleted, again.converted, again.shrinks) == (0, True, True)
 
 
 class InterruptedAtCommit(sqlite3.Connection):
@@ -836,15 +865,33 @@ def test_the_vectors_counted_kept_are_those_left_in_the_store(data: Path) -> Non
     assert done.kept == len(read_by(data / "index.sqlite"))
 
 
-def test_a_store_made_before_023_is_said_not_to_shrink(data: Path) -> None:
-    """Pruned, its space not given back, nor said to be: the summary says how to change it."""
+def test_a_store_made_before_023_is_converted_and_said_so_once(data: Path) -> None:
+    """The first prune converts it and says so; the next one has nothing to convert."""
     made_before_023(data / "vectors.sqlite")
     indexed = refresh(indexing(data), MOMENT)
     done = pruned(indexed)
-    assert (done.outcome, done.shrinks, done.reclaimed) == ("pruned", False, False)
+    assert (done.outcome, done.converted, done.shrinks, done.reclaimed) == (
+        "pruned",
+        True,
+        True,
+        True,
+    )
     assert indexed is not None
-    detailed = index_command.text(indexed, "detailed")
-    assert detailed.endswith(f"{index_command.SHRINKS_NOT}\n")
+    assert index_command.text(indexed, "detailed").endswith(f"{index_command.CONVERTED}\n")
+    assert not pruned(refresh(indexing(data), MOMENT)).converted
+
+
+def test_a_store_not_yet_converted_is_said_so_with_the_reason(
+    data: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Its conversion failed for want of space: the summary says why, and that it is retried."""
+    pruned(refresh(indexing(data), MOMENT))
+    swept = vector_store.Swept(1, 10, 8192, 8192, shrinks=False, unreclaimed="disk is full")
+    monkeypatch.setattr(vector_store.VectorStore, "prune", lambda *_: swept)
+    indexed = refresh(indexing(data), MOMENT)
+    assert indexed is not None
+    said_fully = index_command.text(indexed, "detailed")
+    assert said_fully.endswith(f"{index_command.SHRINKS_NOT.format('disk is full')}\n")
 
 
 def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: MonkeyPatch) -> None:

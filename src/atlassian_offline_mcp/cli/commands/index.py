@@ -19,10 +19,12 @@ if TYPE_CHECKING:
 
 # Bytes in a megabyte, as the summary says the vector store's size.
 MB = 1_000_000
-# What a vector store made before plan 023 does with the pages that a prune frees.
+# A vector store made by an earlier version, converted to give freed space back.
+CONVERTED = "; converted, as made by an earlier version, so that it gives freed space back"
+# One whose conversion failed, its reason given, which the next prune tries again.
 SHRINKS_NOT = (
-    "; made by an earlier version, it never shrinks: its free pages serve later writes, and"
-    " deleting it once, at the cost of a full embedding, gives a store that does"
+    "; made by an earlier version, it is not yet converted to give freed space back ({}):"
+    " the next prune tries again, given about the store's size free on disk"
 )
 
 
@@ -61,8 +63,10 @@ def prune_text(pruned: Pruned | None, summary: Summary) -> str:
         f" {pruned.bytes_before / MB:.1f} to {pruned.bytes_after / MB:.1f} MB in"
         f" {pruned.seconds:.1f} s"
     )
+    if pruned.converted:
+        written += CONVERTED
     if not pruned.shrinks:
-        written += SHRINKS_NOT
+        written += SHRINKS_NOT.format(pruned.reason)
     elif not pruned.reclaimed:
         written += f"; space not reclaimed: {pruned.reason}"
     return f"{written}\n"

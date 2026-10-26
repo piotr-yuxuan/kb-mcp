@@ -383,7 +383,7 @@ SHA-256 of its name, the digest that Ollama lists for it (`/api/tags`, empty fro
 server that lists none), its dimensions, its query and document prefixes, and the
 adapter's format version. `<data>/vectors.sqlite` keeps the vectors embedded, keyed
 by the SHA-256 of that fingerprint and the text, committed in batches; deleting it
-costs a full embedding. A text that the endpoint refuses has no vector there, and is
+costs a full embedding of the mirror by the model, and downloads nothing. A text that the endpoint refuses has no vector there, and is
 asked again at the next build.
 
 After each `index` by meaning, the step of `sync` included, the store is pruned (plan
@@ -401,8 +401,13 @@ is a link, which is not followed, or `<data>/eval` is a dangling link, as to a d
 away: make it readable, or put what the link points to in its place. A build holds
 `<data>/vectors.sqlite.lock` shared by `flock` until its index is in place, and a prune
 takes it exclusive or is deferred to the next `index`. A store made from plan 023 on
-gives the pages freed back to the file system (`auto_vacuum = INCREMENTAL`); one made
-before keeps its size, its free pages serving later writes, until deleted once. A later
+gives the pages freed back to the file system (`auto_vacuum = INCREMENTAL`). One made
+before is converted at its first prune, once the vectors that no index reads are
+deleted: the mode set, then one `VACUUM`, which rewrites the vectors kept while the
+prune holds the lock, and needs about their size free in SQLite's temporary folder
+(`SQLITE_TMPDIR`, else `TMPDIR`, else `/var/tmp`) and as much again beside the store,
+for its WAL. The result says so; a conversion that fails, for want of space, says why,
+leaves the deletions, and the next prune tries again. A later
 index that reads the store builds through `search.app.indexing.build_index`, and so its
 lock, and adds its files to what the prune follows. Under `<data>/eval/`,
 `indexes/<chunking>/<model>.sqlite` (each `/` and `:` of the name written `_`) are the

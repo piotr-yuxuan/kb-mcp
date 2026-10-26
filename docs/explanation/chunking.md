@@ -194,7 +194,7 @@ chunking:
 - **A text that two chunkings share is embedded once**, and what an evaluation embeds
   for the chunkings not in use stays in `vectors.sqlite` while its index under
   `<data>/eval/indexes/` exists, which each prune keeps (plan 023): deleting the store
-  costs a full embedding of the chunking in use, and nothing else.
+  costs a full embedding of the chunking in use by the model, and downloads nothing.
 
 Counted on the sandbox's mirror, offline, with the tests' scripted model (the counts
 depend on the cuts alone, not on the model), after editing one page of 17 sections,

@@ -4,7 +4,8 @@ A vector is keyed by the SHA-256 of its model's fingerprint and the text embedde
 text is embedded once per model however often the index is rebuilt, and a vector is
 never reused for another model or another version of one. Each ``put`` commits, so an
 interrupted build keeps what it embedded, until a prune finds that no index reads it.
-Deleting the file costs a full embedding, and nothing else.
+Deleting the file costs a full embedding of the mirror by the model, and downloads
+nothing.
 
 Its lock, beside it, keeps a prune from deleting what a build in progress embeds: each
 build holds it shared, a prune exclusive. ``flock`` locks an open file, so the kernel
@@ -63,9 +64,10 @@ def as_bytes(vector: NDArray[np.float32]) -> bytes:
 class Swept:
     """What a prune of the store did: the vectors deleted and those left, and its size.
 
-    ``shrinks`` says whether the store gives freed pages back to the file system at all,
-    as one made before plan 023 never does; ``unreclaimed``, why this prune's stayed in
-    the file, empty when they did not.
+    ``shrinks`` says whether the store gives freed pages back to the file system, as one
+    made before plan 023 does only once converted; ``converted``, whether this prune
+    converted it; ``unreclaimed``, why this prune's pages stayed in the file, empty when
+    they did not.
     """
 
     deleted: int
@@ -73,6 +75,7 @@ class Swept:
     bytes_before: int
     bytes_after: int
     shrinks: bool
+    converted: bool = False
     unreclaimed: str = ""
 
 
@@ -134,9 +137,11 @@ class VectorStore:
         The deletions are one transaction, committed first, as the vacuum refuses to run
         in one; when they fail, sqlite3.Error is raised, and nothing is deleted. Then
         ``incremental_vacuum`` gives back every free page, those an earlier prune left
-        included, read to its end in one call, as each of its steps frees one page; it
-        does nothing in a store made before plan 023. A vacuum that fails leaves the
-        deletions standing, and says why.
+        included, read to its end in one call, as each of its steps frees one page. A
+        store made before plan 023 is first converted, once: its mode set, then one
+        ``VACUUM``, which rewrites the vectors kept and needs about their size free, in
+        SQLite's temporary folder and beside the store. A vacuum that fails leaves the
+        deletions standing, and says why; the next prune tries again.
         """
         connection = self._connection
         before = connection.execute(SIZE).fetchone()[0]
@@ -145,16 +150,19 @@ class VectorStore:
             (json.dumps(list(kept)),),
         ).rowcount
         connection.commit()
+        converted, unreclaimed = False, ""
         try:
+            if connection.execute("PRAGMA auto_vacuum").fetchone()[0] != INCREMENTAL:
+                connection.execute("PRAGMA auto_vacuum = INCREMENTAL")
+                connection.execute("VACUUM")
+                converted = True
             connection.execute("PRAGMA incremental_vacuum").fetchall()
         except sqlite3.Error as error:
             unreclaimed = str(error)
-        else:
-            unreclaimed = ""
         kept = connection.execute("SELECT count(*) FROM vectors").fetchone()[0]
         after = connection.execute(SIZE).fetchone()[0]
         shrinks = connection.execute("PRAGMA auto_vacuum").fetchone()[0] == INCREMENTAL
-        return Swept(deleted, kept, before, after, shrinks, unreclaimed)
+        return Swept(deleted, kept, before, after, shrinks, converted, unreclaimed)
 
     def count(self, keys: Iterable[str]) -> int:
         """Count the vectors that the store holds for these keys."""
@@ -171,7 +179,8 @@ def opened(path: Path) -> Iterator[VectorStore]:
     Two runs may use the store at once, an index and an evaluation: in WAL mode, reads
     hold no lock and leave no transaction open, and a write waits for the other's. A new
     store can give the pages that a prune frees back to the file system; one made before
-    plan 023 keeps them for later writes, as only a ``VACUUM`` could change its mode.
+    plan 023 can only once converted, as only a ``VACUUM`` changes its mode, which its
+    first prune runs.
     Setting the mode on an existing store in that mode takes the write lock, so that
     opening it waits for another run's write, and a read-only file is refused: every run
     that opens the store writes to it anyway.
