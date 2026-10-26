@@ -58,13 +58,30 @@ def test_every_depth_gaining_on_every_question_qualifies_and_the_smallest_is_tak
     assert decision.depth == BAR_DEPTHS[0]
 
 
-@pytest.mark.parametrize(("loss", "holding"), [(0.050, [True] * 4), (0.051, [False] * 4)])
-def test_a_group_may_lose_0_05_and_no_more(loss: float, holding: list[bool]) -> None:
-    """Compared as reported, to three decimals."""
-    lost = arm(1.0, identifier=GROUPS["identifier"] - loss)
-    decision = default_reranking(PLAIN, depths(d10=lost, d20=lost, d30=lost, d50=lost))
+@pytest.mark.parametrize("group", sorted(GROUPS))
+@pytest.mark.parametrize(
+    ("before", "after", "loss"), [(0.6004, 0.5496, 0.050), (0.6006, 0.5504, 0.051)]
+)
+def test_a_group_may_lose_0_05_as_reported_and_no_more(
+    group: str, before: float, after: float, loss: float
+) -> None:
+    """The loss between the means as the table shows them: 0.600 to 0.550, 0.601 to 0.550."""
+    lost = arm(1.0, **{group: after})
+    decision = default_reranking(
+        arm(0.0, **{group: before}), depths(d10=lost, d20=lost, d30=lost, d50=lost)
+    )
     assert decision is not None
-    assert [verdict.holds for verdict in decision.verdicts] == holding
+    assert [verdict.losses[group] for verdict in decision.verdicts] == [loss] * 4
+    assert [verdict.holds for verdict in decision.verdicts] == [loss <= bar.GROUP_LOSS] * 4
+
+
+def test_a_depth_shown_lower_does_not_gain() -> None:
+    """Significantly different, but worse at every depth: no gain, so no depth."""
+    decision = default_reranking(arm(1.0), depths(d10=PLAIN, d20=PLAIN, d30=PLAIN, d50=PLAIN))
+    assert decision is not None
+    assert all(round(verdict.adjusted, 4) < bar.ALPHA for verdict in decision.verdicts)
+    assert [verdict.beats for verdict in decision.verdicts] == [False] * 4
+    assert decision.depth is None
 
 
 @pytest.mark.parametrize(("tail_ms", "chosen"), [(5000, BAR_DEPTHS[0]), (5001, None)])
@@ -104,20 +121,21 @@ def test_an_adjusted_p_of_0_05_is_no_gain(
     assert decision.depth == (BAR_DEPTHS[0] if gains else None)
 
 
+@pytest.mark.parametrize(("pvalue", "chosen"), [(0.2, 0), (0.04996, 0), (0.0499, 1)])
 def test_the_smallest_depth_not_shown_worse_than_the_best_is_taken(
-    monkeypatch: MonkeyPatch,
+    monkeypatch: MonkeyPatch, pvalue: float, chosen: int
 ) -> None:
-    """20 the best; 10 not shown lower than it, taken; then 10 shown lower, 20 taken."""
+    """20 the best; 10, against it, not shown lower (p of 0.0500 as reported), or shown lower.
+
+    Each qualifying depth's p-value against the best is kept.
+    """
     gains = {(0.0, 0.5): 0.001, (0.0, 0.6): 0.001, (0.0, 0.55): 0.001, (0.0, 0.52): 0.001}
     arms = depths(d10=arm(0.5), d20=arm(0.6), d30=arm(0.55), d50=arm(0.52))
-    scripted_tests(monkeypatch, gains | {(0.6, 0.5): 0.2})
+    scripted_tests(monkeypatch, gains | {(0.6, 0.5): pvalue})
     decision = default_reranking(PLAIN, arms)
     assert decision is not None
-    assert decision.depth == BAR_DEPTHS[0]
-    scripted_tests(monkeypatch, gains | {(0.6, 0.5): 0.01})
-    decision = default_reranking(PLAIN, arms)
-    assert decision is not None
-    assert decision.depth == BAR_DEPTHS[1]
+    assert decision.depth == BAR_DEPTHS[chosen]
+    assert decision.against_best == dict(zip(BAR_DEPTHS, [pvalue, 1.0, 1.0, 1.0], strict=True))
 
 
 def test_another_set_of_depths_gets_no_verdict() -> None:

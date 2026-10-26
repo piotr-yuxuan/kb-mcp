@@ -123,8 +123,10 @@ def arm_row(arm: Arm, group: str) -> str:
 def text(evaluated: Evaluated, summary: Summary) -> str:
     """Write each arm's row, every group's in detail; the first stage's recall; the bar.
 
-    The bar's verdicts come depth by depth, each clause said, then the default depth or
-    that reranking stays off; with depths other than the bar's, that there is no verdict.
+    The bar's verdicts come depth by depth, each clause said with the groups' losses,
+    then each qualifying depth's p-value against the best, then the default depth or
+    that reranking stays off, by this machine's times; with depths other than the bar's,
+    that there is no verdict.
     """
     arms = evaluated.arms
     plain = arms[0]
@@ -144,14 +146,20 @@ def text(evaluated: Evaluated, summary: Summary) -> str:
     else:
         lines += [
             f"Depth {each.depth}: MRR@10 adjusted p = {each.adjusted:.4f}; gains"
-            f" {'yes' if each.beats else 'no'}; groups hold {'yes' if each.holds else 'no'};"
+            f" {'yes' if each.beats else 'no'}; groups lose"
+            f" {', '.join(f'{name} {loss:.3f}' for name, loss in each.losses.items()) or 'n/a'},"
+            f" hold {'yes' if each.holds else 'no'};"
             f" within {BOUND_S:g} s here {'yes' if each.fast else 'no'}"
             for each in decision.verdicts
         ]
+        lines += [
+            f"Depth {depth} against the best qualifying: MRR@10 p = {pvalue:.4f}"
+            for depth, pvalue in decision.against_best.items()
+        ]
         chosen = decision.depth
         lines.append(
-            f"By the bar: rerank {chosen} documents."
+            f"By the bar, with this machine's times: rerank {chosen} documents."
             if chosen
-            else "By the bar: reranking stays off."
+            else "By the bar, with this machine's times: reranking stays off."
         )
     return "\n".join([*lines, f"Results: {evaluated.results}", ""])

@@ -7,7 +7,7 @@ that agents send as names and keywords; and keeps a search within the user's bou
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from statistics import fmean
 from typing import TYPE_CHECKING
 
@@ -41,8 +41,13 @@ class Verdict:
     depth: int
     adjusted: float
     beats: bool  # a gain on MRR@10, its adjusted p below ALPHA
-    holds: bool  # no group of GROUPS losing more than GROUP_LOSS
+    losses: Mapping[str, float]  # each group of GROUPS that the golden file names: its loss
     fast: bool  # a search's 95th percentile within BOUND_S
+
+    @property
+    def holds(self) -> bool:
+        """Say whether no group of GROUPS loses more than GROUP_LOSS of MRR@10."""
+        return all(loss <= GROUP_LOSS for loss in self.losses.values())
 
     @property
     def qualifies(self) -> bool:
@@ -56,6 +61,8 @@ class Decision:
 
     verdicts: tuple[Verdict, ...]
     depth: int | None
+    # Each qualifying depth's p-value against the best of them, on MRR@10.
+    against_best: Mapping[int, float] = field(default_factory=dict)
 
 
 def default_reranking(plain: Depthed, arms: Mapping[int, Depthed]) -> Decision | None:
@@ -63,23 +70,24 @@ def default_reranking(plain: Depthed, arms: Mapping[int, Depthed]) -> Decision |
 
     Another set of depths gets no verdict. Among the depths qualifying, the smallest
     whose MRR@10 is not shown lower than the best's, by the paired test, p of ALPHA or
-    more. Values compare as an evaluation reports them: means to three decimals,
-    p-values to four, times in whole milliseconds.
+    more. Values compare as an evaluation reports them: means to three decimals, and a
+    loss as their difference, p-values to four, times in whole milliseconds. A group
+    that the golden file does not name has no loss, and holds.
     """
     if tuple(sorted(arms)) != BAR_DEPTHS:
         return None
     pvalues = [paired_test(plain.reciprocal, arms[depth].reciprocal) for depth in BAR_DEPTHS]
-    before = round(fmean(plain.reciprocal), 3)
+    mean = {depth: round(fmean(arm.reciprocal), 3) for depth, arm in {0: plain, **arms}.items()}
     verdicts = tuple(
         Verdict(
             depth,
             adjusted,
-            beats=round(fmean(arms[depth].reciprocal), 3) > before and round(adjusted, 4) < ALPHA,
-            holds=all(
-                round(plain.groups[group] - arms[depth].groups[group], 3) <= GROUP_LOSS
+            beats=mean[depth] > mean[0] and round(adjusted, 4) < ALPHA,
+            losses={
+                group: round(round(plain.groups[group], 3) - round(arms[depth].groups[group], 3), 3)
                 for group in GROUPS
                 if group in plain.groups
-            ),
+            },
             fast=arms[depth].tail_ms <= BOUND_S * 1000,
         )
         for depth, adjusted in zip(BAR_DEPTHS, holm(pvalues), strict=True)
@@ -87,7 +95,7 @@ def default_reranking(plain: Depthed, arms: Mapping[int, Depthed]) -> Decision |
     qualifying = [verdict.depth for verdict in verdicts if verdict.qualifies]
     if not qualifying:
         return Decision(verdicts, None)
-    best = max(qualifying, key=lambda depth: fmean(arms[depth].reciprocal))
-    shown = arms[best].reciprocal
-    kept = (depth for depth in qualifying if paired_test(shown, arms[depth].reciprocal) >= ALPHA)
-    return Decision(verdicts, min(kept))
+    shown = arms[max(qualifying, key=mean.__getitem__)].reciprocal
+    against = {depth: paired_test(shown, arms[depth].reciprocal) for depth in qualifying}
+    kept = (depth for depth, pvalue in against.items() if round(pvalue, 4) >= ALPHA)
+    return Decision(verdicts, min(kept), against)

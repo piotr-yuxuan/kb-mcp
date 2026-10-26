@@ -91,17 +91,19 @@ written before any measure, applied by `eval-rerank` on the golden questions to 
 Among the depths that qualify, the smallest whose MRR@10 is not shown lower than the
 best's (the same test, p of 0.05 or more) becomes `rerank.depth`, and
 `rerank.enabled` turns true. If none qualifies, reranking stays off by default. Values
-compare as reported, to three decimals and whole milliseconds: a loss of 0.050
-qualifies, 0.051 does not.
+compare as reported: means to three decimals, a group's loss as the difference of its
+two means so shown, p-values to four decimals, times in whole milliseconds. A loss of
+0.050 qualifies, 0.051 does not; a group that the golden questions do not name has no
+loss to show, and `eval-rerank` says `n/a`.
 
 - **Clause 1** is the test of plans 011 and 018, its family of four fixed in advance.
 - **Clause 2** allows more than plans 011 and 018 did (0.02), by the arithmetic of
   small groups. The sandbox has 32 identifier questions and 34 keyword ones; with the
   spread of per-question differences seen in plan 018 (0.281), the standard error of a
-  group's mean difference is about 0.05. A reranker that changes nothing would then
-  show a loss past 0.02 in a group about one time in three, and past 0.05 about one
-  time in six; and a real loss like hybrid's 0.061 on identifiers in plan 018 would
-  still be caught more often than not.
+  group's mean difference is about 0.05. A reranker with no true effect on a group's
+  mean would then show, by chance, a loss past 0.02 about one time in three, and past
+  0.05 about one time in six; and a real loss like hybrid's 0.061 on identifiers in
+  plan 018 would still be caught more often than not.
 - **Clause 3** is the user's figure ("Happy to wait 5s"), within the 10 seconds or so
   for which a person keeps attention ([nielsen]). A query by meaning was asked 200 ms
   in plan 018, but it embeds ten words where a reranker reads N passages, and an
@@ -112,8 +114,9 @@ qualifies, 0.051 does not.
   Published gains of rerankers are of that order ([qwen3], [beir]), but the sandbox is
   small and written with its questions. "Not significant" means not shown.
 - **Which machine decides.** Ranks are the same on every machine; times are not. A run
-  elsewhere gives clauses 1 and 2 and its own times, which clause 3 does not read: the
-  user's machine's run decides.
+  elsewhere reads clause 3 by its own times, and says so: its clauses 1 and 2 hold for
+  every machine, its verdict for that machine alone. The user's machine's run sets the
+  defaults.
 
 Evidence@ask is reported beside, not a clause: under `ask`'s fixed budget it follows
 the order that MRR@10 measures, and a further noisy clause would refuse more harmless

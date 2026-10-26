@@ -562,9 +562,11 @@ each of the 105 questions, 2.6 to 4.6 million tokens. By the estimate in
 [reranking](reranking.md#why-only-the-first-documents), that takes about 20 to 35
 minutes on the user's machine; at the 85 tokens a second of llama.cpp 0.6.0 on a laptop's
 CPU, 8 to 15 hours. The output has a table with a row per depth, `none` the order not
-reranked, the first stage's Recall@N, a line per depth with each clause's verdict, and
-the bar's: `By the bar: rerank N documents.` or `By the bar: reranking stays off.` The
-times are the machine's own, and the bar's third clause reads the user's machine's alone.
+reranked, the first stage's Recall@N, a line per depth with each clause's verdict and
+each group's loss, each qualifying depth's p-value against the best, and the bar's
+last line, `By the bar, with this machine's times: rerank N documents.` or `...:
+reranking stays off.` Its third clause reads the times of the machine that ran it:
+only the user's machine's run sets the defaults.
 
 On another machine, copy the data directory there: the sandbox's content is invented.
 Its `vectors.sqlite` spares the embedding when Ollama there lists the same digest for
