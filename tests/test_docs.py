@@ -413,7 +413,8 @@ def test_the_reference_names_each_tool_and_prompt_served_and_each_of_their_param
 
     The server starts as agents start it, in a scratch home, and is listed through
     ``tests/test_serve.py``'s ``talk``; each parameter of a tool's schema and each
-    argument of a prompt is in code in its section.
+    argument of a prompt leads a bullet of its section, in code (``- `name`:``), so that
+    another line's mention does not stand for its own.
     """
     command = StdioServerParameters(
         command=sys.executable, args=["-m", "atlassian_offline_mcp"], env={"HOME": str(tmp_path)}
@@ -452,10 +453,12 @@ def test_the_reference_names_each_tool_and_prompt_served_and_each_of_their_param
                 f"{MCP_TOOLS}:{at}: {part} are {headings.get(part, [])}, served {list(offered)}"
             )
         problems.extend(
-            f"{MCP_TOOLS}:{lines.get((part, name), at)}: {name} names no `{parameter}`"
+            f"{MCP_TOOLS}:{lines.get((part, name), at)}: {name} has no bullet `{parameter}`"
             for name, parameters in offered.items()
             for parameter in parameters
-            if f"`{parameter}`" not in bodies.get((part, name), "")
+            if not re.search(
+                rf"^- `{re.escape(parameter)}`:", bodies.get((part, name), ""), re.MULTILINE
+            )
         )
     assert problems == []
 
