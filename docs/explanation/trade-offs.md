@@ -183,7 +183,9 @@ mode and chunking on golden questions, whose answers are known.
   alone, which scored higher still over `windows` on the sandbox, where the user chose
   hybrid search.
 - **Settled** by [plan 011](../work/changelog/011-search-strategies.md#search) for the
-  modes and the measure; the defaults by plan 025, the user's choice.
+  modes and the measure; the defaults by [plan
+  025](../work/changelog/025-windows-and-hybrid.md#settled-by-the-user), the user's
+  choice.
 
 ## Embeddings by any OpenAI-compatible API, not in process
 

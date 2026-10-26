@@ -29,7 +29,7 @@ paired test of MRR@10 alone made afterwards, whose lines are in [comparing chunk
 modes](../explanation/search-evaluation.md#comparing-chunkings-and-modes). The rules
 written before those measures kept words and sections, for want of speed and of
 evidence quoted; the user chose these defaults knowing that, as ranking matters more to
-them than speed.
+them than speed ([plan 025](../work/changelog/025-windows-and-hybrid.md)).
 [Evaluating search](../explanation/search-evaluation.md) and
 [chunking](../explanation/chunking.md) explain the measures, the rules and the choice.
 
