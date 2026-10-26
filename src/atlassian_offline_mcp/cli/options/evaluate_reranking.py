@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from argcomplete.completers import FilesCompleter
 
 from atlassian_offline_mcp.cli.domain.command import Command
+from atlassian_offline_mcp.cli.domain.eval_agents import SEED
 from atlassian_offline_mcp.cli.options._common import (
     add_embedding_options,
     add_output_options,
@@ -16,6 +17,7 @@ from atlassian_offline_mcp.cli.options._common import (
     add_yes_option,
     endpoint_elsewhere,
 )
+from atlassian_offline_mcp.cli.options.evaluate_agents import positive
 from atlassian_offline_mcp.kernel.reranking import BAR_DEPTHS, DEPTHS
 
 if TYPE_CHECKING:
@@ -71,6 +73,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             f" {', '.join(map(str, BAR_DEPTHS))}, the bar's"
         ),
     )
+    sample = parser.add_argument(
+        "--sample", type=positive, help="this many questions, chosen by the seed; else all"
+    )
+    seed = parser.add_argument("--seed", type=int, default=SEED, help="the sample's seed")
     parser.set_defaults(
         command=Command(
             "eval-rerank",
@@ -86,7 +92,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
                 "rerank.model",
             ),
             flags=flags,
-            actions=(*actions, remote, golden, depths),
+            actions=(*actions, remote, golden, depths, sample, seed),
             writes=True,
             described=described,
             refused=endpoint_elsewhere,

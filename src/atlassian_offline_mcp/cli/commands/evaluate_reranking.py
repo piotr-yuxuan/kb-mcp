@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
+from atlassian_offline_mcp.evaluation.app.agents import AgentsError, chosen
 from atlassian_offline_mcp.evaluation.app.evaluation import (
     EvaluationError,
     GoldenError,
@@ -62,17 +63,19 @@ class Evaluated:
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Evaluated | None]:
-    """Measure each depth; exit 1 on a failure, 2 for a refused golden file.
+    """Measure each depth; exit 1 on a failure, 2 for a refused golden file or sample.
 
     The setting's model, chunking and search mode are measured, reranked by the setting's
-    reranker. The results, ids and numbers only, go to
+    reranker, on the golden file's questions or the sample of them that --sample chooses,
+    as ``eval-agents prepare`` does. The results, ids and numbers only, go to
     ``<data>/eval/results/<UTC time>-rerank.json``.
     """
     settings = loaded.settings
     try:
         golden = arguments.golden.read_text(encoding="utf-8")
-        questions = read_golden(golden, Library(settings.index, settings.docs).resolve)
-    except (GoldenError, OSError, UnanswerableError) as error:
+        read = read_golden(golden, Library(settings.index, settings.docs).resolve)
+        questions = chosen(read, arguments.sample, arguments.seed)
+    except (GoldenError, OSError, UnanswerableError, AgentsError) as error:
         structlog.get_logger().error("eval.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     built_at = datetime.now(UTC)
@@ -99,6 +102,9 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
         "chunking": settings.chunking,
         "reranker": reranker.model,
         "served": listed,
+        "sample": None
+        if arguments.sample is None
+        else {"questions": arguments.sample, "seed": arguments.seed},
     }
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}-rerank.json"
     results.parent.mkdir(parents=True, exist_ok=True)

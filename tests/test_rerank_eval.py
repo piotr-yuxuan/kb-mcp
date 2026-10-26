@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 __all__ = ["data"]  # the fixture of test_evaluate, used here
 
 QUESTIONS = 30
+SAMPLE = 2  # of the golden file's three questions
 GROUPS = {"identifier": 0.600, "keyword": 0.800}
 
 
@@ -237,7 +238,32 @@ def test_each_depth_asks_once_a_question_and_the_results_keep_no_question(
     assert [each["depth"] for each in record["arms"]] == [0, 2, 3]
     assert record["served"] == ["qwen3-reranker-0.6b"]
     assert record["decision"] is None
+    assert record["sample"] is None
     assert all(each["tokens"] for each in record["arms"][1:])
+
+
+def test_a_sample_measures_that_many_questions_the_same_at_each_depth(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """--sample 2 of the three questions: two requests a depth, for the same two; said so."""
+    answers = Reranks()
+    with serving(Scripted()) as url, serving(answers) as rerank_url:
+        assert evaluated(data, url, rerank_url, "--sample", str(SAMPLE), "--seed", "5") == 0
+    assert f"--sample {SAMPLE}" in capsys.readouterr().err
+    queries = [request["query"] for request in answers.asked]
+    assert len(set(queries)) == SAMPLE
+    assert queries == queries[:SAMPLE] * 2  # depths 2 and 3
+    [results] = (data / "eval" / "results").glob("*-rerank.json")
+    record = json.loads(results.read_text(encoding="utf-8"))
+    assert record["sample"] == {"questions": 2, "seed": 5}
+
+
+def test_a_sample_larger_than_the_golden_file_is_refused_before_any_request(data: Path) -> None:
+    """Three questions: a sample of four exits 2, and nothing is reranked."""
+    answers = Reranks()
+    with serving(Scripted()) as url, serving(answers) as rerank_url:
+        assert evaluated(data, url, rerank_url, "--sample", "4") == ExitStatus.REFUSED
+    assert answers.asked == []
 
 
 def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_first_n(

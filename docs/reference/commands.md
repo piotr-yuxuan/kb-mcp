@@ -332,6 +332,7 @@ usage: atlassian-offline-mcp eval-rerank [-h] [--config CONFIG] [--data-dir DATA
                                          [--format {text,json}]
                                          [--summary {short,detailed}] [-y]
                                          [--allow-remote-embeddings] [--depth DEPTH]
+                                         [--sample SAMPLE] [--seed SEED]
                                          golden
 
 positional arguments:
@@ -355,6 +356,8 @@ options:
                         off this machine
   --depth DEPTH         documents reranked, as one arm; by default 10, 20, 30, 50, the
                         bar's
+  --sample SAMPLE       this many questions, chosen by the seed; else all
+  --seed SEED           the sample's seed
 
 With --format json: arms, each depth's measures of search and ask by group, with its
 ranks, times, tokens and Recall@N, depth 0 the order not reranked; decision, the bar's
