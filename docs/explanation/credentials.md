@@ -93,7 +93,8 @@ place where it would outlive a run:
   ([`test_the_generic_atlassian_names_are_not_read`](../../tests/test_settings.py)).
 - **Encrypted at rest, by sops.** The how-to keeps it in a sops file, which
   `sops exec-env` decrypts in memory into the environment of the one command it runs;
-  the program itself never writes it.
+  the program itself never writes it
+  ([`test_no_run_at_debug_says_or_leaves_a_secret`](../../tests/test_secrets.py)).
 - **With its email, as one header.** A token without its email is refused before the
   run begins, with exit status 2
   ([`token_without_email`](../../src/atlassian_offline_mcp/cli/options/_common.py)).
@@ -146,7 +147,9 @@ Every request to the site goes through one port,
 same rules whichever way the run signs in:
 
 - **GET alone.** The port makes no other request, so the program changes nothing on the
-  site, whatever its account may do.
+  site, whatever its account may do
+  ([`Site.once`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py),
+  [`test_a_run_sends_the_site_nothing_but_gets`](../../tests/test_download.py)).
 - **https alone.** A request over plain http is refused before it is sent, so that
   neither cookie nor header travels in clear
   ([`refuse_plain_http`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py),
@@ -187,7 +190,9 @@ An agent gets the mirror, never a sign-in.
   [coding agents](../how-to/agents.md) sets it up: never `<data>/session/`, which is the
   sign-in, nor `<data>/raw/`.
 - An agent starts the server with its own environment, which needs no token, and the
-  key only where the endpoint asks for one.
+  key only where the endpoint asks for one, as the server's tests start it with a home
+  alone
+  ([`test_a_client_calls_every_tool_over_stdio`](../../tests/test_serve.py)).
 
 ## What is never logged
 
@@ -232,9 +237,14 @@ mistake. None of it stops someone who is already on the machine as you:
   can read it: the cookies, the profile, the mirror. So can it read the token or the key
   while a run holds them, in its environment and its memory.
 - **A copied disk, or a backup.** The program encrypts nothing under the data
-  directory: the cookies are in clear, the profile's key is public, the mirror is plain
-  Markdown. A backup of your home copies the data directory as it copies any folder:
-  the guard refuses synchronised folders and git working trees, nothing else. The
+  directory: the cookies are in clear
+  ([`write_cookies`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/session_file.py)),
+  the profile's key is public
+  ([`disable_password_saving`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/browser.py)),
+  the mirror is plain Markdown. A backup of your home copies the data directory as
+  it copies any folder: the guard refuses synchronised folders and git working trees,
+  nothing else
+  ([`unsafe_location`](../../src/atlassian_offline_mcp/config/domain/settings.py)). The
   disk's own encryption, such as FileVault or LUKS, is what keeps a lost machine's data.
 - **A tunnel.** The rules for the embedding endpoint and for telemetry's trust that a
   loopback address is this machine

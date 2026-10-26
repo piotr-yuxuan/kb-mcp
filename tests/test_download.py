@@ -392,6 +392,25 @@ def test_the_report_names_nothing_the_site_served(tmp_path: Path) -> None:
     assert not [word for word in SERVED if word in text]
 
 
+def test_a_run_sends_the_site_nothing_but_gets(tmp_path: Path) -> None:
+    """Listings, documents, files, probes and authors alike: the site changes nothing."""
+    fake = FakeSite()
+    methods: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        methods.append(request.method)
+        return fake.handle(request)
+
+    store = RawStore(tmp_path / "raw")
+    with (
+        httpx.Client(base_url=SITE, transport=httpx.MockTransport(handle)) as client,
+        store.writing(),
+    ):
+        site = Site(client, sleep=lambda _: None)
+        Download(site, store, period("7d", None, NOW), CAP, lambda: NOW).run(["MFS"], ["PRB"])
+    assert set(methods) == {"GET"}
+
+
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory under the scratch folder."""
     return Settings(site=SITE, data_dir=tmp_path / "data")
