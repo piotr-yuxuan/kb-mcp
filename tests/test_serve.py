@@ -65,11 +65,17 @@ ROOT = Path(__file__).parents[1]
 
 @pytest.fixture
 def home(tmp_path: Path) -> Path:
-    """Make a scratch home whose settings name a data directory with an index."""
+    """Make a scratch home whose settings name a data directory with an index.
+
+    Reranking is off, as no reranking server runs here: a dotted key, so that a test may
+    append keys of the file's top level.
+    """
     home, data = tmp_path / "home", tmp_path / "data"
     (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
     settings = home / ".config" / "atlassian-offline-mcp" / "config.toml"
-    settings.write_text(f"data_dir = {json.dumps(str(data))}\n", encoding="utf-8")
+    settings.write_text(
+        f"data_dir = {json.dumps(str(data))}\nrerank.enabled = false\n", encoding="utf-8"
+    )
     fillers(data / "docs")
     write(data / "docs", page("196845", "Kafka retention", space="ENG"))
     write(data / "docs", issue("PROJ-7", "Kafka upgrade"))
@@ -343,7 +349,8 @@ def test_a_hybrid_search_answers_by_meaning_over_stdio_offline(tmp_path: Path) -
     with serving(Scripted()) as url:
         settings.write_text(
             f'data_dir = {json.dumps(str(data))}\nmodel = "tiny"\n'
-            f'search_mode = "hybrid"\nembedding_url = {json.dumps(url)}\n',
+            f'search_mode = "hybrid"\nembedding_url = {json.dumps(url)}\n'
+            "rerank.enabled = false\n",  # no reranking server here
             encoding="utf-8",
         )
         port = int(url.split(":")[2].split("/")[0])

@@ -19,7 +19,7 @@ from atlassian_offline_mcp.search.app.indexing import build_index
 from atlassian_offline_mcp.search.app.reranking import Reranking
 from atlassian_offline_mcp.search.domain.reranking import PLACES, split_order, written
 from tests.answers import built, continuation, follow, parts
-from tests.endpoint import Reranks, relevance, serving
+from tests.endpoint import Reranks, nothing_listening, relevance, serving
 from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.test_serve import GUARDED, ROOT, talk
 
@@ -383,7 +383,7 @@ def test_serve_not_reranking_opens_no_socket_and_says_its_settings_go_unused(
     tmp_path: Path,
 ) -> None:
     """Disabled: no network at all, a search answered, and rerank.url not applied."""
-    home, _ = stdio_root(tmp_path, 'url = "http://127.0.0.1:9/v1"\n')
+    home, _ = stdio_root(tmp_path, 'enabled = false\nurl = "http://127.0.0.1:9/v1"\n')
     errlog = tmp_path / "stderr.txt"
     with errlog.open("w", encoding="utf-8") as stderr:
         _, _, results = talk(served_over_stdio(home), [("search", {"query": "kafka"})], stderr)
@@ -391,3 +391,41 @@ def test_serve_not_reranking_opens_no_socket_and_says_its_settings_go_unused(
     said = errlog.read_text("utf-8")
     assert "rerank.url" in said
     assert "reranking off" in said
+
+
+def test_serve_reranks_by_default_and_says_why_not_when_no_server_answers(
+    tmp_path: Path,
+) -> None:
+    """On unless set off: with nothing at the server's address, both tools answer, saying why."""
+    with nothing_listening() as url:
+        home, _ = stdio_root(tmp_path, f"url = {json.dumps(url)}\n")
+        port = url.split(":")[2].split("/")[0]
+        calls = [("search", {"query": "kafka"}), ("ask", {"question": "kafka retention"})]
+        _, _, results = talk(served_over_stdio(home, port), calls)
+    for result in results:
+        assert result["isError"] is False
+        assert f"Not reranked: {DOWN}" in result["content"][0]["text"]
+
+
+def test_no_rerank_turns_reranking_off_whatever_the_settings_say(tmp_path: Path) -> None:
+    """Enabled in the file, off by the flag: nothing asked of the server, rerank.url unused."""
+    with nothing_listening() as url:
+        home, _ = stdio_root(tmp_path, f"enabled = true\nurl = {json.dumps(url)}\n")
+        port = int(url.split(":")[2].split("/")[0])
+        given = {"ports": [port], "limit": 1, "report": str(tmp_path / "report.json")}
+        command = StdioServerParameters(
+            command=sys.executable,
+            args=[
+                "-m",
+                "tests.guarded",
+                json.dumps({**given, "arguments": ["serve", "--no-rerank"]}),
+            ],
+            env={"HOME": str(home)},
+            cwd=ROOT,
+        )
+        errlog = tmp_path / "stderr.txt"
+        with errlog.open("w", encoding="utf-8") as stderr:
+            _, _, results = talk(command, [("search", {"query": "kafka"})], stderr)
+    assert results[0]["isError"] is False
+    assert "Not reranked" not in results[0]["content"][0]["text"]
+    assert "ignored: rerank.url (config.toml): reranking off" in errlog.read_text("utf-8")

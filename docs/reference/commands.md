@@ -525,6 +525,7 @@ usage: atlassian-offline-mcp serve [-h] [--config CONFIG] [--data-dir DATA_DIR]
                                    --log-level {debug,info,warning,error}]
                                    [--allow-remote-embeddings]
                                    [--tools ask,search,read,browse,status]
+                                   [--no-rerank]
 
 options:
   -h, --help            show this help message and exit
@@ -540,6 +541,7 @@ options:
                         off this machine
   --tools ask,search,read,browse,status
                         the tools to serve, comma-separated; by default, every one
+  --no-rerank           search without the reranking server, whatever the settings say
 ```
 
 ## `sync`

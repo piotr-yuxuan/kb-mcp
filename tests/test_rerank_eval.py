@@ -97,7 +97,7 @@ def test_a_depth_shown_lower_does_not_gain() -> None:
 def test_a_search_may_take_5_seconds_at_the_95th_percentile(
     tail_ms: int, chosen: int | None
 ) -> None:
-    """The user's bound, in whole milliseconds; slower at every depth, reranking stays off."""
+    """The user's bound, in whole milliseconds; slower at every depth, no depth is chosen."""
     timed = arm(1.0, tail_ms)
     decision = default_reranking(PLAIN, depths(d10=timed, d20=timed, d30=timed, d50=timed))
     assert decision is not None
@@ -269,7 +269,7 @@ def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_fir
 
 
 @pytest.mark.parametrize(
-    ("chosen", "said"), [(20, "rerank 20 documents."), (None, "reranking stays off.")]
+    ("chosen", "said"), [(20, "rerank 20 documents."), (None, "turn reranking off.")]
 )
 def test_the_bar_s_verdicts_are_written_by_this_machine_s_times(
     data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch, chosen: int | None, said: str

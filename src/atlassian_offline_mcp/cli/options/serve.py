@@ -47,6 +47,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         metavar=",".join(TOOLS),
         help="the tools to serve, comma-separated; by default, every one",
     )
+    rerank = parser.add_argument(
+        "--no-rerank",
+        dest="rerank",
+        action="store_const",
+        const=False,
+        help="search without the reranking server, whatever the settings say",
+    )
     parser.set_defaults(
         command=Command(
             "serve",
@@ -61,8 +68,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
                 "rerank.model",
                 "rerank.depth",
             ),
-            flags=flags,
-            actions=(*actions, remote, tools),
+            flags={**flags, "rerank": "rerank.enabled"},
+            actions=(*actions, remote, tools, rerank),
             unapplied=reranking_off,
             refused=endpoint_by_meaning,
             traced=False,

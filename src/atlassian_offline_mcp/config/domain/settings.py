@@ -275,15 +275,15 @@ class Telemetry(BaseModel):
 
 
 class Rerank(BaseModel):
-    """Reranking of search's first documents by a server on this machine, off by default."""
+    """Reranking of search's first documents by a server on this machine, on by default."""
 
     model_config = TABLE
 
     enabled: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Whether search and ask rerank their first documents through the reranking"
-            " server; off until plan 022's run on the user's machine decides."
+            " server: on by default, by the user's choice in plan 022."
         ),
     )
     url: RerankUrl = Field(
@@ -386,7 +386,7 @@ class Settings(BaseSettings):
     )
     rerank: Rerank = Field(
         default_factory=Rerank,
-        description="Reranking by a server on this machine, off by default.",
+        description="Reranking by a server on this machine, on by default.",
     )
 
     @classmethod
