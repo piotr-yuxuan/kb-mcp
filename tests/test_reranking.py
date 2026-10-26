@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
+import time
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -28,7 +30,7 @@ from atlassian_offline_mcp.kernel.reranking import (
     LONGEST_TEXT,
     MOST_TEXTS,
 )
-from atlassian_offline_mcp.search.adapters.model_api import endpoint
+from atlassian_offline_mcp.search.adapters.model_api import Bounds, endpoint
 from atlassian_offline_mcp.search.adapters.reranking import (
     EVALUATION,
     SEARCH,
@@ -70,6 +72,9 @@ TEXTS = (
 TICK_S = 11.0
 # Reads of a trickled answer before its deadline of 30 seconds is passed, at most.
 READS = 4
+# A short deadline, and how long a hung server keeps silent: far longer.
+DEADLINE_S = 1.0
+HUNG_S = 10.0
 # Text that an answer may echo, and that no message may hold.
 ECHO = "the query, echoed"
 # A model served by a local llama-server on the default address, for the opt-in test.
@@ -130,6 +135,7 @@ SCORES = [{"index": 0, "relevance_score": 0.1}, {"index": 1, "relevance_score": 
         {"results": [{"index": "0", "relevance_score": 0.1}, SCORES[1]]},
         {"results": [SCORES[0], {"index": 1, "relevance_score": "high"}]},
         {"results": [SCORES[0], {"index": 1, "relevance_score": True}]},
+        {"results": [SCORES[0], {"index": 1, "relevance_score": 10**400}]},
         {"results": [SCORES[0], {"index": 1}]},
         {"results": {"index": 0}},
         {"results": SCORES, "usage": [ECHO]},
@@ -208,6 +214,24 @@ def test_an_answer_trickled_past_its_deadline_is_given_up() -> None:
         rerank(opened, RERANKER, QUERY, TEXTS, SEARCH)
     assert failed.value.kind == "unanswered"
     assert len(reads) < READS
+
+
+def test_a_server_that_accepts_and_says_nothing_is_given_up_at_the_deadline() -> None:
+    """A hung server: the request ends at its own deadline, not httpx's 5 seconds."""
+    released = threading.Event()
+
+    def hang(_: httpx.Request) -> httpx.Response:
+        released.wait(HUNG_S)
+        return httpx.Response(200)
+
+    with serving(hang) as url, endpoint(url, None, RERANKING, remote_allowed=False) as opened:
+        started = time.monotonic()
+        with pytest.raises(RerankError) as failed:
+            rerank(opened, RERANKER, QUERY, TEXTS, Bounds(DEADLINE_S, 1))
+        waited = time.monotonic() - started
+        released.set()
+    assert failed.value.kind == "unanswered"
+    assert DEADLINE_S <= waited < 2 * DEADLINE_S
 
 
 def test_a_search_makes_one_attempt_and_an_evaluation_waits_and_tries_again() -> None:

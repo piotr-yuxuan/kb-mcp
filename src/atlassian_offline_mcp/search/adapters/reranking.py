@@ -134,8 +134,9 @@ def rerank(
         try:
             answer = json.loads(body)
             found = sorted((item["index"], item["relevance_score"]) for item in answer["results"])
+            scores = [float(score) for _, score in found]
             usage = answer.get("usage")
-        except (ValueError, KeyError, TypeError, RecursionError) as error:
+        except (ValueError, KeyError, TypeError, RecursionError, OverflowError) as error:
             message = (
                 f"{model}: the reranking server's answer is not scores ({type(error).__name__})"
             )
@@ -144,7 +145,10 @@ def rerank(
         if (
             [index for index, _ in found] != list(range(len(texts)))
             or not all(type(index) is int for index, _ in found)
-            or not all(type(score) in {int, float} and math.isfinite(score) for _, score in found)
+            or not all(
+                type(given) in {int, float} and math.isfinite(score)
+                for (_, given), score in zip(found, scores, strict=True)
+            )
             or (usage is not None and type(usage) is not dict)
             or (tokens is not None and (type(tokens) is not int or tokens < 0))
         ):
@@ -156,7 +160,7 @@ def rerank(
         structlog.get_logger().debug(
             "rerank.request", model=model, texts=len(texts), characters=characters, tokens=tokens
         )
-        return Reranked([float(score) for _, score in found], tokens)
+        return Reranked(scores, tokens)
 
 
 def served(endpoint: Endpoint) -> tuple[str, ...]:
