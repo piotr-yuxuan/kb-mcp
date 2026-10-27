@@ -10,7 +10,7 @@ from argcomplete.completers import DirectoriesCompleter, FilesCompleter
 
 from atlassian_offline_mcp.config.adapters.settings_file import SETTINGS_PATH
 from atlassian_offline_mcp.kernel.content import MODEL_NAME
-from atlassian_offline_mcp.kernel.endpoint import refused_endpoint
+from atlassian_offline_mcp.kernel.endpoint import EMBEDDINGS, refused_endpoint
 from atlassian_offline_mcp.kernel.output import FORMATS, LEVELS, SUMMARIES
 
 if TYPE_CHECKING:
@@ -167,7 +167,7 @@ def site_not_set(_arguments: argparse.Namespace, settings: Mapping[str, object])
 def endpoint_elsewhere(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
     """Refuse an embedding endpoint off this machine without the run's word, or over http."""
     return refused_endpoint(
-        str(settings["embedding_url"]), remote_allowed=arguments.allow_remote_embeddings
+        str(settings["embedding_url"]), EMBEDDINGS, remote_allowed=arguments.allow_remote_embeddings
     )
 
 

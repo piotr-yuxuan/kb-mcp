@@ -35,6 +35,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from atlassian_offline_mcp.kernel.chunking import CHUNKINGS, Chunking
 from atlassian_offline_mcp.kernel.content import MODEL_NAME, PROJECT_KEY, SPACE_KEY
 from atlassian_offline_mcp.kernel.endpoint import endpoint_host, loopback
+from atlassian_offline_mcp.kernel.reranking import DEPTHS
 
 if TYPE_CHECKING:
     import re
@@ -58,6 +59,14 @@ DEFAULT_SEARCH_MODE: SearchMode = "hybrid"
 # no chunking beat them on the evidence quoted; windows ranked significantly better, and
 # by plan 025 the user chose them.
 DEFAULT_CHUNKING: Chunking = "windows"
+# The reranking server: llama.cpp's llama-server on this machine, where the guide starts it.
+DEFAULT_RERANK_URL = "http://127.0.0.1:9931/v1"
+# The reranker, as the server names it: Qwen3-Reranker-0.6B, chosen by plan 022 from
+# published reranking results, under the alias that the guide gives it.
+DEFAULT_RERANKER = "qwen3-reranker-0.6b"
+# The documents reranked after those named, until plan 022's run on the user's machine decides:
+# about 30 fit within its bound of 5 seconds, by estimate.
+DEFAULT_RERANK_DEPTH = 30
 # The layer of a setting that no layer gives, as it is named.
 DEFAULT_LAYER = "default"
 # The settings that the file held at its top before plan 015, and their tables now.
@@ -120,6 +129,21 @@ def endpoint_address(value: str) -> str:
     return value.rstrip("/")
 
 
+def rerank_address(value: str) -> str:
+    """Give the reranking server's address without its trailing slash; refuse another.
+
+    The server is on this machine, by the user's word (plan 022): a literal address of
+    it, which no flag can widen.
+    """
+    if not loopback(value):
+        message = (
+            "an address of this machine, such as http://127.0.0.1:9931/v1, where the"
+            " mirror's text stays; write 127.0.0.1 for localhost"
+        )
+        raise PydanticCustomError(RULE, message)
+    return value.rstrip("/")
+
+
 def telemetry_address(value: str) -> str:
     """Give telemetry's endpoint as ``http://<address>:<port>``; refuse another.
 
@@ -155,6 +179,10 @@ ModelName = Annotated[
     str, matching(MODEL_NAME, "the name of an embedding model, such as qwen3-embedding:0.6b")
 ]
 EmbeddingUrl = Annotated[str, AfterValidator(endpoint_address)]
+RerankUrl = Annotated[str, AfterValidator(rerank_address)]
+RerankerName = Annotated[
+    str, matching(MODEL_NAME, "the name of a reranking model, such as qwen3-reranker-0.6b")
+]
 TelemetryEndpoint = Annotated[str, AfterValidator(telemetry_address)]
 # Every table of the settings: frozen, and refusing a key it does not know.
 TABLE = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
@@ -246,6 +274,40 @@ class Telemetry(BaseModel):
     )
 
 
+class Rerank(BaseModel):
+    """Reranking of search's first documents by a server on this machine, off by default."""
+
+    model_config = TABLE
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Whether search and ask rerank their first documents through the reranking"
+            " server: off by default, as it ranked worse on the sandbox, by the user's"
+            " choice in plan 022."
+        ),
+    )
+    url: RerankUrl = Field(
+        default=DEFAULT_RERANK_URL,
+        description=(
+            "The reranking server's API, up to /rerank, excluded: an address of this"
+            " machine, never another."
+        ),
+    )
+    model: RerankerName = Field(
+        default=DEFAULT_RERANKER, description="The reranking model, as the server names it."
+    )
+    depth: int = Field(
+        default=DEFAULT_RERANK_DEPTH,
+        ge=DEPTHS.start,
+        le=DEPTHS[-1],
+        description=(
+            f"How many documents, after those a query names, are reranked: {DEPTHS.start} to"
+            f" {DEPTHS[-1]}."
+        ),
+    )
+
+
 class Settings(BaseSettings):
     """What every command needs to know: the site, the data directory, the defaults.
 
@@ -322,6 +384,10 @@ class Settings(BaseSettings):
     telemetry: Telemetry = Field(
         default_factory=Telemetry,
         description="Traces, metrics and logs sent by OpenTelemetry, off by default.",
+    )
+    rerank: Rerank = Field(
+        default_factory=Rerank,
+        description="Reranking by a server on this machine, off by default.",
     )
 
     @classmethod

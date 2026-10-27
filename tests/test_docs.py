@@ -48,6 +48,7 @@ PAGES = (
     "docs/how-to/api-token-with-sops.md",
     "docs/how-to/evaluate-with-agents.md",
     "docs/how-to/golden-questions.md",
+    "docs/how-to/reranking.md",
     "docs/how-to/shell-completions.md",
     "docs/how-to/sync.md",
     "docs/how-to/sso-machine.md",

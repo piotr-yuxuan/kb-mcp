@@ -16,8 +16,10 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
+from atlassian_offline_mcp.kernel.endpoint import EMBEDDINGS
 from atlassian_offline_mcp.mcp.app.tools import Library
-from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect, endpoint
+from atlassian_offline_mcp.search.adapters.embedding import connect
+from atlassian_offline_mcp.search.adapters.model_api import ModelError, endpoint
 from atlassian_offline_mcp.search.adapters.sqlite_index import reading
 from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning, Nearest
@@ -259,7 +261,9 @@ def test_a_query_refused_failing_or_not_answered_as_embeddings_falls_back(data: 
             return httpx.Response(200, content=b"<html>")
         return answers(request)
 
-    opened = endpoint(URL, None, remote_allowed=False, transport=httpx.MockTransport(garbled))
+    opened = endpoint(
+        URL, None, EMBEDDINGS, remote_allowed=False, transport=httpx.MockTransport(garbled)
+    )
     answer = library(data, "hybrid", Meaning(lambda name: connect(opened, name))).search(
         "revert release"
     )

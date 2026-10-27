@@ -104,11 +104,17 @@ SETTINGS = {".".join(path) for path, kind in SETTING_PATHS.items() if kind != "t
 # Every subcommand that the command declares, by the name it is typed by.
 SUBCOMMANDS = parser(Declaring).subcommands
 # What a subcommand needs besides its options to be parsed: its positional arguments.
-POSITIONALS = {"eval": ["golden.yaml"], "eval-agents": ["grade", "runs"], "model": ["check"]}
+POSITIONALS = {
+    "eval": ["golden.yaml"],
+    "eval-agents": ["grade", "runs"],
+    "eval-rerank": ["golden.yaml"],
+    "model": ["check"],
+    "reranker": ["check"],
+}
 # The subcommands whose output is their own, by plan 015: the protocol, a script.
 OWN_OUTPUT = {"serve", "completion"}
 # The subcommands that write under the data directory, and so ask first, by plan 015.
-WRITING = {"download", "eval", "eval-agents", "index", "login", "mirror", "sync"}
+WRITING = {"download", "eval", "eval-agents", "eval-rerank", "index", "login", "mirror", "sync"}
 # The subcommands that take --dry-run, by plans 015 and 017.
 DRY_RUN = {"download", "sync"}
 SECRETS = {
@@ -634,6 +640,10 @@ def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
         "sources.worklog.archives: True [default]\n"
         f"logs.dir: {user_log_folder(home.resolve())} [default]\n"
         "telemetry.endpoint: (not set) [default]\n"
+        "rerank.enabled: False [default]\n"
+        "rerank.url: http://127.0.0.1:9931/v1 [default]\n"
+        "rerank.model: qwen3-reranker-0.6b [default]\n"
+        "rerank.depth: 30 [default]\n"
     )
     assert not any(secret in out for secret in SECRETS.values())
 

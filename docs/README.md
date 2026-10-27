@@ -34,6 +34,9 @@ the command and those who change its code, unless it is marked for contributors.
 - [Embeddings](how-to/embeddings.md): search by meaning, with Ollama on this machine as
   the example of any OpenAI-compatible API; the model, the endpoint and the chunking; or
   words alone.
+- [Rerank search with a local server](how-to/reranking.md): llama.cpp's `llama-server`
+  on this machine reorders the first documents that `search` and `ask` find, once
+  turned on; install it, check it, turn it on, and measure whether it helps.
 - [Golden questions](how-to/golden-questions.md): questions about your own content, to
   measure with `eval` which search mode, model and chunking suit it.
 - [Observe runs with Grafana](how-to/observe-with-grafana.md): traces, metrics and logs
@@ -59,9 +62,11 @@ the command and those who change its code, unless it is marked for contributors.
   [`doctor`](reference/telemetry/doctor.md),
   [`download`](reference/telemetry/download.md), [`eval`](reference/telemetry/eval.md),
   [`eval-agents`](reference/telemetry/eval-agents.md),
+  [`eval-rerank`](reference/telemetry/eval-rerank.md),
   [`index`](reference/telemetry/index.md), [`login`](reference/telemetry/login.md),
   [`mirror`](reference/telemetry/mirror.md), [`model`](reference/telemetry/model.md),
-  [`serve`](reference/telemetry/serve.md) and [`sync`](reference/telemetry/sync.md).
+  [`reranker`](reference/telemetry/reranker.md), [`serve`](reference/telemetry/serve.md)
+  and [`sync`](reference/telemetry/sync.md).
 
 ## Explanation
 
@@ -88,6 +93,9 @@ the command and those who change its code, unless it is marked for contributors.
   meaning, and how the four chunkings were compared.
 - [Evaluating search](explanation/search-evaluation.md): how the embedding model was
   chosen, and how ranking by words, by meaning or by both is measured.
+- [Reranking](explanation/reranking.md): how a server on this machine reorders the first
+  documents found, why only those, what a search does when it fails, why it is off by
+  default, and the bar that says whether to turn it on.
 
 ## Elsewhere in the repository
 

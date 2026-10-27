@@ -107,7 +107,8 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
         config = tmp_path / "config.toml"
         config.write_text(
             f'site = "{SITE}"\nmodel = "tiny"\nembedding_url = {json.dumps(url)}\n'
-            '[sources.confluence]\nspaces = ["MFS"]\n[sources.jira]\nprojects = ["PRB"]\n',
+            '[sources.confluence]\nspaces = ["MFS"]\n[sources.jira]\nprojects = ["PRB"]\n'
+            "[rerank]\nenabled = false\n",  # no reranking server here
             "utf-8",
         )
         options = ["--config", str(config), "--data-dir", str(data), "-vv"]

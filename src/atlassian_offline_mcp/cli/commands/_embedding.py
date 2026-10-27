@@ -8,7 +8,9 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.search.adapters.embedding import Endpoint, endpoint, prefixes
+from atlassian_offline_mcp.kernel.endpoint import EMBEDDINGS
+from atlassian_offline_mcp.search.adapters.embedding import prefixes
+from atlassian_offline_mcp.search.adapters.model_api import Endpoint, endpoint
 from atlassian_offline_mcp.search.app.indexing import Indexing
 
 if TYPE_CHECKING:
@@ -26,6 +28,7 @@ def open_endpoint(arguments: argparse.Namespace, settings: Settings) -> Endpoint
     return endpoint(
         settings.embedding_url,
         key.get_secret_value() if key else None,
+        EMBEDDINGS,
         remote_allowed=arguments.allow_remote_embeddings,
     )
 

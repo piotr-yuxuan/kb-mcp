@@ -33,7 +33,8 @@ from atlassian_offline_mcp.evaluation.domain.evaluation import CONTROL
 from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
-from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
+from atlassian_offline_mcp.search.adapters.embedding import connect
+from atlassian_offline_mcp.search.adapters.model_api import ModelError
 
 if TYPE_CHECKING:
     import argparse

@@ -25,7 +25,8 @@ from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.mirror.adapters import markdown
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
-from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
+from atlassian_offline_mcp.search.adapters.embedding import connect
+from atlassian_offline_mcp.search.adapters.model_api import ModelError
 from atlassian_offline_mcp.search.app.pruning import prune
 from atlassian_offline_mcp.search.domain.chunking import CHUNKERS
 from atlassian_offline_mcp.search.domain.search import Embedded, sections
@@ -36,7 +37,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from atlassian_offline_mcp.kernel.chunking import Chunking
-    from atlassian_offline_mcp.search.adapters.embedding import Embedder, Endpoint
+    from atlassian_offline_mcp.search.adapters.embedding import Embedder
+    from atlassian_offline_mcp.search.adapters.model_api import Endpoint
     from atlassian_offline_mcp.search.app.pruning import Pruned
 
 TRACER = trace.get_tracer(__name__)

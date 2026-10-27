@@ -116,7 +116,8 @@ def world(
         (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text(
             f'data_dir = {json.dumps(str(data))}\nmodel = "tiny"\nsearch_mode = "hybrid"\n'
             f"embedding_url = {json.dumps(url)}\n"
-            f"[logs]\ndir = {json.dumps(str(logs))}\n",
+            f"[logs]\ndir = {json.dumps(str(logs))}\n"
+            "[rerank]\nenabled = false\n",  # the server that call starts: no reranker here
             encoding="utf-8",
         )
         yield World(home, data, golden, tmp_path, logs)

@@ -6,6 +6,7 @@ reached only by the opt-in test at the end.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -21,28 +22,33 @@ import numpy as np
 import pytest
 
 from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
-from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.cli.main import main, parser
 from atlassian_offline_mcp.config.domain.settings import (
     DEFAULT_EMBEDDING_URL,
     Settings,
     SettingsError,
 )
+from atlassian_offline_mcp.kernel.endpoint import EMBEDDINGS, Service
 from atlassian_offline_mcp.search.adapters import embedding
 from atlassian_offline_mcp.search.adapters.embedding import (
     BATCH,
     DOCUMENTS,
-    MAX_ANSWER_BYTES,
     SINGLE,
     ApiEmbedder,
-    Bounds,
-    ModelError,
     Prefixes,
     RefusedError,
     connect,
     digest,
     embed,
     embeddings,
+)
+from atlassian_offline_mcp.search.adapters.model_api import (
+    MAX_ANSWER_BYTES,
+    Bounds,
+    Endpoint,
+    ModelError,
     endpoint,
+    send,
 )
 from tests.endpoint import (
     DIGEST,
@@ -87,7 +93,7 @@ WORDS = 3
 LIVE = os.environ.get("ATLASSIAN_OFFLINE_MCP_LIVE_MODEL")
 
 
-def answering(embeddings: Callable[[httpx.Request], httpx.Response]) -> embedding.Endpoint:
+def answering(embeddings: Callable[[httpx.Request], httpx.Response]) -> Endpoint:
     """Open an endpoint whose list of models is the scripted one, and whose embeddings are these."""
     models = Scripted()
 
@@ -97,9 +103,11 @@ def answering(embeddings: Callable[[httpx.Request], httpx.Response]) -> embeddin
     return over(handle)
 
 
-def over(handle: Callable[[httpx.Request], httpx.Response]) -> embedding.Endpoint:
+def over(handle: Callable[[httpx.Request], httpx.Response]) -> Endpoint:
     """Open an endpoint at Ollama's address that answers every request with ``handle``."""
-    return endpoint(URL, None, remote_allowed=False, transport=httpx.MockTransport(handle))
+    return endpoint(
+        URL, None, EMBEDDINGS, remote_allowed=False, transport=httpx.MockTransport(handle)
+    )
 
 
 def data(*rows: object) -> httpx.Response:
@@ -107,7 +115,7 @@ def data(*rows: object) -> httpx.Response:
     return httpx.Response(200, json={"object": "list", "data": list(rows), "model": "tiny"})
 
 
-def recorded() -> tuple[embedding.Endpoint, list[float]]:
+def recorded() -> tuple[Endpoint, list[float]]:
     """Give a scripted endpoint whose waits are recorded, not slept."""
     waits: list[float] = []
     return replace(scripted(), sleep=waits.append), waits
@@ -328,7 +336,9 @@ def test_the_key_is_sent_only_when_set_and_never_said() -> None:
         return httpx.Response(401)
 
     for key in ("a-secret-key", None):
-        opened = endpoint(URL, key, remote_allowed=False, transport=httpx.MockTransport(refuse))
+        opened = endpoint(
+            URL, key, EMBEDDINGS, remote_allowed=False, transport=httpx.MockTransport(refuse)
+        )
         with pytest.raises(ModelError, match=embedding.KEY_VARIABLE) as refused:
             embed(opened, "tiny", ["undo"], SINGLE)
         assert "a-secret-key" not in str(refused.value)
@@ -363,6 +373,84 @@ def test_a_missing_model_and_no_answer_say_what_to_run() -> None:
 
     with pytest.raises(ModelError, match=r"no answer .*\(ConnectError\).*ollama serve"):
         digest(over(down), "tiny")
+
+
+OTHER = Service(
+    name="the other server", setting="other.url", flag="--allow-remote-other", start="other serve"
+)
+
+
+def test_no_answer_names_its_service_and_how_to_start_it() -> None:
+    """Another service's client says that service's name and its own way to start it."""
+
+    def down(request: httpx.Request) -> httpx.Response:
+        message = "refused"
+        raise httpx.ConnectError(message, request=request)
+
+    opened = endpoint(URL, None, OTHER, remote_allowed=False, transport=httpx.MockTransport(down))
+    with opened, pytest.raises(ModelError) as failed:
+        send(opened, "GET", "anything", SINGLE)
+    said = "no answer from the other server (ConnectError); is it running? other serve"
+    assert str(failed.value) == said
+
+
+def test_another_service_s_address_elsewhere_is_refused_in_its_words() -> None:
+    """The client refuses that service's address off this machine by its setting and flag."""
+    with pytest.raises(SettingsError) as refused:
+        endpoint("http://10.0.0.1:9931/v1", None, OTHER, remote_allowed=False)
+    assert str(refused.value).startswith("other.url: not an address of this machine")
+    assert str(refused.value).endswith("or pass --allow-remote-other")
+
+
+def test_the_embeddings_messages_read_as_plan_018_wrote_them() -> None:
+    """Elsewhere, over http, unanswered or a cloud model: each message word for word."""
+    remote = "http://embeddings.example/v1"
+    with pytest.raises(SettingsError) as elsewhere:
+        endpoint(remote, None, EMBEDDINGS, remote_allowed=False)
+    assert str(elsewhere.value) == (
+        "embedding_url: not an address of this machine, where the mirror's text would go;"
+        " write 127.0.0.1 for this one, or pass --allow-remote-embeddings"
+    )
+    with pytest.raises(SettingsError) as in_clear:
+        endpoint(remote, None, EMBEDDINGS, remote_allowed=True)
+    https_only = "embedding_url: an endpoint off this machine is reached over https only"
+    assert str(in_clear.value) == https_only
+
+    def down(request: httpx.Request) -> httpx.Response:
+        message = "refused"
+        raise httpx.ConnectError(message, request=request)
+
+    with pytest.raises(ModelError) as unanswered:
+        digest(over(down), "tiny")
+    assert str(unanswered.value) == (
+        "no answer from the embedding endpoint (ConnectError); is it running?"
+        " With Ollama: ollama serve"
+    )
+
+    def cloud(_: httpx.Request) -> httpx.Response:
+        row = {"name": "tiny:cloud", "digest": "ee", "remote_host": "https://ollama.com:443"}
+        return httpx.Response(200, json={"models": [row]})
+
+    with pytest.raises(ModelError) as elsewhere_served:
+        digest(over(cloud), "tiny:cloud")
+    assert str(elsewhere_served.value) == (
+        "tiny:cloud: Ollama serves it from elsewhere (a cloud model), where the mirror's"
+        " text would go; pass --allow-remote-embeddings"
+    )
+
+
+class Unabridged(argparse.ArgumentParser):
+    """A parser that takes an option by its whole name only, never abbreviated."""
+
+    def __init__(self, *arguments: object, **options: object) -> None:
+        """Parse as argparse does, but for abbreviations."""
+        super().__init__(*arguments, **options, allow_abbrev=False)
+
+
+def test_the_embeddings_service_names_a_real_setting_and_option() -> None:
+    """The setting and the flag that its messages name are the settings' and the command's."""
+    assert EMBEDDINGS.setting in Settings.model_fields
+    assert parser(Unabridged).parse_args(["index", EMBEDDINGS.flag]).allow_remote_embeddings
 
 
 def test_the_captured_answers_of_ollama_parse() -> None:
@@ -400,6 +488,7 @@ def test_the_fingerprint_changes_with_anything_that_makes_vectors(
     elsewhere = endpoint(
         "http://127.0.0.2:8080/v1",
         None,
+        EMBEDDINGS,
         remote_allowed=False,
         transport=httpx.MockTransport(Scripted()),
     )
@@ -467,7 +556,9 @@ def test_a_model_that_ollama_serves_from_elsewhere_is_refused_unless_allowed() -
     for spelt in ("tiny:cloud", "TINY:CLOUD", "registry.ollama.ai/library/tiny:cloud"):
         with pytest.raises(ModelError, match="from elsewhere"):
             digest(over(cloud), spelt)
-    allowed = endpoint(URL, None, remote_allowed=True, transport=httpx.MockTransport(cloud))
+    allowed = endpoint(
+        URL, None, EMBEDDINGS, remote_allowed=True, transport=httpx.MockTransport(cloud)
+    )
     assert digest(allowed, "tiny:cloud") == "ee"
 
 
@@ -598,10 +689,10 @@ def test_each_family_takes_its_card_s_prefixes(model: str, query: str, document:
 def test_a_remote_endpoint_needs_the_flag_and_https() -> None:
     """Off this machine: refused without the run's word, and over plain http even with it."""
     with pytest.raises(SettingsError, match="not an address of this machine"):
-        endpoint("https://embeddings.example/v1", None, remote_allowed=False)
+        endpoint("https://embeddings.example/v1", None, EMBEDDINGS, remote_allowed=False)
     with pytest.raises(SettingsError, match="https only"):
-        endpoint("http://embeddings.example/v1", None, remote_allowed=True)
-    with endpoint("https://embeddings.example/v1", None, remote_allowed=True) as opened:
+        endpoint("http://embeddings.example/v1", None, EMBEDDINGS, remote_allowed=True)
+    with endpoint("https://embeddings.example/v1", None, EMBEDDINGS, remote_allowed=True) as opened:
         assert opened.remote_allowed
 
 
@@ -626,7 +717,9 @@ def test_an_allowed_remote_endpoint_goes_through_the_environment_s_proxy(
         monkeypatch.setenv("HTTPS_PROXY", f"http://127.0.0.1:{port}")
         try:
             with (
-                endpoint("https://embeddings.example/v1", None, remote_allowed=True) as opened,
+                endpoint(
+                    "https://embeddings.example/v1", None, EMBEDDINGS, remote_allowed=True
+                ) as opened,
                 pytest.raises(ModelError),
             ):
                 embed(opened, "tiny", ["undo"], Bounds(LISTENED_S, 1))
@@ -754,7 +847,7 @@ def test_a_model_in_a_local_ollama_embeds_by_meaning() -> None:
     model = str(LIVE)
     REACHABLE.add(httpx.URL(DEFAULT_EMBEDDING_URL).port or 0)
     try:
-        with endpoint(DEFAULT_EMBEDDING_URL, None, remote_allowed=False) as opened:
+        with endpoint(DEFAULT_EMBEDDING_URL, None, EMBEDDINGS, remote_allowed=False) as opened:
             embedder = connect(opened, model)
             documents = embedder.documents(
                 [
@@ -777,7 +870,7 @@ def test_a_model_in_a_local_ollama_embeds_by_meaning() -> None:
 
 def counting_words(
     answers: Scripted, counts: Callable[[list[str]], bool] = lambda _: True
-) -> embedding.Endpoint:
+) -> Endpoint:
     """Open an endpoint answering as scripted, whose usage counts a token a word.
 
     It counts nothing for the texts that ``counts`` refuses.
@@ -824,7 +917,7 @@ def test_an_endpoint_that_counts_some_answers_alone_gives_none() -> None:
     assert embedder.tokens is None
 
 
-def usage(value: object) -> embedding.Endpoint:
+def usage(value: object) -> Endpoint:
     """Open an endpoint whose answer embeds one text and says this usage."""
     rows = [{"object": "embedding", "embedding": [1.0, 0.0], "index": 0}]
     return answering(lambda _: httpx.Response(200, json={"data": rows, "usage": value}))

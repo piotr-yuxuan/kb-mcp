@@ -24,8 +24,9 @@ read-only, for agents that prefer files.
   directory, so each first says what it will do and asks `Proceed? [y/N]`; `--yes` runs
   it without the question, as a script needs.
 - The server is the command with no arguments. It speaks MCP over stdio, reads only
-  `<data>/index.sqlite` and the mirror, and writes nothing; its one network connection,
-  when it searches by meaning, is to the embedding endpoint on this machine (below). It
+  `<data>/index.sqlite` and the mirror, and writes nothing; its network connections are
+  to the embedding endpoint, when it searches by meaning, and to the reranking server,
+  when it reranks, both on this machine (below). It
   takes its settings, the data directory included, from
   `~/.config/atlassian-offline-mcp/config.toml` and the variables
   `ATLASSIAN_OFFLINE_MCP_…`; `<data>` is `~/atlassian-offline-mcp` unless they say
@@ -46,6 +47,24 @@ Never give an agent `<data>/session/` (your saved sign-in) or `<data>/raw/`: onl
 says. Meaning needs an embedding model, served on this machine by Ollama or by any
 other OpenAI-compatible API: [embeddings](embeddings.md) says how to set one up, which
 model and chunking to choose, and how to search by words alone.
+
+## Rerank the first documents
+
+A reranking server beside Ollama can reorder the first documents that `search` and
+`ask` find, by a model that reads the question with each: off by default, and [the
+how-to](reranking.md) sets it up. `enabled = true` under `[rerank]` in the settings, or
+`serve --rerank`, turns it on. On, without the server or when it fails, a search keeps
+its own order and its answer says why ("Not reranked: ..."), as a search by meaning
+says why it fell back to words; when the server itself failed, searches do not ask it
+again for 30 seconds. A next page keeps the order of the first, which its cursor
+carries: when the answer says that the ranking changed since, search again without the
+cursor.
+
+On plan 002's sandbox questions, on the development laptop's CPU, reranking 10, 20 or
+30 documents ranked worse than the order not reranked (MRR@10 0.542 to 0.557, against
+0.639), losing most on keyword questions, and took 29 to 37 seconds a search at the
+median, hence off by default. Its bar is to be met on the machine that serves agents:
+[measure it](reranking.md#measure-it) there before turning it on.
 
 ## Ask, and prompts
 

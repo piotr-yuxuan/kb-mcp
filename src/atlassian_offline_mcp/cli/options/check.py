@@ -27,6 +27,10 @@ EVERY_SETTING = (
     "sources.worklog.archives",
     "logs.dir",
     "telemetry.endpoint",
+    "rerank.enabled",
+    "rerank.url",
+    "rerank.model",
+    "rerank.depth",
 )
 
 

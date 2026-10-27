@@ -22,6 +22,7 @@ flowchart LR
     vectors[("vector store")]
     index[("index")]
     endpoint["embedding endpoint"]
+    reranker["reranking server, when on"]
     server["MCP server"]
     agents["coding agents"]
     site -- "download, GET only" --> raw
@@ -32,6 +33,7 @@ flowchart LR
     vectors -- "index" --> index
     index -- "serve, read-only" --> server
     endpoint -- "vectors of queries" --> server
+    reranker -- "scores of the first documents" --> server
     server -- "MCP over stdio" --> agents
     docs -- "files, read-only" --> agents
 ```
@@ -42,7 +44,7 @@ flowchart LR
 | `mirror` | the raw store | `<data>/docs/` | each file renamed into place | the document is reported, its last good file kept |
 | the work log, in `sync` | its folder, in place | `<data>/docs/worklog/` | each file renamed into place | the file or document is named by its path; no file is removed |
 | `index` | the mirror; the endpoint, for new texts | `<data>/index.sqlite`, `<data>/vectors.sqlite` | the index built aside, then renamed into place; the vector store pruned under its lock, its deletions one transaction | the file is skipped and named; without the endpoint, the old index stays; a prune it cannot trust deletes nothing |
-| `serve` | the index; the endpoint, for queries | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why |
+| `serve` | the index; the endpoint, for queries; the reranking server, when on | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why; without the reranker, it keeps its order and says why |
 
 ## Sync: the stages in one command
 
@@ -261,6 +263,23 @@ built with other weights of its model
 not answer or lacks the model. A failed connection is not tried again for 30 seconds
 ([`QUIET_S`](../../src/atlassian_offline_mcp/search/app/meaning.py)), so that searches in
 the meantime answer at once.
+
+### Reranked
+
+Reranking is off by default. Turned on, unless the search is sorted by update, the
+documents after those that the query names, as many as `rerank.depth`, 30 by default,
+go with the query to the reranking server, each as its title, the heading of its
+section and 1,200 characters about its best place
+([`reranked`](../../src/atlassian_offline_mcp/mcp/app/tools.py)). The server scores each
+pair, and they are shown in the order of its scores, the rest after them in their own
+([`Reranking.reorder`](../../src/atlassian_offline_mcp/search/app/reranking.py)). One
+adapter knows the server's API
+([`rerank`](../../src/atlassian_offline_mcp/search/adapters/reranking.py)); a search
+makes one attempt, within 30 seconds. A cursor carries the order, so that a next page
+asks nothing ([`written`](../../src/atlassian_offline_mcp/search/domain/reranking.py)).
+When the server does not answer, or answers amiss, the search keeps its order and says
+why, and the server is not asked again for 30 seconds; a refused request is that
+search's alone. [Reranking](reranking.md) says why, at what cost, and why it is off.
 
 ## How a change reaches search
 
