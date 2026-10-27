@@ -185,12 +185,13 @@ def test_the_command_in_short_counts_the_pieces_and_those_embedded_now(
     """After the documents and sections: every piece the first time, none the next."""
     with serving(Scripted()) as url:
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
-        *_, pieces, embedded = capsys.readouterr().out.splitlines()
+        lines = capsys.readouterr().out.splitlines()
+        pieces, embedded = lines[2:4]
         assert pieces.startswith("pieces: ")
         assert pieces != "pieces: 0"
         assert embedded == f"embedded now: {pieces.removeprefix('pieces: ')}"
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
-    assert capsys.readouterr().out.endswith(f"{pieces}\nembedded now: 0\n")
+    assert capsys.readouterr().out.splitlines()[2:4] == [pieces, "embedded now: 0"]
 
 
 def test_the_command_reports_its_files_then_its_texts_to_embed(
@@ -199,7 +200,7 @@ def test_the_command_reports_its_files_then_its_texts_to_embed(
     """In the log file, each task's last event progress: all done; the next run embeds none."""
     with serving(Scripted()) as url:
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
-        pieces = int(capsys.readouterr().out.splitlines()[-2].removeprefix("pieces: "))
+        pieces = int(capsys.readouterr().out.splitlines()[2].removeprefix("pieces: "))
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
     files = FILLER_PAGES + 1
     assert [
@@ -307,6 +308,30 @@ def test_an_index_built_before_the_row_reads_as_cut_by_sections(data: Path) -> N
     with reading(data / "index.sqlite") as reader:
         assert reader.embedded() == Embedded("tiny", tiny().fingerprint, DIMENSIONS, "sections")
         assert reader.summary().chunking == "sections"
+
+
+@pytest.mark.parametrize("chunking", CHUNKINGS)
+def test_an_index_names_the_store_s_key_of_each_piece_s_vector(
+    data: Path, chunking: Chunking
+) -> None:
+    """Its keys are the store's keys of the texts that its chunking embeds, and no other."""
+    embedder = counting()
+    chunked(data, embedder, chunking)
+    with reading(data / "index.sqlite") as reader:
+        keys = reader.keys()
+    assert keys == {vector_store.key(tiny().fingerprint, text) for text in embedder.texts}
+
+
+def test_an_index_built_before_keys_reads_as_before_but_cannot_say_them(data: Path) -> None:
+    """Without the column, its pieces and summary read as ever; its keys are refused."""
+    build(data, counting())
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        connection.execute("ALTER TABLE pieces DROP COLUMN key")
+        connection.commit()
+    with reading(data / "index.sqlite") as reader:
+        assert len(reader.pieces().documents) == reader.summary().pieces > 0
+        with pytest.raises(UnavailableIndexError, match="before pieces recorded their keys"):
+            reader.keys()
 
 
 def test_a_window_belongs_to_the_section_of_its_middle_and_spans_the_body(data: Path) -> None:

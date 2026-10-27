@@ -22,7 +22,7 @@ from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
 from atlassian_offline_mcp.mirror.app.mirror import mirror
 from atlassian_offline_mcp.mirror.app.worklog import mirror_worklog, plan_worklog
-from atlassian_offline_mcp.search.app.indexing import index_mirror
+from atlassian_offline_mcp.search.app.indexing import refresh
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, StoreBusyError
 from atlassian_offline_mcp.sources.atlassian.adapters.sign_in import sign_in
 from atlassian_offline_mcp.sources.atlassian.app.download import download, plan
@@ -184,7 +184,7 @@ def index(context: Context, step: Index, add: Callable[[Row], None]) -> None:
         if context.dry_run:
             add(Row("index", "not run", None))
             return
-        indexed = index_mirror(step.indexing, context.now())
+        indexed = refresh(step.indexing, context.now())
         add(Row("index", "done" if indexed and indexed.report.whole else "failed", indexed))
 
 

@@ -24,7 +24,8 @@ no location and is not for commands.
 | `<data>/docs/` | `docs` | `mirror` (005), `sync` (017) | agents, and `index` (006), `sync` (017) |
 | `<data>/index.sqlite` | `index` | `index` (006), `sync` (017) | the MCP server (006) |
 | `<data>/vectors.sqlite` | `vectors` | `index`, `eval` (011), `sync` (017) | `index`, `eval` (011), `sync` (017) |
-| `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011) |
+| `<data>/vectors.sqlite.lock` | `vectors`, by `vector_store.lock_of` | `index`, `eval`, `sync` (023) | `index`, `eval`, `sync` (023) |
+| `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011); its indexes, `index` and `sync` (023) |
 | `<data>/session/` | `session` | `login` (004) | a run signed in by the saved session (004, 015) |
 | `<data>/runs/` | `runs` | `download` (004) | the user, and `doctor` (004) |
 
@@ -364,7 +365,10 @@ last three empty for an index built without a model. Plan 019 adds the meta row
 `chunking`, how the pieces were cut (one of `kernel.chunking`'s names), empty without a
 model; an index without the row, 011's or 018's, was cut by `sections`. A piece keeps
 the section that holds its middle and a span relative to that section's body, so that
-a window across sections needs no other schema. An index of another schema is
+a window across sections needs no other schema. Plan 023 adds the column `key` to
+`pieces`, the key of the piece's vector in the vector store, which only pruning reads;
+an index built before it reads as any other, but cannot say what it reads of the store,
+and `SCHEMA` stays 3. An index of another schema is
 refused with the command that rebuilds it. The MCP server opens it read-only, never
 writes, and reopens it when the file is replaced; it searches by meaning with the model
 that the index names, and only while the endpoint's fingerprint for it is the index's.
@@ -377,10 +381,35 @@ OpenAI-compatible endpoint, the setting `embedding_url` (by default Ollama's
 unless the command is given `--allow-remote-embeddings`. A model's fingerprint is the
 SHA-256 of its name, the digest that Ollama lists for it (`/api/tags`, empty from a
 server that lists none), its dimensions, its query and document prefixes, and the
-adapter's format version. `<data>/vectors.sqlite` keeps every vector embedded, keyed
-by the SHA-256 of that fingerprint and the text, committed in batches; it only grows,
-and deleting it costs a full embedding. A text that the endpoint refuses has no
-vector there, and is asked again at the next build. Under `<data>/eval/`,
+adapter's format version. `<data>/vectors.sqlite` keeps the vectors embedded, keyed
+by the SHA-256 of that fingerprint and the text, committed in batches; deleting it
+costs a full embedding of the mirror by the model, and downloads nothing. A text that the endpoint refuses has no vector there, and is
+asked again at the next build.
+
+After each `index` by meaning, the step of `sync` included, the store is pruned (plan
+023) to the vectors that `<data>/index.sqlite` and the indexes under
+`<data>/eval/indexes/` read, by the keys their pieces record: the files are the truth,
+so that deleting an evaluation's index lets the next prune drop its vectors, and
+`eval --model M` keeps a model's. A vector that no index on disk reads is deleted: an
+edited piece's old text, a deleted document's, a model replaced, a build interrupted
+before its index was renamed in. The prune is held back, deleting nothing, when the
+build skipped a file or indexed no document; when an index there cannot say which
+vectors it reads (built by words alone or before plan 023, damaged, or not an index):
+`eval` rebuilds those of the models and chunkings it is given, else delete them; and
+when a folder there cannot be reached or listed, an entry below `<data>/eval/indexes/`
+is a link, which is not followed, or `<data>/eval` is a dangling link, as to a disk
+away: make it readable, or put what the link points to in its place. A build holds
+`<data>/vectors.sqlite.lock` shared by `flock` until its index is in place, and a prune
+takes it exclusive or is deferred to the next `index`. A store made from plan 023 on
+gives the pages freed back to the file system (`auto_vacuum = INCREMENTAL`). One made
+before is converted at its first prune, once the vectors that no index reads are
+deleted: the mode set, then one `VACUUM`, which rewrites the vectors kept while the
+prune holds the lock, and needs about their size free in SQLite's temporary folder
+(`SQLITE_TMPDIR`, else `TMPDIR`, else `/var/tmp`) and as much again beside the store,
+for its WAL. The result says so; a conversion that fails, for want of space, says why,
+leaves the deletions, and the next prune tries again. A later
+index that reads the store builds through `search.app.indexing.build_index`, and so its
+lock, and adds its files to what the prune follows. Under `<data>/eval/`,
 `indexes/<chunking>/<model>.sqlite` (each `/` and `:` of the name written `_`) are the
 indexes that `eval` builds, one per model and chunking, and `results/<UTC time>.json`
 its numbers: the golden file's SHA-256, models, chunkings, measures of `search` and of

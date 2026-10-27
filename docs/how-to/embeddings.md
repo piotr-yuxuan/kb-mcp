@@ -77,9 +77,10 @@ Ollama does not have: run `index`, rather than pull that model. A folder
 The first `index` after upgrading to these defaults embeds every window of the mirror,
 since vectors are kept by text and no window's text is a section's (unless an `eval`
 of `windows` with the same model embedded them already): on the sandbox, 1.11 times
-the tokens of a first build by sections, with Ollama running throughout. The sections'
-vectors stay in `<data>/vectors.sqlite`, which only grows. To keep an earlier
-version's behaviour instead, set either of these, then run `index`:
+the tokens of a first build by sections, with Ollama running throughout. The prune
+after it deletes the sections' vectors from `<data>/vectors.sqlite`, unless an
+evaluation's index cut by `sections` keeps them, so that going back embeds them again.
+To keep an earlier version's behaviour instead, set either of these, then run `index`:
 
 ```toml
 search_mode = "lexical"  # words alone, as earlier versions searched: no model

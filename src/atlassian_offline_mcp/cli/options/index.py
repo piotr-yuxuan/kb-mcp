@@ -33,6 +33,13 @@ def by_words_alone(
     )
 
 
+def pruning_said(_arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
+    """By meaning, the build is followed by a prune of the vector store: say it first."""
+    if settings["search_mode"] == "lexical":
+        return ()
+    return ("then: the vector store keeps only the vectors that the index and eval's read",)
+
+
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Add ``index`` to the command."""
     parser = subparsers.add_parser(
@@ -42,7 +49,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "With --format json: report, the documents by type, the sections, the files"
             " skipped, the pieces by meaning, the texts embedded now and the files with a"
             " piece refused; index, its path; model, the one that embedded, null by words"
-            " alone."
+            " alone; pruned, what the prune of the vector store kept and deleted, or why it"
+            " did not prune, null by words alone."
         ),
     )
     actions, flags = add_settings_options(parser)
@@ -59,5 +67,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             writes=True,
             unapplied=by_words_alone,
             refused=endpoint_by_meaning,
+            described=pruning_said,
         )
     )

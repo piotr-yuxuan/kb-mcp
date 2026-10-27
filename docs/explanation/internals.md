@@ -41,7 +41,7 @@ flowchart LR
 | `download` | the site, GET only | `<data>/raw/` | a lock, and each snapshot renamed into place | the document is counted and skipped; the run goes on |
 | `mirror` | the raw store | `<data>/docs/` | each file renamed into place | the document is reported, its last good file kept |
 | the work log, in `sync` | its folder, in place | `<data>/docs/worklog/` | each file renamed into place | the file or document is named by its path; no file is removed |
-| `index` | the mirror; the endpoint, for new texts | `<data>/index.sqlite`, `<data>/vectors.sqlite` | the index built aside, then renamed into place | the file is skipped and named; without the endpoint, the old index stays |
+| `index` | the mirror; the endpoint, for new texts | `<data>/index.sqlite`, `<data>/vectors.sqlite` | the index built aside, then renamed into place; the vector store pruned under its lock, its deletions one transaction | the file is skipped and named; without the endpoint, the old index stays; a prune it cannot trust deletes nothing |
 | `serve` | the index; the endpoint, for queries | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why |
 
 ## Sync: the stages in one command
@@ -192,7 +192,11 @@ and gives each piece a vector.
   ([`VectorStore.vectors`](../../src/atlassian_offline_mcp/search/adapters/vector_store.py)),
   so that an interrupted build loses little; in SQLite's WAL mode, an `index` and an
   `eval` can share it, a write waiting for the other's
-  ([`opened`](../../src/atlassian_offline_mcp/search/adapters/vector_store.py)).
+  ([`opened`](../../src/atlassian_offline_mcp/search/adapters/vector_store.py)). A build
+  by meaning holds the store's lock shared until its index is in place
+  ([`shared`](../../src/atlassian_offline_mcp/search/adapters/vector_store.py)); then
+  [`refresh`](../../src/atlassian_offline_mcp/search/app/indexing.py), which `index` and
+  `sync` run, prunes the store (below).
 - **One document's failure**, a file not UTF-8, front matter refused, or a second
   document of the same id, skips that file and names it, with a reason that holds no
   content; the build completes and exits 1. A piece whose text the endpoint refuses is
@@ -371,12 +375,21 @@ of new weights, a server that connects finds the fingerprint changed and answers
 until `index` runs, while one connected before the pull goes on with the new weights
 against the old vectors until the index is rebuilt.
 
-### 6. The vector store only grows
+### 6. The vector store pruned
 
-No build removes a vector: those of deleted pages, of texts since edited, of other
-chunkings and other models, and those that `eval` embedded, all stay. A vector left
-there is read by nothing; an index never holds one whose text the mirror no longer has,
-since it is rebuilt. What it costs is disk: a vector of the default model is 1,024
-numbers of 4 bytes, so each 10,000 texts kept take about 40 MB. Deleting
-`<data>/vectors.sqlite` costs one full embedding at the next `index`, and nothing else:
-the index holds its own copy of each vector, so the server goes on answering meanwhile.
+After each build by meaning,
+[`prune`](../../src/atlassian_offline_mcp/search/app/pruning.py) keeps in
+`<data>/vectors.sqlite` the vectors that the indexes on disk read, by the keys their
+pieces record: the index just renamed in, and those that `eval` keeps under
+`<data>/eval/indexes/`, so that the next evaluation embeds nothing again. The vectors of
+deleted pages, of texts since edited, and of chunkings and models that no index uses
+go. It takes the store's lock exclusive, or waits for the next `index` while a build
+holds it, so that no build loses what it embedded; and it deletes nothing after a build
+that skipped a file or indexed no document, or while an index there cannot say what it
+reads. A store made from plan 023 on gives the space freed back to the file system
+([`VectorStore.prune`](../../src/atlassian_offline_mcp/search/adapters/vector_store.py));
+one made before is converted at its first prune, by one `VACUUM`. A vector of the
+default model takes about 4.7 KB on disk. Deleting `<data>/vectors.sqlite` costs one
+embedding of the mirror at the next `index`, by the model, and downloads nothing: the
+index holds its own copy of each vector, so the server goes on answering meanwhile.
+[The data layout](../reference/data-layout.md) gives the rules.

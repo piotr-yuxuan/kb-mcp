@@ -1,7 +1,7 @@
 {
   "uid": "aom-index",
   "title": "index",
-  "description": "The index runs in the time range: the files they indexed, and the pieces embedded.",
+  "description": "The index runs in the time range: the files they indexed, the pieces embedded, and the prunes of the vector store.",
   "tags": [
     "atlassian-offline-mcp"
   ],
@@ -338,6 +338,91 @@
         "orientation": "horizontal",
         "displayMode": "basic",
         "showUnfilled": true
+      }
+    },
+    {
+      "id": 10,
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 4
+      },
+      "type": "timeseries",
+      "title": "Vector store's size at each prune",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(aom_vectors_bytes{job=\"atlassian-offline-mcp\"} and on (instance) aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"index\"})",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        }
+      }
+    },
+    {
+      "id": 11,
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 4
+      },
+      "type": "stat",
+      "title": "Vectors pruned",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(last_over_time(aom_vectors_total{job=\"atlassian-offline-mcp\", aom_outcome=\"pruned\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"index\"}[$__range]))",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto"
       }
     },
     {

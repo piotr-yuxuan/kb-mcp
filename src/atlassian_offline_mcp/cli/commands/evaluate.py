@@ -78,7 +78,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
                 for chunking in arguments.chunking or CHUNKINGS
             ]
             runs = evaluate(settings, questions, targets, time.perf_counter, built_at)
-    except (ModelError, EvaluationError) as error:
+    except (ModelError, EvaluationError, TimeoutError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}.json"

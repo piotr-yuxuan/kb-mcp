@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from pydantic_core import to_json
 from structlog.testing import capture_logs
 
 from atlassian_offline_mcp.cli.app import sync as sync_app
@@ -37,13 +38,14 @@ from atlassian_offline_mcp.mirror.adapters.pandoc import (
     PandocMissingError,
 )
 from atlassian_offline_mcp.mirror.app import mirror as mirror_app
-from atlassian_offline_mcp.search.adapters import sqlite_index
+from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
 from atlassian_offline_mcp.search.app.indexing import Indexing
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report, Targets
-from tests.endpoint import DIGEST, Scripted, serving
+from tests.endpoint import DIGEST, Scripted, scripted, serving
+from tests.mirrors import fillers
 from tests.reference import Emitted, documented, pattern, undocumented
 from tests.test_cli import logged_as as logged_in_files
 from tests.test_download import CAP, PAGES, SITE, FakeSite
@@ -280,9 +282,40 @@ def by_words(settings: Settings) -> Index:
     """Give the index's step as sync builds it in the lexical mode: no endpoint."""
     return Index(
         Indexing(
-            settings.docs, settings.index, settings.vectors, settings.model, settings.chunking, None
+            settings.docs,
+            settings.index,
+            settings.vectors,
+            settings.evaluation_indexes,
+            settings.model,
+            settings.chunking,
+            None,
         )
     )
+
+
+def test_the_index_step_prunes_and_a_deferred_prune_leaves_it_done(tmp_path: Path) -> None:
+    """Its row holds what the prune did; one that a build in progress defers fails nothing."""
+    settings = Settings(data_dir=tmp_path / "data", model="tiny")
+    fillers(settings.docs, 3)
+    step = Index(
+        Indexing(
+            settings.docs,
+            settings.index,
+            settings.vectors,
+            settings.evaluation_indexes,
+            "tiny",
+            "sections",
+            scripted,
+        )
+    )
+    with vector_store.shared(settings.vectors):
+        deferred = sync(context(settings, FIRST), [step])
+    done = sync(context(settings, FIRST), [step])
+    rows = [json.loads(to_json(synced))["steps"] for synced in (deferred, done)]
+    assert [(row["outcome"], row["result"]["pruned"]["outcome"]) for [row] in rows] == [
+        ("done", "deferred"),
+        ("done", "pruned"),
+    ]
 
 
 def logged_as(logged: list[dict[str, object]], event: str) -> list[dict[str, object]]:

@@ -3,11 +3,13 @@
 Only this module knows SQL. ``building`` writes a new index beside the old one and
 renames it into place once complete; ``reading`` opens one read-only for one use, so
 that a replaced file is read from the next use on. An index built with a model also
-holds the vector of each piece of each section, and names the model.
+holds the vector of each piece of each section, with its key in the vector store, and
+names the model.
 """
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import sqlite3
@@ -39,6 +41,10 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.search.domain.search import Section
 
+# What the file of a build begins with, beside its index, until it is renamed into place.
+BUILDING = ".index-"
+# Why a link among indexes is not followed: a cycle of them would not end.
+LINK = "a link, which is not followed"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id.
 SCHEMA = "3"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
@@ -79,7 +85,7 @@ CREATE VIRTUAL TABLE chunks USING fts5(
 CREATE TABLE pieces (
   rowid INTEGER PRIMARY KEY,
   section INTEGER NOT NULL, start INTEGER NOT NULL, stop INTEGER NOT NULL,
-  vector BLOB NOT NULL
+  key TEXT NOT NULL, vector BLOB NOT NULL
 );
 """
 # The documents that pass a search's filters, as a JSON list of rowids.
@@ -257,15 +263,46 @@ class Writer:
         self._next_section += len(sections)
         return first
 
-    def add_pieces(self, pieces: Iterable[tuple[int, int, int, bytes]]) -> None:
-        """Add pieces: each its section's rowid, its span in the section's body, its vector."""
+    def add_pieces(self, pieces: Iterable[tuple[int, int, int, str, bytes]]) -> None:
+        """Add pieces: each its section's rowid, its span in the section's body, its vector.
+
+        Each vector comes with its key in the vector store, which only pruning reads.
+        """
         self._connection.executemany(
-            "INSERT INTO pieces (section, start, stop, vector) VALUES (?, ?, ?, ?)", pieces
+            "INSERT INTO pieces (section, start, stop, key, vector) VALUES (?, ?, ?, ?, ?)",
+            pieces,
         )
 
     def skip(self) -> None:
         """Count a file of the mirror that could not be indexed."""
         self.skipped += 1
+
+
+def indexes_in(folder: Path) -> list[Path]:
+    """List the indexes under a folder, at any depth, in order; none if it does not exist.
+
+    A prune must see each, or it deletes the vectors that it reads: a folder that cannot
+    be reached or listed, an entry below the folder that is a link, which is not
+    followed, and a parent that is a dangling link, as to a disk away, raise OSError
+    naming it; the folder itself and its parent may be links. Only regular files are
+    indexes, and the file of a build is none: ``building`` makes it empty, renames it
+    into place once complete, and a build killed before its end leaves it behind.
+    """
+    try:
+        folder.lstat()
+    except FileNotFoundError:
+        if folder.parent.is_symlink() and not folder.parent.exists():
+            raise
+        return []
+    errors: list[OSError] = []
+    found: list[Path] = []
+    for root, _folders, names in folder.walk(on_error=errors.append):
+        paths = [root / name for name in names]
+        errors += [OSError(errno.ELOOP, LINK, str(path)) for path in paths if path.is_symlink()]
+        found += [path for path in paths if path.suffix == ".sqlite" and path.is_file()]
+    if errors:
+        raise errors[0]
+    return sorted(path for path in found if not path.name.startswith(BUILDING))
 
 
 @contextmanager
@@ -276,7 +313,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
     into place once complete. On any failure the index already at ``path`` stays, and
     the new file is removed.
     """
-    descriptor, name = tempfile.mkstemp(prefix=".index-", suffix=".sqlite", dir=path.parent)
+    descriptor, name = tempfile.mkstemp(prefix=BUILDING, suffix=".sqlite", dir=path.parent)
     os.close(descriptor)
     temporary = Path(name)
     try:
@@ -463,6 +500,20 @@ class Reader:
         # Indexes of 011 and 018 have no chunking: their pieces were cut by sections.
         chunking = cast("Chunking", meta.get("chunking", "sections"))
         return Embedded(meta["model"], meta["fingerprint"], int(meta["dimensions"]), chunking)
+
+    def keys(self) -> set[str]:
+        """Give the vector store's keys of the pieces' vectors: what the index reads of it.
+
+        An index built by words alone names no vector, and one of this schema built before
+        pieces recorded their keys reads as any other: neither can say which vectors a
+        prune must keep, so raise UnavailableIndexError.
+        """
+        columns = {row["name"] for row in self._connection.execute("PRAGMA table_info(pieces)")}
+        model = self._connection.execute("SELECT value FROM meta WHERE name = 'model'").fetchone()
+        if not model or not model[0] or "key" not in columns:
+            message = "built by words alone, or before pieces recorded their keys"
+            raise UnavailableIndexError(message)
+        return {row[0] for row in self._connection.execute("SELECT DISTINCT key FROM pieces")}
 
     def pieces(self) -> Pieces:
         """Read every piece's vector, with where the piece is: what meaning searches."""

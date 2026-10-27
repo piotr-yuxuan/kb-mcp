@@ -90,7 +90,7 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
   so a document's old pieces leave search with its old text, and a document removed
   leaves search. Each piece's vector is kept in `<data>/vectors.sqlite` by its model and
   its text, so only the pieces whose text changed are embedded again; the vectors of
-  text no longer mirrored stay there, unused.
+  text no longer mirrored are then pruned, unless an evaluation's index reads them.
 
 ## 6. Search it
 

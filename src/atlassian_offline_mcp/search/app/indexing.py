@@ -4,8 +4,10 @@ With an embedding, each piece of each section also gets its vector: from the vec
 store when it holds the piece's text, else from the model, then kept there. A piece
 whose text the model refuses has no vector, and its document is named. Reading the files
 and embedding are each a span; files and pieces are counted, as
-``docs/reference/telemetry/index.md`` lists it. ``index_mirror`` is the build that
-``index`` and ``sync`` run alike: it opens the endpoint, if any, then builds.
+``docs/reference/telemetry/index.md`` lists it. ``refresh`` is what ``index`` and
+``sync`` run alike: ``index_mirror``'s build, which opens the endpoint, if any, then
+builds; then, for an index by meaning, the prune of the vector store to what the indexes
+on disk read.
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ from __future__ import annotations
 import contextlib
 import sqlite3
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 import structlog
@@ -24,6 +26,7 @@ from atlassian_offline_mcp.mirror.adapters import markdown
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
 from atlassian_offline_mcp.search.adapters.embedding import ModelError, connect
+from atlassian_offline_mcp.search.app.pruning import prune
 from atlassian_offline_mcp.search.domain.chunking import CHUNKERS
 from atlassian_offline_mcp.search.domain.search import Embedded, sections
 
@@ -34,6 +37,7 @@ if TYPE_CHECKING:
 
     from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.search.adapters.embedding import Embedder, Endpoint
+    from atlassian_offline_mcp.search.app.pruning import Pruned
 
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
@@ -88,12 +92,14 @@ class Indexing:
     """What a build of the index reads and writes, and how it embeds.
 
     ``endpoint`` opens the embedding endpoint, as the run allows it, or is None for an
-    index by words alone, which never calls it.
+    index by words alone, which never calls it. ``evaluation_indexes`` holds the indexes
+    that eval builds, whose vectors a prune keeps.
     """
 
     docs: Path
     index: Path
     vectors: Path
+    evaluation_indexes: Path
     model: str
     chunking: Chunking
     endpoint: Callable[[], Endpoint] | None
@@ -101,11 +107,16 @@ class Indexing:
 
 @dataclass(frozen=True)
 class Indexed:
-    """What a build did, the index it wrote, and the model that embedded, None by words alone."""
+    """What a build did, the index it wrote, and the model that embedded, None by words alone.
+
+    ``pruned`` says what the prune of the vector store that followed did: None by words
+    alone, which never opens the store, and from ``index_mirror``, which does not prune.
+    """
 
     report: Report
     index: Path
     model: str | None
+    pruned: Pruned | None = None
 
 
 def build_index(
@@ -117,7 +128,10 @@ def build_index(
     there already is skipped, and named in the report with a reason that holds no
     content. The index replaces the old one only once complete. Raises ModelError when
     the embedding fails; the old index then stays. A piece whose text the model refuses
-    is left without a vector, and its document named in the report. The task ``files``
+    is left without a vector, and its document named in the report. With an embedding,
+    the build holds the vector store's lock shared, from before it reads the mirror until
+    its index is in place, so that no prune deletes what it embeds; it waits for a prune
+    in progress, and raises TimeoutError past ``vector_store.WAIT_S``. The task ``files``
     reports the files read, each by its path, then the vector store its own. The spans
     ``index.files`` and ``index.embed`` hold reading the files and embedding the pieces;
     ``index.document`` says each file indexed at DEBUG, ``index.built`` the counts at
@@ -137,7 +151,10 @@ def build_index(
     # key and document
     texts: dict[str, str] = {}  # what each key's vector embeds
     log = structlog.get_logger()
-    with sqlite_index.building(index, built_at, embedded) as writer:
+    with (
+        vector_store.shared(embedding.store) if embedding else contextlib.nullcontext(),
+        sqlite_index.building(index, built_at, embedded) as writer,
+    ):
         files = {file.relative_to(docs).as_posix(): file for file in markdown.documents(docs)}
         with TRACER.start_as_current_span("index.files"), task("files", len(files)) as indexed:
             for path in indexed.each(files, str):
@@ -174,7 +191,7 @@ def build_index(
             with TRACER.start_as_current_span("index.embed"):
                 with vector_store.opened(embedding.store) as store:
                     found, report.embedded = store.vectors(texts, embedding.embedder.documents)
-                kept = [(*piece[:3], found[piece[3]]) for piece in pending if piece[3] in found]
+                kept = [(*piece[:4], found[piece[3]]) for piece in pending if piece[3] in found]
                 writer.add_pieces(kept)
             report.pieces = len(kept)
             report.characters = sum(len(text) for text in texts.values())
@@ -226,3 +243,23 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
     if report.skipped:
         log.warning("index.lacks_files", count=len(report.skipped))
     return Indexed(report, indexing.index, None if embedding is None else indexing.model)
+
+
+def refresh(indexing: Indexing, built_at: datetime) -> Indexed | None:
+    """Build the index as ``index_mirror`` does; then, by meaning, prune the vector store.
+
+    An index by words alone never opens the store, and prunes nothing. The prune holds
+    back after a build that skipped a file or indexed no document, as the index then
+    lacks what the mirror still holds.
+    """
+    indexed = index_mirror(indexing, built_at)
+    if indexed is None or indexed.model is None:
+        return indexed
+    pruned = prune(
+        indexing.vectors,
+        indexing.index,
+        indexing.evaluation_indexes,
+        skipped=len(indexed.report.skipped),
+        documents=indexed.report.types.total(),
+    )
+    return replace(indexed, pruned=pruned)

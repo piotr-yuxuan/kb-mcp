@@ -363,6 +363,11 @@ class Settings(BaseSettings):
         return self.data_dir / "eval"
 
     @property
+    def evaluation_indexes(self) -> Path:
+        """The indexes that eval builds, one per chunking and model, whose vectors stay."""
+        return self.evaluations / "indexes"
+
+    @property
     def session(self) -> Path:
         """The browser profile and the saved session, never read by agents."""
         return self.data_dir / "session"
