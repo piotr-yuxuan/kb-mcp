@@ -388,10 +388,11 @@ passages on the subject near 1 without their answering, such as an incident repo
 questions, a request passed the run's deadline of 300 seconds three times.
 
 So no depth met the bar here: clauses 1 and 2, which hold for any machine, failed at
-10, 20 and 30, and clause 3, by this laptop's times, at every depth. The user chose
-reranking on by default all the same, with a way to turn it off, and a measure to run
-on the machine that serves agents: a GPU, a later llama.cpp or another model may change
-the times, the scores of another corpus the ranks.
+10, 20 and 30, and clause 3, by this laptop's times, at every depth. Reranking is off by
+default, as the user chose the more accurate results; a measure on the machine that
+serves agents, with its own questions, tells whether to turn it on there: a GPU, a
+later llama.cpp or another model may change the times, the scores of another corpus
+the ranks.
 
 ### What these runs show, and what they do not
 
@@ -572,9 +573,9 @@ can be run on them.
 
 ### Measuring reranking
 
-Plan 022's bar says whether reranking is worth keeping on a machine, and at which
-depth ([reranking](reranking.md#the-bar-fixed-before-the-run)); the user chose it on by
-default. With the sandbox's data directory as above, Ollama running with the model, and
+Plan 022's bar says whether reranking is worth turning on on a machine, and at which
+depth ([reranking](reranking.md#the-bar-fixed-before-the-run)); it is off by default.
+With the sandbox's data directory as above, Ollama running with the model, and
 the reranking server started as [the how-to](../how-to/reranking.md#start-the-server)
 starts it, at its address and under its alias, which are the settings' defaults:
 
@@ -594,9 +595,10 @@ minutes on the user's machine; on a laptop's CPU with llama.cpp 0.6.0, depths 10
 took 50, 64 and 74 minutes, a run each, and depth 50 could not end. The output has a
 table with a row per depth, `none` the order not reranked, the first stage's Recall@N,
 a line per depth with each clause's verdict and each group's loss, each qualifying
-depth's p-value against the best, and the bar's last line, `By the bar, with this machine's times: rerank N documents.` or `...: turn
-reranking off.` Its third clause reads the times of the machine that ran it: only the
-user's machine's run tells whether reranking stays on there.
+depth's p-value against the best, and the bar's last line, `By the bar, with this
+machine's times: turn reranking on, at depth N.` or `...: leave reranking off.` Its
+third clause reads the times of the machine that ran it: only the user's machine's run tells
+whether to turn reranking on there.
 [The how-to](../how-to/reranking.md#measure-it) also gives a short measure, one depth
 on a sample of the questions, and what to check in each.
 

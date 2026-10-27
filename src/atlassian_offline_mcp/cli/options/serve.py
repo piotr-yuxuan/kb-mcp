@@ -47,9 +47,15 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         metavar=",".join(TOOLS),
         help="the tools to serve, comma-separated; by default, every one",
     )
-    rerank = parser.add_argument(
+    reranking = parser.add_mutually_exclusive_group()
+    rerank = reranking.add_argument(
+        "--rerank",
+        action="store_const",
+        const=True,
+        help="rerank through the reranking server, whatever the settings say",
+    )
+    no_rerank = reranking.add_argument(
         "--no-rerank",
-        dest="rerank",
         action="store_const",
         const=False,
         help="search without the reranking server, whatever the settings say",
@@ -68,8 +74,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
                 "rerank.model",
                 "rerank.depth",
             ),
-            flags={**flags, "rerank": "rerank.enabled"},
-            actions=(*actions, remote, tools, rerank),
+            flags={**flags, "rerank": "rerank.enabled", "no_rerank": "rerank.enabled"},
+            actions=(*actions, remote, tools, rerank, no_rerank),
             unapplied=reranking_off,
             refused=endpoint_by_meaning,
             traced=False,

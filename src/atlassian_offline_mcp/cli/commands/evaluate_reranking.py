@@ -131,9 +131,9 @@ def text(evaluated: Evaluated, summary: Summary) -> str:
     """Write each arm's row, every group's in detail; the first stage's recall; the bar.
 
     The bar's verdicts come depth by depth, each clause said with the groups' losses,
-    then each qualifying depth's p-value against the best, then the depth to rerank or
-    that reranking is better off, by this machine's times; with depths other than the
-    bar's, that there is no verdict.
+    then each qualifying depth's p-value against the best, then the depth at which to
+    turn reranking on, or that it is better left off, by this machine's times; with
+    depths other than the bar's, that there is no verdict.
     """
     arms = evaluated.arms
     plain = arms[0]
@@ -171,8 +171,8 @@ def text(evaluated: Evaluated, summary: Summary) -> str:
         ]
         chosen = decision.depth
         lines.append(
-            f"By the bar, with this machine's times: rerank {chosen} documents."
+            f"By the bar, with this machine's times: turn reranking on, at depth {chosen}."
             if chosen
-            else "By the bar, with this machine's times: turn reranking off."
+            else "By the bar, with this machine's times: leave reranking off."
         )
     return "\n".join([*lines, f"Results: {evaluated.results}", ""])

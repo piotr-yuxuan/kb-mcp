@@ -11,6 +11,8 @@ import pytest
 from mcp.client.stdio import StdioServerParameters
 from opentelemetry import trace
 
+from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.kernel.reranking import LONGEST_TEXT, MOST_TEXTS
 from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
@@ -27,6 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
+    from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
     from _pytest.tempdir import TempPathFactory
 
@@ -382,8 +385,8 @@ def test_serve_reranks_its_searches_through_the_server_of_the_settings(tmp_path:
 def test_serve_not_reranking_opens_no_socket_and_says_its_settings_go_unused(
     tmp_path: Path,
 ) -> None:
-    """Disabled: no network at all, a search answered, and rerank.url not applied."""
-    home, _ = stdio_root(tmp_path, 'enabled = false\nurl = "http://127.0.0.1:9/v1"\n')
+    """Off by default: no network at all, a search answered, and rerank.url not applied."""
+    home, _ = stdio_root(tmp_path, 'url = "http://127.0.0.1:9/v1"\n')
     errlog = tmp_path / "stderr.txt"
     with errlog.open("w", encoding="utf-8") as stderr:
         _, _, results = talk(served_over_stdio(home), [("search", {"query": "kafka"})], stderr)
@@ -393,15 +396,26 @@ def test_serve_not_reranking_opens_no_socket_and_says_its_settings_go_unused(
     assert "reranking off" in said
 
 
-def test_serve_reranks_by_default_and_says_why_not_when_no_server_answers(
+def test_rerank_turns_reranking_on_and_says_why_not_when_no_server_answers(
     tmp_path: Path,
 ) -> None:
-    """On unless set off: with nothing at the server's address, both tools answer, saying why."""
+    """Off in the file, on by --rerank: with no server there, both tools answer, saying why."""
     with nothing_listening() as url:
-        home, _ = stdio_root(tmp_path, f"url = {json.dumps(url)}\n")
-        port = url.split(":")[2].split("/")[0]
+        home, _ = stdio_root(tmp_path, f"enabled = false\nurl = {json.dumps(url)}\n")
+        port = int(url.split(":")[2].split("/")[0])
+        given = {"ports": [port], "limit": 1, "report": str(tmp_path / "report.json")}
+        command = StdioServerParameters(
+            command=sys.executable,
+            args=[
+                "-m",
+                "tests.guarded",
+                json.dumps({**given, "arguments": ["serve", "--rerank"]}),
+            ],
+            env={"HOME": str(home)},
+            cwd=ROOT,
+        )
         calls = [("search", {"query": "kafka"}), ("ask", {"question": "kafka retention"})]
-        _, _, results = talk(served_over_stdio(home, port), calls)
+        _, _, results = talk(command, calls)
     for result in results:
         assert result["isError"] is False
         assert f"Not reranked: {DOWN}" in result["content"][0]["text"]
@@ -429,3 +443,11 @@ def test_no_rerank_turns_reranking_off_whatever_the_settings_say(tmp_path: Path)
     assert results[0]["isError"] is False
     assert "Not reranked" not in results[0]["content"][0]["text"]
     assert "ignored: rerank.url (config.toml): reranking off" in errlog.read_text("utf-8")
+
+
+def test_rerank_and_no_rerank_exclude_one_another(capsys: CaptureFixture[str]) -> None:
+    """Both flags: refused by the parser, exit 2, before any settings are read."""
+    with pytest.raises(SystemExit) as stopped:
+        main(["serve", "--rerank", "--no-rerank"])
+    assert stopped.value.code == ExitStatus.REFUSED
+    assert "not allowed with argument" in capsys.readouterr().err

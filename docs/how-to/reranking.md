@@ -8,8 +8,9 @@ runs in this program: it runs in llama.cpp's `llama-server`, a dependency of its
 which you install and start, as you do Ollama or whichever OpenAI-compatible API serves
 the embeddings, and which this program reaches on this machine alone, never elsewhere.
 
-Reranking is on by default, by the user's choice: without the server, searches still
-answer, in their own order, and say why; it can be turned off, and measured (below).
+Reranking is off by default: on the sandbox's questions it ranked worse than search
+alone, and the user chose the more accurate results. It can be turned on, and measured
+on your own machine and questions to decide whether to (below).
 
 ## Install llama.cpp
 
@@ -104,14 +105,39 @@ line also comes when the server lists another name than `rerank.model`. It exits
 saying what to run, when nothing answers, when the server is not a reranker, or when
 the unrelated passage scores as high as the answer.
 
-## On by default, and how to turn it off
+## Off by default, and how to turn it on
 
-Reranking is on by default, by the user's choice (`rerank.enabled`, true). The MCP
-server reads the setting when it starts: restart your agent's server after a change.
-Searches and asks rerank the `rerank.depth` documents, 30 by default, that follow those
-that a query names by key or id, which stay first.
+Reranking is off by default (`rerank.enabled`, false). On the sandbox's 105 golden
+questions, on the development laptop's CPU, reranking 10, 20 or 30 documents ranked
+worse than the order not reranked: MRR@10 of 0.542 to 0.557, against 0.639, keyword
+questions losing about 0.2, and a search took 29 to 37 seconds at the median
+([evaluating search](../explanation/search-evaluation.md#plan-022-reranking-on-a-laptop)).
+The user chose the more accurate results, so it stays off until a measure on the
+machine that serves agents, with its own questions, says that it helps there
+([measure it](#measure-it)).
 
-Without the server, nothing fails, as without Ollama a search by meaning answers by
+To turn it on, in the settings file:
+
+```toml
+[rerank]
+enabled = true
+```
+
+Or `ATLASSIAN_OFFLINE_MCP_RERANK__ENABLED=true` in the server's environment, or
+`--rerank` on the command that starts the server, which wins over both, as `--no-rerank`
+does to turn it off:
+
+```bash
+atlassian-offline-mcp serve --rerank
+```
+
+The MCP server reads the setting when it starts: restart your agent's server after a
+change. Searches and asks then rerank the `rerank.depth` documents, 30 by default, that
+follow those that a query names by key or id, which stay first. Off, the server never
+connects to the reranking server, and says when it starts that `rerank.url`,
+`rerank.model` or `rerank.depth`, if set, are not applied.
+
+On, without the server, nothing fails, as without Ollama a search by meaning answers by
 words and says why. When llama-server is not running, the connection is refused at
 once: a search or an ask answers in its own order, and its header ends with why:
 
@@ -123,23 +149,6 @@ For the next 30 seconds, searches do not ask the server again, and answer at onc
 the same note. A server that is running but slow costs one search up to 30 seconds,
 then the same 30 seconds without asking. A refusal of one request (400, 413, 422 or
 500) is that request's: the next search asks again.
-
-To turn it off, in the settings file:
-
-```toml
-[rerank]
-enabled = false
-```
-
-Or `ATLASSIAN_OFFLINE_MCP_RERANK__ENABLED=false` in the server's environment, or
-`--no-rerank` on the command that starts the server, which wins over both:
-
-```bash
-atlassian-offline-mcp serve --no-rerank
-```
-
-Off, the server never connects to the reranking server, and says when it starts that
-`rerank.url`, `rerank.model` or `rerank.depth`, if set, are not applied.
 
 `rerank.url` takes an address of this machine alone: any other is refused, and no flag
 allows one, so that the mirror's text stays here.
@@ -197,7 +206,7 @@ In its table, compare the row of depth 30 with the row `none`, group `all`, and 
 
 - `Search, 95th`: within 5,000 ms, the bar's bound, on the machine that serves agents.
   Past 30,000 ms, searches would give up on the server and answer in their own order:
-  lower `rerank.depth`, or turn reranking off.
+  lower `rerank.depth`, or leave reranking off.
 - `MRR@10` and `Success@1`: reranking should raise them. On 20 questions, a difference
   smaller than about 0.12 may be chance either way; a larger fall is the sign to run
   the long measure.
@@ -212,7 +221,7 @@ measure applies the bar.
 
 ### Long: four depths, and the bar's verdict
 
-To decide, on this machine, whether reranking stays on, and at which depth:
+To decide, on this machine, whether to turn reranking on, and at which depth:
 
 ```bash
 atlassian-offline-mcp eval-rerank ~/atlassian-offline-mcp/eval/golden.yaml
@@ -235,10 +244,9 @@ clause 2, each group losing 0.05 at most; `within 5 s here`, clause 3, by this
 machine's times. Then, for the depths that qualify, each one's p-value against the
 best, and the last line, which says what to do:
 
-- `By the bar, with this machine's times: rerank N documents.`: set `rerank.depth` to
-  N, and keep reranking on.
-- `By the bar, with this machine's times: turn reranking off.`: no depth qualifies;
-  set `enabled = false`, unless you keep it on knowing that the bar was not met.
+- `By the bar, with this machine's times: turn reranking on, at depth N.`: set
+  `enabled = true` and `depth = N` under `[rerank]`.
+- `By the bar, with this machine's times: leave reranking off.`: no depth qualifies.
 
 The verdict holds for the model, the server's version, the golden questions and the
 machine it was measured with: measure again when one of them changes.

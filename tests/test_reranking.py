@@ -362,9 +362,9 @@ def test_a_reranker_served_on_this_machine_ranks_the_answer_first() -> None:
     assert LIVE in names
 
 
-def test_reranking_is_on_by_default_at_the_guide_s_server_and_model() -> None:
-    """On, the user's choice; llama-server where the guide starts it; depth 30."""
-    assert from_file({}).rerank == Rerank(enabled=True, url=RERANK_URL, model=RERANKER, depth=30)
+def test_reranking_is_off_by_default_at_the_guide_s_server_and_model() -> None:
+    """Off, the user's choice; llama-server where the guide starts it; depth 30."""
+    assert from_file({}).rerank == Rerank(enabled=False, url=RERANK_URL, model=RERANKER, depth=30)
 
 
 @pytest.mark.parametrize(

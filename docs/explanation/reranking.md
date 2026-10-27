@@ -3,10 +3,11 @@
 Search finds documents in two stages when reranking is on. The first is this program's
 own, by words, by meaning or both; the second sends the first documents it found, with
 the question, to a reranking server on this machine, and shows them in the order of the
-server's scores. Plan 022 added it, with a bar written before any run, and it is on by
-default, by the user's choice: the bar's verdict, measured on the machine that serves
-agents, tells whether to keep it there, and at which depth.
-[The how-to](../how-to/reranking.md) sets it up, turns it off and measures it.
+server's scores. Plan 022 added it, with a bar written before any run. It is off by
+default: on the sandbox it ranked worse, and the user chose the more accurate results;
+the bar's verdict, measured on the machine that serves agents with its own questions,
+tells whether to turn it on there, and at which depth.
+[The how-to](../how-to/reranking.md) sets it up, turns it on and measures it.
 
 ## Two ways a model can read a question
 
@@ -78,14 +79,13 @@ searches do not ask; a refusal (400, 413, 422 or 500) is the request's, not the
 server's, so the next search asks again. [Telemetry](../reference/telemetry/serve.md)
 counts each search not reranked, by why.
 
-Since reranking is on by default, the server is a dependency of the defaults, as Ollama
-is, and is treated alike: neither is checked when the MCP server starts, and neither
-stops a search. Without llama-server, the connection is refused at once, so a search
-costs no wait, and for the next 30 seconds none asks again; without Ollama, a search
-by meaning ranks by words, saying why, and none asks again for as long. A server that
-answers too slowly costs more: one search waits its 30 seconds, then the next ones go
-without for 30. Where no reranking server will run, turning reranking off spares the
-note on every answer.
+Reranking turned on makes the server a dependency, as Ollama is, and treated alike:
+neither is checked when the MCP server starts, and neither stops a search. Without
+llama-server, the connection is refused at once, so a search costs no wait, and for
+the next 30 seconds none asks again; without Ollama, a search by meaning ranks by
+words, saying why, and none asks again for as long. A server that answers too slowly
+costs more: one search waits its 30 seconds, then the next ones go without for 30.
+Off, the default, the server is never asked.
 
 ## The bar, fixed before the run
 
@@ -102,9 +102,10 @@ written before any measure, applied by `eval-rerank` on the golden questions to 
 
 Among the depths that qualify, the smallest whose MRR@10 is not shown lower than the
 best's (the same test, p of 0.05 or more) is the depth to set as `rerank.depth`. If
-none qualifies, `eval-rerank` says to turn reranking off. The bar was written to decide
-the default; the user then chose reranking on by default, so its verdict is now advice
-for the machine measured. Values
+none qualifies, `eval-rerank` says to leave reranking off. The bar was written to decide
+the default; the user chose first reranking on by default, then, with the measures,
+off, for the more accurate results, so its verdict is now advice: whether to turn it on
+on the machine measured. Values
 compare as reported: means to three decimals, a group's loss as the difference of its
 two means so shown, p-values to four decimals, times in whole milliseconds. A loss of
 0.050 qualifies, 0.051 does not; a group that the golden questions do not name has no
@@ -130,7 +131,7 @@ loss to show, and `eval-rerank` says `n/a`.
 - **Which machine decides.** Ranks are the same on every machine; times are not. A run
   elsewhere reads clause 3 by its own times, and says so: its clauses 1 and 2 hold for
   every machine, its verdict for that machine alone. The user's machine's run tells whether
-  reranking stays on there.
+  to turn reranking on there.
 
 Evidence@ask is reported beside, not a clause: under `ask`'s fixed budget it follows
 the order that MRR@10 measures, and a further noisy clause would refuse more harmless

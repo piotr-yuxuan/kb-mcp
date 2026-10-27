@@ -295,7 +295,7 @@ def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_fir
 
 
 @pytest.mark.parametrize(
-    ("chosen", "said"), [(20, "rerank 20 documents."), (None, "turn reranking off.")]
+    ("chosen", "said"), [(20, "turn reranking on, at depth 20."), (None, "leave reranking off.")]
 )
 def test_the_bar_s_verdicts_are_written_by_this_machine_s_times(
     data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch, chosen: int | None, said: str

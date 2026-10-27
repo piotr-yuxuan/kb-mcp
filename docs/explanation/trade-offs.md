@@ -213,6 +213,36 @@ which is only the example: any such server works.
 - **Settled** by the maintainer, in
   [plan 018](../work/changelog/018-embeddings-via-ollama.md#settled-by-the-user-not-reopened).
 
+## A reranker on this machine, off by default
+
+`search` and `ask` can send their first documents, after those that a query names, to a
+cross-encoder that a server on this machine runs, llama.cpp's `llama-server` by
+default, and show them in the order of its scores
+([`rerank`](../../src/atlassian_offline_mcp/search/adapters/reranking.py)). It is off
+by default.
+
+- **Why.** A model that reads the question with each document is the strongest known
+  lever on the first answers
+  ([reranking](reranking.md#two-ways-a-model-can-read-a-question)),
+  so it was built, on the side as the embedding model is: the maintainer wanted it "not
+  run within the MCP but on the side as a separate (local-only) component of the
+  system". Off by default because, measured, it ranked worse on the sandbox, and the
+  maintainer wanted "more accurate results".
+- **Cost.** For whoever turns it on, a second server to install and keep running, with
+  its model file. Each search waits for it: 29 to 37 seconds at the median on the
+  development laptop's processor, reranking 10 to 30 documents, and 30 seconds at most
+  before the search keeps its own order. On the sandbox's questions, every depth
+  measured ranked worse than the order not reranked (MRR@10 0.542 to 0.557, against
+  0.639), keyword questions most
+  ([evaluating search](search-evaluation.md#plan-022-reranking-on-a-laptop)). Off, it
+  costs nothing: the server is never asked.
+- **Rejected.** A model in process, against the maintainer's wish; a reranker off this
+  machine ("No remote reranker."); Text Embeddings Inference, whose API has another
+  shape; on by default, which the maintainer chose before the measures, then reversed
+  for accuracy.
+- **Settled** by the maintainer, in
+  [plan 022](../work/plans/022-reranking.md#settled-by-the-user).
+
 ## Budgets and untrusted-data markers
 
 An answer of the server stays within a budget of estimated tokens, 4,000 for arguments

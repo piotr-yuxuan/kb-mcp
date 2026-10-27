@@ -640,7 +640,7 @@ def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
         "sources.worklog.archives: True [default]\n"
         f"logs.dir: {user_log_folder(home.resolve())} [default]\n"
         "telemetry.endpoint: (not set) [default]\n"
-        "rerank.enabled: True [default]\n"
+        "rerank.enabled: False [default]\n"
         "rerank.url: http://127.0.0.1:9931/v1 [default]\n"
         "rerank.model: qwen3-reranker-0.6b [default]\n"
         "rerank.depth: 30 [default]\n"

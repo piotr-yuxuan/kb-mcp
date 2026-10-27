@@ -1,4 +1,4 @@
-"""Plan 022's bar: whether search reranks by default, and how deep, from an evaluation.
+"""Plan 022's bar: whether to rerank on the machine measured, and how deep, from an evaluation.
 
 Fixed before any run. A depth qualifies when it beats the order not reranked on MRR@10,
 significantly once adjusted for testing four depths; loses little on the questions

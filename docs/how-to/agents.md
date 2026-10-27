@@ -50,21 +50,21 @@ model and chunking to choose, and how to search by words alone.
 
 ## Rerank the first documents
 
-A reranking server beside Ollama reorders the first documents that `search` and `ask`
-find, by a model that reads the question with each: on by default, by the user's
-choice, and [the how-to](reranking.md) sets it up. Without it, or when it fails, a
-search keeps its own order and its answer says why ("Not reranked: ..."), as a search
-by meaning says why it fell back to words; when the server itself failed, searches do
-not ask it again for 30 seconds. `serve --no-rerank`, or `enabled = false` under
-`[rerank]` in the settings, turns it off. A next page keeps the order of the first,
-which its cursor carries: when the answer says that the ranking changed since, search
-again without the cursor.
+A reranking server beside Ollama can reorder the first documents that `search` and
+`ask` find, by a model that reads the question with each: off by default, and [the
+how-to](reranking.md) sets it up. `enabled = true` under `[rerank]` in the settings, or
+`serve --rerank`, turns it on. On, without the server or when it fails, a search keeps
+its own order and its answer says why ("Not reranked: ..."), as a search by meaning
+says why it fell back to words; when the server itself failed, searches do not ask it
+again for 30 seconds. A next page keeps the order of the first, which its cursor
+carries: when the answer says that the ranking changed since, search again without the
+cursor.
 
 On plan 002's sandbox questions, on the development laptop's CPU, reranking 10, 20 or
 30 documents ranked worse than the order not reranked (MRR@10 0.542 to 0.557, against
 0.639), losing most on keyword questions, and took 29 to 37 seconds a search at the
-median. Its bar is to be met on the machine that serves agents:
-[measure it](reranking.md#measure-it) there, and turn it off if it is not.
+median, hence off by default. Its bar is to be met on the machine that serves agents:
+[measure it](reranking.md#measure-it) there before turning it on.
 
 ## Ask, and prompts
 
