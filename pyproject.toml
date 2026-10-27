@@ -39,6 +39,7 @@ dev = [
   "markdown-it-py>=4,<5",
   "opentelemetry-proto>=1.45,<2",
   "pytest>=9,<10",
+  "pytest-xdist>=3.8,<4",
   "ruff>=0.16,<0.17",
 ]
 

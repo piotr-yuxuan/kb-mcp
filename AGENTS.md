@@ -13,7 +13,7 @@ Follow the `workflow:plans` skill with these parameters:
 - Checks, run in full before each review and each merge:
   - `uv run ruff check` and `uv run ruff format --check`;
   - `uv run lint-imports`;
-  - `uv run pytest`;
+  - `uv run pytest -n auto`, on every core by pytest-xdist;
   - `uv run --with-requirements sandbox/seed_corpus.py --with pytest pytest sandbox`,
     which needs pandoc on `PATH`.
 - The design: why each decision was taken and what it costs, in

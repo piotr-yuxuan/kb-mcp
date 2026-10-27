@@ -78,10 +78,11 @@ It ends with:
 Contracts: 8 kept, 0 broken.
 ```
 
-pytest runs the tests, in a few minutes:
+pytest runs the tests, spread over every core by `-n auto` (pytest-xdist), in a minute or
+two:
 
 ```bash
-uv run pytest
+uv run pytest -n auto
 ```
 
 It ends with:
@@ -342,7 +343,7 @@ in any context, no effect. Put the rule back as step 4 wrote it, and run
 Now the whole suite:
 
 ```bash
-uv run pytest
+uv run pytest -n auto
 ```
 
 One test fails, and its message says what to do:
