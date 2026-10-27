@@ -114,7 +114,7 @@ questions losing about 0.2, and a search took 29 to 37 seconds at the median
 ([evaluating search](../explanation/search-evaluation.md#plan-022-reranking-on-a-laptop)).
 The user chose the more accurate results, so it stays off until a measure on the
 machine that serves agents, with its own questions, says that it helps there
-([measure it](#measure-it)).
+([on the user's machine](#on-the-users-machine-with-your-own-mirror)).
 
 To turn it on, in the settings file:
 
@@ -250,6 +250,96 @@ best, and the last line, which says what to do:
 
 The verdict holds for the model, the server's version, the golden questions and the
 machine it was measured with: measure again when one of them changes.
+
+## On the user's machine, with your own mirror
+
+The sandbox's verdict is not your corpus's, and a laptop's CPU is not the Mac's GPU:
+whether reranking helps your agents is for a measure on the Mac, with your mirror and
+your questions, to say. Everything below runs there, on the mirror that `sync` keeps,
+and nothing of the corpus leaves the Mac.
+
+1. **The two servers.** llama.cpp 0.7.0 or later, with Metal: Homebrew's
+   (`brew install llama.cpp`), or llama.cpp's flake at its tag, as
+   [installing llama.cpp](#install-llamacpp) says; nixpkgs' 0.6.0 also works, more
+   slowly. The model fetched and checked by its SHA-256
+   ([fetch the model](#fetch-the-model-pinned)), and the server started on
+   127.0.0.1:9931 with `--reranking`, as [start the server](#start-the-server) does.
+   Ollama serving `qwen3-embedding:0.6b`, as [embeddings](embeddings.md) says. Check
+   both; each check says what to run when its server does not answer:
+
+   ```bash
+   atlassian-offline-mcp model check
+   ```
+
+   ```bash
+   atlassian-offline-mcp reranker check
+   ```
+
+   The second line of `reranker check` times one search's request: past 5 seconds,
+   the bar's third clause is likely to fail at that depth.
+
+2. **Golden questions on your own content.** About 30 to begin with, written as
+   [golden questions](golden-questions.md) says: questions as agents ask them, keywords
+   and names as often as sentences, each with the documents that answer it. Put the
+   group `identifier` on the questions that name a thing, such as an issue key, and
+   `keyword` on those of a few words: the bar's second clause reads those two groups.
+   Keep the file in `<data>/eval/`, here `~/atlassian-offline-mcp/eval/golden.yaml`,
+   never in a repository: it holds your company's content. Thirty questions show only
+   large differences; a hundred or more are needed to see 0.05 of MRR@10.
+
+3. **The short run**, a few minutes: one depth, on a sample of 20 questions.
+
+   ```bash
+   atlassian-offline-mcp eval-rerank ~/atlassian-offline-mcp/eval/golden.yaml --depth 30 --sample 20 --summary detailed
+   ```
+
+   It asks before it runs. The first run builds its own index of the mirror under
+   `<data>/eval/indexes/`, reusing the vectors that `index` made with the same model
+   and chunking; then 600 texts are scored, one to two minutes by the estimate. In
+   the table, compare the row of depth 30 with the row `none`: `MRR@10` and
+   `Success@1`, group `all` and each group, and `Search, 95th` against 5,000 ms. On 20
+   questions, a difference smaller than about 0.12 may be chance;
+   [short](#short-one-depth-on-a-sample) says more. It gives no verdict.
+
+4. **The long run**, the bar's verdict: every question, at depths 10, 20, 30 and 50.
+
+   ```bash
+   atlassian-offline-mcp eval-rerank ~/atlassian-offline-mcp/eval/golden.yaml --summary detailed
+   ```
+
+   110 texts a question: about 6 to 10 minutes for 30 questions by the estimate, 20 to
+   35 for a hundred. Read, as [long](#long-four-depths-and-the-bars-verdict) details:
+
+   - the table: each depth's `MRR@10` against the row `none`, for `all` and for each
+     group, and `Search, 95th`;
+   - a line per depth: `MRR@10 adjusted p`, the paired test against the order not
+     reranked, Holm-adjusted over the four depths; then the three clauses, `gains`,
+     `hold` (the losses of `identifier` and `keyword`, 0.05 at most) and `within 5 s
+     here`;
+   - the last line, which decides: `turn reranking on, at depth N`, or `leave
+     reranking off`.
+
+   What justifies turning it on is that last line naming a depth: MRR@10 higher with an
+   adjusted p below 0.05, the two groups losing 0.05 at most, and a search within 5
+   seconds at the 95th percentile on the Mac. With 30 questions, only a large gain
+   passes the test: a gain short of it calls for more questions, not for turning it on.
+
+5. **The search modes**, on the same golden file: `eval` measures words, meaning and
+   hybrid, which says whether hybrid, the default, or meaning alone suits your corpus.
+   [Comparing chunkings and modes](../explanation/search-evaluation.md#comparing-chunkings-and-modes)
+   says how to read it; for the default chunking alone, on the Mac:
+
+   ```bash
+   atlassian-offline-mcp eval ~/atlassian-offline-mcp/eval/golden.yaml --chunking windows --summary detailed
+   ```
+
+6. **What to send back.** The results files under `<data>/eval/results/`, the
+   `<UTC time>-rerank.json` of each `eval-rerank` run and the `<UTC time>.json` of
+   `eval`'s, or the tables that the runs print. They hold the golden file's SHA-256,
+   the models, measures, ranks and times, by question id and by group: never a
+   question's text, a document's ref or its content. Look over the ids and the group
+   names first, since you wrote them: they are all of your file that the results
+   repeat.
 
 ## Change the model
 
