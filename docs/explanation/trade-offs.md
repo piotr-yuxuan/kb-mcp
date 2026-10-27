@@ -241,7 +241,7 @@ by default.
   shape; on by default, which the maintainer chose before the measures, then reversed
   for accuracy.
 - **Settled** by the maintainer, in
-  [plan 022](../work/plans/022-reranking.md#settled-by-the-user).
+  [plan 022](../work/changelog/022-reranking.md#settled-by-the-user).
 
 ## Budgets and untrusted-data markers
 
