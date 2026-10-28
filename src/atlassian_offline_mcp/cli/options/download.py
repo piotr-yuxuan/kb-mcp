@@ -108,7 +108,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         epilog=(
             "With --format json: report, the counts of what the run did, or with --dry-run"
             " would do; failed_targets, the spaces and projects that failed; status, the"
-            " exit status."
+            " exit status; windows, each target's: its start, end and reason, and its"
+            " coverage, extended, capped at a failure, held, or null when not written;"
+            " dry_run, whether the run only planned."
         ),
     )
     actions, flags = add_settings_options(parser)

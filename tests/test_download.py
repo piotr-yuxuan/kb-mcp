@@ -116,8 +116,8 @@ class FakeSite:
 
     The switches change the site: one page in a changed shape, an expired session, the
     spaces found by key, no Jira, every page failing, many pages in the period; the
-    issues that the search finds, those whose GET answers a status, and those served
-    without their summary, which the adapter refuses.
+    space's blog posts; the issues that the search finds, those whose GET answers a
+    status, and those served without their summary, which the adapter refuses.
     """
 
     changed_labels: bool = False
@@ -134,6 +134,7 @@ class FakeSite:
     search_status: int = 200
     search_changed: bool = False
     bulk_changed: bool = False
+    posts: dict[str, dict[str, object]] = field(default_factory=lambda: dict(POSTS))
     issues: dict[str, dict[str, object]] = field(default_factory=lambda: dict(ISSUES))
     failing_issues: dict[str, int] = field(default_factory=dict)
     unread_issues: set[str] = field(default_factory=set)
@@ -153,7 +154,7 @@ class FakeSite:
             "/wiki/api/v2/spaces": lambda _: httpx.Response(200, json={"results": self.spaces}),
             f"/wiki/api/v2/spaces/{SPACE}/pages": self.pages,
             f"/wiki/api/v2/spaces/{SPACE}/blogposts": lambda _: httpx.Response(
-                200, json={"results": list(POSTS.values()), "_links": {}}
+                200, json={"results": list(self.posts.values()), "_links": {}}
             ),
             "/wiki/rest/api/user/bulk": lambda _: httpx.Response(
                 200, json={"results": [v1_user()]}
@@ -176,7 +177,7 @@ class FakeSite:
             routes[f"/wiki/api/v2/folders/{folder_id}"] = lambda _, f=folder: httpx.Response(
                 200, json=f
             )
-        for kind, documents in (("pages", PAGES | self.many()), ("blogposts", POSTS)):
+        for kind, documents in (("pages", PAGES | self.many()), ("blogposts", self.posts)):
             for document_id, document in documents.items():
                 routes[f"/wiki/api/v2/{kind}/{document_id}"] = lambda request, d=document: (
                     self.document(request, d)
@@ -349,8 +350,9 @@ def test_a_run_reports_its_targets_their_listings_documents_and_probes(tmp_path:
     """Each task's last event progress, as it ends: the space's, its probes, the project's.
 
     The space's pages are listed in two pages, its blog posts in one; it lists three
-    pages and a post. Nothing was stored before, so nothing is probed. The search reads
-    one page of two issues.
+    pages and a post, of which two pages and the post changed in the week, and are
+    fetched. Nothing was stored before, so nothing is probed. The search reads one page
+    of two issues, one of them changed in the week.
     """
     with capture_logs() as events:
         run(RawStore(tmp_path / "raw"), FakeSite())
@@ -360,10 +362,10 @@ def test_a_run_reports_its_targets_their_listings_documents_and_probes(tmp_path:
         if event["event"] == "progress"
     ] == [
         ("listing", 3, None),
-        ("documents", 4, 4),
+        ("documents", 3, 3),
         ("probes", 0, 0),
         ("listing", 1, None),
-        ("documents", 2, 2),
+        ("documents", 1, 1),
         ("targets", 2, 2),
     ]
 

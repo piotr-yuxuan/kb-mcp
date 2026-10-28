@@ -91,7 +91,7 @@ token ([`sign_in`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/si
 For each Confluence space, it lists every page, blog post and folder, and stores the
 listings whole; for each Jira project, it searches the issues updated in the period. Then
 it fetches each document updated in the period whose revision the store lacks
-([`Download.consider`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)),
+([`Download.fetch_listed`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)),
 its files first, the snapshot last
 ([`Download.keep`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)).
 Without `--since`, a target's period starts where the period it already covers starts

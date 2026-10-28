@@ -205,7 +205,7 @@ It stores the listings whole
 after noting what the last listing named and this one does not
 ([`Download.track`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)).
 For each document listed,
-[`Download.consider`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
+[`Download.fetch_listed`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
 decides: updated within the period, and its revision not stored
 ([`RawStore.has`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py)),
 it is fetched, by the GETs of
@@ -543,7 +543,7 @@ document fetched, and a call of a tool is one trace:
 | `sync`, the run's root | [`observed`](../../src/atlassian_offline_mcp/observability/app/observed.py), after the command's name |
 | `sync.step`, one a row | [`atlassian`](../../src/atlassian_offline_mcp/cli/app/sync.py), [`worklog`](../../src/atlassian_offline_mcp/cli/app/sync.py) and [`index`](../../src/atlassian_offline_mcp/cli/app/sync.py) |
 | `download.space`, `download.probes`, `download.users` | [`Download.space`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py), [`Download.probe_absent`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py), [`Download.users`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py) |
-| `download.document`, a trace of its own linked to the run's | [`Download.consider`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py) |
+| `download.document`, a trace of its own linked to the run's | [`Download.fetch`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py) |
 | `GET` and `POST`, one a request | [`Recorded`](../../src/atlassian_offline_mcp/observability/adapters/http.py), through [`client_span`](../../src/atlassian_offline_mcp/observability/adapters/http.py) |
 | `mirror.read`, `mirror.build`, `mirror.write` | [`mirror`](../../src/atlassian_offline_mcp/mirror/app/mirror.py) |
 | `index.files`, `index.embed` | [`build_index`](../../src/atlassian_offline_mcp/search/app/indexing.py) |

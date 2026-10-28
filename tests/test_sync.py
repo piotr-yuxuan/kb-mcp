@@ -594,7 +594,27 @@ def test_a_dry_run_of_the_site_plans_and_writes_nothing(
         ("index", "not run"),
     ]
     assert "confluence pages: to fetch" in rows[0]["result"]["report"]["counts"]
+    windows = rows[0]["result"]["windows"]
+    assert [(each["target"]["key"], each["reason"], each["coverage"]) for each in windows] == [
+        ("MFS", "given", None),
+        ("PRB", "given", None),
+    ]
+    assert rows[0]["result"]["dry_run"] is True
     assert sorted(path.name for path in (home / "data").iterdir()) == ["session"]
+    assert signed_in.asked
+
+
+def test_a_dry_run_of_the_site_says_each_target_s_window_under_its_row(
+    home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
+) -> None:
+    """Short as it is: the window of each target, where it starts and why, then the counts."""
+    config = settings_file(home, None, atlassian=True)
+    assert main(command(home, config, "--dry-run", "--since", "2026-10-02")) == ExitStatus.OK
+    download_step, space, project, *_ = capsys.readouterr().out.splitlines()
+    assert download_step == "download: done"
+    assert space.startswith("  space MFS: from 2026-10-02T00:00:00+00:00 to ")
+    assert project.startswith("  project PRB: from 2026-10-02T00:00:00+00:00 to ")
+    assert space.endswith(", given")
     assert signed_in.asked
 
 

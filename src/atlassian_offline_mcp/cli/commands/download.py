@@ -86,14 +86,28 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
 def text(outcome: Outcome, summary: Summary) -> str:
     """Write the documents fetched by kind and the files, or those a dry run would; then failures.
 
-    Short also says how a run stopped, if it did; detailed gives every count of what the
-    run did, or would do. The failures come last.
+    Detailed, and a dry run, begin with each target's window, why it starts there, and
+    what became of its coverage. Short also says how a run stopped, if it did; detailed
+    gives every count of what the run did, or would do. The failures come last.
     """
+    windows = outcome.windows if summary == "detailed" or outcome.dry_run else ()
+    said = [
+        f"{each.target}: "
+        + (
+            f"skipped, {each.reason}"
+            if each.start is None or each.end is None
+            else f"from {each.start.isoformat()} to {each.end.isoformat()}, {each.reason}"
+        )
+        + ("" if each.coverage is None else f"; coverage {each.coverage}")
+        for each in windows
+    ]
     shown = [
         (what, number)
         for what, number in sorted(outcome.report.counts.items())
         if summary == "detailed" or what.endswith(SHORT_COUNTS) or what.startswith(STOPPED)
     ]
-    return "".join(f"{what}: {number}\n" for what, number in shown) + (
-        f"failures: {outcome.report.failures}\n"
+    return (
+        "".join(f"{line}\n" for line in said)
+        + "".join(f"{what}: {number}\n" for what, number in shown)
+        + f"failures: {outcome.report.failures}\n"
     )

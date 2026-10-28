@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, timedelta
 from functools import partial
 from itertools import batched
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import structlog
 from opentelemetry import metrics, trace
@@ -41,6 +41,8 @@ from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import (
 from atlassian_offline_mcp.sources.atlassian.adapters.sign_in import sign_in
 from atlassian_offline_mcp.sources.atlassian.domain.coverage import (
     Coverage,
+    Extension,
+    Reason,
     Target,
     Window,
     window,
@@ -187,14 +189,14 @@ class Download:
             for key in targets.each(answered_spaces, str):
                 target = Target("confluence", key)
                 window = self.windows[target]
-                if window is not None and self.space(target, window.period):
+                if window is not None and self.space(target, window):
                     self.covered[target] = window.period
             if not self.plan:
                 self.probe_absent()
             for key in targets.each(answered_projects, str):
                 target = Target("jira", key)
                 window = self.windows[target]
-                if window is not None and self.project(target, window.period):
+                if window is not None and self.project(target, window):
                     self.covered[target] = window.period
         if not self.plan:
             self.users()
@@ -242,8 +244,8 @@ class Download:
         self.report.add(f"{label(kind)}: listed", len(found))
         return found
 
-    def space(self, target: Target, period: Period) -> bool:
-        """List a space whole, store its listings, and fetch what changed in the period.
+    def space(self, target: Target, window: Window) -> bool:
+        """List a space whole, store its listings, and fetch what changed in its window.
 
         The task ``listing`` reports the pages of its listings read, and ``fetch_listed``
         the documents. Return whether the space was listed whole. All is the span
@@ -270,9 +272,6 @@ class Download:
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
             documents = [*self.documents(Page, pages), *self.documents(BlogPost, posts)]
-            structlog.get_logger().info(
-                "download.listed", target=f"space {key}", documents=len(documents)
-            )
             if not self.plan:
                 # By id alone, as the last listing is read: an entry refused for its other
                 # fields still names its document, which is then not absent.
@@ -283,7 +282,7 @@ class Download:
                 self.track(space.id, listed)
                 folders = self.folders(pages)
                 self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
-            self.fetch_listed(target, documents, period)
+            self.fetch_listed(target, documents, window)
             return True
 
     def track(self, space_id: str, listed: Mapping[type[Document], set[str]]) -> None:
@@ -396,8 +395,8 @@ class Download:
                 wanted.append(folder.parent_id)
         return [response for response in found.values() if response is not None]
 
-    def project(self, target: Target, period: Period) -> bool:
-        """Search a project's issues updated in the period, and fetch what changed.
+    def project(self, target: Target, window: Window) -> bool:
+        """Search a project's issues updated in its window, and fetch what changed.
 
         The task ``listing`` reports the pages of the search read, and ``fetch_listed``
         the issues found. Return whether the search was read whole, each of its entries
@@ -406,8 +405,8 @@ class Download:
         when the search could not be read.
         """
         key = target.key
-        start = (period.start - JQL_MARGIN).date()
-        end = (period.end + JQL_MARGIN).date()
+        start = (window.period.start - JQL_MARGIN).date()
+        end = (window.period.end + JQL_MARGIN).date()
         attributes = {"aom.target": key}
         with TRACER.start_as_current_span("download.project", attributes=attributes) as span:
             try:
@@ -420,28 +419,54 @@ class Download:
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
             if self.plan:
-                self.count_files(entries, period)
+                self.count_files(entries, window.period)
             issues = self.documents(Issue, entries)
-            structlog.get_logger().info(
-                "download.listed", target=f"project {key}", documents=len(issues)
-            )
-            self.fetch_listed(target, issues, period)
+            self.fetch_listed(target, issues, window)
             if len(issues) < len(entries):
                 self.held[target] = "entries refused"
                 return False
             return True
 
-    def fetch_listed(self, target: Target, documents: Sequence[Listed], period: Period) -> None:
-        """Consider each document that a target lists, recording its earliest not stored whole.
+    def fetch_listed(self, target: Target, documents: Sequence[Listed], window: Window) -> None:
+        """Fetch what a target lists in its window and the store lacks; complete what it has.
 
-        The task ``documents`` reports them, each by its id; ``first_failed`` keeps, for
-        the target, the update time of the earliest that ``consider`` did not store whole.
+        ``download.listed`` says at INFO how many documents the target lists, how many are
+        in its window, stored already and to fetch, with the window's start and reason.
+        The report counts, by kind, those in the window and those stored when --since gave
+        the window; else those new or changed since the last fetch. Those stored get the
+        files they lack, without a task; the task ``documents`` reports those to fetch,
+        each by its id. ``first_failed`` keeps, for the target, the update time of the
+        earliest not stored whole.
         """
-        with task("documents", len(documents)) as considered:
-            failed = [
+        in_window = [document for document in documents if document.updated in window.period]
+        stored: list[Listed] = []
+        to_fetch: list[Listed] = []
+        for document in in_window:
+            (stored if self.store.has(document) else to_fetch).append(document)
+        structlog.get_logger().info(
+            "download.listed",
+            target=str(target),
+            listed=len(documents),
+            in_window=len(in_window),
+            stored=len(stored),
+            to_fetch=len(to_fetch),
+            start=window.period.start.isoformat(),
+            reason=window.reason,
+        )
+        counted = (
+            {"in the period": in_window, "already stored": stored}
+            if window.reason == "given"
+            else {"new or changed since the last fetch": to_fetch}
+        )
+        self.report.counts.update(
+            f"{label(document.type)}: {what}" for what, each in counted.items() for document in each
+        )
+        failed = [each.updated for each in stored if not (self.plan or self.complete(each))]
+        with task("documents", len(to_fetch)) as fetching:
+            failed += [
                 document.updated
-                for document in considered.each(documents, lambda listed: listed.id)
-                if not self.consider(document, period)
+                for document in fetching.each(to_fetch, lambda listed: listed.id)
+                if not self.fetch(document)
             ]
         if failed:
             self.first_failed[target] = min(failed)
@@ -460,23 +485,16 @@ class Download:
             self.report.add("files: to download", len(kept))
             self.report.add("files: bytes to download", sum(each.size for each in kept))
 
-    def consider(self, document: Listed, period: Period) -> bool:
-        """Fetch a listed document when it is in the period and its revision not stored.
+    def fetch(self, document: Listed) -> bool:
+        """Fetch a listed document whose revision is not stored; say if it is stored whole.
 
-        Return False when it is in the period and not stored whole: its fetch failed, its
-        snapshot was refused, a file it keeps failed, or, stored already, it cannot be
-        read; a plan stores nothing, and fails none. The fetch is a trace of its own,
-        ``download.document``, linked to the span of the run's trace current when it
+        It is not when its fetch failed, its snapshot was refused, or a file it keeps
+        failed; a plan counts it to fetch, and fails none. The fetch is a trace of its
+        own, ``download.document``, linked to the span of the run's trace current when it
         begins, saying the document's id and kind; an error when the fetch fails, which
         is a warning, by the document's id.
         """
-        if document.updated not in period:
-            return True
         what = label(document.type)
-        self.report.add(f"{what}: in the period")
-        if self.store.has(document):
-            self.report.add(f"{what}: already stored")
-            return self.plan or self.complete(document)
         if self.plan:
             self.report.add(f"{what}: to fetch")
             return True
@@ -641,12 +659,48 @@ class Targets:
 
 
 @dataclass(frozen=True)
+class TargetWindow:
+    """A target of a run: its window, from ``start`` to ``end``, and why it starts there.
+
+    A target skipped, its catch-up after --until, has none, as ``reason`` says.
+    ``coverage`` is what the run made of the target's coverage, None when it wrote none:
+    a dry run, or a target that the run did not finish.
+    """
+
+    target: Target
+    start: datetime | None
+    end: datetime | None
+    reason: Reason | Literal["after --until"]
+    coverage: Extension | None
+
+
+def windows_of(
+    windows: Mapping[Target, Window | None], coverage: Mapping[Target, Extension]
+) -> tuple[TargetWindow, ...]:
+    """Give each target's record: its window, and what became of its coverage."""
+    return tuple(
+        TargetWindow(target, None, None, "after --until", coverage.get(target))
+        if window is None
+        else TargetWindow(
+            target, window.period.start, window.period.end, window.reason, coverage.get(target)
+        )
+        for target, window in windows.items()
+    )
+
+
+@dataclass(frozen=True)
 class Outcome:
-    """What a run did, the user's keys that failed, and the run's exit status."""
+    """What a run did, the user's keys that failed, and the run's exit status.
+
+    ``windows`` holds each target's window, and what became of its coverage; ``dry_run``
+    says whether the run only planned.
+    """
 
     report: Report
     failed_targets: list[str]
     status: ExitStatus | None
+    windows: tuple[TargetWindow, ...] = ()
+    dry_run: bool = False
 
 
 def plan(
@@ -661,10 +715,11 @@ def plan(
     """
     store, report = RawStore(settings.raw), Report()
     windows = targets.windows(store.coverage(), now())
+    planned = partial(Outcome, windows=windows_of(windows, {}), dry_run=True)
     try:
         client = sign_in(settings).client()
     except SignInNeededError:
-        return Outcome(report, [], ExitStatus.SIGN_IN_AGAIN)
+        return planned(report, [], ExitStatus.SIGN_IN_AGAIN)
     with client:
         run = Download(
             Site(client, sleep=sleep),
@@ -678,11 +733,11 @@ def plan(
         try:
             run.run(targets.spaces, targets.projects)
         except SignInNeededError:
-            return Outcome(report, run.failed_targets, ExitStatus.SIGN_IN_AGAIN)
+            return planned(report, run.failed_targets, ExitStatus.SIGN_IN_AGAIN)
         except TooManyFailuresError:
             report.add("runs: stopped, too many failures in a row")
-            return Outcome(report, run.failed_targets, ExitStatus.FAILED)
-    return Outcome(
+            return planned(report, run.failed_targets, ExitStatus.FAILED)
+    return planned(
         report, run.failed_targets, ExitStatus.FAILED if report.failures else ExitStatus.OK
     )
 
@@ -705,6 +760,7 @@ def download(
     anything is written.
     """
     report, failed_targets, status = Report(), [], None
+    extensions: dict[Target, Extension] = {}
     store, started = RawStore(settings.raw), now()
     coverage = store.coverage()
     windows = targets.windows(coverage, started)
@@ -736,11 +792,13 @@ def download(
                     for target, fetched in run.covered.items():
                         failed = run.first_failed.get(target)
                         coverage, outcome = coverage.extended(target, fetched, failed)
+                        extensions[target] = outcome
                         reason = (
                             {"reason": "apart from what is covered"} if outcome == "held" else {}
                         )
                         log.info("download.coverage", target=str(target), outcome=outcome, **reason)
                     for target, why in run.held.items():
+                        extensions[target] = "held"
                         log.info(
                             "download.coverage", target=str(target), outcome="held", reason=why
                         )
@@ -757,4 +815,4 @@ def download(
             stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
             saved = {"status": status, "counts": dict(sorted(report.counts.items()))}
             (settings.runs / f"{stamp}.json").write_text(json.dumps(saved, indent=1), "utf-8")
-    return Outcome(report, failed_targets, status)
+    return Outcome(report, failed_targets, status, windows_of(windows, extensions))
