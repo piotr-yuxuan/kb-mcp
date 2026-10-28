@@ -262,7 +262,7 @@ that what read the two keys, a hit's line among them
   for the other keys that Atlassian shapes, `key`, `space`, `project`, `issue_type` and
   `version`, which nothing yet needs.
 - **Settled** by [plan
-  041](../work/plans/041-people-in-documents.md#one-generic-key-in-place-of-two-atlassian-ones),
+  041](../work/changelog/041-people-in-documents.md#one-generic-key-in-place-of-two-atlassian-ones),
   on the maintainer's feedback, its questions answered by their defaults when the
   maintainer approved it.
 
