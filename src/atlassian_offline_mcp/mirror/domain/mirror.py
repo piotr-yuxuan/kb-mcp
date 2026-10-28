@@ -102,7 +102,7 @@ class FrontMatter:
     status: str
     issue_type: str | None
     labels: tuple[str, ...]
-    people: tuple[PersonRole, ...] = ()
+    people: tuple[PersonRole, ...]
     created: datetime
     updated: datetime
     version: int | None

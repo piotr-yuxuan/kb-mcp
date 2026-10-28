@@ -71,6 +71,7 @@ ENTRY = FrontMatter(
     status="WAITING",
     issue_type=None,
     labels=("review", "ARCHIVE"),
+    people=(),
     created=MOMENT,
     updated=MOMENT,
     version=None,
