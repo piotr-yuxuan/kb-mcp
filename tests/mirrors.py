@@ -26,6 +26,7 @@ LOREM = (
     "fermentum. Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor."
 )
 FILLERS = 30
+WORKLOG_FOLDERS = {"entry": "entries", "transcript": "transcripts"}
 
 
 def page(page_id: str, title: str, **changes: object) -> FrontMatter:
@@ -88,6 +89,8 @@ def location(front: FrontMatter) -> str:
     decomposed = unicodedata.normalize("NFKD", front.title).lower()
     slug = re.sub(r"[^a-z0-9]+", "-", decomposed).strip("-")[:60].rstrip("-")
     name = f"{front.id}-{slug}.md" if slug else f"{front.id}.md"
+    if front.source == "worklog":
+        return f"worklog/{WORKLOG_FOLDERS[front.type]}/{name}"
     folder = "blog/" if front.type == "blogpost" else ""
     return f"confluence/{front.space}/{folder}{name}"
 

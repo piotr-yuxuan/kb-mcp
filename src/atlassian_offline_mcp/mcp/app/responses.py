@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
+    from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
     from atlassian_offline_mcp.search.domain.search import Entry, Passage, Summary
 
 BUDGET = 4_000  # estimated tokens of an answer to arguments at or below their defaults
@@ -135,15 +136,31 @@ def refusal(message: str, values: Sequence[str], total: int) -> str:
     return answer(message, ", ".join(short(value, LABEL) for value in values), more.strip())
 
 
+def facts(front: FrontMatter) -> str:
+    """Say what a document is, who it is for and from, and when it was created.
+
+    Its issue type, its status unless current, its assignee (``unassigned`` for an issue
+    with none), its author and its created day, leaving out what it lacks.
+    """
+    unassigned = "unassigned" if front.source == "jira" else ""
+    shown = (
+        short(front.issue_type, LABEL) if front.issue_type else "",
+        "" if front.status == "current" else short(front.status, LABEL),
+        f"assignee {short(front.assignee, LABEL)}" if front.assignee else unassigned,
+        f"author {short(front.author, LABEL)}" if front.author else "",
+        f"created {front.created:%Y-%m-%d}",
+    )
+    return " | ".join(part for part in shown if part)
+
+
 def hit(number: int, entry: Entry, passage: Passage, opening: str) -> str:
     """Write one hit of a search: what and where it is, its best section and a snippet."""
     front = entry.front
-    status = "" if front.status == "current" else f" | {short(front.status, LABEL)}"
     lines = [
         f"{number}. {short(front.title)}",
         (
             f"   {front.key or front.id} | {entry.path} | updated {stamp(front.updated)}"
-            f" | mirrored {front.fetched_at:%Y-%m-%d}{status}"
+            f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}"
         ),
     ]
     if front.breadcrumb:
@@ -165,7 +182,7 @@ def excerpt(number: int, entry: Entry, passage: Passage, opening: str) -> str:
     about = (
         f"{number}. {short(front.title)} | {front.key or front.id} | section"
         f" {passage.number}{heading} | updated {stamp(front.updated)}"
-        f" | mirrored {front.fetched_at:%Y-%m-%d}"
+        f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}"
     )
     return f"{about}\n{short(front.url or entry.path)} | {opening}\n{passage.snippet}"
 

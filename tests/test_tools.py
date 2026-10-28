@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
 
 NEWER = MOMENT + timedelta(days=1)
 HIT = re.compile(r"^\d+\. .*\n {3}(\S+) \|", re.MULTILINE)
+# A hit's ref, and what ends its second line after the mirror date.
+FACTS = re.compile(r"^ {3}(\S+) \| .* \| mirrored \d{4}-\d\d-\d\d \| (.*)$", re.MULTILINE)
 
 
 def refs(answer: str) -> list[str]:
@@ -555,7 +558,7 @@ def test_each_tool_shows_the_mirror_date_apart_from_the_others(tmp_path: Path) -
     fetched, created = MOMENT + timedelta(days=3), MOMENT - timedelta(days=10)
     front = page("196845", "Kafka", fetched_at=fetched, created=created, labels=("ops",))
     library = built(tmp_path, [(front, None)])
-    assert "| updated 2026-10-20 21:52 UTC | mirrored 2026-10-23\n" in library.search("kafka")
+    assert "| updated 2026-10-20 21:52 UTC | mirrored 2026-10-23 |" in library.search("kafka")
     first = parts(library.read("196845", max_chars=20))[1]
     for line in ("mirrored: 2026-10-23 21:52 UTC", "created: 2026-10-10 21:52 UTC"):
         assert f"\n{line}\n" in first
@@ -602,7 +605,40 @@ def test_hits_show_a_status_other_than_current(varied: Library) -> None:
     """A page's usual status goes unsaid; an issue's is shown."""
     answer = varied.search("kafka")
     assert "| current" not in answer
-    assert "| Done\n" in answer
+    assert "| Task | Done |" in answer
+
+
+def test_each_hit_ends_its_second_line_with_who_and_when(people: Library) -> None:
+    """An issue's type, status, assignee, author and created day; a page's author and day."""
+    assert dict(FACTS.findall(parts(people.search("broker"))[1])) == {
+        "PROJ-1": "Bug | Done | assignee Ada Example | author Bo Sample | created 2026-10-25",
+        "PROJ-2": (
+            "Task | To Do | assignee Hélène Example | author Ada Example | created 2026-10-22"
+        ),
+        "PROJ-3": "Story | To Do | assignee Ada Example | author A Person | created 2026-10-25",
+        "196845": "author Bo Sample | created 2026-10-21",
+    }
+
+
+def test_an_issue_without_assignee_says_so_and_a_work_log_entry_its_status(
+    tmp_path: Path,
+) -> None:
+    """An issue says unassigned, so that none reads it as unknown; an entry has no author."""
+    entry = replace(
+        page("e-0123456789abcdef-2", "Broker notes", status="WAITING"),
+        source="worklog",
+        type="entry",
+        space=None,
+        author=None,
+        version=None,
+        revision="0123456789abcdef",
+        created=MOMENT - timedelta(days=2),
+    )
+    library = built(tmp_path, [(issue("PROJ-8", "Broker rollback"), None), (entry, None)])
+    assert dict(FACTS.findall(parts(library.search("broker"))[1])) == {
+        "PROJ-8": "Task | To Do | unassigned | author A Person | created 2026-10-20",
+        "e-0123456789abcdef-2": "WAITING | created 2026-10-18",
+    }
 
 
 def test_a_document_shows_ten_labels_at_most(tmp_path: Path) -> None:
