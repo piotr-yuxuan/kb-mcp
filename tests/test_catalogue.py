@@ -202,6 +202,25 @@ def test_commenters_come_by_their_first_comment_in_whatever_order_given() -> Non
     assert reversed_.people == given.people
 
 
+def test_a_commenter_is_one_name_with_one_account() -> None:
+    """Namesakes of two accounts are two commenters; one account under two names, two."""
+    namesake = Person("account-4", "Another Person")
+    renamed = Person("account-2", "A Person")
+    comments = (
+        Comment("5", ANOTHER, datetime(2026, 10, 21, 8, tzinfo=UTC), ""),
+        Comment("6", namesake, datetime(2026, 10, 21, 9, tzinfo=UTC), ""),
+        Comment("7", renamed, datetime(2026, 10, 21, 10, tzinfo=UTC), ""),
+        Comment("8", namesake, datetime(2026, 10, 21, 11, tzinfo=UTC), ""),
+    )
+    matter = front_matter(FILED, comments, FETCHED, CATALOGUE, SITE)
+    commenters = [person for person in matter.people if person.role == "commenter"]
+    assert [(person.name, person.account, len(person.at)) for person in commenters] == [
+        ("Another Person", "account-2", 1),
+        ("Another Person", "account-4", 2),
+        ("A Person", "account-2", 1),
+    ]
+
+
 def test_a_comment_without_an_author_names_nobody() -> None:
     """Jira leaves out the author of an anonymous comment; no commenter stands for it."""
     anonymous = Comment("4", None, MOMENT, "")
