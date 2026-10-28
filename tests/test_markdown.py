@@ -215,7 +215,11 @@ def test_an_account_and_people_are_left_out_when_the_source_has_none() -> None:
             r"people\[1\]: name, account: empty",
         ),
         ("account: account-1}", "account: null}", r"people\[0\]\.account: expected a string"),
-        (PEOPLE, "author: A Person\nassignee: A Person\n", "exactly the mirror's keys"),
+        (
+            PEOPLE,
+            "author: A Person\nassignee: A Person\n",
+            r"^issue\.md: front matter .* mirror's keys, in order, without people$",
+        ),
     ],
 )
 def test_people_off_the_layout_are_refused_by_place(old: str, new: str, refusal: str) -> None:
@@ -244,12 +248,15 @@ def test_a_time_written_unquoted_by_hand_is_refused() -> None:
 
 
 @pytest.mark.parametrize(
-    ("old", "new"),
-    [("status: current\n", ""), ("source: confluence\n", "extra: 1\nsource: confluence\n")],
+    ("old", "new", "lacking"),
+    [
+        ("status: current\n", "", ", in order, without status$"),
+        ("source: confluence\n", "extra: 1\nsource: confluence\n", ", in order$"),
+    ],
 )
-def test_front_matter_with_other_keys_is_refused(old: str, new: str) -> None:
-    """A missing, extra or moved key is not the mirror's front matter."""
-    with pytest.raises(RepresentationError, match="exactly the mirror's keys"):
+def test_front_matter_with_other_keys_is_refused(old: str, new: str, lacking: str) -> None:
+    """A missing, extra or moved key is not the mirror's front matter; a missing one is named."""
+    with pytest.raises(RepresentationError, match=f"exactly the mirror's keys{lacking}"):
         load(dump(PAGE, "").replace(old, new), "page.md")
 
 

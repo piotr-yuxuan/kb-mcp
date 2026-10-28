@@ -80,7 +80,11 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
     except yaml.YAMLError:
         values = None
     if type(values) is not dict or list(values) != KEYS:
-        message = f"{path}: front matter without exactly the mirror's keys, in order"
+        # The mirror's keys that it lacks, never the file's own: those could be content.
+        lacking = [key for key in KEYS if type(values) is dict and key not in values]
+        message = f"{path}: front matter without exactly the mirror's keys, in order" + (
+            f", without {', '.join(lacking)}" if lacking else ""
+        )
         raise RepresentationError(message)
     fields = Fields(values, path)
     people = []
