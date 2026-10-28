@@ -14,6 +14,7 @@ import pytest
 
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.kernel.content import Page
+from atlassian_offline_mcp.mirror.adapters import pandoc as pandoc_adapter
 from atlassian_offline_mcp.mirror.adapters.pandoc import (
     Pandoc,
     PandocFailedError,
@@ -282,6 +283,23 @@ def test_a_new_pandoc_converts_again_and_writes_the_bytes_of_a_mirror_from_no_ca
     shutil.copytree(store.root, fresh / "data" / "raw")
     assert main(arguments(fresh)) == 0
     assert Sandbox(home / "data").files() == Sandbox(fresh / "data").files()
+
+
+def test_other_arguments_for_pandoc_convert_everything_again(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Review of 039: the conversions kept are those of the arguments that pandoc is given.
+
+    A run, then one whose pandoc is given one argument more, which the fake passes over.
+    """
+    runs = two_pages(home, monkeypatch)
+    assert main(arguments(home)) == 0
+    more = (*pandoc_adapter.ARGUMENTS, "--columns=72")
+    monkeypatch.setattr(pandoc_adapter, "ARGUMENTS", more)
+    capsys.readouterr()
+    assert main(arguments(home)) == 0
+    assert "converted by pandoc: 3\nreused from the cache: 0\n" in capsys.readouterr().out
+    assert len(runs.read_text("utf-8").splitlines()) == 2 * CONVERSIONS
 
 
 def test_pandoc_runs_sandboxed_on_its_standard_input(home: Path, monkeypatch: MonkeyPatch) -> None:

@@ -33,6 +33,7 @@ from atlassian_offline_mcp.cli.options.sync import refused
 from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL, Settings
 from atlassian_offline_mcp.kernel.content import SOURCE_NAMES
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
+from atlassian_offline_mcp.mirror.adapters import pandoc as pandoc_adapter
 from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes
 from atlassian_offline_mcp.mirror.adapters.pandoc import (
     Pandoc,
@@ -736,6 +737,26 @@ def test_a_damaged_cache_is_replaced_and_every_step_runs_exit_0(
     assert (mirrored.converted, mirrored.reused) == (first.converted, 0)
     replaced = logged_as(logged, "mirror.cache_replaced")
     assert [each["reason"] for each in replaced] == ["SQLITE_NOTADB"]
+
+
+def test_other_arguments_for_pandoc_convert_the_mirror_again(
+    tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review of 039: sync keeps the conversions of the arguments that pandoc is given.
+
+    A second sync gives pandoc one argument more, `--columns=72`.
+    """
+    settings = chosen_settings(tmp_path, worklog)
+    monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
+    steps = [Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK))]
+    first = sync(context(settings, FIRST), steps).steps[1].result
+    assert isinstance(first, mirror_app.Outcome)
+    more = (*pandoc_adapter.ARGUMENTS, "--columns=72")
+    monkeypatch.setattr(pandoc_adapter, "ARGUMENTS", more)
+    again = sync(context(settings, FIRST), steps).steps[1].result
+    assert isinstance(again, mirror_app.Outcome)
+    assert (again.converted, again.reused) == (first.converted, 0)
+    assert first.converted > 0
 
 
 def test_the_text_of_a_full_sync_gives_each_command_s_counts_under_its_row(
