@@ -2,9 +2,11 @@
 
 It reads the store, builds every file of ``docs/reference/data-layout.md``'s Markdown
 mirror and its bytes, then hands them to ``mirror_files``, which writes those that
-changed. What cannot be read or converted is reported, and a run that reports anything
-removes nothing, so that the last good copy of each file stays. Reading, building and
-writing are each a span; each document built is counted and timed, never a span, as
+changed. Pandoc's conversions come through the cache of ``conversions``, which converts
+only what it has not converted before. What cannot be read or converted is reported, and
+a run that reports anything removes nothing, neither a file nor a conversion, so that the
+last good copy of each stays. Reading, building and writing are each a span; each
+document built is counted and timed, never a span, as
 ``docs/reference/telemetry/mirror.md`` lists it.
 """
 
@@ -55,11 +57,12 @@ from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import (
 from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping
+    from collections.abc import Iterable, Mapping
     from datetime import datetime
     from pathlib import Path, PurePosixPath
 
     from atlassian_offline_mcp.kernel.content import Folder
+    from atlassian_offline_mcp.mirror.adapters.conversions import Conversions
 
 KINDS: tuple[type[Page | BlogPost | Issue], ...] = (Page, BlogPost, Issue)
 # A comment's headings sit under its own third-level heading.
@@ -92,9 +95,15 @@ class Problem:
 
 @dataclass(frozen=True)
 class Outcome:
-    """What a run did: documents mirrored, files changed, placeholders, and problems."""
+    """What a run did: documents mirrored, conversions, files changed, placeholders, problems.
+
+    ``converted`` counts the conversions pandoc ran, ``reused`` those the cache gave: a
+    document's file and a space's tree are one each.
+    """
 
     documents: int
+    converted: int
+    reused: int
     changes: Changes
     unsupported: Counter[str]
     problems: tuple[Problem, ...]
@@ -246,7 +255,7 @@ def index(
 
 
 def document_file(
-    placed: Placed, catalogue: Catalogue, context: Context, markdown: Callable[[str], str]
+    placed: Placed, catalogue: Catalogue, context: Context, conversions: Conversions
 ) -> bytes:
     """Return the bytes of one document's file: its front matter, then its Markdown."""
     snapshot, document = placed.stored.snapshot, placed.document
@@ -270,19 +279,19 @@ def document_file(
             for each in snapshot.comments
         ]
     body = document_html(document.title, normalise(snapshot.html, context), attachments, comments)
-    return dump(matter, markdown(body)).encode()
+    return dump(matter, conversions.markdown(body)).encode()
 
 
-def mirror(
-    store: RawStore, docs: Path, site: str | None, markdown: Callable[[str], str]
-) -> Outcome:
-    """Mirror the raw store into ``docs``, with ``markdown`` writing HTML as Markdown.
+def mirror(store: RawStore, docs: Path, site: str | None, conversions: Conversions) -> Outcome:
+    """Mirror the raw store into ``docs``, with ``conversions`` writing HTML as Markdown.
 
-    The task ``documents`` reports the documents' files built, each by its path. The
-    spans ``mirror.read``, ``mirror.build`` and ``mirror.write`` hold reading the store,
-    building the files and writing them; ``mirror.placed`` and ``mirror.written`` say at
-    INFO how many documents were placed and files written, ``mirror.document`` at DEBUG
-    each document built, by its path, id and title.
+    Once the files are written, the conversions that this run did not use are pruned,
+    unless it reports a problem. The task ``documents`` reports the documents' files
+    built, each by its path. The spans ``mirror.read``, ``mirror.build`` and
+    ``mirror.write`` hold reading the store, building the files and writing them, the
+    prune included; ``mirror.placed`` and ``mirror.written`` say at INFO how many
+    documents were placed, and files written and conversions run, reused and pruned,
+    ``mirror.document`` at DEBUG each document built, by its path, id and title.
     """
     log = structlog.get_logger()
     problems: list[Problem] = []
@@ -299,7 +308,7 @@ def mirror(
                 context = Context(each.handle, each.path, mirrored, unsupported=unsupported)
                 began = time.perf_counter()
                 try:
-                    wanted[each.path] = document_file(each, catalogue, context, markdown)
+                    wanted[each.path] = document_file(each, catalogue, context, conversions)
                     DOCUMENTS.add(1, {"aom.outcome": "mirrored"})
                 except DOCUMENT_ERRORS as error:
                     reason = str(error) if isinstance(error, NAMED_ERRORS) else type(error).__name__
@@ -326,7 +335,7 @@ def mirror(
             }
             try:
                 if space.id not in damaged:
-                    wanted[tree] = markdown(catalogue.tree(space, links)).encode()
+                    wanted[tree] = conversions.markdown(catalogue.tree(space, links)).encode()
             except PandocFailedError as error:
                 problems.append(Problem(f"confluence/spaces/{space.id}", str(error)))
     written = sum(1 for each in placed if each.path in wanted)
@@ -334,10 +343,16 @@ def mirror(
     gone = [old for old, new in retired.items() if new is None or new in wanted]
     with TRACER.start_as_current_span("mirror.write"):
         changes = sync(docs, wanted, owned, remove=not problems, retired=gone)
+        pruned = conversions.prune(remove=not problems)
     log.info(
         "mirror.written",
         written=changes.written,
         unchanged=changes.unchanged,
         removed=changes.removed,
+        converted=conversions.converted,
+        reused=conversions.reused,
+        pruned=pruned,
     )
-    return Outcome(written, changes, unsupported, tuple(problems))
+    return Outcome(
+        written, conversions.converted, conversions.reused, changes, unsupported, tuple(problems)
+    )

@@ -10,6 +10,7 @@ trace of its own.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -183,10 +184,11 @@ def test_a_run_s_trace_keeps_its_size_each_document_a_trace_linked_to_it(
 def test_mirror_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Built, failed, unplaced; then pandoc gone once the run began.
+    """Built, failed, unplaced, with a damaged cache; then pandoc gone once the run began.
 
     A space lists a page, built, and one that pandoc fails on; a third page's space is
-    not listed. The pandoc on PATH passes its input through, unless it holds BREAK.
+    not listed. The pandoc on PATH passes its input through, unless it holds BREAK. The
+    cache of conversions is random bytes before the first run, which replaces it.
     """
     data = tmp_path / "data"
     store = RawStore(data / "raw")
@@ -197,6 +199,7 @@ def test_mirror_records_as_documented(
         store.put(Page, page_responses("101", "Broken", 1, "<p>BREAK</p>", []), FETCHED, {})
         elsewhere = page_responses("102", "Elsewhere", 1, "<p>Away.</p>", [], spaceId="999")
         store.put(Page, elsewhere, FETCHED, {})
+    (data / "conversions.sqlite").write_bytes(hashlib.shake_256(b"cache").digest(8192))
     script = 'input=$(cat); case "$input" in *BREAK*) exit 3;; esac; printf "%s" "$input"'
     folder = fake_pandoc(tmp_path / "bin", script)
     monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")

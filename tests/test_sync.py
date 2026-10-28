@@ -429,7 +429,7 @@ def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
     monkeypatch.setattr(
         sync_app,
         "mirror",
-        lambda *_: mirror_app.Outcome(0, Changes(0, 0, 0), Counter(), (problem,)),
+        lambda *_: mirror_app.Outcome(0, 0, 0, Changes(0, 0, 0), Counter(), (problem,)),
     )
     settings = chosen_settings(tmp_path, worklog)
     steps = [
@@ -835,7 +835,7 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
     monkeypatch.setattr(
         sync_app,
         "mirror",
-        lambda *_: mirror_app.Outcome(0, Changes(0, 0, 0), Counter(), (problem,)),
+        lambda *_: mirror_app.Outcome(0, 0, 0, Changes(0, 0, 0), Counter(), (problem,)),
     )
     settings = Settings(data_dir=tmp_path / "data", site=SITE)
     atlassian = Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK))

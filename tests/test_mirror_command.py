@@ -114,7 +114,13 @@ def test_an_empty_store_mirrors_nothing_and_exits_zero(
     """A data directory without a raw store gives an empty mirror, and counts of zero."""
     assert main(arguments(home)) == 0
     assert capsys.readouterr().out == (
-        "documents: 0\nfiles written: 0\nfiles unchanged: 0\nfiles removed: 0\nproblems: 0\n"
+        "documents: 0\n"
+        "converted by pandoc: 0\n"
+        "reused from the cache: 0\n"
+        "files written: 0\n"
+        "files unchanged: 0\n"
+        "files removed: 0\n"
+        "problems: 0\n"
     )
 
 
@@ -123,7 +129,8 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
 ) -> None:
     """A page with a frame: short gives the counts; detailed, the frame's too, by its name.
 
-    The second run writes nothing, and finds unchanged what the first wrote.
+    The second run converts nothing and writes nothing: it reuses what the first
+    converted, and finds unchanged what the first wrote.
     """
     store = RawStore(home / "data" / "raw")
     html = '<p>Home.</p><iframe src="http://example.invalid/x"></iframe>'
@@ -132,13 +139,24 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
         store.put(Page, page_responses("100", "Home", 1, html, []), FETCHED, {})
     assert main(arguments(home)) == 0
     first = capsys.readouterr().out.splitlines()
-    names = ["documents", "files written", "files unchanged", "files removed", "problems"]
+    names = [
+        "documents",
+        "converted by pandoc",
+        "reused from the cache",
+        "files written",
+        "files unchanged",
+        "files removed",
+        "problems",
+    ]
     assert [line.split(": ")[0] for line in first] == names
     assert first[0] == "documents: 1"
-    written = first[1].removeprefix("files written: ")
+    converted = first[1].removeprefix("converted by pandoc: ")
+    written = first[3].removeprefix("files written: ")
     assert main(arguments(home, "--summary", "detailed")) == 0
     assert capsys.readouterr().out == (
         "documents: 1\n"
+        "converted by pandoc: 0\n"
+        f"reused from the cache: {converted}\n"
         "files written: 0\n"
         f"files unchanged: {written}\n"
         "files removed: 0\n"

@@ -1,7 +1,8 @@
 """Test mirrors: documents written where the data layout puts them, with the shared codec.
 
 Values are made up. Filler documents speak lorem ipsum, so that no word under test is in
-half the sections of the index, where FTS5 would count it as worthless.
+half the sections of the index, where FTS5 would count it as worthless. ``mirrored``
+runs the mirror with a function of a test's own in pandoc's place.
 """
 
 from __future__ import annotations
@@ -13,11 +14,17 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.kernel.content import time_revision
+from atlassian_offline_mcp.mirror.adapters import conversions
 from atlassian_offline_mcp.mirror.adapters.markdown import dump
+from atlassian_offline_mcp.mirror.app.mirror import mirror
 from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
+
+    from atlassian_offline_mcp.mirror.app.mirror import Outcome
+    from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 LOREM = (
@@ -102,6 +109,20 @@ def write(docs: Path, front: FrontMatter, body: str | None = None) -> str:
     (docs / path).parent.mkdir(parents=True, exist_ok=True)
     (docs / path).write_text(dump(front, text), encoding="utf-8")
     return path
+
+
+def mirrored(
+    store: RawStore, docs: Path, site: str | None, convert: Callable[[str], str]
+) -> Outcome:
+    """Mirror ``store`` into ``docs``, converting by ``convert`` through the cache beside it.
+
+    The cache is the file of the data layout, ``conversions.sqlite`` beside ``docs``. It
+    names ``convert`` by its qualified name, as pandoc's version and arguments name
+    pandoc's conversion, so that two functions never answer for each other.
+    """
+    path = docs.parent / "conversions.sqlite"
+    with conversions.opened(path, lambda: convert.__qualname__, convert) as cache:
+        return mirror(store, docs, site, cache)
 
 
 def fillers(docs: Path, count: int = FILLERS) -> None:

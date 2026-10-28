@@ -20,10 +20,10 @@ from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
 from atlassian_offline_mcp.mirror.adapters.markdown import load
 from atlassian_offline_mcp.mirror.adapters.mirror_files import sync, worklog_owned
 from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
-from atlassian_offline_mcp.mirror.app.mirror import Outcome, mirror
 from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
+from tests.mirrors import mirrored
 from tests.samples import (
     v1_user,
     v2_attachment,
@@ -37,6 +37,8 @@ from tests.samples import (
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+
+    from atlassian_offline_mcp.mirror.app.mirror import Outcome
 
 SITE = "https://site.example.invalid"
 FETCHED = datetime(2026, 10, 22, 8, 15, tzinfo=UTC)
@@ -117,8 +119,8 @@ class Sandbox:
         return self.data / "docs"
 
     def run(self, site: str | None = SITE, markdown: Callable[[str], str] | None = None) -> Outcome:
-        """Mirror the store, with pandoc unless another writer is given."""
-        return mirror(self.store, self.docs, site, markdown or Pandoc.find().markdown)
+        """Mirror the store, with pandoc unless another writer is given, through the cache."""
+        return mirrored(self.store, self.docs, site, markdown or Pandoc.find().markdown)
 
     def files(self) -> dict[str, bytes]:
         """Return every file of the mirror, by its path within ``docs``."""

@@ -17,13 +17,13 @@ from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.kernel.content import Page
 from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
-from atlassian_offline_mcp.mirror.app.mirror import mirror
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, Stored
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.sources.atlassian.app.download import Targets, download, plan
 from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target, Window
 from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, Period, PeriodError
+from tests.mirrors import mirrored
 from tests.samples import v2_page, v2_space
 from tests.test_download import (
     CAP,
@@ -303,7 +303,7 @@ def test_a_page_found_in_a_stored_space_that_does_not_list_it_waits(
         run(chosen, monkeypatch, moved, catch_up(["MFS"], []), SECOND + timedelta(days=day))
     [stone] = store.tombstones().values()
     assert (stone.key, stone.first_gone, stone.confirmed) == (("pages", "1001"), None, False)
-    mirror(store, chosen.docs, SITE, identity)
+    mirrored(store, chosen.docs, SITE, identity)
     assert list((chosen.docs / "confluence" / "MFS").glob("1001-*.md"))
 
 
@@ -321,7 +321,7 @@ def test_a_page_found_in_a_stored_space_whose_listing_names_it_is_followed_there
         moved = RefreshSite(listing=without("1001"), moved={"1001": OTHER_SPACE})
         run(chosen, monkeypatch, moved, catch_up(["MFS"], []), SECOND + timedelta(days=day))
     assert store.tombstones() == {}
-    mirror(store, chosen.docs, SITE, identity)
+    mirrored(store, chosen.docs, SITE, identity)
     assert [path.parent.name for path in chosen.docs.rglob("1001-*.md")] == ["OPS"]
 
 
@@ -392,7 +392,7 @@ def test_the_mirror_leaves_out_a_confirmed_tombstone(
     for day in (1, 2):
         gone = RefreshSite(listing=without("1002"), gone={"1002"})
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
-    mirror(RawStore(chosen.raw), chosen.docs, SITE, identity)
+    mirrored(RawStore(chosen.raw), chosen.docs, SITE, identity)
     names = sorted(path.name for path in (chosen.docs / "confluence" / "MFS").glob("*.md"))
     assert [name for name in names if name.startswith("1002-")] == []
     assert [name for name in names if name.startswith("1001-")]
@@ -412,7 +412,7 @@ def test_the_mirror_places_a_page_in_the_space_that_lists_it(tmp_path: Path) -> 
         store.put_space(
             v2_space(id=OTHER_SPACE, key="OPS", name="Ops"), [v2_page(spaceId=OTHER_SPACE)], [], []
         )
-    mirror(store, tmp_path / "docs", SITE, identity)
+    mirrored(store, tmp_path / "docs", SITE, identity)
     placed = (tmp_path / "docs" / "confluence").rglob("196845-*.md")
     assert [path.parent.name for path in placed] == ["OPS"]
 
@@ -440,7 +440,7 @@ def test_a_page_that_comes_back_is_mirrored_again_from_its_kept_snapshot(
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
     assert "1002" in stored_pages(chosen)
     run(chosen, monkeypatch, RefreshSite(), catch_up(["MFS"], []), SECOND + timedelta(days=3))
-    mirror(RawStore(chosen.raw), chosen.docs, SITE, identity)
+    mirrored(RawStore(chosen.raw), chosen.docs, SITE, identity)
     assert list((chosen.docs / "confluence" / "MFS").glob("1002-*.md"))
 
 
@@ -450,14 +450,14 @@ def test_a_gone_page_leaves_the_mirror_even_when_another_has_a_problem(
     """Problems elsewhere keep last good copies, but never a page known to be gone."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
-    mirror(RawStore(chosen.raw), chosen.docs, SITE, identity)
+    mirrored(RawStore(chosen.raw), chosen.docs, SITE, identity)
     assert list((chosen.docs / "confluence" / "MFS").glob("1002-*.md"))
     for day in (1, 2):
         gone = RefreshSite(listing=without("1002"), gone={"1002"})
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
     broken = next((chosen.raw / "confluence" / "pages" / "1001").iterdir()) / "view.json"
     broken.write_text("{}", "utf-8")  # another document now unreadable
-    outcome = mirror(RawStore(chosen.raw), chosen.docs, SITE, identity)
+    outcome = mirrored(RawStore(chosen.raw), chosen.docs, SITE, identity)
     assert outcome.problems
     assert not list((chosen.docs / "confluence" / "MFS").glob("1002-*.md"))
     assert list((chosen.docs / "confluence" / "MFS").glob("1001-*.md"))
@@ -499,12 +499,12 @@ def test_a_moved_page_takes_its_new_space_everywhere_and_leaves_the_old(tmp_path
     with store.writing():
         store.put(Page, responses, FIRST, {})
         store.put_space(v2_space(), [v2_page()], [], [], listed_at=FIRST)
-    mirror(store, docs, SITE, identity)
+    mirrored(store, docs, SITE, identity)
     assert list((docs / "confluence" / "MFS").glob("196845-*.md"))
     with store.writing():
         ops = v2_space(id=OTHER_SPACE, key="OPS", name="Ops")
         store.put_space(ops, [v2_page(spaceId=OTHER_SPACE)], [], [], listed_at=SECOND)
-    mirror(store, docs, SITE, identity)
+    mirrored(store, docs, SITE, identity)
     [moved] = (docs / "confluence").rglob("196845-*.md")
     assert moved.parent.name == "OPS"
     assert "space: OPS" in moved.read_text("utf-8")
@@ -526,7 +526,7 @@ def test_a_damaged_listing_time_is_one_problem_not_one_per_document(tmp_path: Pa
         listing = [v2_page(id="1001"), v2_page(id="1002")]
         store.put_space(v2_space(), listing, [], [], listed_at=FIRST)
     (store.root / "confluence" / "spaces" / SPACE / "listed_at.json").write_text("{}", "utf-8")
-    outcome = mirror(store, tmp_path / "docs", SITE, identity)
+    outcome = mirrored(store, tmp_path / "docs", SITE, identity)
     named = [problem.where for problem in outcome.problems if "listed_at" in problem.where]
     assert named == [f"confluence/spaces/{SPACE}/listed_at.json"]
 
@@ -561,7 +561,7 @@ def test_a_moved_page_whose_new_file_fails_keeps_its_old_file(tmp_path: Path) ->
     with store.writing():
         store.put(Page, responses, FIRST, {})
         store.put_space(v2_space(), [v2_page()], [], [], listed_at=FIRST)
-    mirror(store, docs, SITE, identity)
+    mirrored(store, docs, SITE, identity)
     with store.writing():
         ops = v2_space(id=OTHER_SPACE, key="OPS", name="Ops")
         store.put_space(ops, [v2_page(spaceId=OTHER_SPACE)], [], [], listed_at=SECOND)
@@ -572,7 +572,7 @@ def test_a_moved_page_whose_new_file_fails_keeps_its_old_file(tmp_path: Path) ->
             raise PandocFailedError(message)
         return html
 
-    outcome = mirror(store, docs, SITE, failing)
+    outcome = mirrored(store, docs, SITE, failing)
     assert outcome.problems
     assert list((docs / "confluence" / "MFS").glob("196845-*.md"))
 
@@ -617,7 +617,7 @@ def test_a_stale_listing_never_brings_back_a_page_confirmed_gone(
     for day in (1, 2):
         gone = RefreshSite(listing=without("1002"), gone={"1002"})
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
-    mirror(store, chosen.docs, SITE, identity)
+    mirrored(store, chosen.docs, SITE, identity)
     assert list(chosen.docs.rglob("1002-*.md")) == []
 
 

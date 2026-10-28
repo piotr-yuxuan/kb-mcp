@@ -192,6 +192,8 @@ download: done
   failures: 0
 mirror: done
   documents: 13
+  converted by pandoc: 14
+  reused from the cache: 0
   files written: 24
   files unchanged: 0
   files removed: 0
