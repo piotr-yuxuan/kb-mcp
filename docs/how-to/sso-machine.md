@@ -100,7 +100,10 @@ listed whole (cheap: a few requests per thousand pages), and the pages, blog pos
 issues updated in the period are fetched with their attachments; video, audio, archives
 and files over `--max-file-mb` (50) keep their metadata only. Expect about half a second
 per document. Without `--since`, a space or a project never fetched takes its last 7
-days.
+days. Once `--max-file-mb` is raised, a space's next run downloads the files it skipped,
+as it reads its whole covered period; a project's issues get theirs only from a run
+whose `--since` reaches them, such as `--since all`, since a project catches up from
+its last fetch.
 
 Before it starts, the download writes on stderr what it will do: each setting it reads
 and its value, how it signs in, the values it ignores, and the same command written in

@@ -46,7 +46,12 @@ from the site.
   agent can tell how old its evidence is. And catching up is not free: each run lists
   every space whole, and reads the work log whole. A project's search no longer grows
   with the age of its coverage, but misses an issue moved into it, or newly visible,
-  whose last update predates the last fetch, until a `--since` reaches it.
+  whose last update predates the last fetch, until a `--since` reaches it, as it does
+  the files of issues stored before `--max-file-mb` was raised. Its margin
+  of a day bounds the clock's error: after a run on a clock more than a day ahead, the
+  project's coverage ends in the future, its catch-up is skipped, said after `--until`,
+  until the clock reaches it, and then starts after the edits made meanwhile, which
+  only a `--since` fetches.
 - **Rejected.** A schedule (cron, launchd) or a server that refreshes itself. For
   `sync`, a catch-up from the last run's time whatever failed in it, which would leave a
   lasting hole. A window from the last fetch for a space, which would miss what moved in
