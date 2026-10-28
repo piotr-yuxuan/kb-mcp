@@ -14,7 +14,7 @@ from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
 from atlassian_offline_mcp.sources.atlassian.adapters.sign_in import sign_in
 from atlassian_offline_mcp.sources.atlassian.app.download import Targets, download, plan
-from atlassian_offline_mcp.sources.atlassian.domain.period import PeriodError, length, moment
+from atlassian_offline_mcp.sources.atlassian.domain.period import PeriodError, moment
 
 if TYPE_CHECKING:
     import argparse
@@ -43,7 +43,6 @@ def targets_of(
         list(projects),
         (arguments.max_file_mb or DEFAULT_MAX_FILE_MB) * MEBIBYTE,
         since=moment(arguments.since, now, "--since") if arguments.since else None,
-        back=length(arguments.back, "--back") if arguments.back else None,
         until=moment(arguments.until, now, "--until") if arguments.until else None,
     )
 

@@ -71,7 +71,10 @@ REFUSED_FIRST = [
     (["download", *WRITING["download"][0], "--max-file-mb", "0"], {}, "--max-file-mb"),
     (["download", *WRITING["download"][0], "--since", "yesterday"], {}, "--since"),
     (["download", *WRITING["download"][0], "--until", "soon"], {}, "--until"),
-    (["download", *WRITING["download"][0], "--back", "7x"], {}, "--back"),
+    (["download", *WRITING["download"][0], "--since", "7m"], {}, "--since"),
+    (["download", *WRITING["download"][0], "--since", "0d"], {}, "--since"),
+    (["download", *WRITING["download"][0], "--since", "0h"], {}, "--since"),
+    (["download", *WRITING["download"][0], "--until", "all"], {}, "--until"),
     (["download", *WRITING["download"][0]], WITHOUT_EMAIL, "email: not set"),
     (["download", *WRITING["download"][0], "--dry-run"], WITHOUT_EMAIL, "email: not set"),
     (["login"], {}, "site: not set"),
@@ -362,6 +365,20 @@ def test_what_needs_no_network_is_refused_before_anything_is_asked(
     assert stdin.read() == "y\n"
     assert runs == []
     assert tree(home) == before
+
+
+@pytest.mark.parametrize("name", ["download", "sync"])
+def test_back_is_no_option_of_download_nor_sync(
+    name: str, home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 034 removed it, since --since 1y or all says the same: unknown, and not in --help."""
+    with pytest.raises(SystemExit) as stopped:
+        main([name, "--config", str(home / "none.toml"), "--back", "1y"])
+    assert stopped.value.code == REFUSED
+    assert "unrecognized arguments: --back 1y" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        main([name, "--help"])
+    assert "--back" not in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(

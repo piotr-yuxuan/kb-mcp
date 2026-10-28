@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 FIRST = datetime(2026, 10, 22, 9, tzinfo=UTC)
 SECOND = datetime(2026, 10, 23, 9, tzinfo=UTC)
 WEEK = timedelta(days=7)
-SIX_MONTHS = timedelta(days=180)
+YEAR = timedelta(days=365)
 MANY = 30
 OTHER_SPACE = "300000"
 REFUSED = 2
@@ -126,9 +126,9 @@ def first_week(spaces: list[str], projects: list[str]) -> Targets:
     return Targets(spaces, projects, CAP, since=FIRST - WEEK)
 
 
-def catch_up(spaces: list[str], projects: list[str], back: timedelta | None = None) -> Targets:
-    """Return the targets of a later run, from what is covered, and reaching ``back``."""
-    return Targets(spaces, projects, CAP, back=back)
+def catch_up(spaces: list[str], projects: list[str]) -> Targets:
+    """Return the targets of a later run, from what is covered."""
+    return Targets(spaces, projects, CAP)
 
 
 def stored_pages(chosen: Settings) -> dict[str, str]:
@@ -169,17 +169,17 @@ def test_a_later_run_catches_up_on_an_old_page_edited_since(
     )
 
 
-def test_back_reaches_further_and_moves_the_covered_start(
+def test_an_earlier_since_reaches_further_and_moves_the_covered_start(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """--back 6mo fetches the old page, and the coverage starts six months earlier."""
+    """--since 1y, where --back went: the old page comes, and the coverage starts a year back."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
-    targets = catch_up(["MFS"], [], back=SIX_MONTHS)
+    targets = Targets(["MFS"], [], CAP, since=SECOND - YEAR)
     assert run(chosen, monkeypatch, RefreshSite(), targets, SECOND) == 0
     assert stored_pages(chosen)["1003"] == "000003"
     covered = RawStore(chosen.raw).coverage().periods[Target("confluence", "MFS")]
-    assert covered == Period(FIRST - WEEK - SIX_MONTHS, SECOND)
+    assert covered == Period(SECOND - YEAR, SECOND)
 
 
 def test_a_target_with_nowhere_to_start_is_refused_before_anything_runs(

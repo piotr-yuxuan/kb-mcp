@@ -17,7 +17,7 @@ from atlassian_offline_mcp.cli.options._common import (
     token_without_email,
 )
 from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
-from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, PeriodError, length, moment
+from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, PeriodError, moment
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -49,8 +49,6 @@ def period_refused(arguments: argparse.Namespace) -> str | None:
         for option, text in (("--since", arguments.since), ("--until", arguments.until)):
             if text is not None:
                 moment(text, EPOCH, option)
-        if arguments.back is not None:
-            length(arguments.back, "--back")
     except PeriodError as error:
         return str(error)
     return None
@@ -75,23 +73,25 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 def add_period_options(
     parser: argparse.ArgumentParser, *, max_file_mb: int | None
 ) -> tuple[argparse.Action, ...]:
-    """Add --since, --back, --until and --max-file-mb, the largest file by default this many MB.
+    """Add --since, --until and --max-file-mb, the largest file by default this many MB.
 
     Return their actions. Without a default, --max-file-mb is None unless given, and the
     download takes ``DEFAULT_MAX_FILE_MB``.
     """
     since = parser.add_argument(
-        "--since", help="7d, 6mo, or an ISO date; by default, the start of what is covered"
+        "--since",
+        help="12h, 7d, 6mo, an ISO date or time, or all; by default, the start of what is covered",
     )
-    back = parser.add_argument("--back", help="reach this much further back (6mo, 1y), or all")
-    until = parser.add_argument("--until", help="an ISO date or time, excluded; by default, now")
+    until = parser.add_argument(
+        "--until", help="12h, 7d, or an ISO date or time, excluded; by default, now"
+    )
     largest = parser.add_argument(
         "--max-file-mb",
         type=int,
         default=max_file_mb,
         help=f"the largest file kept, in MB; {DEFAULT_MAX_FILE_MB} by default",
     )
-    return since, back, until, largest
+    return since, until, largest
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:

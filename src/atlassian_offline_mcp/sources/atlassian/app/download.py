@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, timedelta
 from functools import partial
 from itertools import batched
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import structlog
 from opentelemetry import metrics, trace
@@ -576,18 +576,17 @@ class Download:
 
 @dataclass(frozen=True)
 class Targets:
-    """What a run downloads: spaces and projects, how far back, and the largest file kept.
+    """What a run downloads: spaces and projects, from when, and the largest file kept.
 
     ``since`` starts every target's window there; without it, each target catches up
-    from the start of its coverage. ``back`` reaches further back (or ``all`` the way);
-    ``until`` ends the windows, by default when the run starts.
+    from the start of its coverage. ``until`` ends the windows, by default when the run
+    starts.
     """
 
     spaces: Sequence[str]
     projects: Sequence[str]
     max_file_bytes: int
     since: datetime | None = None
-    back: timedelta | Literal["all"] | None = None
     until: datetime | None = None
 
     def windows(self, coverage: Coverage, now: datetime) -> dict[Target, Period]:
@@ -595,7 +594,7 @@ class Targets:
         named = [Target("confluence", key) for key in self.spaces]
         named += [Target("jira", key) for key in self.projects]
         end = min(self.until, now) if self.until else now  # never past what a run can see
-        return {target: window(coverage, target, self.since, self.back, end) for target in named}
+        return {target: window(coverage, target, self.since, end) for target in named}
 
 
 @dataclass(frozen=True)

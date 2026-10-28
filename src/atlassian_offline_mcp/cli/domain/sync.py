@@ -25,7 +25,7 @@ type Step = Literal["atlassian", "worklog"]
 # How a step ended, as its row says.
 type Outcome = Literal["done", "failed", "sign in", "interrupted", "not run"]
 # The options of a download's period, by their dest, and as typed.
-PERIOD = {"since": "--since", "back": "--back", "until": "--until", "max_file_mb": "--max-file-mb"}
+PERIOD = {"since": "--since", "until": "--until", "max_file_mb": "--max-file-mb"}
 # The settings that the Atlassian sources share: the site and its sign-in.
 SITE_SETTINGS = ("site", "email", "api_token")
 # How the run ends, by the first of these outcomes that it had, else OK: interrupted, then
