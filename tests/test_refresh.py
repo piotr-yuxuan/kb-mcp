@@ -1021,3 +1021,19 @@ def test_a_run_apart_from_what_is_covered_leaves_it_and_says_why(
         run(chosen, monkeypatch, RefreshSite(issues={}), apart, RUN + timedelta(days=2))
     assert RawStore(chosen.raw).coverage() == exactly(START, RUN)
     assert said_coverage(events) == [("project PRB", "held", "apart from what is covered")]
+
+
+def test_an_issue_that_the_search_names_twice_is_fetched_once(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """An issue saved while its search pages through shifts another into the next page."""
+    chosen = settings(tmp_path)
+    twice = RefreshSite(issues={"20002": issue_at("20002", FINE, files=False)})
+    entries = [*twice.issues.values()] * 2
+    search = {"/rest/api/3/search/jql": lambda _: httpx.Response(200, json={"issues": entries})}
+    monkeypatch.setattr(twice, "changes", lambda: search)
+    with capture_logs() as events:
+        run(chosen, monkeypatch, twice, Targets([], ["PRB"], CAP, since=START), RUN)
+    assert jira_asked(twice).count("/rest/api/3/issue/20002") == 1
+    tasks = [(each["done"], each["total"]) for each in events if each.get("task") == "documents"]
+    assert tasks[-1] == (1, 1)

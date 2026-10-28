@@ -436,9 +436,12 @@ class Download:
         the window; else those new or changed since the last fetch. Those stored get the
         files they lack, without a task; the task ``documents`` reports those to fetch,
         each by its id. ``first_failed`` keeps, for the target, the update time of the
-        earliest not stored whole.
+        earliest not stored whole. A document listed twice, as an issue saved while its
+        search pages through can shift another into the next page, is taken once.
         """
-        in_window = [document for document in documents if document.updated in window.period]
+        in_window = list(
+            dict.fromkeys(document for document in documents if document.updated in window.period)
+        )
         stored: list[Listed] = []
         to_fetch: list[Listed] = []
         for document in in_window:
