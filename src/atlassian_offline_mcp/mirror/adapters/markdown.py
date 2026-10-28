@@ -37,12 +37,18 @@ class Dumper(yaml.SafeDumper):
     """YAML's safe dumper, which writes each person of the front matter on one line."""
 
     def represent_person(self, person: PersonRole) -> yaml.MappingNode:
-        """Write a person in flow style: role, name, then the account and times if any."""
-        values: dict[str, object] = {"role": person.role, "name": person.name}
-        if person.account is not None:
-            values["account"] = person.account
-        if person.at:
-            values["at"] = [moment.astimezone(UTC).strftime(TIME) for moment in person.at]
+        """Write a person in flow style, its fields in ``PersonRole``'s order, as ``load`` asks.
+
+        A field without a value, an account of None or no times, is left out, as ``load``
+        reads its absence.
+        """
+        values: dict[str, object] = {}
+        for name in PERSON:
+            value = getattr(person, name)
+            if isinstance(value, tuple):
+                value = [moment.astimezone(UTC).strftime(TIME) for moment in value]
+            if value not in (None, []):
+                values[name] = value
         return self.represent_mapping("tag:yaml.org,2002:map", values, flow_style=True)
 
 
