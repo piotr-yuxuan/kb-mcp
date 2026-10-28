@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -19,6 +20,7 @@ from atlassian_offline_mcp.mirror.adapters.pandoc import (
 )
 from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
+from tests.reference import STANDARD
 from tests.samples import v2_page, v2_space, v2_view
 from tests.test_cli import logged_as
 from tests.test_mirror import FETCHED, SPACE_ID, listing_page, page_responses
@@ -223,6 +225,31 @@ def test_a_second_mirror_with_nothing_changed_runs_pandoc_on_nothing(
     document = json.loads(capsys.readouterr().out)
     assert (document["converted"], document["reused"]) == (0, CONVERSIONS)
     assert len(runs.read_text("utf-8").splitlines()) == CONVERSIONS
+
+
+def test_a_damaged_cache_is_replaced_and_the_mirror_converts_everything(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 039, criterion 8: exit 0, nothing reused, one warning by SQLite's error name.
+
+    The cache, filled by a first run, and its -wal and -shm become random bytes; the run
+    leaves the cache alone, which the next run reuses.
+    """
+    two_pages(home, monkeypatch)
+    assert main(arguments(home)) == 0
+    cache = home / "data" / "conversions.sqlite"
+    for suffix in ("", "-wal", "-shm"):
+        noise = hashlib.shake_256(suffix.encode()).digest(8192)
+        cache.with_name(f"{cache.name}{suffix}").write_bytes(noise)
+    capsys.readouterr()
+    assert main(arguments(home)) == 0
+    assert "converted by pandoc: 3\nreused from the cache: 0\n" in capsys.readouterr().out
+    (replaced,) = logged_as(home, "mirror.cache_replaced")
+    assert (replaced["level"], replaced["reason"]) == ("warning", "SQLITE_NOTADB")
+    assert set(replaced) - STANDARD == {"reason"}
+    assert sorted(path.name for path in cache.parent.glob(f"{cache.name}*")) == [cache.name]
+    assert main(arguments(home)) == 0
+    assert "converted by pandoc: 0\nreused from the cache: 3\n" in capsys.readouterr().out
 
 
 def test_pandoc_runs_sandboxed_on_its_standard_input(home: Path, monkeypatch: MonkeyPatch) -> None:

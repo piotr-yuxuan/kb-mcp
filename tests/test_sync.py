@@ -10,6 +10,7 @@ defaults, sets or removes the mode itself.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -707,6 +708,34 @@ def test_a_second_sync_reuses_every_conversion_and_the_work_log_adds_none(
     ) in rows[2]
     with closing(sqlite3.connect(home / "data" / "conversions.sqlite")) as cache:
         assert cache.execute("SELECT count(*) FROM conversions").fetchone() == (converted,)
+
+
+def test_a_damaged_cache_is_replaced_and_every_step_runs_exit_0(
+    tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Plan 039, criterion 8: the mirror converts all again, reusing nothing, said once."""
+    settings = chosen_settings(tmp_path, worklog)
+    monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
+    steps = [
+        Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
+        Worklog(worklog, archives=True),
+    ]
+    first = sync(context(settings, FIRST), steps).steps[1].result
+    assert isinstance(first, mirror_app.Outcome)
+    settings.conversions.write_bytes(hashlib.shake_256(b"cache").digest(8192))
+    with capture_logs() as logged:
+        synced = sync(context(settings, FIRST), steps)
+    assert synced.exit_status == ExitStatus.OK
+    assert [(row.step, row.outcome) for row in synced.steps] == [
+        ("download", "done"),
+        ("mirror", "done"),
+        ("worklog", "done"),
+    ]
+    mirrored = synced.steps[1].result
+    assert isinstance(mirrored, mirror_app.Outcome)
+    assert (mirrored.converted, mirrored.reused) == (first.converted, 0)
+    replaced = logged_as(logged, "mirror.cache_replaced")
+    assert [each["reason"] for each in replaced] == ["SQLITE_NOTADB"]
 
 
 def test_the_text_of_a_full_sync_gives_each_command_s_counts_under_its_row(
