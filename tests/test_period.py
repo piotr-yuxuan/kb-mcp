@@ -42,10 +42,11 @@ def test_an_iso_date_starts_at_midnight_utc() -> None:
     assert period("2026-10-15", "2026-10-22", NOW).start == datetime(2026, 10, 15, tzinfo=UTC)
 
 
-def test_an_iso_time_keeps_its_offset() -> None:
-    """A time with an offset is that instant."""
+def test_an_iso_time_is_read_as_its_instant_in_utc() -> None:
+    """A time with an offset is that instant, given in UTC for the dates searched."""
     start = period("2026-10-15T08:00:00+02:00", None, NOW).start
     assert start == datetime(2026, 10, 15, 6, tzinfo=UTC)
+    assert start.utcoffset() == timedelta(0)
 
 
 def test_the_start_is_in_and_the_end_is_out() -> None:
@@ -68,6 +69,8 @@ def test_the_start_is_in_and_the_end_is_out() -> None:
         ("9999y", None, "--since"),
         ("forever", None, "--since"),
         ("2026-10-15", "all", "--until"),
+        ("0001-01-01T00:00:00+05:00", None, "--since"),
+        ("2026-10-15", "9999-12-31T23:59:59-05:00", "--until"),
         ("2026-10-15", "yesterday", "--until"),
         ("2026-10-22", "2026-10-15", "--until"),
         ("2026-10-22", "2026-10-22", "--until"),

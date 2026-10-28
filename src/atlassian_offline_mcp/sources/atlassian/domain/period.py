@@ -59,13 +59,14 @@ def moment(text: str, now: datetime, option: str) -> datetime:
         return now - int(ago[1]) * UNITS[ago[2]]
     try:
         parsed = datetime.fromisoformat(text)
-    except ValueError:
+        # A time at the calendar's edge, once in UTC, can fall out of it.
+        return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).astimezone(UTC)
+    except ValueError, OverflowError:
         everything = ", or all" if option == "--since" else ""
         message = (
             f"{option}: a length before now (12h, 7d, 2w, 6mo, 1y), an ISO date or time{everything}"
         )
         raise PeriodError(message) from None
-    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).astimezone(UTC)
 
 
 def period(since: str, until: str | None, now: datetime) -> Period:
