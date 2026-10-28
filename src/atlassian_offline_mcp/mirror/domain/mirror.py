@@ -46,7 +46,7 @@ PATTERNS = {
 # mirror gives a document's people.
 ROLES = ("author", "creator", "assignee", "commenter")
 # The roles that one person alone holds in a document; each other is held once per person.
-SOLE = {"author", "creator", "assignee"}
+SOLE = frozenset({"author", "creator", "assignee"})
 
 
 @dataclass(frozen=True, kw_only=True)
