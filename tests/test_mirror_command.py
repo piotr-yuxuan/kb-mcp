@@ -172,6 +172,23 @@ def test_pandoc_runs_sandboxed_on_its_standard_input(home: Path, monkeypatch: Mo
     assert "--sandbox" in (home / "arguments").read_text("utf-8").splitlines()
 
 
+def test_html_s_converter_is_named_by_pandoc_s_version_line_then_its_arguments(
+    home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Plan 039: the first line of --version, not the folder it names, then those given HTML."""
+    script = (
+        'if [ "$1" = --version ]; then printf "pandoc 9.9\\nUser data directory: %s\\n" "$HOME";'
+        f' else printf "%s\\n" "$@" > "{home}/arguments"; cat; fi'
+    )
+    folder = fake_pandoc(home / "bin", script)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    pandoc = Pandoc.find()
+    pandoc.markdown("<p>x</p>")
+    given = (home / "arguments").read_text("utf-8").splitlines()
+    assert "--sandbox" in given
+    assert pandoc.html_converter().split("\n") == ["pandoc 9.9", *given]
+
+
 def test_a_pandoc_failure_names_its_status_and_no_content(
     home: Path, monkeypatch: MonkeyPatch
 ) -> None:
