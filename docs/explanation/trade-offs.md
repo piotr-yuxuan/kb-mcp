@@ -235,8 +235,12 @@ that what read the two keys, a hit's line among them
   embeds nothing new; until then, the server refuses the old index, naming `sync`,
   which writes the files again before it rebuilds the index, where `index` alone would
   skip every file of the old format
-  ([`reading`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)). A
-  program that read `author:` in the files reads `people`. Each person is in the index
+  ([`reading`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)). Each
+  evaluation's index built before then holds every prune back, the vector store growing
+  meanwhile, until `eval` rebuilds it, for each model and chunking still wanted, or
+  `<data>/eval/indexes/` is deleted
+  ([`prune`](../../src/atlassian_offline_mcp/search/app/pruning.py)). A program that
+  read `author:` in the files reads `people`. Each person is in the index
   twice, as each label is: in the JSON from which a row gives its front matter back, and
   in the table that the filters read, both written by
   [`Writer.add`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py). An

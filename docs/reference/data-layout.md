@@ -551,7 +551,8 @@ so that deleting an evaluation's index lets the next prune drop its vectors, and
 edited piece's old text, a deleted document's, a model replaced, a build interrupted
 before its index was renamed in. The prune is held back, deleting nothing, when the
 build skipped a file or indexed no document; when an index there cannot say which
-vectors it reads (built by words alone or before plan 023, damaged, or not an index):
+vectors it reads (built by words alone, before plan 023 or at another schema, damaged,
+or not an index):
 `eval` rebuilds those of the models and chunkings it is given, else delete them; and
 when a folder there cannot be reached or listed, an entry below `<data>/eval/indexes/`
 is a link, which is not followed, or `<data>/eval` is a dangling link, as to a disk
