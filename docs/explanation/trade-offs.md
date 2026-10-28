@@ -177,7 +177,7 @@ outside that list. A sort by a date scores every match.
   rather than the scan, and a walk rather than the sort, saving a few milliseconds at
   this size, for a change of the writer and the schema, and a rebuild.
 - **Settled** by [plan
-  040](../work/plans/040-jira-filters-and-sort.md#what-a-date-range-and-a-sort-cost-in-sqlite).
+  040](../work/changelog/040-jira-filters-and-sort.md#what-a-date-range-and-a-sort-cost-in-sqlite).
 
 ## Hybrid ranking, measured by `eval`
 
