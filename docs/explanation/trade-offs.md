@@ -300,9 +300,12 @@ outside that list. A sort by a date scores every match.
   a table of their own, for another reason
   ([people, a generic key](#people-a-generic-key)), indexed as their filters read it.
 - **Cost.** The scan reads every row, about 2 ms for 20,000 documents. A filter by
-  person adds a search of `people` by role and name, 8 ms for a commenter among 80,000
-  comments; a comment range without `commenter` reads the row of every comment, 80 ms
-  for those 80,000, since the table is indexed by name, not by time. FTS5 cannot use
+  person first checks the name given against those of its role, counting each name's
+  documents at every call: 10 ms for an author, 42 for a commenter among 80,000
+  comments. Its match then adds a search of `people` by role and name, 8 ms for a
+  commenter: about 50 ms a call for a commenter. A comment range without `commenter`
+  checks no name, but reads the row of every comment, 80 ms for those 80,000, since the
+  table is indexed by name, not by time. FTS5 cannot use
   the list to skip anything, so a narrow filter makes a search for a common word only a
   little cheaper, 31 to 16 ms measured. A sort by a date gives up the cut at the best 5,000 documents per word, 31 ms
   for 20,000 matches before Python's own sort; with no words, SQLite sorts the documents
@@ -311,7 +314,7 @@ outside that list. A sort by a date scores every match.
   seek rather than the scan, and a walk rather than the sort, saving a few milliseconds
   at this size, for a change of the writer and the schema, and a rebuild. An index of
   `people` by role and time, which SQLite then takes for a commenter too: a comment
-  range alone in 52 ms rather than 80, a commenter in 77 rather than 8.
+  range alone in 52 ms rather than 80, a commenter's match in 77 rather than 8.
 - **Settled** by [plan
   040](../work/changelog/040-jira-filters-and-sort.md#what-a-date-range-and-a-sort-cost-in-sqlite).
 
