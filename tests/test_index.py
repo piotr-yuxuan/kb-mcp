@@ -19,8 +19,9 @@ from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.indexing import Indexing, build_index, index_mirror
+from atlassian_offline_mcp.search.domain.search import Filters
 from tests.endpoint import nothing_listening
-from tests.mirrors import FILLERS, MOMENT, fillers, issue, location, page, write
+from tests.mirrors import CREATED, FILLERS, MOMENT, PEOPLE, fillers, issue, location, page, write
 from tests.test_cli import logged_as
 from tests.test_observed import CONTROL, said
 from tests.test_question import read_until
@@ -30,6 +31,8 @@ if TYPE_CHECKING:
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
+
+    from atlassian_offline_mcp.search.domain.search import Sort
 
 BAD_SETTINGS = 2
 SKIPPED = 3
@@ -361,6 +364,76 @@ def test_a_new_index_is_read_from_the_next_reading(data: Path) -> None:
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with reading(data / "index.sqlite") as reader:
         assert reader.summary().spaces == {"ENG": 1, "OPS": 1}
+
+
+@pytest.fixture
+def people(data: Path) -> Path:
+    """Index PEOPLE, each document holding the word lorem; give the index's path."""
+    for front in PEOPLE:
+        write(data / "docs", front)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    return data / "index.sqlite"
+
+
+@pytest.mark.parametrize(
+    ("filters", "expected"),
+    [
+        (Filters(issue_type="Bug"), ["PROJ-1"]),
+        (Filters(author="Bo Sample"), ["196845", "PROJ-1"]),
+        (Filters(assignee="Ada Example"), ["PROJ-1", "PROJ-3"]),
+        (Filters(created_after=CREATED), ["PROJ-1", "PROJ-3"]),
+        (Filters(created_before=CREATED), ["196845", "PROJ-2"]),
+        (Filters(author="Ada Example", created_after=CREATED), []),
+    ],
+)
+def test_people_and_the_created_range_narrow_each_list(
+    people: Path, filters: Filters, expected: list[str]
+) -> None:
+    """A listing, a search by words and a page of the newest narrow alike.
+
+    created_after keeps a document created at that moment; created_before does not.
+    """
+    paths = {location(front): front.key or front.id for front in PEOPLE}
+    with reading(people) as reader:
+        listed = [entry.front.key or entry.front.id for entry in reader.listing(filters)]
+        scored, _ = reader.scores('"lorem"', filters)
+        total, recent = reader.recent(filters, "created", 0, 10)
+    assert listed == expected
+    assert sorted(paths[path] for path in scored) == sorted(expected)
+    assert (total, sorted(entry.path for entry in recent)) == (len(expected), sorted(scored))
+
+
+def test_issue_types_authors_and_assignees_are_values_most_used_first(people: Path) -> None:
+    """Each value that documents have, with its count; a page adds no issue type nor assignee."""
+    with reading(people) as reader:
+        assert reader.values("issue_type") == [("Bug", 1), ("Story", 1), ("Task", 1)]
+        assert reader.values("author") == [("Bo Sample", 2), ("A Person", 1), ("Ada Example", 1)]
+        assert reader.values("assignee") == [("Ada Example", 2), ("Hélène Example", 1)]
+
+
+@pytest.mark.parametrize(
+    ("by", "expected"),
+    [
+        ("created", ["PROJ-3", "PROJ-1", "PROJ-2", "196845"]),
+        ("updated", ["PROJ-2", "PROJ-3", "PROJ-1", "196845"]),
+    ],
+)
+def test_the_newest_are_listed_by_either_date(people: Path, by: Sort, expected: list[str]) -> None:
+    """Newest first by the date asked, ties to the newest update; a page from an offset."""
+    with reading(people) as reader:
+        total, listed = reader.recent(Filters(), by, 0, 10)
+        assert (total, [entry.front.key or entry.front.id for entry in listed]) == (4, expected)
+        _, second = reader.recent(Filters(), by, 1, 2)
+    assert [entry.front.key or entry.front.id for entry in second] == expected[1:3]
+
+
+def test_a_score_by_words_holds_the_created_date(people: Path) -> None:
+    """What a sort by created date reads, as the front matter gave it."""
+    with reading(people) as reader:
+        scored, _ = reader.scores('"lorem"', Filters())
+    assert {path: score.created for path, score in scored.items()} == {
+        location(front): front.created for front in PEOPLE
+    }
 
 
 @pytest.mark.parametrize("schema", ["1", "2"])

@@ -283,7 +283,7 @@ order or type, by name.
 | `status` | string | as the site names it; an entry's keyword, else `current`, as a transcript's |
 | `issue_type` | string or null | the issue type, such as `Bug`; `null` for Confluence |
 | `labels` | list of strings | the labels, `[]` when none; a work-log document's tags, its file's `#+FILETAGS`, and `ARCHIVE` when archived |
-| `author` | string or null | the display name when known (from `users()` for Confluence), otherwise the account id; `null` when none, and for the work log |
+| `author` | string or null | an issue's reporter, not necessarily who created it; a page's or a blog post's creator; the display name when known (from `users()` for Confluence), otherwise the account id; `null` when none, and for the work log |
 | `assignee` | string or null | the assignee's display name, or account id; `null` when unassigned or for Confluence |
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |

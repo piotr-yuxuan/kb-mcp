@@ -26,10 +26,11 @@ as many documents as fit the budget, 20 at most, then the call that continues.
 - `filters`: as `search`'s, below.
 - `cursor`: the one that the previous answer ended with.
 
-A passage is a line of its number, title, ref, section, heading and dates; a line of
-the site's address (or the mirror's path) and the `read(ref=..., section=N)` call that
-opens its section; then its text, verbatim. By meaning, the text is the unit of the
-index's chunking (see [chunking](../explanation/chunking.md)); by words, the section
+A passage is a line of its number, title, ref, section, heading and dates, ending as a
+`search` hit's second line does; a line of the site's address (or the mirror's path)
+and the `read(ref=..., section=N)` call that opens its section; then its text,
+verbatim. By meaning, the text is the unit of the index's chunking (see
+[chunking](../explanation/chunking.md)); by words, the section
 that holds the question's words best, whole up to 2,400 characters, else 2,400 of it
 centred on the first of the question's words that it holds, cut to whole lines.
 The setting `search_mode` gives the mode; without vectors, `ask` answers by words and
@@ -38,15 +39,27 @@ says why.
 ### search
 
 Finds documents by words, issue keys, page ids or page addresses, the best first, each
-with its best section's `read()` call and a snippet.
+with its best section's `read()` call and a snippet. A hit's second line gives its ref,
+path, update and mirror date, then what the document has of its issue type, its status
+unless `current`, `assignee <name>` (`unassigned` for an issue with none, which no
+filter selects), `author <name>` and `created <day>`, such as
+`Bug | Done | assignee Ada Example | author Bo Sample | created 2026-10-01`.
 
 - `query`: the words, at most 500 characters.
 - `filters`: an object of `source` (`confluence`, `jira` or `worklog`), `space`,
-  `project`, `status`, `label`, `updated_after` (included) and `updated_before`
-  (excluded); values match without regard to case, dates are ISO 8601, and a value that
-  no document has is refused with the valid ones. The work log's entries are the user's
-  notes and AI-written summaries, its transcripts the word-by-word record.
-- `sort`: `relevance`, or `updated` to list what changed last, with no query.
+  `project`, `status`, `label`, `issue_type`, `author` (an issue's reporter, a page's
+  creator), `assignee`, `updated_after` and `created_after` (included), and
+  `updated_before` and `created_before` (excluded). Values match whole, without regard
+  to case, accents or runs of spaces; a name that a hit cuts at 60 characters, `read`
+  gives whole. Of several values that match, one is kept: the one given, else one that
+  a hit shows alike, the most used first, so that a lookalike's documents are left out.
+  A value that no document has, or that several have but for accents alone, is refused
+  with the valid ones, those that hold it first, the most used first. Dates are ISO
+  8601, a date being its midnight UTC. The work log's entries are the user's notes and
+  AI-written summaries, its transcripts the word-by-word record.
+- `sort`: `relevance`; `updated` or `created`, newest first, by words alone and
+  counting every match, after the documents that the query names; with no query, they
+  list the documents that pass the filters.
 - `limit`: 1 to 50 documents, 8 by default.
 - `cursor`: the one that the previous answer ended with.
 

@@ -18,7 +18,7 @@ from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, built, continuation, estimate, follow, parts
 from tests.endpoint import connector, tiny
-from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.mirrors import MOMENT, PEOPLE, fillers, issue, page, write
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 # A passage's two lines about it, then its text, which runs to the next passage.
 ABOUT = re.compile(
     r"^(\d+)\. (.*) \| (\S+) \| section (\d+)(?:: (.*))? \| updated (\d{4}-\d\d-\d\d \d\d:\d\d UTC)"
-    r" \| mirrored (\d{4}-\d\d-\d\d)\n(.*) \| (read\(.*\))\n",
+    r" \| mirrored (\d{4}-\d\d-\d\d) \| (.*)\n(.*) \| (read\(.*\))\n",
     re.MULTILINE,
 )
 RETENTION = (
@@ -88,10 +88,13 @@ def passages(answer: str) -> list[dict[str, str]]:
     block = parts(answer)[1]
     found = list(ABOUT.finditer(block))
     ends = [match.start() - 2 for match in found[1:]] + [len(block)]
-    names = ("number", "title", "ref", "section", "heading", "updated", "mirrored", "address")
+    names = (
+        *("number", "title", "ref", "section", "heading", "updated", "mirrored", "facts"),
+        "address",
+    )
     return [
-        dict(zip(names, match.groups()[:8], strict=True))
-        | {"read": match[9], "text": block[match.end() : end]}
+        dict(zip(names, match.groups()[:9], strict=True))
+        | {"read": match[10], "text": block[match.end() : end]}
         for match, end in zip(found, ends, strict=True)
     ]
 
@@ -253,6 +256,39 @@ def test_filters_narrow_and_a_question_without_words_is_refused(words: Library) 
     found = passages(words.ask("brokers", filters={"project": "proj"}))
     assert [each["ref"] for each in found] == ["PROJ-7"]
     assert words.ask("?!") == "The question has no words to search: ask it in words."
+
+
+@pytest.mark.parametrize(
+    ("filters", "expected"),
+    [
+        ({"issue_type": "BUG"}, ["PROJ-1"]),
+        ({"author": "bo sample"}, ["196845", "PROJ-1"]),
+        ({"assignee": "Helene Example"}, ["PROJ-2"]),
+        ({"created_after": "2026-10-25"}, ["PROJ-1", "PROJ-3"]),
+        ({"created_before": "2026-10-25"}, ["196845", "PROJ-2"]),
+    ],
+)
+def test_people_and_created_dates_narrow_as_search_s_do(
+    tmp_path: Path, filters: SearchFilters, expected: list[str]
+) -> None:
+    """The passages of the made-up people that pass, and none other."""
+    people = built(tmp_path, [(front, None) for front in PEOPLE])
+    found = passages(people.ask("which broker?", filters=filters))
+    assert sorted(each["ref"] for each in found) == expected
+
+
+def test_a_passage_s_first_line_ends_with_who_and_when(tmp_path: Path) -> None:
+    """As a hit's: an issue's type, status, assignee, author and created day; a page's last two."""
+    people = built(tmp_path, [(front, None) for front in PEOPLE])
+    found = {each["ref"]: each["facts"] for each in passages(people.ask("which broker?"))}
+    assert found == {
+        "PROJ-1": "Bug | Done | assignee Ada Example | author Bo Sample | created 2026-10-25",
+        "PROJ-2": (
+            "Task | To Do | assignee Hélène Example | author Ada Example | created 2026-10-22"
+        ),
+        "PROJ-3": "Story | To Do | assignee Ada Example | author A Person | created 2026-10-25",
+        "196845": "author Bo Sample | created 2026-10-21",
+    }
 
 
 def test_without_vectors_ask_answers_by_words_and_says_why(tmp_path: Path) -> None:

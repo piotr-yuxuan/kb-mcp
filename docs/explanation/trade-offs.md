@@ -157,6 +157,28 @@ Words are indexed by SQLite's full-text engine, FTS5, in one file,
 - **Settled** by the programme, and built by
   [plan 006](../work/changelog/006-search-mcp.md#the-index).
 
+## Filters on the index as it is
+
+The filters of `search` and `ask`, the people and the created range among them, are
+conditions on the `documents` table, which no index of SQLite's covers: one scan per call
+lists the documents that pass
+([`KEPT`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)). The
+full-text match is still read whole and scored, and a join then drops the documents
+outside that list. A sort by a date scores every match.
+
+- **Why.** The index of schema 3 already held each column that the filters read: no
+  rebuild, no change to its writer, and no setting.
+- **Cost.** The scan reads every row, about 2 ms for 20,000 documents. FTS5 cannot use
+  the list to skip anything, so a narrow filter makes a search for a common word only a
+  little cheaper, 31 to 16 ms measured. A sort by a date gives up the cut at the best 5,000 documents per word, 31 ms
+  for 20,000 matches before Python's own sort; with no words, SQLite sorts the documents
+  that pass at each page, 2.7 ms for 20,000.
+- **Rejected.** Indexes on `created`, `author` and the other columns filtered: a seek
+  rather than the scan, and a walk rather than the sort, saving a few milliseconds at
+  this size, for a change of the writer and the schema, and a rebuild.
+- **Settled** by [plan
+  040](../work/changelog/040-jira-filters-and-sort.md#what-a-date-range-and-a-sort-cost-in-sqlite).
+
 ## Hybrid ranking, measured by `eval`
 
 By default, `search` and `ask` rank by words and by meaning, each apart, then fuse the

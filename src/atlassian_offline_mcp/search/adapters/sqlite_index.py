@@ -16,6 +16,7 @@ import sqlite3
 import tempfile
 import uuid
 from contextlib import contextmanager
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -39,7 +40,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
     from atlassian_offline_mcp.kernel.chunking import Chunking
-    from atlassian_offline_mcp.search.domain.search import Section
+    from atlassian_offline_mcp.search.domain.search import Section, Sort
 
 # What the file of a build begins with, beside its index, until it is renamed into place.
 BUILDING = ".index-"
@@ -97,8 +98,13 @@ WHERE (:source IS NULL OR d.source = :source)
   AND (:status IS NULL OR d.status = :status)
   AND (:label IS NULL
        OR EXISTS (SELECT 1 FROM labels l WHERE l.document = d.rowid AND l.label = :label))
-  AND (:after IS NULL OR d.updated >= :after)
-  AND (:before IS NULL OR d.updated < :before)
+  AND (:issue_type IS NULL OR d.issue_type = :issue_type)
+  AND (:author IS NULL OR d.author = :author)
+  AND (:assignee IS NULL OR d.assignee = :assignee)
+  AND (:updated_after IS NULL OR d.updated >= :updated_after)
+  AND (:updated_before IS NULL OR d.updated < :updated_before)
+  AND (:created_after IS NULL OR d.created >= :created_after)
+  AND (:created_before IS NULL OR d.created < :created_before)
 """
 # bm25 cannot be grouped where it is computed, hence the materialised subquery.
 SCORES = """
@@ -107,7 +113,7 @@ WITH matched AS MATERIALIZED (
          -bm25(chunks, :title, :labels, :breadcrumb, :heading, :body) AS relevance
   FROM chunks WHERE chunks MATCH :expression
 )
-SELECT d.path, d.updated, max(m.relevance) AS relevance
+SELECT d.path, d.updated, d.created, max(m.relevance) AS relevance
 FROM matched m JOIN sections s ON s.rowid = m.section JOIN documents d ON d.rowid = s.document
 WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
 GROUP BY d.rowid ORDER BY relevance DESC, d.path LIMIT :limit
@@ -130,7 +136,8 @@ WHERE (d.path IN (SELECT value FROM json_each(:paths))
 RECENT = """
 SELECT d.* FROM documents d
 WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
-ORDER BY d.updated DESC, d.path LIMIT :limit OFFSET :offset
+ORDER BY CASE WHEN :by = 'created' THEN d.created ELSE d.updated END DESC, d.updated DESC, d.path
+LIMIT :limit OFFSET :offset
 """
 COUNT = """
 SELECT count(*) FROM documents d
@@ -171,6 +178,12 @@ VALUES = {
     " GROUP BY 1 ORDER BY 2 DESC, 1",
     "status": "SELECT status, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
     "label": "SELECT label, count(*) FROM labels GROUP BY 1 ORDER BY 2 DESC, 1",
+    "issue_type": "SELECT issue_type, count(*) FROM documents WHERE issue_type IS NOT NULL"
+    " GROUP BY 1 ORDER BY 2 DESC, 1",
+    "author": "SELECT author, count(*) FROM documents WHERE author IS NOT NULL"
+    " GROUP BY 1 ORDER BY 2 DESC, 1",
+    "assignee": "SELECT assignee, count(*) FROM documents WHERE assignee IS NOT NULL"
+    " GROUP BY 1 ORDER BY 2 DESC, 1",
     "type": "SELECT type, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
 }
 
@@ -388,15 +401,9 @@ class Reader:
         if filters == Filters():
             return None
         if filters not in self._kept:
-            after, before = filters.updated_after, filters.updated_before
             parameters = {
-                "source": filters.source,
-                "space": filters.space,
-                "project": filters.project,
-                "status": filters.status,
-                "label": filters.label,
-                "after": None if after is None else moment(after),
-                "before": None if before is None else moment(before),
+                name: moment(value) if isinstance(value, datetime) else value
+                for name, value in asdict(filters).items()
             }
             self._kept[filters] = self._connection.execute(KEPT, parameters).fetchone()[0]
         return self._kept[filters]
@@ -416,7 +423,11 @@ class Reader:
             "limit": -1 if every else PER_EXPRESSION,  # SQLite reads -1 as no limit
         }
         found = {
-            row["path"]: Score(row["relevance"], datetime.fromisoformat(row["updated"]))
+            row["path"]: Score(
+                row["relevance"],
+                datetime.fromisoformat(row["updated"]),
+                datetime.fromisoformat(row["created"]),
+            )
             for row in self._connection.execute(SCORES, parameters)
         }
         return found, every or len(found) < PER_EXPRESSION
@@ -451,11 +462,17 @@ class Reader:
         }
         return [entry(row) for row in self._connection.execute(ENTRIES, parameters)]
 
-    def recent(self, filters: Filters, offset: int, limit: int) -> tuple[int, list[Entry]]:
-        """Count the documents that pass the filters, and list a page of them, newest first."""
+    def recent(
+        self, filters: Filters, by: Sort, offset: int, limit: int
+    ) -> tuple[int, list[Entry]]:
+        """Count the documents that pass the filters, and list a page of them, newest first.
+
+        Newest by created date, or else by update; ties go to the newest update, then the
+        path.
+        """
         kept = self.kept(filters)
         total = self._connection.execute(COUNT, {"kept": kept}).fetchone()[0]
-        parameters = {"kept": kept, "offset": offset, "limit": limit}
+        parameters = {"kept": kept, "by": by, "offset": offset, "limit": limit}
         return total, [entry(row) for row in self._connection.execute(RECENT, parameters)]
 
     def listing(self, filters: Filters) -> list[Entry]:

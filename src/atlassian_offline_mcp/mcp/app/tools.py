@@ -18,7 +18,7 @@ import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 import structlog
 from opentelemetry import metrics, trace
@@ -40,6 +40,7 @@ from atlassian_offline_mcp.search.domain.search import (
     MAX_WORDS,
     Filters,
     Passage,
+    Sort,
     fuse,
     identifiers,
     plan,
@@ -68,7 +69,8 @@ LONGEST = {"query": LONGEST_QUERY, "ref": 300, "value": 100, "cursor": 100}
 VALUES_SHOWN = 100
 CURSOR_TIME = "%Y%m%dT%H%M%SZ"
 NO_WORDS = (
-    'The query has no words to search. Give words, or sort="updated" to list what changed last.'
+    "The query has no words to search."
+    ' Give words, or sort="updated" or "created" to list the newest by that date.'
 )
 NO_QUESTION = "The question has no words to search: ask it in words."
 # The documents that one answer of ask quotes, at most, however short their passages.
@@ -88,6 +90,7 @@ class SearchFilters(TypedDict, total=False):
     """What narrows a search. Values match without regard to case; dates are ISO 8601.
 
     source worklog: the user's entries (notes, AI summaries) and transcripts (verbatim).
+    author: an issue's reporter, a page's creator; _after included, _before excluded.
     """
 
     source: Literal["confluence", "jira", "worklog"]
@@ -95,13 +98,24 @@ class SearchFilters(TypedDict, total=False):
     project: str
     status: str
     label: str
+    issue_type: str
+    author: str
+    assignee: str
     updated_after: str  # this moment included
     updated_before: str  # this moment excluded
+    created_after: str  # this moment included
+    created_before: str  # this moment excluded
+
+
+def untitled(schema: dict[str, Any]) -> None:
+    """Drop the title that Pydantic gives each filter, its name again: every request carries it."""
+    for each in schema["properties"].values():
+        each.pop("title", None)
 
 
 # Pydantic, which the SDK validates arguments with, then refuses a misspelt filter
-# rather than drop it.
-SearchFilters.__pydantic_config__ = {"extra": "forbid"}
+# rather than drop it, and writes the schema without titles.
+SearchFilters.__pydantic_config__ = {"extra": "forbid", "json_schema_extra": untitled}
 
 
 NOT_SET_UP = "this server searches by words alone"
@@ -132,7 +146,7 @@ class Asked:
     query: str
     planned: Plan
     filters: Filters
-    by_update: bool
+    sort: Sort
     mode: Mode
     order: tuple[int, ...] | None = None  # the order that a cursor carries: None, none yet
 
@@ -141,22 +155,22 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
     """Rank the documents for a query in a mode; documents it names by identifier first.
 
     Lexical: by words, as 006 ranks. Semantic: the nearest by meaning. Hybrid: both,
-    fused by reciprocal rank. Sorted by update, or with no meaning to search, by words,
+    fused by reciprocal rank. Sorted by a date, or with no meaning to search, by words,
     with a note saying why, which is the warning ``search.fallback``, counted in
     ``aom.serve.fallbacks``. A document is shown by meaning when that ranks it higher.
     The search by words is the span ``search.lexical``, by meaning ``search.semantic``.
     """
-    planned, filters, by_update = asked.planned, asked.filters, asked.by_update
+    planned, filters, by_date = asked.planned, asked.filters, asked.sort != "relevance"
     with TRACER.start_as_current_span("search.lexical"):
-        found = [reader.scores(each, filters, every=by_update) for each in planned.expressions]
+        found = [reader.scores(each, filters, every=by_date) for each in planned.expressions]
         named = [*planned.identifiers.keys, *planned.identifiers.ids]
         keys, ids = planned.identifiers.keys, planned.identifiers.ids
         pinned = reader.entries(keys=keys, ids=ids, filters=filters)
         ordered = sorted(pinned, key=lambda e: named.index(e.front.key or e.front.id))
         first = [entry.path for entry in ordered]
-        words = rank((one for one, _ in found), first, by_update=by_update)
+        words = rank((one for one, _ in found), first, sort=asked.sort)
         whole = all(every for _, every in found)
-    if asked.mode == "lexical" or by_update:
+    if asked.mode == "lexical" or by_date:
         return Ranking(words, whole, {}, pinned=len(first))
     with TRACER.start_as_current_span("search.semantic"):
         near = meaning.nearest(reader, asked.query, filters) if meaning else Nearest({}, NOT_SET_UP)
@@ -166,7 +180,7 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
         note = f" Ranked by words alone: {near.reason}."
         return Ranking(words, whole, {}, note=note, pinned=len(first))
     scores = {path: score for path, (score, *_) in near.found.items()}
-    by_meaning = rank([scores], first, by_update=False)
+    by_meaning = rank([scores], first, sort="relevance")
     shown = {path: tuple(where) for path, (_, *where) in near.found.items()}
     if asked.mode == "semantic":
         counted = "nearest in meaning"
@@ -274,10 +288,10 @@ def reranked(reader: Reader, asked: Asked, ranked: Ranking, reranking: Reranking
     not, and asks nothing. A first page asks the reranking server about the next
     documents, each by its title, the heading of its section and BODY characters about
     its best place (``place_of``); with fewer than two, it asks nothing. A reranking that
-    fails keeps the order given, and the note says why. Sorted by update, nothing moves.
+    fails keeps the order given, and the note says why. Sorted by a date, nothing moves.
     Raises UnanswerableError for a cursor whose order passes the documents now found.
     """
-    if asked.by_update or (asked.order is None and reranking is None):
+    if asked.sort != "relevance" or (asked.order is None and reranking is None):
         return ranked
     start = ranked.pinned
     order = asked.order
@@ -321,11 +335,11 @@ def checked(filters: SearchFilters | None) -> dict[str, str]:
 
 def narrowed(reader: Reader, given: Mapping[str, str]) -> Filters:
     """Give the filters as the index holds their values, refusing one that no document has."""
-    names = ("source", "space", "project", "status", "label")
+    names = ("source", "space", "project", "status", "label", "issue_type", "author", "assignee")
+    dates = ("updated_after", "updated_before", "created_after", "created_before")
     return Filters(
         **{name: canonical(reader, name, given.get(name)) for name in names},
-        updated_after=instant("updated_after", given.get("updated_after")),
-        updated_before=instant("updated_before", given.get("updated_before")),
+        **{name: instant(name, given.get(name)) for name in dates},
     )
 
 
@@ -338,19 +352,37 @@ def bounded(**values: tuple[str | None, int]) -> None:
 
 
 def canonical(reader: Reader, name: str, value: str | None) -> str | None:
-    """Find the value that the index holds for a filter, compared with ``casefold``.
+    """Find the value that the index holds for a filter, without regard to case or accents.
 
-    Refuse a value that no document has, listing the valid ones, the most used first.
+    Values compare as hits show them, their spaces collapsed, composed and casefolded,
+    then decomposed without the combining diacritical marks of U+0300 to U+036F and
+    casefolded again: a Hangul syllable keeps its letters, a kana its voicing mark. One
+    value alone matching is taken; else the value given, then one that a hit shows
+    alike, the most used first. Refuse a value that no document has, or that several
+    have but for accents alone, listing the valid ones: those holding it first, the
+    most used first.
     """
     if value is None:
         return None
-    valid = reader.values(name)
-    for candidate, _ in valid:
-        if candidate.casefold() == value.casefold():
-            return candidate
+
+    def shown(text: str) -> str:
+        return unicodedata.normalize("NFC", " ".join(text.split())).casefold()
+
+    def plain(text: str) -> str:
+        decomposed = unicodedata.normalize("NFKD", shown(text))
+        return "".join(char for char in decomposed if not "\u0300" <= char <= "\u036f").casefold()
+
+    valid = [candidate for candidate, _ in reader.values(name)]
+    wanted = plain(value)
+    found = [each for each in valid if plain(each) == wanted]
+    cased = [each for each in found if shown(each) == shown(value)]
+    if len(found) == 1:
+        return found[0]
+    if cased:
+        return value if value in cased else cased[0]
     message = f"{name}: no document has {json.dumps(value, ensure_ascii=False)}; the valid values:"
-    shown = [candidate for candidate, _ in valid[:VALUES_SHOWN]]
-    raise UnanswerableError(responses.refusal(message, shown, len(valid)))
+    listed = sorted(valid, key=lambda each: wanted not in plain(each))
+    raise UnanswerableError(responses.refusal(message, listed[:VALUES_SHOWN], len(valid)))
 
 
 def instant(name: str, value: str | None) -> datetime | None:
@@ -457,36 +489,36 @@ class Library:
         self,
         query: str = "",
         filters: SearchFilters | None = None,
-        sort: Literal["relevance", "updated"] = "relevance",
+        sort: Sort = "relevance",
         limit: int = SEARCH_LIMIT,
         cursor: str | None = None,
     ) -> str:
         """Search the offline mirror of Confluence, Jira and the work log, the best first.
 
         Words match without regard to case or accents; issue keys, page ids and page
-        addresses in the query put their documents first. With sort="updated" and no
-        query, lists what changed last. Each hit gives the read() call of its best
-        section; a long list ends with the call that continues it.
+        addresses in the query put their documents first. With sort="updated" or
+        "created" and no query, lists the newest by that date. Each hit gives the read()
+        call of its best section; a long list ends with the call that continues it.
         """
         given = checked(filters)
         bounded(query=(query, LONGEST["query"]), cursor=(cursor, LONGEST["cursor"]))
-        planned, by_update = plan(query), sort == "updated"
+        planned = plan(query)
         with self._reading() as reader:
             built_at = reader.built_at()
             (offset, order), size = continued(cursor, built_at), clamp(limit, SEARCH_LIMITS)
             kept = narrowed(reader, given)
-            if not planned.words and not by_update:
+            if not planned.words and sort == "relevance":
                 return responses.answer(NO_WORDS)
             ranked = Ranking([], whole=True, meaning={})
             if planned.words:
-                asked = Asked(query, planned, kept, by_update, self._mode, order)
+                asked = Asked(query, planned, kept, sort, self._mode, order)
                 first = ranking(reader, self._meaning, asked)
                 ranked = reranked(reader, asked, first, self._reranking)
                 total, whole = len(ranked.paths), ranked.whole
                 paths = ranked.paths[offset : offset + size]
                 shown = sorted(reader.entries(paths=paths), key=lambda e: paths.index(e.path))
             else:
-                (total, shown), whole = reader.recent(kept, offset, size), True
+                (total, shown), whole = reader.recent(kept, sort, offset, size), True
             # On the call's span, the SDK's: the mode, the documents found, whether words
             # stood in for meaning. Said here, as the docstring is the agent's to read.
             trace.get_current_span().set_attributes(
@@ -555,7 +587,7 @@ class Library:
             built_at = reader.built_at()
             offset, order = continued(cursor, built_at)
             kept = narrowed(reader, given)
-            asked = Asked(question, planned, kept, by_update=False, mode=mode, order=order)
+            asked = Asked(question, planned, kept, sort="relevance", mode=mode, order=order)
             if not planned.words:
                 return responses.answer(NO_QUESTION), [], Ranking([], whole=True, meaning={})
             ranked = reranked(reader, asked, ranking(reader, self._meaning, asked), self._reranking)
@@ -612,7 +644,7 @@ class Library:
         """
         planned = plan(query)
         with self._reading() as reader:
-            asked = Asked(query, planned, Filters(), by_update=False, mode=mode)
+            asked = Asked(query, planned, Filters(), sort="relevance", mode=mode)
             ranked = reranked(reader, asked, ranking(reader, self._meaning, asked), self._reranking)
             entries = {entry.path: entry for entry in reader.entries(paths=ranked.paths[:limit])}
             shown = []

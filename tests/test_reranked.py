@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from _pytest.tempdir import TempPathFactory
 
+    from atlassian_offline_mcp.search.domain.search import Sort
     from tests.conftest import InMemory
 
 QUERY = "release rollback"
@@ -151,11 +152,12 @@ def test_search_and_ask_show_the_order_reranked(root: Path) -> None:
     assert len(asked) > DEPTH
 
 
-def test_nothing_is_asked_sorted_by_update_or_for_fewer_than_two(root: Path) -> None:
-    """Sorted by update, no relevance to reorder; one document found, no order to change."""
+@pytest.mark.parametrize("sort", ["updated", "created"])
+def test_nothing_is_asked_sorted_by_a_date_or_for_fewer_than_two(root: Path, sort: Sort) -> None:
+    """Sorted by a date, no relevance to reorder; one document found, no order to change."""
     scorer = Scripted()
     served = library(root, Reranking(scorer, DEPTH))
-    served.search(QUERY, sort="updated")
+    served.search(QUERY, sort=sort)
     served.search("quasar")
     assert scorer.asked == []
 

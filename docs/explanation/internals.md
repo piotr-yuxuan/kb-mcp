@@ -266,7 +266,7 @@ the meantime answer at once.
 
 ### Reranked
 
-Reranking is off by default. Turned on, unless the search is sorted by update, the
+Reranking is off by default. Turned on, unless the search is sorted by a date, the
 documents after those that the query names, as many as `rerank.depth`, 30 by default,
 go with the query to the reranking server, each as its title, the heading of its
 section and 1,200 characters about its best place

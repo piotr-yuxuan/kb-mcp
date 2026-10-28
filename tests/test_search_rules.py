@@ -10,6 +10,7 @@ from atlassian_offline_mcp.search.domain.chunking import passages, pieces
 from atlassian_offline_mcp.search.domain.search import (
     MAX_WORDS,
     Score,
+    Sort,
     fuse,
     identifiers,
     plan,
@@ -177,17 +178,50 @@ def test_ranking_sums_each_expression_once_per_document() -> None:
     """Pinned documents come first; then the sum of relevance; ties to the newest."""
     newer = MOMENT + timedelta(days=1)
     by_word = [
-        {"a.md": Score(1.0, MOMENT), "b.md": Score(3.0, MOMENT), "c.md": Score(1.5, newer)},
-        {"a.md": Score(2.5, MOMENT), "d.md": Score(1.5, MOMENT)},
+        {
+            "a.md": Score(1.0, MOMENT, MOMENT),
+            "b.md": Score(3.0, MOMENT, MOMENT),
+            "c.md": Score(1.5, newer, MOMENT),
+        },
+        {"a.md": Score(2.5, MOMENT, MOMENT), "d.md": Score(1.5, MOMENT, MOMENT)},
     ]
-    assert rank(by_word, ["d.md", "x.md", "d.md"], by_update=False) == [
+    assert rank(by_word, ["d.md", "x.md", "d.md"], sort="relevance") == [
         "d.md",
         "x.md",
         "a.md",
         "b.md",
         "c.md",
     ]
-    assert rank(by_word, [], by_update=True)[:1] == ["c.md"]
+    assert rank(by_word, [], sort="updated")[:1] == ["c.md"]
+
+
+@pytest.mark.parametrize(
+    ("sort", "expected"),
+    [
+        ("relevance", ["d.md", "b.md", "e.md", "a.md", "c.md"]),
+        ("updated", ["d.md", "c.md", "a.md", "b.md", "e.md"]),
+        ("created", ["d.md", "b.md", "c.md", "a.md", "e.md"]),
+    ],
+)
+def test_each_sort_orders_what_follows_the_documents_named(sort: Sort, expected: list[str]) -> None:
+    """By relevance, update or creation, newest first; ties to the newest update, then the path."""
+    older, newer = MOMENT - timedelta(days=1), MOMENT + timedelta(days=1)
+    by_word = [
+        {
+            "a.md": Score(1.0, MOMENT, older),
+            "b.md": Score(3.0, MOMENT, MOMENT),
+            "c.md": Score(0.5, newer, older),
+            "d.md": Score(0.1, MOMENT, older),
+            "e.md": Score(2.0, MOMENT, older),
+        }
+    ]
+    assert rank(by_word, ["d.md"], sort=sort) == expected
+
+
+def test_a_score_by_meaning_cannot_be_sorted_by_created_date() -> None:
+    """A score by meaning holds no created date: sorting it by one fails, naming it."""
+    with pytest.raises(ValueError, match=r"^a\.md: "):
+        rank([{"a.md": Score(0.9, MOMENT)}], [], sort="created")
 
 
 def test_pieces_end_at_the_last_blank_line_that_fits() -> None:

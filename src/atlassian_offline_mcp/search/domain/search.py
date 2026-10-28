@@ -11,7 +11,7 @@ import re
 import string
 import unicodedata
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
@@ -183,6 +183,8 @@ FENCE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
 NUMBER = re.compile(r"([0-9]+)")
 # Reciprocal rank fusion's constant: a document's share of a list is 1 / (FUSION + rank).
 FUSION = 60
+# How a search orders what it finds: by relevance, or by a date, newest first.
+Sort = Literal["relevance", "updated", "created"]
 
 
 @dataclass(frozen=True)
@@ -232,6 +234,7 @@ class Score:
 
     relevance: float  # higher is better
     updated: datetime
+    created: datetime | None = None  # by words; a score by meaning has none
 
 
 @dataclass(frozen=True)
@@ -243,8 +246,13 @@ class Filters:
     project: str | None = None
     status: str | None = None
     label: str | None = None
+    issue_type: str | None = None
+    author: str | None = None
+    assignee: str | None = None
     updated_after: datetime | None = None
     updated_before: datetime | None = None
+    created_after: datetime | None = None
+    created_before: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -434,26 +442,34 @@ def tree_key(path: tuple[str, ...]) -> tuple[tuple[str | int, ...], ...]:
     )
 
 
-def rank(
-    scores: Iterable[dict[str, Score]], pinned: Sequence[str], *, by_update: bool
-) -> list[str]:
+def rank(scores: Iterable[dict[str, Score]], pinned: Sequence[str], *, sort: Sort) -> list[str]:
     """Order the documents found: those pinned first, in their order, then the others.
 
-    The others go by their relevance summed over the expressions, or by update time when
-    asked; ties go to the newest update, then the path.
+    The others go by their relevance summed over the expressions, or by the date asked,
+    newest first; ties go to the newest update, then the path. Only scores by words hold
+    the created date: sorting by it a score without one raises ValueError.
     """
     total: dict[str, float] = {}
-    updated: dict[str, datetime] = {}
+    dated: dict[str, Score] = {}  # a score of each document, for its dates
     for found in scores:
         for path, score in found.items():
             total[path] = total.get(path, 0.0) + score.relevance
-            updated[path] = score.updated
+            dated[path] = score
+
+    def key(path: str) -> tuple[float, float, str]:
+        score = dated[path]
+        newest = -score.updated.timestamp()
+        if sort == "relevance":
+            return -total[path], newest, path
+        if sort == "updated":
+            return 0.0, newest, path
+        if score.created is None:
+            message = f"{path}: a score by meaning, which holds no created date"
+            raise ValueError(message)
+        return -score.created.timestamp(), newest, path
+
     first = list(dict.fromkeys(pinned))
-    rest = sorted(
-        (path for path in total if path not in first),
-        key=lambda path: (0.0 if by_update else -total[path], -updated[path].timestamp(), path),
-    )
-    return [*first, *rest]
+    return [*first, *sorted((path for path in total if path not in first), key=key)]
 
 
 def fuse(rankings: Iterable[Sequence[str]], updated: Mapping[str, datetime]) -> list[str]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -11,7 +12,7 @@ import pytest
 from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from tests.answers import built, continuation, follow, parts
-from tests.mirrors import FILLERS, LOREM, MOMENT, issue, location, page
+from tests.mirrors import FILLERS, LOREM, MOMENT, PEOPLE, issue, location, page
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
 
 NEWER = MOMENT + timedelta(days=1)
 HIT = re.compile(r"^\d+\. .*\n {3}(\S+) \|", re.MULTILINE)
+# A hit's ref, and what ends its second line after the mirror date.
+FACTS = re.compile(r"^ {3}(\S+) \| .* \| mirrored \d{4}-\d\d-\d\d \| (.*)$", re.MULTILINE)
 
 
 def refs(answer: str) -> list[str]:
@@ -151,6 +154,7 @@ def test_a_capped_expression_keeps_its_best_and_says_at_least(
     assert parts(answer)[0].startswith("Documents found: at least 3;")
     assert sorted(refs(answer)) == ["197800", "197801", "197802"]
     assert parts(library.search("zeta", sort="updated"))[0].startswith("Documents found: 8;")
+    assert parts(library.search("zeta", sort="created"))[0].startswith("Documents found: 8;")
 
 
 def test_the_best_section_is_judged_without_the_title(tmp_path: Path) -> None:
@@ -255,6 +259,8 @@ def test_an_unknown_value_is_refused_with_the_valid_ones(
         ({"filters": {"updated_after": "yesterday"}}, "updated_after: an ISO 8601 date"),
         ({"filters": {"updated_after": "0001-01-01T00:00:00+05:00"}}, "updated_after: an ISO"),
         ({"filters": {"updated_before": "9999-12-31T23:59:59-05:00"}}, "updated_before: an ISO"),
+        ({"filters": {"created_after": "last week"}}, "created_after: an ISO 8601 date"),
+        ({"filters": {"created_before": "2026-13-01"}}, "created_before: an ISO 8601 date"),
         ({"query": "x" * 501}, "query: at most 500 characters"),
         ({"query": "kafka", "cursor": "8"}, "cursor: give the one"),
         ({"query": "kafka", "cursor": "8@20200101T000000Z"}, "cursor: the index was rebuilt"),
@@ -271,6 +277,130 @@ def test_arguments_that_cannot_be_served_are_refused(
 def test_a_query_without_words_asks_for_words(varied: Library) -> None:
     """Sorting by relevance needs words; the answer says so, without an error."""
     assert "no words to search" in varied.search("***")
+
+
+@pytest.fixture
+def people(tmp_path: Path) -> Library:
+    """Serve the made-up people of PEOPLE, beside the fillers, all created before them."""
+    return built(tmp_path, [(front, None) for front in PEOPLE])
+
+
+@pytest.mark.parametrize(
+    ("filters", "expected"),
+    [
+        ({"issue_type": "bug"}, ["PROJ-1"]),
+        ({"author": "bo sample"}, ["PROJ-1", "196845"]),
+        ({"assignee": "ADA EXAMPLE"}, ["PROJ-3", "PROJ-1"]),
+        ({"assignee": "helene example"}, ["PROJ-2"]),
+        ({"created_after": "2026-10-25"}, ["PROJ-3", "PROJ-1"]),
+        ({"created_after": "2026-10-21", "created_before": "2026-10-25"}, ["PROJ-2", "196845"]),
+        (
+            {"created_after": "2026-10-24", "created_before": "2026-10-25T00:00:01"},
+            ["PROJ-3", "PROJ-1"],
+        ),
+        ({"label": "Résumé"}, ["196845"]),
+        ({"label": "RESUME"}, ["PROJ-3", "PROJ-2"]),
+    ],
+)
+def test_people_and_created_dates_narrow_with_words_or_without(
+    people: Library, filters: dict[str, str], expected: list[str]
+) -> None:
+    """Names match without regard to case or accents, a date is its midnight UTC.
+
+    An author is a page's creator or an issue's reporter. A label equal but for case
+    goes before a more used one equal but for accents.
+    """
+    assert refs(people.search(filters=filters, sort="created")) == expected
+    assert sorted(refs(people.search("broker", filters=filters))) == sorted(expected)
+
+
+@pytest.mark.parametrize(
+    ("filters", "valid"),
+    [
+        ({"assignee": "helene"}, "Hélène Example, Ada Example"),
+        ({"author": "AMPLE"}, "Bo Sample, Ada Example, A Person"),
+        ({"issue_type": "Epic"}, "Bug, Story, Task"),
+        ({"label": "resumé"}, "resume, résumé"),
+    ],
+)
+def test_a_refusal_lists_first_the_values_holding_what_was_given(
+    people: Library, filters: dict[str, str], valid: str
+) -> None:
+    """Without regard to case or accents; else, and within each group, the most used first.
+
+    A value that several have but for accents is refused too, rather than one picked.
+    """
+    with pytest.raises(UnanswerableError) as refused:
+        people.search("broker", filters=filters)
+    assert parts(str(refused.value))[1] == valid
+
+
+def test_sorted_by_created_date_newest_first_with_words_or_without(people: Library) -> None:
+    """Ties to the newest update; with words, the documents named first, every match counted."""
+    newest = ["PROJ-3", "PROJ-1", "PROJ-2", "196845"]
+    assert refs(people.search(sort="created", limit=4)) == newest
+    answer = people.search("broker", sort="created")
+    assert (parts(answer)[0].split(";")[0], refs(answer)) == ("Documents found: 4", newest)
+    assert refs(people.search("196845 broker", sort="created")) == ["196845", *newest[:3]]
+    assert refs(people.search(sort="updated", limit=4)) == ["PROJ-2", "PROJ-3", "PROJ-1", "196845"]
+
+
+@pytest.mark.parametrize("query", ["", "broker"])
+def test_a_listing_by_created_date_continues_by_its_cursor(people: Library, query: str) -> None:
+    """One document a page, each once, in order, with words or without."""
+    answer: str | None = people.search(query, filters={"source": "jira"}, sort="created", limit=1)
+    found = []
+    while answer is not None:
+        found += refs(answer)
+        answer = follow(people, answer)
+    assert found == ["PROJ-3", "PROJ-1", "PROJ-2"]
+
+
+def test_a_name_matches_whole_as_shown_and_the_value_given_first(tmp_path: Path) -> None:
+    """A Hangul name is no other with the same first letters, a kana keeps its voicing.
+
+    Values compare as hits show them, spaces collapsed and composed; of several that
+    look alike, the one given exactly is kept, else the most used. A value matching
+    several but for accents alone, and none but for case, is refused.
+    """
+    library = built(
+        tmp_path,
+        [
+            (
+                issue("PROJ-1", "Broker crash", assignee="에이다 예시", labels=("backend", "café")),
+                None,
+            ),
+            (
+                issue(
+                    "PROJ-2",
+                    "Broker alert",
+                    assignee="Ada\u00a0 Example",
+                    labels=("backend", "cafe"),
+                ),
+                None,
+            ),
+            (issue("PROJ-3", "Broker retention", assignee="はら", labels=("Backend",)), None),
+            (issue("PROJ-4", "Broker upgrade", assignee="Ada Example", labels=("\u2102",)), None),
+        ],
+    )
+    for refused in ({"assignee": "오이디 아시"}, {"assignee": "ばら"}, {"label": "CAFÈ"}):
+        with pytest.raises(UnanswerableError, match=r"^\S+: no document has "):
+            library.search("broker", filters=refused)
+    kept = {
+        "에이다 예시": ["PROJ-1"],
+        "Ada\u00a0 Example": ["PROJ-2"],
+        "ada example": ["PROJ-4"],
+    }
+    for assignee, expected in kept.items():
+        assert refs(library.search(filters={"assignee": assignee}, sort="created")) == expected
+    labels = {
+        "Backend": ["PROJ-3"],
+        "BACKEND": ["PROJ-1", "PROJ-2"],
+        "cafe\u0301": ["PROJ-1"],
+        "c": ["PROJ-4"],  # the double-struck capital C, a capital once decomposed
+    }
+    for label, expected in labels.items():
+        assert refs(library.search(filters={"label": label}, sort="created")) == expected
 
 
 @pytest.mark.parametrize(
@@ -480,7 +610,7 @@ def test_each_tool_shows_the_mirror_date_apart_from_the_others(tmp_path: Path) -
     fetched, created = MOMENT + timedelta(days=3), MOMENT - timedelta(days=10)
     front = page("196845", "Kafka", fetched_at=fetched, created=created, labels=("ops",))
     library = built(tmp_path, [(front, None)])
-    assert "| updated 2026-10-20 21:52 UTC | mirrored 2026-10-23\n" in library.search("kafka")
+    assert "| updated 2026-10-20 21:52 UTC | mirrored 2026-10-23 |" in library.search("kafka")
     first = parts(library.read("196845", max_chars=20))[1]
     for line in ("mirrored: 2026-10-23 21:52 UTC", "created: 2026-10-10 21:52 UTC"):
         assert f"\n{line}\n" in first
@@ -527,7 +657,51 @@ def test_hits_show_a_status_other_than_current(varied: Library) -> None:
     """A page's usual status goes unsaid; an issue's is shown."""
     answer = varied.search("kafka")
     assert "| current" not in answer
-    assert "| Done\n" in answer
+    assert "| Task | Done |" in answer
+
+
+def test_each_hit_ends_its_second_line_with_who_and_when(people: Library) -> None:
+    """An issue's type, status, assignee, author and created day; a page's author and day."""
+    assert dict(FACTS.findall(parts(people.search("broker"))[1])) == {
+        "PROJ-1": "Bug | Done | assignee Ada Example | author Bo Sample | created 2026-10-25",
+        "PROJ-2": (
+            "Task | To Do | assignee Hélène Example | author Ada Example | created 2026-10-22"
+        ),
+        "PROJ-3": "Story | To Do | assignee Ada Example | author A Person | created 2026-10-25",
+        "196845": "author Bo Sample | created 2026-10-21",
+    }
+
+
+def test_a_hit_cuts_each_name_type_and_status_at_60_characters(tmp_path: Path) -> None:
+    """As labels are: 59 characters and an ellipsis."""
+    long = "Long name " * 10
+    front = issue("PROJ-1", "Broker", issue_type=long, status=long, assignee=long, author=long)
+    library = built(tmp_path, [(front, None)])
+    cut = f"{long[:59]}…"
+    assert dict(FACTS.findall(parts(library.search("broker"))[1])) == {
+        "PROJ-1": f"{cut} | {cut} | assignee {cut} | author {cut} | created 2026-10-20"
+    }
+
+
+def test_an_issue_without_assignee_says_so_and_a_work_log_entry_its_status(
+    tmp_path: Path,
+) -> None:
+    """An issue says unassigned, so that none reads it as unknown; an entry has no author."""
+    entry = replace(
+        page("e-0123456789abcdef-2", "Broker notes", status="WAITING"),
+        source="worklog",
+        type="entry",
+        space=None,
+        author=None,
+        version=None,
+        revision="0123456789abcdef",
+        created=MOMENT - timedelta(days=2),
+    )
+    library = built(tmp_path, [(issue("PROJ-8", "Broker rollback"), None), (entry, None)])
+    assert dict(FACTS.findall(parts(library.search("broker"))[1])) == {
+        "PROJ-8": "Task | To Do | unassigned | author A Person | created 2026-10-20",
+        "e-0123456789abcdef-2": "WAITING | created 2026-10-18",
+    }
 
 
 def test_a_document_shows_ten_labels_at_most(tmp_path: Path) -> None:
