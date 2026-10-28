@@ -92,8 +92,10 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
         if list(person.value) != [name for name in PERSON if name in person.value]:
             message = f"{person.path}: fields other than {', '.join(PERSON)}, or out of order"
             raise RepresentationError(message)
-        # Each time read as a field of its own, so that a refusal names its place. An
-        # empty list, which dump never writes, would read as no times at all.
+        # The times go through a Fields of their own, keyed at[0], at[1] and so on, so
+        # that Fields.time reads each strictly and a refusal names its place, as objects
+        # names an entry's. An empty list, which dump never writes, would read as no
+        # times at all.
         at = person.texts("at") if "at" in person.value else None
         if at == ():
             message = f"{person.path}.at: empty"
