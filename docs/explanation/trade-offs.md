@@ -232,9 +232,10 @@ that what read the two keys, a hit's line among them
 - **Cost.** One rewrite: every file of the mirror is written again once, and the index
   rebuilt once, at schema 4
   ([`SCHEMA`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), which
-  embeds nothing new; until then, the server refuses the old index, naming `sync`,
-  which writes the files again before it rebuilds the index, where `index` alone would
-  skip every file of the old format
+  embeds nothing new; until then, the server refuses the old index, naming `sync`, or
+  `mirror` then `index` where no source is configured, which write the files again
+  before they rebuild the index, where `index` alone would skip every file of the old
+  format
   ([`reading`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)). Each
   evaluation's index built before then holds every prune back, the vector store growing
   meanwhile, until `eval` rebuilds it, for each model and chunking still wanted, or

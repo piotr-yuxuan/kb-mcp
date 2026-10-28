@@ -409,11 +409,17 @@ def test_the_environment_s_chunking_replaces_the_file_s(
 
 
 def test_an_index_cut_by_a_chunking_this_version_lacks_is_refused(data: Path) -> None:
-    """Its pieces could be quoted by no unit known here: rebuilt, it is read again."""
+    """Its pieces could be quoted by no unit known here: rebuilt, it is read again.
+
+    The files are not in question, so the command named is ``index`` alone.
+    """
     build(data, counting())
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
         connection.execute("UPDATE meta SET value = 'paragraphs' WHERE name = 'chunking'")
         connection.commit()
-    refused = pytest.raises(UnavailableIndexError, match="not an index that this version reads")
+    refused = pytest.raises(
+        UnavailableIndexError,
+        match=r"this version reads: rebuild it with `atlassian-offline-mcp index`$",
+    )
     with refused, reading(data / "index.sqlite"):
         pass

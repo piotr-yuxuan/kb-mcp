@@ -625,9 +625,11 @@ def reading(path: Path) -> Iterator[Reader]:
     """Open the index at ``path`` read-only, for one use; never write to it.
 
     Raise UnavailableIndexError when there is none, or when this version cannot read it.
-    The latter names ``sync``, not ``index``: a new schema can come with a new format of
-    the mirror's files, which ``index`` would skip, and ``sync`` writes them first.
+    Another schema names ``sync``, or ``mirror`` then ``index`` where no source is
+    configured, not ``index`` alone: a new schema can come with a new format of the
+    mirror's files, which ``index`` would skip, and those write them first.
     """
+    unread = f"{path} is not an index that this version reads: rebuild it with"
     try:
         connection = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
     except sqlite3.OperationalError:
@@ -639,12 +641,16 @@ def reading(path: Path) -> Iterator[Reader]:
             meta = dict(connection.execute(META).fetchall())
         except sqlite3.DatabaseError:
             meta = {}
-        # A chunking that this version lacks would be cut as no table says.
-        if meta.get("schema") != SCHEMA or meta.get("chunking", "") not in {"", *CHUNKINGS}:
+        if meta.get("schema") != SCHEMA:
             message = (
-                f"{path} is not an index that this version reads: rebuild it with"
-                " `atlassian-offline-mcp sync`, which writes the mirror again first"
+                f"{unread} `atlassian-offline-mcp sync`, or, where no source is configured,"
+                " `atlassian-offline-mcp mirror` then `atlassian-offline-mcp index`, which"
+                " write the mirror again first"
             )
+            raise UnavailableIndexError(message)
+        # A chunking that this version lacks would be cut as no table says.
+        if meta.get("chunking", "") not in {"", *CHUNKINGS}:
+            message = f"{unread} `atlassian-offline-mcp index`"
             raise UnavailableIndexError(message)
         yield Reader(connection)
     finally:

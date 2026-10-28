@@ -500,7 +500,8 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
 ) -> None:
     """Plan 006's index, one built before the build id, or before people: never half read.
 
-    The command named writes the mirror's files before the index, as 041 changed them.
+    The commands named write the mirror's files before the index, as 041 changed them:
+    ``sync``, which runs only the sources configured, else ``mirror`` then ``index``.
     """
     write(data / "docs", page("196845", "Kafka"), BODY)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
@@ -509,7 +510,11 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
         connection.execute("DELETE FROM meta WHERE name = 'build'")
     connection.close()
     refused = pytest.raises(
-        UnavailableIndexError, match="rebuild it with `atlassian-offline-mcp sync`, which writes"
+        UnavailableIndexError,
+        match=(
+            "rebuild it with `atlassian-offline-mcp sync`, or, where no source is configured,"
+            " `atlassian-offline-mcp mirror` then `atlassian-offline-mcp index`, which write"
+        ),
     )
     with refused, reading(data / "index.sqlite"):
         pass
