@@ -550,13 +550,19 @@ def test_read_shows_each_role_by_name_and_a_commenter_s_count_and_last_day(
         assert lines[start : start + len(roles) + 1] == [*roles, "created: 2026-10-20 21:52 UTC"]
 
 
-def test_read_names_ten_people_of_a_role_then_how_many_more(tmp_path: Path) -> None:
-    """Each name cut at 60 characters, as on a hit; the line, though long, is not cut."""
+def test_read_names_ten_people_of_a_role_whole_then_how_many_more(tmp_path: Path) -> None:
+    """A name that a hit cuts at 60 characters comes whole; the line, though long, too."""
     names = [f"Person {number:02} {'x' * 60}" for number in range(12)]
-    people = tuple(PersonRole(role="commenter", name=each, at=(CREATED,)) for each in names)
+    people = (
+        PersonRole(role="author", name=names[0]),
+        *(PersonRole(role="commenter", name=each, at=(CREATED,)) for each in names),
+    )
     library = built(tmp_path, [(issue("PROJ-1", "Broker", people=people), None)])
-    shown = "; ".join(f"{each[:59]}… (1, last 2026-10-25)" for each in names[:10])
-    assert f"\ncommenter: {shown}; 2 more\n" in parts(library.read("PROJ-1"))[1]
+    assert f"| author {names[0][:59]}… |" in library.search("broker")
+    shown = "; ".join(f"{each} (1, last 2026-10-25)" for each in names[:10])
+    read = parts(library.read("PROJ-1"))[1]
+    assert f"\nauthor: {names[0]}\n" in read
+    assert f"\ncommenter: {shown}; 2 more\n" in read
 
 
 def test_no_answer_holds_an_account_id(commented: Library, tmp_path: Path) -> None:
