@@ -62,7 +62,11 @@ class Source:
 
 @dataclass(frozen=True)
 class Document:
-    """One document of the work log: what the mirror says of it, and what pandoc converts."""
+    """One document of the work log: what the mirror says of it, and what pandoc converts.
+
+    ``people`` names its participants as written; ``links`` holds each relation to another
+    document of the work log and that document's id, such as a meeting's ``transcript``.
+    """
 
     type: str  # entry or transcript
     id: str
@@ -70,19 +74,21 @@ class Document:
     status: str
     labels: tuple[str, ...]
     breadcrumb: tuple[str, ...]
+    people: tuple[str, ...]
+    links: tuple[tuple[str, str], ...]
     text: str  # pandoc's input
     events: tuple[datetime, ...]
-    day: datetime | None  # a transcript's day, at midnight UTC
+    start: datetime | None  # when a dated transcript began, in UTC
     source: Source
 
     def dates(self, created: datetime | None) -> tuple[datetime, datetime]:
         """Return when it was created and last updated.
 
-        A transcript's day, else its earliest and latest events; without any, its file's
+        Its start, else its earliest and latest events; without any, its file's
         modification time, created being ``created``, the existing file's, when given.
         """
-        if self.day is not None:
-            return self.day, self.day
+        if self.start is not None:
+            return self.start, self.start
         if self.events:
             return min(self.events), max(self.events)
         return created or self.source.fetched_at, self.source.fetched_at
@@ -137,11 +143,13 @@ def entries(todo: Source | None, archive: Source | None, *, archives: bool) -> l
                     status=subtree.heading.keyword or CURRENT,
                     labels=tuple(dict.fromkeys(labels)),
                     breadcrumb=(source.path.name,),
+                    people=(),
+                    links=(),
                     text=org.pandoc_input(
                         parsed.declarations, subtree.lines, parsed.keywords, archives=archives
                     ),
                     events=source.events(subtree.lines),
-                    day=None,
+                    start=None,
                     source=source,
                 )
             )
@@ -197,11 +205,13 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
                     dict.fromkeys([*parsed.filetags, *([org.ARCHIVE] if archived else [])])
                 ),
                 breadcrumb=source.path.parts[:-1],
+                people=(),
+                links=(),
                 text=org.pandoc_input(
                     parsed.declarations, parsed.lines, parsed.keywords, archives=archives
                 ),
                 events=source.events(parsed.lines),
-                day=named[0][1] if named else None,
+                start=named[0][1] if named else None,
                 source=source,
             )
         )

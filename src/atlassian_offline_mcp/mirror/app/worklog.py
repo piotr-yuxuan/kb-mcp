@@ -24,7 +24,7 @@ from atlassian_offline_mcp.mirror.adapters.markdown import WORKLOG, documents, d
 from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes, sync, worklog_owned
 from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
 from atlassian_offline_mcp.mirror.app.mirror import CONVERSION_DURATION, DOCUMENTS, Problem
-from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 from atlassian_offline_mcp.mirror.domain.mirror_layout import one_line, worklog_path
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.sources.worklog.adapters import files
@@ -44,6 +44,8 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.sources.worklog.domain.worklog import Document, Source
 
 SOURCE = "worklog"
+# The role of the people that a work-log document names.
+PARTICIPANT = "participant"
 TRACER = trace.get_tracer(__name__)
 
 
@@ -188,8 +190,12 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                 status=one_line(document.status),
                 issue_type=None,
                 labels=tuple(one_line(label) for label in document.labels),
-                people=(),
-                links=(),
+                people=tuple(
+                    PersonRole(role=PARTICIPANT, name=name)
+                    for name in dict.fromkeys(one_line(each) for each in document.people)
+                    if name
+                ),
+                links=tuple(Link(relation=relation, ref=ref) for relation, ref in document.links),
                 created=created,
                 updated=updated,
                 version=None,
