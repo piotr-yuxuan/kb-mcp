@@ -4,10 +4,15 @@ The expectations come from the plan's "Documents and their identity" and "Front 
 and conversion", and from org's own syntax: a title is a heading without its keyword,
 priority, tags and statistics cookies; ids are digests of what the plan names, kept when
 an entry is closed, retagged, ticked or archived. Generated cases are enumerated.
+
+Plan 042's outline, days' titles and links to files are expected as org's own parser
+reads the same made-up lines (Emacs 31.1, ``org-element``), and its archiving writes
+``:ARCHIVE_OLPATH:``.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import itertools
 import re
@@ -257,6 +262,214 @@ def test_pandoc_reads_the_settings_then_the_document_without_comment() -> None:
         "** Sub",
     ]
     assert "arch:t " in org.pandoc_input([], [], set(), archives=True)
+
+
+# A journal as the work log holds one, made up: a day with a note, a meeting with its
+# sections and their task, a task of the day, then a condensed range.
+JOURNAL = (
+    "* Entries\n"
+    "The journal's own line.\n"
+    "** <2026-10-27 Tue>\n"
+    "A note of the day.\n"
+    "*** Payments stand-up\n"
+    ":PROPERTIES:\n"
+    ":MEETING: [[./meetings/2026-10-27 Tue/1.org]]\n"
+    ":END:\n"
+    "**** Summary\n"
+    "**** Actions\n"
+    "***** TODO Send the rollback figures\n"
+    "*** WAITING Book a room\n"
+    "** From <2026-10-05 Mon> to <2026-10-09 Fri> (summary)\n"
+    "Condensed.\n"
+)
+MEETING = (
+    "*** Payments stand-up",
+    ":PROPERTIES:",
+    ":MEETING: [[./meetings/2026-10-27 Tue/1.org]]",
+    ":END:",
+    "**** Summary",
+    "**** Actions",
+    "***** TODO Send the rollback figures",
+)
+
+
+def test_children_split_at_the_next_level_only() -> None:
+    """The journal's are a day and a range, the day's a meeting and a task; sections stay."""
+    parsed = org.read(DECLARED + JOURNAL)
+    (journal,) = parsed.subtrees
+    assert journal.own == ("* Entries", "The journal's own line.")
+    day, condensed = journal.children(parsed.keywords)
+    assert (day.heading.level, day.own) == (2, ("** <2026-10-27 Tue>", "A note of the day."))
+    assert condensed.own == condensed.lines
+    assert condensed.lines[1:] == ("Condensed.",)
+    assert condensed.children(parsed.keywords) == ()
+    meeting, task = day.children(parsed.keywords)
+    assert meeting.lines == MEETING
+    assert meeting.properties == {"MEETING": "[[./meetings/2026-10-27 Tue/1.org]]"}
+    assert [each.heading.title for each in meeting.children(parsed.keywords)] == [
+        "Summary",
+        "Actions",
+    ]
+    assert (task.heading.level, task.heading.keyword, task.lines) == (
+        3,
+        "WAITING",
+        ("*** WAITING Book a room",),
+    )
+
+
+def test_a_child_ends_at_the_next_heading_of_its_level_or_higher() -> None:
+    """As org's parser has it: *** B under * A is a child of A, and so is the ** C after it."""
+    (top,) = org.read("* A\nown\n*** B\n**** B1\n** C\n*** C1\n").subtrees
+    assert [child.lines for child in top.children(KEYWORDS)] == [
+        ("*** B", "**** B1"),
+        ("** C", "*** C1"),
+    ]
+
+
+def test_generated_outlines_split_into_own_lines_then_children() -> None:
+    """Each child holds deeper headings alone, and is no deeper than the one before it."""
+    for levels in itertools.chain.from_iterable(
+        itertools.product((2, 3, 4), repeat=count) for count in range(6)
+    ):
+        written = [line for level in levels for line in (f"{'*' * level} Heading", "text")]
+        (top,) = org.read("\n".join(["* Top", "text", *written])).subtrees
+        children = top.children(KEYWORDS)
+        assert top.own == ("* Top", "text"), levels
+        assert (*top.own, *(line for child in children for line in child.lines)) == top.lines
+        for child in children:
+            inner = [org.heading(line, KEYWORDS) for line in child.lines[1:]]
+            assert all(each.level > child.heading.level for each in inner if each), levels
+        for before, after in itertools.pairwise(children):
+            assert after.heading.level <= before.heading.level, levels
+
+
+def test_shifting_moves_the_stars_alone() -> None:
+    """Up or down, a heading keeps its keyword, priority, COMMENT, title and tags as written."""
+    for depth, gap, keyword, priority, comment, tags, level in itertools.product(
+        (1, 3, 5),
+        (" ", " \t"),
+        (None, "WAITING"),
+        (None, "[#A]"),
+        (False, True),
+        TAG_SETS,
+        (1, 2, 4),
+    ):
+        words = [keyword, priority, "COMMENT" if comment else None, "Review  [1/3]"]
+        line = f"{'*' * depth}{gap}{' '.join(word for word in words if word)}"
+        line += f"   :{':'.join(tags)}: " if tags else " "
+        lines = [line, ":PROPERTIES:", "*bold* text", " * indented", f"{'*' * (depth + 2)} Child"]
+        moved = org.shifted(lines, level)
+        assert moved == [
+            f"{'*' * level}{line.lstrip('*')}",
+            ":PROPERTIES:",
+            "*bold* text",
+            " * indented",
+            f"{'*' * (level + 2)} Child",
+        ], line
+        before, after = org.heading(line, KEYWORDS), org.heading(moved[0], KEYWORDS)
+        assert before is not None
+        assert after == dataclasses.replace(before, level=level), line
+
+
+def test_a_meeting_shifted_begins_at_level_one() -> None:
+    """Its sections then at level 2, and their task at level 3."""
+    assert org.shifted(MEETING) == [
+        "* Payments stand-up",
+        ":PROPERTIES:",
+        ":MEETING: [[./meetings/2026-10-27 Tue/1.org]]",
+        ":END:",
+        "** Summary",
+        "** Actions",
+        "*** TODO Send the rollback figures",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("<2026-10-28 Wed>", datetime(2026, 10, 28, tzinfo=UTC)),
+        ("<2026-10-28>", datetime(2026, 10, 28, tzinfo=UTC)),
+        ("<2026-10-28 mer.>", datetime(2026, 10, 28, tzinfo=UTC)),
+        ("<2026-10-28 Mon>", datetime(2026, 10, 28, tzinfo=UTC)),
+        ("<2026-10-28 Wed 10:00>", None),
+        ("[2026-10-28 Wed]", None),
+        ("<2026-02-30 Mon>", None),
+        ("<2026-10-28 Wed +1w>", None),
+        ("<2026-10-27 Tue>--<2026-10-28 Wed>", None),
+        ("<2026-10-28 Wed> Retro", None),
+        ("From <2026-10-05 Mon> to <2026-10-09 Fri> (summary)", None),
+        ("Entries", None),
+    ],
+)
+def test_a_day_is_one_active_timestamp_of_a_date_alone(
+    title: str, expected: datetime | None
+) -> None:
+    """Its day's name optional and unchecked, as org has it; a time or repeater is no day."""
+    assert org.date_title(title) == expected
+
+
+def test_a_day_is_read_from_a_heading_or_an_archived_outline_path() -> None:
+    """A heading's title; a part of the :ARCHIVE_OLPATH: that org writes, cookies left out."""
+    day = datetime(2026, 10, 27, tzinfo=UTC)
+    found = org.heading("** <2026-10-27 Tue> [1/2] :day:", KEYWORDS)
+    assert found is not None
+    assert org.date_title(found.title) == day
+    path = "Entries/<2026-10-27 Tue>/Payments stand-up/Actions"
+    assert [org.date_title(part) for part in path.split("/")] == [None, day, None, None]
+
+
+def test_generated_days_read_back_as_written() -> None:
+    """Any date, written as org writes a day's heading, reads back at midnight UTC."""
+    start = datetime(1990, 1, 1, tzinfo=UTC)
+    for number in range(500):
+        day = start + timedelta(days=number * 61)  # a prime, so that months and days vary
+        name = DAY_NAMES[number % len(DAY_NAMES)]
+        assert org.date_title(f"<{day:%Y-%m-%d} {name}>") == day, day
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("[[./meetings/2026-10-27 Tue/1.org]]", "meetings/2026-10-27 Tue/1.org"),
+        ("[[./meetings/2026-10-27 Tue/1.org][Transcript]]", "meetings/2026-10-27 Tue/1.org"),
+        ("[[file:transcripts/current/1.org][Transcript]]", "transcripts/current/1.org"),
+        ("[[file:./meetings/1.org]]", "meetings/1.org"),
+        ("[[file+sys:meetings/1.org]]", "meetings/1.org"),
+        ("[[file:meetings/1.org::*Notes]]", "meetings/1.org"),
+        ("[[./meetings/1.org::12]]", "meetings/1.org"),
+        ("file:meetings/1.org", "meetings/1.org"),
+        ("./meetings/2026-10-27 Tue/1.org", "meetings/2026-10-27 Tue/1.org"),
+        ("meetings/2026-10-27 Tue/1.org", "meetings/2026-10-27 Tue/1.org"),
+    ],
+)
+def test_a_link_to_a_file_gives_its_path(value: str, expected: str) -> None:
+    """In brackets, typed file: or from ./, or alone; its description and search left out."""
+    assert org.link_target(value) == PurePosixPath(expected)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "[[../meetings/1.org]]",
+        "[[./meetings/../1.org]]",
+        "[[file:../1.org]]",
+        "../meetings/1.org",
+        "[[/srv/meetings/1.org]]",
+        "[[file:/srv/meetings/1.org]]",
+        "/srv/meetings/1.org",
+        "[[~/meetings/1.org]]",
+        "~/meetings/1.org",
+        "[[meetings/1.org]]",
+        "[[https://meet.example.invalid/abc][Recording]]",
+        "https://meet.example.invalid/abc",
+        "[[id:6f1c]]",
+        "[[./]]",
+        "",
+    ],
+)
+def test_a_link_through_dot_dot_absolute_or_to_no_file_gives_none(value: str) -> None:
+    """Up a folder, from the root or a home folder; another type, or a search for a heading."""
+    assert org.link_target(value) is None
 
 
 def test_entry_ids_follow_id_then_created_then_title() -> None:

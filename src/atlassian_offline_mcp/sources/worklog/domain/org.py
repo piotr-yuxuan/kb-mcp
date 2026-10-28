@@ -1,17 +1,20 @@
 """Org's syntax, as the work log needs it: no other module knows it.
 
 It reads a file's settings (the keywords it declares, ``#+TITLE``, ``#+FILETAGS``), its
-headings (stars, keyword, priority, ``COMMENT``, title, statistics cookies, tags), a
-heading's property drawer and planning line, and timestamps; and it writes what pandoc
-reads for one document. It reads leniently: a line that matches no rule is text, and a
-timestamp that names no real day or time is none.
+headings (stars, keyword, priority, ``COMMENT``, title, statistics cookies, tags), its
+outline (a heading's own lines, then its children), a heading's property drawer and
+planning line, timestamps, a day's title and a link to a file; and it writes what pandoc
+reads for one document, its headings moved to another level. It reads leniently: a line
+that matches no rule is text, and a timestamp that names no real day or time is none.
 """
 
 from __future__ import annotations
 
+import contextlib
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -40,13 +43,27 @@ PLANNING = re.compile(r"[ \t]*(?:SCHEDULED|DEADLINE|CLOSED):")
 DRAWER_START = ":PROPERTIES:"
 DRAWER_END = ":END:"
 PROPERTY = re.compile(r"[ \t]*:([^:\s]+):(?:[ \t]+(.*?))?[ \t]*")
-# An active or inactive timestamp: a date, a day's name in any language, a time or a
-# range of times within the day, then repeaters and warnings.
+# A timestamp's date, then a day's name in any language, which org does not check.
+DATE = r"([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[ \t]+[^\s\d<>\[\]+-]+)?"
+# An active or inactive timestamp: a date, a time or a range of times within the day,
+# then repeaters and warnings.
 TIMESTAMP = re.compile(
-    r"[<\[]([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[ \t]+[^\s\d<>\[\]+-]+)?"
+    rf"[<\[]{DATE}"
     r"(?:[ \t]+([0-9]{1,2}):([0-9]{2})(?:-[0-9]{1,2}:[0-9]{2})?)?"
     r"(?:[ \t]+[.+]?[+-][0-9]+[hdwmy](?:/[0-9]+[hdwmy])?)*[ \t]*[>\]]"
 )
+# A day's title: one active timestamp of a date alone, such as <2026-10-28 Wed>.
+DAY_TITLE = re.compile(rf"<{DATE}>")
+# A link in brackets, its description optional: its target, which holds no bracket.
+BRACKET_LINK = re.compile(r"\[\[([^\[\]]+)\](?:\[.*\])?\]")
+# A link's type, before its path, such as https: or file:; then those of a link to a file.
+LINK_TYPE = re.compile(r"([a-z][a-z0-9+-]*):")
+FILE_TYPES = frozenset({"file", "file+sys", "file+emacs"})
+# How an untyped target in brackets begins when org reads it as a file; any other target
+# is a search for a heading.
+FILE_TARGETS = ("./", "../", "/", "~")
+# What follows a file link's path when it holds a search within the file, as ::*Heading.
+SEARCH = "::"
 # What pandoc reads before a document: subtrees tagged noexport kept, drawers and planning
 # lines kept, headings to level 6, _, ^ and -- as written, archived subtrees as asked.
 EXCLUDE_TAGS = "#+EXCLUDE_TAGS:"
@@ -111,7 +128,10 @@ def heading(line: str, keywords: Collection[str]) -> Heading | None:
 
 @dataclass(frozen=True)
 class Subtree:
-    """A top-level heading and the lines below it, up to the next top-level heading."""
+    """A heading and the lines below it, up to the next heading of its level or higher.
+
+    ``read`` gives a file's top-level subtrees, and ``children`` the subtrees below one.
+    """
 
     heading: Heading
     lines: tuple[str, ...]  # its heading's line first
@@ -133,6 +153,31 @@ class Subtree:
             if match:
                 found[match[1].upper()] = match[2] or ""
         return {}
+
+    @property
+    def own(self) -> tuple[str, ...]:
+        """Return its heading's line and the lines that follow it, up to its first child."""
+        first_child = next(
+            (index for index, line in enumerate(self.lines[1:], 1) if HEADING.fullmatch(line)),
+            len(self.lines),
+        )
+        return self.lines[:first_child]
+
+    def children(self, keywords: Collection[str]) -> tuple[Subtree, ...]:
+        """Return its children in order: the subtrees of the headings below its own lines.
+
+        As org reads an outline, a child holds the lines up to the next heading of its
+        level or higher, so that a grandchild stays in its child, and a heading two levels
+        down with none between is a child. ``keywords`` are the file's.
+        """
+        found: list[tuple[Heading, list[str]]] = []
+        for line in self.lines[1:]:
+            child = heading(line, keywords)
+            if child is not None and (not found or child.level <= found[-1][0].level):
+                found.append((child, [line]))
+            elif found:
+                found[-1][1].append(line)
+        return tuple(Subtree(first, tuple(rest)) for first, rest in found)
 
 
 @dataclass(frozen=True)
@@ -198,6 +243,22 @@ def read(text: str, inherited: OrgFile | None = None) -> OrgFile:
     )
 
 
+def shifted(lines: Sequence[str], level: int = 1) -> list[str]:
+    """Return a subtree's lines, its headings moved so that its first is at ``level``.
+
+    Each heading moves by as many levels as the first, so that a subtree, or a heading's
+    own lines and some of its children, keep their shape; no heading may be above the
+    first. Only the stars change: a heading keeps its keyword, priority, ``COMMENT``,
+    title and tags as written, and the other lines are left alone.
+    """
+    found = [HEADING.fullmatch(line) for line in lines]
+    first = next((stars.end(1) for stars in found if stars), level)
+    return [
+        line if stars is None else "*" * (stars.end(1) - first + level) + line[stars.end(1) :]
+        for line, stars in zip(lines, found, strict=True)
+    ]
+
+
 def timestamps(lines: Iterable[str]) -> list[datetime]:
     """Return the moment of each timestamp in the lines, read as UTC, as written.
 
@@ -212,6 +273,43 @@ def timestamps(lines: Iterable[str]) -> list[datetime]:
             except ValueError:
                 continue
     return found
+
+
+def date_title(title: str) -> datetime | None:
+    """Return the day that a title names, at midnight UTC, or None when it names none.
+
+    A day's title is one active timestamp of a date alone, its day's name optional, such
+    as ``<2026-10-28 Wed>``: a heading's ``title``, or a part of the ``:ARCHIVE_OLPATH:``
+    that org writes when it archives a subtree. A time, a repeater, an inactive
+    timestamp, other words, or a date that is no real day make none.
+    """
+    match = DAY_TITLE.fullmatch(title)
+    if match is not None:
+        with contextlib.suppress(ValueError):  # <2026-02-30 Mon> names no day
+            return datetime(int(match[1]), int(match[2]), int(match[3]), tzinfo=UTC)
+    return None
+
+
+def link_target(value: str) -> PurePosixPath | None:
+    """Return the file that a link names, relative to the folder of the file that holds it.
+
+    The link is as org writes one to a file, ``[[./path]]`` or ``[[file:path][text]]``,
+    or a path alone, after ``file:`` or not; a search after ``::`` is not part of the
+    path. None for a link of another type, such as ``https:``; for an untyped target in
+    brackets that org reads as a search for a heading, ``[[path]]``; and for a path that
+    is absolute, from a home folder (``~``), through ``..``, or empty.
+    """
+    bracket = BRACKET_LINK.fullmatch(value)
+    target = bracket[1] if bracket else value
+    kind = LINK_TYPE.match(target)
+    if kind is not None and kind[1] not in FILE_TYPES:
+        return None
+    if bracket and kind is None and not target.startswith(FILE_TARGETS):
+        return None
+    path = PurePosixPath((target[kind.end() :] if kind else target).partition(SEARCH)[0])
+    if not path.parts or path.is_absolute() or path.parts[0].startswith("~") or ".." in path.parts:
+        return None
+    return path
 
 
 def pandoc_input(
