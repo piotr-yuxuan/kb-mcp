@@ -183,10 +183,12 @@ def test_an_account_and_people_are_left_out_when_the_source_has_none() -> None:
             r"people\[0\]: at: only and always for a commenter",
         ),
         (
-            "at: ['2026-10-21T08:00:00Z']}",
-            "at: []}",
+            "account: account-1, at: ['2026-10-21T08:00:00Z']}",
+            "account: account-1}",
             r"people\[4\]: at: only and always for a commenter",
         ),
+        ("at: ['2026-10-21T08:00:00Z']}", "at: []}", r"people\[4\]\.at: empty"),
+        ("account: account-1}", "account: account-1, at: []}", r"people\[0\]\.at: empty"),
         (
             "'2026-10-21T08:00:00Z']}",
             "'2026-10-21T10:00:00+02:00']}",

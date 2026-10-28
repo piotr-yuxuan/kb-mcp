@@ -69,7 +69,7 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
     """Read a document written by ``dump``: its front matter and its body.
 
     Any other key, order or type is refused, naming ``path`` and the key, as is a
-    person's field other than ``PersonRole``'s, or out of their order.
+    person's field other than ``PersonRole``'s, out of their order, or an empty ``at``.
     """
     end = text.find(CLOSING, len(OPENING) - 1)
     if not text.startswith(OPENING) or end < 0:
@@ -88,9 +88,13 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
         if list(person.value) != [name for name in PERSON if name in person.value]:
             message = f"{person.path}: fields other than {', '.join(PERSON)}, or out of order"
             raise RepresentationError(message)
-        # Each time read as a field of its own, so that a refusal names its place.
-        at = person.texts("at") if "at" in person.value else ()
-        times = Fields({f"at[{index}]": text for index, text in enumerate(at)}, person.path)
+        # Each time read as a field of its own, so that a refusal names its place. An
+        # empty list, which dump never writes, would read as no times at all.
+        at = person.texts("at") if "at" in person.value else None
+        if at == ():
+            message = f"{person.path}.at: empty"
+            raise RepresentationError(message)
+        times = Fields({f"at[{index}]": text for index, text in enumerate(at or ())}, person.path)
         with person.refusals():
             people.append(
                 PersonRole(
