@@ -56,7 +56,7 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.search.adapters.sqlite_index import Reader
     from atlassian_offline_mcp.search.app.meaning import Meaning
     from atlassian_offline_mcp.search.app.reranking import Reranking
-    from atlassian_offline_mcp.search.domain.search import Entry, Plan
+    from atlassian_offline_mcp.search.domain.search import Entry, Plan, Sort
 
 SEARCH_LIMIT = 8
 SEARCH_LIMITS = (1, 50)
@@ -132,7 +132,7 @@ class Asked:
     query: str
     planned: Plan
     filters: Filters
-    by_update: bool
+    sort: Sort
     mode: Mode
     order: tuple[int, ...] | None = None  # the order that a cursor carries: None, none yet
 
@@ -141,22 +141,22 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
     """Rank the documents for a query in a mode; documents it names by identifier first.
 
     Lexical: by words, as 006 ranks. Semantic: the nearest by meaning. Hybrid: both,
-    fused by reciprocal rank. Sorted by update, or with no meaning to search, by words,
+    fused by reciprocal rank. Sorted by a date, or with no meaning to search, by words,
     with a note saying why, which is the warning ``search.fallback``, counted in
     ``aom.serve.fallbacks``. A document is shown by meaning when that ranks it higher.
     The search by words is the span ``search.lexical``, by meaning ``search.semantic``.
     """
-    planned, filters, by_update = asked.planned, asked.filters, asked.by_update
+    planned, filters, by_date = asked.planned, asked.filters, asked.sort != "relevance"
     with TRACER.start_as_current_span("search.lexical"):
-        found = [reader.scores(each, filters, every=by_update) for each in planned.expressions]
+        found = [reader.scores(each, filters, every=by_date) for each in planned.expressions]
         named = [*planned.identifiers.keys, *planned.identifiers.ids]
         keys, ids = planned.identifiers.keys, planned.identifiers.ids
         pinned = reader.entries(keys=keys, ids=ids, filters=filters)
         ordered = sorted(pinned, key=lambda e: named.index(e.front.key or e.front.id))
         first = [entry.path for entry in ordered]
-        words = rank((one for one, _ in found), first, by_update=by_update)
+        words = rank((one for one, _ in found), first, sort=asked.sort)
         whole = all(every for _, every in found)
-    if asked.mode == "lexical" or by_update:
+    if asked.mode == "lexical" or by_date:
         return Ranking(words, whole, {}, pinned=len(first))
     with TRACER.start_as_current_span("search.semantic"):
         near = meaning.nearest(reader, asked.query, filters) if meaning else Nearest({}, NOT_SET_UP)
@@ -166,7 +166,7 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
         note = f" Ranked by words alone: {near.reason}."
         return Ranking(words, whole, {}, note=note, pinned=len(first))
     scores = {path: score for path, (score, *_) in near.found.items()}
-    by_meaning = rank([scores], first, by_update=False)
+    by_meaning = rank([scores], first, sort="relevance")
     shown = {path: tuple(where) for path, (_, *where) in near.found.items()}
     if asked.mode == "semantic":
         counted = "nearest in meaning"
@@ -274,10 +274,10 @@ def reranked(reader: Reader, asked: Asked, ranked: Ranking, reranking: Reranking
     not, and asks nothing. A first page asks the reranking server about the next
     documents, each by its title, the heading of its section and BODY characters about
     its best place (``place_of``); with fewer than two, it asks nothing. A reranking that
-    fails keeps the order given, and the note says why. Sorted by update, nothing moves.
+    fails keeps the order given, and the note says why. Sorted by a date, nothing moves.
     Raises UnanswerableError for a cursor whose order passes the documents now found.
     """
-    if asked.by_update or (asked.order is None and reranking is None):
+    if asked.sort != "relevance" or (asked.order is None and reranking is None):
         return ranked
     start = ranked.pinned
     order = asked.order
@@ -470,23 +470,23 @@ class Library:
         """
         given = checked(filters)
         bounded(query=(query, LONGEST["query"]), cursor=(cursor, LONGEST["cursor"]))
-        planned, by_update = plan(query), sort == "updated"
+        planned = plan(query)
         with self._reading() as reader:
             built_at = reader.built_at()
             (offset, order), size = continued(cursor, built_at), clamp(limit, SEARCH_LIMITS)
             kept = narrowed(reader, given)
-            if not planned.words and not by_update:
+            if not planned.words and sort == "relevance":
                 return responses.answer(NO_WORDS)
             ranked = Ranking([], whole=True, meaning={})
             if planned.words:
-                asked = Asked(query, planned, kept, by_update, self._mode, order)
+                asked = Asked(query, planned, kept, sort, self._mode, order)
                 first = ranking(reader, self._meaning, asked)
                 ranked = reranked(reader, asked, first, self._reranking)
                 total, whole = len(ranked.paths), ranked.whole
                 paths = ranked.paths[offset : offset + size]
                 shown = sorted(reader.entries(paths=paths), key=lambda e: paths.index(e.path))
             else:
-                (total, shown), whole = reader.recent(kept, offset, size), True
+                (total, shown), whole = reader.recent(kept, sort, offset, size), True
             # On the call's span, the SDK's: the mode, the documents found, whether words
             # stood in for meaning. Said here, as the docstring is the agent's to read.
             trace.get_current_span().set_attributes(
@@ -555,7 +555,7 @@ class Library:
             built_at = reader.built_at()
             offset, order = continued(cursor, built_at)
             kept = narrowed(reader, given)
-            asked = Asked(question, planned, kept, by_update=False, mode=mode, order=order)
+            asked = Asked(question, planned, kept, sort="relevance", mode=mode, order=order)
             if not planned.words:
                 return responses.answer(NO_QUESTION), [], Ranking([], whole=True, meaning={})
             ranked = reranked(reader, asked, ranking(reader, self._meaning, asked), self._reranking)
@@ -612,7 +612,7 @@ class Library:
         """
         planned = plan(query)
         with self._reading() as reader:
-            asked = Asked(query, planned, Filters(), by_update=False, mode=mode)
+            asked = Asked(query, planned, Filters(), sort="relevance", mode=mode)
             ranked = reranked(reader, asked, ranking(reader, self._meaning, asked), self._reranking)
             entries = {entry.path: entry for entry in reader.entries(paths=ranked.paths[:limit])}
             shown = []
