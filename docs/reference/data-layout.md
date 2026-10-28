@@ -363,6 +363,34 @@ masked: a colleague renamed between two fetches appears under two names, with on
 account id. `FrontMatter.author` and `FrontMatter.assignee` name the one person of that
 role, or nobody.
 
+Names, and the account ids beside them, are personal data, kept wherever the content
+is:
+
+- `<data>/raw/`, the responses as the site gave them: an issue's reporter, creator,
+  assignee and comments' authors, by name and account id, in `issue.json` and
+  `comments.json`; Confluence's authors by account id, named in `users.json`; and a
+  person's email address wherever the site gives one, which the adapters leave behind;
+- `<data>/docs/`: `people`, by name and account id; each comment's heading, by name;
+  and whatever a body says;
+- `<data>/conversions.sqlite`: the bodies' Markdown, the comments' headings in it;
+- `<data>/index.sqlite`, and each index under `<data>/eval/indexes/`: the column and
+  the table `people`, by name and account id, and the bodies' words;
+- the texts sent to the embedding endpoint, on this machine unless a run is given
+  `--allow-remote-embeddings`, and to the reranking server when it is on, which are
+  pieces of the bodies; `<data>/vectors.sqlite` keeps vectors under a digest, never a
+  text;
+- the log folder, for 30 days: `serve.call` gives each tool call's arguments at DEBUG,
+  a name given to a filter or in a query among them;
+- the folder given to `eval-agents` by `--out`, whose calls and answers hold what the
+  server answered.
+
+The MCP server serves no entry's `account` (`mcp.app.responses.metadata`); the files
+that agents may read hold it. Deleting `<data>/docs/` and `<data>/index.sqlite` removes
+the people from all that agents and the server read, until the next `mirror` and
+`index`, or `sync`, write them again from the raw store. Deleting every copy is deleting
+the data directory, the log folder and the folders of `eval-agents`, after which the
+mirror is downloaded again, as from a first run.
+
 ### Pandoc's conversions
 
 Owned by `mirror.adapters.conversions`, which `mirror`, and `sync`'s step of Confluence
@@ -464,8 +492,9 @@ and `SCHEMA` stays 3. Schema 4 (041) replaces the columns `author` and `assignee
 its front matter back whole; and adds the table `people`, one row per person and role,
 and a commenter's one per comment with its time in `at` (null for the other roles),
 indexed by role and name, which the filters by person read. Each person is so in the
-index twice, as each label is. No piece's text holds a person, so a build that only
-people change embeds nothing new. An index of another schema is
+index twice, as each label is. No piece's text holds the front matter's people
+(`search.domain.chunking`), so a build over files of which only `people` changed embeds
+nothing new. An index of another schema is
 refused with the command that rebuilds it. The MCP server opens it read-only, never
 writes, and reopens it when the file is replaced; it searches by meaning with the model
 that the index names, and only while the endpoint's fingerprint for it is the index's.
