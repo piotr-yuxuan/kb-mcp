@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import stat
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -23,7 +24,7 @@ from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from tests.reference import STANDARD
 from tests.samples import v2_page, v2_space, v2_view
 from tests.test_cli import logged_as
-from tests.test_mirror import FETCHED, SPACE_ID, listing_page, page_responses
+from tests.test_mirror import FETCHED, SPACE_ID, Sandbox, listing_page, page_responses
 from tests.test_observed import said
 
 if TYPE_CHECKING:
@@ -250,6 +251,37 @@ def test_a_damaged_cache_is_replaced_and_the_mirror_converts_everything(
     assert sorted(path.name for path in cache.parent.glob(f"{cache.name}*")) == [cache.name]
     assert main(arguments(home)) == 0
     assert "converted by pandoc: 0\nreused from the cache: 3\n" in capsys.readouterr().out
+
+
+def test_a_new_pandoc_converts_again_and_writes_the_bytes_of_a_mirror_from_no_cache(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 039, criterion 6: pandoc's version line changed, as a fake pandoc plays it.
+
+    It writes its version line before its input, so that two versions give two files.
+    The mirror from no cache runs in another data folder, over a copy of the raw store.
+    """
+    version = home / "version"
+    version.write_text("pandoc 1\n", "utf-8")
+    script = f'case "$1" in --version) cat "{version}";; *) cat "{version}" -;; esac'
+    folder = fake_pandoc(home / "bin", script)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    store = RawStore(home / "data" / "raw")
+    with store.writing():
+        store.put_space(v2_space(id=SPACE_ID), [listing_page("100", "Home", None, None)], [], [])
+        store.put(Page, page_responses("100", "Home", 1, "<p>Home.</p>", []), FETCHED, {})
+    assert main(arguments(home)) == 0
+    version.write_text("pandoc 2\n", "utf-8")
+    capsys.readouterr()
+    assert main(arguments(home)) == 0
+    # Home's file and the space's tree.
+    assert "converted by pandoc: 2\nreused from the cache: 0\n" in capsys.readouterr().out
+    tree = home / "data" / "docs" / "confluence" / "MFS" / "_tree.md"
+    assert tree.read_text("utf-8").startswith("pandoc 2\n")
+    fresh = home / "fresh"
+    shutil.copytree(store.root, fresh / "data" / "raw")
+    assert main(arguments(fresh)) == 0
+    assert Sandbox(home / "data").files() == Sandbox(fresh / "data").files()
 
 
 def test_pandoc_runs_sandboxed_on_its_standard_input(home: Path, monkeypatch: MonkeyPatch) -> None:
