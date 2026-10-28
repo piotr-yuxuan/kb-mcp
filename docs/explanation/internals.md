@@ -186,8 +186,8 @@ with an id that org's own edits leave alone. A document's revision is a digest o
 pandoc reads, with pandoc's version and options
 ([`revision`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py),
 [`Pandoc.org_converter`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)): a
-document whose file holds that revision keeps the file as it is, dates included; another
-is converted again
+document whose file holds that revision keeps its body and its dates, but a day, a meeting
+or a dated transcript, dated afresh by when it happened; another is converted again
 ([`Pandoc.org_markdown`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)).
 
 - **Writes**, into `<data>/docs/worklog/` alone, through the mirror's

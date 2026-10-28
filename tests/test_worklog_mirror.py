@@ -845,6 +845,40 @@ def test_a_linked_meeting_and_its_transcript_name_each_other(run: Run) -> None:
     }
 
 
+def test_a_transcript_added_dates_and_links_its_meeting_without_converting_it(run: Run) -> None:
+    """todo.org unchanged: the stand-up is kept, its start and link its transcript's.
+
+    Without the transcript, it begins at its day and links nothing; once the transcript
+    is back, pandoc converts that alone, and the meeting's body is as it was. Gone
+    again, the meeting is kept, at its day.
+    """
+    record = run.root / "transcripts/current/2026-10-27 Tue/1.org"
+    text = record.read_bytes()
+    record.unlink()
+    run()
+    alone = run.by_id(STANDUP)
+    day, began = datetime(2026, 10, 27, tzinfo=UTC), datetime(2026, 10, 27, 9, 31, tzinfo=UTC)
+    assert (alone.matter.created, alone.matter.updated, alone.matter.links) == (day, day, ())
+    record.write_bytes(text)
+    settle(record)
+    with capture_logs() as logged:
+        run()
+    linked = run.by_id(STANDUP)
+    assert (linked.matter.created, linked.matter.updated) == (began, began)
+    assert [(each.relation, each.ref) for each in linked.matter.links] == [
+        ("transcript", "t-20261027-1")
+    ]
+    outcomes = {
+        each["id"]: each["outcome"] for each in logged if each["event"] == "worklog.document"
+    }
+    assert (outcomes[STANDUP], outcomes["t-20261027-1"]) == ("kept", "mirrored")
+    assert (run.runs[-1], linked.body) == ([VERSION, ORG], alone.body)
+    record.unlink()
+    run()
+    again = run.by_id(STANDUP).matter
+    assert (again.created, again.updated, again.links, run.runs[-1]) == (day, day, (), [VERSION])
+
+
 def test_a_link_to_a_missing_file_warns_once_and_holds_nothing_back(run: Run) -> None:
     """One worklog.unlinked: how many, the first link as written; the meeting written.
 

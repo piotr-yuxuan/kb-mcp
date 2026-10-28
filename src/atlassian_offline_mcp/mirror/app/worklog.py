@@ -4,7 +4,9 @@ It reads the work log's folder, converts each document whose revision is not the
 file holds, and hands every file to ``mirror_files``, which writes those that changed and
 removes, under ``worklog/`` alone, those of documents gone. A document whose file holds
 its revision keeps that file's body, dates and time of fetch, so that an edit elsewhere
-in its org file moves neither. A run that reports a problem removes nothing, so that the
+in its org file moves neither; but a day, a meeting and a dated transcript are dated by
+when they happened, afresh at each run, so that a transcript read since dates its
+meeting without a conversion. A run that reports a problem removes nothing, so that the
 last good copy of each file stays; a meeting whose link reaches no transcript read is a
 warning, not a problem. Reading, building and writing are each a span; each
 document is counted, and each conversion timed, by its kind, as
@@ -176,8 +178,12 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
             old, body = kept.get(document.id, (None, ""))
             began = time.perf_counter()
             if old is not None and old.revision == name:
-                outcome, created, updated = "kept", old.created, old.updated
-                fetched_at = old.fetched_at
+                outcome, fetched_at = "kept", old.fetched_at
+                # A start is not in the revision: a transcript read since, or gone, moves a
+                # meeting's.
+                created, updated = (
+                    (old.created, old.updated) if document.start is None else document.dates(None)
+                )
             else:
                 try:
                     body = pandoc.org_markdown(document.text)

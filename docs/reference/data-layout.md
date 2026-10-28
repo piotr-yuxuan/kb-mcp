@@ -539,7 +539,9 @@ problem (a file not read, a conversion that failed) removes none of its files.
   meeting.
 - `revision` is the digest of pandoc's version and options, a NUL, and the org text
   that pandoc converts: a document whose revision has not changed is not converted
-  again, and its file keeps its dates.
+  again, and its file keeps its dates, but a day's, a meeting's and a dated
+  transcript's, which come from the work log as read at each run, so that a transcript
+  read since dates its meeting.
 - `created` and `updated` are a day's date at midnight UTC; a meeting's start, its
   transcript's, else its day's; a dated transcript's start, its first turn's time when
   it reads strictly as `HH:MM` or `HH:MM:SS`, else its earliest timestamp on its day,
