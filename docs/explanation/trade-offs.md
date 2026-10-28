@@ -151,6 +151,48 @@ The mirror is a folder of Markdown files, one per document with its front matter
 - **Settled** by [plan 005](../work/changelog/005-markdown-mirror.md#goal) and
   [plan 006](../work/changelog/006-search-mcp.md#goal).
 
+## Pandoc's conversions kept by their input
+
+`mirror` keeps each conversion that pandoc makes in `<data>/conversions.sqlite`, under
+the SHA-256 of pandoc's version line, its arguments and the HTML it was given
+([`Conversions.markdown`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)),
+so that a run converts only the HTML that it has not converted before. Once its files
+are written, a run deletes the conversions that it did not use
+([`Conversions.prune`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)).
+Every run still reads the store and builds every document's HTML.
+
+- **Why.** Pandoc was most of a mirror's time, one process a document whether it had
+  changed or not: 27.7 of 31.2 seconds on the sandbox's store of 1,474 documents. The
+  maintainer asked for the stages after the download to be incremental, and thought of
+  a cache, wary that "cache invalidation is hard". Keyed by the whole of pandoc's input,
+  this one has nothing to invalidate: with `--sandbox`, pandoc reads its standard input
+  alone, and its version and arguments are in the key
+  ([`Pandoc.html_converter`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py));
+  what else a file depends on, a link made relative, a user's name, the site, is inside
+  the HTML that each run builds afresh, or in the front matter, which pandoc never
+  reads. On that store, a mirror with nothing changed took 2.3 seconds, against 31.2
+  from no cache, and wrote no file; [the tests](../../tests/test_mirror.py) find the
+  bytes of a mirror from no cache after each kind of change.
+- **Cost.** A file of about the Markdown's size, 3 MB on that store. Reading the store
+  and building every document's HTML remain at each run, the 2.3 seconds there. A run
+  that reports a problem deletes no conversion, as it removes no file: a store that
+  reports one at every run keeps each edited document's old conversion, about 2 KB,
+  until a run ends clean. The one input that the key misses is a pandoc rebuilt under
+  the same version line, such as another package of one release: delete the file, which
+  costs one conversion of everything and downloads nothing. A damaged file costs the
+  same, as the run replaces it, says so, and converts everything
+  ([`opened`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)).
+- **Rejected.** A record per document of everything its file depends on, which would
+  skip the reading and the building too, at the risk of a stale file for any input it
+  forgot; a cache wrapped around pandoc outside the mirror, which would count its
+  conversions only after the mirror's own event, and copy its rule on problems;
+  `mirror --rebuild`, which deleting the file replaces; the work log in the cache, whose
+  revisions already skip what has not changed.
+- **Settled** by the maintainer's answer to [plan
+  034](../work/changelog/034-incremental-fetch.md#questions-for-the-user)'s fourth
+  question, "Cache pandoc's output", and built by [plan
+  039](../work/plans/039-conversion-cache.md#decisions).
+
 ## SQLite FTS5
 
 Words are indexed by SQLite's full-text engine, FTS5, in one file,

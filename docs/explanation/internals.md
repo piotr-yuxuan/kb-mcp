@@ -41,7 +41,7 @@ flowchart LR
 | Stage | Reads | Writes | Never half-written, by | When one thing fails |
 |---|---|---|---|---|
 | `download` | the site, GET only | `<data>/raw/` | a lock, and each snapshot renamed into place | the document is counted and skipped; the run goes on |
-| `mirror` | the raw store | `<data>/docs/` | each file renamed into place | the document is reported, its last good file kept |
+| `mirror` | the raw store | `<data>/docs/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is reported, its last good file kept; a damaged cache is replaced |
 | the work log, in `sync` | its folder, in place | `<data>/docs/worklog/` | each file renamed into place | the file or document is named by its path; no file is removed |
 | `index` | the mirror; the endpoint, for new texts | `<data>/index.sqlite`, `<data>/vectors.sqlite` | the index built aside, then renamed into place; the vector store pruned under its lock, its deletions one transaction | the file is skipped and named; without the endpoint, the old index stays; a prune it cannot trust deletes nothing |
 | `serve` | the index; the endpoint, for queries; the reranking server, when on | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why; without the reranker, it keeps its order and says why |
@@ -128,23 +128,46 @@ days. A catch-up that would start after `--until` skips its target.
 [`mirror`](../../src/atlassian_offline_mcp/mirror/app/mirror.py) reads the newest
 snapshot of each document
 ([`RawStore.latest`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py)),
-the listings, the users and the tombstones, and the setting `site`: nothing else. It
-places each document in the space whose freshest listing names it, leaving out those
-confirmed gone ([`place`](../../src/atlassian_offline_mcp/mirror/app/mirror.py)); turns
-the site's HTML into plain HTML, the one module that knows the site's markup
+the listings, the users and the tombstones, and the setting `site`: nothing else shapes
+its files. It places each document in the space whose freshest listing names it,
+leaving out those confirmed gone
+([`place`](../../src/atlassian_offline_mcp/mirror/app/mirror.py)); turns the site's HTML
+into plain HTML, the one module that knows the site's markup
 ([`normalise`](../../src/atlassian_offline_mcp/mirror/adapters/site_html.py)); and has
 pandoc write it as Markdown, one process a document
-([`Pandoc.markdown`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)).
+([`Pandoc.markdown`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)), unless
+that HTML was converted before.
+
+Pandoc's conversions are kept in `<data>/conversions.sqlite`, which `mirror` and `sync`
+open around the mirror
+([`opened`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)). Each is
+kept under a key that holds the whole of pandoc's input: its version line and its
+arguments ([`Pandoc.html_converter`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)),
+then the HTML
+([`Conversions.markdown`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)).
+With `--sandbox`, pandoc reads nothing else, so a conversion kept cannot go stale. What
+else a file depends on is either inside that HTML, which each run builds afresh from the
+store and the settings, such as a link made relative or a user's name, or in the front
+matter, which is written after pandoc. So a run converts only the HTML that it has not
+converted before, and writes the same bytes as a run without the cache; reading the
+store and building the HTML are what remain ([the
+trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost).
 
 - **Writes**, into `<data>/docs/` alone, through
   [`sync`](../../src/atlassian_offline_mcp/mirror/adapters/mirror_files.py): each file
   whose bytes differ, through a hidden file renamed into place, so that no reader sees
   half of one. A file whose bytes are the same keeps them and its time. No lock: the
-  snapshots read are each complete, and each file is replaced whole.
+  snapshots read are each complete, and each file is replaced whole. Into
+  `<data>/conversions.sqlite`, each conversion as soon as it is made, so that an
+  interrupted run keeps those it made; once the files are written, the conversions that
+  the run did not use are deleted, unless it reported anything
+  ([`Conversions.prune`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)).
 - **One document's failure**, a field refused or pandoc failing, is reported by its place
   in the store, never its content; the run goes on. A run that reported anything removes
-  no file but those of documents gone or moved, so that the last good copy of each
-  stays.
+  no file but those of documents gone or moved, and no conversion, so that the last good
+  copy of each stays. A cache that SQLite finds damaged, or no database at all, is
+  deleted and started empty, with a warning, and the run converts everything
+  ([`opened`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)).
 - **Offline**, everything: the mirror is rebuilt from the raw store, byte for byte, as
   long as pandoc's version is the same.
 
@@ -323,6 +346,20 @@ other file keeps its bytes and its time. A changed title renames the file, as it
 holds the title, and the old name goes. A moved page's file goes to its new space's
 folder. A confirmed deletion removes the file, even in a run that reports problems with
 other documents.
+
+Building every file again costs pandoc only what changed. Each document's HTML is built
+anew, then looked up in the cache of conversions by its key
+([`Conversions.markdown`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)):
+the edited page's new body is converted, and every other document's, the same string as
+at the last run, is reused. What an edit reaches beyond its own page lies in that HTML
+too, and is converted again where it shows: a new title, in the page's own heading, in
+the space's tree and in each link that leads to its renamed file; a page stored for the
+first time, in the links to it, now relative, and in the tree; a user's name changed in
+the store's users, in the headings of that user's comments. A child's breadcrumb is in
+its front matter, written after pandoc, and costs no conversion. The edited page's old
+conversion is deleted once the files are written, with those of documents gone, unless
+the run reported a problem
+([`Conversions.prune`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)).
 
 The work log's step does the same from the folder itself. Closing an entry turns its
 keyword to `DONE`, or another that means done, and adds a `CLOSED:` line under its

@@ -46,6 +46,15 @@ The steps, in order:
    takes its last 7 days, as the summary before the question says. `--since` (`12h`,
    `7d`, `6mo`, an ISO date or time, or `all`), `--until` and `--max-file-mb` work as
    for `download`; `--since 1y` or `--since all` reaches further back.
+
+   The mirror keeps pandoc's conversions in `<data>/conversions.sqlite`: the first run
+   converts every document, taking as long as a mirror always has, and each run after
+   it only what changed; its row says how many were `converted by pandoc` and how many
+   `reused from the cache`. Deleting the file starts again, converting everything once
+   and downloading nothing: do so after installing a pandoc rebuilt under the same
+   version line, the one change that the cache cannot see. A damaged file is replaced
+   by the run itself, which converts everything and says so in its log
+   (`mirror.cache_replaced`): nothing to do.
 2. **The work log**: read whole, each document converted again only when it changed,
    the files of documents gone removed.
 3. **The index**: rebuilt from the whole mirror, whatever sources the run took, by the

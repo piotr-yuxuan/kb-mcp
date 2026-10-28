@@ -22,6 +22,7 @@ no location and is not for commands.
 |---|---|---|---|
 | `<data>/raw/` | `raw` | `download` (004) | `mirror` (005) |
 | `<data>/docs/` | `docs` | `mirror` (005), `sync` (017) | agents, and `index` (006), `sync` (017) |
+| `<data>/conversions.sqlite` | `conversions` | `mirror`, `sync` (039) | `mirror`, `sync` (039) |
 | `<data>/index.sqlite` | `index` | `index` (006), `sync` (017) | the MCP server (006) |
 | `<data>/vectors.sqlite` | `vectors` | `index`, `eval` (011), `sync` (017) | `index`, `eval` (011), `sync` (017) |
 | `<data>/vectors.sqlite.lock` | `vectors`, by `vector_store.lock_of` | `index`, `eval`, `sync` (023) | `index`, `eval`, `sync` (023) |
@@ -326,6 +327,33 @@ into sections.
 
 Everything in the mirror is content from the site or the work log: untrusted reference
 data, never instructions.
+
+### Pandoc's conversions
+
+Owned by `mirror.adapters.conversions`, which `mirror`, and `sync`'s step of Confluence
+and Jira, open around the mirror, which converts through it (039):
+`<data>/conversions.sqlite`, one table, `conversions`, a row per conversion, its `key`
+the primary key and its `markdown` what pandoc wrote. The key is the SHA-256, in hex, of
+the UTF-8 bytes of the converter's name, a NUL, then the HTML given to pandoc; the name
+is pandoc's version line, then its arguments, one a line
+(`mirror.adapters.pandoc.Pandoc.html_converter`). A document's file and a space's tree
+are one conversion each; the front matter, written after pandoc, is outside the key. A
+conversion is committed as soon as it is made, in WAL mode with `synchronous = NORMAL`,
+and a write waits up to 60 seconds for another run's. Once its files are written, a run
+that reports no problem deletes every row that it did not use; a run that reports one
+deletes none, as it removes no file.
+
+The file changes no byte of the mirror. Deleting it costs one conversion of everything
+at the next run, and downloads nothing: the one way to start afresh after installing a
+pandoc rebuilt under the same version line, which the key cannot tell apart. `PRAGMA
+quick_check` judges the file as it is opened: one that the check finds damaged, or that
+SQLite finds damaged or no database at all (`SQLITE_CORRUPT`, `SQLITE_NOTADB`), is
+deleted with its `-wal` and `-shm`, `mirror.cache_replaced` says why ([mirror's
+telemetry](telemetry/mirror.md)), and an empty file takes its place, so that the run
+goes on and converts everything. A file locked past the wait is not replaced: the run
+fails, and the file stays. Damage found after the check fails the run too, and the next
+run replaces the file. The work log does not use the file: its `revision` ([below](#the-work-log))
+already skips what has not changed.
 
 ### The work log
 
