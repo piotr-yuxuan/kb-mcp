@@ -92,6 +92,7 @@ class SearchFilters(TypedDict, total=False):
     source worklog: the user's entries (notes, AI summaries) and transcripts (verbatim).
     author: an issue's reporter, a page's creator; creator: an issue's.
     commented_*: by commenter if given; _after included, _before excluded.
+    participant: a meeting's, or a transcript's speaker.
     """
 
     source: Literal["confluence", "jira", "worklog"]
@@ -104,6 +105,7 @@ class SearchFilters(TypedDict, total=False):
     creator: str
     assignee: str
     commenter: str
+    participant: str
     updated_after: str  # this moment included
     updated_before: str  # this moment excluded
     created_after: str  # this moment included
@@ -342,7 +344,7 @@ def narrowed(reader: Reader, given: Mapping[str, str]) -> Filters:
     """Give the filters as the index holds their values, refusing one that no document has."""
     names = (
         *("source", "space", "project", "status", "label", "issue_type"),
-        *("author", "creator", "assignee", "commenter"),
+        *("author", "creator", "assignee", "commenter", "participant"),
     )
     dates = (
         *("updated_after", "updated_before", "created_after", "created_before"),

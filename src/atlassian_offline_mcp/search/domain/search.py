@@ -254,6 +254,7 @@ class Filters:
     creator: str | None = None
     assignee: str | None = None
     commenter: str | None = None
+    participant: str | None = None
     updated_after: datetime | None = None
     updated_before: datetime | None = None
     created_after: datetime | None = None

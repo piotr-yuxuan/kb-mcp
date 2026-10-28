@@ -110,6 +110,8 @@ WHERE (:source IS NULL OR d.source = :source)
        (SELECT p.document FROM people p WHERE p.role = 'creator' AND p.name = :creator))
   AND (:assignee IS NULL OR d.rowid IN
        (SELECT p.document FROM people p WHERE p.role = 'assignee' AND p.name = :assignee))
+  AND (:participant IS NULL OR d.rowid IN
+       (SELECT p.document FROM people p WHERE p.role = 'participant' AND p.name = :participant))
   AND (:updated_after IS NULL OR d.updated >= :updated_after)
   AND (:updated_before IS NULL OR d.updated < :updated_before)
   AND (:created_after IS NULL OR d.created >= :created_after)
@@ -203,6 +205,12 @@ VALUES = {
     " GROUP BY 1 ORDER BY 2 DESC, 1",
     "commenter": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'commenter'"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
+    # By the meetings naming them first: a transcript's speakers You and Unverified, the
+    # caption tool's, would otherwise lead.
+    "participant": "SELECT p.name, count(DISTINCT p.document) FROM people p"
+    " JOIN documents d ON d.rowid = p.document WHERE p.role = 'participant'"
+    " GROUP BY 1 ORDER BY count(DISTINCT p.document) FILTER (WHERE d.type = 'meeting') DESC,"
+    " 2 DESC, 1",
     "type": "SELECT type, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
 }
 
