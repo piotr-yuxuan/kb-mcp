@@ -49,11 +49,13 @@ filter selects), `author <name>` and `created <day>`, such as
 - `filters`: an object of `source` (`confluence`, `jira` or `worklog`), `space`,
   `project`, `status`, `label`, `issue_type`, `author` (an issue's reporter, a page's
   creator), `assignee`, `updated_after` and `created_after` (included), and
-  `updated_before` and `created_before` (excluded). Values match whole, as hits show
-  them, without regard to case or accents; dates are ISO 8601, a date being its midnight
-  UTC. A value that no document has, or that several have but for accents, is refused
-  with the valid ones, those that hold it first, the most used first. The work log's
-  entries are the user's notes and AI-written summaries, its transcripts the
+  `updated_before` and `created_before` (excluded). Values match whole, without regard
+  to case, accents or runs of spaces; a name that a hit cuts at 60 characters, `read`
+  gives whole. Of several values that match, the one given goes first, then one equal
+  to it but for case, the most used first. A value that no document has, or that
+  several have but for accents alone, is refused with the valid ones, those that hold
+  it first, the most used first. Dates are ISO 8601, a date being its midnight UTC. The
+  work log's entries are the user's notes and AI-written summaries, its transcripts the
   word-by-word record.
 - `sort`: `relevance`; `updated` or `created`, newest first, by words alone and
   counting every match, after the documents that the query names; with no query, they

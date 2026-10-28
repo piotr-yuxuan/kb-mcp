@@ -354,25 +354,31 @@ def bounded(**values: tuple[str | None, int]) -> None:
 def canonical(reader: Reader, name: str, value: str | None) -> str | None:
     """Find the value that the index holds for a filter, without regard to case or accents.
 
-    Values compare as shown, their spaces collapsed, then decomposed, their marks dropped
-    and casefolded; a Hangul syllable keeps its letters. The value given goes first, then
-    one equal to it but for case. Refuse a value that no document has, or that several
-    have but for accents, listing the valid ones: those holding it first, the most used
-    first.
+    Values compare as hits show them, their spaces collapsed, composed, then casefolded,
+    decomposed and without the combining diacritical marks of U+0300 to U+036F: a
+    Hangul syllable keeps its letters, a kana its voicing mark. One value alone matching
+    is taken; else the value given, then one equal to it but for case, the most used
+    first. Refuse a value that no document has, or that several have but for accents
+    alone, listing the valid ones: those holding it first, the most used first.
     """
     if value is None:
         return None
 
+    def shown(text: str) -> str:
+        return unicodedata.normalize("NFC", " ".join(text.split())).casefold()
+
     def plain(text: str) -> str:
-        decomposed = unicodedata.normalize("NFKD", " ".join(text.split()))
-        return "".join(char for char in decomposed if not unicodedata.combining(char)).casefold()
+        decomposed = unicodedata.normalize("NFKD", shown(text))
+        return "".join(char for char in decomposed if not "\u0300" <= char <= "\u036f")
 
     valid = [candidate for candidate, _ in reader.values(name)]
     wanted = plain(value)
     found = [each for each in valid if plain(each) == wanted]
-    cased = [each for each in found if each.casefold() == value.casefold()]
-    if cased or len(found) == 1:
-        return min(cased, key=lambda each: each != value, default=found[0])
+    cased = [each for each in found if shown(each) == shown(value)]
+    if len(found) == 1:
+        return found[0]
+    if cased:
+        return value if value in cased else cased[0]
     message = f"{name}: no document has {json.dumps(value, ensure_ascii=False)}; the valid values:"
     shown = sorted(valid, key=lambda each: wanted not in plain(each))
     raise UnanswerableError(responses.refusal(message, shown[:VALUES_SHOWN], len(valid)))

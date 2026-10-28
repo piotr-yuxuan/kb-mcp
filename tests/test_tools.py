@@ -357,30 +357,45 @@ def test_a_listing_by_created_date_continues_by_its_cursor(people: Library, quer
 
 
 def test_a_name_matches_whole_as_shown_and_the_value_given_first(tmp_path: Path) -> None:
-    """A Hangul name is no other with the same first letters; spaces compare as shown.
+    """A Hangul name is no other with the same first letters, a kana keeps its voicing.
 
-    Among labels equal but for case, the one given exactly is kept.
+    Values compare as hits show them, spaces collapsed and composed; of several that
+    look alike, the one given exactly is kept, else the most used. A value matching
+    several but for accents alone, and none but for case, is refused.
     """
     library = built(
         tmp_path,
         [
-            (issue("PROJ-1", "Broker crash", assignee="에이다 예시", labels=("backend",)), None),
             (
-                issue("PROJ-2", "Broker alert", assignee="Ada\u00a0 Example", labels=("backend",)),
+                issue("PROJ-1", "Broker crash", assignee="에이다 예시", labels=("backend", "café")),
                 None,
             ),
-            (issue("PROJ-3", "Broker retention", labels=("Backend",)), None),
+            (
+                issue(
+                    "PROJ-2",
+                    "Broker alert",
+                    assignee="Ada\u00a0 Example",
+                    labels=("backend", "cafe"),
+                ),
+                None,
+            ),
+            (issue("PROJ-3", "Broker retention", assignee="はら", labels=("Backend",)), None),
+            (issue("PROJ-4", "Broker upgrade", assignee="Ada Example"), None),
         ],
     )
-    with pytest.raises(UnanswerableError, match=r"^assignee: no document has \"오이디 아시\""):
-        library.search("broker", filters={"assignee": "오이디 아시"})
-    assert refs(library.search("broker", filters={"assignee": "에이다 예시"})) == ["PROJ-1"]
-    assert refs(library.search("broker", filters={"assignee": "ada example"})) == ["PROJ-2"]
-    assert refs(library.search(filters={"label": "Backend"}, sort="created")) == ["PROJ-3"]
-    assert refs(library.search(filters={"label": "BACKEND"}, sort="created")) == [
-        "PROJ-1",
-        "PROJ-2",
-    ]
+    for refused in ({"assignee": "오이디 아시"}, {"assignee": "ばら"}, {"label": "CAFÈ"}):
+        with pytest.raises(UnanswerableError, match=r"^\S+: no document has "):
+            library.search("broker", filters=refused)
+    kept = {
+        "에이다 예시": ["PROJ-1"],
+        "Ada\u00a0 Example": ["PROJ-2"],
+        "ada example": ["PROJ-4"],
+    }
+    for assignee, expected in kept.items():
+        assert refs(library.search(filters={"assignee": assignee}, sort="created")) == expected
+    labels = {"Backend": ["PROJ-3"], "BACKEND": ["PROJ-1", "PROJ-2"], "cafe\u0301": ["PROJ-1"]}
+    for label, expected in labels.items():
+        assert refs(library.search(filters={"label": label}, sort="created")) == expected
 
 
 @pytest.mark.parametrize(
