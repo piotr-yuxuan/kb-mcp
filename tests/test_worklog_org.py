@@ -26,6 +26,8 @@ from atlassian_offline_mcp.sources.worklog.domain import org
 from atlassian_offline_mcp.sources.worklog.domain.worklog import (
     Source,
     entries,
+    meeting_ids,
+    participants,
     revision,
     transcripts,
 )
@@ -723,3 +725,59 @@ def test_a_revision_names_the_input_and_the_converter() -> None:
     assert revision("pandoc 3.7", "a") == first
     assert revision("pandoc 3.8", "a") != first
     assert revision("pandoc 3.7", "b") != first
+
+
+# Plan 042's meetings: who they name, and their ids.
+TUESDAY = datetime(2026, 10, 27, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (
+            "Alex Example, Sam Sample, Kim (not in the header)",
+            ("Alex Example", "Sam Sample", "Kim (not in the header)"),
+        ),
+        ("Robin (payments, ops),Jo [lead, ops]", ("Robin (payments, ops)", "Jo [lead, ops]")),
+        ("  Sam ,, Sam, sam ,", ("Sam", "sam")),
+        ("", ()),
+    ],
+)
+def test_participants_are_the_names_between_commas_outside_brackets(
+    value: str, expected: tuple[str, ...]
+) -> None:
+    """Stripped, in order, each once, written as given, an annotation included."""
+    assert participants(value) == expected
+
+
+def test_meeting_ids_name_the_day_and_the_title_numbered_by_start_then_order() -> None:
+    """The later start takes -2; equal starts, the order given; no slug, the title's digest."""
+    early, late = TUESDAY.replace(hour=9), TUESDAY.replace(hour=14)
+    assert meeting_ids(
+        TUESDAY,
+        [("Payments stand-up", late), ("Payments stand-up", early), ("Café: 1/1", TUESDAY)],
+    ) == ["m-20261027-payments-stand-up-2", "m-20261027-payments-stand-up", "m-20261027-cafe-1-1"]
+    assert meeting_ids(TUESDAY, [("Retro", late)] * 3) == [
+        "m-20261027-retro",
+        "m-20261027-retro-2",
+        "m-20261027-retro-3",
+    ]
+    assert meeting_ids(TUESDAY, [("会議", TUESDAY), ("", TUESDAY)]) == [
+        f"m-20261027-{sha('会議')}",
+        f"m-20261027-{sha('')}",
+    ]
+    long = meeting_ids(TUESDAY, [(LONG, TUESDAY), (LONG, TUESDAY)])
+    assert long == [f"m-20261027-{'a' * 60}", f"m-20261027-{'a' * 60}-2"]
+    assert all(WORKLOG_ID.fullmatch(each) for each in long)
+
+
+def test_a_title_whose_slug_is_another_s_numbered_id_takes_no_id_twice() -> None:
+    """Stand-up 2 holds stand-up-2, so the second Stand-up passes over it."""
+    early, late = TUESDAY.replace(hour=9), TUESDAY.replace(hour=14)
+    assert meeting_ids(
+        TUESDAY, [("Stand-up 2", early), ("Stand-up", late), ("Stand-up", late)]
+    ) == [
+        "m-20261027-stand-up-2",
+        "m-20261027-stand-up",
+        "m-20261027-stand-up-3",
+    ]

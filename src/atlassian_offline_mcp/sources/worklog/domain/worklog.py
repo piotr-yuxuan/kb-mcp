@@ -17,10 +17,11 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.kernel.content import WORKLOG_ID
+from atlassian_offline_mcp.kernel.slug import slug
 from atlassian_offline_mcp.sources.worklog.domain import org
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
     from pathlib import PurePosixPath
 
 TODO = "todo.org"
@@ -35,6 +36,8 @@ CURRENT = "current"
 DIGITS = 16
 # The date that begins a folder's or a file's name.
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+# A comma between names: outside brackets, so that Kim (payments, ops) stays one name.
+SEPARATOR = re.compile(r",(?![^(\[]*[)\]])")
 
 
 @dataclass(frozen=True)
@@ -102,6 +105,34 @@ def digest(text: str) -> str:
 def revision(converter: str, text: str) -> str:
     """Name what pandoc makes of a document: its input, with pandoc's version and options."""
     return digest(f"{converter}\0{text}")
+
+
+def participants(value: str) -> tuple[str, ...]:
+    """Return the names that a ``:PARTICIPANTS:`` value gives, in order, each once.
+
+    Names are separated by commas outside brackets, and stripped; each is kept as written,
+    an annotation included, such as ``Kim (not in the header)``.
+    """
+    return tuple(dict.fromkeys(name for part in SEPARATOR.split(value) if (name := part.strip())))
+
+
+def meeting_ids(day: datetime, meetings: Sequence[tuple[str, datetime]]) -> list[str]:
+    """Return the ids of one day's meetings, each given by its title and start, in order.
+
+    An id is ``m-``, the day as ``%Y%m%d``, ``-`` and the title's slug, else the first 16
+    hex digits of the title's SHA-256. Of one id, the meetings are numbered from the
+    second, ``-2``, ``-3``, by start, then in the order given; a number that another
+    meeting's id already holds is passed over, so that no two ids are the same.
+    """
+    bases = [f"m-{day:%Y%m%d}-{slug(title) or digest(title)}" for title, _ in meetings]
+    found: dict[int, str] = {}
+    for index in sorted(range(len(meetings)), key=lambda index: (meetings[index][1], index)):
+        number, identifier = 1, bases[index]
+        while identifier in found.values():
+            number += 1
+            identifier = f"{bases[index]}-{number}"
+        found[index] = identifier
+    return [found[index] for index in range(len(meetings))]
 
 
 def entries(todo: Source | None, archive: Source | None, *, archives: bool) -> list[Document]:
