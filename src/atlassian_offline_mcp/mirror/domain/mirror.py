@@ -116,7 +116,8 @@ class FrontMatter:
 
         A source and type that disagree, a key that only the other source has, an id or
         key off its rule, a text with a line break of any kind, a time not in UTC, a
-        second author, creator or assignee, a commenter twice by name and account.
+        second author, creator or assignee, a commenter twice by name and account, people
+        out of the order of the roles.
         """
         if TYPES.get(self.type) != self.source:
             message = "type: not one of the source's types"
@@ -152,8 +153,12 @@ class FrontMatter:
             (person.role,) if person.role in SOLE else (person.role, person.name, person.account)
             for person in self.people
         ]
-        if len(set(held)) != len(held):
-            message = "people: a second author, creator or assignee, or a commenter twice"
+        order = [ROLES.index(person.role) for person in self.people]
+        if len(set(held)) != len(held) or order != sorted(order):
+            message = (
+                "people: a second author, creator or assignee, a commenter twice, or out of"
+                " the order of the roles"
+            )
             raise RefusedError(message)
 
     @property

@@ -359,10 +359,11 @@ A document has one `author`, one `creator` and one `assignee` at most, and each
 commenter once by name and account. `load` refuses any other role, a field other than
 these or out of their order, a `null`, an empty `at` and any other broken rule of one
 entry, naming the entry, such as `people[1]`; and a second author, creator or assignee,
-or a commenter twice, naming `people`. Names are kept as written, never normalised,
-merged or masked: a colleague renamed between two fetches appears under two names, with
-one account id. `FrontMatter.author`, `FrontMatter.creator` and `FrontMatter.assignee`
-name the one person of that role, or nobody.
+a commenter twice, or people out of the order of the roles, naming `people`. Names are
+kept as written, never normalised, merged or masked: a colleague renamed between two
+fetches appears under two names, with one account id. `FrontMatter.author`,
+`FrontMatter.creator` and `FrontMatter.assignee` name the one person of that role, or
+nobody.
 
 Names, and the account ids beside them, are personal data, kept wherever the content
 is:

@@ -178,6 +178,17 @@ def test_an_account_and_people_are_left_out_when_the_source_has_none() -> None:
             r"^issue\.md: people: .* a commenter twice",
         ),
         (
+            (
+                "- {role: author, name: A Person, account: account-1}\n"
+                "- {role: creator, name: Another Person, account: account-2}\n"
+            ),
+            (
+                "- {role: creator, name: Another Person, account: account-2}\n"
+                "- {role: author, name: A Person, account: account-1}\n"
+            ),
+            r"^issue\.md: people: .* out of the order of the roles$",
+        ),
+        (
             "account: account-1}",
             "account: account-1, at: ['2026-10-20T09:12:00Z']}",
             r"people\[0\]: at: only and always for a commenter",
