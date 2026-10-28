@@ -75,8 +75,9 @@ otherwise than its author, and `created <day>`, such as
 Reads a document, or one of its sections, from a character offset, in slices. Each
 slice opens with the document's title, path and mirror date, and one from the body's
 start with its whole front matter, a `key: value` line each. People come there one line
-per role, `author`, `creator`, `assignee` and `commenter`, by name alone, never by
-account id: ten names at most, then how many more, each commenter with their count of
+per role, `author`, `creator`, `assignee` and `commenter`, by name, without the account
+id that the mirror keeps beside it, which stands for the name only where the source
+gives none: ten names at most, then how many more, each commenter with their count of
 comments and the day of the last, such as
 `commenter: Ada Example (2, last 2026-10-21); Bo Sample (1, last 2026-10-20)`.
 
