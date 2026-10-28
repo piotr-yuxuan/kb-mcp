@@ -345,14 +345,17 @@ deletes none, as it removes no file.
 
 The file changes no byte of the mirror. Deleting it costs one conversion of everything
 at the next run, and downloads nothing: the one way to start afresh after installing a
-pandoc rebuilt under the same version line, which the key cannot tell apart. `PRAGMA
-quick_check` judges the file as it is opened: one that the check finds damaged, or that
-SQLite finds damaged or no database at all (`SQLITE_CORRUPT`, `SQLITE_NOTADB`), is
-deleted with its `-wal` and `-shm`, `mirror.cache_replaced` says why ([mirror's
+pandoc rebuilt under the same version line, which the key cannot tell apart. As the file
+is opened, the run takes its write lock, then `PRAGMA integrity_check` judges it, each
+index against its table: one that the check finds damaged, or that SQLite finds damaged,
+no database, or of a format that it cannot read or may not write (`SQLITE_CORRUPT`,
+`SQLITE_NOTADB`, `SQLITE_ERROR`, `SQLITE_READONLY`, by their primary codes), is deleted
+with its `-wal` and `-shm`, `mirror.cache_replaced` says why ([mirror's
 telemetry](telemetry/mirror.md)), and an empty file takes its place, so that the run
 goes on and converts everything. A file locked past the wait is not replaced: the run
-fails, and the file stays. Damage found after the check fails the run too, and the next
-run replaces the file. The work log does not use the file: its `revision` ([below](#the-work-log))
+fails, and the file stays. Damage that SQLite finds during the run, `SQLITE_CORRUPT` or
+`SQLITE_NOTADB`, fails it too, once the file is deleted, so that the next run starts a
+new one. The work log does not use the file: its `revision` ([below](#the-work-log))
 already skips what has not changed.
 
 ### The work log

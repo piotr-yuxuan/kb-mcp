@@ -2,7 +2,9 @@
 
 A run is one ``opened`` of the file, here in a data folder not made yet. A key is
 computed as the plan defines it, the SHA-256 of the UTF-8 bytes of the converter's name,
-a NUL, then the HTML, so that the file is read as its layout says.
+a NUL, then the HTML, so that the file is read as its layout says. The damage that the
+plan's first review found, each a byte of a sound file changed, is made by hand: a page
+of a table or of its index lies where ``sqlite_schema`` and the page size put it.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
 from tests.test_pruning import events_named
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
     from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
@@ -37,13 +39,15 @@ class Scripted:
     """A converter named ``name``, which counts the times it is named and what it is given.
 
     Its first ``unnamed`` names raise PandocFailedError, as a pandoc that gives no version
-    does; its conversion number ``fails_at``, counting from 1, raises ``failure``.
+    does; its conversion number ``fails_at``, counting from 1, raises ``failure``. Before
+    each conversion, ``meanwhile``, when given, acts on the file as another run might.
     """
 
     name: str = NAME
     unnamed: int = 0
     fails_at: int | None = None
     failure: type[BaseException] = PandocFailedError
+    meanwhile: Callable[[], object] | None = None
     named: int = 0
     inputs: list[str] = field(default_factory=list)
 
@@ -57,6 +61,8 @@ class Scripted:
 
     def convert(self, html: str) -> str:
         """Give the Markdown of ``html``, unless this is conversion number ``fails_at``."""
+        if self.meanwhile is not None:
+            self.meanwhile()
         self.inputs.append(html)
         if len(self.inputs) == self.fails_at:
             message = "pandoc: exit status 3"
@@ -79,6 +85,16 @@ def stored(path: Path) -> set[str]:
     """Give the keys of the conversions that the file holds."""
     with closing(sqlite3.connect(path)) as connection:
         return {each for (each,) in connection.execute("SELECT key FROM conversions")}
+
+
+def page(path: Path, kind: str) -> slice:
+    """Give where the root page of the file's ``table``, or of its ``index``, lies in it."""
+    with closing(sqlite3.connect(path)) as connection:
+        (root,) = connection.execute(
+            "SELECT rootpage FROM sqlite_schema WHERE type = ?", (kind,)
+        ).fetchone()
+        (size,) = connection.execute("PRAGMA page_size").fetchone()
+    return slice((root - 1) * size, root * size)
 
 
 def run(path: Path, scripted: Scripted, texts: Iterable[str]) -> tuple[list[str], int, int]:
@@ -193,24 +209,144 @@ def test_a_file_of_random_bytes_is_replaced_and_says_so_by_sqlite_s_error(path: 
     assert stored(path) == {key(NAME, text) for text in TEXTS}
 
 
-def test_a_file_whose_quick_check_fails_is_replaced(path: Path) -> None:
+def test_a_file_whose_index_root_is_zeroed_is_replaced(path: Path) -> None:
     """Criterion 8: the root page of the table's index overwritten, every text is converted."""
     run(path, Scripted(), TEXTS)
-    with closing(sqlite3.connect(path)) as connection:
-        (root,) = connection.execute(
-            "SELECT rootpage FROM sqlite_schema WHERE type = 'index'"
-        ).fetchone()
-        (size,) = connection.execute("PRAGMA page_size").fetchone()
-    with path.open("r+b") as file:
-        file.seek((root - 1) * size)
-        file.write(bytes(size))
+    data = bytearray(path.read_bytes())
+    index = page(path, "index")
+    data[index] = bytes(index.stop - index.start)
+    path.write_bytes(data)
     scripted = Scripted()
     with capture_logs() as events:
         assert run(path, scripted, TEXTS)[1:] == (4, 0)
     assert events_named(events, "mirror.cache_replaced") == [
-        {"reason": "quick_check", "log_level": "warning"}
+        {"reason": "SQLITE_CORRUPT", "log_level": "warning"}
     ]
     assert scripted.inputs == list(TEXTS)
+
+
+def test_an_index_that_leads_one_key_to_another_s_row_is_replaced(path: Path) -> None:
+    """Review of 039: rows a and b, and the index of a file of rows a and c, so c's key finds b.
+
+    Each file's second row has the same place, so that the index copied over counts as
+    many entries as there are rows, and only a check of each entry against its row sees
+    it. Replaced, the file gives c's own Markdown.
+    """
+    run(path, Scripted(), TEXTS[:2])
+    other = path.parent.parent / "other.sqlite"
+    run(other, Scripted(), [TEXTS[0], TEXTS[2]])
+    index = page(path, "index")
+    assert page(other, "index") == index
+    data = bytearray(path.read_bytes())
+    data[index] = other.read_bytes()[index]
+    path.write_bytes(data)
+    with capture_logs() as events:
+        assert run(path, Scripted(), TEXTS[2:3]) == (["Markdown of <p>c</p>"], 1, 0)
+    assert events_named(events, "mirror.cache_replaced") == [
+        {"reason": "integrity_check", "log_level": "warning"}
+    ]
+
+
+def change_key(path: Path) -> None:
+    """Change a byte of a's key in the table's page, not in the index's; then write the header.
+
+    Another connection writes the header, so that one already open reads the file again.
+    """
+    table = page(path, "table")
+    data = path.read_bytes()
+    at = data.index(key(NAME, TEXTS[0]).encode(), table.start, table.stop)
+    with path.open("r+b") as file:
+        file.seek(at)
+        file.write(bytes([data[at] ^ 1]))
+    with closing(sqlite3.connect(path)) as other:
+        other.execute("PRAGMA user_version = 1")
+
+
+def test_a_key_changed_in_its_row_alone_is_replaced(path: Path) -> None:
+    """Review of 039: a quick check passes it, and the run's prune then failed."""
+    run(path, Scripted(), TEXTS)
+    change_key(path)
+    scripted = Scripted()
+    with capture_logs() as events:
+        assert run(path, scripted, TEXTS)[1:] == (4, 0)
+    assert events_named(events, "mirror.cache_replaced") == [
+        {"reason": "integrity_check", "log_level": "warning"}
+    ]
+
+
+@pytest.mark.parametrize(
+    ("offset", "reason"),
+    [(18, "SQLITE_READONLY"), (47, "SQLITE_ERROR")],
+    ids=["a write version to come", "a schema format to come"],
+)
+def test_a_header_that_sqlite_cannot_use_is_replaced(path: Path, offset: int, reason: str) -> None:
+    """Review of 039: the header's write version, or its schema format, set to 255.
+
+    SQLite reads the first, but may not write it; it cannot read the second at all.
+    """
+    run(path, Scripted(), TEXTS)
+    data = bytearray(path.read_bytes())
+    data[offset] = 0xFF
+    path.write_bytes(data)
+    scripted = Scripted()
+    with capture_logs() as events:
+        assert run(path, scripted, TEXTS)[1:] == (4, 0)
+    assert events_named(events, "mirror.cache_replaced") == [
+        {"reason": reason, "log_level": "warning"}
+    ]
+
+
+def misplace_index(path: Path) -> None:
+    """Point the file's index at a page that is not there, as damage during a run would."""
+    with closing(sqlite3.connect(path, isolation_level=None)) as other:
+        (version,) = other.execute("PRAGMA schema_version").fetchone()
+        other.execute("PRAGMA writable_schema = ON")
+        other.execute("UPDATE sqlite_schema SET rootpage = 99 WHERE type = 'index'")
+        other.execute(f"PRAGMA schema_version = {version + 1}")
+
+
+@pytest.mark.parametrize(
+    ("damage", "name"),
+    [(misplace_index, "SQLITE_CORRUPT"), (change_key, "SQLITE_CORRUPT_INDEX")],
+    ids=["an index misplaced", "a key changed in its row"],
+)
+def test_damage_found_during_a_run_raises_and_deletes_the_file(
+    path: Path, damage: Callable[[Path], None], name: str
+) -> None:
+    """Review of 039: the run fails, and the next starts a new file, without a warning.
+
+    The file is damaged once the run has checked it, while c is converted; then the run
+    keeps c, and prunes a, which it did not use.
+    """
+    run(path, Scripted(), TEXTS[:2])
+    damaging = Scripted(meanwhile=lambda: damage(path))
+
+    def mirrored() -> None:
+        with conversions.opened(path, damaging.converter, damaging.convert) as cache:
+            for text in TEXTS[1:3]:
+                cache.markdown(text)
+            cache.prune(remove=True)
+
+    with pytest.raises(sqlite3.DatabaseError) as raised:
+        mirrored()
+    assert raised.value.sqlite_errorname == name
+    assert list(path.parent.iterdir()) == []
+    with capture_logs() as events:
+        assert run(path, Scripted(), TEXTS)[1:] == (4, 0)
+    assert events_named(events, "mirror.cache_replaced") == []
+
+
+def test_a_write_locked_past_the_wait_during_a_run_raises_and_keeps_the_file(
+    path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review of 039: locked is not damaged, during a run as at its start."""
+    run(path, Scripted(), TEXTS[:1])
+    monkeypatch.setattr(conversions, "WAIT_S", WAIT_S)
+    with closing(sqlite3.connect(path, isolation_level=None)) as other:
+        locking = Scripted(meanwhile=lambda: other.execute("BEGIN IMMEDIATE"))
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            run(path, locking, TEXTS[1:2])
+    assert run(path, Scripted(), TEXTS[:1])[1:] == (0, 1)
 
 
 def test_a_file_locked_past_the_wait_fails_the_run_and_is_kept(
