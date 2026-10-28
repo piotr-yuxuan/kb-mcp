@@ -184,6 +184,13 @@ def test_an_entry_from_before_034_is_replaced_by_a_run_from_its_start() -> None:
     assert old.extended(PROJECT, fetched) == (exactly(COVERED, NOW), "extended")
 
 
+def test_an_entry_from_before_034_replaced_ends_at_the_run_even_before_its_old_end() -> None:
+    """--since its start and --until inside it: what the run saw, not the old end it hid."""
+    until = END - 2 * DAY
+    old = before_034(COVERED, END)
+    assert old.extended(PROJECT, Period(COVERED, until)) == (exactly(COVERED, until), "extended")
+
+
 def test_a_failure_at_the_start_of_an_exact_entry_makes_it_inexact() -> None:
     """Nothing is claimed of that moment: the next catch-up searches the period whole."""
     fetched = Period(COVERED, NOW)
