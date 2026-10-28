@@ -49,10 +49,9 @@ original is told apart by its path, with a warning.
 
 A work-log document takes the keys every document has, so that search and the index read
 it as they read a page: its keyword as `status`, its tags as `labels`, its timestamps as
-`created` and `updated`, its file as `breadcrumb`; the keys of other sources are `null`
-([`mirror_worklog`](../../src/atlassian_offline_mcp/mirror/app/worklog.py)). Keys of
-its own (scheduled, deadline, priority) would change every file of the mirror and the
-index's schema; they wait until something filters on them.
+`created` and `updated`, its file as `breadcrumb`; the keys of other sources are `null`.
+Keys of its own (scheduled, deadline, priority) would change every file of the mirror
+and the index's schema; they wait until something filters on them.
 
 People are one key for every source, `people`, each person by role
 ([`FrontMatter.people`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)),
