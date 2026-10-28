@@ -475,15 +475,20 @@ class Download:
             self.first_failed[target] = min(failed)
 
     def count_files(self, entries: Iterable[object], period: Period) -> None:
-        """Count the files, and their bytes, that a run would download for these issues."""
+        """Count the files, and their bytes, that a run would download for these issues.
+
+        An issue named twice by its search is counted once, as it would be fetched once.
+        """
+        counted: set[Listed] = set()
         for entry in entries:
             try:
                 listed = jira_v3.listed(Fields(entry, "issues"))
                 files = jira_v3.listed_attachments(Fields(entry, "issues"))
             except RepresentationError:
                 continue  # counted by documents() already
-            if listed.updated not in period or self.store.has(listed):
+            if listed.updated not in period or self.store.has(listed) or listed in counted:
                 continue
+            counted.add(listed)
             kept = [each for each in files if skip_reason(each, self.max_file_bytes) is None]
             self.report.add("files: to download", len(kept))
             self.report.add("files: bytes to download", sum(each.size for each in kept))

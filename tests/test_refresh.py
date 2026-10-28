@@ -1037,3 +1037,18 @@ def test_an_issue_that_the_search_names_twice_is_fetched_once(
     assert jira_asked(twice).count("/rest/api/3/issue/20002") == 1
     tasks = [(each["done"], each["total"]) for each in events if each.get("task") == "documents"]
     assert tasks[-1] == (1, 1)
+
+
+def test_a_dry_run_counts_once_an_issue_that_the_search_names_twice(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Its files too: the counts of a plan are those of the run it plans."""
+    chosen = settings(tmp_path)
+    twice = RefreshSite(issues={"20002": issue_at("20002", FINE)})
+    entries = [*twice.issues.values()] * 2
+    search = {"/rest/api/3/search/jql": lambda _: httpx.Response(200, json={"issues": entries})}
+    monkeypatch.setattr(twice, "changes", lambda: search)
+    monkeypatch.setattr(http, "client", lambda *_: twice.client())
+    planned = plan(chosen, Targets([], ["PRB"], CAP, since=START), lambda: RUN, lambda _: None)
+    assert planned.report.counts["jira issues: to fetch"] == 1
+    assert planned.report.counts["files: to download"] == 1
