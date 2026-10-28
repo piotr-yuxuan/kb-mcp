@@ -444,7 +444,8 @@ class RawStore:
     def coverage(self) -> Coverage:
         """Read each target's covered period, none when never written, and which are exact.
 
-        An entry without ``exact``, as every entry was before plan 034, is not.
+        An entry without ``exact``, as every entry was before plan 034, is not; nor is a
+        space's, whatever it says, since a space is listed whole.
         """
         path = self.root / COVERAGE
         if not path.exists():
@@ -459,7 +460,7 @@ class RawStore:
             except PeriodError:
                 message = f"{item.path}: a period that ends before it starts"
                 raise RepresentationError(message) from None
-            if "exact" in item.value and item.flag("exact"):
+            if target.searched_by_time and "exact" in item.value and item.flag("exact"):
                 exact.add(target)
         return Coverage(periods, frozenset(exact))
 

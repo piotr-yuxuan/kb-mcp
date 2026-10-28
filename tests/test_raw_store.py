@@ -378,6 +378,16 @@ def test_a_coverage_record_keeps_the_format_of_before_034_beside_exact(store: Ra
     assert store.coverage() == Coverage({space: period, project: period})
 
 
+def test_a_space_s_entry_marked_exact_is_read_as_inexact(store: RawStore) -> None:
+    """A space is listed whole: a hand-edited or later record does not change its catch-up."""
+    (store.root / "coverage.json").write_text(
+        '[{"source": "confluence", "key": "MFS", "start": "2026-10-15T09:00:00+00:00",'
+        ' "end": "2026-10-16T09:00:00+00:00", "exact": true}]',
+        "utf-8",
+    )
+    assert store.coverage().exact == frozenset()
+
+
 def test_records_never_written_read_as_empty(tmp_path: Path) -> None:
     """A first run has no coverage and no tombstone."""
     store = RawStore(tmp_path / "raw")
