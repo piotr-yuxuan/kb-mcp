@@ -49,7 +49,8 @@ class Period:
 def moment(text: str, now: datetime, option: str) -> datetime:
     """Read ``12h``, ``7d``, ``6mo`` and the like before now, or an ISO date (midnight UTC) or time.
 
-    ``all``, for ``--since`` alone, is the epoch: everything.
+    ``all``, for ``--since`` alone, is the epoch: everything. A time is given in UTC,
+    whatever offset it carries, so that the dates searched hold it in every time zone.
     """
     if option == "--since" and text == "all":
         return EPOCH
@@ -64,7 +65,7 @@ def moment(text: str, now: datetime, option: str) -> datetime:
             f"{option}: a length before now (12h, 7d, 2w, 6mo, 1y), an ISO date or time{everything}"
         )
         raise PeriodError(message) from None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).astimezone(UTC)
 
 
 def period(since: str, until: str | None, now: datetime) -> Period:

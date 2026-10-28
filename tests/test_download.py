@@ -382,16 +382,26 @@ def test_a_second_run_fetches_no_document_again(tmp_path: Path) -> None:
     assert done.report.counts["confluence pages: already stored"] == len(["1001", "1002"])
 
 
-def test_the_search_covers_the_period_in_every_time_zone_of_jira(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("since", "until"),
+    [
+        # Late in the UTC day, where UTC+14 is already two dates ahead of the period's end.
+        ("2026-10-15T23:30:00+00:00", "2026-10-22T23:30:00+00:00"),
+        # Given at UTC-12, late in its day: the next day in UTC, two in UTC+14.
+        ("2026-10-15T23:59:00-12:00", "2026-10-21T23:59:00-12:00"),
+    ],
+)
+def test_the_search_covers_the_period_in_every_time_zone_of_jira(
+    tmp_path: Path, since: str, until: str
+) -> None:
     """Jira reads the JQL's dates at midnight in the user's zone, from UTC-12 to UTC+14.
 
-    Whatever the zone, the dates searched must hold the whole period; the period itself
-    then decides on each issue.
+    Whatever the zone, and whatever offset the period was given in, the dates searched
+    must hold the whole period; the period itself then decides on each issue.
     """
     fake = FakeSite()
     store = RawStore(tmp_path / "raw")
-    # Late in the UTC day, where UTC+14 is already two dates ahead of the period's end.
-    span = period("2026-10-15T23:30:00+00:00", "2026-10-22T23:30:00+00:00", NOW)
+    span = period(since, until, NOW)
     with fake.client() as client, store.writing():
         windows = given(span, [], ["PRB"])
         Download(Site(client, sleep=no_sleep), store, CAP, lambda: NOW, windows=windows).run(
