@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from structlog.testing import capture_logs
 
 from atlassian_offline_mcp.mirror.adapters.markdown import load
 from atlassian_offline_mcp.mirror.adapters.mirror_files import owned, sync
@@ -842,6 +843,27 @@ def test_a_linked_meeting_and_its_transcript_name_each_other(run: Run) -> None:
         **{meeting: [("transcript", record)] for meeting, record in pairs.items()},
         **{record: [("summary", meeting)] for meeting, record in pairs.items()},
     }
+
+
+def test_a_link_to_a_missing_file_warns_once_and_holds_nothing_back(run: Run) -> None:
+    """One worklog.unlinked: how many, the first link as written; the meeting written.
+
+    A warning, not a problem: a transcript deleted meanwhile loses its file.
+    """
+    run()
+    gone = run.docs / run.by_title("WAITING Notes").path
+    (run.root / "transcripts/misc/a.org").unlink()
+    with capture_logs() as logged:
+        outcome = run()
+    (warned,) = [each for each in logged if each["event"] == "worklog.unlinked"]
+    assert (warned["log_level"], warned["meetings"], warned["first"]) == (
+        "warning",
+        1,
+        "[[./meetings/2026-10-27 Tue/2.org]]",
+    )
+    assert run.by_id("m-20261027-rollout-planning").matter.links == ()
+    assert (outcome.problems, outcome.warnings, outcome.changes.removed) == ((), (), 1)
+    assert not gone.exists()
 
 
 def test_same_titled_meetings_of_one_day_are_numbered(run: Run) -> None:

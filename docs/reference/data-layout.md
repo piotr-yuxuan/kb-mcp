@@ -496,8 +496,11 @@ problem (a file not read, a conversion that failed) removes none of its files.
   passing over a number that another meeting's id holds. Its people are the names that
   its `:PARTICIPANTS:` gives, split at commas outside brackets, each once and as
   written, in the role `participant`; its link `transcript` names the transcript whose
-  file its `:MEETING:` names, from the folder of its org file, when that file is read.
-  A day and a meeting begin at level 1, what joins them at level 2.
+  file its `:MEETING:` names, from the folder of its org file, when that file is read,
+  and that transcript's link `summary` names it back; a `:MEETING:` that reaches no file
+  read links nothing, and `worklog.unlinked` counts it, a warning that holds no removal
+  back ([sync's telemetry](telemetry/sync.md)). A day and a meeting begin at level 1, what
+  joins them at level 2.
 - An **entry** is any other top-level heading, a child of the journal that is no day, or
   the journal's own lines above its children when they hold text, with what lies below
   it, beginning at level 1. Its id is `e-` and the first 16 hex digits of the SHA-256 of

@@ -247,7 +247,7 @@ def journal(
     *,
     archives: bool,
     transcripts: Iterable[Document],
-) -> list[Document]:
+) -> tuple[list[Document], list[str]]:
     """Return the entries, then the days and meetings, of ``todo.org`` and its archive.
 
     The journal is a top-level heading with a day among its children: its days are days,
@@ -258,7 +258,8 @@ def journal(
     numbered from the second entry of one digest, in reading order, ``todo.org`` first.
     The archive file takes ``todo.org``'s keywords when it declares none. Without
     ``archives``, the archive file and the headings tagged ARCHIVE, or below one, are
-    left out. ``transcripts`` are those read, which a meeting may link to.
+    left out. ``transcripts`` are those read, which a meeting may link to; each
+    ``:MEETING:`` that links none is returned too, as ``days_and_meetings`` says.
     """
     files: list[tuple[Source, org.OrgFile]] = []
     first = None
@@ -313,12 +314,13 @@ def journal(
                 source=part.source,
             )
         )
-    return [*found, *days_and_meetings(kept, archives=archives, transcripts=transcripts)]
+    dated, unlinked = days_and_meetings(kept, archives=archives, transcripts=transcripts)
+    return [*found, *dated], unlinked
 
 
 def days_and_meetings(
     parts: Sequence[Part], *, archives: bool, transcripts: Iterable[Document]
-) -> list[Document]:
+) -> tuple[list[Document], list[str]]:
     """Return each day of the journal's parts, then its meetings, by date of first part.
 
     ``parts`` are those kept, in reading order. One date makes one day, ``d-`` and the
@@ -332,6 +334,10 @@ def days_and_meetings(
     of the file that holds it, and starts when that transcript starts, else at its day;
     its id is as ``meeting_ids`` gives it. Labels: tags, ``#+FILETAGS`` and ARCHIVE when
     it is archived; a day is archived when one of its headings is, or it has none.
+
+    Also returned: each ``:MEETING:`` that links no transcript, as written, in the order
+    of the meetings: a link through ``..``, absolute or of another type, or to a file not
+    read. A meeting without one links nothing and is not among them.
     """
     linked = {each.source.path: each for each in transcripts}
     days: dict[datetime, Day] = {}
@@ -375,13 +381,18 @@ def days_and_meetings(
         )
         target.extend(org.shifted(part.subtree.lines, DAY_LEVEL))
     found: list[Document] = []
+    unlinked: list[str] = []
     for date, day in days.items():
+        written = [meeting.subtree.properties.get(LINKED, "") for meeting, _ in day.meetings]
         transcribed = [
             None
-            if (target := org.link_target(meeting.subtree.properties.get(LINKED, ""))) is None
+            if (target := org.link_target(link)) is None
             else linked.get(meeting.source.path.parent / target)
-            for meeting, _ in day.meetings
+            for (meeting, _), link in zip(day.meetings, written, strict=True)
         ]
+        unlinked.extend(
+            link for link, each in zip(written, transcribed, strict=True) if link and each is None
+        )
         starts = [(None if each is None else each.start) or date for each in transcribed]
         ids = meeting_ids(
             date,
@@ -448,7 +459,7 @@ def days_and_meetings(
                     source=meeting.source,
                 )
             )
-    return found
+    return found, unlinked
 
 
 def turns(lines: Sequence[str]) -> list[tuple[str | None, str]]:

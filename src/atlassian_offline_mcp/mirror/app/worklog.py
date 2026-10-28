@@ -5,7 +5,8 @@ file holds, and hands every file to ``mirror_files``, which writes those that ch
 removes, under ``worklog/`` alone, those of documents gone. A document whose file holds
 its revision keeps that file's body, dates and time of fetch, so that an edit elsewhere
 in its org file moves neither. A run that reports a problem removes nothing, so that the
-last good copy of each file stays. Reading, building and writing are each a span; each
+last good copy of each file stays; a meeting whose link reaches no transcript read is a
+warning, not a problem. Reading, building and writing are each a span; each
 document is counted, and each conversion timed, by its kind, as
 ``docs/reference/telemetry/sync.md`` lists them.
 """
@@ -97,7 +98,9 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     one run. Without ``archives``, the archive file, ``transcripts/archive/``,
     ``meetings/archive/`` and the subtrees tagged ARCHIVE are left out. A file not read
     is a problem, named by its path. The span ``worklog.read`` holds the reading;
-    ``worklog.read`` says at INFO what was read.
+    ``worklog.read`` says at INFO what was read. ``worklog.unlinked``, a warning, says
+    how many meetings' ``:MEETING:`` link no transcript read, and the first as written:
+    never a problem, so that it holds no removal back.
     """
     with TRACER.start_as_current_span("worklog.read"):
         listing = files.listed(folder, archives=archives)
@@ -113,15 +116,18 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
             [each for each in sources if each.path.parts[0] in TRANSCRIPTS], archives=archives
         )
         todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
-        journaled = journal(todo, archive, archives=archives, transcripts=named)
+        journaled, unlinked = journal(todo, archive, archives=archives, transcripts=named)
         documents_read = (*journaled, *linked_back(named, journaled))
-    structlog.get_logger().info(
+    log = structlog.get_logger()
+    log.info(
         "worklog.read",
         entries=sum(1 for each in documents_read if each.type == ENTRY),
         transcripts=len(named),
         html=listing.html,
         problems=len(problems),
     )
+    if unlinked:
+        log.warning("worklog.unlinked", meetings=len(unlinked), first=unlinked[0])
     return Read(documents_read, listing.html, tuple(problems), tuple(warnings))
 
 
