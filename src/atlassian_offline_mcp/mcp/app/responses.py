@@ -14,6 +14,8 @@ import re
 from itertools import takewhile
 from typing import TYPE_CHECKING
 
+from atlassian_offline_mcp.mirror.domain.mirror import ROLES
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from datetime import datetime
@@ -193,7 +195,10 @@ def excerpt(number: int, entry: Entry, passage: Passage, opening: str) -> str:
 def metadata(entry: Entry, *, whole: bool) -> str:
     """Write a document's front matter as one-line ``key: value`` lines.
 
-    ``whole`` gives every key; otherwise the title, path and mirror date alone.
+    ``whole`` gives every key; otherwise the title, path and mirror date alone. People
+    come by name alone, one line per role in the order of the roles: LABELS names at
+    most, then how many more, each commenter with their comments' count and the day of
+    the last. A role's line is not cut as a value is: each name in it is.
     """
     front = entry.front
     rows = [("title", front.title), ("path", entry.path), ("mirrored", stamp(front.fetched_at))]
@@ -208,13 +213,24 @@ def metadata(entry: Entry, *, whole: bool) -> str:
             ("status", front.status),
             ("labels", labels),
             ("breadcrumb", " / ".join(front.breadcrumb)),
-            ("author", front.author),
-            ("assignee", front.assignee),
+        ]
+        for role in ROLES:
+            held = [person for person in front.people if person.role == role]
+            names = [
+                short(person.name, LABEL)
+                + (f" ({len(person.at)}, last {person.at[-1]:%Y-%m-%d})" if person.at else "")
+                for person in held[:LABELS]
+            ]
+            more = f"; {len(held) - LABELS} more" if len(held) > LABELS else ""
+            rows.append((role, "; ".join(names) + more))
+        rows += [
             ("created", stamp(front.created)),
             ("updated", stamp(front.updated)),
             ("url", front.url),
         ]
-    return "\n".join(f"{key}: {short(value)}" for key, value in rows if value)
+    return "\n".join(
+        f"{key}: {value if key in ROLES else short(value)}" for key, value in rows if value
+    )
 
 
 def tree(pairs: Sequence[tuple[tuple[str, ...], Entry]], base: int) -> list[str]:

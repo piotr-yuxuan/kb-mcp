@@ -72,7 +72,13 @@ otherwise than its author, and `created <day>`, such as
 
 ### read
 
-Reads a document, or one of its sections, from a character offset, in slices.
+Reads a document, or one of its sections, from a character offset, in slices. Each
+slice opens with the document's title, path and mirror date, and one from the body's
+start with its whole front matter, a `key: value` line each. People come there one line
+per role, `author`, `creator`, `assignee` and `commenter`, by name alone, never by
+account id: ten names at most, then how many more, each commenter with their count of
+comments and the day of the last, such as
+`commenter: Ada Example (2, last 2026-10-21); Bo Sample (1, last 2026-10-20)`.
 
 - `ref`: a page id, an issue key, a work-log id (`e-...` or `t-...`), a page's or an
   issue's address, or a path in the mirror, at most 300 characters.

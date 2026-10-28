@@ -527,6 +527,56 @@ def test_an_issue_s_hit_names_its_creator_only_when_not_its_author(commented: Li
     }
 
 
+def test_read_shows_each_role_by_name_and_a_commenter_s_count_and_last_day(
+    commented: Library,
+) -> None:
+    """One line per role, in the order of the roles, before the created date."""
+    expected = {
+        "PROJ-1": [
+            "author: A Person",
+            "creator: Another Person",
+            "assignee: A Person",
+            "commenter: A Person (3, last 2026-10-25)",
+        ],
+        "PROJ-2": [
+            "author: Another Person",
+            "creator: Another Person",
+            "commenter: A Person (1, last 2026-10-18); Another Person (1, last 2026-10-25)",
+        ],
+    }
+    for ref, roles in expected.items():
+        lines = parts(commented.read(ref))[1].splitlines()
+        start = lines.index(roles[0])
+        assert lines[start : start + len(roles) + 1] == [*roles, "created: 2026-10-20 21:52 UTC"]
+
+
+def test_read_names_ten_people_of_a_role_then_how_many_more(tmp_path: Path) -> None:
+    """Each name cut at 60 characters, as on a hit; the line, though long, is not cut."""
+    names = [f"Person {number:02} {'x' * 60}" for number in range(12)]
+    people = tuple(PersonRole(role="commenter", name=each, at=(CREATED,)) for each in names)
+    library = built(tmp_path, [(issue("PROJ-1", "Broker", people=people), None)])
+    shown = "; ".join(f"{each[:59]}… (1, last 2026-10-25)" for each in names[:10])
+    assert f"\ncommenter: {shown}; 2 more\n" in parts(library.read("PROJ-1"))[1]
+
+
+def test_no_answer_holds_an_account_id(commented: Library, tmp_path: Path) -> None:
+    """The mirror keeps each person's account id; the tools serve names alone."""
+    mirrored = (tmp_path / "docs" / location(COMMENTED[0])).read_text(encoding="utf-8")
+    assert ACCOUNTS["A Person"] in mirrored
+    answers = [
+        commented.search("broker"),
+        commented.search(filters={"commenter": "a person"}, sort="created"),
+        commented.ask("broker crash"),
+        *(commented.read(front.key or front.id) for front in COMMENTED),
+        commented.browse(project="PROJ"),
+        commented.status(),
+    ]
+    with pytest.raises(UnanswerableError) as refused:
+        commented.search(filters={"commenter": "nobody"})
+    served = [*answers, str(refused.value)]
+    assert [each for each in served if any(id_ in each for id_ in ACCOUNTS.values())] == []
+
+
 @pytest.mark.parametrize(
     "ref",
     [
