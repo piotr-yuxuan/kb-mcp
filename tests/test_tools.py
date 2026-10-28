@@ -318,14 +318,18 @@ def test_people_and_created_dates_narrow_with_words_or_without(
     ("filters", "valid"),
     [
         ({"assignee": "helene"}, "Hélène Example, Ada Example"),
-        ({"author": "SAMPLE"}, "Bo Sample, A Person, Ada Example"),
+        ({"author": "AMPLE"}, "Bo Sample, Ada Example, A Person"),
         ({"issue_type": "Epic"}, "Bug, Story, Task"),
+        ({"label": "resumé"}, "resume, résumé"),
     ],
 )
 def test_a_refusal_lists_first_the_values_holding_what_was_given(
     people: Library, filters: dict[str, str], valid: str
 ) -> None:
-    """Without regard to case or accents; else, and within each group, the most used first."""
+    """Without regard to case or accents; else, and within each group, the most used first.
+
+    A value that several have but for accents is refused too, rather than one picked.
+    """
     with pytest.raises(UnanswerableError) as refused:
         people.search("broker", filters=filters)
     assert parts(str(refused.value))[1] == valid
@@ -349,6 +353,33 @@ def test_a_listing_by_created_date_continues_by_its_cursor(people: Library) -> N
         found += refs(answer)
         answer = follow(people, answer)
     assert found == ["PROJ-3", "PROJ-1", "PROJ-2"]
+
+
+def test_a_name_matches_whole_as_shown_and_the_value_given_first(tmp_path: Path) -> None:
+    """A Hangul name is no other with the same first letters; spaces compare as shown.
+
+    Among labels equal but for case, the one given exactly is kept.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PROJ-1", "Broker crash", assignee="에이다 예시", labels=("backend",)), None),
+            (
+                issue("PROJ-2", "Broker alert", assignee="Ada\u00a0 Example", labels=("backend",)),
+                None,
+            ),
+            (issue("PROJ-3", "Broker retention", labels=("Backend",)), None),
+        ],
+    )
+    with pytest.raises(UnanswerableError, match=r"^assignee: no document has \"오이디 아시\""):
+        library.search("broker", filters={"assignee": "오이디 아시"})
+    assert refs(library.search("broker", filters={"assignee": "에이다 예시"})) == ["PROJ-1"]
+    assert refs(library.search("broker", filters={"assignee": "ada example"})) == ["PROJ-2"]
+    assert refs(library.search(filters={"label": "Backend"}, sort="created")) == ["PROJ-3"]
+    assert refs(library.search(filters={"label": "BACKEND"}, sort="created")) == [
+        "PROJ-1",
+        "PROJ-2",
+    ]
 
 
 @pytest.mark.parametrize(

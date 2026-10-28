@@ -49,11 +49,12 @@ unless `current`, `assignee <name>` (`unassigned` for an issue with none), `auth
 - `filters`: an object of `source` (`confluence`, `jira` or `worklog`), `space`,
   `project`, `status`, `label`, `issue_type`, `author` (an issue's reporter, a page's
   creator), `assignee`, `updated_after` and `created_after` (included), and
-  `updated_before` and `created_before` (excluded). Values match whole, without regard
-  to case or accents; dates are ISO 8601, a date being its midnight UTC. A value that no
-  document has is refused with the valid ones, those that hold it first, then the most
-  used. The work log's entries are the user's notes and AI-written summaries, its
-  transcripts the word-by-word record.
+  `updated_before` and `created_before` (excluded). Values match whole, as hits show
+  them, without regard to case or accents; dates are ISO 8601, a date being its midnight
+  UTC. A value that no document has, or that several have but for accents, is refused
+  with the valid ones, those that hold it first, the most used first. The work log's
+  entries are the user's notes and AI-written summaries, its transcripts the
+  word-by-word record.
 - `sort`: `relevance`; `updated` or `created`, newest first, by words alone and
   counting every match, after the documents that the query names; with no query, they
   list the documents that pass the filters.
