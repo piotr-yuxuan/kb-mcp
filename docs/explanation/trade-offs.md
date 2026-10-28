@@ -61,7 +61,7 @@ from the site.
   dates by [plan 007](../work/changelog/007-incremental-refresh.md#decisions); `sync` by
   [plan 017](../work/changelog/017-modular-sources.md#what-sync-does); the catch-up from
   the last fetch, a project's end exact, by
-  [plan 034](../work/plans/034-incremental-fetch.md#decisions).
+  [plan 034](../work/changelog/034-incremental-fetch.md#decisions).
 
 ## Cookies and API tokens
 
