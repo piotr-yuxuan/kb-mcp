@@ -498,7 +498,10 @@ def test_people_are_not_embedded_so_a_rebuild_with_new_people_embeds_nothing(dat
 def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     data: Path, schema: str
 ) -> None:
-    """Plan 006's index, one built before the build id, or before people: never half read."""
+    """Plan 006's index, one built before the build id, or before people: never half read.
+
+    The command named writes the mirror's files before the index, as 041 changed them.
+    """
     write(data / "docs", page("196845", "Kafka"), BODY)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with sqlite3.connect(data / "index.sqlite") as connection:
@@ -506,7 +509,7 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
         connection.execute("DELETE FROM meta WHERE name = 'build'")
     connection.close()
     refused = pytest.raises(
-        UnavailableIndexError, match="build it with `atlassian-offline-mcp index`"
+        UnavailableIndexError, match="rebuild it with `atlassian-offline-mcp sync`, which writes"
     )
     with refused, reading(data / "index.sqlite"):
         pass

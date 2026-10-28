@@ -520,10 +520,11 @@ and a commenter's one per comment with its time in `at` (null for the other role
 indexed by role and name, which the filters by person read. Each person is so in the
 index twice, as each label is. No piece's text holds the front matter's people
 (`search.domain.chunking`), so a build over files of which only `people` changed embeds
-nothing new. An index of another schema is
-refused with the command that rebuilds it. The MCP server opens it read-only, never
-writes, and reopens it when the file is replaced; it searches by meaning with the model
-that the index names, and only while the endpoint's fingerprint for it is the index's.
+nothing new. An index of another schema is refused, naming `sync`, which writes the
+mirror again before it rebuilds the index, as a new schema can come with a new format of
+the files. The MCP server opens it read-only, never writes, and reopens it when the file
+is replaced; it searches by meaning with the model that the index names, and only while
+the endpoint's fingerprint for it is the index's.
 
 ### Models and vectors
 

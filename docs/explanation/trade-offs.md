@@ -232,8 +232,9 @@ that what read the two keys, a hit's line among them
 - **Cost.** One rewrite: every file of the mirror is written again once, and the index
   rebuilt once, at schema 4
   ([`SCHEMA`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), which
-  embeds nothing new; until then, the server refuses the old index, naming the command
-  that rebuilds it
+  embeds nothing new; until then, the server refuses the old index, naming `sync`,
+  which writes the files again before it rebuilds the index, where `index` alone would
+  skip every file of the old format
   ([`reading`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)). A
   program that read `author:` in the files reads `people`. Each person is in the index
   twice, as each label is: in the JSON from which a row gives its front matter back, and
