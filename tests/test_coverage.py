@@ -184,6 +184,14 @@ def test_an_entry_from_before_034_is_replaced_by_a_run_from_its_start() -> None:
     assert old.extended(PROJECT, fetched) == (exactly(COVERED, NOW), "extended")
 
 
+def test_a_failure_at_the_start_of_an_exact_entry_makes_it_inexact() -> None:
+    """Nothing is claimed of that moment: the next catch-up searches the period whole."""
+    fetched = Period(COVERED, NOW)
+    after = exactly(COVERED, END).extended(PROJECT, fetched, COVERED)
+    assert after == (before_034(COVERED, END), "capped")
+    assert window(after[0], PROJECT, None, NOW) == Window(Period(COVERED, NOW), "covered start")
+
+
 def test_an_entry_from_before_034_met_inside_is_joined_and_stays_inexact() -> None:
     """--since after its start: joined as before, so that a hidden failure is never blessed."""
     fetched = Period(END - 2 * DAY, NOW)

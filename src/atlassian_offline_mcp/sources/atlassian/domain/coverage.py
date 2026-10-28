@@ -90,8 +90,9 @@ class Coverage:
         it whole: a first run, a run over an exact entry, or one that starts at or before
         an inexact entry, which it replaces; there a failure ends the period at
         ``failed``, even below the old end, ``capped``, or leaves it as it was when the
-        period would then be empty. Any other run over an inexact entry joins it, as a
-        space's does, and leaves it inexact.
+        period would then be empty, inexact if it starts at the failure, so that the next
+        run searches it whole. Any other run over an inexact entry joins it, as a space's
+        does, and leaves it inexact.
         """
         covered = self.periods.get(target)
         exact = target.searched_by_time and (
@@ -107,7 +108,8 @@ class Coverage:
         if not exact or failed is None:
             return Coverage({**self.periods, target: Period(start, end)}, marked), "extended"
         if failed <= start:
-            return self, "capped"
+            inside = covered is not None and covered.start <= failed
+            return Coverage(self.periods, self.exact - {target} if inside else self.exact), "capped"
         return Coverage({**self.periods, target: Period(start, failed)}, marked), "capped"
 
 
