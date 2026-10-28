@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.mcp.app.responses import LABELS as NAMED
-from atlassian_offline_mcp.mcp.app.responses import cut
+from atlassian_offline_mcp.mcp.app.responses import NAMES, cut
 from atlassian_offline_mcp.mcp.app.responses import page as fitted
 from atlassian_offline_mcp.mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
 from atlassian_offline_mcp.mirror.domain.mirror import ROLES, SOLE, PersonRole
@@ -163,7 +162,7 @@ def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
             at=(MOMENT,) if role == "commenter" else (),
         )
         for role in ROLES
-        for number in range(1 if role in SOLE else NAMED + 2)
+        for number in range(1 if role in SOLE else NAMES + 2)
     )
     wide = "長" * 250
     front = issue(

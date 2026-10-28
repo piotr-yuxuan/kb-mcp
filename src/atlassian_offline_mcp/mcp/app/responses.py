@@ -29,6 +29,7 @@ CEILING = 10_000  # estimated tokens of any answer
 FIELD = 200  # characters of a one-line field or a heading, as shown
 LABEL = 60
 LABELS = 10
+NAMES = 10  # names of one role that a read shows, then how many more
 SNIPPET = 300
 DEPTH = 10  # levels of indentation, at most
 # Estimated tokens kept for an answer's header and the markers of its block.
@@ -196,7 +197,7 @@ def metadata(entry: Entry, *, whole: bool) -> str:
     """Write a document's front matter as one-line ``key: value`` lines.
 
     ``whole`` gives every key; otherwise the title, path and mirror date alone. People
-    come by name alone, one line per role in the order of the roles: LABELS names at
+    come by name alone, one line per role in the order of the roles: NAMES names at
     most, then how many more, each commenter with their comments' count and the day of
     the last. A role's line is not cut as a value is, so that the count of the rest stays;
     each name in it is, so that a name that a hit cuts comes whole.
@@ -220,9 +221,9 @@ def metadata(entry: Entry, *, whole: bool) -> str:
             names = [
                 short(person.name)
                 + (f" ({len(person.at)}, last {person.at[-1]:%Y-%m-%d})" if person.at else "")
-                for person in held[:LABELS]
+                for person in held[:NAMES]
             ]
-            more = f"; {len(held) - LABELS} more" if len(held) > LABELS else ""
+            more = f"; {len(held) - NAMES} more" if len(held) > NAMES else ""
             rows.append((role, "; ".join(names) + more))
         rows += [
             ("created", stamp(front.created)),
