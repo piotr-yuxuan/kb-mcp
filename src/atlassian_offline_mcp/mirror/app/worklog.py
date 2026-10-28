@@ -29,10 +29,11 @@ from atlassian_offline_mcp.mirror.domain.mirror_layout import one_line, worklog_
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.sources.worklog.adapters import files
 from atlassian_offline_mcp.sources.worklog.domain.worklog import (
+    ENTRY,
     TODO,
     TODO_ARCHIVE,
     TRANSCRIPTS,
-    entries,
+    journal,
     revision,
     transcripts,
 )
@@ -89,7 +90,7 @@ class Planned:
 
 
 def read_worklog(folder: Path, *, archives: bool) -> Read:
-    """Read the work log under ``folder``: its entries, then its transcripts.
+    """Read the work log under ``folder``: its entries, days and meetings, then its transcripts.
 
     Without ``archives``, the archive file, ``transcripts/archive/`` and the subtrees
     tagged ARCHIVE are left out. A file not read is a problem, named by its path. The span
@@ -109,10 +110,10 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
             [each for each in sources if each.path.parts[0] == TRANSCRIPTS], archives=archives
         )
         todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
-        documents_read = (*entries(todo, archive, archives=archives), *named)
+        documents_read = (*journal(todo, archive, archives=archives, transcripts=named), *named)
     structlog.get_logger().info(
         "worklog.read",
-        entries=len(documents_read) - len(named),
+        entries=sum(1 for each in documents_read if each.type == ENTRY),
         transcripts=len(named),
         html=listing.html,
         problems=len(problems),

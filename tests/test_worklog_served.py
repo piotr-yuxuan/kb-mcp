@@ -2,8 +2,9 @@
 
 Search narrowed to the work log finds a transcript by a word only it holds; the ref that
 its hit shows opens it, its text inside the untrusted block, as is an entry's injected
-line. What the server says names entries as the user's notes and AI-written summaries,
-and transcripts as the word-by-word record to quote and to check a summary against.
+line; a meeting's summary finds the meeting, not its day (plan 042). What the server says
+names entries as the user's notes and AI-written summaries, and transcripts as the
+word-by-word record to quote and to check a summary against.
 """
 
 from __future__ import annotations
@@ -101,6 +102,22 @@ def test_an_entry_s_injected_line_is_inside_the_block(home: Path) -> None:
     before, block, after = parts(served.read(ref))
     assert INJECTED in block
     assert "PWNED" not in before + after
+
+
+def test_a_meeting_found_by_its_summary_is_read_by_its_ref_with_its_sections(
+    home: Path,
+) -> None:
+    """Its summary's word finds the meeting, not its day, which holds its heading alone."""
+    served = library(home)
+    assert refs(served.search("rota", filters={"source": "worklog"})) == ["m-20261026-one-to-one"]
+    _, block, _ = parts(served.read("m-20261026-one-to-one"))
+    assert "## Summary" in block
+    assert "on-call rota" in block
+    (day,) = refs(served.search("dashboard cluster", filters={"source": "worklog"}))
+    assert day == "d-20261026"
+    _, block, _ = parts(served.read(day))
+    assert "One-to-one" in block
+    assert "rota" not in block
 
 
 def test_the_server_says_what_entries_and_transcripts_are(home: Path) -> None:

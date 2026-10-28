@@ -7,7 +7,9 @@ an entry is closed, retagged, ticked or archived. Generated cases are enumerated
 
 Plan 042's outline, days' titles and links to files are expected as org's own parser
 reads the same made-up lines (Emacs 31.1, ``org-element``), and its archiving writes
-``:ARCHIVE_OLPATH:``.
+``:ARCHIVE_OLPATH:``; its journal's days and meetings, their ids and participants, as its
+"Days and meetings: the rule", "What archiving does", "Ids" and "Participants" say, its
+question 1's sample first.
 """
 
 from __future__ import annotations
@@ -24,8 +26,9 @@ import pytest
 from atlassian_offline_mcp.kernel.content import WORKLOG_ID, WORKLOG_REVISION
 from atlassian_offline_mcp.sources.worklog.domain import org
 from atlassian_offline_mcp.sources.worklog.domain.worklog import (
+    Document,
     Source,
-    entries,
+    journal,
     meeting_ids,
     participants,
     revision,
@@ -69,7 +72,10 @@ def transcript(path: str, text: str = "Words.\n", modified: datetime = MODIFIED)
 
 def one(text: str) -> dict[str, str]:
     """Return each entry's id by title, for a todo.org declaring TODO WAITING | DONE."""
-    return {each.title: each.id for each in entries(todo(DECLARED + text), None, archives=True)}
+    return {
+        each.title: each.id
+        for each in journal(todo(DECLARED + text), None, archives=True, transcripts=())
+    }
 
 
 @pytest.mark.parametrize(
@@ -492,20 +498,22 @@ def test_entry_ids_follow_id_then_created_then_title() -> None:
 
 def test_same_titled_entries_are_numbered_in_reading_order() -> None:
     """The second and third of one title take -2 and -3; distinct :CREATED: tell apart."""
-    found = entries(
+    found = journal(
         todo("* Retro\none\n* Retro\ntwo\n* Retro\nthree\n"),
         Source(PurePosixPath("todo.org_archive"), "* Retro\nfour\n", MODIFIED),
         archives=True,
+        transcripts=(),
     )
     base = f"e-{sha('Retro')}"
     assert [each.id for each in found] == [base, f"{base}-2", f"{base}-3", f"{base}-4"]
-    dated = entries(
+    dated = journal(
         todo(
             "* Retro\n:PROPERTIES:\n:CREATED: [2026-10-02 Fri]\n:END:\n"
             "* Retro\n:PROPERTIES:\n:CREATED: [2026-10-09 Fri]\n:END:\n"
         ),
         None,
         archives=True,
+        transcripts=(),
     )
     assert all(ENTRY_ID.fullmatch(each.id) for each in dated)  # neither numbered
     assert dated[0].id != dated[1].id
@@ -558,10 +566,11 @@ def test_a_renamed_entry_keeps_its_id_only_with_an_id_property() -> None:
 def test_an_entry_describes_its_title_status_labels_and_file() -> None:
     """Keyword as status, else current; its tags, the file's, ARCHIVE if archived."""
     parent = DECLARED + "#+FILETAGS: :work:\n"
-    found = entries(
+    found = journal(
         todo(parent + "* WAITING [#A] Review [1/3] :review:work:\n* Old :ARCHIVE:\n* Plain\n"),
         Source(PurePosixPath("todo.org_archive"), "* WAITING Vendor :vendor:\n", MODIFIED),
         archives=True,
+        transcripts=(),
     )
     assert [
         (each.title, each.status, each.labels, each.breadcrumb, each.type) for each in found
@@ -575,10 +584,11 @@ def test_an_entry_describes_its_title_status_labels_and_file() -> None:
 
 def test_without_archives_the_archive_file_and_archived_entries_are_left_out() -> None:
     """The archive file's entries and those tagged ARCHIVE; arch:nil for the rest."""
-    found = entries(
+    found = journal(
         todo("* Old :ARCHIVE:\n* Kept\n** Gone :ARCHIVE:\n"),
         Source(PurePosixPath("todo.org_archive"), "* Vendor\n", MODIFIED),
         archives=False,
+        transcripts=(),
     )
     assert [each.title for each in found] == ["Kept"]
     assert "#+OPTIONS: arch:nil " in found[0].text
@@ -588,10 +598,11 @@ def test_entry_events_stop_at_the_file_time_in_its_own_zone() -> None:
     """A timestamp after the file's time is a plan; org writes the local time."""
     london = timezone(timedelta(hours=1))
     modified = datetime(2026, 10, 22, 18, 0, tzinfo=london)  # 17:00 in UTC
-    (found,) = entries(
+    (found,) = journal(
         todo("* x\n[2026-10-01 Thu]\n[2026-10-22 Thu 17:30]\n<2026-10-22 Thu 18:30>\n", modified),
         None,
         archives=True,
+        transcripts=(),
     )
     assert found.dates(None) == (
         datetime(2026, 10, 1, tzinfo=UTC),
@@ -601,7 +612,7 @@ def test_entry_events_stop_at_the_file_time_in_its_own_zone() -> None:
 
 def test_an_undated_entry_dates_from_its_file_and_its_earlier_creation() -> None:
     """Updated is the file's time; created the existing file's, else that time too."""
-    (found,) = entries(todo("* Undated\n"), None, archives=True)
+    (found,) = journal(todo("* Undated\n"), None, archives=True, transcripts=())
     earlier = datetime(2026, 10, 1, tzinfo=UTC)
     assert found.dates(None) == (MODIFIED, MODIFIED)
     assert found.dates(earlier) == (earlier, MODIFIED)
@@ -780,4 +791,273 @@ def test_a_title_whose_slug_is_another_s_numbered_id_takes_no_id_twice() -> None
         "m-20261027-stand-up-2",
         "m-20261027-stand-up",
         "m-20261027-stand-up-3",
+    ]
+
+
+# Plan 042's question 1, the journal's shape on a made-up sample.
+SAMPLE = (
+    "* Entries\n"
+    "** <2026-10-27 Tue>\n"
+    "A note of the day.\n"
+    "*** Payments stand-up\n"
+    ":PROPERTIES:\n"
+    ":MEETING: [[./meetings/2026-10-27 Tue/1.org]]\n"
+    ":PARTICIPANTS: Alex Example, Sam Sample, Kim (not in the header)\n"
+    ":END:\n"
+    "**** Summary\n"
+    "**** Details\n"
+    "**** Actions\n"
+    "***** TODO Send the rollback figures\n"
+    "** From <2026-10-05 Mon> to <2026-10-09 Fri> (summary)\n"
+)
+CONDENSED = "From <2026-10-05 Mon> to <2026-10-09 Fri> (summary)"
+
+
+def archived(text: str) -> Source:
+    """Return ``todo.org_archive`` holding ``text``."""
+    return Source(PurePosixPath("todo.org_archive"), text, MODIFIED)
+
+
+def body(document: Document) -> list[str]:
+    """Return the lines that pandoc converts for a document, without the settings before them."""
+    return [line for line in document.text.splitlines() if not line.startswith("#+")]
+
+
+def test_the_plan_s_sample_is_a_day_a_meeting_and_a_range() -> None:
+    """The day, its note and the meeting's heading line; the meeting whole; the range an entry.
+
+    Each begins at level 1.
+    """
+    (record,), _ = transcripts(
+        [Source(PurePosixPath("meetings/2026-10-27 Tue/1.org"), "Words.\n", MODIFIED)],
+        archives=True,
+    )
+    found = journal(todo(DECLARED + SAMPLE), None, archives=True, transcripts=[record])
+    assert [(each.type, each.id, each.title, each.breadcrumb) for each in found] == [
+        ("entry", f"e-{sha(CONDENSED)}", CONDENSED, ("todo.org", "Entries")),
+        ("day", "d-20261027", "<2026-10-27 Tue>", ("todo.org", "Entries")),
+        (
+            "meeting",
+            "m-20261027-payments-stand-up",
+            "Payments stand-up",
+            ("todo.org", "Entries", "<2026-10-27 Tue>"),
+        ),
+    ]
+    condensed, day, meeting = found
+    assert body(condensed) == [f"* {CONDENSED}"]
+    assert body(day) == ["* <2026-10-27 Tue>", "A note of the day.", "** Payments stand-up"]
+    assert body(meeting) == [
+        "* Payments stand-up",
+        ":PROPERTIES:",
+        ":MEETING: [[./meetings/2026-10-27 Tue/1.org]]",
+        ":PARTICIPANTS: Alex Example, Sam Sample, Kim (not in the header)",
+        ":END:",
+        "** Summary",
+        "** Details",
+        "** Actions",
+        "*** TODO Send the rollback figures",
+    ]
+    assert meeting.people == ("Alex Example", "Sam Sample", "Kim (not in the header)")
+    assert meeting.links == (("transcript", record.id),)
+    assert day.dates(None) == meeting.dates(None) == (TUESDAY, TUESDAY)
+    assert (day.people, day.links) == ((), ())
+
+
+@pytest.mark.parametrize(("own", "entries"), [("", []), ("Kept for the week.\n", ["Notes"])])
+def test_the_journal_s_own_lines_are_an_entry_only_when_they_hold_text(
+    own: str, entries: list[str]
+) -> None:
+    """Whatever the journal's title; its blank lines alone make no entry."""
+    found = journal(
+        todo(f"* Notes\n{own}\n** <2026-10-27 Tue>\n"), None, archives=True, transcripts=()
+    )
+    assert [each.title for each in found if each.type == "entry"] == entries
+    assert [each.id for each in found if each.type == "day"] == ["d-20261027"]
+
+
+def test_a_day_is_a_date_alone_at_level_one_or_two() -> None:
+    """A date at level 1 is a day; a timestamp with a time, or inactive, makes no journal."""
+    found = journal(
+        todo(
+            "* <2026-10-26 Mon>\nAlone.\n* Notes\n** <2026-10-27 Tue 10:00>\n** [2026-10-28 Wed]\n"
+        ),
+        None,
+        archives=True,
+        transcripts=(),
+    )
+    assert [(each.type, each.title, each.breadcrumb) for each in found] == [
+        ("entry", "Notes", ("todo.org",)),
+        ("day", "<2026-10-26 Mon>", ("todo.org",)),
+    ]
+
+
+def test_a_meeting_is_a_child_of_a_day_with_a_meeting_s_property() -> None:
+    """:MEETING: or :PARTICIPANTS: alone; another drawer, or a grandchild, stays in the day."""
+    found = journal(
+        todo(
+            DECLARED + "* Entries\n** <2026-10-27 Tue>\n"
+            "*** Linked\n:PROPERTIES:\n:MEETING: [[./x.org]]\n:END:\n"
+            "*** Named\n:PROPERTIES:\n:PARTICIPANTS: Sam\n:END:\n"
+            "*** TODO Task\n:PROPERTIES:\n:ID: 6f1c\n:END:\n"
+            "**** Deeper\n:PROPERTIES:\n:PARTICIPANTS: Kim\n:END:\n"
+        ),
+        None,
+        archives=True,
+        transcripts=(),
+    )
+    assert [each.title for each in found] == ["<2026-10-27 Tue>", "Linked", "Named"]
+    assert [line for line in body(found[0]) if line.startswith("*")] == [
+        "* <2026-10-27 Tue>",
+        "** Linked",
+        "** Named",
+        "** TODO Task",
+        "*** Deeper",
+    ]
+
+
+def test_same_titled_meetings_are_numbered_by_their_transcripts_starts() -> None:
+    """The meeting without a transcript starts at its day, first; then by each transcript's."""
+    lines = ["* Entries", "** <2026-10-27 Tue>"]
+    for value in (
+        ":MEETING: [[./transcripts/2026-10-27 Tue/late.org]]",
+        ":MEETING: [[file:transcripts/2026-10-27 Tue/early.org][Record]]",
+        ":PARTICIPANTS: Sam Sample",
+    ):
+        lines += ["*** Stand-up", ":PROPERTIES:", value, ":END:"]
+    read, _ = transcripts(
+        [transcript("2026-10-27 Tue/early.org"), transcript("2026-10-27 Tue/late.org")],
+        archives=True,
+    )
+    early, late = (
+        dataclasses.replace(each, start=TUESDAY.replace(hour=hour))
+        for each, hour in zip(read, (9, 14), strict=True)
+    )
+    found = journal(todo("\n".join(lines)), None, archives=True, transcripts=[late, early])
+    assert [(each.id, each.start, each.links) for each in found if each.type == "meeting"] == [
+        ("m-20261027-stand-up-3", late.start, (("transcript", late.id),)),
+        ("m-20261027-stand-up-2", early.start, (("transcript", early.id),)),
+        ("m-20261027-stand-up", TUESDAY, ()),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("value", "linked"),
+    [
+        ("[[./transcripts/2026-10-27 Tue/1.org]]", True),
+        ("[[file:transcripts/2026-10-27 Tue/1.org][Transcript]]", True),
+        ("transcripts/2026-10-27 Tue/1.org", True),
+        ("[[./transcripts/2026-10-27 Tue/2.org]]", False),
+        ("[[../todo/transcripts/2026-10-27 Tue/1.org]]", False),
+        ("[[/srv/todo/transcripts/2026-10-27 Tue/1.org]]", False),
+        ("[[transcripts/2026-10-27 Tue/1.org]]", False),
+        ("https://meet.example.invalid/abc", False),
+    ],
+)
+def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
+    value: str, *, linked: bool
+) -> None:
+    """From the folder of its file, and starts with it; a file not read, up, or none: no link."""
+    (record,), _ = transcripts([transcript("2026-10-27 Tue/1.org")], archives=True)
+    record = dataclasses.replace(record, start=TUESDAY.replace(hour=9, minute=31))
+    found = journal(
+        todo(
+            "* Entries\n** <2026-10-27 Tue>\n*** Stand-up\n"
+            f":PROPERTIES:\n:MEETING: {value}\n:END:\n"
+        ),
+        None,
+        archives=True,
+        transcripts=[record],
+    )
+    (meeting,) = [each for each in found if each.type == "meeting"]
+    if linked:
+        assert (meeting.links, meeting.start) == ((("transcript", record.id),), record.start)
+    else:
+        assert (meeting.links, meeting.start) == ((), TUESDAY)
+
+
+# A meeting with a section, then archived headings, as org writes them: a task archived
+# from a meeting met later in the file, a meeting archived alone, a task of the day, and
+# a task of a meeting that no longer is.
+JOINED = (
+    "* Entries\n** <2026-10-27 Tue>\nThe day.\n"
+    "*** Stand-up\n:PROPERTIES:\n:PARTICIPANTS: Sam\n:END:\n**** Actions\n"
+)
+ARCHIVED = (
+    "* DONE Retro task\n:PROPERTIES:\n:ARCHIVE_OLPATH: Entries/<2026-10-27 Tue>/Retro\n:END:\n"
+    "Retro task words.\n"
+    "* Retro :ops:\n:PROPERTIES:\n:PARTICIPANTS: Kim\n"
+    ":ARCHIVE_OLPATH: Entries/<2026-10-27 Tue>\n:END:\nRetro words.\n"
+    "* DONE Pay\n:PROPERTIES:\n:ARCHIVE_OLPATH: Entries/<2026-10-27 Tue>\n:END:\nPaid.\n"
+    "* DONE Close it\n:PROPERTIES:\n"
+    ":ARCHIVE_OLPATH: Entries/<2026-10-27 Tue>/Stand-up/Actions\n:END:\nClosed.\n"
+    "* DONE Lost\n:PROPERTIES:\n:ARCHIVE_OLPATH: Entries/<2026-10-27 Tue>/Gone/Actions\n:END:\n"
+)
+
+
+def test_archived_headings_join_their_day_or_the_meeting_their_path_names() -> None:
+    """A meeting alone is one of its day; else the meeting named next, else the day, at level 2."""
+    found = journal(todo(DECLARED + JOINED), archived(ARCHIVED), archives=True, transcripts=())
+    assert [(each.type, each.id, each.labels) for each in found] == [
+        ("day", "d-20261027", ()),
+        ("meeting", "m-20261027-stand-up", ()),
+        ("meeting", "m-20261027-retro", ("ops", "ARCHIVE")),
+    ]
+    day, standup, retro = found
+    assert [line for line in body(day) if not line.startswith(":")] == [
+        "* <2026-10-27 Tue>",
+        "The day.",
+        "** Stand-up",
+        "** Retro :ops:",
+        "** DONE Pay",
+        "Paid.",
+        "** DONE Lost",
+    ]
+    assert [line for line in body(standup) if not line.startswith(":")] == [
+        "* Stand-up",
+        "** Actions",
+        "** DONE Close it",
+        "Closed.",
+    ]
+    assert [line for line in body(retro) if not line.startswith(":")] == [
+        "* Retro :ops:",
+        "Retro words.",
+        "** DONE Retro task",
+        "Retro task words.",
+    ]
+    assert retro.breadcrumb == ("todo.org_archive", "Entries", "<2026-10-27 Tue>")
+    assert retro.people == ("Kim",)
+
+
+def test_a_day_that_archived_headings_alone_name_takes_its_title_from_their_path() -> None:
+    """Archived, from the archive file, its journal the path's part before it."""
+    found = journal(todo(""), archived(ARCHIVED), archives=True, transcripts=())
+    day = found[0]
+    assert (day.id, day.title, day.breadcrumb, day.labels) == (
+        "d-20261027",
+        "<2026-10-27 Tue>",
+        ("todo.org_archive", "Entries"),
+        ("ARCHIVE",),
+    )
+    assert [each.id for each in found[1:]] == ["m-20261027-retro"]
+
+
+def test_without_archives_archived_days_and_meetings_are_left_out() -> None:
+    """The archive file, a day tagged ARCHIVE with its meetings, a meeting tagged ARCHIVE."""
+    text = (
+        "* Entries\n** <2026-10-26 Mon> :ARCHIVE:\n"
+        "*** Old\n:PROPERTIES:\n:PARTICIPANTS: Sam\n:END:\n"
+        "** <2026-10-27 Tue>\n*** Kept\n:PROPERTIES:\n:PARTICIPANTS: Sam\n:END:\n"
+        "*** Gone :ARCHIVE:\n:PROPERTIES:\n:PARTICIPANTS: Kim\n:END:\n"
+    )
+    kept = journal(todo(text), archived(ARCHIVED), archives=False, transcripts=())
+    assert [each.id for each in kept] == ["d-20261027", "m-20261027-kept"]
+    assert "#+OPTIONS: arch:nil " in kept[0].text
+    every = journal(todo(text), archived(ARCHIVED), archives=True, transcripts=())
+    assert [(each.id, each.labels) for each in every] == [
+        ("d-20261026", ("ARCHIVE",)),
+        ("m-20261026-old", ("ARCHIVE",)),
+        ("d-20261027", ()),
+        ("m-20261027-kept", ()),
+        ("m-20261027-gone", ("ARCHIVE",)),
+        ("m-20261027-retro", ("ops", "ARCHIVE")),
     ]

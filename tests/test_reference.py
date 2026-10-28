@@ -26,6 +26,7 @@ CAPITALS = re.compile(r"[A-Z][A-Z0-9]*_[A-Z0-9_]*")
 # Such texts of src/ that name no variable a run reads, each with why.
 NON_VARIABLES = {
     "API_TOKEN": "the end of ATLASSIAN_OFFLINE_MCP_API_TOKEN, written after its prefix",
+    "ARCHIVE_OLPATH": "a property that org writes when it archives a subtree, the work log reads",
     "EXCLUDE_TAGS": "a setting of an org file, #+EXCLUDE_TAGS:, that the work log reads",
     "SELECT_TAGS": "a setting of an org file, #+SELECT_TAGS:, that the work log reads",
     "SEQ_TODO": "a setting of an org file, #+SEQ_TODO:, that the work log reads",

@@ -81,8 +81,10 @@ CONFIGURED = {
     "embedding_url": "https://embeddings.example/v1",
 }
 ALL = ["confluence", "jira", "worklog"]
-# The work log's documents in the fixture: twelve entries and four transcripts.
-WORKLOG_DOCUMENTS = 16
+# The work log's documents in the fixture, by kind: thirteen entries, two days, eight
+# meetings and five transcripts.
+WORKLOG_KINDS = {"entry": 13, "day": 2, "meeting": 8, "transcript": 5}
+WORKLOG_DOCUMENTS = sum(WORKLOG_KINDS.values())
 
 
 def arguments(*given: str) -> argparse.Namespace:
@@ -649,12 +651,13 @@ def test_the_sources_chosen_are_the_steps_run(
 def test_archives_off_leaves_the_archived_documents_out_of_a_sync(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The archive file's entry, the ARCHIVE entry and the archived transcript: 13 left."""
+    """The archive file's entry and meetings, the ARCHIVE entry, the archived transcript."""
     config = settings_file(home, worklog)
     config.write_text(config.read_text("utf-8") + "archives = false\n", "utf-8")
     assert main(command(home, config, "--yes", "--format", "json")) == 0
     result = json.loads(capsys.readouterr().out)["steps"][0]["result"]
-    assert result["documents"] == WORKLOG_DOCUMENTS - len(["vendor", "old incident", "1.org"])
+    archived = ["vendor", "old incident", "1.org", "incident review", "capacity planning"]
+    assert result["documents"] == WORKLOG_DOCUMENTS - len(archived)
     labels = [
         line for path in (home / "data").rglob("*.md") for line in path.read_text("utf-8").split()
     ]
@@ -1111,7 +1114,7 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
 ) -> None:
     """Each document counted by kind and outcome, each work-log span in the row's step.
 
-    Fresh, twelve entries and four transcripts are mirrored, each conversion timed by
+    Fresh, every entry, day, meeting and transcript is mirrored, each conversion timed by
     kind; unchanged, all are kept and none timed. Each work-log span is in the row's
     ``sync.step``, which names the step and its outcome, in the run's root; each
     document's event is logged in ``worklog.convert``.
@@ -1121,13 +1124,14 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
     first, spans = telemetry.measured(), telemetry.spans.get_finished_spans()
     assert main(command(home, config, "--yes")) == ExitStatus.OK
     second = telemetry.measured()
-    assert by_kind_and_outcome(first) == {("entry", "mirrored"): 12, ("transcript", "mirrored"): 4}
-    assert by_kind_and_outcome(second) == {("entry", "kept"): 12, ("transcript", "kept"): 4}
-    timed = first["aom.mirror.conversion.duration"].data.data_points
-    assert {point.attributes["aom.kind"]: point.count for point in timed} == {
-        "entry": 12,
-        "transcript": 4,
+    assert by_kind_and_outcome(first) == {
+        (kind, "mirrored"): count for kind, count in WORKLOG_KINDS.items()
     }
+    assert by_kind_and_outcome(second) == {
+        (kind, "kept"): count for kind, count in WORKLOG_KINDS.items()
+    }
+    timed = first["aom.mirror.conversion.duration"].data.data_points
+    assert {point.attributes["aom.kind"]: point.count for point in timed} == WORKLOG_KINDS
     assert "aom.mirror.conversion.duration" not in second
     rows = {span.attributes["aom.step"]: span for span in spans if span.name == "sync.step"}
     assert list(rows) == ["worklog", "index"]
@@ -1162,9 +1166,9 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
 ) -> None:
     """``worklog.read``, ``worklog.document`` and ``worklog.end``, by their values.
 
-    Fresh, twelve entries, four transcripts and one HTML transcript read, none unread;
-    each document mirrored, by its kind and path; sixteen files written. Unchanged, each
-    kept and none written. A dry run says sixteen to convert on an empty mirror, none
+    Fresh, thirteen entries, five transcripts and one HTML transcript read, none unread;
+    each document mirrored, by its kind and path; a file each written. Unchanged, each
+    kept and none written. A dry run says each to convert on an empty mirror, none
     after a run, and one file to remove once a transcript is deleted.
     """
     settings, step = chosen_settings(tmp_path, worklog), Worklog(worklog, archives=True)
@@ -1179,16 +1183,22 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     with capture_logs() as planned_again:
         sync(dry, [step])
     (read,) = logged_as(fresh, "worklog.read")
-    assert (read["entries"], read["transcripts"], read["html"], read["problems"]) == (12, 4, 1, 0)
+    assert (read["entries"], read["transcripts"], read["html"], read["problems"]) == (13, 5, 1, 0)
     documents = logged_as(fresh, "worklog.document")
-    assert Counter(each["kind"] for each in documents) == {"entry": 12, "transcript": 4}
+    assert Counter(each["kind"] for each in documents) == WORKLOG_KINDS
     assert {each["outcome"] for each in documents} == {"mirrored"}
-    folders = {"entry": "worklog/entries/", "transcript": "worklog/transcripts/"}
+    folders = {
+        "entry": "worklog/entries/",
+        "day": "worklog/days/",
+        "meeting": "worklog/meetings/",
+        "transcript": "worklog/transcripts/",
+    }
     assert all(str(each["path"]).startswith(folders[str(each["kind"])]) for each in documents)
     fields = ("documents", "written", "unchanged", "removed", "problems")
-    assert ended_with(fresh, *fields) == (16, 16, 0, 0, 0)
-    assert ended_with(unchanged, *fields) == (16, 0, 16, 0, 0)
+    every = WORKLOG_DOCUMENTS
+    assert ended_with(fresh, *fields) == (every, every, 0, 0, 0)
+    assert ended_with(unchanged, *fields) == (every, 0, every, 0, 0)
     kept = {each["outcome"] for each in logged_as(unchanged, "worklog.document")}
     assert kept == {"kept"}
-    assert ended_with(planned, "to_convert", "to_remove", "problems") == (16, 0, 0)
+    assert ended_with(planned, "to_convert", "to_remove", "problems") == (every, 0, 0)
     assert ended_with(planned_again, "to_convert", "to_remove", "problems") == (0, 1, 0)

@@ -3,7 +3,9 @@
 The fixture, ``fixtures/worklog/``, is invented, as the plan's acceptance criteria
 describe it; Emacs's lock, autosave and backup files are added to each copy, since git
 ignores them. Times are fixed by ``os.utime``. Expectations come from the plan's tables,
-written by hand, and every file is read back by ``markdown.load``.
+written by hand, and every file is read back by ``markdown.load``. Plan 042's journal of
+two days, its archived parts and its meetings are expected as its "Days and meetings:
+the rule", "Ids" and criterion 4 describe them.
 """
 
 from __future__ import annotations
@@ -44,6 +46,7 @@ HASHED = re.compile(r"t-[0-9a-f]{16}")
 DAY = "transcripts/current/2026-10-20 Tue"
 ARCHIVED_DAY = "transcripts/archive/2026/2026-10/2026-10-20 Tue"
 ENTRIES = [
+    "From <2026-10-05 Mon> to <2026-10-09 Fri> (summary)",
     "Hand-over checklist",
     "Old incident log",
     "Payout gateway rollback runbook",
@@ -60,9 +63,24 @@ ENTRIES = [
 TRANSCRIPTS = [
     "Notes on the ledger",
     "Payments stand-up",
+    "Payments stand-up, 27 October",
     "Transcript, 2026-09-15 Tue, 1",
     "WAITING Notes",
 ]
+# The journal's days, by id, and its meetings, by id and title: those of the archive last.
+DAYS = ["d-20261026", "d-20261027"]
+MEETINGS = {
+    "m-20261026-one-to-one": "One-to-one",
+    "m-20261026-one-to-one-2": "One-to-one",
+    "m-20261026-incident-review": "Incident review",
+    "m-20261027-payments-stand-up": "Payments stand-up",
+    "m-20261027-ledger-review": "Ledger review",
+    "m-20261027-vendor-call": "Vendor call",
+    "m-20261027-rollout-planning": "Rollout planning",
+    "m-20261027-capacity-planning": "Capacity planning",
+}
+ARCHIVED_MEETINGS = {"Incident review", "Capacity planning"}
+DOCUMENTS = len(ENTRIES) + len(TRANSCRIPTS) + len(DAYS) + len(MEETINGS)
 
 
 @dataclass(frozen=True)
@@ -123,9 +141,18 @@ class Run:
             for path in found
         ]
 
-    def by_title(self, title: str) -> Mirrored:
-        """Return the one file of this title."""
-        (found,) = [each for each in self.files() if each.matter.title == title]
+    def by_title(self, title: str, kind: str | None = None) -> Mirrored:
+        """Return the one file of this title, and of this type when given."""
+        (found,) = [
+            each
+            for each in self.files()
+            if each.matter.title == title and kind in (None, each.matter.type)
+        ]
+        return found
+
+    def by_id(self, identifier: str) -> Mirrored:
+        """Return the file of this id."""
+        (found,) = [each for each in self.files() if each.matter.id == identifier]
         return found
 
     def edit(self, relative: str, old: str, new: str, moment: datetime = LATER) -> None:
@@ -169,16 +196,24 @@ def snapshot(root: Path) -> dict[str, tuple[bytes, int]]:
     }
 
 
-def test_the_documents_are_the_top_level_headings_and_the_org_transcripts(run: Run) -> None:
-    """Both files' top-level headings, COMMENT and noexport with their text; one per .org."""
+def test_the_documents_are_the_entries_days_meetings_and_org_transcripts(run: Run) -> None:
+    """Top-level headings and the journal's others, its days and meetings; one per .org.
+
+    COMMENT and noexport headings are entries, with their text.
+    """
     outcome = run()
     files = run.files()
     assert sorted(each.matter.title for each in files if each.matter.type == "entry") == ENTRIES
     assert sorted(each.matter.title for each in files if each.matter.type == "transcript") == (
         TRANSCRIPTS
     )
+    assert sorted(each.matter.id for each in files if each.matter.type == "day") == DAYS
+    meetings = {
+        each.matter.id: each.matter.title for each in files if each.matter.type == "meeting"
+    }
+    assert meetings == MEETINGS
     assert (outcome.documents, outcome.html, outcome.problems, outcome.warnings) == (
-        len(ENTRIES) + len(TRANSCRIPTS),
+        DOCUMENTS,
         1,
         (),
         (),
@@ -189,69 +224,113 @@ def test_the_documents_are_the_top_level_headings_and_the_org_transcripts(run: R
 
 
 def test_without_archives_the_archived_documents_and_text_go(run: Run) -> None:
-    """The archive file's entries, the archived transcript and the ARCHIVE text."""
+    """The archive file's entries and meetings, the archived transcript, the ARCHIVE text."""
     run()
     outcome = run(archives=False)
     titles = {each.matter.title for each in run.files()}
     gone = {"Vendor contract renewal", "Old incident log", "Transcript, 2026-09-15 Tue, 1"}
-    assert titles == (set(ENTRIES) | set(TRANSCRIPTS)) - gone
+    gone |= ARCHIVED_MEETINGS
+    kept = {*ENTRIES, *TRANSCRIPTS, *MEETINGS.values(), "<2026-10-26 Mon>", "<2026-10-27 Tue>"}
+    assert titles == kept - gone
     assert outcome.changes.removed == len(gone)
     assert "Archived text inside an entry." not in run.by_title("Reading notes").body
     assert all("Archived text" not in each.body for each in run.files())
 
 
 @pytest.mark.parametrize(
-    ("title", "status", "labels", "breadcrumb"),
+    ("document", "status", "labels", "breadcrumb"),
     [
-        ("Review the ledger migration", "WAITING", ("review", "ledger", "work"), ("todo.org",)),
-        ("Old incident log", "current", ("ARCHIVE", "work"), ("todo.org",)),
-        ("Vendor contract renewal", "WAITING", ("vendor", "ARCHIVE"), ("todo.org_archive",)),
-        ("Tidy the runbooks folder", "TODO", ("work",), ("todo.org",)),
         (
-            "Payments stand-up",
+            ("entry", "Review the ledger migration"),
+            "WAITING",
+            ("review", "ledger", "work"),
+            ("todo.org",),
+        ),
+        (("entry", "Old incident log"), "current", ("ARCHIVE", "work"), ("todo.org",)),
+        (
+            ("entry", "Vendor contract renewal"),
+            "WAITING",
+            ("vendor", "ARCHIVE"),
+            ("todo.org_archive",),
+        ),
+        (("entry", "Tidy the runbooks folder"), "TODO", ("work",), ("todo.org",)),
+        (
+            ("entry", "From <2026-10-05 Mon> to <2026-10-09 Fri> (summary)"),
+            "current",
+            ("work",),
+            ("todo.org", "Entries"),
+        ),
+        (("day", "<2026-10-27 Tue>"), "current", ("work",), ("todo.org", "Entries")),
+        (("day", "<2026-10-26 Mon>"), "current", ("work", "ARCHIVE"), ("todo.org", "Entries")),
+        (
+            ("meeting", "Ledger review"),
+            "current",
+            ("work",),
+            ("todo.org", "Entries", "<2026-10-27 Tue>"),
+        ),
+        (
+            ("meeting", "Capacity planning"),
+            "current",
+            ("ARCHIVE",),
+            ("todo.org_archive", "Entries", "<2026-10-27 Tue>"),
+        ),
+        (
+            ("transcript", "Payments stand-up"),
             "current",
             ("standup",),
             ("transcripts", "current", "2026-10-20 Tue"),
         ),
         (
-            "Transcript, 2026-09-15 Tue, 1",
+            ("transcript", "Transcript, 2026-09-15 Tue, 1"),
             "current",
             ("ARCHIVE",),
             ("transcripts", "archive", "2026", "2026-09", "2026-09-15 Tue"),
         ),
-        ("WAITING Notes", "current", (), ("transcripts", "misc")),
+        (("transcript", "WAITING Notes"), "current", (), ("transcripts", "misc")),
     ],
 )
 def test_front_matter_says_status_labels_and_place(
-    run: Run, title: str, status: str, labels: tuple[str, ...], breadcrumb: tuple[str, ...]
+    run: Run,
+    document: tuple[str, str],
+    status: str,
+    labels: tuple[str, ...],
+    breadcrumb: tuple[str, ...],
 ) -> None:
-    """Keyword or current; tags, #+FILETAGS and ARCHIVE; the file or the folders."""
+    """Keyword or current; tags, #+FILETAGS and ARCHIVE; the file and journal, or folders."""
     run()
-    matter = run.by_title(title).matter
+    kind, title = document
+    matter = run.by_title(title, kind).matter
     assert (matter.status, matter.labels, matter.breadcrumb) == (status, labels, breadcrumb)
     assert (matter.fetched_at, matter.key, matter.space, matter.url) == (MODIFIED, None, None, None)
 
 
 @pytest.mark.parametrize(
-    ("title", "created", "updated"),
+    ("kind", "title", "created", "updated"),
     [
-        ("Plan the next quarter", datetime(2026, 10, 14, 16, tzinfo=UTC), None),
+        ("entry", "Plan the next quarter", datetime(2026, 10, 14, 16, tzinfo=UTC), None),
         (
+            "entry",
             "Review the ledger migration",
             datetime(2026, 10, 19, 10, tzinfo=UTC),
             datetime(2026, 10, 19, 11, 20, tzinfo=UTC),
         ),
-        ("Tidy the runbooks folder", MODIFIED, None),
-        ("Payments stand-up", datetime(2026, 10, 20, tzinfo=UTC), None),
-        ("WAITING Notes", MODIFIED, None),
+        ("entry", "Tidy the runbooks folder", MODIFIED, None),
+        ("transcript", "Payments stand-up", datetime(2026, 10, 20, tzinfo=UTC), None),
+        ("transcript", "WAITING Notes", MODIFIED, None),
+        ("day", "<2026-10-27 Tue>", datetime(2026, 10, 27, tzinfo=UTC), None),
+        ("meeting", "Ledger review", datetime(2026, 10, 27, tzinfo=UTC), None),
+        ("meeting", "Capacity planning", datetime(2026, 10, 27, tzinfo=UTC), None),
     ],
 )
 def test_dates_are_the_earliest_and_latest_events_up_to_the_file_time(
-    run: Run, title: str, created: datetime, updated: datetime | None
+    run: Run, kind: str, title: str, created: datetime, updated: datetime | None
 ) -> None:
-    """A later timestamp is a plan; no event, the file's time; a transcript, its day."""
+    """A later timestamp is a plan; no event, the file's time; a transcript, its day.
+
+    A day, and a meeting without a transcript, are their day, whatever their lines hold.
+    """
     run()
-    matter = run.by_title(title).matter
+    matter = run.by_title(title, kind).matter
     assert (matter.created, matter.updated) == (created, updated or created)
 
 
@@ -260,7 +339,7 @@ def test_ids_of_undated_or_unruly_transcripts_are_digests(run: Run) -> None:
     run()
     for title in ("Notes on the ledger", "WAITING Notes"):
         assert HASHED.fullmatch(run.by_title(title).matter.id)
-    assert run.by_title("Payments stand-up").matter.id == "t-20261020-1"
+    assert run.by_title("Payments stand-up", "transcript").matter.id == "t-20261020-1"
 
 
 def test_an_edited_undated_entry_keeps_its_creation(run: Run) -> None:
@@ -309,6 +388,48 @@ def move_transcript(run: Run) -> None:
     (run.root / DAY / "1.org").rename(run.root / ARCHIVED_DAY / "1.org")
 
 
+LEDGER_REVIEW = """*** Ledger review
+:PROPERTIES:
+:PARTICIPANTS: Robin Example, Kim (not in the header), Sam Sample
+:END:
+**** Summary
+The ledger migration waits on the schema owner.
+**** Actions
+***** WAITING Ask the schema owner for a date
+"""
+# What org adds to an archived heading's drawer, after its own properties.
+ARCHIVING = (
+    ":ARCHIVE_TIME: 2026-10-28 Wed 10:00\n:ARCHIVE_FILE: ~/todo/todo.org\n"
+    ":ARCHIVE_OLPATH: {}\n:ARCHIVE_CATEGORY: todo\n"
+)
+
+
+def archive(run: Run, text: str, path: str) -> None:
+    """Archive a subtree of todo.org as org does: at level 1, its drawer told its path."""
+    run.edit("todo.org", text, "")
+    above = len(text) - len(text.lstrip("*")) - 1  # the levels above its first heading
+    first, rest = re.sub(rf"(?m)^\*{{{above}}}(\*+ )", r"\1", text).split("\n", 1)
+    drawer = ARCHIVING.format(path)
+    if rest.startswith(":PROPERTIES:\n"):
+        rest = rest.replace(":END:\n", drawer + ":END:\n", 1)
+    else:
+        rest = f":PROPERTIES:\n{drawer}:END:\n{rest}"
+    archived = run.root / "todo.org_archive"
+    archived.write_text(f"{archived.read_text('utf-8')}\n{first}\n{rest}", "utf-8")
+
+
+def archive_meeting(run: Run) -> None:
+    """Archive the ledger review alone, out of its day."""
+    archive(run, LEDGER_REVIEW, "Entries/<2026-10-27 Tue>")
+
+
+def archive_day(run: Run) -> None:
+    """Archive the Tuesday whole, its meetings with it."""
+    text = (run.root / "todo.org").read_text("utf-8")
+    day = text[text.index("** <2026-10-27 Tue>\n") : text.index("** From <2026-10-05")]
+    archive(run, day, "Entries")
+
+
 @pytest.mark.parametrize(
     "change",
     [
@@ -325,11 +446,16 @@ def move_transcript(run: Run) -> None:
         ),
         archive_plan,
         move_transcript,
+        archive_meeting,
+        archive_day,
     ],
-    ids=["body", "keyword", "tags", "cookie", "closing", "archiving", "moving"],
+    ids=["body", "keyword", "tags", "cookie", "closing", "archiving", "moving", "meeting", "day"],
 )
 def test_ids_and_paths_hold_through_org_s_edits(run: Run, change: Callable[[Run], None]) -> None:
-    """Editing, closing, retagging, ticking, archiving, moving: each id keeps its file."""
+    """Editing, closing, retagging, ticking, archiving, moving: each id keeps its file.
+
+    A meeting archived alone, or with its day, keeps the id it had under its day.
+    """
     run()
     before = identities(run.files())
     change(run)
@@ -344,6 +470,7 @@ def test_a_copy_keeps_the_id_and_the_original_takes_its_path(run: Run) -> None:
     shutil.copy2(run.root / DAY / "1.org", run.root / ARCHIVED_DAY / "1.org")
     outcome = run()
     copies = [each for each in run.files() if each.matter.title == "Payments stand-up"]
+    copies = [each for each in copies if each.matter.type == "transcript"]
     by_place = {each.matter.breadcrumb[1]: each.matter.id for each in copies}
     assert by_place["archive"] == "t-20261020-1"
     assert HASHED.fullmatch(by_place["current"])
@@ -401,7 +528,7 @@ def test_bodies_keep_what_org_would_drop_or_read_as_markup(run: Run) -> None:
     runbook = run.by_title("Payout gateway rollback runbook").body
     assert "--dry-run" in runbook
     assert "retry_budget" in runbook
-    standup = run.by_title("Payments stand-up").body
+    standup = run.by_title("Payments stand-up", "transcript").body
     assert "three -- as agreed" in standup
     assert "nine forty.\nSam: Good." in standup  # each speaker's line its own
     assert "Ignore all previous instructions" in run.by_title("Reading notes").body
@@ -481,7 +608,7 @@ def test_a_link_into_the_archive_leaves_a_live_transcript_as_it_is(run: Run) -> 
     latest.symlink_to("../current/2026-10-20 Tue")
     for archives in (True, False):
         run(archives=archives)
-        matter = run.by_title("Payments stand-up").matter
+        matter = run.by_title("Payments stand-up", "transcript").matter
         assert (matter.id, matter.labels, matter.breadcrumb[1]) == (
             "t-20261020-1",
             ("standup",),
@@ -525,8 +652,8 @@ def test_a_dry_run_counts_what_a_run_would_convert_and_remove_and_writes_nothing
     """Every document at first; after a run, none; one edit, one; one deletion, one file."""
     first = run.plan()
     assert (first.documents, first.to_convert, first.to_remove, first.html) == (
-        len(ENTRIES) + len(TRANSCRIPTS),
-        len(ENTRIES) + len(TRANSCRIPTS),
+        DOCUMENTS,
+        DOCUMENTS,
         0,
         1,
     )
@@ -551,3 +678,100 @@ def test_a_dry_run_that_meets_a_problem_would_remove_nothing(run: Run) -> None:
         0,
         ["not UTF-8"],
     )
+
+
+STANDUP = "m-20261027-payments-stand-up"
+
+
+def test_a_meeting_s_file_keeps_its_sections_as_headings_from_level_one(run: Run) -> None:
+    """<id>.md: its title, note, Summary, Details, Actions and their task, all from level 1.
+
+    The task archived from its Actions follows, a level below its title, and only there.
+    """
+    run()
+    meeting = run.by_id(STANDUP)
+    assert meeting.path == f"worklog/meetings/{STANDUP}.md"
+    headings = [line for line in meeting.body.splitlines() if line.startswith("#")]
+    assert headings == [
+        "# Payments stand-up",
+        "## Summary",
+        "## Details",
+        "## Actions",
+        "### TODO Send the rollback figures",
+        "## DONE Close the rollback ticket",
+    ]
+    assert "My own note before the meeting" in meeting.body
+    assert "the ticket is closed" in meeting.body
+    assert [each.matter.id for each in run.files() if "the ticket is closed" in each.body] == [
+        STANDUP
+    ]
+
+
+def test_a_day_holds_its_meetings_heading_lines_and_none_of_their_text(run: Run) -> None:
+    """Its note and task whole; each meeting, the one archived alone too, by its title."""
+    run()
+    day = run.by_id("d-20261027")
+    assert day.path == "worklog/days/d-20261027.md"
+    headings = [line for line in day.body.splitlines() if line.startswith("#")]
+    titles = [MEETINGS[each] for each in MEETINGS if each.startswith("m-20261027")]
+    assert headings == [
+        "# \\<2026-10-27 Tue\\>",
+        "## TODO Book a room for the retrospective",
+        *(f"## {title}" for title in titles),
+    ]
+    assert "A note of the Tuesday" in day.body
+    for text in ("My own note", "rollback is done", "schema owner", "two more nodes", "closed"):
+        assert text not in day.body
+
+
+def test_one_date_s_parts_make_one_day_todo_org_first(run: Run) -> None:
+    """The Monday of todo.org and the archive's: one file, each note, todo.org's first."""
+    run()
+    (monday,) = [each for each in run.files() if each.matter.title == "<2026-10-26 Mon>"]
+    assert monday.matter.id == "d-20261026"
+    body = monday.body
+    assert body.index("A note of the Monday") < body.index("Archived text of the Monday")
+    assert "## Incident review" in body
+    assert "the alert fired twice" in run.by_id("m-20261026-incident-review").body
+
+
+def test_the_journal_s_title_and_range_are_no_day(run: Run) -> None:
+    """No document of the journal's empty own lines; the range an entry of its own."""
+    run()
+    assert [each.path for each in run.files() if each.matter.title == "Entries"] == []
+    summary = run.by_title("From <2026-10-05 Mon> to <2026-10-09 Fri> (summary)")
+    assert summary.matter.type == "entry"
+    assert "rehearsed" in summary.body
+    assert all("rehearsed" not in each.body for each in run.files() if each != summary)
+
+
+def test_a_meeting_names_its_participants_as_written_in_order(run: Run) -> None:
+    """:PARTICIPANTS: split at commas, the annotation kept; a day names nobody."""
+    run()
+    people = run.by_id("m-20261027-ledger-review").matter.people
+    assert [(each.role, each.name, each.account, each.at) for each in people] == [
+        ("participant", "Robin Example", None, ()),
+        ("participant", "Kim (not in the header)", None, ()),
+        ("participant", "Sam Sample", None, ()),
+    ]
+    assert run.by_id("d-20261027").matter.people == ()
+
+
+def test_a_meeting_links_to_the_transcript_that_its_property_names(run: Run) -> None:
+    """The stand-up to the quoted transcript, read; a meeting naming a missing file to none."""
+    run()
+    links = run.by_id(STANDUP).matter.links
+    assert [(each.relation, each.ref) for each in links] == [("transcript", "t-20261027-1")]
+    assert run.by_id("m-20261027-rollout-planning").matter.links == ()
+    assert run.by_id("m-20261027-ledger-review").matter.links == ()
+
+
+def test_same_titled_meetings_of_one_day_are_numbered(run: Run) -> None:
+    """Neither has a transcript, so both start at the day: numbered in reading order."""
+    run()
+    found = [each for each in run.files() if each.matter.title == "One-to-one"]
+    names = {each.matter.id: each.matter.people[0].name for each in found}
+    assert names == {
+        "m-20261026-one-to-one": "Robin Example",
+        "m-20261026-one-to-one-2": "Jo Placeholder",
+    }

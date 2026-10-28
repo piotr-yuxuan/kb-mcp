@@ -296,7 +296,7 @@ order or type, by name.
 | `title` | string | the title |
 | `space` | string or null | the space key; `null` for Jira |
 | `project` | string or null | the project key; `null` for Confluence |
-| `status` | string | as the site names it; an entry's keyword, else `current`, as a transcript's |
+| `status` | string | as the site names it; a work-log entry's, day's or meeting's keyword, else `current`, as a transcript's |
 | `issue_type` | string or null | the issue type, such as `Bug`; `null` for Confluence |
 | `labels` | list of strings | the labels, `[]` when none; a work-log document's tags, its file's `#+FILETAGS`, and `ARCHIVE` when archived |
 | `people` | list of mappings | each person by role, one line each, [below](#people); `[]` when none |
@@ -305,7 +305,7 @@ order or type, by name.
 | `version` | integer or null | the Confluence version number; `null` for Jira |
 | `revision` | string | the raw store revision mirrored; a work-log document's, 16 hex digits, [below](#the-work-log) |
 | `url` | string or null | the absolute address of the web page: the `site` setting and `Document.url`; `null` when no site is set, and for the work log |
-| `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for an entry, its file's name; for a transcript, its folders from `transcripts` |
+| `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` |
 | `fetched_at` | string | `fetched_at` of the snapshot, as `created`; a work-log document's file's modification time when converted |
 
 Images: an image in the rendered HTML names its attachment by
@@ -479,12 +479,37 @@ from the folder that `sources.worklog.path` names, read in place and never writt
 so that `mirror` and the work-log step never remove each other's. A run that meets a
 problem (a file not read, a conversion that failed) removes none of its files.
 
-- An **entry** is a top-level heading of `todo.org` or `todo.org_archive`, with what
-  lies below it. Its id is `e-` and the first 16 hex digits of the SHA-256 of its `:ID:`
-  property; else of its title, a line feed, and its `:CREATED:` property; else of its
-  title alone. The title is the heading without keyword, priority, tags and statistics
-  cookies. The second entry of one digest takes `-2`, the third `-3`, in file order,
-  `todo.org` first.
+- The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
+  a day among its children, whatever its title. A **day** is a heading at level 1, or 2
+  below the journal, whose title is one active timestamp of a date alone, such as
+  `<2026-10-28 Wed>`; a **meeting**, a child of a day with `:MEETING:` or
+  `:PARTICIPANTS:` in its drawer. A top-level heading whose `:ARCHIVE_OLPATH:`, which
+  org writes when it archives a subtree, names a day joins that day: a meeting archived
+  alone is one of its meetings; anything else joins the meeting that the path names
+  next after the day, if any, else the day.
+- A **day** is one document per date: each of its headings, `todo.org` first, each
+  meeting among their children cut to its heading line, then what joins it. Its id is
+  `d-` and the date, `%Y%m%d`; its title, its first heading's, else the path's part.
+- A **meeting** is its subtree, then what joins it. Its id is `m-`, its day's date, `-`
+  and its title's slug, as a file name's, else the first 16 hex digits of the title's
+  SHA-256; of one day and id, the meetings take `-2`, `-3` by start, then in file order,
+  passing over a number that another meeting's id holds. Its people are the names that
+  its `:PARTICIPANTS:` gives, split at commas outside brackets, each once and as
+  written, in the role `participant`; its link `transcript` names the transcript whose
+  file its `:MEETING:` names, from the folder of its org file, when that file is read.
+  A day and a meeting begin at level 1, what joins them at level 2.
+- An **entry** is any other top-level heading, a child of the journal that is no day, or
+  the journal's own lines above its children when they hold text, with what lies below
+  it, beginning at level 1. Its id is `e-` and the first 16 hex digits of the SHA-256 of
+  its `:ID:` property; else of its title, a line feed, and its `:CREATED:` property;
+  else of its title alone. The title is the heading without keyword, priority, tags and
+  statistics cookies. The second entry of one digest takes `-2`, the third `-3`, in file
+  order, `todo.org` first.
+- The breadcrumb of an entry, a day or a meeting is its file's name, then the titles
+  above it: the journal's, then a meeting's day's; for a heading at the top of a file,
+  its `:ARCHIVE_OLPATH:` instead. Its labels are its tags, its file's `#+FILETAGS` and
+  `ARCHIVE` when it, or a heading above it, is archived; a day is archived when one of
+  its headings is, or it has none.
 - A **transcript** is an `*.org` file under `transcripts/`. Its id is `t-`, the day
   that begins its folder's name, else its own, as `%Y%m%d`, `-` and its name without
   `.org`, when that matches the rule below; else `t-` and the digest of its path below
@@ -500,17 +525,19 @@ problem (a file not read, a conversion that failed) removes none of its files.
 - `revision` is the digest of pandoc's version and options, a NUL, and the org text
   that pandoc converts: a document whose revision has not changed is not converted
   again, and its file keeps its dates.
-- `created` and `updated` are a transcript's day at midnight UTC; else the earliest and
-  latest timestamps of the document's lines, as written, up to its file's modification
-  time, a later one being a plan; else, without any, the modification time, `created`
-  keeping an existing file's.
+- `created` and `updated` are a day's date at midnight UTC; a meeting's start, its
+  transcript's, else its day's; a transcript's day at midnight UTC; else the earliest
+  and latest timestamps of the document's lines, as written, up to its file's
+  modification time, a later one being a plan; else, without any, the modification time,
+  `created` keeping an existing file's.
 - The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
   and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
-  file, `transcripts/archive/` and subtrees tagged `ARCHIVE` are left out.
+  file, `transcripts/archive/` and subtrees tagged `ARCHIVE` are left out, and so the
+  days and meetings below one.
 
-An entry holds the user's notes and summaries an AI wrote; a transcript, the
-word-by-word record. The MCP server says so to agents, in its instructions and its
-`source` filter, and `read` opens a document by its id.
+An entry, a day and a meeting hold the user's notes and summaries an AI wrote; a
+transcript, the word-by-word record. The MCP server says so to agents, in its
+instructions and its `source` filter, and `read` opens a document by its id.
 
 ### Reading the mirror from another program
 
