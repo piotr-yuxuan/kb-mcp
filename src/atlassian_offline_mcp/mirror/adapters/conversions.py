@@ -33,9 +33,10 @@ CREATE = "CREATE TABLE IF NOT EXISTS conversions (key TEXT PRIMARY KEY, markdown
 SETUP = f"BEGIN IMMEDIATE; {CREATE}; COMMIT; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL"
 # SQLite's primary result codes for a damaged file, and for one that is no database.
 DAMAGED = frozenset({sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB})
-# Those that opening a file also gives when SQLite cannot read its format, or may not write
-# the file, as when its header names a later format.
-UNUSABLE = DAMAGED | {sqlite3.SQLITE_ERROR, sqlite3.SQLITE_READONLY}
+# The codes, exactly, that opening a file also gives when SQLite cannot read its format, or
+# may not write the file, as when its header names a later format. Their extended codes say
+# nothing of the file's content, such as SQLITE_READONLY_DIRECTORY for a folder not writable.
+UNUSABLE = frozenset({sqlite3.SQLITE_ERROR, sqlite3.SQLITE_READONLY})
 # An extended result code, such as SQLITE_CORRUPT_INDEX, holds its primary code in its low byte.
 PRIMARY = 0xFF
 # The files of a store in WAL mode, by what each adds to the store's name.
@@ -120,10 +121,10 @@ def opened(
     SQLite finds the file damaged, no database, or in a format that it cannot read or
     may not write, the file and its ``-wal`` and ``-shm`` are deleted,
     ``mirror.cache_replaced`` says why, by SQLite's error name or ``integrity_check``,
-    and an empty file takes its place. A file locked past the wait is not damaged: it
-    raises, as any write that waits too long does, and stays. Damage that SQLite finds
-    during the run raises too, once the file is deleted, so that the next run starts a
-    new one.
+    and an empty file takes its place. A file locked past the wait is not damaged, nor
+    one in a folder that the run may not write: it raises, as any write that cannot be
+    made does, and stays. Damage that SQLite finds during the run raises too, once the
+    file is deleted, so that the next run starts a new one.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path, timeout=WAIT_S)
@@ -132,7 +133,8 @@ def opened(
             connection.executescript(SETUP)
             checked = connection.execute("PRAGMA integrity_check").fetchall()
         except sqlite3.DatabaseError as error:
-            if (error.sqlite_errorcode & PRIMARY) not in UNUSABLE:
+            code = error.sqlite_errorcode
+            if code not in UNUSABLE and (code & PRIMARY) not in DAMAGED:
                 raise
             damage = error.sqlite_errorname
         else:

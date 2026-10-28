@@ -352,8 +352,10 @@ cannot tell apart. The work log does not use the file: its `revision`
 As the file is opened, the run takes its write lock, then `PRAGMA integrity_check`
 judges it, each index against its table: one that the check finds damaged, or that
 SQLite finds damaged, no database, or of a format that it cannot read or may not write
-(`SQLITE_CORRUPT`, `SQLITE_NOTADB`, `SQLITE_ERROR`, `SQLITE_READONLY`, by their primary
-codes), is deleted with its `-wal` and `-shm`, `mirror.cache_replaced` says why
+(`SQLITE_CORRUPT` and `SQLITE_NOTADB` by their primary codes, `SQLITE_ERROR` and
+`SQLITE_READONLY` exactly, since their extended codes, such as
+`SQLITE_READONLY_DIRECTORY` for a folder that the run may not write, say nothing of the
+file), is deleted with its `-wal` and `-shm`, `mirror.cache_replaced` says why
 ([mirror's telemetry](telemetry/mirror.md)), and an empty file takes its place, so that
 the run goes on and converts everything. Damage that SQLite finds during the run,
 `SQLITE_CORRUPT` or `SQLITE_NOTADB`, fails it, once the file is deleted, so that the
@@ -363,10 +365,10 @@ last page, is given as it is, or fails every run if its text no longer reads as 
 Deleting the file is the remedy for a mirror that looks wrong, or a run that fails on
 the file.
 
-A file locked past the wait is not replaced: the run fails, `sync` without its later
-steps, and the file stays. Nor does the wait cover the file's creation: of two runs that
-create it at the same moment, one may fail at once, seldom, as SQLite's switch of a new
-file to WAL mode does not wait.
+A file locked past the wait, or in a folder that the run may not write, is not
+replaced: the run fails, `sync` without its later steps, and the file stays. Nor does
+the wait cover the file's creation: of two runs that create it at the same moment, one
+may fail at once, seldom, as SQLite's switch of a new file to WAL mode does not wait.
 
 ### The work log
 

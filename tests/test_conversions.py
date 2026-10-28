@@ -10,6 +10,7 @@ of a table or of its index lies where ``sqlite_schema`` and the page size put it
 from __future__ import annotations
 
 import hashlib
+import os
 import sqlite3
 import time
 from contextlib import closing
@@ -365,6 +366,28 @@ def test_a_file_locked_past_the_wait_fails_the_run_and_is_kept(
     assert waited >= WAIT_S
     assert events_named(events, "mirror.cache_replaced") == []
     assert run(path, Scripted(), TEXTS[:1])[1:] == (0, 1)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes a folder whatever its mode")
+def test_a_sound_file_in_a_folder_the_run_may_not_write_fails_the_run_and_is_kept(
+    path: Path,
+) -> None:
+    """Review of 039: SQLite may not write the file for want of its folder, not for its content.
+
+    The run fails as SQLite says; the file stays as it was, and once the folder may be
+    written, the next run reuses every conversion.
+    """
+    run(path, Scripted(), TEXTS)
+    sound = path.read_bytes()
+    path.parent.chmod(0o555)
+    try:
+        with capture_logs() as events, pytest.raises(sqlite3.OperationalError):
+            run(path, Scripted(), TEXTS)
+    finally:
+        path.parent.chmod(0o755)
+    assert events_named(events, "mirror.cache_replaced") == []
+    assert path.read_bytes() == sound
+    assert run(path, Scripted(), TEXTS)[1:] == (0, 4)
 
 
 def test_a_run_keeps_its_conversions_while_another_reads_the_file(
