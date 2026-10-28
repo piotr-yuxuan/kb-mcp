@@ -354,12 +354,13 @@ def bounded(**values: tuple[str | None, int]) -> None:
 def canonical(reader: Reader, name: str, value: str | None) -> str | None:
     """Find the value that the index holds for a filter, without regard to case or accents.
 
-    Values compare as hits show them, their spaces collapsed, composed, then casefolded,
-    decomposed and without the combining diacritical marks of U+0300 to U+036F: a
-    Hangul syllable keeps its letters, a kana its voicing mark. One value alone matching
-    is taken; else the value given, then one equal to it but for case, the most used
-    first. Refuse a value that no document has, or that several have but for accents
-    alone, listing the valid ones: those holding it first, the most used first.
+    Values compare as hits show them, their spaces collapsed, composed and casefolded,
+    then decomposed without the combining diacritical marks of U+0300 to U+036F and
+    casefolded again: a Hangul syllable keeps its letters, a kana its voicing mark. One
+    value alone matching is taken; else the value given, then one that a hit shows
+    alike, the most used first. Refuse a value that no document has, or that several
+    have but for accents alone, listing the valid ones: those holding it first, the
+    most used first.
     """
     if value is None:
         return None
@@ -369,7 +370,7 @@ def canonical(reader: Reader, name: str, value: str | None) -> str | None:
 
     def plain(text: str) -> str:
         decomposed = unicodedata.normalize("NFKD", shown(text))
-        return "".join(char for char in decomposed if not "\u0300" <= char <= "\u036f")
+        return "".join(char for char in decomposed if not "\u0300" <= char <= "\u036f").casefold()
 
     valid = [candidate for candidate, _ in reader.values(name)]
     wanted = plain(value)
@@ -380,8 +381,8 @@ def canonical(reader: Reader, name: str, value: str | None) -> str | None:
     if cased:
         return value if value in cased else cased[0]
     message = f"{name}: no document has {json.dumps(value, ensure_ascii=False)}; the valid values:"
-    shown = sorted(valid, key=lambda each: wanted not in plain(each))
-    raise UnanswerableError(responses.refusal(message, shown[:VALUES_SHOWN], len(valid)))
+    listed = sorted(valid, key=lambda each: wanted not in plain(each))
+    raise UnanswerableError(responses.refusal(message, listed[:VALUES_SHOWN], len(valid)))
 
 
 def instant(name: str, value: str | None) -> datetime | None:

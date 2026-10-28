@@ -380,7 +380,7 @@ def test_a_name_matches_whole_as_shown_and_the_value_given_first(tmp_path: Path)
                 None,
             ),
             (issue("PROJ-3", "Broker retention", assignee="はら", labels=("Backend",)), None),
-            (issue("PROJ-4", "Broker upgrade", assignee="Ada Example"), None),
+            (issue("PROJ-4", "Broker upgrade", assignee="Ada Example", labels=("\u2102",)), None),
         ],
     )
     for refused in ({"assignee": "오이디 아시"}, {"assignee": "ばら"}, {"label": "CAFÈ"}):
@@ -393,7 +393,12 @@ def test_a_name_matches_whole_as_shown_and_the_value_given_first(tmp_path: Path)
     }
     for assignee, expected in kept.items():
         assert refs(library.search(filters={"assignee": assignee}, sort="created")) == expected
-    labels = {"Backend": ["PROJ-3"], "BACKEND": ["PROJ-1", "PROJ-2"], "cafe\u0301": ["PROJ-1"]}
+    labels = {
+        "Backend": ["PROJ-3"],
+        "BACKEND": ["PROJ-1", "PROJ-2"],
+        "cafe\u0301": ["PROJ-1"],
+        "c": ["PROJ-4"],  # the double-struck capital C, a capital once decomposed
+    }
     for label, expected in labels.items():
         assert refs(library.search(filters={"label": label}, sort="created")) == expected
 
