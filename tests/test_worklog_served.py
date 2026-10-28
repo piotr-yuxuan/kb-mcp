@@ -2,9 +2,11 @@
 
 Search narrowed to the work log finds a transcript by a word only it holds; the ref that
 its hit shows opens it, its text inside the untrusted block, as is an entry's injected
-line; a meeting's summary finds the meeting, not its day (plan 042). What the server says
-names entries as the user's notes and AI-written summaries, and transcripts as the
-word-by-word record to quote and to check a summary against.
+line. Plan 042: a meeting's summary finds the meeting, not its day; a participant and a
+date narrow to whom one met, and when; a meeting's read names its transcript, which
+names it back. What the server says names entries as the user's notes and AI-written
+summaries, and transcripts as the word-by-word record to quote and to check a summary
+against.
 """
 
 from __future__ import annotations
@@ -138,6 +140,18 @@ def test_a_participant_and_a_created_date_give_whom_one_met_and_when(home: Path)
         "m-20261027-capacity-planning",
         "t-20261027-1",
     ]
+
+
+def test_a_meeting_s_read_names_its_transcript_which_names_it_back(home: Path) -> None:
+    """From the summary to the word-by-word record in one call, and back."""
+    served = library(home)
+    meeting = parts(served.read("m-20261027-payments-stand-up"))[1].splitlines()
+    assert "participant: Alex Example; Sam Sample" in meeting
+    assert "transcript: t-20261027-1" in meeting
+    record = parts(served.read("t-20261027-1"))[1]
+    assert "Then the retry budget stays at three." in record
+    assert "\nparticipant: Alex Example; Sam Sample; Kim\n" in record
+    assert "\nsummary: m-20261027-payments-stand-up\n" in record
 
 
 def test_the_server_says_what_entries_and_transcripts_are(home: Path) -> None:

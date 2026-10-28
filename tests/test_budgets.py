@@ -8,10 +8,18 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from atlassian_offline_mcp.mcp.app.responses import LABELS as REFS
 from atlassian_offline_mcp.mcp.app.responses import NAMES, cut
 from atlassian_offline_mcp.mcp.app.responses import page as fitted
 from atlassian_offline_mcp.mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
-from atlassian_offline_mcp.mirror.domain.mirror import ROLES, SOLE, WORKLOG_ROLES, PersonRole
+from atlassian_offline_mcp.mirror.domain.mirror import (
+    RELATIONS,
+    ROLES,
+    SOLE,
+    WORKLOG_ROLES,
+    Link,
+    PersonRole,
+)
 from atlassian_offline_mcp.search.adapters.model_api import ModelError
 from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
@@ -154,6 +162,8 @@ MEETING = {
     "issue_type": None,
     "revision": "0123456789abcdef",
 }
+# What each relation links to: a meeting to its transcript, a transcript to its meeting.
+LINKED = {"transcript": "t", "summary": "m"}
 
 
 @pytest.mark.parametrize("max_chars", [12_000, 1])
@@ -166,9 +176,11 @@ def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
     Each role that a document can hold is held: an issue's every role but the work
     log's, a meeting's the work log's alone. By one person where one alone holds it, else
     by two more people than a role's line names; each name, and each other text, longer
-    than a value shown and in characters that are not ASCII, but the address. At the
-    defaults, then with the smallest slice, where the front matter is the most of the
-    answer.
+    than a value shown and in characters that are not ASCII, but the address and the
+    refs. The meeting links by each relation two more documents than a relation's line
+    names, each ref the longest that the work log's ids allow; an issue links none, as
+    the work log alone writes links. At the defaults, then with the smallest slice, where
+    the front matter is the most of the answer.
     """
     worklog = kind.get("source") == "worklog"
     roles = [role for role in ROLES if (role in WORKLOG_ROLES) == worklog]
@@ -190,11 +202,19 @@ def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
         "breadcrumb": (wide,) * 10,
         "url": "https://" + "a" * 250,
     }
-    front = replace(issue("PROJ-1", wide, **fields), people=people, **kind)
+    # A transcript's id, or a meeting's: a date, then 64 characters at most.
+    links = tuple(
+        Link(relation=relation, ref=f"{LINKED[relation]}-20261027-{number:02}-" + "x" * 61)
+        for relation in RELATIONS
+        for number in range(REFS + 2)
+        if worklog
+    )
+    front = replace(issue("PROJ-1", wide, **fields), people=people, links=links, **kind)
     library = built(tmp_path, [(front, f"# Long issue\n\n{PROSE * 100}")])
     answer = library.read(ref, max_chars=max_chars)
     shown = parts(answer)[1]
     assert [role for role in roles if f"\n{role}: {role} 00 " not in shown] == []
+    assert [relation for relation in RELATIONS if worklog and f"\n{relation}: " not in shown] == []
     assert estimate(answer) <= BUDGET
     assert continuation(answer) is not None
 

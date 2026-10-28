@@ -81,14 +81,17 @@ otherwise than its author, and `created <day>`, such as
 Reads a document, or one of its sections, from a character offset, in slices. Each
 slice opens with the document's title, path and mirror date, and one from the body's
 start with its whole front matter, a `key: value` line each. People come there one line
-per role, `author`, `creator`, `assignee` and `commenter`, by name, without the account
-id that the mirror keeps beside it, which stands for the name only where the source
-gives none: ten names at most, then how many more, each commenter with their count of
-comments and the day of the last, such as
-`commenter: Ada Example (2, last 2026-10-21); Bo Sample (1, last 2026-10-20)`.
+per role, `author`, `creator`, `assignee`, `commenter` and `participant`, by name,
+without the account id that the mirror keeps beside it, which stands for the name only
+where the source gives none: ten names at most, then how many more, each commenter with
+their count of comments and the day of the last, such as
+`commenter: Ada Example (2, last 2026-10-21); Bo Sample (1, last 2026-10-20)`. Links
+come after them, one line per relation, by the ref that `read` takes: a meeting's
+`transcript`, and a transcript's `summary`, each meeting that links it, ten refs at
+most, then how many more, such as `transcript: t-20261027-1`.
 
-- `ref`: a page id, an issue key, a work-log id (`e-...` or `t-...`), a page's or an
-  issue's address, or a path in the mirror, at most 300 characters.
+- `ref`: a page id, an issue key, a work-log id (`e-...`, `d-...`, `m-...` or `t-...`),
+  a page's or an issue's address, or a path in the mirror, at most 300 characters.
 - `section`: a section's number, from 1.
 - `offset`: a character of the body to start from.
 - `max_chars`: 1 to 40,000 characters, 12,000 by default.
