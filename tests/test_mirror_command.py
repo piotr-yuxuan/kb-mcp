@@ -182,6 +182,49 @@ def test_the_command_reports_the_documents_it_builds(
     ] == [("documents", 2, 2)]
 
 
+def two_pages(home: Path, monkeypatch: MonkeyPatch) -> Path:
+    """Store a space and two pages; put a pandoc on PATH that notes each conversion it runs.
+
+    It passes its input through, and answers ``--version`` with a version line. Give the
+    file that holds a line per conversion.
+    """
+    runs = home / "runs"
+    script = f'case "$1" in --version) echo "pandoc 9.9";; *) echo run >> "{runs}"; cat;; esac'
+    folder = fake_pandoc(home / "bin", script)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    store = RawStore(home / "data" / "raw")
+    listed = [listing_page("100", "Home", None, None), listing_page("101", "Away", None, None)]
+    with store.writing():
+        store.put_space(v2_space(id=SPACE_ID), listed, [], [])
+        store.put(Page, page_responses("100", "Home", 1, "<p>Home.</p>", []), FETCHED, {})
+        store.put(Page, page_responses("101", "Away", 1, "<p>Away.</p>", []), FETCHED, {})
+    return runs
+
+
+# The two pages' files and their space's tree.
+CONVERSIONS = 3
+
+
+def test_a_second_mirror_with_nothing_changed_runs_pandoc_on_nothing(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 039, criterion 5: its text and its JSON say that each conversion was reused."""
+    runs = two_pages(home, monkeypatch)
+    assert main(arguments(home)) == 0
+    assert "documents: 2\nconverted by pandoc: 3\nreused from the cache: 0\n" in (
+        capsys.readouterr().out
+    )
+    assert len(runs.read_text("utf-8").splitlines()) == CONVERSIONS
+    assert main(arguments(home)) == 0
+    assert capsys.readouterr().out.startswith(
+        "documents: 2\nconverted by pandoc: 0\nreused from the cache: 3\nfiles written: 0\n"
+    )
+    assert main(arguments(home, "--format", "json")) == 0
+    document = json.loads(capsys.readouterr().out)
+    assert (document["converted"], document["reused"]) == (0, CONVERSIONS)
+    assert len(runs.read_text("utf-8").splitlines()) == CONVERSIONS
+
+
 def test_pandoc_runs_sandboxed_on_its_standard_input(home: Path, monkeypatch: MonkeyPatch) -> None:
     """The pandoc on PATH gets --sandbox, the HTML on its input, and its output is kept."""
     folder = fake_pandoc(home / "bin", f'printf "%s\\n" "$@" > "{home}/arguments"; cat')

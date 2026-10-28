@@ -15,6 +15,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 import pytest
+from structlog.testing import capture_logs
 
 from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
 from atlassian_offline_mcp.mirror.adapters.markdown import load
@@ -33,6 +34,8 @@ from tests.samples import (
     v3_comment,
     v3_issue,
 )
+from tests.test_pruning import events_named
+from tests.test_worklog_mirror import Counting
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -48,6 +51,8 @@ SPACE_ID = "196613"
 WORDS = "Words of the leaf page."
 # Home, Leaf, the blog post and the issue.
 DOCUMENTS = 4
+# A conversion for each document's file, and one for the space's tree.
+CONVERSIONS = DOCUMENTS + 1
 
 
 def listing_page(
@@ -334,6 +339,53 @@ def test_a_second_run_writes_nothing_and_a_rebuild_gives_the_same_bytes(
     shutil.rmtree(sandbox.docs)
     sandbox.run()
     assert sandbox.files() == files
+
+
+def test_a_second_run_with_nothing_changed_runs_pandoc_on_nothing(sandbox: Sandbox) -> None:
+    """Plan 039, criterion 5: each conversion of the first run is reused, no file written."""
+    pandoc = Counting(Pandoc.find().path)
+    first = sandbox.run(markdown=pandoc.markdown)
+    assert (first.converted, first.reused, len(pandoc.runs)) == (CONVERSIONS, 0, CONVERSIONS)
+    pandoc.runs.clear()
+    with capture_logs() as events:
+        second = sandbox.run(markdown=pandoc.markdown)
+    assert pandoc.runs == []
+    assert (second.converted, second.reused, second.changes.written) == (0, CONVERSIONS, 0)
+    assert events_named(events, "mirror.written") == [
+        {
+            "written": 0,
+            "unchanged": len(sandbox.files()),
+            "removed": 0,
+            "converted": 0,
+            "reused": CONVERSIONS,
+            "pruned": 0,
+            "log_level": "info",
+        }
+    ]
+
+
+def test_a_run_with_a_problem_keeps_the_conversion_of_what_it_could_not_read(
+    sandbox: Sandbox,
+) -> None:
+    """Plan 039, criterion 5: Home's view damaged, then mended, and pandoc runs on nothing.
+
+    The run between prunes nothing, though it converts the tree anew, without Home's
+    link; the next, which reports nothing, prunes that tree alone.
+    """
+    pandoc = Counting(Pandoc.find().path)
+    sandbox.run(markdown=pandoc.markdown)
+    view = next((sandbox.store.root / "confluence" / "pages" / "100").iterdir()) / "view.json"
+    kept = view.read_bytes()
+    view.write_text("{}", "utf-8")
+    with capture_logs() as damaged:
+        assert sandbox.run(markdown=pandoc.markdown).problems
+    view.write_bytes(kept)
+    pandoc.runs.clear()
+    with capture_logs() as mended:
+        outcome = sandbox.run(markdown=pandoc.markdown)
+    assert (outcome.problems, outcome.reused, pandoc.runs) == ((), CONVERSIONS, [])
+    assert [each["pruned"] for each in events_named(damaged, "mirror.written")] == [0]
+    assert [each["pruned"] for each in events_named(mended, "mirror.written")] == [1]
 
 
 def test_a_renamed_page_moves_to_its_new_slug(sandbox: Sandbox) -> None:
