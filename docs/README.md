@@ -31,6 +31,9 @@ the command and those who change its code, unless it is marked for contributors.
   values completed by bash or zsh.
 - [Coding agents](how-to/agents.md): the MCP server and the mirror's files, for Claude
   Code and VS Code Copilot.
+- [Serve the mirror to a local model](how-to/local-model.md): a model on this machine,
+  offline, in Ollama or another OpenAI-compatible server, and a host that starts the
+  MCP server for it: LM Studio, llama.cpp's web UI, Codex or Claude Code.
 - [Embeddings](how-to/embeddings.md): search by meaning, with Ollama on this machine as
   the example of any OpenAI-compatible API; the model, the endpoint and the chunking; or
   words alone.
@@ -89,6 +92,9 @@ the command and those who change its code, unless it is marked for contributors.
   every sink.
 - [The MCP surface](explanation/mcp-surface.md): what the server says to agents, which
   practice each choice follows, and whether `ask` helps them.
+- [Local models](explanation/local-models.md): which model a laptop can run as an agent
+  over the mirror, and why: what it must do, what fits in memory, what makes it fast or
+  slow, and what the published measures say.
 - [Chunking](explanation/chunking.md): how documents are cut into pieces for search by
   meaning, and how the four chunkings were compared.
 - [Evaluating search](explanation/search-evaluation.md): how the embedding model was
