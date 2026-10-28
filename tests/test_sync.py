@@ -16,6 +16,7 @@ import shutil
 import sqlite3
 import time
 from collections import Counter
+from contextlib import closing
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -677,6 +678,35 @@ def test_a_work_log_that_is_a_file_is_refused_as_not_a_folder(
     config = settings_file(home, tmp_path / "todo.org")
     assert main(command(home, config, "--yes")) == ExitStatus.REFUSED
     assert "sources.worklog.path: not a folder" in capsys.readouterr().err
+
+
+@pytest.mark.usefixtures("signed_in")
+def test_a_second_sync_reuses_every_conversion_and_the_work_log_adds_none(
+    home: Path, worklog: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 039, criterion 7: the data folder's cache holds the mirror's conversions alone.
+
+    A first sync converts, a second reuses each conversion, by its mirror row in JSON,
+    then in text.
+    """
+    config = settings_file(home, worklog, atlassian=True)
+    given = ("--yes", "--since", "2026-10-02")
+    rows = []
+    for output in (("--format", "json"), ("--format", "json"), ()):
+        main(command(home, config, *given, *output))
+        rows.append(capsys.readouterr().out)
+    first, second = (json.loads(row)["steps"][1] for row in rows[:2])
+    assert (first["step"], first["outcome"], first["result"]["reused"]) == ("mirror", "done", 0)
+    converted = first["result"]["converted"]
+    assert converted > first["result"]["documents"] > 0  # a tree among them
+    assert (second["result"]["converted"], second["result"]["reused"]) == (0, converted)
+    documents = first["result"]["documents"]
+    assert (
+        f"mirror: done\n  documents: {documents}\n"
+        f"  converted by pandoc: 0\n  reused from the cache: {converted}\n"
+    ) in rows[2]
+    with closing(sqlite3.connect(home / "data" / "conversions.sqlite")) as cache:
+        assert cache.execute("SELECT count(*) FROM conversions").fetchone() == (converted,)
 
 
 def test_the_text_of_a_full_sync_gives_each_command_s_counts_under_its_row(
