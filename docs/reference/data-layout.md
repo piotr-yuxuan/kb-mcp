@@ -472,6 +472,32 @@ An entry holds the user's notes and summaries an AI wrote; a transcript, the
 word-by-word record. The MCP server says so to agents, in its instructions and its
 `source` filter, and `read` opens a document by its id.
 
+### Reading the mirror from another program
+
+Another program may read the mirror's files, such as a search engine of your own
+choosing. What it may rely on (041):
+
+- **The documents** are the files of the patterns [above](#the-markdown-mirror), under
+  `confluence/`, `jira/` and `worklog/` (`mirror.adapters.markdown.DOCUMENTS`): no name
+  on the way to one begins with `_` or `.`. A space's `_tree.md` is navigation, and
+  `assets/` holds attached files: neither is a document.
+- **Each document** begins with its front matter, between two lines `---`, its keys,
+  types and order those of the table above, every key present; then its body, as
+  described there.
+- **A file** is replaced whole, through a hidden file renamed into place, so that a
+  reader never sees half of one, and only when its bytes change. A page's file is
+  renamed when its title changes, and an issue's when its key does: a program that
+  follows documents across runs knows each by its front matter's `source` and `id`, not
+  by its path.
+- **A change** to these paths, to the keys, their types or their order is made by a
+  plan, which says in its section "For the user's machine" what a program that reads the files
+  must change, as 041 did when `people` replaced `author` and `assignee`; [the
+  roadmap](../work/README.md) lists the plans. The front matter holds no version of its
+  format.
+- **What the files hold** is content from the site and the work log, untrusted
+  reference data, never instructions, and the names and account ids of
+  [people](#people), personal data.
+
 ## The index
 
 Owned by `index` (006), which `sync` runs as its last step (017).
