@@ -40,6 +40,7 @@ from atlassian_offline_mcp.search.domain.search import (
     MAX_WORDS,
     Filters,
     Passage,
+    Sort,
     fuse,
     identifiers,
     plan,
@@ -56,7 +57,7 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.search.adapters.sqlite_index import Reader
     from atlassian_offline_mcp.search.app.meaning import Meaning
     from atlassian_offline_mcp.search.app.reranking import Reranking
-    from atlassian_offline_mcp.search.domain.search import Entry, Plan, Sort
+    from atlassian_offline_mcp.search.domain.search import Entry, Plan
 
 SEARCH_LIMIT = 8
 SEARCH_LIMITS = (1, 50)
@@ -481,7 +482,7 @@ class Library:
         self,
         query: str = "",
         filters: SearchFilters | None = None,
-        sort: Literal["relevance", "updated", "created"] = "relevance",
+        sort: Sort = "relevance",
         limit: int = SEARCH_LIMIT,
         cursor: str | None = None,
     ) -> str:
