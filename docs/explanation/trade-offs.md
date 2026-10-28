@@ -50,8 +50,8 @@ from the site.
   the files of issues stored before `--max-file-mb` was raised. Its margin
   of a day bounds the clock's error: after a run on a clock more than a day ahead, the
   project's coverage ends in the future, its catch-up is skipped, said after `--until`,
-  until the clock reaches it, and then starts after the edits made meanwhile, which
-  only a `--since` fetches.
+  until the clock comes within a day of that end, and then starts after the edits made
+  meanwhile, which only a `--since` fetches.
 - **Rejected.** A schedule (cron, launchd) or a server that refreshes itself. For
   `sync`, a catch-up from the last run's time whatever failed in it, which would leave a
   lasting hole. A window from the last fetch for a space, which would miss what moved in

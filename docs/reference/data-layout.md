@@ -214,10 +214,11 @@ Two more of the store's own records, each replaced whole:
   of its earliest document found and not stored whole (a fetch failed, a snapshot that
   the adapter refuses, a kept file failed, a stored snapshot unreadable), even below
   the old end, else at the window's end; a search entry that the adapter refuses
-  leaves it as it was. A run without `--since` searches an exact project from a day
-  before its covered end, and an entry without `exact` from its covered start, which
-  replaces it with an exact one. Versions before plan 034 read the record, and ignore
-  `exact`.
+  leaves it as it was, and a failure at its very start makes it inexact. A run without
+  `--since` searches an exact project from a day before its covered end, and an entry
+  without `exact` from its covered start, which replaces it with an exact one. `exact`
+  on a space's entry is read as false. Versions before plan 034 read the record, and
+  ignore `exact`.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
   `put_tombstones()`: each Confluence document absent from its space's listing
   (`sources.atlassian.domain.deletions.Tombstone`), pending until a probe answers, then
