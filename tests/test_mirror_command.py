@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shutil
 import stat
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -12,6 +14,7 @@ import pytest
 
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.kernel.content import Page
+from atlassian_offline_mcp.mirror.adapters import pandoc as pandoc_adapter
 from atlassian_offline_mcp.mirror.adapters.pandoc import (
     Pandoc,
     PandocFailedError,
@@ -19,9 +22,10 @@ from atlassian_offline_mcp.mirror.adapters.pandoc import (
 )
 from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
+from tests.reference import STANDARD
 from tests.samples import v2_page, v2_space, v2_view
 from tests.test_cli import logged_as
-from tests.test_mirror import FETCHED, SPACE_ID, listing_page, page_responses
+from tests.test_mirror import FETCHED, SPACE_ID, Sandbox, listing_page, page_responses
 from tests.test_observed import said
 
 if TYPE_CHECKING:
@@ -114,7 +118,13 @@ def test_an_empty_store_mirrors_nothing_and_exits_zero(
     """A data directory without a raw store gives an empty mirror, and counts of zero."""
     assert main(arguments(home)) == 0
     assert capsys.readouterr().out == (
-        "documents: 0\nfiles written: 0\nfiles unchanged: 0\nfiles removed: 0\nproblems: 0\n"
+        "documents: 0\n"
+        "converted by pandoc: 0\n"
+        "reused from the cache: 0\n"
+        "files written: 0\n"
+        "files unchanged: 0\n"
+        "files removed: 0\n"
+        "problems: 0\n"
     )
 
 
@@ -123,7 +133,8 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
 ) -> None:
     """A page with a frame: short gives the counts; detailed, the frame's too, by its name.
 
-    The second run writes nothing, and finds unchanged what the first wrote.
+    The second run converts nothing and writes nothing: it reuses what the first
+    converted, and finds unchanged what the first wrote.
     """
     store = RawStore(home / "data" / "raw")
     html = '<p>Home.</p><iframe src="http://example.invalid/x"></iframe>'
@@ -132,13 +143,24 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
         store.put(Page, page_responses("100", "Home", 1, html, []), FETCHED, {})
     assert main(arguments(home)) == 0
     first = capsys.readouterr().out.splitlines()
-    names = ["documents", "files written", "files unchanged", "files removed", "problems"]
+    names = [
+        "documents",
+        "converted by pandoc",
+        "reused from the cache",
+        "files written",
+        "files unchanged",
+        "files removed",
+        "problems",
+    ]
     assert [line.split(": ")[0] for line in first] == names
     assert first[0] == "documents: 1"
-    written = first[1].removeprefix("files written: ")
+    converted = first[1].removeprefix("converted by pandoc: ")
+    written = first[3].removeprefix("files written: ")
     assert main(arguments(home, "--summary", "detailed")) == 0
     assert capsys.readouterr().out == (
         "documents: 1\n"
+        "converted by pandoc: 0\n"
+        f"reused from the cache: {converted}\n"
         "files written: 0\n"
         f"files unchanged: {written}\n"
         "files removed: 0\n"
@@ -164,12 +186,145 @@ def test_the_command_reports_the_documents_it_builds(
     ] == [("documents", 2, 2)]
 
 
+def two_pages(home: Path, monkeypatch: MonkeyPatch) -> Path:
+    """Store a space and two pages; put a pandoc on PATH that notes each conversion it runs.
+
+    It passes its input through, and answers ``--version`` with a version line. Give the
+    file that holds a line per conversion.
+    """
+    runs = home / "runs"
+    script = f'case "$1" in --version) echo "pandoc 9.9";; *) echo run >> "{runs}"; cat;; esac'
+    folder = fake_pandoc(home / "bin", script)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    store = RawStore(home / "data" / "raw")
+    listed = [listing_page("100", "Home", None, None), listing_page("101", "Away", None, None)]
+    with store.writing():
+        store.put_space(v2_space(id=SPACE_ID), listed, [], [])
+        store.put(Page, page_responses("100", "Home", 1, "<p>Home.</p>", []), FETCHED, {})
+        store.put(Page, page_responses("101", "Away", 1, "<p>Away.</p>", []), FETCHED, {})
+    return runs
+
+
+# The two pages' files and their space's tree.
+CONVERSIONS = 3
+
+
+def test_a_second_mirror_with_nothing_changed_runs_pandoc_on_nothing(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 039, criterion 5: its text and its JSON say that each conversion was reused."""
+    runs = two_pages(home, monkeypatch)
+    assert main(arguments(home)) == 0
+    assert "documents: 2\nconverted by pandoc: 3\nreused from the cache: 0\n" in (
+        capsys.readouterr().out
+    )
+    assert len(runs.read_text("utf-8").splitlines()) == CONVERSIONS
+    assert main(arguments(home)) == 0
+    assert capsys.readouterr().out.startswith(
+        "documents: 2\nconverted by pandoc: 0\nreused from the cache: 3\nfiles written: 0\n"
+    )
+    assert main(arguments(home, "--format", "json")) == 0
+    document = json.loads(capsys.readouterr().out)
+    assert (document["converted"], document["reused"]) == (0, CONVERSIONS)
+    assert len(runs.read_text("utf-8").splitlines()) == CONVERSIONS
+
+
+def test_a_damaged_cache_is_replaced_and_the_mirror_converts_everything(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 039, criterion 8: exit 0, nothing reused, one warning by SQLite's error name.
+
+    The cache, filled by a first run, and its -wal and -shm become random bytes; the run
+    leaves the cache alone, which the next run reuses.
+    """
+    two_pages(home, monkeypatch)
+    assert main(arguments(home)) == 0
+    cache = home / "data" / "conversions.sqlite"
+    for suffix in ("", "-wal", "-shm"):
+        noise = hashlib.shake_256(suffix.encode()).digest(8192)
+        cache.with_name(f"{cache.name}{suffix}").write_bytes(noise)
+    capsys.readouterr()
+    assert main(arguments(home)) == 0
+    assert "converted by pandoc: 3\nreused from the cache: 0\n" in capsys.readouterr().out
+    (replaced,) = logged_as(home, "mirror.cache_replaced")
+    assert (replaced["level"], replaced["reason"]) == ("warning", "SQLITE_NOTADB")
+    assert set(replaced) - STANDARD == {"reason"}
+    assert sorted(path.name for path in cache.parent.glob(f"{cache.name}*")) == [cache.name]
+    assert main(arguments(home)) == 0
+    assert "converted by pandoc: 0\nreused from the cache: 3\n" in capsys.readouterr().out
+
+
+def test_a_new_pandoc_converts_again_and_writes_the_bytes_of_a_mirror_from_no_cache(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 039, criterion 6: pandoc's version line changed, as a fake pandoc plays it.
+
+    It writes its version line before its input, so that two versions give two files.
+    The mirror from no cache runs in another data folder, over a copy of the raw store.
+    """
+    version = home / "version"
+    version.write_text("pandoc 1\n", "utf-8")
+    script = f'case "$1" in --version) cat "{version}";; *) cat "{version}" -;; esac'
+    folder = fake_pandoc(home / "bin", script)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    store = RawStore(home / "data" / "raw")
+    with store.writing():
+        store.put_space(v2_space(id=SPACE_ID), [listing_page("100", "Home", None, None)], [], [])
+        store.put(Page, page_responses("100", "Home", 1, "<p>Home.</p>", []), FETCHED, {})
+    assert main(arguments(home)) == 0
+    version.write_text("pandoc 2\n", "utf-8")
+    capsys.readouterr()
+    assert main(arguments(home)) == 0
+    # Home's file and the space's tree.
+    assert "converted by pandoc: 2\nreused from the cache: 0\n" in capsys.readouterr().out
+    tree = home / "data" / "docs" / "confluence" / "MFS" / "_tree.md"
+    assert tree.read_text("utf-8").startswith("pandoc 2\n")
+    fresh = home / "fresh"
+    shutil.copytree(store.root, fresh / "data" / "raw")
+    assert main(arguments(fresh)) == 0
+    assert Sandbox(home / "data").files() == Sandbox(fresh / "data").files()
+
+
+def test_other_arguments_for_pandoc_convert_everything_again(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Review of 039: the conversions kept are those of the arguments that pandoc is given.
+
+    A run, then one whose pandoc is given one argument more, which the fake passes over.
+    """
+    runs = two_pages(home, monkeypatch)
+    assert main(arguments(home)) == 0
+    more = (*pandoc_adapter.ARGUMENTS, "--columns=72")
+    monkeypatch.setattr(pandoc_adapter, "ARGUMENTS", more)
+    capsys.readouterr()
+    assert main(arguments(home)) == 0
+    assert "converted by pandoc: 3\nreused from the cache: 0\n" in capsys.readouterr().out
+    assert len(runs.read_text("utf-8").splitlines()) == 2 * CONVERSIONS
+
+
 def test_pandoc_runs_sandboxed_on_its_standard_input(home: Path, monkeypatch: MonkeyPatch) -> None:
     """The pandoc on PATH gets --sandbox, the HTML on its input, and its output is kept."""
     folder = fake_pandoc(home / "bin", f'printf "%s\\n" "$@" > "{home}/arguments"; cat')
     monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
     assert Pandoc.find().markdown("<p>x</p>") == "<p>x</p>"
     assert "--sandbox" in (home / "arguments").read_text("utf-8").splitlines()
+
+
+def test_html_s_converter_is_named_by_pandoc_s_version_line_then_its_arguments(
+    home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Plan 039: the first line of --version, not the folder it names, then those given HTML."""
+    script = (
+        'if [ "$1" = --version ]; then printf "pandoc 9.9\\nUser data directory: %s\\n" "$HOME";'
+        f' else printf "%s\\n" "$@" > "{home}/arguments"; cat; fi'
+    )
+    folder = fake_pandoc(home / "bin", script)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    pandoc = Pandoc.find()
+    pandoc.markdown("<p>x</p>")
+    given = (home / "arguments").read_text("utf-8").splitlines()
+    assert "--sandbox" in given
+    assert pandoc.html_converter().split("\n") == ["pandoc 9.9", *given]
 
 
 def test_a_pandoc_failure_names_its_status_and_no_content(

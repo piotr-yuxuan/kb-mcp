@@ -1,7 +1,9 @@
 """``sync``'s steps: Confluence's and Jira's download and mirror, the work log's, the index.
 
 Each step runs even when an earlier one failed, since the next reads what is on disk;
-Ctrl-C stops the run, and no later step runs. What can be refused is refused before the
+Ctrl-C stops the run, and no later step runs, as does a cache of pandoc's conversions
+that the mirror cannot use, such as one locked past the wait, or one that breaks during
+the mirror. What can be refused is refused before the
 first step: an --until before --since, and a work log that is not a folder. A dry
 run plans the download and counts the work log, and writes nothing. Each row is a span,
 ``sync.step``, within which its step's own spans and events are recorded, those of
@@ -19,6 +21,7 @@ from opentelemetry import trace
 
 from atlassian_offline_mcp.cli.domain.sync import RANKED
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
+from atlassian_offline_mcp.mirror.adapters import conversions
 from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
 from atlassian_offline_mcp.mirror.app.mirror import mirror
 from atlassian_offline_mcp.mirror.app.worklog import mirror_worklog, plan_worklog
@@ -126,7 +129,8 @@ class Rows:
 def atlassian(context: Context, step: Atlassian, add: Callable[[Row], None]) -> None:
     """Download, or plan the download, then mirror the raw store, unless a dry run.
 
-    The mirror runs whatever the download did, since it reads what is stored. What went
+    The mirror runs whatever the download did, since it reads what is stored, through
+    the data folder's cache of pandoc's conversions, open for the mirror alone. What went
     wrong is said by ``download``'s and ``mirror``'s events.
     """
     log, settings = structlog.get_logger(), context.settings
@@ -148,9 +152,11 @@ def atlassian(context: Context, step: Atlassian, add: Callable[[Row], None]) -> 
         if context.dry_run:
             add(Row("mirror", "not run", None))
             return
-        mirrored = mirror(
-            RawStore(settings.raw), settings.docs, settings.site, context.pandoc.markdown
-        )
+        pandoc = context.pandoc
+        with conversions.opened(
+            settings.conversions, pandoc.html_converter, pandoc.markdown
+        ) as cache:
+            mirrored = mirror(RawStore(settings.raw), settings.docs, settings.site, cache)
         for problem in mirrored.problems:
             log.warning("mirror.not_mirrored", where=problem.where, reason=problem.reason)
         if mirrored.problems:

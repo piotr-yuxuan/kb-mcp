@@ -322,11 +322,14 @@ document's file:
   placeholder that names it.
 - [`document_html`](../../src/atlassian_offline_mcp/mirror/domain/mirror_layout.py) lays
   out the title, the body and the attachments (and an issue's comments).
-- [`Pandoc.markdown`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py) writes
-  that HTML as GitHub's Markdown, one process a document, with `--sandbox` among its
-  [`ARGUMENTS`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py), so that pandoc
-  reads no other file and fetches nothing; its own messages, which may quote the page,
-  are left out ([`Pandoc.run`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)).
+- [`Conversions.markdown`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)
+  gives that HTML's Markdown from the cache of conversions that `atlassian` opened
+  ([`opened`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)), or has
+  [`Pandoc.markdown`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py) write it
+  as GitHub's Markdown, one process a document, and keeps it. `--sandbox` is among
+  pandoc's [`ARGUMENTS`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py), so
+  that it reads no other file and fetches nothing; its own messages, which may quote the
+  page, are left out ([`Pandoc.run`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)).
 - [`dump`](../../src/atlassian_offline_mcp/mirror/adapters/markdown.py) writes the front
   matter as YAML, then the body. The index reads it with the same module's
   [`load`](../../src/atlassian_offline_mcp/mirror/adapters/markdown.py), so the two agree

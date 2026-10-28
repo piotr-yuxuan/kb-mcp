@@ -67,6 +67,10 @@ class Pandoc:
         """Name how org is converted: pandoc's version, then the arguments, one a line."""
         return "\n".join([self.version(), *ORG])
 
+    def html_converter(self) -> str:
+        """Name how HTML is converted: pandoc's version, then the arguments, one a line."""
+        return "\n".join([self.version(), *ARGUMENTS])
+
     def run(self, arguments: Sequence[str], text: str) -> str:
         """Run pandoc with fixed arguments on ``text``, and return its output.
 

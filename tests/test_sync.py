@@ -10,12 +10,14 @@ defaults, sets or removes the mode itself.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
 import sqlite3
 import time
 from collections import Counter
+from contextlib import closing
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -31,6 +33,7 @@ from atlassian_offline_mcp.cli.options.sync import refused
 from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL, Settings
 from atlassian_offline_mcp.kernel.content import SOURCE_NAMES
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
+from atlassian_offline_mcp.mirror.adapters import pandoc as pandoc_adapter
 from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes
 from atlassian_offline_mcp.mirror.adapters.pandoc import (
     Pandoc,
@@ -429,7 +432,7 @@ def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
     monkeypatch.setattr(
         sync_app,
         "mirror",
-        lambda *_: mirror_app.Outcome(0, Changes(0, 0, 0), Counter(), (problem,)),
+        lambda *_: mirror_app.Outcome(0, 0, 0, Changes(0, 0, 0), Counter(), (problem,)),
     )
     settings = chosen_settings(tmp_path, worklog)
     steps = [
@@ -679,6 +682,83 @@ def test_a_work_log_that_is_a_file_is_refused_as_not_a_folder(
     assert "sources.worklog.path: not a folder" in capsys.readouterr().err
 
 
+@pytest.mark.usefixtures("signed_in")
+def test_a_second_sync_reuses_every_conversion_and_the_work_log_adds_none(
+    home: Path, worklog: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 039, criterion 7: the data folder's cache holds the mirror's conversions alone.
+
+    A first sync converts, a second reuses each conversion, by its mirror row in JSON,
+    then in text.
+    """
+    config = settings_file(home, worklog, atlassian=True)
+    given = ("--yes", "--since", "2026-10-02")
+    rows = []
+    for output in (("--format", "json"), ("--format", "json"), ()):
+        main(command(home, config, *given, *output))
+        rows.append(capsys.readouterr().out)
+    first, second = (json.loads(row)["steps"][1] for row in rows[:2])
+    assert (first["step"], first["outcome"], first["result"]["reused"]) == ("mirror", "done", 0)
+    converted = first["result"]["converted"]
+    assert converted > first["result"]["documents"] > 0  # a tree among them
+    assert (second["result"]["converted"], second["result"]["reused"]) == (0, converted)
+    documents = first["result"]["documents"]
+    assert (
+        f"mirror: done\n  documents: {documents}\n"
+        f"  converted by pandoc: 0\n  reused from the cache: {converted}\n"
+    ) in rows[2]
+    with closing(sqlite3.connect(home / "data" / "conversions.sqlite")) as cache:
+        assert cache.execute("SELECT count(*) FROM conversions").fetchone() == (converted,)
+
+
+def test_a_damaged_cache_is_replaced_and_every_step_runs_exit_0(
+    tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Plan 039, criterion 8: the mirror converts all again, reusing nothing, said once."""
+    settings = chosen_settings(tmp_path, worklog)
+    monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
+    steps = [
+        Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
+        Worklog(worklog, archives=True),
+    ]
+    first = sync(context(settings, FIRST), steps).steps[1].result
+    assert isinstance(first, mirror_app.Outcome)
+    settings.conversions.write_bytes(hashlib.shake_256(b"cache").digest(8192))
+    with capture_logs() as logged:
+        synced = sync(context(settings, FIRST), steps)
+    assert synced.exit_status == ExitStatus.OK
+    assert [(row.step, row.outcome) for row in synced.steps] == [
+        ("download", "done"),
+        ("mirror", "done"),
+        ("worklog", "done"),
+    ]
+    mirrored = synced.steps[1].result
+    assert isinstance(mirrored, mirror_app.Outcome)
+    assert (mirrored.converted, mirrored.reused) == (first.converted, 0)
+    replaced = logged_as(logged, "mirror.cache_replaced")
+    assert [each["reason"] for each in replaced] == ["SQLITE_NOTADB"]
+
+
+def test_other_arguments_for_pandoc_convert_the_mirror_again(
+    tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review of 039: sync keeps the conversions of the arguments that pandoc is given.
+
+    A second sync gives pandoc one argument more, `--columns=72`.
+    """
+    settings = chosen_settings(tmp_path, worklog)
+    monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
+    steps = [Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK))]
+    first = sync(context(settings, FIRST), steps).steps[1].result
+    assert isinstance(first, mirror_app.Outcome)
+    more = (*pandoc_adapter.ARGUMENTS, "--columns=72")
+    monkeypatch.setattr(pandoc_adapter, "ARGUMENTS", more)
+    again = sync(context(settings, FIRST), steps).steps[1].result
+    assert isinstance(again, mirror_app.Outcome)
+    assert (again.converted, again.reused) == (first.converted, 0)
+    assert first.converted > 0
+
+
 def test_the_text_of_a_full_sync_gives_each_command_s_counts_under_its_row(
     home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
@@ -835,7 +915,7 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
     monkeypatch.setattr(
         sync_app,
         "mirror",
-        lambda *_: mirror_app.Outcome(0, Changes(0, 0, 0), Counter(), (problem,)),
+        lambda *_: mirror_app.Outcome(0, 0, 0, Changes(0, 0, 0), Counter(), (problem,)),
     )
     settings = Settings(data_dir=tmp_path / "data", site=SITE)
     atlassian = Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK))

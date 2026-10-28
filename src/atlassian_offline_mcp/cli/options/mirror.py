@@ -21,9 +21,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "mirror",
         help="write the Markdown mirror from the raw store",
         epilog=(
-            "With --format json: documents, how many are mirrored; changes, the files"
-            " written, unchanged and removed; unsupported, what the mirror does not show, by"
-            " name; problems, each by its place and why."
+            "With --format json: documents, how many are mirrored; converted, the"
+            " conversions pandoc ran, and reused, those the cache gave, a document's file"
+            " and a space's tree being one each; changes, the files written, unchanged and"
+            " removed; unsupported, what the mirror does not show, by name; problems, each"
+            " by its place and why."
         ),
     )
     actions, flags = add_settings_options(parser)

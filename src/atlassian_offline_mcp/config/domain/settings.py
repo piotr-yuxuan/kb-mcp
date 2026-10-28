@@ -424,6 +424,11 @@ class Settings(BaseSettings):
         return self.data_dir / "vectors.sqlite"
 
     @property
+    def conversions(self) -> Path:
+        """Pandoc's conversions so far, by their input, kept across mirrors."""
+        return self.data_dir / "conversions.sqlite"
+
+    @property
     def evaluations(self) -> Path:
         """Golden questions, the indexes of models under evaluation, and their results."""
         return self.data_dir / "eval"
@@ -451,6 +456,7 @@ class Settings(BaseSettings):
             self.docs,
             self.index,
             self.vectors,
+            self.conversions,
             self.evaluations,
             self.session,
             self.runs,

@@ -450,9 +450,10 @@ options:
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
 
-With --format json: documents, how many are mirrored; changes, the files written,
-unchanged and removed; unsupported, what the mirror does not show, by name; problems,
-each by its place and why.
+With --format json: documents, how many are mirrored; converted, the conversions
+pandoc ran, and reused, those the cache gave, a document's file and a space's tree
+being one each; changes, the files written, unchanged and removed; unsupported, what
+the mirror does not show, by name; problems, each by its place and why.
 ```
 
 ## `model`

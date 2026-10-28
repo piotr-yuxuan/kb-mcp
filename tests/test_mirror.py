@@ -15,15 +15,16 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 import pytest
+from structlog.testing import capture_logs
 
 from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
 from atlassian_offline_mcp.mirror.adapters.markdown import load
 from atlassian_offline_mcp.mirror.adapters.mirror_files import sync, worklog_owned
 from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
-from atlassian_offline_mcp.mirror.app.mirror import Outcome, mirror
 from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
+from tests.mirrors import mirrored
 from tests.samples import (
     v1_user,
     v2_attachment,
@@ -33,10 +34,14 @@ from tests.samples import (
     v3_comment,
     v3_issue,
 )
+from tests.test_pruning import events_named
+from tests.test_worklog_mirror import Counting
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+
+    from atlassian_offline_mcp.mirror.app.mirror import Outcome
 
 SITE = "https://site.example.invalid"
 FETCHED = datetime(2026, 10, 22, 8, 15, tzinfo=UTC)
@@ -46,6 +51,8 @@ SPACE_ID = "196613"
 WORDS = "Words of the leaf page."
 # Home, Leaf, the blog post and the issue.
 DOCUMENTS = 4
+# A conversion for each document's file, and one for the space's tree.
+CONVERSIONS = DOCUMENTS + 1
 
 
 def listing_page(
@@ -117,8 +124,8 @@ class Sandbox:
         return self.data / "docs"
 
     def run(self, site: str | None = SITE, markdown: Callable[[str], str] | None = None) -> Outcome:
-        """Mirror the store, with pandoc unless another writer is given."""
-        return mirror(self.store, self.docs, site, markdown or Pandoc.find().markdown)
+        """Mirror the store, with pandoc unless another writer is given, through the cache."""
+        return mirrored(self.store, self.docs, site, markdown or Pandoc.find().markdown)
 
     def files(self) -> dict[str, bytes]:
         """Return every file of the mirror, by its path within ``docs``."""
@@ -332,6 +339,172 @@ def test_a_second_run_writes_nothing_and_a_rebuild_gives_the_same_bytes(
     shutil.rmtree(sandbox.docs)
     sandbox.run()
     assert sandbox.files() == files
+
+
+def test_a_second_run_with_nothing_changed_runs_pandoc_on_nothing(sandbox: Sandbox) -> None:
+    """Plan 039, criterion 5: each conversion of the first run is reused, no file written."""
+    pandoc = Counting(Pandoc.find().path)
+    first = sandbox.run(markdown=pandoc.markdown)
+    assert (first.converted, first.reused, len(pandoc.runs)) == (CONVERSIONS, 0, CONVERSIONS)
+    pandoc.runs.clear()
+    with capture_logs() as events:
+        second = sandbox.run(markdown=pandoc.markdown)
+    assert pandoc.runs == []
+    assert (second.converted, second.reused, second.changes.written) == (0, CONVERSIONS, 0)
+    assert events_named(events, "mirror.written") == [
+        {
+            "written": 0,
+            "unchanged": len(sandbox.files()),
+            "removed": 0,
+            "converted": 0,
+            "reused": CONVERSIONS,
+            "pruned": 0,
+            "log_level": "info",
+        }
+    ]
+
+
+def test_a_run_with_a_problem_keeps_the_conversion_of_what_it_could_not_read(
+    sandbox: Sandbox,
+) -> None:
+    """Plan 039, criterion 5: Home's view damaged, then mended, and pandoc runs on nothing.
+
+    The run between prunes nothing, though it converts the tree anew, without Home's
+    link; the next, which reports nothing, prunes that tree alone.
+    """
+    pandoc = Counting(Pandoc.find().path)
+    sandbox.run(markdown=pandoc.markdown)
+    view = next((sandbox.store.root / "confluence" / "pages" / "100").iterdir()) / "view.json"
+    kept = view.read_bytes()
+    view.write_text("{}", "utf-8")
+    with capture_logs() as damaged:
+        assert sandbox.run(markdown=pandoc.markdown).problems
+    view.write_bytes(kept)
+    pandoc.runs.clear()
+    with capture_logs() as mended:
+        outcome = sandbox.run(markdown=pandoc.markdown)
+    assert (outcome.problems, outcome.reused, pandoc.runs) == ((), CONVERSIONS, [])
+    assert [each["pruned"] for each in events_named(damaged, "mirror.written")] == [0]
+    assert [each["pruned"] for each in events_named(mended, "mirror.written")] == [1]
+
+
+# Home's view links to the page listed only, never stored, by its address on the site.
+HOME_HTML = (
+    "<p>Home page.</p>"
+    '<p>See <a href="/wiki/spaces/MFS/pages/500/Listed+only">what is listed</a>.</p>'
+)
+OTHER_SITE = "https://other.example.invalid"
+
+
+@pytest.fixture
+def linked(sandbox: Sandbox) -> Sandbox:
+    """Give the sandbox where a file's HTML depends on more than its own snapshot.
+
+    Home links to the page listed only (500), the blog post links to Home, and a third
+    comment on PRB-1 is by A Person, whom the users alone name.
+    """
+    issue = issue_responses("What are archived ideas?", "2026-10-21T09:00:00.000+0000")
+    comments = issue[jira_v3.COMMENTS]
+    assert isinstance(comments, list)
+    comments.append(v3_comment(id="10102", author={"accountId": "account-1", "displayName": None}))
+    news = '<p>News, from <a href="/wiki/spaces/MFS/pages/100/Home">Home</a>.</p>'
+    with sandbox.store.writing():
+        sandbox.store.put(Page, page_responses("100", "Home", 2, HOME_HTML, []), FETCHED, {})
+        sandbox.store.put(BlogPost, post_responses(news, 2), FETCHED, {"att700": digest(IMAGE)})
+        sandbox.store.put(Issue, issue, FETCHED, {"10000": digest(OTHER_IMAGE)})
+    return sandbox
+
+
+def unchanged(_: Sandbox) -> None:
+    """Change nothing in the store."""
+
+
+def leaf_edited(sandbox: Sandbox) -> None:
+    """Store a new snapshot of Leaf, with other words."""
+    with sandbox.store.writing():
+        leaf = page_responses("300", "Leaf", 3, "<p>Other words.</p>", [])
+        sandbox.store.put(Page, leaf, FETCHED, {})
+
+
+def home_renamed(sandbox: Sandbox) -> None:
+    """Rename Home, in a new snapshot and in its space's listing, as a download would."""
+    listed = [listing_page("100", "Home, renamed", None, None), *LISTED[1:]]
+    with sandbox.store.writing():
+        home = page_responses("100", "Home, renamed", 3, HOME_HTML, [])
+        sandbox.store.put(Page, home, FETCHED, {})
+        sandbox.store.put_space(v2_space(id=SPACE_ID), listed, [POST_LISTED], [FOLDER])
+
+
+def listed_page_stored(sandbox: Sandbox) -> None:
+    """Store the page that Home links to, listed only until now."""
+    with sandbox.store.writing():
+        listed = page_responses("500", "Listed only", 1, "<p>Listed.</p>", [])
+        sandbox.store.put(Page, listed, FETCHED, {})
+
+
+def user_renamed(sandbox: Sandbox) -> None:
+    """Rename A Person among the users."""
+    with sandbox.store.writing():
+        sandbox.store.put_users([v1_user(accountId="account-1", displayName="A Person, renamed")])
+
+
+# Each change, the site of the run after it, and the conversions whose HTML it changes,
+# which pandoc alone may run through the cache.
+CHANGES = [
+    pytest.param(unchanged, SITE, 0, id="unchanged"),
+    # Leaf's file; the tree names Leaf as before.
+    pytest.param(leaf_edited, SITE, 1, id="new-snapshot"),
+    # Home's heading, the post's link to Home's new file, and the tree; Leaf's breadcrumb
+    # is in its front matter.
+    pytest.param(home_renamed, SITE, 3, id="title"),
+    # The new page's file, Home's link to it made relative, and the tree's.
+    pytest.param(listed_page_stored, SITE, 3, id="linked-page-stored"),
+    # The heading of A Person's comment; the authors are in the front matter.
+    pytest.param(user_renamed, SITE, 1, id="user-name"),
+    # Home's link to the page not stored, on the new site; Leaf's links, which name the
+    # old site, no longer the site's.
+    pytest.param(unchanged, OTHER_SITE, 2, id="site"),
+]
+
+
+@pytest.mark.parametrize(("change", "site", "converted"), CHANGES)
+def test_a_mirror_through_a_warm_cache_writes_the_bytes_of_one_from_none(
+    linked: Sandbox,
+    tmp_path: Path,
+    change: Callable[[Sandbox], None],
+    site: str,
+    converted: int,
+) -> None:
+    """Plan 039, criterion 6: after each change, the same files, each the same bytes.
+
+    The mirror from no cache runs in another data folder, over a copy of the raw store.
+    Through the cache, pandoc runs only on what the change touched.
+    """
+    pandoc = Counting(Pandoc.find().path)
+    linked.run(markdown=pandoc.markdown)
+    change(linked)
+    pandoc.runs.clear()
+    warm = linked.run(site, pandoc.markdown)
+    assert (warm.problems, warm.converted, len(pandoc.runs)) == ((), converted, converted)
+    fresh = Sandbox(tmp_path / "fresh")
+    shutil.copytree(linked.store.root, fresh.store.root)
+    cold = fresh.run(site, pandoc.markdown)
+    assert (cold.converted, cold.reused) == (warm.converted + warm.reused, 0)
+    assert linked.files() == fresh.files()
+
+
+def test_deleting_the_cache_after_a_warm_mirror_changes_no_file(linked: Sandbox) -> None:
+    """Plan 039, criterion 6: the next mirror converts everything again, and writes nothing."""
+    linked.run()
+    assert linked.run().reused == CONVERSIONS
+    files = linked.files()
+    times = {path: path.stat().st_mtime_ns for path in linked.docs.rglob("*")}
+    (linked.data / "conversions.sqlite").unlink()
+    outcome = linked.run()
+    assert (outcome.converted, outcome.reused) == (CONVERSIONS, 0)
+    assert (outcome.changes.written, outcome.changes.removed) == (0, 0)
+    assert linked.files() == files
+    assert {path: path.stat().st_mtime_ns for path in linked.docs.rglob("*")} == times
 
 
 def test_a_renamed_page_moves_to_its_new_slug(sandbox: Sandbox) -> None:

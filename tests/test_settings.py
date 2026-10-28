@@ -85,7 +85,7 @@ def test_settings_are_normalised() -> None:
     )
     mirror = Path("/data/mirror")
     parts = Settings(data_dir=mirror).parts
-    assert {mirror / "vectors.sqlite", mirror / "eval"} <= set(parts)
+    assert {mirror / "vectors.sqlite", mirror / "conversions.sqlite", mirror / "eval"} <= set(parts)
     assert mirror / "models" not in parts
 
 
