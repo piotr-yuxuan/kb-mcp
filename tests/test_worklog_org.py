@@ -621,18 +621,28 @@ def test_an_undated_entry_dates_from_its_file_and_its_earlier_creation() -> None
 @pytest.mark.parametrize(
     ("path", "expected"),
     [
-        ("current/2026-10-20 Tue/1.org", "t-20261020-1"),
-        ("archive/2026/2026-10/2026-10-20 Tue/1.org", "t-20261020-1"),
-        ("current/2026-10-20-standup.org", "t-20261020-2026-10-20-standup"),
-        ("current/2026-10-20 Tue/notes on x.org", f"t-{sha('2026-10-20 Tue/notes on x.org')}"),
-        ("misc/a.org", f"t-{sha('a.org')}"),
-        ("current/2026-13-40 Xxx/1.org", f"t-{sha('2026-13-40 Xxx/1.org')}"),
-        (f"current/2026-10-20 Tue/{LONG}.org", f"t-{sha(f'2026-10-20 Tue/{LONG}.org')}"),
+        ("transcripts/current/2026-10-20 Tue/1.org", "t-20261020-1"),
+        ("transcripts/archive/2026/2026-10/2026-10-20 Tue/1.org", "t-20261020-1"),
+        ("transcripts/current/2026-10-20-standup.org", "t-20261020-2026-10-20-standup"),
+        ("transcripts/current/2026-10-20 Tue/Standup_A.org", "t-20261020-Standup_A"),
+        ("transcripts/current/2026-10-21 Wed/notes on x.org", "t-20261021-notes-on-x"),
+        ("transcripts/archive/2026/2026-10/2026-10-21 Wed/notes on x.org", "t-20261021-notes-on-x"),
+        (f"transcripts/current/2026-10-20 Tue/{LONG}.org", f"t-20261020-{'a' * 60}"),
+        ("transcripts/current/2026-10-20 Tue/会議.org", f"t-20261020-{sha('会議.org')}"),
+        ("transcripts/misc/a.org", f"t-{sha('a.org')}"),
+        ("transcripts/misc/deeper/a.org", f"t-{sha('a.org')}"),
+        ("transcripts/current/2026-13-40 Xxx/1.org", f"t-{sha('1.org')}"),
     ],
 )
-def test_transcript_ids_name_the_day_and_the_name_else_a_digest(path: str, expected: str) -> None:
-    """t-YYYYMMDD-<name>; a name off the id's rule or no day gives its path's digest."""
-    (found,), warnings = transcripts([transcript(path)], archives=True)
+def test_transcript_ids_name_the_day_and_the_name_else_a_slug_else_a_digest(
+    path: str, expected: str
+) -> None:
+    """t-YYYYMMDD-, then the name, its slug, or its digest.
+
+    Without a day, the digest of the name alone: no folder, so a move under archive/
+    keeps every id.
+    """
+    (found,), warnings = transcripts([Source(PurePosixPath(path), "", MODIFIED)], archives=True)
     assert (found.id, warnings) == (expected, [])
     assert WORKLOG_ID.fullmatch(found.id)
 
@@ -652,7 +662,7 @@ def test_a_copy_keeps_the_id_and_the_other_takes_its_whole_path() -> None:
 
 
 def test_a_whole_path_digest_is_never_another_file_s_digest() -> None:
-    """Written from the root, /transcripts/..., unlike any path below a first folder."""
+    """Written from the root, /transcripts/..., with a / that no name holds."""
     found, warnings = transcripts(
         [
             transcript("aa/a.org"),
@@ -662,12 +672,14 @@ def test_a_whole_path_digest_is_never_another_file_s_digest() -> None:
         archives=True,
     )
     assert {str(each.source.path): each.id for each in found} == {
-        "transcripts/F/transcripts/misc/a.org": f"t-{sha('transcripts/misc/a.org')}",
-        "transcripts/aa/a.org": f"t-{sha('a.org')}",
+        "transcripts/F/transcripts/misc/a.org": f"t-{sha('a.org')}",
+        "transcripts/aa/a.org": f"t-{sha('/transcripts/aa/a.org')}",
         "transcripts/misc/a.org": f"t-{sha('/transcripts/misc/a.org')}",
     }
+    keeper = "transcripts/F/transcripts/misc/a.org"
     assert warnings == [
-        "transcripts/misc/a.org: same id as transcripts/aa/a.org; named by its whole path"
+        f"transcripts/aa/a.org: same id as {keeper}; named by its whole path",
+        f"transcripts/misc/a.org: same id as {keeper}; named by its whole path",
     ]
 
 

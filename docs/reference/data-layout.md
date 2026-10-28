@@ -511,11 +511,13 @@ problem (a file not read, a conversion that failed) removes none of its files.
   `ARCHIVE` when it, or a heading above it, is archived; a day is archived when one of
   its headings is, or it has none.
 - A **transcript** is an `*.org` file under `transcripts/`. Its id is `t-`, the day
-  that begins its folder's name, else its own, as `%Y%m%d`, `-` and its name without
-  `.org`, when that matches the rule below; else `t-` and the digest of its path below
-  `transcripts/<first folder>/`. Of two files of one id, the second in path order takes
-  the digest of its whole path from the work log's root, written with a leading `/`,
-  which no path below a first folder has.
+  that begins its folder's name, else its own, as `%Y%m%d`, `-`, then its name without
+  `.org` when the id so matches the rule below, else that name's slug, as a file name's,
+  else the first 16 hex digits of the SHA-256 of its name: `notes on x.org` of 21
+  October is `t-20261021-notes-on-x`. Without a day, it is `t-` and the digest of its
+  name. No folder below the first is in an id, so a move under `archive/` keeps it. Of
+  two files of one id, the second in path order takes the digest of its whole path from
+  the work log's root, written with a leading `/`, which no name has.
 - The rule of an id is `kernel.content.WORKLOG_ID`:
   `e-[0-9a-f]{16}(?:-[0-9]+)?|t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})` for an
   entry or a transcript; `d-[0-9]{8}` for a day, its date; `m-[0-9]{8}-[a-z0-9-]{1,64}`

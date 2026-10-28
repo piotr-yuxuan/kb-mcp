@@ -10,6 +10,7 @@ the rule", "Ids" and criterion 4 describe them.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
@@ -334,12 +335,22 @@ def test_dates_are_the_earliest_and_latest_events_up_to_the_file_time(
     assert (matter.created, matter.updated) == (created, updated or created)
 
 
-def test_ids_of_undated_or_unruly_transcripts_are_digests(run: Run) -> None:
-    """A blank in notes on x.org, no day for misc/a.org: t- and 16 hex digits."""
-    run()
-    for title in ("Notes on the ledger", "WAITING Notes"):
-        assert HASHED.fullmatch(run.by_title(title).matter.id)
-    assert run.by_title("Payments stand-up", "transcript").matter.id == "t-20261020-1"
+def test_transcript_ids_name_their_day_and_name_else_their_slug_or_digest(run: Run) -> None:
+    """A name with blanks by its slug; misc/a.org, without a day, by its name's digest."""
+    outcome = run()
+    ids = {
+        each.matter.title: each.matter.id
+        for each in run.files()
+        if each.matter.type == "transcript"
+    }
+    assert ids == {
+        "Notes on the ledger": "t-20261021-notes-on-x",
+        "WAITING Notes": f"t-{hashlib.sha256(b'a.org').hexdigest()[:16]}",
+        "Payments stand-up": "t-20261020-1",
+        "Payments stand-up, 27 October": "t-20261027-1",
+        "Transcript, 2026-09-15 Tue, 1": "t-20260915-1",
+    }
+    assert outcome.warnings == ()
 
 
 def test_an_edited_undated_entry_keeps_its_creation(run: Run) -> None:
@@ -386,6 +397,15 @@ def move_transcript(run: Run) -> None:
     """Move 1.org under transcripts/archive/."""
     (run.root / ARCHIVED_DAY).mkdir(parents=True)
     (run.root / DAY / "1.org").rename(run.root / ARCHIVED_DAY / "1.org")
+
+
+def move_named(run: Run) -> None:
+    """Move notes on x.org, whose name holds blanks, under transcripts/archive/."""
+    archived = run.root / "transcripts/archive/2026/2026-10/2026-10-21 Wed"
+    archived.mkdir(parents=True)
+    (run.root / "transcripts/current/2026-10-21 Wed/notes on x.org").rename(
+        archived / "notes on x.org"
+    )
 
 
 LEDGER_REVIEW = """*** Ledger review
@@ -446,10 +466,22 @@ def archive_day(run: Run) -> None:
         ),
         archive_plan,
         move_transcript,
+        move_named,
         archive_meeting,
         archive_day,
     ],
-    ids=["body", "keyword", "tags", "cookie", "closing", "archiving", "moving", "meeting", "day"],
+    ids=[
+        "body",
+        "keyword",
+        "tags",
+        "cookie",
+        "closing",
+        "archiving",
+        "moving",
+        "moving-named",
+        "meeting",
+        "day",
+    ],
 )
 def test_ids_and_paths_hold_through_org_s_edits(run: Run, change: Callable[[Run], None]) -> None:
     """Editing, closing, retagging, ticking, archiving, moving: each id keeps its file.

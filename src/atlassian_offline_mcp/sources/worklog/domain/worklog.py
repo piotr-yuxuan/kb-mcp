@@ -438,13 +438,13 @@ def days_and_meetings(
 def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Document], list[str]]:
     """Return the transcripts in path order, and a warning for each id found twice.
 
-    A transcript's id is ``t-``, the day that begins its folder's name (or its own) and
-    its name less ``.org``; without a day, or when that is off the id's rule, the digest
-    of its path below ``transcripts/<first folder>/``. Of two files of one id, the first
-    in path order keeps it and the other takes the digest of its whole path, written
-    from the work log's root (``/transcripts/...``): no path below a first folder begins
-    with ``/``, so no other file's digest is the same. Without ``archives``, those under
-    ``transcripts/archive/`` are left out.
+    A transcript's id is ``t-``, the day that begins its folder's name (or its own),
+    ``-``, then its name less ``.org`` when the id holds to its rule so, else that name's
+    slug, else the first 16 hex digits of its name's SHA-256; without a day, it is ``t-``
+    and the digest of its name. Of two files of one id, the first in path order keeps it
+    and the other takes the digest of its whole path, written from the work log's root
+    (``/transcripts/...``): no name holds ``/``, so no other file's digest is the same.
+    Without ``archives``, those under ``transcripts/archive/`` are left out.
     """
     found: list[Document] = []
     warnings: list[str] = []
@@ -454,7 +454,8 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
         archived = folders[:1] == (ARCHIVED,)
         if archived and not archives:
             continue
-        stem = source.path.name.removesuffix(ORG)
+        own = source.path.name
+        stem = own.removesuffix(ORG)
         folder = folders[-1] if folders else ""
         named: list[tuple[str, datetime]] = []  # the name that begins with a day, and the day
         for name in (folder, stem):
@@ -463,9 +464,14 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
                 continue
             with contextlib.suppress(ValueError):  # 2026-13-40 begins no day
                 named.append((name, datetime.fromisoformat(match[0]).replace(tzinfo=UTC)))
-        dated = f"t-{named[0][1]:%Y%m%d}-{stem}" if named else ""
-        below = "/".join(source.path.parts[2:] or source.path.parts[-1:])
-        identifier = dated if WORKLOG_ID.fullmatch(dated) else f"t-{digest(below)}"
+        dated = [
+            f"t-{named[0][1]:%Y%m%d}-{part}"
+            for part in (stem, slug(stem), digest(own))
+            if named and part
+        ]
+        identifier = next(
+            (each for each in dated if WORKLOG_ID.fullmatch(each)), f"t-{digest(own)}"
+        )
         if identifier in keepers:
             keeper = keepers[identifier]
             warnings.append(f"{source.path}: same id as {keeper}; named by its whole path")
