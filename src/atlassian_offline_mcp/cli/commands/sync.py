@@ -42,8 +42,8 @@ if TYPE_CHECKING:
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Synced | None]:
     """Sync the sources chosen, then index the mirror; exit as the rows rank, 2 when refused.
 
-    The entry refused what it could before asking. A target with nowhere to start, or a
-    work log that is not a folder, is refused here, before any step runs, an error,
+    The entry refused what it could before asking. An --until before --since, or a work
+    log that is not a folder, is refused here, before any step runs, an error,
     ``sync.refused``, as is pandoc gone from PATH since, ``sync.pandoc_missing``. Each
     step's problems are said as it runs, by place and reason, never content.
     """

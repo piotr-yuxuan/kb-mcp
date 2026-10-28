@@ -39,7 +39,12 @@ from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import (
     Unreadable,
 )
 from atlassian_offline_mcp.sources.atlassian.adapters.sign_in import sign_in
-from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target, window
+from atlassian_offline_mcp.sources.atlassian.domain.coverage import (
+    Coverage,
+    Target,
+    Window,
+    window,
+)
 from atlassian_offline_mcp.sources.atlassian.domain.deletions import (
     Answer,
     Tombstone,
@@ -49,7 +54,6 @@ from atlassian_offline_mcp.sources.atlassian.domain.deletions import (
     too_many_gone,
 )
 from atlassian_offline_mcp.sources.atlassian.domain.files import skip_reason
-from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, Period
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -58,6 +62,7 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.config.domain.settings import Settings
     from atlassian_offline_mcp.kernel.content import Attachment, Document, Listed
     from atlassian_offline_mcp.sources.atlassian.adapters.http import ReadPage, Request
+    from atlassian_offline_mcp.sources.atlassian.domain.period import Period
 
     type SnapshotRequests = Callable[[Listed], dict[str, tuple[Request, ReadPage | None]]]
 
@@ -132,28 +137,27 @@ def label(kind: type[Document]) -> str:
 
 @dataclass
 class Download:
-    """One run over a site, into a store: the periods, and a cap on attached files.
+    """One run over a site, into a store: each target's window, and a cap on attached files.
 
-    Each target is fetched over its own window, or over ``period`` when it has none.
-    With ``plan``, the run lists and decides, and fetches and writes nothing. ``covered``
-    names the targets whose listing was read whole, so that their coverage can grow, and
-    ``first_failed`` the update time of each one's earliest document found and not
-    stored whole; ``held``, those read whole whose coverage stays as it was, and why.
-    ``failed_targets`` names the user's own keys that failed, for the command to show;
-    they never enter the report.
+    Each target named has a window, or none when it is skipped, after --until. With
+    ``plan``, the run lists and decides, and fetches and writes nothing. ``covered``
+    names the targets whose listing was read whole, with the period fetched, so that
+    their coverage can grow, and ``first_failed`` the update time of each one's earliest
+    document found and not stored whole; ``held``, the targets skipped and those read
+    whole whose coverage stays as it was, and why. ``failed_targets`` names the user's
+    own keys that failed, for the command to show; they never enter the report.
     """
 
     site: Site
     store: RawStore
-    period: Period
     max_file_bytes: int
     now: Callable[[], datetime]
     report: Report = field(default_factory=Report)
     failed_targets: list[str] = field(default_factory=list)
     authors: set[str] = field(default_factory=set)
-    windows: Mapping[Target, Period] = field(default_factory=dict)
+    windows: Mapping[Target, Window | None] = field(default_factory=dict)
     plan: bool = False
-    covered: list[Target] = field(default_factory=list)
+    covered: dict[Target, Period] = field(default_factory=dict)
     first_failed: dict[Target, datetime] = field(default_factory=dict)
     held: dict[Target, str] = field(default_factory=dict)
     tombstones: dict[tuple[str, str], Tombstone] = field(default_factory=dict)
@@ -166,9 +170,11 @@ class Download:
 
         Raises SignInNeededError, before anything is written, when the session no longer
         holds. A source that does not answer at all (a site without Jira) is counted as a
-        failure, and its targets skipped. The task ``targets`` reports those of the
-        sources that answer, each by its key.
+        failure, and its targets skipped. A target without a window is skipped too, and
+        asked nothing. The task ``targets`` reports those of the sources that answer,
+        each by its key.
         """
+        self.held |= {target: "after --until" for target, w in self.windows.items() if w is None}
         confluence = bool(spaces) and self.reachable(
             "confluence", confluence_v2.current_user_request(), confluence_v2.signed_in
         )
@@ -180,14 +186,16 @@ class Download:
         with task("targets", len(answered_spaces) + len(answered_projects)) as targets:
             for key in targets.each(answered_spaces, str):
                 target = Target("confluence", key)
-                if self.space(target, self.windows.get(target, self.period)):
-                    self.covered.append(target)
+                window = self.windows[target]
+                if window is not None and self.space(target, window.period):
+                    self.covered[target] = window.period
             if not self.plan:
                 self.probe_absent()
             for key in targets.each(answered_projects, str):
                 target = Target("jira", key)
-                if self.project(target, self.windows.get(target, self.period)):
-                    self.covered.append(target)
+                window = self.windows[target]
+                if window is not None and self.project(target, window.period):
+                    self.covered[target] = window.period
         if not self.plan:
             self.users()
 
@@ -610,9 +618,9 @@ class Download:
 class Targets:
     """What a run downloads: spaces and projects, from when, and the largest file kept.
 
-    ``since`` starts every target's window there; without it, each target catches up
-    from the start of its coverage. ``until`` ends the windows, by default when the run
-    starts.
+    ``since`` starts every target's window there; without it, each target catches up on
+    what changed since its last fetch, as ``window`` rules. ``until`` ends the windows,
+    by default when the run starts.
     """
 
     spaces: Sequence[str]
@@ -621,8 +629,11 @@ class Targets:
     since: datetime | None = None
     until: datetime | None = None
 
-    def windows(self, coverage: Coverage, now: datetime) -> dict[Target, Period]:
-        """Return each target's window; raise PeriodError for one with nowhere to start."""
+    def windows(self, coverage: Coverage, now: datetime) -> dict[Target, Window | None]:
+        """Return each target's window, None for one skipped; PeriodError for --until first.
+
+        Raises PeriodError when --since does not come before the windows' end.
+        """
         named = [Target("confluence", key) for key in self.spaces]
         named += [Target("jira", key) for key in self.projects]
         end = min(self.until, now) if self.until else now  # never past what a run can see
@@ -646,7 +657,7 @@ def plan(
 ) -> Outcome:
     """List and decide as a run would, and say what it would fetch; write nothing.
 
-    Raises PeriodError for a target with nowhere to start.
+    Raises PeriodError when --since does not come before the windows' end.
     """
     store, report = RawStore(settings.raw), Report()
     windows = targets.windows(store.coverage(), now())
@@ -658,7 +669,6 @@ def plan(
         run = Download(
             Site(client, sleep=sleep),
             store,
-            Period(EPOCH, now()),
             targets.max_file_bytes,
             now,
             report,
@@ -690,9 +700,9 @@ def download(
     the run stops; ``download.coverage`` says at INFO what became of each finished
     target's coverage, and why it was held, if it was. The status is ``OK`` when nothing
     failed, ``FAILED`` when something did, and ``SIGN_IN_AGAIN`` when the sign-in no
-    longer holds or no session was saved. Raises PeriodError for a target with nowhere
-    to start, and StoreBusyError when another run writes, both before anything is
-    written.
+    longer holds or no session was saved. Raises PeriodError when --since does not come
+    before the windows' end, and StoreBusyError when another run writes, both before
+    anything is written.
     """
     report, failed_targets, status = Report(), [], None
     store, started = RawStore(settings.raw), now()
@@ -705,7 +715,6 @@ def download(
                 run = Download(
                     Site(client, sleep=sleep),
                     store,
-                    Period(EPOCH, started),
                     targets.max_file_bytes,
                     now,
                     report,
@@ -724,9 +733,9 @@ def download(
                 finally:
                     signing.keep(client)
                     log = structlog.get_logger()
-                    for target in run.covered:
+                    for target, fetched in run.covered.items():
                         failed = run.first_failed.get(target)
-                        coverage, outcome = coverage.extended(target, windows[target], failed)
+                        coverage, outcome = coverage.extended(target, fetched, failed)
                         reason = (
                             {"reason": "apart from what is covered"} if outcome == "held" else {}
                         )

@@ -151,8 +151,8 @@ options:
   -y, --yes             run without asking first, as a script does
   --space SPACE         a space key; repeat for more
   --project PROJECT     a project key; repeat
-  --since SINCE         12h, 7d, 6mo, an ISO date or time, or all; by default, the
-                        start of what is covered
+  --since SINCE         12h, 7d, 6mo, an ISO date or time, or all; by default, each
+                        target's last fetch
   --until UNTIL         12h, 7d, or an ISO date or time, excluded; by default, now
   --max-file-mb MAX_FILE_MB
                         the largest file kept, in MB; 50 by default
@@ -576,8 +576,8 @@ options:
                         sync this source alone, if configured; repeat for more
   --exclude {confluence,jira,worklog}
                         sync every configured source but this one; repeat for more
-  --since SINCE         12h, 7d, 6mo, an ISO date or time, or all; by default, the
-                        start of what is covered
+  --since SINCE         12h, 7d, 6mo, an ISO date or time, or all; by default, each
+                        target's last fetch
   --until UNTIL         12h, 7d, or an ISO date or time, excluded; by default, now
   --max-file-mb MAX_FILE_MB
                         the largest file kept, in MB; 50 by default

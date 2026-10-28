@@ -17,6 +17,7 @@ from atlassian_offline_mcp.cli.options._common import (
     token_without_email,
 )
 from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
+from atlassian_offline_mcp.sources.atlassian.domain.coverage import period_rule
 from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, PeriodError, moment
 
 if TYPE_CHECKING:
@@ -70,6 +71,11 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
     return next((fault for fault in faults if fault is not None), None)
 
 
+def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
+    """Say how the run signs in, and where each target's window starts, by the rule."""
+    return (*signed_in_by(arguments, settings), period_rule(since=arguments.since is not None))
+
+
 def add_period_options(
     parser: argparse.ArgumentParser, *, max_file_mb: int | None
 ) -> tuple[argparse.Action, ...]:
@@ -80,7 +86,7 @@ def add_period_options(
     """
     since = parser.add_argument(
         "--since",
-        help="12h, 7d, 6mo, an ISO date or time, or all; by default, the start of what is covered",
+        help="12h, 7d, 6mo, an ISO date or time, or all; by default, each target's last fetch",
     )
     until = parser.add_argument(
         "--until", help="12h, 7d, or an ISO date or time, excluded; by default, now"
@@ -138,7 +144,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             writes=True,
             dry_run=True,
             unapplied=email_without_token,
-            described=signed_in_by,
+            described=described,
             refused=refused,
         )
     )

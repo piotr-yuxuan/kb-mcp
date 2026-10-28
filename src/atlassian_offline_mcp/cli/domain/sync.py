@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from atlassian_offline_mcp.kernel.exit_status import ExitStatus
+from atlassian_offline_mcp.sources.atlassian.domain.coverage import period_rule
 
 if TYPE_CHECKING:
     import argparse
@@ -81,7 +82,9 @@ def chosen(
 def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
     """Say each source taken, with its settings, each left out and why, and the options ignored.
 
-    An option of the period given is ignored by each source taken that does not use it.
+    With Confluence or Jira taken, the rule of where their windows start follows the
+    sources. An option of the period given is ignored by each source taken that does not
+    use it.
     """
     taken, left = chosen(arguments, settings)
     values = {
@@ -93,6 +96,8 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
         shown = (f"{setting.rpartition('.')[2]} {values[setting]}" for setting in source.settings)
         lines.append(f"source {source.name}: {', '.join(shown)}")
     lines += [f"source {name}: left out, {why}" for name, why in left.items()]
+    if any(source.step == "atlassian" for source in taken):
+        lines.append(period_rule(since=arguments.since is not None))
     for dest, option in PERIOD.items():
         ignoring = [source.name for source in taken if dest not in source.options]
         if getattr(arguments, dest) is not None and ignoring:

@@ -2,7 +2,7 @@
 
 Each step runs even when an earlier one failed, since the next reads what is on disk;
 Ctrl-C stops the run, and no later step runs. What can be refused is refused before the
-first step: a target with nowhere to start, and a work log that is not a folder. A dry
+first step: an --until before --since, and a work log that is not a folder. A dry
 run plans the download and counts the work log, and writes nothing. Each row is a span,
 ``sync.step``, within which its step's own spans and events are recorded, those of
 ``download``, ``mirror``, the work log or ``index``, as
@@ -192,7 +192,7 @@ def sync(context: Context, steps: Sequence[Atlassian | Worklog | Index]) -> Sync
     """Run the steps in their order; return a row per step and the exit status they rank.
 
     Raises ``SyncRefusedError`` for a work log that is not a folder, and PeriodError for
-    a target with nowhere to start, both before the first step. Ctrl-C ends the step it
+    an --until before --since, both before the first step. Ctrl-C ends the step it
     stops as interrupted, and each later one as not run; the run is interrupted even
     when Ctrl-C comes once every step has ended. The status is the first of
     ``RANKED``'s outcomes that the run had, else OK. ``sync.start`` and ``sync.end`` say

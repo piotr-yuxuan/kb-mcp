@@ -41,9 +41,10 @@ from atlassian_offline_mcp.mirror.app import mirror as mirror_app
 from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
 from atlassian_offline_mcp.search.app.indexing import Indexing
 from atlassian_offline_mcp.sources.atlassian.adapters import http
-from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
+from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, StoreBusyError
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report, Targets
+from atlassian_offline_mcp.sources.atlassian.domain.coverage import Target
 from tests.endpoint import DIGEST, Scripted, scripted, serving
 from tests.mirrors import fillers
 from tests.reference import Emitted, documented, pattern, undocumented
@@ -261,16 +262,34 @@ def test_json_is_one_document_with_a_row_per_step(
     assert signed_in.asked
 
 
-def test_a_space_never_covered_exits_2_by_name_before_any_get(
+def test_an_until_before_since_exits_2_by_name_before_any_get(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """Without --since, a target with nowhere to start: refused before the first step."""
+    """Refused before the first step, naming them."""
     config = settings_file(home, None, atlassian=True)
-    assert main(command(home, config, "--yes", "--include", "confluence")) == ExitStatus.REFUSED
+    backwards = ("--since", "2026-10-22", "--until", "2026-10-01")
+    assert main(command(home, config, "--yes", *backwards)) == ExitStatus.REFUSED
     err = capsys.readouterr().err
     assert "sync.refused" in err
-    assert "space MFS: nothing covered yet" in err
+    assert "--until: must come after --since" in err
     assert signed_in.asked == []
+
+
+def test_a_first_sync_without_since_fetches_the_last_week_of_each_target(
+    home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
+) -> None:
+    """Nothing covered no longer refuses the run: each target covers the 7 days before it.
+
+    The line before the run states the rule, since the store is not read before then.
+    """
+    config = settings_file(home, None, atlassian=True)
+    assert main(command(home, config, "--yes")) != ExitStatus.REFUSED
+    rule = "period: since each target's last fetch; the last 7 days for one never fetched\n"
+    assert rule in capsys.readouterr().err
+    assert signed_in.asked
+    periods = RawStore((home / "data" / "raw").resolve()).coverage().periods
+    assert set(periods) == {Target("confluence", "MFS"), Target("jira", "PRB")}
+    assert {each.end - each.start for each in periods.values()} == {WEEK}
 
 
 def context(settings: Settings, now: datetime, pandoc: Pandoc | None = None) -> Context:

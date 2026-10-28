@@ -51,7 +51,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
     """Download; exit 0, 1 when something failed, 2 for bad input, 3 to sign in again.
 
     --space and --project are settings' flags, which replace the settings' lists; without
-    --since, each catches up from the start of what earlier runs covered. The outcome
+    --since, each catches up on what changed since its last fetch. The outcome
     is given once a run ends, None when none could start or one was stopped. Why a run
     could not start or go on is an error; an interruption, or a space or a project that
     failed, a warning.

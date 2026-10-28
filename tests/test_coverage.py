@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target, window
+from atlassian_offline_mcp.sources.atlassian.domain.coverage import (
+    Coverage,
+    Target,
+    Window,
+    window,
+)
 from atlassian_offline_mcp.sources.atlassian.domain.period import Period, PeriodError
 
 if TYPE_CHECKING:
@@ -24,21 +29,53 @@ def covered() -> Coverage:
     return Coverage({SPACE: Period(COVERED, NOW)})
 
 
-def test_a_run_without_since_catches_up_on_the_covered_period() -> None:
-    """No --since: from the covered start to now, the end pinned too."""
-    assert window(covered(), SPACE, None, NOW) == Period(COVERED, NOW)
+def test_a_space_without_since_catches_up_on_its_covered_period() -> None:
+    """No --since: from the covered start to now, the end pinned too; its listing is whole."""
+    assert window(covered(), SPACE, None, NOW) == Window(Period(COVERED, NOW), "covered start")
 
 
 def test_a_run_with_since_starts_there() -> None:
     """--since wins over the coverage."""
     since = datetime(2026, 10, 25, tzinfo=UTC)
-    assert window(covered(), SPACE, since, NOW) == Period(since, NOW)
+    assert window(covered(), SPACE, since, NOW) == Window(Period(since, NOW), "given")
+    assert window(covered(), PROJECT, since, NOW) == Window(Period(since, NOW), "given")
 
 
-def test_a_target_never_covered_needs_since() -> None:
-    """A first run must say where to start; the refusal names the target."""
-    with pytest.raises(PeriodError, match=r"^project PLAT: nothing covered yet"):
-        window(covered(), PROJECT, None, NOW)
+def test_a_since_that_does_not_come_before_the_end_is_refused() -> None:
+    """An --until before --since, or at it, is refused, naming them."""
+    with pytest.raises(PeriodError, match=r"^--until: must come after --since"):
+        window(covered(), SPACE, NOW, NOW)
+
+
+def test_a_target_never_covered_fetches_its_last_week() -> None:
+    """Rather than refusing the run: seven days before the window's end, said first fetch."""
+    assert window(covered(), PROJECT, None, NOW) == Window(
+        Period(NOW - timedelta(days=7), NOW), "first fetch"
+    )
+
+
+def test_an_exact_project_catches_up_from_a_day_before_its_covered_end() -> None:
+    """Covered exactly to 27 October 09:00, a run on the 28th at noon: from the 26th 09:00."""
+    end = datetime(2026, 10, 27, 9, tzinfo=UTC)
+    run = datetime(2026, 10, 28, 12, tzinfo=UTC)
+    exact = Coverage({PROJECT: Period(COVERED, end)}, frozenset({PROJECT}))
+    assert window(exact, PROJECT, None, run) == Window(
+        Period(datetime(2026, 10, 26, 9, tzinfo=UTC), run), "since the last fetch"
+    )
+
+
+def test_a_project_recorded_before_034_catches_up_from_its_covered_start() -> None:
+    """Its end may hide a failure: the whole period is searched again, once."""
+    old = Coverage({PROJECT: Period(COVERED, NOW - timedelta(days=1))})
+    assert window(old, PROJECT, None, NOW) == Window(Period(COVERED, NOW), "covered start")
+
+
+def test_a_catch_up_that_would_start_at_or_after_the_end_skips_the_target() -> None:
+    """An --until before the catch-up's start: no window, rather than a refused run."""
+    exact = Coverage({PROJECT: Period(COVERED, NOW)}, frozenset({PROJECT}))
+    until = NOW - timedelta(days=1)
+    assert window(exact, PROJECT, None, until) is None
+    assert window(covered(), SPACE, None, COVERED) is None
 
 
 def test_a_first_run_covers_its_period() -> None:

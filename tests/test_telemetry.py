@@ -402,7 +402,7 @@ def test_a_download_s_root_says_whether_it_is_a_dry_run(
 ) -> None:
     """The flag's value, not whether the command takes it.
 
-    With nothing covered yet and no --since, the run refuses before any request.
+    With --until before --since, the run refuses before any request.
     """
     collector = Collector()
     with collecting(collector) as endpoint:
@@ -415,6 +415,10 @@ def test_a_download_s_root_says_whether_it_is_a_dry_run(
             SITE,
             "--space",
             "MFS",
+            "--since",
+            "2026-10-22",
+            "--until",
+            "2026-10-01",
         ]
         ran = guarded(tmp_path, port_of(endpoint), arguments, {}, LIMIT_S)
     assert ran.status == ExitStatus.REFUSED

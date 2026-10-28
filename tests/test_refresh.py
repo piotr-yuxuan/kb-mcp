@@ -20,7 +20,7 @@ from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, Stored
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from atlassian_offline_mcp.sources.atlassian.app.download import Targets, download, plan
-from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target
+from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target, Window
 from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, Period, PeriodError
 from tests.samples import v2_page, v2_space
 from tests.test_download import (
@@ -193,13 +193,16 @@ def test_an_earlier_since_reaches_further_and_moves_the_covered_start(
     assert covered == Period(SECOND - YEAR, SECOND)
 
 
-def test_a_target_with_nowhere_to_start_is_refused_before_anything_runs(
+def test_an_until_before_since_is_refused_before_anything_runs(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """No --since and no coverage: refused by name, and nothing is written."""
+    """Refused by name, before any request, and nothing is written."""
     chosen = settings(tmp_path)
-    with pytest.raises(PeriodError, match=r"^space MFS: nothing covered yet"):
-        run(chosen, monkeypatch, RefreshSite(), catch_up(["MFS"], []), FIRST)
+    fake = RefreshSite()
+    backwards = Targets(["MFS"], [], CAP, since=FIRST, until=FIRST - WEEK)
+    with pytest.raises(PeriodError, match=r"^--until: must come after --since"):
+        run(chosen, monkeypatch, fake, backwards, FIRST)
+    assert fake.asked == []
     assert not chosen.raw.exists()
     assert not chosen.runs.exists()
 
@@ -575,7 +578,9 @@ def test_a_moved_page_whose_new_file_fails_keeps_its_old_file(tmp_path: Path) ->
 def test_a_window_never_ends_past_the_run() -> None:
     """An --until in the future stops at now: coverage never claims time not yet seen."""
     later = Targets(["MFS"], [], CAP, since=FIRST - WEEK, until=FIRST + WEEK)
-    assert later.windows(Coverage(), FIRST)[Target("confluence", "MFS")].end == FIRST
+    window = later.windows(Coverage(), FIRST)[Target("confluence", "MFS")]
+    assert window is not None
+    assert window.period.end == FIRST
 
 
 def test_a_deleted_page_whose_listing_entry_changed_is_still_tracked(
@@ -617,7 +622,9 @@ def test_a_stale_listing_never_brings_back_a_page_confirmed_gone(
 def test_a_since_before_the_epoch_starts_at_the_epoch() -> None:
     """Nothing on the site is older; the dates searched stay within the calendar."""
     early = Targets(["MFS"], [], CAP, since=datetime(1, 1, 2, tzinfo=UTC))
-    assert early.windows(Coverage(), FIRST)[Target("confluence", "MFS")].start == EPOCH
+    window = early.windows(Coverage(), FIRST)[Target("confluence", "MFS")]
+    assert window is not None
+    assert window.period.start == EPOCH
 
 
 # Plan 034: a project's coverage ends exactly, at its earliest document not stored whole.
@@ -692,8 +699,9 @@ def test_a_stored_snapshot_that_cannot_be_read_ends_the_coverage_at_it(
     whole = RefreshSite(issues=two_issues())
     run(chosen, monkeypatch, whole, Targets([], ["PRB"], CAP, since=START), RUN)
     stored_issue(chosen, "20001").write_text("{}", "utf-8")
+    again = Targets([], ["PRB"], CAP, since=START)
     with capture_logs() as events:
-        run(chosen, monkeypatch, RefreshSite(issues=two_issues()), catch_up([], ["PRB"]), NEXT)
+        run(chosen, monkeypatch, RefreshSite(issues=two_issues()), again, NEXT)
     assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
     assert said_coverage(events) == [("project PRB", "capped")]
 
@@ -801,6 +809,8 @@ def test_an_entry_from_before_034_is_replaced_by_a_catch_up_and_capped(
     chosen.raw.mkdir(parents=True)
     old = [{"source": "jira", "key": "PRB", "start": START.isoformat(), "end": RUN.isoformat()}]
     (chosen.raw / "coverage.json").write_text(json.dumps(old), "utf-8")
+    windows = catch_up([], ["PRB"]).windows(RawStore(chosen.raw).coverage(), NEXT)
+    assert windows == {PRB: Window(Period(START, NEXT), "covered start")}
     failing = RefreshSite(issues=two_issues(), failing_issues={"20001": 500})
     run(chosen, monkeypatch, failing, catch_up([], ["PRB"]), NEXT)
     assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
@@ -822,4 +832,138 @@ def test_an_entry_from_before_034_met_by_a_later_since_stays_inexact(
     failing = RefreshSite(issues=two_issues(), failing_issues={"20001": 500})
     inside = Targets([], ["PRB"], CAP, since=FAILING - timedelta(hours=1))
     run(chosen, monkeypatch, failing, inside, NEXT)
-    assert RawStore(chosen.raw).coverage() == Coverage({PRB: Period(START, NEXT)})
+    after = RawStore(chosen.raw).coverage()
+    assert after == Coverage({PRB: Period(START, NEXT)})
+    later = NEXT + timedelta(hours=6)
+    assert catch_up([], ["PRB"]).windows(after, later) == {
+        PRB: Window(Period(START, later), "covered start")
+    }
+
+
+# Plan 034: each target starts where its fetch should.
+LAST_FETCH = datetime(2026, 10, 27, 9, tzinfo=UTC)
+CATCH_UP = datetime(2026, 10, 28, 12, tzinfo=UTC)
+
+
+def jira_asked(fake: FakeSite) -> list[str]:
+    """Give the paths of the issues that a run asked for, in order."""
+    return [url.path for url in fake.asked if url.path.startswith("/rest/api/3/issue/")]
+
+
+def test_a_project_catches_up_from_a_day_before_its_last_fetch(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Covered exactly to 27 October 09:00, a run on the 28th at noon searches from the 24th.
+
+    A day, then JQL's two. It asks for the issues updated from the 26th at 09:00 that are
+    not stored: not one updated a minute before, nor one stored already. The coverage
+    then reaches the run's start, exact.
+    """
+    chosen = settings(tmp_path)
+    stored = issue_at("20010", LAST_FETCH - timedelta(hours=1), files=False)
+    first = RefreshSite(issues={"20010": stored})
+    run(chosen, monkeypatch, first, Targets([], ["PRB"], CAP, since=START), LAST_FETCH)
+    assert RawStore(chosen.raw).coverage() == exactly(START, LAST_FETCH)
+    issues = {
+        "20010": stored,
+        "20011": issue_at("20011", datetime(2026, 10, 26, 9, tzinfo=UTC), files=False),
+        "20012": issue_at("20012", datetime(2026, 10, 26, 8, 59, tzinfo=UTC), files=False),
+        "20013": issue_at("20013", CATCH_UP - timedelta(hours=2), files=False),
+    }
+    later = RefreshSite(issues=issues)
+    run(chosen, monkeypatch, later, catch_up([], ["PRB"]), CATCH_UP)
+    [search] = [url for url in later.asked if url.path == "/rest/api/3/search/jql"]
+    assert 'updated >= "2026-10-24"' in search.params["jql"]
+    fetched = {path for path in jira_asked(later) if not path.endswith("/comment")}
+    assert fetched == {"/rest/api/3/issue/20011", "/rest/api/3/issue/20013"}
+    assert RawStore(chosen.raw).coverage() == exactly(START, CATCH_UP)
+
+
+def test_a_catch_up_until_a_moment_reaches_that_moment(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """--until 06:00 on the 28th: the coverage reaches 06:00, and an issue of 10:00 waits."""
+    chosen = settings(tmp_path)
+    first = RefreshSite(issues={})
+    run(chosen, monkeypatch, first, Targets([], ["PRB"], CAP, since=START), LAST_FETCH)
+    until = datetime(2026, 10, 28, 6, tzinfo=UTC)
+    issues = {"20013": issue_at("20013", CATCH_UP - timedelta(hours=2), files=False)}
+    later = RefreshSite(issues=issues)
+    run(chosen, monkeypatch, later, Targets([], ["PRB"], CAP, until=until), CATCH_UP)
+    assert jira_asked(later) == []
+    assert RawStore(chosen.raw).coverage() == exactly(START, until)
+
+
+def test_a_failure_at_the_start_of_a_catch_up_ends_the_coverage_there(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """At a day before the covered end: the coverage ends there, and the next run asks again."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(issues={}), Targets([], ["PRB"], CAP, since=START), RUN)
+    start_of_catch_up = RUN - timedelta(days=1)
+    issues = {"20020": issue_at("20020", start_of_catch_up)}
+    failing = RefreshSite(issues=issues, failing_issues={"20020": 500})
+    run(chosen, monkeypatch, failing, catch_up([], ["PRB"]), NEXT)
+    assert RawStore(chosen.raw).coverage() == exactly(START, start_of_catch_up)
+    again = RefreshSite(issues=issues)
+    later = NEXT + timedelta(hours=6)
+    run(chosen, monkeypatch, again, catch_up([], ["PRB"]), later)
+    assert "/rest/api/3/issue/20020" in jira_asked(again)
+    assert RawStore(chosen.raw).coverage() == exactly(START, later)
+
+
+def test_a_space_catches_up_over_its_covered_period_by_version(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A page moved in with a version older than the last fetch comes; no stored one is asked.
+
+    The listing is read whole anyway: a look at the store tells what it lacks.
+    """
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    moved_in = v2_page(id="1004", title="Moved in", version=stamp(18))
+    later = RefreshSite(listing={**PAGES, "1004": moved_in})
+    run(chosen, monkeypatch, later, catch_up(["MFS"], []), SECOND)
+    pages = {url.path for url in later.asked if url.path.startswith("/wiki/api/v2/pages/")}
+    assert pages == {"/wiki/api/v2/pages/1004", "/wiki/api/v2/pages/1004/attachments"}
+    assert "1004" in stored_pages(chosen)
+
+
+def test_a_target_never_fetched_fetches_its_last_week_while_the_others_catch_up(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A space added to the settings no longer refuses the run: it covers the week before."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(issues={}), Targets([], ["PRB"], CAP, since=START), RUN)
+    targets = catch_up(["MFS"], ["PRB"])
+    assert targets.windows(RawStore(chosen.raw).coverage(), NEXT) == {
+        Target("confluence", "MFS"): Window(Period(NEXT - WEEK, NEXT), "first fetch"),
+        PRB: Window(Period(RUN - timedelta(days=1), NEXT), "since the last fetch"),
+    }
+    assert run(chosen, monkeypatch, RefreshSite(issues={}), targets, NEXT) == 0
+    assert RawStore(chosen.raw).coverage().periods == {
+        Target("confluence", "MFS"): Period(NEXT - WEEK, NEXT),
+        PRB: Period(START, NEXT),
+    }
+
+
+def test_a_target_whose_catch_up_starts_after_until_is_skipped_and_asked_nothing(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """PRB covered to the run before, --until earlier still: held, no search; MFS runs."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    run(chosen, monkeypatch, RefreshSite(issues={}), Targets([], ["PRB"], CAP, since=START), RUN)
+    before = RawStore(chosen.raw).coverage().periods[PRB]
+    until = RUN - timedelta(days=1)
+    fake = RefreshSite(issues=two_issues())
+    with capture_logs() as events:
+        run(chosen, monkeypatch, fake, Targets(["MFS"], ["PRB"], CAP, until=until), NEXT)
+    assert not [url for url in fake.asked if url.path.startswith("/rest/api/3/search")]
+    periods = RawStore(chosen.raw).coverage().periods
+    assert periods[PRB] == before
+    assert periods[Target("confluence", "MFS")] == Period(FIRST - WEEK, until)
+    assert said_coverage(events) == [
+        ("space MFS", "extended"),
+        ("project PRB", "held", "after --until"),
+    ]

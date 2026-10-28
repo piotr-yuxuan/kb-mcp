@@ -160,6 +160,24 @@ def test_a_download_s_summary_says_how_it_signs_in(
     assert not any(secret in err for secret in SECRETS.values())
 
 
+@pytest.mark.parametrize(
+    ("given", "rule"),
+    [
+        ([], "period: since each target's last fetch; the last 7 days for one never fetched"),
+        (["--since", "7d"], "period: from --since"),
+    ],
+)
+@pytest.mark.usefixtures("runs")
+def test_a_download_s_summary_says_where_its_windows_start(
+    home: Path, capsys: CaptureFixture[str], given: list[str], rule: str
+) -> None:
+    """The rule in words, before the run reads the store: from --since, or the last fetch."""
+    options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--space", "ENG"]
+    assert main(["download", *options, *given]) == 0
+    err = capsys.readouterr().err
+    assert f"\n  {rule}\n" in err.split("atlassian-offline-mcp download")[0]
+
+
 def test_an_index_by_words_alone_ignores_the_model_and_the_endpoint_given(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
