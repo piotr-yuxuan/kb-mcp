@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.config.domain.settings import SearchMode
     from atlassian_offline_mcp.search.adapters.embedding import Embedder
     from atlassian_offline_mcp.search.adapters.sqlite_index import Reader
+    from atlassian_offline_mcp.search.domain.search import Sort
 
 # Where "Mixed notes" comes by words for "4002 revert release": after the issue and
 # the page holding both words.
@@ -146,10 +147,11 @@ def test_a_document_named_is_ranked_once(data: Path, mode: SearchMode) -> None:
     assert len(paths) == len(set(paths))
 
 
-def test_sorting_by_update_is_the_same_in_every_mode(data: Path) -> None:
-    """What changed last is a matter of dates: the documents matching the words, newest first."""
+@pytest.mark.parametrize("sort", ["updated", "created"])
+def test_sorting_by_a_date_is_the_same_in_every_mode(data: Path, sort: Sort) -> None:
+    """What changed or came last is a matter of dates: the documents matching the words."""
     answers = {
-        mode: library(data, mode).search("revert", sort="updated")
+        mode: library(data, mode).search("revert", sort=sort)
         for mode in ("lexical", "semantic", "hybrid")
     }
     assert answers["semantic"] == answers["lexical"] == answers["hybrid"]

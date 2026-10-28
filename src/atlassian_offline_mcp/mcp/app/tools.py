@@ -18,7 +18,7 @@ import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 import structlog
 from opentelemetry import metrics, trace
@@ -68,7 +68,8 @@ LONGEST = {"query": LONGEST_QUERY, "ref": 300, "value": 100, "cursor": 100}
 VALUES_SHOWN = 100
 CURSOR_TIME = "%Y%m%dT%H%M%SZ"
 NO_WORDS = (
-    'The query has no words to search. Give words, or sort="updated" to list what changed last.'
+    "The query has no words to search."
+    ' Give words, or sort="updated" or "created" to list the newest by that date.'
 )
 NO_QUESTION = "The question has no words to search: ask it in words."
 # The documents that one answer of ask quotes, at most, however short their passages.
@@ -88,6 +89,7 @@ class SearchFilters(TypedDict, total=False):
     """What narrows a search. Values match without regard to case; dates are ISO 8601.
 
     source worklog: the user's entries (notes, AI summaries) and transcripts (verbatim).
+    author: an issue's reporter, a page's creator; _after included, _before excluded.
     """
 
     source: Literal["confluence", "jira", "worklog"]
@@ -95,13 +97,24 @@ class SearchFilters(TypedDict, total=False):
     project: str
     status: str
     label: str
+    issue_type: str
+    author: str
+    assignee: str
     updated_after: str  # this moment included
     updated_before: str  # this moment excluded
+    created_after: str  # this moment included
+    created_before: str  # this moment excluded
+
+
+def untitled(schema: dict[str, Any]) -> None:
+    """Drop the title that Pydantic gives each filter, its name again: every request carries it."""
+    for each in schema["properties"].values():
+        each.pop("title", None)
 
 
 # Pydantic, which the SDK validates arguments with, then refuses a misspelt filter
-# rather than drop it.
-SearchFilters.__pydantic_config__ = {"extra": "forbid"}
+# rather than drop it, and writes the schema without titles.
+SearchFilters.__pydantic_config__ = {"extra": "forbid", "json_schema_extra": untitled}
 
 
 NOT_SET_UP = "this server searches by words alone"
@@ -321,11 +334,11 @@ def checked(filters: SearchFilters | None) -> dict[str, str]:
 
 def narrowed(reader: Reader, given: Mapping[str, str]) -> Filters:
     """Give the filters as the index holds their values, refusing one that no document has."""
-    names = ("source", "space", "project", "status", "label")
+    names = ("source", "space", "project", "status", "label", "issue_type", "author", "assignee")
+    dates = ("updated_after", "updated_before", "created_after", "created_before")
     return Filters(
         **{name: canonical(reader, name, given.get(name)) for name in names},
-        updated_after=instant("updated_after", given.get("updated_after")),
-        updated_before=instant("updated_before", given.get("updated_before")),
+        **{name: instant(name, given.get(name)) for name in dates},
     )
 
 
@@ -338,19 +351,21 @@ def bounded(**values: tuple[str | None, int]) -> None:
 
 
 def canonical(reader: Reader, name: str, value: str | None) -> str | None:
-    """Find the value that the index holds for a filter, compared with ``casefold``.
+    """Find the value that the index holds for a filter, without regard to case or accents.
 
-    Refuse a value that no document has, listing the valid ones, the most used first.
+    One equal but for case goes before one equal but for accents. Refuse a value that no
+    document has, listing the valid ones: those holding it first, the most used first.
     """
     if value is None:
         return None
-    valid = reader.values(name)
-    for candidate, _ in valid:
-        if candidate.casefold() == value.casefold():
+    valid = [candidate for candidate, _ in reader.values(name)]
+    wanted = folded(value).casefold()
+    for candidate in sorted(valid, key=lambda each: each.casefold() != value.casefold()):
+        if folded(candidate).casefold() == wanted:
             return candidate
     message = f"{name}: no document has {json.dumps(value, ensure_ascii=False)}; the valid values:"
-    shown = [candidate for candidate, _ in valid[:VALUES_SHOWN]]
-    raise UnanswerableError(responses.refusal(message, shown, len(valid)))
+    shown = sorted(valid, key=lambda each: wanted not in folded(each).casefold())
+    raise UnanswerableError(responses.refusal(message, shown[:VALUES_SHOWN], len(valid)))
 
 
 def instant(name: str, value: str | None) -> datetime | None:
@@ -457,16 +472,16 @@ class Library:
         self,
         query: str = "",
         filters: SearchFilters | None = None,
-        sort: Literal["relevance", "updated"] = "relevance",
+        sort: Literal["relevance", "updated", "created"] = "relevance",
         limit: int = SEARCH_LIMIT,
         cursor: str | None = None,
     ) -> str:
         """Search the offline mirror of Confluence, Jira and the work log, the best first.
 
         Words match without regard to case or accents; issue keys, page ids and page
-        addresses in the query put their documents first. With sort="updated" and no
-        query, lists what changed last. Each hit gives the read() call of its best
-        section; a long list ends with the call that continues it.
+        addresses in the query put their documents first. With sort="updated" or
+        "created" and no query, lists the newest by that date. Each hit gives the read()
+        call of its best section; a long list ends with the call that continues it.
         """
         given = checked(filters)
         bounded(query=(query, LONGEST["query"]), cursor=(cursor, LONGEST["cursor"]))

@@ -42,11 +42,16 @@ with its best section's `read()` call and a snippet.
 
 - `query`: the words, at most 500 characters.
 - `filters`: an object of `source` (`confluence`, `jira` or `worklog`), `space`,
-  `project`, `status`, `label`, `updated_after` (included) and `updated_before`
-  (excluded); values match without regard to case, dates are ISO 8601, and a value that
-  no document has is refused with the valid ones. The work log's entries are the user's
-  notes and AI-written summaries, its transcripts the word-by-word record.
-- `sort`: `relevance`, or `updated` to list what changed last, with no query.
+  `project`, `status`, `label`, `issue_type`, `author` (an issue's reporter, a page's
+  creator), `assignee`, `updated_after` and `created_after` (included), and
+  `updated_before` and `created_before` (excluded). Values match whole, without regard
+  to case or accents; dates are ISO 8601, a date being its midnight UTC. A value that no
+  document has is refused with the valid ones, those that hold it first, then the most
+  used. The work log's entries are the user's notes and AI-written summaries, its
+  transcripts the word-by-word record.
+- `sort`: `relevance`; `updated` or `created`, newest first, by words alone and
+  counting every match, after the documents that the query names; with no query, they
+  list the documents that pass the filters.
 - `limit`: 1 to 50 documents, 8 by default.
 - `cursor`: the one that the previous answer ended with.
 

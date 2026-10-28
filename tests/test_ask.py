@@ -18,7 +18,7 @@ from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, built, continuation, estimate, follow, parts
 from tests.endpoint import connector, tiny
-from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.mirrors import MOMENT, PEOPLE, fillers, issue, page, write
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -253,6 +253,25 @@ def test_filters_narrow_and_a_question_without_words_is_refused(words: Library) 
     found = passages(words.ask("brokers", filters={"project": "proj"}))
     assert [each["ref"] for each in found] == ["PROJ-7"]
     assert words.ask("?!") == "The question has no words to search: ask it in words."
+
+
+@pytest.mark.parametrize(
+    ("filters", "expected"),
+    [
+        ({"issue_type": "BUG"}, ["PROJ-1"]),
+        ({"author": "bo sample"}, ["196845", "PROJ-1"]),
+        ({"assignee": "Helene Example"}, ["PROJ-2"]),
+        ({"created_after": "2026-10-25"}, ["PROJ-1", "PROJ-3"]),
+        ({"created_before": "2026-10-25"}, ["196845", "PROJ-2"]),
+    ],
+)
+def test_people_and_created_dates_narrow_as_search_s_do(
+    tmp_path: Path, filters: SearchFilters, expected: list[str]
+) -> None:
+    """The passages of the made-up people that pass, and none other."""
+    people = built(tmp_path, [(front, None) for front in PEOPLE])
+    found = passages(people.ask("which broker?", filters=filters))
+    assert sorted(each["ref"] for each in found) == expected
 
 
 def test_without_vectors_ask_answers_by_words_and_says_why(tmp_path: Path) -> None:

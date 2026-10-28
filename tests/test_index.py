@@ -10,7 +10,7 @@ import sqlite3
 import subprocess
 import sys
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pytest
@@ -21,7 +21,7 @@ from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexE
 from atlassian_offline_mcp.search.app.indexing import Indexing, build_index, index_mirror
 from atlassian_offline_mcp.search.domain.search import Filters
 from tests.endpoint import nothing_listening
-from tests.mirrors import FILLERS, MOMENT, fillers, issue, location, page, write
+from tests.mirrors import CREATED, FILLERS, MOMENT, PEOPLE, fillers, issue, location, page, write
 from tests.test_cli import logged_as
 from tests.test_observed import CONTROL, said
 from tests.test_question import read_until
@@ -366,41 +366,6 @@ def test_a_new_index_is_read_from_the_next_reading(data: Path) -> None:
         assert reader.summary().spaces == {"ENG": 1, "OPS": 1}
 
 
-CREATED = datetime(2026, 10, 1, tzinfo=UTC)
-# Made-up people; a page has an author, never an assignee or an issue type.
-PEOPLE = (
-    issue(
-        "PROJ-1",
-        "Broker crash",
-        issue_type="Bug",
-        author="Bo Sample",
-        assignee="Ada Example",
-        created=CREATED,
-    ),
-    issue(
-        "PROJ-2",
-        "Disk alert",
-        updated=MOMENT + timedelta(days=5),
-        author="Ada Example",
-        created=CREATED - timedelta(days=16),
-    ),
-    issue(
-        "PROJ-3",
-        "Retention",
-        updated=MOMENT + timedelta(days=1),
-        issue_type="Story",
-        created=CREATED,
-    ),
-    page(
-        "196845",
-        "Runbook",
-        author="Bo Sample",
-        created=CREATED - timedelta(days=61),
-        updated=MOMENT - timedelta(days=10),
-    ),
-)
-
-
 @pytest.fixture
 def people(data: Path) -> Path:
     """Index PEOPLE, each document holding the word lorem; give the index's path."""
@@ -415,7 +380,7 @@ def people(data: Path) -> Path:
     [
         (Filters(issue_type="Bug"), ["PROJ-1"]),
         (Filters(author="Bo Sample"), ["196845", "PROJ-1"]),
-        (Filters(assignee="Ada Example"), ["PROJ-1"]),
+        (Filters(assignee="Ada Example"), ["PROJ-1", "PROJ-3"]),
         (Filters(created_after=CREATED), ["PROJ-1", "PROJ-3"]),
         (Filters(created_before=CREATED), ["196845", "PROJ-2"]),
         (Filters(author="Ada Example", created_after=CREATED), []),
@@ -443,7 +408,7 @@ def test_issue_types_authors_and_assignees_are_values_most_used_first(people: Pa
     with reading(people) as reader:
         assert reader.values("issue_type") == [("Bug", 1), ("Story", 1), ("Task", 1)]
         assert reader.values("author") == [("Bo Sample", 2), ("A Person", 1), ("Ada Example", 1)]
-        assert reader.values("assignee") == [("Ada Example", 1)]
+        assert reader.values("assignee") == [("Ada Example", 2), ("Hélène Example", 1)]
 
 
 @pytest.mark.parametrize(

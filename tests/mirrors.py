@@ -107,3 +107,49 @@ def fillers(docs: Path, count: int = FILLERS) -> None:
         older = MOMENT - timedelta(days=number + 1)
         front = page(str(900000 + number), f"Lorem {number}", updated=older)
         write(docs, front, f"# Lorem {number}\n\n{LOREM}\n\n## Ipsum\n\n{LOREM}\n")
+
+
+# Midnight UTC: where a created range given as the date 2026-10-25 starts or ends.
+CREATED = datetime(2026, 10, 25, tzinfo=UTC)
+# Made-up people on three issues and a page, each titled with "Broker", all created
+# after the fillers. Newest created first: PROJ-3 and PROJ-1, a tie that PROJ-3's later
+# update breaks, then PROJ-2, then the page; newest updated first: PROJ-2, PROJ-3,
+# PROJ-1, the page. The label "resume" twice, "résumé" once.
+PEOPLE = (
+    issue(
+        "PROJ-1",
+        "Broker crash",
+        updated=CREATED + timedelta(hours=1),
+        issue_type="Bug",
+        status="Done",
+        author="Bo Sample",
+        assignee="Ada Example",
+        created=CREATED,
+    ),
+    issue(
+        "PROJ-2",
+        "Broker disk alert",
+        updated=CREATED + timedelta(hours=3),
+        author="Ada Example",
+        assignee="Hélène Example",
+        created=CREATED - timedelta(days=3),
+        labels=("resume",),
+    ),
+    issue(
+        "PROJ-3",
+        "Broker retention",
+        updated=CREATED + timedelta(hours=2),
+        issue_type="Story",
+        assignee="Ada Example",
+        created=CREATED,
+        labels=("resume",),
+    ),
+    page(
+        "196845",
+        "Broker runbook",
+        author="Bo Sample",
+        created=CREATED - timedelta(days=4),
+        updated=CREATED - timedelta(days=1),
+        labels=("résumé",),
+    ),
+)

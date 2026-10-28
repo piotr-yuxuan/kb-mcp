@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from tests.conftest import InMemory
 
 BAD_SETTINGS = 2
-STANDING = 2200  # estimated tokens of the instructions and the tool listing together
+STANDING = 2300  # estimated tokens of the instructions and the tool listing together
 WAIT = 30  # seconds for one answer of the server
 # What ``talk`` asks a server to list, in this order, before any call.
 LISTS = ("tools", "prompts")

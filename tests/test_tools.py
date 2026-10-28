@@ -11,7 +11,7 @@ import pytest
 from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from tests.answers import built, continuation, follow, parts
-from tests.mirrors import FILLERS, LOREM, MOMENT, issue, location, page
+from tests.mirrors import FILLERS, LOREM, MOMENT, PEOPLE, issue, location, page
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -151,6 +151,7 @@ def test_a_capped_expression_keeps_its_best_and_says_at_least(
     assert parts(answer)[0].startswith("Documents found: at least 3;")
     assert sorted(refs(answer)) == ["197800", "197801", "197802"]
     assert parts(library.search("zeta", sort="updated"))[0].startswith("Documents found: 8;")
+    assert parts(library.search("zeta", sort="created"))[0].startswith("Documents found: 8;")
 
 
 def test_the_best_section_is_judged_without_the_title(tmp_path: Path) -> None:
@@ -255,6 +256,8 @@ def test_an_unknown_value_is_refused_with_the_valid_ones(
         ({"filters": {"updated_after": "yesterday"}}, "updated_after: an ISO 8601 date"),
         ({"filters": {"updated_after": "0001-01-01T00:00:00+05:00"}}, "updated_after: an ISO"),
         ({"filters": {"updated_before": "9999-12-31T23:59:59-05:00"}}, "updated_before: an ISO"),
+        ({"filters": {"created_after": "last week"}}, "created_after: an ISO 8601 date"),
+        ({"filters": {"created_before": "2026-13-01"}}, "created_before: an ISO 8601 date"),
         ({"query": "x" * 501}, "query: at most 500 characters"),
         ({"query": "kafka", "cursor": "8"}, "cursor: give the one"),
         ({"query": "kafka", "cursor": "8@20200101T000000Z"}, "cursor: the index was rebuilt"),
@@ -271,6 +274,78 @@ def test_arguments_that_cannot_be_served_are_refused(
 def test_a_query_without_words_asks_for_words(varied: Library) -> None:
     """Sorting by relevance needs words; the answer says so, without an error."""
     assert "no words to search" in varied.search("***")
+
+
+@pytest.fixture
+def people(tmp_path: Path) -> Library:
+    """Serve the made-up people of PEOPLE, beside the fillers, all created before them."""
+    return built(tmp_path, [(front, None) for front in PEOPLE])
+
+
+@pytest.mark.parametrize(
+    ("filters", "expected"),
+    [
+        ({"issue_type": "bug"}, ["PROJ-1"]),
+        ({"author": "bo sample"}, ["PROJ-1", "196845"]),
+        ({"assignee": "ADA EXAMPLE"}, ["PROJ-3", "PROJ-1"]),
+        ({"assignee": "helene example"}, ["PROJ-2"]),
+        ({"created_after": "2026-10-25"}, ["PROJ-3", "PROJ-1"]),
+        ({"created_after": "2026-10-21", "created_before": "2026-10-25"}, ["PROJ-2", "196845"]),
+        (
+            {"created_after": "2026-10-24", "created_before": "2026-10-25T00:00:01"},
+            ["PROJ-3", "PROJ-1"],
+        ),
+        ({"label": "Résumé"}, ["196845"]),
+        ({"label": "RESUME"}, ["PROJ-3", "PROJ-2"]),
+    ],
+)
+def test_people_and_created_dates_narrow_with_words_or_without(
+    people: Library, filters: dict[str, str], expected: list[str]
+) -> None:
+    """Names match without regard to case or accents, a date is its midnight UTC.
+
+    An author is a page's creator or an issue's reporter. A label equal but for case
+    goes before a more used one equal but for accents.
+    """
+    assert refs(people.search(filters=filters, sort="created")) == expected
+    assert sorted(refs(people.search("broker", filters=filters))) == sorted(expected)
+
+
+@pytest.mark.parametrize(
+    ("filters", "valid"),
+    [
+        ({"assignee": "helene"}, "Hélène Example, Ada Example"),
+        ({"author": "SAMPLE"}, "Bo Sample, A Person, Ada Example"),
+        ({"issue_type": "Epic"}, "Bug, Story, Task"),
+    ],
+)
+def test_a_refusal_lists_first_the_values_holding_what_was_given(
+    people: Library, filters: dict[str, str], valid: str
+) -> None:
+    """Without regard to case or accents; else, and within each group, the most used first."""
+    with pytest.raises(UnanswerableError) as refused:
+        people.search("broker", filters=filters)
+    assert parts(str(refused.value))[1] == valid
+
+
+def test_sorted_by_created_date_newest_first_with_words_or_without(people: Library) -> None:
+    """Ties to the newest update; with words, the documents named first, every match counted."""
+    newest = ["PROJ-3", "PROJ-1", "PROJ-2", "196845"]
+    assert refs(people.search(sort="created", limit=4)) == newest
+    answer = people.search("broker", sort="created")
+    assert (parts(answer)[0].split(";")[0], refs(answer)) == ("Documents found: 4", newest)
+    assert refs(people.search("196845 broker", sort="created")) == ["196845", *newest[:3]]
+    assert refs(people.search(sort="updated", limit=4)) == ["PROJ-2", "PROJ-3", "PROJ-1", "196845"]
+
+
+def test_a_listing_by_created_date_continues_by_its_cursor(people: Library) -> None:
+    """One document a page, each once, in order."""
+    answer: str | None = people.search(filters={"source": "jira"}, sort="created", limit=1)
+    found = []
+    while answer is not None:
+        found += refs(answer)
+        answer = follow(people, answer)
+    assert found == ["PROJ-3", "PROJ-1", "PROJ-2"]
 
 
 @pytest.mark.parametrize(

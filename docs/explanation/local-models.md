@@ -21,7 +21,7 @@ calls `read` on a section, then answers, citing refs. So the model must:
   rather than declining 82% of the time. Its value here is to read and quote, which the
   server's answers make possible;
 - **hold the conversation**: each tool's answer is up to 4,000 estimated tokens by
-  default, the server's instructions and tools up to 2,200, and the host adds its own.
+  default, the server's instructions and tools up to 2,300, and the host adds its own.
   One `ask` and two `read` calls put about 12,000 tokens of the mirror in the context,
   hence 32,768 tokens for a host with short instructions, 65,536 for Codex or Claude
   Code.

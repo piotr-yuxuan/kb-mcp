@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 ORDER = ["ask", "search", "read", "browse", "status"]
 WITHOUT_ASK = "search,read,browse,status"
 INSTRUCTIONS = 2048  # characters that older Claude Code keeps
-STANDING = 2200  # estimated tokens of the instructions and the tool listing together
+STANDING = 2300  # estimated tokens of the instructions and the tool listing together
 ASK_DESCRIPTION = 600  # characters of ask's description
 ASK_SENTENCES = 240  # characters that name ask in the instructions and search's description
 INVALID_PARAMS = -32602
@@ -110,6 +110,20 @@ def test_five_tools_in_order_within_the_standing_budget(home: Path) -> None:
     about_ask = [s for s in re.split(r"(?<=[.;:])\s", instructions) if NAMES_ASK.search(s)]
     about_ask += [s for s in descriptions["search"].split("\n") if NAMES_ASK.search(s)]
     assert 0 < len(" ".join(about_ask)) <= ASK_SENTENCES
+
+
+def test_the_filters_of_search_and_ask_have_no_titles(home: Path) -> None:
+    """Each filter by its name alone: a title would repeat it in every request."""
+    _, tools, _ = seen(home)
+    listed = {tool.name: tool.input_schema["$defs"]["SearchFilters"] for tool in tools.tools[:2]}
+    assert list(listed) == ["ask", "search"]
+    names = [
+        *("source", "space", "project", "status", "label", "issue_type", "author", "assignee"),
+        *("updated_after", "updated_before", "created_after", "created_before"),
+    ]
+    for filters in listed.values():
+        assert list(filters["properties"]) == names
+        assert [name for name, each in filters["properties"].items() if "title" in each] == []
 
 
 def test_without_ask_nothing_names_it_and_descriptions_are_the_docstrings(home: Path) -> None:
