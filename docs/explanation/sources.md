@@ -49,9 +49,27 @@ original is told apart by its path, with a warning.
 
 A work-log document takes the keys every document has, so that search and the index read
 it as they read a page: its keyword as `status`, its tags as `labels`, its timestamps as
-`created` and `updated`, its file as `breadcrumb`; the keys of other sources are `null`.
-Keys of its own (scheduled, deadline, priority) would change every file of the mirror
-and the index's schema; they wait until something filters on them.
+`created` and `updated`, its file as `breadcrumb`; the keys of other sources are `null`
+([`mirror_worklog`](../../src/atlassian_offline_mcp/mirror/app/worklog.py)). Keys of
+its own (scheduled, deadline, priority) would change every file of the mirror and the
+index's schema; they wait until something filters on them.
+
+People are one key for every source, `people`, each person by role
+([`FrontMatter.people`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)),
+rather than a key for each of Atlassian's fields. The roles are a closed set, as the
+types of document are
+([`ROLES`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)): `author`,
+`creator`, `assignee` and `commenter`. Each source fills the roles that it has
+([`front_matter`](../../src/atlassian_offline_mcp/mirror/domain/catalogue.py)): a page
+or a blog post, its author; an issue, its reporter as its author, its creator, its
+assignee, and each commenter with the times of their comments; the work log, nobody. So
+the filters by person read every source alike
+([`KEPT`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), and a role
+that a source adds is one more value of `role`, where a key of its own would change
+every file and the index's schema, as the work log's own keys would. The other keys
+that Atlassian shapes, `key`, `space`, `project`, `issue_type` and `version`, stay as
+they are, `null` for the other sources: nothing yet needs them generic. [The
+trade-offs](trade-offs.md#people-a-generic-key) give what this costs.
 
 ## Untrusted, local
 

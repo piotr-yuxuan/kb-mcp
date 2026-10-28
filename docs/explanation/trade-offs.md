@@ -196,6 +196,70 @@ Every run still reads the store and builds every document's HTML.
   question, "Cache pandoc's output", and built by [plan
   039](../work/changelog/039-conversion-cache.md#decisions).
 
+## People, a generic key
+
+A document's front matter names its people under one key, `people`, one entry per
+person and role, in place of the keys `author` and `assignee` that Atlassian shaped
+([`FrontMatter.people`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)). An
+entry gives the role, one of a closed set
+([`ROLES`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)), the name as the
+source gives it, the account id when the source has one, and a commenter's comment
+times ([`PersonRole`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)). Each
+entry is one line of the file
+([`Dumper`](../../src/atlassian_offline_mcp/mirror/adapters/markdown.py)), read
+strictly ([`load`](../../src/atlassian_offline_mcp/mirror/adapters/markdown.py)), as
+[the data layout](../reference/data-layout.md#people) gives it. Names are kept as
+written, never normalised, merged or masked
+([`Catalogue.name`](../../src/atlassian_offline_mcp/mirror/domain/catalogue.py)).
+`FrontMatter.author` and `FrontMatter.assignee` name the one person of each role
+([`FrontMatter.author`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)), so
+that what read the two keys, a hit's line among them
+([`facts`](../../src/atlassian_offline_mcp/mcp/app/responses.py)), reads on.
+
+- **Why.** Jira's creator and an issue's commenters had no key, and the maintainer's
+  feedback asked for the creator among the filters, and for the comments' authors with
+  their dates, as asks such as "what did a colleague say this week" are mostly
+  comments. A key for each would have changed every file and the index's schema, and
+  each later role another time. Read by role, one key serves every source alike, and
+  the filters `author`, `creator`, `assignee` and `commenter` read one table
+  ([`KEPT`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)). The
+  creator cost no request: each stored `issue.json` holds every field of the issue
+  ([`issue`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/jira_v3.py)).
+  Account ids are in the files, because the index is rebuilt from the files alone
+  ([`entry`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), and
+  because a name alone cannot be told from the account id written when no name is
+  known; one account id also ties together a colleague renamed between two fetches.
+- **Cost.** One rewrite: every file of the mirror is written again once, and the index
+  rebuilt once, at schema 4
+  ([`SCHEMA`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), which
+  embeds nothing new; until then, the server refuses the old index, naming the command
+  that rebuilds it
+  ([`reading`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)). A
+  program that read `author:` in the files reads `people`. Each person is in the index
+  twice, as each label is: in the JSON from which a row gives its front matter back, and
+  in the table that the filters read, both written by
+  [`Writer.add`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py). An
+  issue's file has a line per commenter, not per comment. The four new filters add
+  about 130 estimated tokens to what every request carries, the instructions and the
+  tool listing, whose budget rose from 2,300 to 2,400, as [the
+  tests](../../tests/test_surface.py) measure it over stdio. The names of `people` are
+  not words of the index: a filter finds them, and words only where a body holds them,
+  as a comment's heading does. A colleague renamed between two fetches appears under two
+  names, which no filter yet joins by the account id.
+- **Rejected.** `author` and `assignee` kept beside `people`, tied by an invariant: each
+  name twice in each file, for agents and other programs to read twice. A person as a
+  string, such as `author: Robin Example`: shorter, and plain text to another engine,
+  but it needs a parser in `load` and a second format for dates, and leaves no room for
+  the account id. `author` as whoever created a document, in every source, with
+  `reporter` a role of its own, which would have changed the meaning of plan 040's
+  filter: Jira's author stays its reporter, with its creator beside it. Generic names
+  for the other keys that Atlassian shapes, `key`, `space`, `project`, `issue_type` and
+  `version`, which nothing yet needs.
+- **Settled** by [plan
+  041](../work/plans/041-people-in-documents.md#one-generic-key-in-place-of-two-atlassian-ones),
+  on the maintainer's feedback, its questions answered by their defaults when the
+  maintainer approved it.
+
 ## SQLite FTS5
 
 Words are indexed by SQLite's full-text engine, FTS5, in one file,
@@ -218,23 +282,25 @@ Words are indexed by SQLite's full-text engine, FTS5, in one file,
 
 ## Filters on the index as it is
 
-The filters of `search` and `ask`, the people and the created range among them, are
-conditions on the `documents` table, which no index of SQLite's covers: one scan per call
-lists the documents that pass
+The filters of `search` and `ask`, the created range among them, are conditions on the
+`documents` table, which no index of SQLite's covers, and those by person on the table
+`people`, indexed by role and name: one scan per call lists the documents that pass
 ([`KEPT`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)). The
 full-text match is still read whole and scored, and a join then drops the documents
 outside that list. A sort by a date scores every match.
 
 - **Why.** The index of schema 3 already held each column that the filters read: no
-  rebuild, no change to its writer, and no setting.
+  rebuild, no change to its writer, and no setting. Schema 4 then moved the people to
+  a table of their own, for another reason
+  ([people, a generic key](#people-a-generic-key)), indexed as their filters read it.
 - **Cost.** The scan reads every row, about 2 ms for 20,000 documents. FTS5 cannot use
   the list to skip anything, so a narrow filter makes a search for a common word only a
   little cheaper, 31 to 16 ms measured. A sort by a date gives up the cut at the best 5,000 documents per word, 31 ms
   for 20,000 matches before Python's own sort; with no words, SQLite sorts the documents
   that pass at each page, 2.7 ms for 20,000.
-- **Rejected.** Indexes on `created`, `author` and the other columns filtered: a seek
-  rather than the scan, and a walk rather than the sort, saving a few milliseconds at
-  this size, for a change of the writer and the schema, and a rebuild.
+- **Rejected.** Indexes on `created` and the other columns of `documents` filtered: a
+  seek rather than the scan, and a walk rather than the sort, saving a few milliseconds
+  at this size, for a change of the writer and the schema, and a rebuild.
 - **Settled** by [plan
   040](../work/changelog/040-jira-filters-and-sort.md#what-a-date-range-and-a-sort-cost-in-sqlite).
 
