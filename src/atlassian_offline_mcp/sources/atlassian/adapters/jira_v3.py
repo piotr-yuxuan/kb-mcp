@@ -29,7 +29,8 @@ if TYPE_CHECKING:
 # The fields that ``issue`` reads: a search that asks for them lists issues fully
 # enough to decide which to fetch, but holds no rendered body.
 ISSUE_FIELDS = (
-    "summary,status,issuetype,project,labels,created,updated,reporter,assignee,parent,attachment"
+    "summary,status,issuetype,project,labels,created,updated,"
+    "reporter,creator,assignee,parent,attachment"
 )
 
 # The responses that a snapshot of an issue keeps, by file name.
@@ -75,6 +76,7 @@ def issue(fields: Fields) -> Issue:
     """
     values = fields.object("fields")
     reporter = values.optional_object("reporter")
+    creator = values.optional_object("creator")
     assignee = values.optional_object("assignee")
     parent = values.optional_object("parent", absent=True)
     key = fields.text("key")
@@ -91,6 +93,7 @@ def issue(fields: Fields) -> Issue:
             project=values.object("project").text("key"),
             issue_type=values.object("issuetype").text("name"),
             status=values.object("status").text("name"),
+            creator=None if creator is None else person(creator),
             assignee=None if assignee is None else person(assignee),
             parent=None if parent is None else parent.text("key"),
         )

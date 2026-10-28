@@ -177,6 +177,29 @@ def test_an_issue_is_read_with_its_offset_times_and_people() -> None:
     assert issue.url == "/browse/PRB-1"
 
 
+def test_an_issue_filed_for_its_reporter_reads_its_creator_apart() -> None:
+    """The reporter is the author; who created the issue for them is its creator."""
+    issue = jira_v3.issue(Fields(v3_issue(), "issue"))
+    assert issue.author == Person("account-1", "A Person")
+    assert issue.creator == Person("account-2", "Another Person")
+
+
+def test_an_issue_with_a_null_creator_has_none() -> None:
+    """Jira sends the creator even when null, as it does the reporter."""
+    issue = v3_issue()
+    issue["fields"]["creator"] = None  # type: ignore[index]
+    assert jira_v3.issue(Fields(issue, "issue")).creator is None
+
+
+def test_an_issue_is_read_from_a_search_entry_of_the_fields_it_asked_for() -> None:
+    """A search lists issues with ``ISSUE_FIELDS`` alone, which ``issue`` reads in full."""
+    fields = v3_issue()["fields"]
+    assert isinstance(fields, dict)
+    asked = {name: fields[name] for name in jira_v3.ISSUE_FIELDS.split(",")}
+    entry = {"id": "10000", "key": "PRB-1", "fields": asked}
+    assert jira_v3.issue(Fields(entry, "issues")).creator == Person("account-2", "Another Person")
+
+
 def test_an_issue_revision_is_its_update_time_in_utc() -> None:
     """An issue's revision is its update time, so a later update sorts later."""
     assert jira_v3.issue(Fields(v3_issue(), "issue")).revision == "20261020T213758.027000Z"
@@ -269,9 +292,9 @@ def test_a_project_key_that_is_a_path_is_refused() -> None:
         jira_v3.issue(Fields(issue, "issue"))
 
 
-@pytest.mark.parametrize("key", ["reporter", "assignee"])
+@pytest.mark.parametrize("key", ["reporter", "creator", "assignee"])
 def test_an_issue_without_a_person_field_is_refused(key: str) -> None:
-    """Jira sends reporter and assignee even when null; a missing one is a change."""
+    """Jira sends reporter, creator and assignee even when null; a missing one is a change."""
     issue = v3_issue()
     del issue["fields"][key]  # type: ignore[attr-defined]
     with pytest.raises(RepresentationError, match=rf"^issue\.fields\.{key}: missing"):
