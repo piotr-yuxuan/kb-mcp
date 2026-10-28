@@ -475,7 +475,7 @@ word-by-word record. The MCP server says so to agents, in its instructions and i
 ### Reading the mirror from another program
 
 Another program may read the mirror's files, such as a search engine of your own
-choosing. What it may rely on (041):
+choosing ([the how-to](../how-to/other-search-engines.md)). What it may rely on (041):
 
 - **The documents** are the files of the patterns [above](#the-markdown-mirror), under
   `confluence/`, `jira/` and `worklog/` (`mirror.adapters.markdown.DOCUMENTS`): no name
