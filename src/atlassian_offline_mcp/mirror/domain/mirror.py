@@ -42,6 +42,46 @@ PATTERNS = {
     "jira": (IDENTIFIER, REVISION),
     "worklog": (WORKLOG_ID, WORKLOG_REVISION),
 }
+# The roles that a person can hold in a document, a closed set, in the order that the
+# mirror gives a document's people.
+ROLES = ("author", "creator", "assignee", "commenter")
+# The roles that one person alone holds in a document; each other is held once per person.
+SOLE = frozenset({"author", "creator", "assignee"})
+
+
+@dataclass(frozen=True, kw_only=True)
+class PersonRole:
+    """One person in one role of a document, named as the source gives the name.
+
+    ``account`` is the source's account id, None when it has none; ``at`` holds a
+    commenter's comment times, and no other role has it.
+    """
+
+    role: str
+    name: str
+    account: str | None = None
+    at: tuple[datetime, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Refuse a role not in ROLES, an empty text or a line break, ``at`` off its rule.
+
+        ``at`` is a commenter's alone, never empty there, its times in UTC and ascending.
+        """
+        if self.role not in ROLES:
+            message = "role: not one of the roles"
+            raise RefusedError(message)
+        texts = [self.name] if self.account is None else [self.name, self.account]
+        if any(text.splitlines() != [text] for text in texts):
+            message = "name, account: empty, or with a line break"
+            raise RefusedError(message)
+        if bool(self.at) != (self.role == "commenter"):
+            message = "at: only and always for a commenter"
+            raise RefusedError(message)
+        if any(moment.utcoffset() != timedelta(0) for moment in self.at) or (
+            list(self.at) != sorted(self.at)
+        ):
+            message = "at: a time not in UTC, or out of order"
+            raise RefusedError(message)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -62,8 +102,7 @@ class FrontMatter:
     status: str
     issue_type: str | None
     labels: tuple[str, ...]
-    author: str | None
-    assignee: str | None
+    people: tuple[PersonRole, ...]
     created: datetime
     updated: datetime
     version: int | None
@@ -76,7 +115,9 @@ class FrontMatter:
         """Refuse what the layout's table rules out.
 
         A source and type that disagree, a key that only the other source has, an id or
-        key off its rule, a text with a line break of any kind, a time not in UTC.
+        key off its rule, a text with a line break of any kind, a time not in UTC, a
+        second author, creator or assignee, a commenter twice by name and account, people
+        out of the order of the roles.
         """
         if TYPES.get(self.type) != self.source:
             message = "type: not one of the source's types"
@@ -85,9 +126,6 @@ class FrontMatter:
             if (getattr(self, name) is not None) != (self.source == source):
                 message = f"{name}: only and always for {source}"
                 raise RefusedError(message)
-        if self.assignee is not None and self.source != "jira":
-            message = "assignee: only for jira"
-            raise RefusedError(message)
         identifier, revision = PATTERNS[self.source]
         require(identifier, self.id, "id")
         require(revision, self.revision, "revision")
@@ -98,7 +136,7 @@ class FrontMatter:
         ):
             if value is not None:
                 require(pattern, value, name)
-        texts = [self.title, self.status, self.author, self.assignee, self.url, self.issue_type]
+        texts = [self.title, self.status, self.url, self.issue_type]
         if any(
             text and text.splitlines() != [text]
             for text in [*texts, *self.labels, *self.breadcrumb]
@@ -111,3 +149,29 @@ class FrontMatter:
         ):
             message = "a time not in UTC"
             raise RefusedError(message)
+        held = [
+            (person.role,) if person.role in SOLE else (person.role, person.name, person.account)
+            for person in self.people
+        ]
+        order = [ROLES.index(person.role) for person in self.people]
+        if len(set(held)) != len(held) or order != sorted(order):
+            message = (
+                "people: a second author, creator or assignee, a commenter twice, or out of"
+                " the order of the roles"
+            )
+            raise RefusedError(message)
+
+    @property
+    def author(self) -> str | None:
+        """Name the person whose role is author, if any: Jira's reporter, Confluence's author."""
+        return next((person.name for person in self.people if person.role == "author"), None)
+
+    @property
+    def creator(self) -> str | None:
+        """Name the person whose role is creator, if any: who created a Jira issue."""
+        return next((person.name for person in self.people if person.role == "creator"), None)
+
+    @property
+    def assignee(self) -> str | None:
+        """Name the person whose role is assignee, if any."""
+        return next((person.name for person in self.people if person.role == "assignee"), None)

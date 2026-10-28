@@ -42,21 +42,28 @@ Finds documents by words, issue keys, page ids or page addresses, the best first
 with its best section's `read()` call and a snippet. A hit's second line gives its ref,
 path, update and mirror date, then what the document has of its issue type, its status
 unless `current`, `assignee <name>` (`unassigned` for an issue with none, which no
-filter selects), `author <name>` and `created <day>`, such as
+filter selects), `author <name>`, `creator <name>` when an issue's creator is named
+otherwise than its author, and `created <day>`, such as
 `Bug | Done | assignee Ada Example | author Bo Sample | created 2026-10-01`.
 
 - `query`: the words, at most 500 characters.
 - `filters`: an object of `source` (`confluence`, `jira` or `worklog`), `space`,
-  `project`, `status`, `label`, `issue_type`, `author` (an issue's reporter, a page's
-  creator), `assignee`, `updated_after` and `created_after` (included), and
-  `updated_before` and `created_before` (excluded). Values match whole, without regard
-  to case, accents or runs of spaces; a name that a hit cuts at 60 characters, `read`
-  gives whole. Of several values that match, one is kept: the one given, else one that
-  a hit shows alike, the most used first, so that a lookalike's documents are left out.
-  A value that no document has, or that several have but for accents alone, is refused
-  with the valid ones, those that hold it first, the most used first. Dates are ISO
-  8601, a date being its midnight UTC. The work log's entries are the user's notes and
-  AI-written summaries, its transcripts the word-by-word record.
+  `project`, `status`, `label`, `issue_type`, `author` (an issue's reporter, the person
+  it is for, who may not be who created it; a page's creator), `creator` (who created
+  an issue), `assignee`, `commenter` (who wrote one of an issue's comments),
+  `updated_after`, `created_after` and `commented_after` (included), and
+  `updated_before`, `created_before` and `commented_before` (excluded). The comment
+  dates narrow by one comment: the commenter's, when `commenter` is given, so that
+  `{"commenter": "Bo Sample", "commented_after": "2026-10-20"}` keeps the issues that
+  Bo Sample commented on since that day; else anyone's. Values match whole, without
+  regard to case, accents or runs of spaces; a name that a hit cuts at 60 characters,
+  `read` gives whole. Of several values that match, one is kept: the one given, else
+  one that a hit shows alike, the most used first, so that a lookalike's documents are
+  left out. A value that no document has (a name, in that role), or that several have
+  but for accents alone, is refused with the valid ones, those that hold it first, the
+  most used first, by documents. Dates are ISO 8601, a date being its midnight UTC. The
+  work log's entries are the user's notes and AI-written summaries, its transcripts the
+  word-by-word record.
 - `sort`: `relevance`; `updated` or `created`, newest first, by words alone and
   counting every match, after the documents that the query names; with no query, they
   list the documents that pass the filters.
@@ -65,7 +72,14 @@ filter selects), `author <name>` and `created <day>`, such as
 
 ### read
 
-Reads a document, or one of its sections, from a character offset, in slices.
+Reads a document, or one of its sections, from a character offset, in slices. Each
+slice opens with the document's title, path and mirror date, and one from the body's
+start with its whole front matter, a `key: value` line each. People come there one line
+per role, `author`, `creator`, `assignee` and `commenter`, by name, without the account
+id that the mirror keeps beside it, which stands for the name only where the source
+gives none: ten names at most, then how many more, each commenter with their count of
+comments and the day of the last, such as
+`commenter: Ada Example (2, last 2026-10-21); Bo Sample (1, last 2026-10-20)`.
 
 - `ref`: a page id, an issue key, a work-log id (`e-...` or `t-...`), a page's or an
   issue's address, or a path in the mirror, at most 300 characters.

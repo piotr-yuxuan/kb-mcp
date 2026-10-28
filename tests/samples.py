@@ -70,6 +70,8 @@ def v3_issue(**changes: object) -> dict[str, object]:
                 "displayName": "A Person",
                 "emailAddress": "someone@example.invalid",
             },
+            # Someone else filed it for the reporter.
+            "creator": {"accountId": "account-2", "displayName": "Another Person"},
             "assignee": None,
             "parent": {"id": "10002", "key": "PRB-3"},
             "attachment": [

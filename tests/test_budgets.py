@@ -7,14 +7,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.mcp.app.responses import cut
+from atlassian_offline_mcp.mcp.app.responses import NAMES, cut
 from atlassian_offline_mcp.mcp.app.responses import page as fitted
 from atlassian_offline_mcp.mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
+from atlassian_offline_mcp.mirror.domain.mirror import ROLES, SOLE, PersonRole
 from atlassian_offline_mcp.search.adapters.model_api import ModelError
 from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
 from tests.endpoint import connector
-from tests.mirrors import page
+from tests.mirrors import MOMENT, issue, page
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -140,6 +141,46 @@ def test_default_answers_stay_within_the_budget(large: tuple[Library, str]) -> N
         library.status(),
     ]
     assert [answer[:40] for answer in answers if estimate(answer) > BUDGET] == []
+
+
+@pytest.mark.parametrize("max_chars", [12_000, 1])
+def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
+    tmp_path: Path, max_chars: int
+) -> None:
+    """The front matter, which a read never cuts, leaves its body room within 4,000.
+
+    Each role is held: by one person where one alone holds it, else by two more people
+    than a role's line names; each name, and each other text, longer than a value shown
+    and in characters that are not ASCII, but the address. At the defaults, then with
+    the smallest slice, where the front matter is the most of the answer.
+    """
+    people = tuple(
+        PersonRole(
+            role=role,
+            name=f"{role} {number:02} " + "é" * 250,
+            account=f"account-{number}",
+            at=(MOMENT,) if role == "commenter" else (),
+        )
+        for role in ROLES
+        for number in range(1 if role in SOLE else NAMES + 2)
+    )
+    wide = "長" * 250
+    front = issue(
+        "PROJ-1",
+        wide,
+        people=people,
+        status=wide,
+        issue_type=wide,
+        labels=(wide,) * 12,
+        breadcrumb=(wide,) * 10,
+        url="https://" + "a" * 250,
+    )
+    library = built(tmp_path, [(front, f"# Long issue\n\n{PROSE * 100}")])
+    answer = library.read("PROJ-1", max_chars=max_chars)
+    shown = parts(answer)[1]
+    assert [role for role in ROLES if f"\n{role}: {role} 00 " not in shown] == []
+    assert estimate(answer) <= BUDGET
+    assert continuation(answer) is not None
 
 
 @pytest.mark.parametrize(

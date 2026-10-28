@@ -9,6 +9,7 @@ import pytest
 
 from atlassian_offline_mcp.kernel.content import (
     BlogPost,
+    Comment,
     Folder,
     Issue,
     Page,
@@ -17,6 +18,7 @@ from atlassian_offline_mcp.kernel.content import (
     Space,
 )
 from atlassian_offline_mcp.mirror.domain.catalogue import Catalogue, front_matter
+from atlassian_offline_mcp.mirror.domain.mirror import PersonRole
 
 PARIS = timezone(timedelta(hours=2))
 MOMENT = datetime(2026, 10, 20, 23, 52, 41, 371000, tzinfo=PARIS)
@@ -119,21 +121,22 @@ def test_a_breadcrumb_stops_at_an_unlisted_parent_or_a_loop() -> None:
 
 def test_a_page_front_matter_follows_the_layout_table() -> None:
     """Confluence keys set, Jira keys null, times in UTC, url from the site."""
-    matter = front_matter(LEAF, FETCHED, CATALOGUE, SITE)
+    matter = front_matter(LEAF, (), FETCHED, CATALOGUE, SITE)
     assert (matter.source, matter.type, matter.id, matter.key) == ("confluence", "page", "30", None)
     assert (matter.space, matter.project, matter.issue_type) == ("MFS", None, None)
     assert (matter.status, matter.author, matter.assignee) == ("archived", "A Person", None)
+    assert matter.people == (PersonRole(role="author", name="A Person", account="account-1"),)
     assert (matter.version, matter.revision) == (3, "000003")
     assert matter.created == datetime(2026, 10, 20, 21, 52, 41, 371000, tzinfo=UTC)
     assert matter.fetched_at == datetime(2026, 10, 22, 8, 15, tzinfo=UTC)
     assert matter.url == f"{SITE}/wiki/spaces/MFS/pages/30"
     assert matter.breadcrumb == ("Root", "A folder")
-    assert front_matter(LEAF, FETCHED, CATALOGUE, None).url is None
+    assert front_matter(LEAF, (), FETCHED, CATALOGUE, None).url is None
 
 
 def test_an_issue_front_matter_is_one_line_texts() -> None:
     """Jira keys set, Confluence keys null; line breaks in texts become spaces."""
-    matter = front_matter(ISSUE, FETCHED, CATALOGUE, SITE)
+    matter = front_matter(ISSUE, (), FETCHED, CATALOGUE, SITE)
     assert (matter.source, matter.type, matter.key, matter.project) == (
         "jira",
         "issue",
@@ -151,4 +154,75 @@ def test_a_page_of_a_space_not_listed_is_refused() -> None:
     """Its folder cannot be named, so its front matter has no space key."""
     other = page("50", "Elsewhere", None, space_id="2")
     with pytest.raises(RefusedError):
-        front_matter(other, FETCHED, CATALOGUE, SITE)
+        front_matter(other, (), FETCHED, CATALOGUE, SITE)
+
+
+ANOTHER = Person("account-2", "Another Person")
+# Filed by Another Person for A Person, assigned to someone whom nothing names.
+FILED = replace(
+    ISSUE, author=Person("account-1", "A Person"), creator=ANOTHER, assignee=Person("account-3")
+)
+# Three comments by two people, as Jira gives them: by creation time. A Person's is
+# named by the users.
+COMMENTS = (
+    Comment("1", ANOTHER, datetime(2026, 10, 21, 10, tzinfo=PARIS), ""),
+    Comment("2", Person("account-1"), datetime(2026, 10, 21, 9, 30, tzinfo=UTC), ""),
+    Comment("3", ANOTHER, datetime(2026, 10, 22, 8, tzinfo=UTC), ""),
+)
+
+
+def test_an_issue_names_its_people_in_the_order_of_the_roles() -> None:
+    """Author, creator, assignee, then each commenter once, their times in UTC, ascending."""
+    matter = front_matter(FILED, COMMENTS, FETCHED, CATALOGUE, SITE)
+    assert matter.people == (
+        PersonRole(role="author", name="A Person", account="account-1"),
+        PersonRole(role="creator", name="Another Person", account="account-2"),
+        PersonRole(role="assignee", name="account-3", account="account-3"),
+        PersonRole(
+            role="commenter",
+            name="Another Person",
+            account="account-2",
+            at=(datetime(2026, 10, 21, 8, tzinfo=UTC), datetime(2026, 10, 22, 8, tzinfo=UTC)),
+        ),
+        PersonRole(
+            role="commenter",
+            name="A Person",
+            account="account-1",
+            at=(datetime(2026, 10, 21, 9, 30, tzinfo=UTC),),
+        ),
+    )
+    # The values that the keys author and assignee held before 041.
+    assert (matter.author, matter.assignee) == ("A Person", "account-3")
+
+
+def test_commenters_come_by_their_first_comment_in_whatever_order_given() -> None:
+    """Comments given newest first name the same commenters, in the same order."""
+    given = front_matter(FILED, COMMENTS, FETCHED, CATALOGUE, SITE)
+    reversed_ = front_matter(FILED, reversed(COMMENTS), FETCHED, CATALOGUE, SITE)
+    assert reversed_.people == given.people
+
+
+def test_a_commenter_is_one_name_with_one_account() -> None:
+    """Namesakes of two accounts are two commenters; one account under two names, two."""
+    namesake = Person("account-4", "Another Person")
+    renamed = Person("account-2", "A Person")
+    comments = (
+        Comment("5", ANOTHER, datetime(2026, 10, 21, 8, tzinfo=UTC), ""),
+        Comment("6", namesake, datetime(2026, 10, 21, 9, tzinfo=UTC), ""),
+        Comment("7", renamed, datetime(2026, 10, 21, 10, tzinfo=UTC), ""),
+        Comment("8", namesake, datetime(2026, 10, 21, 11, tzinfo=UTC), ""),
+    )
+    matter = front_matter(FILED, comments, FETCHED, CATALOGUE, SITE)
+    commenters = [person for person in matter.people if person.role == "commenter"]
+    assert [(person.name, person.account, len(person.at)) for person in commenters] == [
+        ("Another Person", "account-2", 1),
+        ("Another Person", "account-4", 2),
+        ("A Person", "account-2", 1),
+    ]
+
+
+def test_a_comment_without_an_author_names_nobody() -> None:
+    """Jira leaves out the author of an anonymous comment; no commenter stands for it."""
+    anonymous = Comment("4", None, MOMENT, "")
+    matter = front_matter(FILED, (anonymous,), FETCHED, CATALOGUE, SITE)
+    assert [person.role for person in matter.people] == ["author", "creator", "assignee"]

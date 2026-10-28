@@ -90,7 +90,8 @@ class SearchFilters(TypedDict, total=False):
     """What narrows a search. Values match without regard to case; dates are ISO 8601.
 
     source worklog: the user's entries (notes, AI summaries) and transcripts (verbatim).
-    author: an issue's reporter, a page's creator; _after included, _before excluded.
+    author: an issue's reporter, a page's creator; creator: an issue's.
+    commented_*: by commenter if given; _after included, _before excluded.
     """
 
     source: Literal["confluence", "jira", "worklog"]
@@ -100,11 +101,15 @@ class SearchFilters(TypedDict, total=False):
     label: str
     issue_type: str
     author: str
+    creator: str
     assignee: str
+    commenter: str
     updated_after: str  # this moment included
     updated_before: str  # this moment excluded
     created_after: str  # this moment included
     created_before: str  # this moment excluded
+    commented_after: str  # this moment included
+    commented_before: str  # this moment excluded
 
 
 def untitled(schema: dict[str, Any]) -> None:
@@ -335,8 +340,14 @@ def checked(filters: SearchFilters | None) -> dict[str, str]:
 
 def narrowed(reader: Reader, given: Mapping[str, str]) -> Filters:
     """Give the filters as the index holds their values, refusing one that no document has."""
-    names = ("source", "space", "project", "status", "label", "issue_type", "author", "assignee")
-    dates = ("updated_after", "updated_before", "created_after", "created_before")
+    names = (
+        *("source", "space", "project", "status", "label", "issue_type"),
+        *("author", "creator", "assignee", "commenter"),
+    )
+    dates = (
+        *("updated_after", "updated_before", "created_after", "created_before"),
+        *("commented_after", "commented_before"),
+    )
     return Filters(
         **{name: canonical(reader, name, given.get(name)) for name in names},
         **{name: instant(name, given.get(name)) for name in dates},

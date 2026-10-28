@@ -1,9 +1,9 @@
 """What the listings and users say beyond the snapshots, and each document's front matter.
 
-A snapshot holds one document; the listings of its space give its place in the tree,
-its fresher status and the names of the folders above it, and the users give its
-author's name. The front matter of a mirrored document is built here from both, as the
-table of ``docs/reference/data-layout.md`` says.
+A snapshot holds one document and its comments; the listings of its space give its
+place in the tree, its fresher status and the names of the folders above it, and the
+users give its people's names. The front matter of a mirrored document is built here
+from all of them, as the table of ``docs/reference/data-layout.md`` says.
 """
 
 from __future__ import annotations
@@ -16,14 +16,14 @@ from html import escape
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.kernel.content import BlogPost, ConfluenceDocument, Folder, Issue, Page
-from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from atlassian_offline_mcp.mirror.domain.mirror_layout import NONE, one_line
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
     from datetime import datetime
 
-    from atlassian_offline_mcp.kernel.content import Person, Space
+    from atlassian_offline_mcp.kernel.content import Comment, Person, Space
 
 # The front matter's type of each kind of document.
 TYPES: dict[type[ConfluenceDocument | Issue], str] = {
@@ -131,18 +131,40 @@ class Catalogue:
 
 def front_matter(
     document: ConfluenceDocument | Issue,
+    comments: Iterable[Comment],
     fetched_at: datetime,
     catalogue: Catalogue,
     site: str | None,
 ) -> FrontMatter:
-    """Say what the mirror says of a document, as the layout's table does.
+    """Say what the mirror says of a document and its comments, as the layout's table does.
 
     Every text is one visible line; a page's space key comes from the listed spaces, and
-    is None when its space is not listed, which ``FrontMatter`` refuses.
+    is None when its space is not listed, which ``FrontMatter`` refuses. Each commenter
+    comes once, by their first comment, with the times of their comments ascending; a
+    comment without an author names nobody.
     """
     issue = document if isinstance(document, Issue) else None
     confluence = document if isinstance(document, ConfluenceDocument) else None
     space = None if confluence is None else catalogue.spaces.get(confluence.space_id)
+    # Each commenter's comment times, by name and account, the first comment first.
+    said: dict[tuple[str, str], list[datetime]] = {}
+    for comment in sorted(comments, key=lambda each: each.created):
+        if comment.author is not None:
+            commenter = (catalogue.name(comment.author), comment.author.account_id)
+            said.setdefault(commenter, []).append(comment.created.astimezone(UTC))
+    sole = [
+        PersonRole(role=role, name=catalogue.name(person), account=person.account_id)
+        for role, person in (
+            ("author", document.author),
+            ("creator", None if issue is None else issue.creator),
+            ("assignee", None if issue is None else issue.assignee),
+        )
+        if person is not None
+    ]
+    commenters = [
+        PersonRole(role="commenter", name=name, account=account, at=tuple(at))
+        for (name, account), at in said.items()
+    ]
     return FrontMatter(
         source=document.source,
         type=TYPES[type(document)],
@@ -154,8 +176,7 @@ def front_matter(
         status=one_line(catalogue.status(document)),
         issue_type=None if issue is None else one_line(issue.issue_type),
         labels=tuple(one_line(label) for label in document.labels),
-        author=catalogue.name(document.author),
-        assignee=None if issue is None else catalogue.name(issue.assignee),
+        people=(*sole, *commenters),
         created=document.created.astimezone(UTC),
         updated=document.updated.astimezone(UTC),
         version=None if confluence is None else confluence.version,

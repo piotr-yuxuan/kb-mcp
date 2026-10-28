@@ -205,6 +205,7 @@ class Issue(Document):
     project: str  # the project's key
     issue_type: str
     status: str
+    creator: Person | None = None  # who created it; its author is its reporter
     assignee: Person | None = None
     parent: str | None = None  # the parent issue's key
 

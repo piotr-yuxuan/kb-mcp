@@ -10,9 +10,10 @@ from typing import TYPE_CHECKING
 import pytest
 
 from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
+from atlassian_offline_mcp.mirror.domain.mirror import PersonRole
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from tests.answers import built, continuation, follow, parts
-from tests.mirrors import FILLERS, LOREM, MOMENT, PEOPLE, issue, location, page
+from tests.mirrors import CREATED, FILLERS, LOREM, MOMENT, PEOPLE, issue, location, page
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -403,6 +404,188 @@ def test_a_name_matches_whole_as_shown_and_the_value_given_first(tmp_path: Path)
         assert refs(library.search(filters={"label": label}, sort="created")) == expected
 
 
+# The made-up people of tests/samples.py, each with the account id that Atlassian gives.
+ACCOUNTS = {"A Person": "account-1", "Another Person": "account-2"}
+EARLIER = CREATED - timedelta(days=7)
+
+
+def held(role: str, name: str, *at: datetime) -> PersonRole:
+    """Give one of ACCOUNTS's people in a role, with their account and comment times."""
+    return PersonRole(role=role, name=name, account=ACCOUNTS[name], at=at)
+
+
+# Four issues, each person in every role. A Person comments three times on PROJ-1 and
+# once on PROJ-2, before the comment of Another Person's there; Another Person once on
+# each of PROJ-2, PROJ-3 and PROJ-4. PROJ-2's creator is its author; PROJ-3 has none.
+COMMENTED = (
+    issue(
+        "PROJ-1",
+        "Broker crash",
+        people=(
+            held("author", "A Person"),
+            held("creator", "Another Person"),
+            held("assignee", "A Person"),
+            held("commenter", "A Person", *(CREATED + timedelta(hours=n) for n in range(3))),
+        ),
+    ),
+    issue(
+        "PROJ-2",
+        "Broker alert",
+        people=(
+            held("author", "Another Person"),
+            held("creator", "Another Person"),
+            held("commenter", "A Person", EARLIER),
+            held("commenter", "Another Person", CREATED),
+        ),
+    ),
+    issue(
+        "PROJ-3",
+        "Broker retention",
+        people=(held("author", "A Person"), held("commenter", "Another Person", EARLIER)),
+    ),
+    issue(
+        "PROJ-4",
+        "Broker upgrade",
+        people=(
+            held("author", "Another Person"),
+            held("creator", "A Person"),
+            held("commenter", "Another Person", CREATED + timedelta(hours=3)),
+        ),
+    ),
+)
+
+
+@pytest.fixture
+def commented(tmp_path: Path) -> Library:
+    """Serve the issues of COMMENTED, beside the fillers."""
+    return built(tmp_path, [(front, None) for front in COMMENTED])
+
+
+@pytest.mark.parametrize(
+    ("filters", "expected"),
+    [
+        ({"creator": "another person"}, ["PROJ-1", "PROJ-2"]),
+        ({"creator": "A PERSON"}, ["PROJ-4"]),
+        ({"author": "another person"}, ["PROJ-2", "PROJ-4"]),
+        ({"commenter": "a person"}, ["PROJ-1", "PROJ-2"]),
+        ({"commenter": "another person"}, ["PROJ-2", "PROJ-3", "PROJ-4"]),
+        ({"creator": "another person", "commenter": "another person"}, ["PROJ-2"]),
+        ({"commented_after": "2026-10-25"}, ["PROJ-1", "PROJ-2", "PROJ-4"]),
+        ({"commented_before": "2026-10-25"}, ["PROJ-2", "PROJ-3"]),
+        ({"commented_after": "2026-10-25T02:00Z"}, ["PROJ-1", "PROJ-4"]),
+        (
+            {"commented_after": "2026-10-25T02:00:01Z", "commented_before": "2026-10-25T03:00Z"},
+            [],
+        ),
+        ({"commented_after": "2026-10-20", "commented_before": "2026-10-24"}, []),
+        ({"commenter": "a person", "commented_after": "2026-10-25"}, ["PROJ-1"]),
+        ({"commenter": "another person", "commented_before": "2026-10-25"}, ["PROJ-3"]),
+    ],
+)
+def test_creator_and_commenter_narrow_by_role_and_comment_dates_by_one_comment(
+    commented: Library, filters: dict[str, str], expected: list[str]
+) -> None:
+    """A name matches the people of its role alone; a comment date, the commenter's comments.
+
+    Without a commenter, anyone's. PROJ-2 has a comment of A Person's before the 25th and
+    one of Another Person's on it: A Person did not comment there from the 25th on. Both
+    dates are met by one comment: neither of PROJ-2's, on the 18th and the 25th, falls
+    from the 20th to the 24th, though one is after the 20th and the other before the 24th.
+    """
+    assert sorted(refs(commented.search(filters=filters, sort="created"))) == expected
+    assert sorted(refs(commented.search("broker", filters=filters))) == expected
+
+
+@pytest.mark.parametrize(
+    ("filters", "valid"),
+    [
+        ({"creator": "nobody"}, "Another Person, A Person"),
+        ({"commenter": "nobody"}, "Another Person, A Person"),
+        ({"assignee": "another person"}, "A Person"),
+    ],
+)
+def test_a_name_that_no_document_has_in_its_role_is_refused_with_the_valid_ones(
+    commented: Library, filters: dict[str, str], valid: str
+) -> None:
+    """The most frequent first, counted by documents: A Person's four comments are on two."""
+    with pytest.raises(UnanswerableError) as refused:
+        commented.search("broker", filters=filters)
+    header, block, _ = parts(str(refused.value))
+    assert (header.partition(":")[0], block) == (next(iter(filters)), valid)
+
+
+def test_an_issue_s_hit_names_its_creator_only_when_not_its_author(commented: Library) -> None:
+    """After the author, so that the usual issue, filed by its creator, costs nothing more."""
+    assert dict(FACTS.findall(parts(commented.search("broker"))[1])) == {
+        "PROJ-1": (
+            "Task | To Do | assignee A Person | author A Person | creator Another Person"
+            " | created 2026-10-20"
+        ),
+        "PROJ-2": "Task | To Do | unassigned | author Another Person | created 2026-10-20",
+        "PROJ-3": "Task | To Do | unassigned | author A Person | created 2026-10-20",
+        "PROJ-4": (
+            "Task | To Do | unassigned | author Another Person | creator A Person"
+            " | created 2026-10-20"
+        ),
+    }
+
+
+def test_read_shows_each_role_by_name_and_a_commenter_s_count_and_last_day(
+    commented: Library,
+) -> None:
+    """One line per role, in the order of the roles, before the created date."""
+    expected = {
+        "PROJ-1": [
+            "author: A Person",
+            "creator: Another Person",
+            "assignee: A Person",
+            "commenter: A Person (3, last 2026-10-25)",
+        ],
+        "PROJ-2": [
+            "author: Another Person",
+            "creator: Another Person",
+            "commenter: A Person (1, last 2026-10-18); Another Person (1, last 2026-10-25)",
+        ],
+    }
+    for ref, roles in expected.items():
+        lines = parts(commented.read(ref))[1].splitlines()
+        start = lines.index(roles[0])
+        assert lines[start : start + len(roles) + 1] == [*roles, "created: 2026-10-20 21:52 UTC"]
+
+
+def test_read_names_ten_people_of_a_role_whole_then_how_many_more(tmp_path: Path) -> None:
+    """A name that a hit cuts at 60 characters comes whole; the line, though long, too."""
+    names = [f"Person {number:02} {'x' * 60}" for number in range(12)]
+    people = (
+        PersonRole(role="author", name=names[0]),
+        *(PersonRole(role="commenter", name=each, at=(CREATED,)) for each in names),
+    )
+    library = built(tmp_path, [(issue("PROJ-1", "Broker", people=people), None)])
+    assert f"| author {names[0][:59]}… |" in library.search("broker")
+    shown = "; ".join(f"{each} (1, last 2026-10-25)" for each in names[:10])
+    read = parts(library.read("PROJ-1"))[1]
+    assert f"\nauthor: {names[0]}\n" in read
+    assert f"\ncommenter: {shown}; 2 more\n" in read
+
+
+def test_no_answer_holds_an_account_id(commented: Library, tmp_path: Path) -> None:
+    """The mirror keeps each person's account id; the tools serve names alone."""
+    mirrored = (tmp_path / "docs" / location(COMMENTED[0])).read_text(encoding="utf-8")
+    assert ACCOUNTS["A Person"] in mirrored
+    answers = [
+        commented.search("broker"),
+        commented.search(filters={"commenter": "a person"}, sort="created"),
+        commented.ask("broker crash"),
+        *(commented.read(front.key or front.id) for front in COMMENTED),
+        commented.browse(project="PROJ"),
+        commented.status(),
+    ]
+    with pytest.raises(UnanswerableError) as refused:
+        commented.search(filters={"commenter": "nobody"})
+    served = [*answers, str(refused.value)]
+    assert [each for each in served if any(id_ in each for id_ in ACCOUNTS.values())] == []
+
+
 @pytest.mark.parametrize(
     "ref",
     [
@@ -692,7 +875,7 @@ def test_an_issue_without_assignee_says_so_and_a_work_log_entry_its_status(
         source="worklog",
         type="entry",
         space=None,
-        author=None,
+        people=(),
         version=None,
         revision="0123456789abcdef",
         created=MOMENT - timedelta(days=2),

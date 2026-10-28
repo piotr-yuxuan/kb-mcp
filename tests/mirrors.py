@@ -17,7 +17,7 @@ from atlassian_offline_mcp.kernel.content import time_revision
 from atlassian_offline_mcp.mirror.adapters import conversions
 from atlassian_offline_mcp.mirror.adapters.markdown import dump
 from atlassian_offline_mcp.mirror.app.mirror import mirror
-from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -36,8 +36,22 @@ FILLERS = 30
 WORKLOG_FOLDERS = {"entry": "entries", "transcript": "transcripts"}
 
 
-def page(page_id: str, title: str, **changes: object) -> FrontMatter:
-    """Return the front matter of a Confluence page of the space ENG."""
+def named(author: str | None, assignee: str | None = None) -> tuple[PersonRole, ...]:
+    """Give the people of a document by its author and its assignee, each when named."""
+    return tuple(
+        PersonRole(role=role, name=name)
+        for role, name in (("author", author), ("assignee", assignee))
+        if name is not None
+    )
+
+
+def page(
+    page_id: str, title: str, *, author: str | None = "A Person", **changes: object
+) -> FrontMatter:
+    """Return the front matter of a Confluence page of the space ENG, by ``author``.
+
+    ``people`` among the changes replaces the author.
+    """
     front = FrontMatter(
         source="confluence",
         type="page",
@@ -49,8 +63,7 @@ def page(page_id: str, title: str, **changes: object) -> FrontMatter:
         status="current",
         issue_type=None,
         labels=(),
-        author="A Person",
-        assignee=None,
+        people=named(author),
         created=MOMENT,
         updated=MOMENT,
         version=1,
@@ -62,8 +75,19 @@ def page(page_id: str, title: str, **changes: object) -> FrontMatter:
     return replace(front, **changes)
 
 
-def issue(key: str, title: str, *, updated: datetime = MOMENT, **changes: object) -> FrontMatter:
-    """Return the front matter of a Jira issue, its project taken from its key."""
+def issue(
+    key: str,
+    title: str,
+    *,
+    updated: datetime = MOMENT,
+    author: str | None = "A Person",
+    assignee: str | None = None,
+    **changes: object,
+) -> FrontMatter:
+    """Return the front matter of a Jira issue, its project taken from its key.
+
+    ``people`` among the changes replaces the author and the assignee.
+    """
     project, number = key.rsplit("-", 1)
     front = FrontMatter(
         source="jira",
@@ -76,8 +100,7 @@ def issue(key: str, title: str, *, updated: datetime = MOMENT, **changes: object
         status="To Do",
         issue_type="Task",
         labels=(),
-        author="A Person",
-        assignee=None,
+        people=named(author, assignee),
         created=MOMENT,
         updated=updated,
         version=None,

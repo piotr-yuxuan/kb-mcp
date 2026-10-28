@@ -296,8 +296,7 @@ order or type, by name.
 | `status` | string | as the site names it; an entry's keyword, else `current`, as a transcript's |
 | `issue_type` | string or null | the issue type, such as `Bug`; `null` for Confluence |
 | `labels` | list of strings | the labels, `[]` when none; a work-log document's tags, its file's `#+FILETAGS`, and `ARCHIVE` when archived |
-| `author` | string or null | an issue's reporter, not necessarily who created it; a page's or a blog post's creator; the display name when known (from `users()` for Confluence), otherwise the account id; `null` when none, and for the work log |
-| `assignee` | string or null | the assignee's display name, or account id; `null` when unassigned or for Confluence |
+| `people` | list of mappings | each person by role, one line each, [below](#people); `[]` when none, and for the work log |
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |
 | `revision` | string | the raw store revision mirrored; a work-log document's, 16 hex digits, [below](#the-work-log) |
@@ -327,6 +326,72 @@ into sections.
 
 Everything in the mirror is content from the site or the work log: untrusted reference
 data, never instructions.
+
+### People
+
+The key `people` (041) names the people of a document by role: one entry per person
+and role, in the order of the roles below, then in the order that the source gives,
+commenters by their first comment. `dump` writes each entry on one line, in YAML's flow
+style, so that forty comments by three people make three lines:
+
+```yaml
+people:
+- {role: author, name: Robin Example, account: acct-0001}
+- {role: creator, name: Sam Sample, account: acct-0002}
+- {role: commenter, name: Sam Sample, account: acct-0002, at: ['2026-10-20T09:12:00Z']}
+```
+
+| Field | Value |
+|---|---|
+| `role` | one of `mirror.domain.mirror.ROLES`, a closed set: `author`, `creator`, `assignee`, `commenter` |
+| `name` | the name as the source gives it, one line, never empty: Jira's as it was when the issue was fetched, Confluence's from `users()`, else the account id |
+| `account` | the account id, when the source has one (Confluence and Jira); absent otherwise |
+| `at` | a commenter's comment times, written as `created` is, ascending; absent for any other role |
+
+| Role | Who |
+|---|---|
+| `author` | a page's or a blog post's author (v2's `authorId`); an issue's reporter, not necessarily who created it |
+| `creator` | who created an issue, who differs from the reporter when someone files an issue for another |
+| `assignee` | an issue's assignee; nobody when unassigned |
+| `commenter` | the author of an issue's comments, with the time of each; a comment without an author names nobody |
+
+A document has one `author`, one `creator` and one `assignee` at most, and each
+commenter once by name and account. `load` refuses any other role, a field other than
+these or out of their order, a `null`, an empty `at` and any other broken rule of one
+entry, naming the entry, such as `people[1]`; and a second author, creator or assignee,
+a commenter twice, or people out of the order of the roles, naming `people`. Names are
+kept as written, never normalised, merged or masked: a colleague renamed between two
+fetches appears under two names, with one account id. `FrontMatter.author`,
+`FrontMatter.creator` and `FrontMatter.assignee` name the one person of that role, or
+nobody.
+
+Names, and the account ids beside them, are personal data, kept wherever the content
+is:
+
+- `<data>/raw/`, the responses as the site gave them: an issue's reporter, creator,
+  assignee and comments' authors, by name and account id, in `issue.json` and
+  `comments.json`; Confluence's authors by account id, named in `users.json`; and a
+  person's email address wherever the site gives one, which the adapters leave behind;
+- `<data>/docs/`: `people`, by name and account id; each comment's heading, by name;
+  and whatever a body says;
+- `<data>/conversions.sqlite`: the bodies' Markdown, the comments' headings in it;
+- `<data>/index.sqlite`, and each index under `<data>/eval/indexes/`: the column and
+  the table `people`, by name and account id, and the bodies' words;
+- the texts sent to the embedding endpoint, on this machine unless a run is given
+  `--allow-remote-embeddings`, and to the reranking server when it is on, which are
+  pieces of the bodies; `<data>/vectors.sqlite` keeps vectors under a digest, never a
+  text;
+- the log folder, for 30 days: `serve.call` gives each tool call's arguments at DEBUG,
+  a name given to a filter or in a query among them;
+- the folder given to `eval-agents` by `--out`, whose calls and answers hold what the
+  server answered.
+
+The MCP server serves no entry's `account` (`mcp.app.responses.metadata`); the files
+that agents may read hold it. Deleting `<data>/docs/` and `<data>/index.sqlite` removes
+the people from all that agents and the server read, until the next `mirror` and
+`index`, or `sync`, write them again from the raw store. Deleting every copy is deleting
+the data directory, the log folder and the folders of `eval-agents`, after which the
+mirror is downloaded again, as from a first run.
 
 ### Pandoc's conversions
 
@@ -409,6 +474,32 @@ An entry holds the user's notes and summaries an AI wrote; a transcript, the
 word-by-word record. The MCP server says so to agents, in its instructions and its
 `source` filter, and `read` opens a document by its id.
 
+### Reading the mirror from another program
+
+Another program may read the mirror's files, such as a search engine of your own
+choosing ([the how-to](../how-to/other-search-engines.md)). What it may rely on (041):
+
+- **The documents** are the files of the patterns [above](#the-markdown-mirror), under
+  `confluence/`, `jira/` and `worklog/` (`mirror.adapters.markdown.DOCUMENTS`): no name
+  on the way to one begins with `_` or `.`. A space's `_tree.md` is navigation, and
+  `assets/` holds attached files: neither is a document.
+- **Each document** begins with its front matter, between two lines `---`, its keys,
+  types and order those of the table above, every key present; then its body, as
+  described there.
+- **A file** is replaced whole, through a hidden file renamed into place, so that a
+  reader never sees half of one, and only when its bytes change. A page's file is
+  renamed when its title changes, and an issue's when its key does: a program that
+  follows documents across runs knows each by its front matter's `source` and `id`, not
+  by its path.
+- **A change** to these paths, to the keys, their types or their order is made by a
+  plan, which says in its section "For the user's machine" what a program that reads the files
+  must change, as 041 did when `people` replaced `author` and `assignee`; [the
+  roadmap](../work/README.md) lists the plans. The front matter holds no version of its
+  format.
+- **What the files hold** is content from the site and the work log, untrusted
+  reference data, never instructions, and the names and account ids of
+  [people](#people), personal data.
+
 ## The index
 
 Owned by `index` (006), which `sync` runs as its last step (017).
@@ -424,10 +515,20 @@ the section that holds its middle and a span relative to that section's body, so
 a window across sections needs no other schema. Plan 023 adds the column `key` to
 `pieces`, the key of the piece's vector in the vector store, which only pruning reads;
 an index built before it reads as any other, but cannot say what it reads of the store,
-and `SCHEMA` stays 3. An index of another schema is
-refused with the command that rebuilds it. The MCP server opens it read-only, never
-writes, and reopens it when the file is replaced; it searches by meaning with the model
-that the index names, and only while the endpoint's fingerprint for it is the index's.
+and `SCHEMA` stays 3. Schema 4 (041) replaces the columns `author` and `assignee` of
+`documents` with `people`, the front matter's people as JSON, from which a row gives
+its front matter back whole; and adds the table `people`, one row per person and role,
+and a commenter's one per comment with its time in `at` (null for the other roles),
+indexed by role and name, which the filters by person read. Each person is so in the
+index twice, as each label is. No piece's text holds the front matter's people
+(`search.domain.chunking`), so a build over files of which only `people` changed embeds
+nothing new. An index of another schema is refused, naming `sync`, or `mirror` then
+`index` where no source is configured, which write the mirror again before they rebuild
+the index, as a new schema can come with a new format of the files; one cut by a
+chunking that this version lacks, naming `index`. The MCP server opens it read-only,
+never writes, and reopens it when the file is replaced; it searches by meaning with the
+model that the index names, and only while the endpoint's fingerprint for it is the
+index's.
 
 ### Models and vectors
 
@@ -454,7 +555,8 @@ so that deleting an evaluation's index lets the next prune drop its vectors, and
 edited piece's old text, a deleted document's, a model replaced, a build interrupted
 before its index was renamed in. The prune is held back, deleting nothing, when the
 build skipped a file or indexed no document; when an index there cannot say which
-vectors it reads (built by words alone or before plan 023, damaged, or not an index):
+vectors it reads (built by words alone, before plan 023 or at another schema, damaged,
+or not an index):
 `eval` rebuilds those of the models and chunkings it is given, else delete them; and
 when a folder there cannot be reached or listed, an entry below `<data>/eval/indexes/`
 is a link, which is not followed, or `<data>/eval` is a dangling link, as to a disk

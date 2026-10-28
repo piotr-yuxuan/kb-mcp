@@ -239,7 +239,10 @@ class Score:
 
 @dataclass(frozen=True)
 class Filters:
-    """What narrows a search, each value as the index holds it; None does not narrow."""
+    """What narrows a search, each value as the index holds it; None does not narrow.
+
+    The comment dates narrow by one comment: the commenter's, when one is given.
+    """
 
     source: str | None = None
     space: str | None = None
@@ -248,11 +251,15 @@ class Filters:
     label: str | None = None
     issue_type: str | None = None
     author: str | None = None
+    creator: str | None = None
     assignee: str | None = None
+    commenter: str | None = None
     updated_after: datetime | None = None
     updated_before: datetime | None = None
     created_after: datetime | None = None
     created_before: datetime | None = None
+    commented_after: datetime | None = None
+    commented_before: datetime | None = None
 
 
 @dataclass(frozen=True)

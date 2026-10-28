@@ -40,6 +40,9 @@ the command and those who change its code, unless it is marked for contributors.
 - [Rerank search with a local server](how-to/reranking.md): llama.cpp's `llama-server`
   on this machine reorders the first documents that `search` and `ask` find, once
   turned on; install it, check it, turn it on, and measure whether it helps.
+- [Search the mirror with another engine](how-to/other-search-engines.md): the
+  mirror's Markdown indexed by qmd, as the worked example, one collection per source,
+  searched from the shell and by agents; its traps, and what an engine does not get.
 - [Golden questions](how-to/golden-questions.md): questions about your own content, to
   measure with `eval` which search mode, model and chunking suit it.
 - [Observe runs with Grafana](how-to/observe-with-grafana.md): traces, metrics and logs
