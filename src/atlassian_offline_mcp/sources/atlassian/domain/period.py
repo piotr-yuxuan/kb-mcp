@@ -5,17 +5,23 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal
 
-# A length of time: a number of days, weeks, months or years, such as 7d, 2w, 6mo or 1y.
-# A month counts 30 days and a year 365: windows need no calendar.
-AGO = re.compile(r"([1-9][0-9]{0,3})(d|w|mo|y)")
-DAYS = {"d": 1, "w": 7, "mo": 30, "y": 365}
-# Before any content of Atlassian Cloud: the start of a window back to everything.
+# A length of time: a number of hours, days, weeks, months or years, such as 12h, 7d, 2w,
+# 6mo or 1y. A month counts 30 days and a year 365: windows need no calendar.
+AGO = re.compile(r"([1-9][0-9]{0,3})(h|d|w|mo|y)")
+UNITS = {
+    "h": timedelta(hours=1),
+    "d": timedelta(days=1),
+    "w": timedelta(days=7),
+    "mo": timedelta(days=30),
+    "y": timedelta(days=365),
+}
+# Before any content of Atlassian Cloud: the start of a window back to everything, which
+# --since all names.
 EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 # The longest length of time read: a hundred years, far past the epoch, never past the
 # calendar.
-MAX_DAYS = 100 * 365
+LONGEST = timedelta(days=100 * 365)
 
 
 class PeriodError(ValueError):
@@ -40,28 +46,27 @@ class Period:
         return self.start <= moment < self.end
 
 
-def length(text: str, option: str) -> timedelta | Literal["all"]:
-    """Read a length of time (``7d``, ``2w``, ``6mo``, ``1y``), or ``all`` of it."""
-    if text == "all":
-        return "all"
-    ago = AGO.fullmatch(text)
-    if not ago or int(ago[1]) * DAYS[ago[2]] > MAX_DAYS:
-        message = f"{option}: a number of days, weeks, months or years (7d, 2w, 6mo, 1y), or all"
-        raise PeriodError(message)
-    return timedelta(days=int(ago[1]) * DAYS[ago[2]])
-
-
 def moment(text: str, now: datetime, option: str) -> datetime:
-    """Read ``7d``, ``6mo`` and the like before now, or an ISO date (midnight UTC) or time."""
+    """Read ``12h``, ``7d``, ``6mo`` and the like before now, or an ISO date (midnight UTC) or time.
+
+    ``all``, for ``--since`` alone, is the epoch: everything. A time is given in UTC,
+    whatever offset it carries, so that the dates searched hold it in every time zone.
+    """
+    if option == "--since" and text == "all":
+        return EPOCH
     ago = AGO.fullmatch(text)
-    if ago and int(ago[1]) * DAYS[ago[2]] <= MAX_DAYS:
-        return now - timedelta(days=int(ago[1]) * DAYS[ago[2]])
+    if ago and int(ago[1]) * UNITS[ago[2]] <= LONGEST:
+        return now - int(ago[1]) * UNITS[ago[2]]
     try:
         parsed = datetime.fromisoformat(text)
-    except ValueError:
-        message = f"{option}: a length before now (7d, 2w, 6mo, 1y), or an ISO date"
+        # A time at the calendar's edge, once in UTC, can fall out of it.
+        return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).astimezone(UTC)
+    except ValueError, OverflowError:
+        everything = ", or all" if option == "--since" else ""
+        message = (
+            f"{option}: a length before now (12h, 7d, 2w, 6mo, 1y), an ISO date or time{everything}"
+        )
         raise PeriodError(message) from None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def period(since: str, until: str | None, now: datetime) -> Period:

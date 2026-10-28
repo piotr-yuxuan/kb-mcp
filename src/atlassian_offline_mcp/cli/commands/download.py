@@ -14,7 +14,7 @@ from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
 from atlassian_offline_mcp.sources.atlassian.adapters.sign_in import sign_in
 from atlassian_offline_mcp.sources.atlassian.app.download import Targets, download, plan
-from atlassian_offline_mcp.sources.atlassian.domain.period import PeriodError, length, moment
+from atlassian_offline_mcp.sources.atlassian.domain.period import PeriodError, moment
 
 if TYPE_CHECKING:
     import argparse
@@ -43,7 +43,6 @@ def targets_of(
         list(projects),
         (arguments.max_file_mb or DEFAULT_MAX_FILE_MB) * MEBIBYTE,
         since=moment(arguments.since, now, "--since") if arguments.since else None,
-        back=length(arguments.back, "--back") if arguments.back else None,
         until=moment(arguments.until, now, "--until") if arguments.until else None,
     )
 
@@ -52,7 +51,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
     """Download; exit 0, 1 when something failed, 2 for bad input, 3 to sign in again.
 
     --space and --project are settings' flags, which replace the settings' lists; without
-    --since, each catches up from the start of what earlier runs covered. The outcome
+    --since, each catches up on what changed since its last fetch. The outcome
     is given once a run ends, None when none could start or one was stopped. Why a run
     could not start or go on is an error; an interruption, or a space or a project that
     failed, a warning.
@@ -87,14 +86,28 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
 def text(outcome: Outcome, summary: Summary) -> str:
     """Write the documents fetched by kind and the files, or those a dry run would; then failures.
 
-    Short also says how a run stopped, if it did; detailed gives every count of what the
-    run did, or would do. The failures come last.
+    Detailed, and a dry run, begin with each target's window, why it starts there, and
+    what became of its coverage. Short also says how a run stopped, if it did; detailed
+    gives every count of what the run did, or would do. The failures come last.
     """
+    windows = outcome.windows if summary == "detailed" or outcome.dry_run else ()
+    said = [
+        f"{each.target}: "
+        + (
+            f"skipped, {each.reason}"
+            if each.start is None or each.end is None
+            else f"from {each.start.isoformat()} to {each.end.isoformat()}, {each.reason}"
+        )
+        + ("" if each.coverage is None else f"; coverage {each.coverage}")
+        for each in windows
+    ]
     shown = [
         (what, number)
         for what, number in sorted(outcome.report.counts.items())
         if summary == "detailed" or what.endswith(SHORT_COUNTS) or what.startswith(STOPPED)
     ]
-    return "".join(f"{what}: {number}\n" for what, number in shown) + (
-        f"failures: {outcome.report.failures}\n"
+    return (
+        "".join(f"{line}\n" for line in said)
+        + "".join(f"{what}: {number}\n" for what, number in shown)
+        + f"failures: {outcome.report.failures}\n"
     )

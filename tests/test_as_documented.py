@@ -116,9 +116,10 @@ def test_download_records_as_documented(
     """Fetched, failed, unread, skipped, retried; refused, busy, interrupted, signed out.
 
     A first run fetches a space and a project, with a page whose adapter refuses it, a
-    video skipped and a file gone; a second, a space whose pages the site cannot serve,
-    retried until they fail; a third, a space not found. Then a period refused, a store
-    busy, Ctrl-C, and a session no longer saved.
+    video skipped and a file gone, over the period given; the next catches up on both
+    from their last fetch, without --since. Then a space whose pages the site cannot
+    serve, retried until they fail; a space not found; a period refused, a store busy,
+    Ctrl-C, and a session no longer saved.
     """
     emitted = Emitted()
     since = ("--since", "2026-10-02")
@@ -128,6 +129,7 @@ def test_download_records_as_documented(
     with emitted.gathering(telemetry, "download"):
         whole = download(data, "--space", "MFS", "--project", "PRB", *since)
         assert main(whole) == ExitStatus.FAILED
+        assert main(download(data, "--space", "MFS", "--project", "PRB")) == ExitStatus.FAILED
     signed_in(monkeypatch, FakeSite(pages_fail=True).handle, tmp_path / "retried")
     with emitted.gathering(telemetry, "download"):
         assert main(download(tmp_path / "retried", "--space", "MFS", *since)) == ExitStatus.FAILED

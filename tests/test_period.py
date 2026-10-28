@@ -1,4 +1,4 @@
-"""The period of a download: from --since, included, to --until, excluded."""
+"""The period of a download: from --since, included, to --until, excluded, as plan 034 says."""
 
 from __future__ import annotations
 
@@ -9,13 +9,32 @@ import pytest
 from atlassian_offline_mcp.sources.atlassian.domain.period import PeriodError, period
 
 NOW = datetime(2026, 10, 22, 9, 30, tzinfo=UTC)
+# The moment of plan 034's examples.
+EXAMPLE = datetime(2026, 10, 28, 12, tzinfo=UTC)
 
 
-def test_days_and_weeks_count_back_from_now() -> None:
-    """--since 7d starts seven days before now, and the period ends now."""
-    assert period("7d", None, NOW).start == NOW - timedelta(days=7)
-    assert period("2w", None, NOW).start == NOW - timedelta(days=14)
-    assert period("7d", None, NOW).end == NOW
+@pytest.mark.parametrize(
+    ("since", "start"),
+    [
+        ("12h", datetime(2026, 10, 28, tzinfo=UTC)),
+        ("7d", datetime(2026, 10, 21, 12, tzinfo=UTC)),
+        ("2w", EXAMPLE - timedelta(days=14)),
+        ("6mo", EXAMPLE - timedelta(days=180)),
+        ("1y", EXAMPLE - timedelta(days=365)),
+        ("2026-10-20", datetime(2026, 10, 20, tzinfo=UTC)),
+        ("2026-10-20T09:00+02:00", datetime(2026, 10, 20, 7, tzinfo=UTC)),
+        ("all", datetime(2000, 1, 1, tzinfo=UTC)),
+    ],
+)
+def test_since_reads_a_length_before_now_a_date_a_time_or_all(since: str, start: datetime) -> None:
+    """Hours, days, weeks, months of 30 days, years of 365; a date, a time; all, from 2000."""
+    assert period(since, None, EXAMPLE).start == start
+
+
+def test_until_reads_a_length_before_now_too_and_the_period_ends_now_without_it() -> None:
+    """--until 12h ends twelve hours before now; no --until, now."""
+    assert period("7d", "12h", EXAMPLE).end == datetime(2026, 10, 28, tzinfo=UTC)
+    assert period("7d", None, EXAMPLE).end == EXAMPLE
 
 
 def test_an_iso_date_starts_at_midnight_utc() -> None:
@@ -23,10 +42,11 @@ def test_an_iso_date_starts_at_midnight_utc() -> None:
     assert period("2026-10-15", "2026-10-22", NOW).start == datetime(2026, 10, 15, tzinfo=UTC)
 
 
-def test_an_iso_time_keeps_its_offset() -> None:
-    """A time with an offset is that instant."""
+def test_an_iso_time_is_read_as_its_instant_in_utc() -> None:
+    """A time with an offset is that instant, given in UTC for the dates searched."""
     start = period("2026-10-15T08:00:00+02:00", None, NOW).start
     assert start == datetime(2026, 10, 15, 6, tzinfo=UTC)
+    assert start.utcoffset() == timedelta(0)
 
 
 def test_the_start_is_in_and_the_end_is_out() -> None:
@@ -41,7 +61,16 @@ def test_the_start_is_in_and_the_end_is_out() -> None:
     ("since", "until", "option"),
     [
         ("7days", None, "--since"),
+        ("7m", None, "--since"),
         ("0d", None, "--since"),
+        ("0h", None, "--since"),
+        ("0mo", None, "--since"),
+        ("-1d", None, "--since"),
+        ("9999y", None, "--since"),
+        ("forever", None, "--since"),
+        ("2026-10-15", "all", "--until"),
+        ("0001-01-01T00:00:00+05:00", None, "--since"),
+        ("2026-10-15", "9999-12-31T23:59:59-05:00", "--until"),
         ("2026-10-15", "yesterday", "--until"),
         ("2026-10-22", "2026-10-15", "--until"),
         ("2026-10-22", "2026-10-22", "--until"),

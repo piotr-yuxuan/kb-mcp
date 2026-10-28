@@ -138,12 +138,12 @@ Signed in; the session is saved.
 ## 5. Look before you sync
 
 `sync` downloads the space, mirrors it as Markdown, then builds the search index. A
-space that no run has covered yet needs a date to start from: `--since` an early date
-takes the whole space. First, a dry run, which reads the site, says what it would fetch,
-and writes nothing:
+space that no run has fetched yet takes its last 7 days without `--since`; `--since
+all` takes the whole space. First, a dry run, which reads the site, says what it would
+fetch, and writes nothing:
 
 ```bash
-atlassian-offline-mcp sync --dry-run --since 2000-01-01
+atlassian-offline-mcp sync --dry-run --since all
 ```
 
 It starts with each setting that it reads, defaults included (the model, the search
@@ -155,10 +155,12 @@ sync, with these settings:
   site: https://<your-site>.atlassian.net
 ```
 
-After a progress bar, it ends with what it would fetch:
+After a progress bar, it ends with the window of the space, from the start of 2000 to
+now, and what it would fetch:
 
 ```text
 download: done
+  space <KEY>: from 2000-01-01T00:00:00+00:00 to <now>, given
   confluence pages: to fetch: 13
   failures: 0
 mirror: not run
@@ -170,7 +172,7 @@ index: not run
 Now the run itself:
 
 ```bash
-atlassian-offline-mcp sync --since 2000-01-01
+atlassian-offline-mcp sync --since all
 ```
 
 It starts as the dry run did:
@@ -260,8 +262,8 @@ You have a mirror of one space on your machine, an index that ranks it by words 
 meaning, and an agent that answers from it and says how old its evidence is. From here:
 
 - [Bring every source up to date](../how-to/sync.md): `sync` again, without `--since`,
-  catches up from the start of what earlier runs covered, fetching only the revisions
-  not yet stored, so that a run that failed leaves no hole
+  fetches what changed since the last fetch, only the revisions not yet stored, and asks
+  again for what failed, so that a run that failed leaves no hole
   ([refresh by hand](../explanation/trade-offs.md#refresh-by-hand)); more spaces, and
   Jira projects.
 - [Mirror the site on a managed machine](../how-to/sso-machine.md): single sign-on, the

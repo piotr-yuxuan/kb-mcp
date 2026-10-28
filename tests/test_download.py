@@ -34,7 +34,8 @@ from atlassian_offline_mcp.sources.atlassian.adapters.session_file import (
 )
 from atlassian_offline_mcp.sources.atlassian.app import download as download_module
 from atlassian_offline_mcp.sources.atlassian.app.download import Download, Targets, download
-from atlassian_offline_mcp.sources.atlassian.domain.period import period
+from atlassian_offline_mcp.sources.atlassian.domain.coverage import Target, Window
+from atlassian_offline_mcp.sources.atlassian.domain.period import Period, period
 from tests.samples import (
     v1_user,
     v2_attachment,
@@ -114,7 +115,9 @@ class FakeSite:
     """Answer the GETs of a download as the sandbox would, and record them.
 
     The switches change the site: one page in a changed shape, an expired session, the
-    spaces found by key, no Jira, every page failing, many pages in the period.
+    spaces found by key, no Jira, every page failing, many pages in the period; the
+    space's blog posts; the issues that the search finds, those whose GET answers a
+    status, and those served without their summary, which the adapter refuses.
     """
 
     changed_labels: bool = False
@@ -131,6 +134,10 @@ class FakeSite:
     search_status: int = 200
     search_changed: bool = False
     bulk_changed: bool = False
+    posts: dict[str, dict[str, object]] = field(default_factory=lambda: dict(POSTS))
+    issues: dict[str, dict[str, object]] = field(default_factory=lambda: dict(ISSUES))
+    failing_issues: dict[str, int] = field(default_factory=dict)
+    unread_issues: set[str] = field(default_factory=set)
     asked: list[httpx.URL] = field(default_factory=list)
 
     def routes(self) -> dict[str, Callable[[httpx.Request], httpx.Response]]:
@@ -147,7 +154,7 @@ class FakeSite:
             "/wiki/api/v2/spaces": lambda _: httpx.Response(200, json={"results": self.spaces}),
             f"/wiki/api/v2/spaces/{SPACE}/pages": self.pages,
             f"/wiki/api/v2/spaces/{SPACE}/blogposts": lambda _: httpx.Response(
-                200, json={"results": list(POSTS.values()), "_links": {}}
+                200, json={"results": list(self.posts.values()), "_links": {}}
             ),
             "/wiki/rest/api/user/bulk": lambda _: httpx.Response(
                 200, json={"results": [v1_user()]}
@@ -157,19 +164,20 @@ class FakeSite:
             ),
             "/file/abc/binary": lambda _: httpx.Response(200, content=PICTURE),
             "/rest/api/3/search/jql": lambda _: httpx.Response(
-                200, json={"issues": list(ISSUES.values()), "isLast": True}
+                200, json={"issues": list(self.issues.values()), "isLast": True}
             ),
-            "/rest/api/3/issue/10000": lambda _: httpx.Response(200, json=ISSUES["10000"]),
-            "/rest/api/3/issue/10000/comment": self.comments,
             "/rest/api/3/attachment/content/10000": lambda _: httpx.Response(
                 303, headers={"location": MEDIA}
             ),
         }
+        for issue_id in self.issues:
+            routes[f"/rest/api/3/issue/{issue_id}"] = lambda _, i=issue_id: self.issue(i)
+            routes[f"/rest/api/3/issue/{issue_id}/comment"] = self.comments
         for folder_id, folder in FOLDERS.items():
             routes[f"/wiki/api/v2/folders/{folder_id}"] = lambda _, f=folder: httpx.Response(
                 200, json=f
             )
-        for kind, documents in (("pages", PAGES | self.many()), ("blogposts", POSTS)):
+        for kind, documents in (("pages", PAGES | self.many()), ("blogposts", self.posts)):
             for document_id, document in documents.items():
                 routes[f"/wiki/api/v2/{kind}/{document_id}"] = lambda request, d=document: (
                     self.document(request, d)
@@ -223,11 +231,22 @@ class FakeSite:
         if self.search_status != HTTP_OK:
             return httpx.Response(self.search_status, json={"errorMessages": ["no project"]})
         entries = []
-        for issue in ISSUES.values():
+        for issue in self.issues.values():
             values = issue["fields"]
             assert isinstance(values, dict)
             entries.append({**issue, "fields": {k: v for k, v in values.items() if k != "summary"}})
         return httpx.Response(200, json={"issues": entries, "isLast": True})
+
+    def issue(self, issue_id: str) -> httpx.Response:
+        """Serve an issue, with its status if it fails, or without its summary."""
+        if issue_id in self.failing_issues:
+            return httpx.Response(self.failing_issues[issue_id])
+        issue = self.issues[issue_id]
+        if issue_id in self.unread_issues:
+            values = issue["fields"]
+            assert isinstance(values, dict)
+            issue = {**issue, "fields": {k: v for k, v in values.items() if k != "summary"}}
+        return httpx.Response(200, json=issue)
 
     def many(self) -> dict[str, dict[str, object]]:
         """Give the many pages in the period, by id, as the switch has them: none by default."""
@@ -273,11 +292,23 @@ class FakeSite:
         return httpx.Client(base_url=SITE, transport=httpx.MockTransport(self.handle))
 
 
+def given(span: Period, spaces: list[str], projects: list[str]) -> dict[Target, Window | None]:
+    """Give each space and project the window that --since gives: ``span``."""
+    named = [Target("confluence", key) for key in spaces] + [Target("jira", k) for k in projects]
+    return {target: Window(span, "given") for target in named}
+
+
+def week(spaces: list[str], projects: list[str]) -> dict[Target, Window | None]:
+    """Give each space and project the week before ``NOW``, as --since 7d does."""
+    return given(period("7d", None, NOW), spaces, projects)
+
+
 def run(store: RawStore, fake: FakeSite) -> Download:
-    """Run one download of the space and the project over the fake site."""
+    """Run one download of the space and the project over the fake site, over the week."""
     with fake.client() as client, store.writing():
+        windows = week(["MFS"], ["PRB"])
         done = Download(
-            Site(client, sleep=lambda _: None), store, period("7d", None, NOW), CAP, lambda: NOW
+            Site(client, sleep=lambda _: None), store, CAP, lambda: NOW, windows=windows
         )
         done.run(["MFS"], ["PRB"])
     return done
@@ -319,8 +350,9 @@ def test_a_run_reports_its_targets_their_listings_documents_and_probes(tmp_path:
     """Each task's last event progress, as it ends: the space's, its probes, the project's.
 
     The space's pages are listed in two pages, its blog posts in one; it lists three
-    pages and a post. Nothing was stored before, so nothing is probed. The search reads
-    one page of two issues.
+    pages and a post, of which two pages and the post changed in the week, and are
+    fetched. Nothing was stored before, so nothing is probed. The search reads one page
+    of two issues, one of them changed in the week.
     """
     with capture_logs() as events:
         run(RawStore(tmp_path / "raw"), FakeSite())
@@ -330,10 +362,10 @@ def test_a_run_reports_its_targets_their_listings_documents_and_probes(tmp_path:
         if event["event"] == "progress"
     ] == [
         ("listing", 3, None),
-        ("documents", 4, 4),
+        ("documents", 3, 3),
         ("probes", 0, 0),
         ("listing", 1, None),
-        ("documents", 2, 2),
+        ("documents", 1, 1),
         ("targets", 2, 2),
     ]
 
@@ -350,18 +382,31 @@ def test_a_second_run_fetches_no_document_again(tmp_path: Path) -> None:
     assert done.report.counts["confluence pages: already stored"] == len(["1001", "1002"])
 
 
-def test_the_search_covers_the_period_in_every_time_zone_of_jira(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("since", "until"),
+    [
+        # Late in the UTC day, where UTC+14 is already two dates ahead of the period's end.
+        ("2026-10-15T23:30:00+00:00", "2026-10-22T23:30:00+00:00"),
+        # Given at UTC-12, late in its day: the next day in UTC, two in UTC+14.
+        ("2026-10-15T23:59:00-12:00", "2026-10-21T23:59:00-12:00"),
+    ],
+)
+def test_the_search_covers_the_period_in_every_time_zone_of_jira(
+    tmp_path: Path, since: str, until: str
+) -> None:
     """Jira reads the JQL's dates at midnight in the user's zone, from UTC-12 to UTC+14.
 
-    Whatever the zone, the dates searched must hold the whole period; the period itself
-    then decides on each issue.
+    Whatever the zone, and whatever offset the period was given in, the dates searched
+    must hold the whole period; the period itself then decides on each issue.
     """
     fake = FakeSite()
     store = RawStore(tmp_path / "raw")
-    # Late in the UTC day, where UTC+14 is already two dates ahead of the period's end.
-    span = period("2026-10-15T23:30:00+00:00", "2026-10-22T23:30:00+00:00", NOW)
+    span = period(since, until, NOW)
     with fake.client() as client, store.writing():
-        Download(Site(client, sleep=no_sleep), store, span, CAP, lambda: NOW).run([], ["PRB"])
+        windows = given(span, [], ["PRB"])
+        Download(Site(client, sleep=no_sleep), store, CAP, lambda: NOW, windows=windows).run(
+            [], ["PRB"]
+        )
     [search] = [url for url in fake.asked if url.path == "/rest/api/3/search/jql"]
     jql = search.params["jql"]
     assert jql.startswith('project = "PRB" AND updated >= "')
@@ -407,7 +452,8 @@ def test_a_run_sends_the_site_nothing_but_gets(tmp_path: Path) -> None:
         store.writing(),
     ):
         site = Site(client, sleep=lambda _: None)
-        Download(site, store, period("7d", None, NOW), CAP, lambda: NOW).run(["MFS"], ["PRB"])
+        windows = week(["MFS"], ["PRB"])
+        Download(site, store, CAP, lambda: NOW, windows=windows).run(["MFS"], ["PRB"])
     assert set(methods) == {"GET"}
 
 
@@ -493,7 +539,7 @@ def test_a_space_key_that_finds_nothing_fails_the_run_and_is_named_locally(
     store = RawStore(tmp_path / "raw")
     with fake.client() as client, store.writing():
         site = Site(client, sleep=no_sleep)
-        done = Download(site, store, period("7d", None, NOW), CAP, lambda: NOW)
+        done = Download(site, store, CAP, lambda: NOW, windows=week(["ENG"], []))
         done.run(["ENG"], [])
     assert done.failed_targets == ["space ENG: not found"]
     assert done.report.counts["confluence spaces failed: not found"] == 1
@@ -514,9 +560,8 @@ def test_a_run_stops_when_the_site_stops_answering(tmp_path: Path) -> None:
     store = RawStore(tmp_path / "raw")
     fake = FakeSite(pages_fail=True, many_pages=MAX_FAILED_IN_A_ROW + 5)
     with fake.client() as client, store.writing():
-        done = Download(
-            Site(client, sleep=no_sleep), store, period("7d", None, NOW), CAP, lambda: NOW
-        )
+        windows = week(["MFS"], [])
+        done = Download(Site(client, sleep=no_sleep), store, CAP, lambda: NOW, windows=windows)
         with pytest.raises(TooManyFailuresError):
             done.run(["MFS"], [])
     assert done.report.counts["confluence pages failed: status 503"] == MAX_FAILED_IN_A_ROW

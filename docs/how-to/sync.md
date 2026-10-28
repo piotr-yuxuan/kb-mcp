@@ -41,10 +41,11 @@ question.
 The steps, in order:
 
 1. **Confluence and Jira**: one download of every space and project named, then the
-   mirror of the raw store. Without `--since`, each space and project catches up from
-   the start of what earlier runs covered; one never covered needs `--since` the first
-   time, and is refused by name before anything runs. `--since`, `--back`, `--until`
-   and `--max-file-mb` work as for `download`.
+   mirror of the raw store. Without `--since`, each space and project fetches what
+   changed since its last fetch, and asks again for what failed; one never fetched
+   takes its last 7 days, as the summary before the question says. `--since` (`12h`,
+   `7d`, `6mo`, an ISO date or time, or `all`), `--until` and `--max-file-mb` work as
+   for `download`; `--since 1y` or `--since all` reaches further back.
 2. **The work log**: read whole, each document converted again only when it changed,
    the files of documents gone removed.
 3. **The index**: rebuilt from the whole mirror, whatever sources the run took, by the
@@ -84,8 +85,9 @@ worklog`), and settings that no source taken uses are said not applied, never re
 atlassian-offline-mcp sync --dry-run --since 7d
 ```
 
-`--dry-run` plans the download as `download --dry-run` does, and counts the work log:
-its documents, those it would convert, and the files it would remove. The mirror and
+`--dry-run` plans the download as `download --dry-run` does, each target's window first,
+where it starts and why, and counts the work log: its documents, those it would convert,
+and the files it would remove. The mirror and
 the index do not run, so the index's settings are said not applied, and an endpoint off
 this machine is not refused. It writes nothing, and does not ask.
 
@@ -93,8 +95,11 @@ this machine is not refused. It writes nothing, and does not ask.
 
 A row per step says how it ended: `done`, `failed`, `sign in`, `interrupted` or `not
 run`, then that step's counts as its own command gives them; `--summary detailed` gives
-all of them. `--format json` writes one document: `exit_status`, and `steps`, each with
-its `step`, `outcome` and `result`.
+all of them, the download's beginning with each target's window and what became of its
+coverage. A download counts what it fetches: with `--since`, the documents in the
+period and those already stored; without, those new or changed since the last fetch.
+`--format json` writes one document: `exit_status`, and `steps`, each with its `step`,
+`outcome` and `result`.
 
 The exit status is 2 when refused before any step, 130 when interrupted, else 3 when a
 step needs you to sign in again, else 1 when a step failed or you answered no, else 0.

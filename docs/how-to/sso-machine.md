@@ -94,11 +94,16 @@ sops](api-token-with-sops.md).
 atlassian-offline-mcp download --space ENG --space OPS --project PLAT --since 7d
 ```
 
-`--since` takes `7d`, `2w`, or an ISO date (`2026-10-15`); `--until` an ISO date,
-excluded. Each space is listed whole (cheap: a few requests per thousand pages), and
-the pages, blog posts and issues updated in the period are fetched with their
-attachments; video, audio, archives and files over `--max-file-mb` (50) keep their
-metadata only. Expect about half a second per document.
+`--since` takes a length before now (`12h`, `7d`, `2w`, `6mo`, `1y`), an ISO date
+(`2026-10-15`) or time, or `all`; `--until` the same but `all`, excluded. Each space is
+listed whole (cheap: a few requests per thousand pages), and the pages, blog posts and
+issues updated in the period are fetched with their attachments; video, audio, archives
+and files over `--max-file-mb` (50) keep their metadata only. Expect about half a second
+per document. Without `--since`, a space or a project never fetched takes its last 7
+days. Once `--max-file-mb` is raised, a space's next run downloads the files it skipped,
+as it reads its whole covered period; a project's issues get theirs only from a run
+whose `--since` reaches them, such as `--since all`, since a project catches up from
+its last fetch.
 
 Before it starts, the download writes on stderr what it will do: each setting it reads
 and its value, how it signs in, the values it ignores, and the same command written in
@@ -112,7 +117,9 @@ The counts are printed and saved in `~/atlassian-offline-mcp/runs/`. The exit st
 0 when all went well, 1 when something failed (a space key that finds nothing is named
 on stderr) or you answered no, 2 for refused settings or options, or no terminal to ask
 on, 3 when you must sign in again, 130 when stopped by Ctrl-C. `atlassian-offline-mcp
---help` lists them. Running the same command again fetches only what changed since.
+--help` lists them. Running the same command again without `--since` fetches only what
+changed since each target's last fetch, and asks again for what failed; the counts then
+say how many documents are new or changed, apart from how many are listed.
 
 ## End the session
 

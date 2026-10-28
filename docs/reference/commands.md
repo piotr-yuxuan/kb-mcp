@@ -133,7 +133,7 @@ usage: atlassian-offline-mcp download [-h] [--config CONFIG] [--data-dir DATA_DI
                                       [--format {text,json}]
                                       [--summary {short,detailed}] [-y]
                                       [--space SPACE] [--project PROJECT]
-                                      [--since SINCE] [--back BACK] [--until UNTIL]
+                                      [--since SINCE] [--until UNTIL]
                                       [--max-file-mb MAX_FILE_MB] [--dry-run]
 
 options:
@@ -151,16 +151,17 @@ options:
   -y, --yes             run without asking first, as a script does
   --space SPACE         a space key; repeat for more
   --project PROJECT     a project key; repeat
-  --since SINCE         7d, 6mo, or an ISO date; by default, the start of what is
-                        covered
-  --back BACK           reach this much further back (6mo, 1y), or all
-  --until UNTIL         an ISO date or time, excluded; by default, now
+  --since SINCE         12h, 7d, 6mo, an ISO date or time, or all; by default, each
+                        target's last fetch
+  --until UNTIL         12h, 7d, or an ISO date or time, excluded; by default, now
   --max-file-mb MAX_FILE_MB
                         the largest file kept, in MB; 50 by default
   --dry-run             say what a run would fetch, and fetch nothing
 
 With --format json: report, the counts of what the run did, or with --dry-run would
-do; failed_targets, the spaces and projects that failed; status, the exit status.
+do; failed_targets, the spaces and projects that failed; status, the exit status;
+windows, each target's: its start, end and reason, and its coverage, extended, capped
+at a failure, held, or null when not written; dry_run, whether the run only planned.
 ```
 
 ## `eval`
@@ -557,8 +558,7 @@ usage: atlassian-offline-mcp sync [-h] [--config CONFIG] [--data-dir DATA_DIR]
                                   [--format {text,json}] [--summary {short,detailed}]
                                   [-y] [--include {confluence,jira,worklog} |
                                   --exclude {confluence,jira,worklog}] [--since SINCE]
-                                  [--back BACK] [--until UNTIL]
-                                  [--max-file-mb MAX_FILE_MB]
+                                  [--until UNTIL] [--max-file-mb MAX_FILE_MB]
                                   [--allow-remote-embeddings] [--dry-run]
 
 options:
@@ -578,10 +578,9 @@ options:
                         sync this source alone, if configured; repeat for more
   --exclude {confluence,jira,worklog}
                         sync every configured source but this one; repeat for more
-  --since SINCE         7d, 6mo, or an ISO date; by default, the start of what is
-                        covered
-  --back BACK           reach this much further back (6mo, 1y), or all
-  --until UNTIL         an ISO date or time, excluded; by default, now
+  --since SINCE         12h, 7d, 6mo, an ISO date or time, or all; by default, each
+                        target's last fetch
+  --until UNTIL         12h, 7d, or an ISO date or time, excluded; by default, now
   --max-file-mb MAX_FILE_MB
                         the largest file kept, in MB; 50 by default
   --allow-remote-embeddings

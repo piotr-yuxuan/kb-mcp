@@ -17,7 +17,8 @@ from atlassian_offline_mcp.cli.options._common import (
     token_without_email,
 )
 from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
-from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, PeriodError, length, moment
+from atlassian_offline_mcp.sources.atlassian.domain.coverage import period_rule
+from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, PeriodError, moment
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -49,8 +50,6 @@ def period_refused(arguments: argparse.Namespace) -> str | None:
         for option, text in (("--since", arguments.since), ("--until", arguments.until)):
             if text is not None:
                 moment(text, EPOCH, option)
-        if arguments.back is not None:
-            length(arguments.back, "--back")
     except PeriodError as error:
         return str(error)
     return None
@@ -72,26 +71,33 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
     return next((fault for fault in faults if fault is not None), None)
 
 
+def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
+    """Say how the run signs in, and where each target's window starts, by the rule."""
+    return (*signed_in_by(arguments, settings), period_rule(since=arguments.since is not None))
+
+
 def add_period_options(
     parser: argparse.ArgumentParser, *, max_file_mb: int | None
 ) -> tuple[argparse.Action, ...]:
-    """Add --since, --back, --until and --max-file-mb, the largest file by default this many MB.
+    """Add --since, --until and --max-file-mb, the largest file by default this many MB.
 
     Return their actions. Without a default, --max-file-mb is None unless given, and the
     download takes ``DEFAULT_MAX_FILE_MB``.
     """
     since = parser.add_argument(
-        "--since", help="7d, 6mo, or an ISO date; by default, the start of what is covered"
+        "--since",
+        help="12h, 7d, 6mo, an ISO date or time, or all; by default, each target's last fetch",
     )
-    back = parser.add_argument("--back", help="reach this much further back (6mo, 1y), or all")
-    until = parser.add_argument("--until", help="an ISO date or time, excluded; by default, now")
+    until = parser.add_argument(
+        "--until", help="12h, 7d, or an ISO date or time, excluded; by default, now"
+    )
     largest = parser.add_argument(
         "--max-file-mb",
         type=int,
         default=max_file_mb,
         help=f"the largest file kept, in MB; {DEFAULT_MAX_FILE_MB} by default",
     )
-    return since, back, until, largest
+    return since, until, largest
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -102,7 +108,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         epilog=(
             "With --format json: report, the counts of what the run did, or with --dry-run"
             " would do; failed_targets, the spaces and projects that failed; status, the"
-            " exit status."
+            " exit status; windows, each target's: its start, end and reason, and its"
+            " coverage, extended, capped at a failure, held, or null when not written;"
+            " dry_run, whether the run only planned."
         ),
     )
     actions, flags = add_settings_options(parser)
@@ -138,7 +146,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             writes=True,
             dry_run=True,
             unapplied=email_without_token,
-            described=signed_in_by,
+            described=described,
             refused=refused,
         )
     )

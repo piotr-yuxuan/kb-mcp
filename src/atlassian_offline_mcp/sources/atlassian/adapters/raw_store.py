@@ -442,11 +442,16 @@ class RawStore:
         return {folder.name for folder in folders if _named(folder, REVISION)}
 
     def coverage(self) -> Coverage:
-        """Read each target's covered period, none when never written."""
+        """Read each target's covered period, none when never written, and which are exact.
+
+        An entry without ``exact``, as every entry was before plan 034, is not; nor is a
+        space's, whatever it says, since a space is listed whole.
+        """
         path = self.root / COVERAGE
         if not path.exists():
             return Coverage()
         periods: dict[Target, Period] = {}
+        exact: set[Target] = set()
         for item in Fields.each(_record_json(path), COVERAGE):
             with item.refusals():
                 target = Target(item.text("source"), item.text("key"))
@@ -455,10 +460,15 @@ class RawStore:
             except PeriodError:
                 message = f"{item.path}: a period that ends before it starts"
                 raise RepresentationError(message) from None
-        return Coverage(periods)
+            if target.searched_by_time and "exact" in item.value and item.flag("exact"):
+                exact.add(target)
+        return Coverage(periods, frozenset(exact))
 
     def put_coverage(self, coverage: Coverage) -> None:
-        """Replace the record of coverage, whole."""
+        """Replace the record of coverage, whole; an exact entry says so, beside the rest.
+
+        The other keys are as before plan 034, so that its versions still read the record.
+        """
         self._check_writing()
         entries = [
             {
@@ -466,6 +476,7 @@ class RawStore:
                 "key": target.key,
                 "start": covered.start.astimezone(UTC).isoformat(),
                 "end": covered.end.astimezone(UTC).isoformat(),
+                **({"exact": True} if target in coverage.exact else {}),
             }
             for target, covered in sorted(coverage.periods.items())
         ]

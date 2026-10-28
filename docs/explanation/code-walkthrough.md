@@ -24,7 +24,8 @@ spaces = ["ENG"]
 atlassian-offline-mcp sync --since 2026-01-01
 ```
 
-The space was never downloaded, so `--since` gives its first period. The search settings
+The space was never downloaded: without `--since`, its first run would take its last 7
+days, and `--since` reaches back to the start of the year. The search settings
 keep their defaults: `search_mode` hybrid, `chunking` windows, and the model
 [`DEFAULT_MODEL`](../../src/atlassian_offline_mcp/config/domain/settings.py).
 
@@ -131,12 +132,13 @@ the settings, pandoc ([`Pandoc.find`](../../src/atlassian_offline_mcp/mirror/ada
 the clock and the pause, which tests replace.
 
 [`sync`](../../src/atlassian_offline_mcp/cli/app/sync.py) first refuses what it can before
-any step: each target needs a period to start from.
+any step: an `--until` before `--since`.
 [`Targets.windows`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
 asks [`window`](../../src/atlassian_offline_mcp/sources/atlassian/domain/coverage.py),
-from the coverage that the raw store holds, and a space never covered, without
-`--since`, raises [`PeriodError`](../../src/atlassian_offline_mcp/sources/atlassian/domain/period.py):
-exit 2, naming the space. Then each step runs in turn,
+from the coverage that the raw store holds, for each target's window and why it starts
+there, here `given`; a `--since` that does not come before the windows' end raises
+[`PeriodError`](../../src/atlassian_offline_mcp/sources/atlassian/domain/period.py):
+exit 2, naming both options. Then each step runs in turn,
 [`atlassian`](../../src/atlassian_offline_mcp/cli/app/sync.py) (a download, then the
 mirror) and [`index`](../../src/atlassian_offline_mcp/cli/app/sync.py), each row within
 a span `sync.step` and kept by
@@ -204,24 +206,28 @@ It stores the listings whole
 ([`RawStore.put_space`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py)),
 after noting what the last listing named and this one does not
 ([`Download.track`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)).
-For each document listed,
-[`Download.consider`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
-decides: updated within the period, and its revision not stored
+[`Download.fetch_listed`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
+then splits the documents listed. Updated within the window, and its revision not stored
 ([`RawStore.has`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py)),
-it is fetched, by the GETs of
+a document is fetched by
+[`Download.fetch`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py),
+by the GETs of
 [`snapshot_requests`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/confluence_v2.py):
 the page in its storage format with its labels, the page as the site renders it, and
-its attachments. Updated within the period and its revision stored,
+its attachments. Updated within the window and its revision stored,
 [`Download.complete`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
-fetches only the files that its snapshot should have and lacks.
+fetches only the files that its snapshot should have and lacks. The progress and the
+counts are of what is fetched, apart from what is listed, as `download.listed` says.
 
 Once the space is listed,
 [`Download.probe_absent`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
 asks after the documents gone from their listing, and
 [`Download.users`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
-names the authors seen. Last, `download` extends the coverage of each space listed whole
+names the authors seen. Last, `download` extends the coverage of each target listed whole
 ([`Coverage.extended`](../../src/atlassian_offline_mcp/sources/atlassian/domain/coverage.py)),
-so that the next run needs no `--since`; writes it and the tombstones; writes back the
+a project's only to its earliest document not stored whole, so that the next run needs
+no `--since` and asks again for what failed, as `download.coverage` says; writes it and
+the tombstones; writes back the
 cookies that the site renewed
 ([`SavedSession.keep`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/sign_in.py));
 and saves the run's report under `<data>/runs/`, even when the run was stopped.
@@ -543,7 +549,7 @@ document fetched, and a call of a tool is one trace:
 | `sync`, the run's root | [`observed`](../../src/atlassian_offline_mcp/observability/app/observed.py), after the command's name |
 | `sync.step`, one a row | [`atlassian`](../../src/atlassian_offline_mcp/cli/app/sync.py), [`worklog`](../../src/atlassian_offline_mcp/cli/app/sync.py) and [`index`](../../src/atlassian_offline_mcp/cli/app/sync.py) |
 | `download.space`, `download.probes`, `download.users` | [`Download.space`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py), [`Download.probe_absent`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py), [`Download.users`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py) |
-| `download.document`, a trace of its own linked to the run's | [`Download.consider`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py) |
+| `download.document`, a trace of its own linked to the run's | [`Download.fetch`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py) |
 | `GET` and `POST`, one a request | [`Recorded`](../../src/atlassian_offline_mcp/observability/adapters/http.py), through [`client_span`](../../src/atlassian_offline_mcp/observability/adapters/http.py) |
 | `mirror.read`, `mirror.build`, `mirror.write` | [`mirror`](../../src/atlassian_offline_mcp/mirror/app/mirror.py) |
 | `index.files`, `index.embed` | [`build_index`](../../src/atlassian_offline_mcp/search/app/indexing.py) |

@@ -89,14 +89,18 @@ site through one port, [`Site`](../../src/atlassian_offline_mcp/sources/atlassia
 which makes GETs alone, one at a time and paced, signed in by the saved session or an API
 token ([`sign_in`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/sign_in.py)).
 For each Confluence space, it lists every page, blog post and folder, and stores the
-listings whole; for each Jira project, it searches the issues updated in the period. Then
-it fetches each document updated in the period whose revision the store lacks
-([`Download.consider`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)),
+listings whole; for each Jira project, it searches the issues updated in its window. Then
+it fetches each document updated in the window whose revision the store lacks
+([`Download.fetch_listed`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)),
 its files first, the snapshot last
-([`Download.keep`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)).
-Without `--since`, a target's period starts where the period it already covers starts
-([`window`](../../src/atlassian_offline_mcp/sources/atlassian/domain/coverage.py)), so a
-run asks again for whatever failed before.
+([`Download.keep`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)),
+and counts what it fetches apart from what it lists. Without `--since`, each target
+fetches what changed since its last fetch
+([`window`](../../src/atlassian_offline_mcp/sources/atlassian/domain/coverage.py)): a
+project from a day before the end of the period it covers, which ends at its earliest
+document not stored whole, so that a run asks for that again; a space from the start of
+that period, its listing being read whole anyway; a target never fetched, its last 7
+days. A catch-up that would start after `--until` skips its target.
 
 - **Writes**, into `<data>/raw/` alone, through
   [`RawStore`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py):

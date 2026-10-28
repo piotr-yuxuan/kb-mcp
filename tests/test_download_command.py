@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import time
 from collections import Counter
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
+from pydantic_core import to_jsonable_python
+from structlog.testing import capture_logs
 
 from atlassian_offline_mcp.cli.commands import download as download_command
 from atlassian_offline_mcp.cli.main import main
@@ -16,10 +19,17 @@ from atlassian_offline_mcp.kernel.exit_status import ExitStatus
 from atlassian_offline_mcp.sources.atlassian.adapters import http
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
-from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report
+from atlassian_offline_mcp.sources.atlassian.app.download import (
+    Outcome,
+    Report,
+    Targets,
+    download,
+)
+from tests.samples import v2_page
 from tests.test_cli import logged_as
-from tests.test_download import SITE, FakeSite
+from tests.test_download import CAP, SITE, FakeSite, stamp
 from tests.test_observed import said
+from tests.test_refresh import RefreshSite, run, settings
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -77,12 +87,20 @@ def test_a_download_shows_what_it_fetched_by_kind_its_files_and_failures(
     )
 
 
-def test_a_download_in_detail_shows_every_count_then_the_failures(
+def test_a_download_in_detail_shows_each_window_every_count_then_the_failures(
     signed_in: list[str], capsys: CaptureFixture[str]
 ) -> None:
-    """Each count, in order, with what short leaves out: listings, files skipped or failed."""
+    """Each target's window first, then each count, in order, with what short leaves out.
+
+    Listings, files skipped or failed. Each window starts at --since, and the coverage of
+    each target grew.
+    """
     assert main([*signed_in, "--summary", "detailed"]) == SOME_FAILED
-    *counts, failures = capsys.readouterr().out.splitlines()
+    space, project, *counts, failures = capsys.readouterr().out.splitlines()
+    since = "from 2026-10-02T00:00:00+00:00 to "
+    assert space.startswith(f"space MFS: {since}")
+    assert project.startswith(f"project PRB: {since}")
+    assert space.endswith(", given; coverage extended")
     assert counts == sorted(counts)
     assert {
         "confluence pages: listed: 3",
@@ -114,12 +132,17 @@ def test_a_stopped_download_says_why_in_short(
 def test_a_dry_run_shows_what_it_would_fetch(
     signed_in: list[str], capsys: CaptureFixture[str]
 ) -> None:
-    """In short: the documents to fetch of each kind, the files to download, no failure.
+    """In short: each window, the documents to fetch of each kind, the files to download.
 
-    The files to download are those that a listing names: the issue's.
+    No failure. The files to download are those that a listing names: the issue's. The
+    windows say nothing of the coverage, which a dry run does not write.
     """
     assert main([*signed_in, "--dry-run"]) == 0
-    assert capsys.readouterr().out == (
+    space, project, *rest = capsys.readouterr().out.splitlines(keepends=True)
+    assert space.startswith("space MFS: from 2026-10-02T00:00:00+00:00 to ")
+    assert space.endswith(", given\n")
+    assert project.startswith("project PRB: from 2026-10-02T00:00:00+00:00 to ")
+    assert "".join(rest) == (
         "confluence blogposts: to fetch: 1\n"
         "confluence pages: to fetch: 2\n"
         "files: to download: 1\n"
@@ -138,6 +161,15 @@ def test_a_download_gives_its_counts_failed_keys_and_status_as_json(
     assert fetched.items() <= document["report"]["counts"].items()
     assert document["failed_targets"] == []
     assert document["status"] == SOME_FAILED
+    assert [
+        (each["target"], each["start"], each["reason"], each["coverage"])
+        for each in document["windows"]
+    ] == [
+        ({"source": "confluence", "key": "MFS"}, "2026-10-02T00:00:00Z", "given", "extended"),
+        ({"source": "jira", "key": "PRB"}, "2026-10-02T00:00:00Z", "given", "extended"),
+    ]
+    assert all(each["end"] for each in document["windows"])
+    assert document["dry_run"] is False
 
 
 def test_a_download_without_a_site_is_refused_by_name(
@@ -251,3 +283,95 @@ def test_a_busy_store_exits_1_with_its_reason(
     assert "another run is writing it; try again once that run ends" in err
     (busy,) = logged_as(home, "download.store_busy")
     assert (busy["level"], busy["store"]) == ("error", str(chosen.raw))
+
+
+# Plan 034: what a run counts is what it fetches, apart from what it lists.
+LISTED_AT = datetime(2026, 10, 22, 9, tzinfo=UTC)
+COUNTED_AT = datetime(2026, 10, 27, 9, tzinfo=UTC)
+SINCE = datetime(2026, 10, 20, tzinfo=UTC)
+
+
+def counted(
+    tmp_path: Path, monkeypatch: MonkeyPatch, since: datetime | None, *, first_fetch: bool
+) -> tuple[Outcome, list[dict[str, object]], Settings]:
+    """Run over a space of 50 pages: 7 changed in the window, of which 4 were stored first.
+
+    The 4 changed on the 21st, stored by a run --since the 20th; 3 more on the 23rd; 43 on
+    the 1st. ``first_fetch`` forgets the coverage before the run counted, on the 27th.
+    Give its outcome, the events it logged, and its settings.
+    """
+    days = [21] * 4 + [23] * 3 + [1] * 43
+    pages = {
+        str(6000 + n): v2_page(id=str(6000 + n), version=stamp(day)) for n, day in enumerate(days)
+    }
+    chosen = settings(tmp_path)
+    first = RefreshSite(listing=dict(list(pages.items())[:4]), posts={})
+    assert run(chosen, monkeypatch, first, Targets(["MFS"], [], CAP, since=SINCE), LISTED_AT) == 0
+    if first_fetch:
+        (chosen.raw / "coverage.json").unlink()
+    monkeypatch.setattr(http, "client", lambda *_: RefreshSite(listing=pages, posts={}).client())
+    targets = Targets(["MFS"], [], CAP, since=since)
+    with capture_logs() as events:
+        outcome = download(chosen, targets, lambda: COUNTED_AT, lambda _: None)
+    return outcome, events, chosen
+
+
+@pytest.mark.parametrize(
+    ("since", "first_fetch", "reason"),
+    [(SINCE, False, "given"), (None, False, "covered start"), (None, True, "first fetch")],
+)
+def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    since: datetime | None,
+    *,
+    first_fetch: bool,
+    reason: str,
+) -> None:
+    """50 listed, 7 in the window of which 4 stored: the task, short and its JSON say 3.
+
+    download.listed says each number, and the window's reason; the window goes to the
+    JSON, and the run report names no target.
+    """
+    outcome, events, chosen = counted(tmp_path, monkeypatch, since, first_fetch=first_fetch)
+    listed = [event for event in events if event["event"] == "download.listed"]
+    assert [
+        (each["listed"], each["in_window"], each["stored"], each["to_fetch"], each["reason"])
+        for each in listed
+    ] == [(50, 7, 4, 3, reason)]
+    tasks = [(each["done"], each["total"]) for each in events if each.get("task") == "documents"]
+    assert tasks[-1] == (3, 3)
+    assert download_command.text(outcome, "short") == "confluence pages: fetched: 3\nfailures: 0\n"
+    [window] = to_jsonable_python(outcome)["windows"]
+    assert (window["target"], window["end"], window["reason"], window["coverage"]) == (
+        {"source": "confluence", "key": "MFS"},
+        "2026-10-27T09:00:00Z",
+        reason,
+        "extended",
+    )
+    assert "MFS" not in max(chosen.runs.iterdir()).read_text("utf-8")
+
+
+@pytest.mark.parametrize("first_fetch", [False, True])
+def test_without_since_the_detail_counts_what_is_new_or_changed_since_the_last_fetch(
+    tmp_path: Path, monkeypatch: MonkeyPatch, *, first_fetch: bool
+) -> None:
+    """A catch-up, or a first fetch: not what is in the period, which can be a whole space."""
+    outcome, _, _ = counted(tmp_path, monkeypatch, None, first_fetch=first_fetch)
+    detailed = download_command.text(outcome, "detailed")
+    assert "confluence pages: new or changed since the last fetch: 3\n" in detailed
+    assert "confluence pages: fetched: 3\n" in detailed
+    assert "in the period" not in detailed
+    assert "already stored" not in detailed
+
+
+def test_with_since_the_detail_counts_what_is_in_the_period_and_stored(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Given --since, the period is the user's: what is in it, and what was stored already."""
+    outcome, _, _ = counted(tmp_path, monkeypatch, SINCE, first_fetch=False)
+    detailed = download_command.text(outcome, "detailed")
+    assert "confluence pages: in the period: 7\n" in detailed
+    assert "confluence pages: already stored: 4\n" in detailed
+    assert "confluence pages: fetched: 3\n" in detailed
+    assert "new or changed" not in detailed
