@@ -32,22 +32,31 @@ from the site.
 
 - **Why.** The user chooses when the site is read, and is there when a session has
   expired: through single sign-on, only a person can sign in again. Coverage makes a run
-  by hand cheap: without `--since`, a run catches up from the start of the period
-  already covered ([`window`](../../src/atlassian_offline_mcp/sources/atlassian/domain/coverage.py)),
-  so nobody keeps track of when the last run was. One command makes the refresh one
-  thing to remember, while each stage still runs alone, to redo one after a fix.
+  by hand cheap: without `--since`, a run fetches what changed since each target's last
+  fetch ([`window`](../../src/atlassian_offline_mcp/sources/atlassian/domain/coverage.py)),
+  so nobody keeps track of when the last run was, and a target never fetched takes its
+  last 7 days rather than refusing the run. A project's search starts a day before its
+  covered end, which stops at its first document not stored whole, so that what failed
+  is asked for again; a space's listing is read whole anyway, so it is checked by
+  version over its whole covered period, at no request, which finds a page moved in or
+  restored with an older version. One command makes the refresh one thing to remember,
+  while each stage still runs alone, to redo one after a fix.
 - **Cost.** The mirror is as old as its last run. Each answer gives every document's
   mirror date, the time its snapshot was fetched, and `status` the newest, so that an
   agent can tell how old its evidence is. And catching up is not free: each run lists
-  every space whole and searches each project over the whole period covered, which grows
-  with each run that reaches further back, and reads the work log whole.
+  every space whole, and reads the work log whole. A project's search no longer grows
+  with the age of its coverage, but misses an issue moved into it, or newly visible,
+  whose last update predates the last fetch, until a `--since` reaches it.
 - **Rejected.** A schedule (cron, launchd) or a server that refreshes itself. For
-  `sync`, a catch-up from the last run's time, which would leave a lasting hole after a
-  run that failed. A refresh started from an MCP tool, after the user's approval, is
+  `sync`, a catch-up from the last run's time whatever failed in it, which would leave a
+  lasting hole. A window from the last fetch for a space, which would miss what moved in
+  and save no request. A refresh started from an MCP tool, after the user's approval, is
   planned (009), not built.
 - **Settled** by the programme with the maintainer, before plan 001; catching up without
   dates by [plan 007](../work/changelog/007-incremental-refresh.md#decisions); `sync` by
-  [plan 017](../work/changelog/017-modular-sources.md#what-sync-does).
+  [plan 017](../work/changelog/017-modular-sources.md#what-sync-does); the catch-up from
+  the last fetch, a project's end exact, by
+  [plan 034](../work/plans/034-incremental-fetch.md#decisions).
 
 ## Cookies and API tokens
 

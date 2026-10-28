@@ -206,10 +206,18 @@ Two more of the store's own records, each replaced whole:
 - `<data>/raw/coverage.json`, read by `coverage()` and written by `put_coverage()`: for
   each target (a space key or a project key,
   `sources.atlassian.domain.coverage.Target`), the one period over which every document
-  updated is stored (`sources.atlassian.domain.coverage.Coverage`). A run that listed a
-  target whole joins its window to that period when the two overlap or touch; a run
-  without `--since` starts at the covered start, so every run asks again for whatever
-  failed inside the period.
+  updated is stored (`sources.atlassian.domain.coverage.Coverage`), and `"exact": true`
+  on a project's entry written since plan 034. A run that listed a target whole joins
+  its window to that period when the two overlap or touch. A space's period ends at the
+  window's end whatever failed, since a run without `--since` starts at its covered
+  start and asks again for whatever failed inside. A project's ends at the update time
+  of its earliest document found and not stored whole (a fetch failed, a snapshot that
+  the adapter refuses, a kept file failed, a stored snapshot unreadable), even below
+  the old end, else at the window's end; a search entry that the adapter refuses
+  leaves it as it was. A run without `--since` searches an exact project from a day
+  before its covered end, and an entry without `exact` from its covered start, which
+  replaces it with an exact one. Versions before plan 034 read the record, and ignore
+  `exact`.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
   `put_tombstones()`: each Confluence document absent from its space's listing
   (`sources.atlassian.domain.deletions.Tombstone`), pending until a probe answers, then
@@ -226,7 +234,10 @@ Two more of the store's own records, each replaced whole:
 ## Run reports
 
 Owned by `download` (004): `<data>/runs/<UTC time as %Y%m%dT%H%M%SZ>.json`, in the format
-004's plan defines. A run report holds counts and refused fields' paths, never content.
+004's plan defines. A run report holds counts and refused fields' paths, never content,
+and names no target. Its counts of documents depend on whether `--since` was given
+(034): with it, `<kind>: in the period` and `<kind>: already stored`; without,
+`<kind>: new or changed since the last fetch`; `listed` and `fetched` either way.
 
 ## The Markdown mirror
 
