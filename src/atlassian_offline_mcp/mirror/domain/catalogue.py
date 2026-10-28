@@ -147,11 +147,24 @@ def front_matter(
     confluence = document if isinstance(document, ConfluenceDocument) else None
     space = None if confluence is None else catalogue.spaces.get(confluence.space_id)
     # Each commenter's comment times, by name and account, the first comment first.
-    said: dict[tuple[str | None, str], list[datetime]] = {}
+    said: dict[tuple[str, str], list[datetime]] = {}
     for comment in sorted(comments, key=lambda each: each.created):
         if comment.author is not None:
             commenter = (catalogue.name(comment.author), comment.author.account_id)
             said.setdefault(commenter, []).append(comment.created.astimezone(UTC))
+    sole = [
+        PersonRole(role=role, name=catalogue.name(person), account=person.account_id)
+        for role, person in (
+            ("author", document.author),
+            ("creator", None if issue is None else issue.creator),
+            ("assignee", None if issue is None else issue.assignee),
+        )
+        if person is not None
+    ]
+    commenters = [
+        PersonRole(role="commenter", name=name, account=account, at=tuple(at))
+        for (name, account), at in said.items()
+    ]
     return FrontMatter(
         source=document.source,
         type=TYPES[type(document)],
@@ -163,21 +176,7 @@ def front_matter(
         status=one_line(catalogue.status(document)),
         issue_type=None if issue is None else one_line(issue.issue_type),
         labels=tuple(one_line(label) for label in document.labels),
-        people=(
-            *(
-                PersonRole(role=role, name=catalogue.name(person), account=person.account_id)
-                for role, person in (
-                    ("author", document.author),
-                    ("creator", None if issue is None else issue.creator),
-                    ("assignee", None if issue is None else issue.assignee),
-                )
-                if person is not None
-            ),
-            *(
-                PersonRole(role="commenter", name=name, account=account, at=tuple(at))
-                for (name, account), at in said.items()
-            ),
-        ),
+        people=(*sole, *commenters),
         created=document.created.astimezone(UTC),
         updated=document.updated.astimezone(UTC),
         version=None if confluence is None else confluence.version,
