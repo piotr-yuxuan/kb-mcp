@@ -477,6 +477,7 @@ def commented(tmp_path: Path) -> Library:
             {"commented_after": "2026-10-25T02:00:01Z", "commented_before": "2026-10-25T03:00Z"},
             [],
         ),
+        ({"commented_after": "2026-10-20", "commented_before": "2026-10-24"}, []),
         ({"commenter": "a person", "commented_after": "2026-10-25"}, ["PROJ-1"]),
         ({"commenter": "another person", "commented_before": "2026-10-25"}, ["PROJ-3"]),
     ],
@@ -487,7 +488,9 @@ def test_creator_and_commenter_narrow_by_role_and_comment_dates_by_one_comment(
     """A name matches the people of its role alone; a comment date, the commenter's comments.
 
     Without a commenter, anyone's. PROJ-2 has a comment of A Person's before the 25th and
-    one of Another Person's on it: A Person did not comment there from the 25th on.
+    one of Another Person's on it: A Person did not comment there from the 25th on. Both
+    dates are met by one comment: neither of PROJ-2's, on the 18th and the 25th, falls
+    from the 20th to the 24th, though one is after the 20th and the other before the 24th.
     """
     assert sorted(refs(commented.search(filters=filters, sort="created"))) == expected
     assert sorted(refs(commented.search("broker", filters=filters))) == expected
