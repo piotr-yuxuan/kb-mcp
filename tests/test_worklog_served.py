@@ -4,9 +4,9 @@ Search narrowed to the work log finds a transcript by a word only it holds; the 
 its hit shows opens it, its text inside the untrusted block, as is an entry's injected
 line. Plan 042: a meeting's summary finds the meeting, not its day; a participant and a
 date narrow to whom one met, and when; a meeting's read names its transcript, which
-names it back. What the server says names entries as the user's notes and AI-written
-summaries, and transcripts as the word-by-word record to quote and to check a summary
-against.
+names it back. What the server says names days, meetings and entries as the user's notes
+and AI-written summaries, a meeting linking its transcript, and transcripts as the
+word-by-word record to quote and to check a summary against.
 """
 
 from __future__ import annotations
@@ -157,22 +157,24 @@ def test_a_meeting_s_read_names_its_transcript_which_names_it_back(home: Path) -
 def test_the_server_says_what_entries_and_transcripts_are(home: Path) -> None:
     """Instructions and the source filter, as a client sees them over stdio.
 
-    Entries: the user's notes and AI-written summaries. Transcripts: the word-by-word
-    record, to prefer when quoting and to check a summary against. Each kind is named
-    before what it is, and the entries first, so that the roles cannot be swapped; once
-    the record is named, no entry is, so that what to quote is the transcripts.
+    Days, meetings and entries: the user's notes and AI-written summaries, a meeting
+    linking its transcript. Transcripts: the word-by-word record, to prefer when quoting
+    and to check a summary against. Each kind is named before what it is, and the notes
+    first, so that the roles cannot be swapped; once the record is named, no day, meeting
+    or entry is, so that what to quote is the transcripts.
     """
     instructions, tools, _ = seen(home)
     (said,) = [s for s in re.split(r"(?<=\.)\s", instructions) if "transcripts" in s]
     told = [
-        *("entries", "user's", "notes", "AI-written", "summaries"),
-        *("transcripts", "word-by-word", "prefer", "quoting"),
+        *("days", "meetings", "entries", "user's", "notes", "AI-written", "summaries"),
+        *("meeting linking its transcript", "transcripts", "word-by-word", "prefer", "quoting"),
     ]
     assert [words for words in [*told, "check a summary"] if words not in said] == [], said
     assert [said.index(words) for words in told] == sorted(said.index(words) for words in told)
     assert said.index("quoting") < said.index("check a summary")
     record = said[said.index("word-by-word") :]
-    assert [words for words in ("entries", "notes", "summaries") if words in record] == []
+    kinds = ("days", "meetings", "entries", "notes", "summaries")
+    assert [words for words in kinds if words in record] == []
     (search,) = [tool for tool in tools.tools if tool.name == "search"]
     filters = search.input_schema["$defs"]["SearchFilters"]
     assert "worklog" in filters["properties"]["source"]["enum"]

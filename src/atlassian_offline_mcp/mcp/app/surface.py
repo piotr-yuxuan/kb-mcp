@@ -37,11 +37,11 @@ SAID: dict[Tool, str] = {
     "browse": "browse lists a space or a project as a tree",
     "status": "status says what is mirrored and when",
 }
-# What the work log's two kinds of document are, and which to quote.
+# What the work log's two kinds of document are, how they link, and which to quote.
 WORKLOG_KINDS = (
-    " In the work log, source worklog, entries are the user's notes and AI-written"
-    " summaries; transcripts are the word-by-word record: prefer them when quoting, and"
-    " check a summary against them."
+    " In the work log, source worklog, days, meetings and entries are the user's notes and"
+    " AI-written summaries, a meeting linking its transcript; transcripts are the"
+    " word-by-word record: prefer them when quoting, and check a summary against them."
 )
 CLOSING = (
     " Each result carries its mirror date: its content is as of that date, not live. A"

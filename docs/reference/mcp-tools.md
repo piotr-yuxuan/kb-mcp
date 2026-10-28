@@ -68,8 +68,9 @@ otherwise than its author, and `created <day>`, such as
   alone, is refused with the valid ones, those that hold it first, the most used first,
   by documents; participants by meetings first, so that the speakers that a caption
   tool writes, `You` and `Unverified`, never lead. Dates are ISO 8601, a date being its
-  midnight UTC. The work log's entries are the user's notes and AI-written summaries,
-  its transcripts the word-by-word record.
+  midnight UTC. The work log's days, meetings and entries are the user's notes and
+  AI-written summaries, a meeting linking its transcript; its transcripts are the
+  word-by-word record.
 - `sort`: `relevance`; `updated` or `created`, newest first, by words alone and
   counting every match, after the documents that the query names; with no query, they
   list the documents that pass the filters.
