@@ -5,8 +5,9 @@ describe it; Emacs's lock, autosave and backup files are added to each copy, sin
 ignores them. Times are fixed by ``os.utime``. Expectations come from the plan's tables,
 written by hand, and every file is read back by ``markdown.load``. Plan 042's journal of
 two days, its archived parts and its meetings are expected as its "Days and meetings:
-the rule", "Ids" and criterion 4 describe them; its transcripts as its "Ids", "Dates"
-and "Participants" and criteria 5, 6 and 8 do.
+the rule", "Ids" and criterion 4 describe them; its transcripts, the meeting file under
+``meetings/`` among them, as its "Ids", "Dates" and "Participants" and criteria 5, 6
+and 8 do.
 """
 
 from __future__ import annotations
@@ -67,6 +68,7 @@ TRANSCRIPTS = [
     "Payments stand-up",
     "Payments stand-up, 27 October",
     "Transcript, 2026-09-15 Tue, 1",
+    "Vendor call, 27 October",
     "WAITING Notes",
 ]
 # The journal's days, by id, and its meetings, by id and title: those of the archive last.
@@ -289,6 +291,12 @@ def test_without_archives_the_archived_documents_and_text_go(run: Run) -> None:
             ("transcripts", "archive", "2026", "2026-09", "2026-09-15 Tue"),
         ),
         (("transcript", "WAITING Notes"), "current", (), ("transcripts", "misc")),
+        (
+            ("transcript", "Vendor call, 27 October"),
+            "current",
+            (),
+            ("meetings", "2026-10-27 Tue"),
+        ),
     ],
 )
 def test_front_matter_says_status_labels_and_place(
@@ -329,6 +337,8 @@ def test_front_matter_says_status_labels_and_place(
             None,
         ),
         ("meeting", "Payments stand-up", datetime(2026, 10, 27, 9, 31, tzinfo=UTC), None),
+        ("transcript", "Vendor call, 27 October", datetime(2026, 10, 27, 15, tzinfo=UTC), None),
+        ("meeting", "Vendor call", datetime(2026, 10, 27, 15, tzinfo=UTC), None),
     ],
 )
 def test_dates_are_the_earliest_and_latest_events_up_to_the_file_time(
@@ -345,8 +355,13 @@ def test_dates_are_the_earliest_and_latest_events_up_to_the_file_time(
     assert (matter.created, matter.updated) == (created, updated or created)
 
 
-def test_transcript_ids_name_their_day_and_name_else_their_slug_or_digest(run: Run) -> None:
-    """A name with blanks by its slug; misc/a.org, without a day, by its name's digest."""
+def test_transcript_ids_name_their_day_and_name_and_tell_the_two_folders_apart(
+    run: Run,
+) -> None:
+    """A name with blanks by its slug; misc/a.org, without a day, by its name's digest.
+
+    One day's 1.org under meetings/ and under transcripts/current/: two ids, no warning.
+    """
     outcome = run()
     ids = {
         each.matter.title: each.matter.id
@@ -359,6 +374,7 @@ def test_transcript_ids_name_their_day_and_name_else_their_slug_or_digest(run: R
         "Payments stand-up": "t-20261020-1",
         "Payments stand-up, 27 October": "t-20261027-1",
         "Transcript, 2026-09-15 Tue, 1": "t-20260915-1",
+        "Vendor call, 27 October": "t-20261027-meeting-1",
     }
     assert outcome.warnings == ()
 
@@ -800,10 +816,12 @@ def test_a_meeting_names_its_participants_as_written_in_order(run: Run) -> None:
 
 
 def test_a_meeting_links_to_the_transcript_that_its_property_names(run: Run) -> None:
-    """The stand-up to the quoted transcript, read; a meeting naming a missing file to none."""
+    """To the quoted transcript, or to the file under meetings/; a missing file, to none."""
     run()
     links = run.by_id(STANDUP).matter.links
     assert [(each.relation, each.ref) for each in links] == [("transcript", "t-20261027-1")]
+    links = run.by_id("m-20261027-vendor-call").matter.links
+    assert [(each.relation, each.ref) for each in links] == [("transcript", "t-20261027-meeting-1")]
     assert run.by_id("m-20261027-rollout-planning").matter.links == ()
     assert run.by_id("m-20261027-ledger-review").matter.links == ()
 
@@ -824,6 +842,7 @@ def test_same_titled_meetings_of_one_day_are_numbered(run: Run) -> None:
     [
         ("t-20261027-1", ["Alex Example", "Sam Sample", "Kim"]),
         ("t-20261020-1", ["Alex", "Sam"]),
+        ("t-20261027-meeting-1", ["Sam Sample", "Jo Placeholder"]),
     ],
 )
 def test_a_transcript_names_its_speakers_in_order_of_first_speech(

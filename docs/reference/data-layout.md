@@ -305,7 +305,7 @@ order or type, by name.
 | `version` | integer or null | the Confluence version number; `null` for Jira |
 | `revision` | string | the raw store revision mirrored; a work-log document's, 16 hex digits, [below](#the-work-log) |
 | `url` | string or null | the absolute address of the web page: the `site` setting and `Document.url`; `null` when no site is set, and for the work log |
-| `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` |
+| `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
 | `fetched_at` | string | `fetched_at` of the snapshot, as `created`; a work-log document's file's modification time when converted |
 
 Images: an image in the rendered HTML names its attachment by
@@ -510,14 +510,18 @@ problem (a file not read, a conversion that failed) removes none of its files.
   its `:ARCHIVE_OLPATH:` instead. Its labels are its tags, its file's `#+FILETAGS` and
   `ARCHIVE` when it, or a heading above it, is archived; a day is archived when one of
   its headings is, or it has none.
-- A **transcript** is an `*.org` file under `transcripts/`. Its id is `t-`, the day
-  that begins its folder's name, else its own, as `%Y%m%d`, `-`, then its name without
-  `.org` when the id so matches the rule below, else that name's slug, as a file name's,
-  else the first 16 hex digits of the SHA-256 of its name: `notes on x.org` of 21
-  October is `t-20261021-notes-on-x`. Without a day, it is `t-` and the digest of its
-  name. No folder below the first is in an id, so a move under `archive/` keeps it. Of
-  two files of one id, the second in path order takes the digest of its whole path from
-  the work log's root, written with a leading `/`, which no name has.
+- A **transcript** is an `*.org` file under `transcripts/` or `meetings/`, where the
+  user's meeting-notes tool saves the file that a meeting's `:MEETING:` names, both read
+  by the same rules, their 20,000 files shared. Its id is `t-`, the day that begins its
+  folder's name, else its own, as `%Y%m%d`, `-`, then `meeting-` for a file under
+  `meetings/`, then its name without `.org` when the id so matches the rule below, else
+  that name's slug, as a file name's, else the first 16 hex digits of the SHA-256 of its
+  name: `notes on x.org` of 21 October is `t-20261021-notes-on-x`,
+  `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. Without a day, it is `t-`
+  and the digest of its name, `meeting-` before it under `meetings/`. No folder below
+  the first is in an id, so a move under `archive/` keeps it. Of two files of one id,
+  the second in path order takes the digest of its whole path from the work log's
+  root, written with a leading `/`, which no name has.
 - A transcript's people are its speakers, in the role `participant`, each once, in
   order of first speech: inside its `#+begin_quote` blocks when it has any, the notes
   outside them being the user's, else on any line, each line that holds an optional
@@ -542,8 +546,8 @@ problem (a file not read, a conversion that failed) removes none of its files.
   an existing file's.
 - The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
   and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
-  file, `transcripts/archive/` and subtrees tagged `ARCHIVE` are left out, and so the
-  days and meetings below one.
+  file, `transcripts/archive/`, `meetings/archive/` and subtrees tagged `ARCHIVE` are
+  left out, and so the days and meetings below one.
 
 An entry, a day and a meeting hold the user's notes and summaries an AI wrote; a
 transcript, the word-by-word record. The MCP server says so to agents, in its

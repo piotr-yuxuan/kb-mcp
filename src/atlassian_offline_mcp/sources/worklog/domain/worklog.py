@@ -2,9 +2,9 @@
 
 The journal of ``todo.org`` and ``todo.org_archive`` makes a document of each day and of
 each meeting, and the other top-level headings are entries; a transcript is an org file
-under ``transcripts/``. The rules are those of plan 017's "Documents and their
-identity" and "Front matter and conversion", and plan 042's "Days and meetings: the
-rule"; org's syntax is read by ``org``.
+under ``transcripts/`` or ``meetings/``. The rules are those of plan 017's "Documents and
+their identity" and "Front matter and conversion", and plan 042's "Days and meetings:
+the rule", "Ids" and "Participants"; org's syntax is read by ``org``.
 """
 
 from __future__ import annotations
@@ -28,8 +28,14 @@ if TYPE_CHECKING:
 
 TODO = "todo.org"
 TODO_ARCHIVE = "todo.org_archive"
-TRANSCRIPTS = "transcripts"
-# The folder of transcripts/ that holds archived transcripts.
+# The folders of transcripts: those saved, and the meeting files that a meeting's
+# :MEETING: links, as the user's meeting notes save them.
+MEETINGS = "meetings"
+TRANSCRIPTS = ("transcripts", MEETINGS)
+# What a file under meetings/ takes before its name in its id, so that one day's 1.org
+# in both folders never shares an id.
+MEETING_FILE = "meeting-"
+# The folder of each that holds archived transcripts.
 ARCHIVED = "archive"
 ORG = ".org"
 ENTRY = "entry"
@@ -481,15 +487,18 @@ def start(day: datetime, lines: Sequence[str]) -> datetime:
 def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Document], list[str]]:
     """Return the transcripts in path order, and a warning for each id found twice.
 
-    A transcript's id is ``t-``, the day that begins its folder's name (or its own),
-    ``-``, then its name less ``.org`` when the id holds to its rule so, else that name's
-    slug, else the first 16 hex digits of its name's SHA-256; without a day, it is ``t-``
-    and the digest of its name. Of two files of one id, the first in path order keeps it
-    and the other takes the digest of its whole path, written from the work log's root
-    (``/transcripts/...``): no name holds ``/``, so no other file's digest is the same.
+    A transcript is a file under ``transcripts/`` or ``meetings/``. Its id is ``t-``, the
+    day that begins its folder's name (or its own), ``-``, ``meeting-`` for a file under
+    ``meetings/``, then its name less ``.org`` when the id holds to its rule so, else
+    that name's slug, else the first 16 hex digits of its name's SHA-256. Without a day,
+    it is ``t-`` and the digest of its name, ``meeting-`` before it under ``meetings/``.
+    Of two files of one id, the first in path order keeps it and the other takes the
+    digest of its whole path, written from the work log's root (``/transcripts/...``):
+    no name holds ``/``, so no other file's digest is the same.
 
     Its people are its ``speakers``; a dated one begins as ``start`` says. Without
-    ``archives``, those under ``transcripts/archive/`` are left out.
+    ``archives``, those under ``transcripts/archive/`` and ``meetings/archive/`` are left
+    out.
     """
     found: list[Document] = []
     warnings: list[str] = []
@@ -509,13 +518,14 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
                 continue
             with contextlib.suppress(ValueError):  # 2026-13-40 begins no day
                 named.append((name, datetime.fromisoformat(match[0]).replace(tzinfo=UTC)))
+        prefix = MEETING_FILE if source.path.parts[0] == MEETINGS else ""
         dated = [
-            f"t-{named[0][1]:%Y%m%d}-{part}"
+            f"t-{named[0][1]:%Y%m%d}-{prefix}{part}"
             for part in (stem, slug(stem), digest(own))
             if named and part
         ]
         identifier = next(
-            (each for each in dated if WORKLOG_ID.fullmatch(each)), f"t-{digest(own)}"
+            (each for each in dated if WORKLOG_ID.fullmatch(each)), f"t-{digest(prefix + own)}"
         )
         if identifier in keepers:
             keeper = keepers[identifier]

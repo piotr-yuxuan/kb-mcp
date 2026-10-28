@@ -641,6 +641,10 @@ def test_an_undated_entry_dates_from_its_file_and_its_earlier_creation() -> None
     assert found.dates(earlier) == (earlier, MODIFIED)
 
 
+# Names of 56 and 57 letters: with meeting- before them, at the id's 64 and past them.
+FITTING, PAST = "a" * 56, "a" * 57
+
+
 @pytest.mark.parametrize(
     ("path", "expected"),
     [
@@ -655,19 +659,41 @@ def test_an_undated_entry_dates_from_its_file_and_its_earlier_creation() -> None
         ("transcripts/misc/a.org", f"t-{sha('a.org')}"),
         ("transcripts/misc/deeper/a.org", f"t-{sha('a.org')}"),
         ("transcripts/current/2026-13-40 Xxx/1.org", f"t-{sha('1.org')}"),
+        ("meetings/2026-10-27 Tue/1.org", "t-20261027-meeting-1"),
+        ("meetings/archive/2026/2026-10/2026-10-27 Tue/1.org", "t-20261027-meeting-1"),
+        ("meetings/2026-10-27 Tue/notes on x.org", "t-20261027-meeting-notes-on-x"),
+        (f"meetings/2026-10-27 Tue/{FITTING}.org", f"t-20261027-meeting-{FITTING}"),
+        (f"meetings/2026-10-27 Tue/{PAST}.org", f"t-20261027-meeting-{sha(f'{PAST}.org')}"),
+        ("meetings/2026-10-27 Tue/会議.org", f"t-20261027-meeting-{sha('会議.org')}"),
+        ("meetings/a.org", f"t-{sha('meeting-a.org')}"),
     ],
 )
 def test_transcript_ids_name_the_day_and_the_name_else_a_slug_else_a_digest(
     path: str, expected: str
 ) -> None:
-    """t-YYYYMMDD-, then the name, its slug, or its digest.
+    """t-YYYYMMDD-, meeting- under meetings/, then the name, its slug, or its digest.
 
-    Without a day, the digest of the name alone: no folder, so a move under archive/
-    keeps every id.
+    Without a day, the digest of the name alone, meeting- before it under meetings/: no
+    folder, so a move under archive/ keeps every id.
     """
     (found,), warnings = transcripts([Source(PurePosixPath(path), "", MODIFIED)], archives=True)
     assert (found.id, warnings) == (expected, [])
     assert WORKLOG_ID.fullmatch(found.id)
+
+
+def test_one_day_s_first_file_in_both_folders_takes_two_ids() -> None:
+    """meetings/<day>/1.org and transcripts/current/<day>/1.org: distinct, no warning."""
+    found, warnings = transcripts(
+        [
+            Source(PurePosixPath("meetings/2026-10-27 Tue/1.org"), "", MODIFIED),
+            Source(PurePosixPath("transcripts/current/2026-10-27 Tue/1.org"), "", MODIFIED),
+        ],
+        archives=True,
+    )
+    assert ([each.id for each in found], warnings) == (
+        ["t-20261027-meeting-1", "t-20261027-1"],
+        [],
+    )
 
 
 def test_a_copy_keeps_the_id_and_the_other_takes_its_whole_path() -> None:

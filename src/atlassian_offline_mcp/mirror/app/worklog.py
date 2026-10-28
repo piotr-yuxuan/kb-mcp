@@ -92,9 +92,10 @@ class Planned:
 def read_worklog(folder: Path, *, archives: bool) -> Read:
     """Read the work log under ``folder``: its entries, days and meetings, then its transcripts.
 
-    Without ``archives``, the archive file, ``transcripts/archive/`` and the subtrees
-    tagged ARCHIVE are left out. A file not read is a problem, named by its path. The span
-    ``worklog.read`` holds the reading; ``worklog.read`` says at INFO what was read.
+    Without ``archives``, the archive file, ``transcripts/archive/``,
+    ``meetings/archive/`` and the subtrees tagged ARCHIVE are left out. A file not read
+    is a problem, named by its path. The span ``worklog.read`` holds the reading;
+    ``worklog.read`` says at INFO what was read.
     """
     with TRACER.start_as_current_span("worklog.read"):
         listing = files.listed(folder, archives=archives)
@@ -107,7 +108,7 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
                 problems.append(Problem(str(relative), str(error)))
         found = {each.path: each for each in sources}
         named, warnings = transcripts(
-            [each for each in sources if each.path.parts[0] == TRANSCRIPTS], archives=archives
+            [each for each in sources if each.path.parts[0] in TRANSCRIPTS], archives=archives
         )
         todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
         documents_read = (*journal(todo, archive, archives=archives, transcripts=named), *named)
@@ -139,10 +140,10 @@ def existing(docs: Path) -> dict[str, tuple[FrontMatter, str]]:
 def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True) -> Outcome:
     """Mirror the work log under ``folder`` into ``docs/worklog/``, with ``pandoc``.
 
-    Without ``archives``, the archive file, ``transcripts/archive/`` and the subtrees
-    tagged ARCHIVE are left out, and so their files removed. Raises
-    ``PandocFailedError`` when pandoc gives no version, before any file is written: no
-    revision can be named without it.
+    Without ``archives``, the archive file, ``transcripts/archive/``,
+    ``meetings/archive/`` and the subtrees tagged ARCHIVE are left out, and so their
+    files removed. Raises ``PandocFailedError`` when pandoc gives no version, before any
+    file is written: no revision can be named without it.
 
     The task ``work-log documents`` reports each document, by its title; the spans
     ``worklog.convert`` and ``worklog.write`` hold building the files and writing them.
