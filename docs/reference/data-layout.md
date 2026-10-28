@@ -360,8 +360,8 @@ commenter once by name and account. `load` refuses any other role, a field other
 these or out of their order, a `null`, an empty `at` and a broken rule, naming the
 entry, such as `people[1]`. Names are kept as written, never normalised, merged or
 masked: a colleague renamed between two fetches appears under two names, with one
-account id. `FrontMatter.author` and `FrontMatter.assignee` name the one person of that
-role, or nobody.
+account id. `FrontMatter.author`, `FrontMatter.creator` and `FrontMatter.assignee` name
+the one person of that role, or nobody.
 
 Names, and the account ids beside them, are personal data, kept wherever the content
 is:

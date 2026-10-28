@@ -146,7 +146,7 @@ def facts(front: FrontMatter) -> str:
     created day, leaving out what it lacks.
     """
     unassigned = "unassigned" if front.source == "jira" else ""
-    creator = next((person.name for person in front.people if person.role == "creator"), None)
+    creator = front.creator
     shown = (
         short(front.issue_type, LABEL) if front.issue_type else "",
         "" if front.status == "current" else short(front.status, LABEL),

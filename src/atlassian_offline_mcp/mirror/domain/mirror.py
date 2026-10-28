@@ -162,6 +162,11 @@ class FrontMatter:
         return next((person.name for person in self.people if person.role == "author"), None)
 
     @property
+    def creator(self) -> str | None:
+        """Name the person whose role is creator, if any: who created a Jira issue."""
+        return next((person.name for person in self.people if person.role == "creator"), None)
+
+    @property
     def assignee(self) -> str | None:
         """Name the person whose role is assignee, if any."""
         return next((person.name for person in self.people if person.role == "assignee"), None)

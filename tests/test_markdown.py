@@ -144,15 +144,19 @@ def test_people_in_every_role_read_back_byte_for_byte() -> None:
     assert dump(front_matter, body) == text
     second = MOMENT.replace(microsecond=0)
     assert front_matter == replace(ISSUE, created=second, updated=second, fetched_at=second)
-    assert (front_matter.author, front_matter.assignee) == ("A Person", "A Person")
+    assert (front_matter.author, front_matter.creator, front_matter.assignee) == (
+        "A Person",
+        "Another Person",
+        "A Person",
+    )
 
 
 def test_an_account_and_people_are_left_out_when_the_source_has_none() -> None:
     """No account without an account id, ``[]`` without people; the properties say nobody."""
     assert "people:\n- {role: author, name: A Person}\ncreated: " in dump(PAGE, "")
     assert "people: []\n" in dump(ENTRY, "")
-    assert (ENTRY.author, ENTRY.assignee) == (None, None)
-    assert (PAGE.author, PAGE.assignee) == ("A Person", None)
+    assert (ENTRY.author, ENTRY.creator, ENTRY.assignee) == (None, None, None)
+    assert (PAGE.author, PAGE.creator, PAGE.assignee) == ("A Person", None, None)
 
 
 @pytest.mark.parametrize(
