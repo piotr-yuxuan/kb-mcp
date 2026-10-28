@@ -54,7 +54,10 @@ The steps, in order:
    and downloading nothing: do so after installing a pandoc rebuilt under the same
    version line, the one change that the cache cannot see. A damaged file is replaced
    by the run itself, which converts everything and says so in its log
-   (`mirror.cache_replaced`): nothing to do.
+   (`mirror.cache_replaced`): nothing to do. One that another run holds for more than a
+   minute, or that breaks during the run, fails the mirror and stops the sync there,
+   without the work log or the index; the next run tries again, on a new file if it
+   broke. Deleting the file is also the remedy for a mirror that looks wrong.
 2. **The work log**: read whole, each document converted again only when it changed,
    the files of documents gone removed.
 3. **The index**: rebuilt from the whole mirror, whatever sources the run took, by the
@@ -71,7 +74,8 @@ The steps, in order:
 
 Each step runs even when an earlier one failed, since the next reads what is on disk:
 the work log is mirrored when the site asks to sign in again, and the index is built
-from what the mirror holds. Ctrl-C stops the run, and no later step starts.
+from what the mirror holds. Ctrl-C stops the run, and no later step starts, as does a
+cache of pandoc's conversions that the mirror cannot use (step 1).
 
 ## 3. Choose among the sources
 

@@ -181,7 +181,10 @@ Every run still reads the store and builds every document's HTML.
   the same version line, such as another package of one release: delete the file, which
   costs one conversion of everything and downloads nothing. A damaged file costs the
   same, as the run replaces it, says so, and converts everything
-  ([`opened`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)).
+  ([`opened`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)). The
+  check that finds it sees the file's structure, each index against its table, not the
+  text of each row: a row damaged in place would be given as it is, which deleting the
+  file mends.
 - **Rejected.** A record per document of everything its file depends on, which would
   skip the reading and the building too, at the risk of a stale file for any input it
   forgot; a cache wrapped around pandoc outside the mirror, which would count its

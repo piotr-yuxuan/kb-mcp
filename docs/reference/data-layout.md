@@ -343,20 +343,30 @@ and a write waits up to 60 seconds for another run's. Once its files are written
 that reports no problem deletes every row that it did not use; a run that reports one
 deletes none, as it removes no file.
 
-The file changes no byte of the mirror. Deleting it costs one conversion of everything
-at the next run, and downloads nothing: the one way to start afresh after installing a
-pandoc rebuilt under the same version line, which the key cannot tell apart. As the file
-is opened, the run takes its write lock, then `PRAGMA integrity_check` judges it, each
-index against its table: one that the check finds damaged, or that SQLite finds damaged,
-no database, or of a format that it cannot read or may not write (`SQLITE_CORRUPT`,
-`SQLITE_NOTADB`, `SQLITE_ERROR`, `SQLITE_READONLY`, by their primary codes), is deleted
-with its `-wal` and `-shm`, `mirror.cache_replaced` says why ([mirror's
-telemetry](telemetry/mirror.md)), and an empty file takes its place, so that the run
-goes on and converts everything. A file locked past the wait is not replaced: the run
-fails, and the file stays. Damage that SQLite finds during the run, `SQLITE_CORRUPT` or
-`SQLITE_NOTADB`, fails it too, once the file is deleted, so that the next run starts a
-new one. The work log does not use the file: its `revision` ([below](#the-work-log))
-already skips what has not changed.
+The file changes no byte of the mirror while its rows are sound. Deleting it costs one
+conversion of everything at the next run, and downloads nothing: the one way to start
+afresh after installing a pandoc rebuilt under the same version line, which the key
+cannot tell apart. The work log does not use the file: its `revision`
+([below](#the-work-log)) already skips what has not changed.
+
+As the file is opened, the run takes its write lock, then `PRAGMA integrity_check`
+judges it, each index against its table: one that the check finds damaged, or that
+SQLite finds damaged, no database, or of a format that it cannot read or may not write
+(`SQLITE_CORRUPT`, `SQLITE_NOTADB`, `SQLITE_ERROR`, `SQLITE_READONLY`, by their primary
+codes), is deleted with its `-wal` and `-shm`, `mirror.cache_replaced` says why
+([mirror's telemetry](telemetry/mirror.md)), and an empty file takes its place, so that
+the run goes on and converts everything. Damage that SQLite finds during the run,
+`SQLITE_CORRUPT` or `SQLITE_NOTADB`, fails it, once the file is deleted, so that the
+next run starts a new one. The check sees the file's structure, not the text of each
+row: a row whose Markdown was damaged in place, such as by a file cut short within its
+last page, is given as it is, or fails every run if its text no longer reads as UTF-8.
+Deleting the file is the remedy for a mirror that looks wrong, or a run that fails on
+the file.
+
+A file locked past the wait is not replaced: the run fails, `sync` without its later
+steps, and the file stays. Nor does the wait cover the file's creation: of two runs that
+create it at the same moment, one may fail at once, seldom, as SQLite's switch of a new
+file to WAL mode does not wait.
 
 ### The work log
 
