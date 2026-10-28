@@ -1,7 +1,9 @@
 """``sync``'s steps: Confluence's and Jira's download and mirror, the work log's, the index.
 
 Each step runs even when an earlier one failed, since the next reads what is on disk;
-Ctrl-C stops the run, and no later step runs. What can be refused is refused before the
+Ctrl-C stops the run, and no later step runs, as does a cache of pandoc's conversions
+that the mirror cannot use, such as one locked past the wait, or one that breaks during
+the mirror. What can be refused is refused before the
 first step: an --until before --since, and a work log that is not a folder. A dry
 run plans the download and counts the work log, and writes nothing. Each row is a span,
 ``sync.step``, within which its step's own spans and events are recorded, those of
