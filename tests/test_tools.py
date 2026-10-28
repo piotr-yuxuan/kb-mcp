@@ -345,9 +345,10 @@ def test_sorted_by_created_date_newest_first_with_words_or_without(people: Libra
     assert refs(people.search(sort="updated", limit=4)) == ["PROJ-2", "PROJ-3", "PROJ-1", "196845"]
 
 
-def test_a_listing_by_created_date_continues_by_its_cursor(people: Library) -> None:
-    """One document a page, each once, in order."""
-    answer: str | None = people.search(filters={"source": "jira"}, sort="created", limit=1)
+@pytest.mark.parametrize("query", ["", "broker"])
+def test_a_listing_by_created_date_continues_by_its_cursor(people: Library, query: str) -> None:
+    """One document a page, each once, in order, with words or without."""
+    answer: str | None = people.search(query, filters={"source": "jira"}, sort="created", limit=1)
     found = []
     while answer is not None:
         found += refs(answer)
@@ -648,6 +649,17 @@ def test_each_hit_ends_its_second_line_with_who_and_when(people: Library) -> Non
         ),
         "PROJ-3": "Story | To Do | assignee Ada Example | author A Person | created 2026-10-25",
         "196845": "author Bo Sample | created 2026-10-21",
+    }
+
+
+def test_a_hit_cuts_each_name_type_and_status_at_60_characters(tmp_path: Path) -> None:
+    """As labels are: 59 characters and an ellipsis."""
+    long = "Long name " * 10
+    front = issue("PROJ-1", "Broker", issue_type=long, status=long, assignee=long, author=long)
+    library = built(tmp_path, [(front, None)])
+    cut = f"{long[:59]}…"
+    assert dict(FACTS.findall(parts(library.search("broker"))[1])) == {
+        "PROJ-1": f"{cut} | {cut} | assignee {cut} | author {cut} | created 2026-10-20"
     }
 
 

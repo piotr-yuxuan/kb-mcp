@@ -41,8 +41,8 @@ says why.
 Finds documents by words, issue keys, page ids or page addresses, the best first, each
 with its best section's `read()` call and a snippet. A hit's second line gives its ref,
 path, update and mirror date, then what the document has of its issue type, its status
-unless `current`, `assignee <name>` (`unassigned` for an issue with none), `author
-<name>` and `created <day>`, such as
+unless `current`, `assignee <name>` (`unassigned` for an issue with none, which no
+filter selects), `author <name>` and `created <day>`, such as
 `Bug | Done | assignee Ada Example | author Bo Sample | created 2026-10-01`.
 
 - `query`: the words, at most 500 characters.
