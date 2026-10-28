@@ -34,6 +34,7 @@ from atlassian_offline_mcp.sources.worklog.domain.worklog import (
     TODO_ARCHIVE,
     TRANSCRIPTS,
     journal,
+    linked_back,
     revision,
     transcripts,
 )
@@ -92,7 +93,8 @@ class Planned:
 def read_worklog(folder: Path, *, archives: bool) -> Read:
     """Read the work log under ``folder``: its entries, days and meetings, then its transcripts.
 
-    Without ``archives``, the archive file, ``transcripts/archive/``,
+    A meeting links to its transcript and the transcript back to it, both read in this
+    one run. Without ``archives``, the archive file, ``transcripts/archive/``,
     ``meetings/archive/`` and the subtrees tagged ARCHIVE are left out. A file not read
     is a problem, named by its path. The span ``worklog.read`` holds the reading;
     ``worklog.read`` says at INFO what was read.
@@ -111,7 +113,8 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
             [each for each in sources if each.path.parts[0] in TRANSCRIPTS], archives=archives
         )
         todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
-        documents_read = (*journal(todo, archive, archives=archives, transcripts=named), *named)
+        journaled = journal(todo, archive, archives=archives, transcripts=named)
+        documents_read = (*journaled, *linked_back(named, journaled))
     structlog.get_logger().info(
         "worklog.read",
         entries=sum(1 for each in documents_read if each.type == ENTRY),

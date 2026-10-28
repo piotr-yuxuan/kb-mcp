@@ -29,6 +29,7 @@ from atlassian_offline_mcp.sources.worklog.domain.worklog import (
     Document,
     Source,
     journal,
+    linked_back,
     meeting_ids,
     participants,
     revision,
@@ -1157,6 +1158,22 @@ def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
         assert (meeting.links, meeting.start) == ((("transcript", record.id),), record.start)
     else:
         assert (meeting.links, meeting.start) == ((), TUESDAY)
+
+
+def test_a_transcript_links_back_to_each_meeting_that_links_to_it() -> None:
+    """By summary, in the meetings' order; a transcript that no meeting names, to none."""
+    read, _ = transcripts(
+        [transcript("2026-10-27 Tue/1.org"), transcript("2026-10-27 Tue/2.org")], archives=True
+    )
+    lines = ["* Entries", "** <2026-10-27 Tue>"]
+    for title in ("Stand-up", "Retro"):
+        value = "[[./transcripts/2026-10-27 Tue/1.org]]"
+        lines += [f"*** {title}", ":PROPERTIES:", f":MEETING: {value}", ":END:"]
+    found = journal(todo("\n".join(lines)), None, archives=True, transcripts=read)
+    assert [(each.id, each.links) for each in linked_back(read, found)] == [
+        ("t-20261027-1", (("summary", "m-20261027-stand-up"), ("summary", "m-20261027-retro"))),
+        ("t-20261027-2", ()),
+    ]
 
 
 # A meeting with a section, then archived headings, as org writes them: a task archived

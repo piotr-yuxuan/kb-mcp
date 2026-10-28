@@ -4,7 +4,7 @@ The journal of ``todo.org`` and ``todo.org_archive`` makes a document of each da
 each meeting, and the other top-level headings are entries; a transcript is an org file
 under ``transcripts/`` or ``meetings/``. The rules are those of plan 017's "Documents and
 their identity" and "Front matter and conversion", and plan 042's "Days and meetings:
-the rule", "Ids" and "Participants"; org's syntax is read by ``org``.
+the rule", "Ids", "Participants" and "Links"; org's syntax is read by ``org``.
 """
 
 from __future__ import annotations
@@ -43,6 +43,8 @@ DAY_TYPE = "day"
 MEETING_TYPE = "meeting"
 # A transcript's type, and the relation of a meeting to its transcript.
 TRANSCRIPT = "transcript"
+# The relation of a transcript to each meeting that links to it.
+SUMMARY = "summary"
 CURRENT = "current"
 DIGITS = 16
 # The date that begins a folder's or a file's name.
@@ -94,7 +96,8 @@ class Document:
     """One document of the work log: what the mirror says of it, and what pandoc converts.
 
     ``people`` names its participants as written; ``links`` holds each relation to another
-    document of the work log and that document's id, such as a meeting's ``transcript``.
+    document of the work log and that document's id, such as a meeting's ``transcript``
+    and that transcript's ``summary``.
     """
 
     type: str  # entry, day, meeting or transcript
@@ -556,3 +559,21 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
             )
         )
     return found, warnings
+
+
+def linked_back(transcripts: Iterable[Document], documents: Iterable[Document]) -> list[Document]:
+    """Return the transcripts, each linked back to the documents that link to it.
+
+    A transcript gains ``summary`` and a document's id for each of ``documents`` whose
+    ``transcript`` link names it, in their order, after its own links: the journal's
+    meetings, so that each file names the other.
+    """
+    summaries: dict[str, list[tuple[str, str]]] = {}
+    for document in documents:
+        for relation, ref in document.links:
+            if relation == TRANSCRIPT:
+                summaries.setdefault(ref, []).append((SUMMARY, document.id))
+    return [
+        dataclasses.replace(each, links=(*each.links, *summaries.get(each.id, ())))
+        for each in transcripts
+    ]

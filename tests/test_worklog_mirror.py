@@ -826,6 +826,24 @@ def test_a_meeting_links_to_the_transcript_that_its_property_names(run: Run) -> 
     assert run.by_id("m-20261027-ledger-review").matter.links == ()
 
 
+def test_a_linked_meeting_and_its_transcript_name_each_other(run: Run) -> None:
+    """Under transcripts/ or meetings/: the meeting by transcript, the transcript by summary.
+
+    No other document of the work log links to anything.
+    """
+    run()
+    pairs = {STANDUP: "t-20261027-1", "m-20261027-vendor-call": "t-20261027-meeting-1"}
+    found = {
+        each.matter.id: [(link.relation, link.ref) for link in each.matter.links]
+        for each in run.files()
+        if each.matter.links
+    }
+    assert found == {
+        **{meeting: [("transcript", record)] for meeting, record in pairs.items()},
+        **{record: [("summary", meeting)] for meeting, record in pairs.items()},
+    }
+
+
 def test_same_titled_meetings_of_one_day_are_numbered(run: Run) -> None:
     """Neither has a transcript, so both start at the day: numbered in reading order."""
     run()
