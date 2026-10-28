@@ -296,8 +296,7 @@ order or type, by name.
 | `status` | string | as the site names it; an entry's keyword, else `current`, as a transcript's |
 | `issue_type` | string or null | the issue type, such as `Bug`; `null` for Confluence |
 | `labels` | list of strings | the labels, `[]` when none; a work-log document's tags, its file's `#+FILETAGS`, and `ARCHIVE` when archived |
-| `author` | string or null | an issue's reporter, not necessarily who created it; a page's or a blog post's creator; the display name when known (from `users()` for Confluence), otherwise the account id; `null` when none, and for the work log |
-| `assignee` | string or null | the assignee's display name, or account id; `null` when unassigned or for Confluence |
+| `people` | list of mappings | each person by role, one line each, [below](#people); `[]` when none, and for the work log |
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |
 | `revision` | string | the raw store revision mirrored; a work-log document's, 16 hex digits, [below](#the-work-log) |
@@ -327,6 +326,42 @@ into sections.
 
 Everything in the mirror is content from the site or the work log: untrusted reference
 data, never instructions.
+
+### People
+
+The key `people` (041) names the people of a document by role: one entry per person
+and role, in the order of the roles below, then in the order that the source gives,
+commenters by their first comment. `dump` writes each entry on one line, in YAML's flow
+style, so that forty comments by three people make three lines:
+
+```yaml
+people:
+- {role: author, name: Robin Example, account: acct-0001}
+- {role: creator, name: Sam Sample, account: acct-0002}
+- {role: commenter, name: Sam Sample, account: acct-0002, at: ['2026-10-20T09:12:00Z']}
+```
+
+| Field | Value |
+|---|---|
+| `role` | one of `mirror.domain.mirror.ROLES`, a closed set: `author`, `creator`, `assignee`, `commenter` |
+| `name` | the name as the source gives it, one line, never empty: Jira's as it was when the issue was fetched, Confluence's from `users()`, else the account id |
+| `account` | the account id, when the source has one (Confluence and Jira); absent otherwise |
+| `at` | a commenter's comment times, written as `created` is, ascending; absent for any other role |
+
+| Role | Who |
+|---|---|
+| `author` | a page's or a blog post's author (v2's `authorId`); an issue's reporter, not necessarily who created it |
+| `creator` | who created an issue, who differs from the reporter when someone files an issue for another |
+| `assignee` | an issue's assignee; nobody when unassigned |
+| `commenter` | the author of an issue's comments, with the time of each; a comment without an author names nobody |
+
+A document has one `author`, one `creator` and one `assignee` at most, and each
+commenter once by name and account. `load` refuses any other role, a field other than
+these or out of their order, a `null`, an empty `at` and a broken rule, naming the
+entry, such as `people[1]`. Names are kept as written, never normalised, merged or
+masked: a colleague renamed between two fetches appears under two names, with one
+account id. `FrontMatter.author` and `FrontMatter.assignee` name the one person of that
+role, or nobody.
 
 ### Pandoc's conversions
 
@@ -424,7 +459,13 @@ the section that holds its middle and a span relative to that section's body, so
 a window across sections needs no other schema. Plan 023 adds the column `key` to
 `pieces`, the key of the piece's vector in the vector store, which only pruning reads;
 an index built before it reads as any other, but cannot say what it reads of the store,
-and `SCHEMA` stays 3. An index of another schema is
+and `SCHEMA` stays 3. Schema 4 (041) replaces the columns `author` and `assignee` of
+`documents` with `people`, the front matter's people as JSON, from which a row gives
+its front matter back whole; and adds the table `people`, one row per person and role,
+and a commenter's one per comment with its time in `at` (null for the other roles),
+indexed by role and name, which the filters by person read. Each person is so in the
+index twice, as each label is. No piece's text holds a person, so a build that only
+people change embeds nothing new. An index of another schema is
 refused with the command that rebuilds it. The MCP server opens it read-only, never
 writes, and reopens it when the file is replaced; it searches by meaning with the model
 that the index names, and only while the endpoint's fingerprint for it is the index's.

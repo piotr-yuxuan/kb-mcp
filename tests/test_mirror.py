@@ -21,7 +21,7 @@ from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
 from atlassian_offline_mcp.mirror.adapters.markdown import load
 from atlassian_offline_mcp.mirror.adapters.mirror_files import sync, worklog_owned
 from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
-from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from tests.mirrors import mirrored
@@ -246,8 +246,7 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         status="archived",
         issue_type=None,
         labels=("probe",),
-        author="A Person",
-        assignee=None,
+        people=(PersonRole(role="author", name="A Person", account="account-1"),),
         created=datetime(2026, 10, 20, 21, 27, 34, tzinfo=UTC),
         updated=datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC),
         version=2,
@@ -270,8 +269,7 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         status="Parking lot",
         issue_type="Idea",
         labels=("probe",),
-        author="A Person",
-        assignee=None,
+        people=(PersonRole(role="author", name="A Person", account="account-1"),),
         created=datetime(2026, 10, 20, 21, 33, 32, tzinfo=UTC),
         updated=datetime(2026, 10, 20, 21, 37, 58, tzinfo=UTC),
         version=None,

@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 
 from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
-from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.domain.search import (
     Embedded,
@@ -46,8 +46,9 @@ if TYPE_CHECKING:
 BUILDING = ".index-"
 # Why a link among indexes is not followed: a cycle of them would not end.
 LINK = "a link, which is not followed"
-# 1 from plan 006; 3 from plan 011, with vectors and a build id.
-SCHEMA = "3"
+# 1 from plan 006; 3 from plan 011, with vectors and a build id; 4 from plan 041, with
+# people in place of the author and the assignee.
+SCHEMA = "4"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -63,7 +64,7 @@ CREATE TABLE documents (
   path TEXT NOT NULL UNIQUE,
   source TEXT NOT NULL, type TEXT NOT NULL, id TEXT NOT NULL, key TEXT,
   title TEXT NOT NULL, space TEXT, project TEXT, status TEXT NOT NULL, issue_type TEXT,
-  labels TEXT NOT NULL, author TEXT, assignee TEXT, created TEXT NOT NULL,
+  labels TEXT NOT NULL, people TEXT NOT NULL, created TEXT NOT NULL,
   updated TEXT NOT NULL, version INTEGER, revision TEXT NOT NULL, url TEXT,
   breadcrumb TEXT NOT NULL, fetched_at TEXT NOT NULL,
   length INTEGER NOT NULL, first_section INTEGER NOT NULL, last_section INTEGER NOT NULL,
@@ -71,6 +72,10 @@ CREATE TABLE documents (
 );
 CREATE INDEX documents_key ON documents (key);
 CREATE TABLE labels (document INTEGER NOT NULL, label TEXT NOT NULL);
+CREATE TABLE people (
+  document INTEGER NOT NULL, role TEXT NOT NULL, name TEXT NOT NULL, account TEXT, at TEXT
+);
+CREATE INDEX people_role_name ON people (role, name);
 CREATE TABLE sections (
   rowid INTEGER PRIMARY KEY,
   document INTEGER NOT NULL, number INTEGER NOT NULL, start INTEGER NOT NULL,
@@ -99,8 +104,10 @@ WHERE (:source IS NULL OR d.source = :source)
   AND (:label IS NULL
        OR EXISTS (SELECT 1 FROM labels l WHERE l.document = d.rowid AND l.label = :label))
   AND (:issue_type IS NULL OR d.issue_type = :issue_type)
-  AND (:author IS NULL OR d.author = :author)
-  AND (:assignee IS NULL OR d.assignee = :assignee)
+  AND (:author IS NULL OR d.rowid IN
+       (SELECT p.document FROM people p WHERE p.role = 'author' AND p.name = :author))
+  AND (:assignee IS NULL OR d.rowid IN
+       (SELECT p.document FROM people p WHERE p.role = 'assignee' AND p.name = :assignee))
   AND (:updated_after IS NULL OR d.updated >= :updated_after)
   AND (:updated_before IS NULL OR d.updated < :updated_before)
   AND (:created_after IS NULL OR d.created >= :created_after)
@@ -180,9 +187,9 @@ VALUES = {
     "label": "SELECT label, count(*) FROM labels GROUP BY 1 ORDER BY 2 DESC, 1",
     "issue_type": "SELECT issue_type, count(*) FROM documents WHERE issue_type IS NOT NULL"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
-    "author": "SELECT author, count(*) FROM documents WHERE author IS NOT NULL"
+    "author": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'author'"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
-    "assignee": "SELECT assignee, count(*) FROM documents WHERE assignee IS NOT NULL"
+    "assignee": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'assignee'"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
     "type": "SELECT type, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
 }
@@ -218,6 +225,9 @@ class Writer:
         values = {name: getattr(front, name) for name in FrontMatter.__dataclass_fields__}
         values |= {
             "labels": json.dumps(front.labels, ensure_ascii=False),
+            "people": json.dumps(
+                [asdict(person) for person in front.people], ensure_ascii=False, default=moment
+            ),
             "breadcrumb": json.dumps(front.breadcrumb, ensure_ascii=False),
             "created": moment(front.created),
             "updated": moment(front.updated),
@@ -230,12 +240,11 @@ class Writer:
         try:
             cursor = self._connection.execute(
                 "INSERT INTO documents (path, source, type, id, key, title, space, project,"
-                " status, issue_type, labels, author, assignee, created, updated, version,"
-                " revision, url, breadcrumb, fetched_at, length, first_section, last_section)"
+                " status, issue_type, labels, people, created, updated, version, revision,"
+                " url, breadcrumb, fetched_at, length, first_section, last_section)"
                 " VALUES (:path, :source, :type, :id, :key, :title, :space, :project, :status,"
-                " :issue_type, :labels, :author, :assignee, :created, :updated, :version,"
-                " :revision, :url, :breadcrumb, :fetched_at, :length, :first_section,"
-                " :last_section)",
+                " :issue_type, :labels, :people, :created, :updated, :version, :revision,"
+                " :url, :breadcrumb, :fetched_at, :length, :first_section, :last_section)",
                 values,
             )
         except sqlite3.IntegrityError:
@@ -245,6 +254,21 @@ class Writer:
         self._connection.executemany(
             "INSERT INTO labels (document, label) VALUES (?, ?)",
             [(document, label) for label in front.labels],
+        )
+        # One row per person and role, and a commenter's one per comment.
+        self._connection.executemany(
+            "INSERT INTO people (document, role, name, account, at) VALUES (?, ?, ?, ?, ?)",
+            [
+                (
+                    document,
+                    person.role,
+                    person.name,
+                    person.account,
+                    None if at is None else moment(at),
+                )
+                for person in front.people
+                for at in person.at or (None,)
+            ],
         )
         # The title, labels and breadcrumb go with the first section alone, so that FTS5,
         # which counts rows, counts a document's words once; the first section's heading,
@@ -371,8 +395,15 @@ def entry(row: sqlite3.Row) -> Entry:
         status=row["status"],
         issue_type=row["issue_type"],
         labels=tuple(json.loads(row["labels"])),
-        author=row["author"],
-        assignee=row["assignee"],
+        people=tuple(
+            PersonRole(
+                role=person["role"],
+                name=person["name"],
+                account=person["account"],
+                at=tuple(datetime.fromisoformat(at) for at in person["at"]),
+            )
+            for person in json.loads(row["people"])
+        ),
         created=datetime.fromisoformat(row["created"]),
         updated=datetime.fromisoformat(row["updated"]),
         version=row["version"],

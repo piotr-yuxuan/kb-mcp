@@ -692,7 +692,7 @@ def test_an_issue_without_assignee_says_so_and_a_work_log_entry_its_status(
         source="worklog",
         type="entry",
         space=None,
-        author=None,
+        people=(),
         version=None,
         revision="0123456789abcdef",
         created=MOMENT - timedelta(days=2),

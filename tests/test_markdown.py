@@ -11,7 +11,7 @@ import pytest
 from atlassian_offline_mcp.kernel.content import RefusedError
 from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.mirror.adapters.markdown import documents, dump, load
-from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -28,8 +28,7 @@ LAYOUT_KEYS = [
     "status",
     "issue_type",
     "labels",
-    "author",
-    "assignee",
+    "people",
     "created",
     "updated",
     "version",
@@ -50,8 +49,7 @@ PAGE = FrontMatter(
     status="current",
     issue_type=None,
     labels=("probe", "2026"),
-    author="A Person",
-    assignee=None,
+    people=(PersonRole(role="author", name="A Person"),),
     created=MOMENT,
     updated=MOMENT,
     version=3,
@@ -73,8 +71,6 @@ ENTRY = FrontMatter(
     status="WAITING",
     issue_type=None,
     labels=("review", "ARCHIVE"),
-    author=None,
-    assignee=None,
     created=MOMENT,
     updated=MOMENT,
     version=None,
@@ -82,6 +78,46 @@ ENTRY = FrontMatter(
     url=None,
     breadcrumb=("todo.org_archive",),
     fetched_at=MOMENT,
+)
+
+
+EARLY = datetime(2026, 10, 20, 9, 12, tzinfo=UTC)
+LATE = datetime(2026, 10, 21, 8, 0, tzinfo=UTC)
+ISSUE = FrontMatter(
+    source="jira",
+    type="issue",
+    id="10000",
+    key="PRB-1",
+    title="What are archived ideas?",
+    space=None,
+    project="PRB",
+    status="Parking lot",
+    issue_type="Idea",
+    labels=(),
+    people=(
+        PersonRole(role="author", name="A Person", account="account-1"),
+        PersonRole(role="creator", name="Another Person", account="account-2"),
+        PersonRole(role="assignee", name="A Person", account="account-1"),
+        PersonRole(role="commenter", name="Another Person", account="account-2", at=(EARLY, LATE)),
+        PersonRole(role="commenter", name="A Person", account="account-1", at=(LATE,)),
+    ),
+    created=MOMENT,
+    updated=MOMENT,
+    version=None,
+    revision="20261020T215241.371000Z",
+    url=None,
+    breadcrumb=("PRB-3",),
+    fetched_at=MOMENT,
+)
+# The people of ISSUE as the layout writes them: each entry one line, in flow style.
+PEOPLE = (
+    "people:\n"
+    "- {role: author, name: A Person, account: account-1}\n"
+    "- {role: creator, name: Another Person, account: account-2}\n"
+    "- {role: assignee, name: A Person, account: account-1}\n"
+    "- {role: commenter, name: Another Person, account: account-2,"
+    " at: ['2026-10-20T09:12:00Z', '2026-10-21T08:00:00Z']}\n"
+    "- {role: commenter, name: A Person, account: account-1, at: ['2026-10-21T08:00:00Z']}\n"
 )
 
 
@@ -98,6 +134,90 @@ def test_front_matter_reads_back_as_written() -> None:
     second = MOMENT.replace(microsecond=0)
     assert front_matter == replace(PAGE, created=second, updated=second, fetched_at=second)
     assert body == "# Yes\n\nBody.\n"
+
+
+def test_people_in_every_role_read_back_byte_for_byte() -> None:
+    """Each person on one line, by role, with an account id and a commenter's times."""
+    text = dump(ISSUE, "# What are archived ideas?\n")
+    assert f"labels: []\n{PEOPLE}created: " in text
+    front_matter, body = load(text, "issue.md")
+    assert dump(front_matter, body) == text
+    second = MOMENT.replace(microsecond=0)
+    assert front_matter == replace(ISSUE, created=second, updated=second, fetched_at=second)
+    assert (front_matter.author, front_matter.assignee) == ("A Person", "A Person")
+
+
+def test_an_account_and_people_are_left_out_when_the_source_has_none() -> None:
+    """No account without an account id, ``[]`` without people; the properties say nobody."""
+    assert "people:\n- {role: author, name: A Person}\ncreated: " in dump(PAGE, "")
+    assert "people: []\n" in dump(ENTRY, "")
+    assert (ENTRY.author, ENTRY.assignee) == (None, None)
+    assert (PAGE.author, PAGE.assignee) == ("A Person", None)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "refusal"),
+    [
+        ("role: creator", "role: reviewer", r"people\[1\]: role: not one of the roles"),
+        ("account: account-2}", "account: account-2, email: x}", r"people\[1\]: fields other"),
+        (
+            "{role: creator, name: Another Person",
+            "{name: Another Person, role: creator",
+            r"people\[1\]: fields other",
+        ),
+        ("role: creator", "role: author", r"^issue\.md: people: a second author"),
+        ("role: assignee", "role: creator", r"^issue\.md: people: a second author"),
+        ("role: creator", "role: assignee", r"^issue\.md: people: a second author"),
+        (
+            "name: A Person, account: account-1, at",
+            "name: Another Person, account: account-2, at",
+            r"^issue\.md: people: .* a commenter twice",
+        ),
+        (
+            "account: account-1}",
+            "account: account-1, at: ['2026-10-20T09:12:00Z']}",
+            r"people\[0\]: at: only and always for a commenter",
+        ),
+        (
+            "at: ['2026-10-21T08:00:00Z']}",
+            "at: []}",
+            r"people\[4\]: at: only and always for a commenter",
+        ),
+        (
+            "'2026-10-21T08:00:00Z']}",
+            "'2026-10-21T10:00:00+02:00']}",
+            r"people\[3\]: at: a time not in UTC",
+        ),
+        (
+            "'2026-10-20T09:12:00Z', '2026-10-21T08:00:00Z'",
+            "'2026-10-21T08:00:00Z', '2026-10-20T09:12:00Z'",
+            r"people\[3\]: at: .* out of order",
+        ),
+        (
+            "at: ['2026-10-21T08:00:00Z']}",
+            "at: ['yesterday']}",
+            r"people\[4\]\.at\[0\]: expected an ISO 8601 time",
+        ),
+        (
+            "name: Another Person, account: account-2}",
+            'name: "Another\\nPerson", account: account-2}',
+            r"people\[1\]: name, account: empty, or with a line break",
+        ),
+        (
+            "name: Another Person, account: account-2}",
+            "name: '', account: account-2}",
+            r"people\[1\]: name, account: empty",
+        ),
+        ("account: account-1}", "account: null}", r"people\[0\]\.account: expected a string"),
+        (PEOPLE, "author: A Person\nassignee: A Person\n", "exactly the mirror's keys"),
+    ],
+)
+def test_people_off_the_layout_are_refused_by_place(old: str, new: str, refusal: str) -> None:
+    """A role, field, repeat, time or name off the layout's rules; the format before 041."""
+    text = dump(ISSUE, "")
+    assert old in text
+    with pytest.raises(RepresentationError, match=refusal):
+        load(text.replace(old, new), "issue.md")
 
 
 def test_strings_that_look_like_other_types_are_quoted() -> None:
@@ -134,6 +254,7 @@ def test_front_matter_with_other_keys_is_refused(old: str, new: str) -> None:
         {"type": "transcript", "id": "t-20261020-1"},
         {"type": "transcript", "id": "t-0123456789abcdef"},
         {"id": "e-0123456789abcdef"},
+        {"people": (PersonRole(role="assignee", name="A Person"),)},
     ],
 )
 def test_work_log_front_matter_reads_back_as_written(changes: dict[str, object]) -> None:
@@ -153,7 +274,6 @@ def test_work_log_front_matter_reads_back_as_written(changes: dict[str, object])
         {"id": "t-20261020-" + "a" * 65},
         {"revision": "000003"},
         {"space": "MFS"},
-        {"assignee": "Someone"},
         {"version": 3},
     ],
 )
@@ -179,7 +299,6 @@ def test_a_file_without_front_matter_is_refused() -> None:
         {"labels": ("one\x85two",)},
         {"key": "PRB-1"},
         {"version": None},
-        {"assignee": "Someone"},
         {"created": MOMENT.astimezone(timezone(timedelta(hours=1)))},
     ],
 )

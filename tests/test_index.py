@@ -9,6 +9,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from dataclasses import replace
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -16,11 +17,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from atlassian_offline_mcp.cli.main import main
+from atlassian_offline_mcp.mirror.domain.mirror import PersonRole
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
-from atlassian_offline_mcp.search.app.indexing import Indexing, build_index, index_mirror
+from atlassian_offline_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
 from atlassian_offline_mcp.search.domain.search import Filters
-from tests.endpoint import nothing_listening
+from tests.endpoint import nothing_listening, tiny
 from tests.mirrors import CREATED, FILLERS, MOMENT, PEOPLE, fillers, issue, location, page, write
 from tests.test_cli import logged_as
 from tests.test_observed import CONTROL, said
@@ -436,11 +438,67 @@ def test_a_score_by_words_holds_the_created_date(people: Path) -> None:
     }
 
 
-@pytest.mark.parametrize("schema", ["1", "2"])
+# An issue with an author, a creator and two commenters, one of whom commented twice.
+COMMENTED = issue(
+    "PROJ-9",
+    "Broker rebalance",
+    people=(
+        PersonRole(role="author", name="A Person", account="account-1"),
+        PersonRole(role="creator", name="Another Person", account="account-2"),
+        PersonRole(
+            role="commenter",
+            name="Another Person",
+            account="account-2",
+            at=(CREATED, CREATED + timedelta(hours=1)),
+        ),
+        PersonRole(
+            role="commenter",
+            name="A Person",
+            account="account-1",
+            at=(CREATED + timedelta(hours=2),),
+        ),
+    ),
+)
+
+
+def test_people_are_a_row_per_person_and_role_and_a_commenter_s_per_comment(data: Path) -> None:
+    """The side table filters; the documents' own column gives the front matter back whole."""
+    path = write(data / "docs", COMMENTED)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        rows = connection.execute("SELECT role, name, account, at FROM people ORDER BY rowid")
+        people = rows.fetchall()
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(documents)")}
+    assert people == [
+        ("author", "A Person", "account-1", None),
+        ("creator", "Another Person", "account-2", None),
+        ("commenter", "Another Person", "account-2", "2026-10-25T00:00:00+00:00"),
+        ("commenter", "Another Person", "account-2", "2026-10-25T01:00:00+00:00"),
+        ("commenter", "A Person", "account-1", "2026-10-25T02:00:00+00:00"),
+    ]
+    assert "people" in columns
+    assert not {"author", "assignee"} & columns
+    with reading(data / "index.sqlite") as reader:
+        (entry,) = reader.entries(paths=[path])
+    assert entry.front == COMMENTED
+
+
+def test_people_are_not_embedded_so_a_rebuild_with_new_people_embeds_nothing(data: Path) -> None:
+    """A piece embeds its document's title, breadcrumb and text alone, never its people."""
+    write(data / "docs", issue("PROJ-9", "Broker rebalance"))
+    embedding = Embedding(tiny(), data / "v.db")
+    first = build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
+    write(data / "docs", COMMENTED)
+    again = build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
+    assert first.embedded > 0
+    assert again.embedded == 0
+
+
+@pytest.mark.parametrize("schema", ["1", "2", "3"])
 def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     data: Path, schema: str
 ) -> None:
-    """Plan 006's index, or one built before the build id: never half read."""
+    """Plan 006's index, one built before the build id, or before people: never half read."""
     write(data / "docs", page("196845", "Kafka"), BODY)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with sqlite3.connect(data / "index.sqlite") as connection:

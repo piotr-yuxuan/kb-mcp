@@ -16,7 +16,7 @@ from html import escape
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.kernel.content import BlogPost, ConfluenceDocument, Folder, Issue, Page
-from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from atlassian_offline_mcp.mirror.domain.mirror_layout import NONE, one_line
 
 if TYPE_CHECKING:
@@ -154,8 +154,14 @@ def front_matter(
         status=one_line(catalogue.status(document)),
         issue_type=None if issue is None else one_line(issue.issue_type),
         labels=tuple(one_line(label) for label in document.labels),
-        author=catalogue.name(document.author),
-        assignee=None if issue is None else catalogue.name(issue.assignee),
+        people=tuple(
+            PersonRole(role=role, name=catalogue.name(person), account=person.account_id)
+            for role, person in (
+                ("author", document.author),
+                ("assignee", None if issue is None else issue.assignee),
+            )
+            if person is not None
+        ),
         created=document.created.astimezone(UTC),
         updated=document.updated.astimezone(UTC),
         version=None if confluence is None else confluence.version,
