@@ -194,7 +194,7 @@ Every run still reads the store and builds every document's HTML.
 - **Settled** by the maintainer's answer to [plan
   034](../work/changelog/034-incremental-fetch.md#questions-for-the-user)'s fourth
   question, "Cache pandoc's output", and built by [plan
-  039](../work/plans/039-conversion-cache.md#decisions).
+  039](../work/changelog/039-conversion-cache.md#decisions).
 
 ## SQLite FTS5
 
