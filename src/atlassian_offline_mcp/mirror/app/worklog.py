@@ -16,6 +16,7 @@ document is counted, and each conversion timed, by its kind, as
 from __future__ import annotations
 
 import time
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
@@ -32,7 +33,9 @@ from atlassian_offline_mcp.mirror.domain.mirror_layout import one_line, worklog_
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.sources.worklog.adapters import files
 from atlassian_offline_mcp.sources.worklog.domain.worklog import (
+    DAY_TYPE,
     ENTRY,
+    MEETING_TYPE,
     TODO,
     TODO_ARCHIVE,
     TRANSCRIPTS,
@@ -121,9 +124,12 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
         journaled, unlinked = journal(todo, archive, archives=archives, transcripts=named)
         documents_read = (*journaled, *linked_back(named, journaled))
     log = structlog.get_logger()
+    kinds = Counter(each.type for each in journaled)
     log.info(
         "worklog.read",
-        entries=sum(1 for each in documents_read if each.type == ENTRY),
+        entries=kinds[ENTRY],
+        days=kinds[DAY_TYPE],
+        meetings=kinds[MEETING_TYPE],
         transcripts=len(named),
         html=listing.html,
         problems=len(problems),

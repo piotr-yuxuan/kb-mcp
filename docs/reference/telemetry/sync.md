@@ -18,7 +18,7 @@ says of tasks.
 | `sync.end` | info | `status`, `steps` | The rows end: the exit status, and each row as `<row>: <outcome>` |
 | `sync.refused` | error | `reason` | What the run cannot go on with, found before the rows: an option of the period that does not read, a target with nowhere to start, a damaged record of what is covered, a work log that is not a folder: exit 2. An embedding endpoint that `index` would refuse is refused before, as `run.refused`, except in a dry run |
 | `sync.pandoc_missing` | error | `reason` | Pandoc went from PATH once the run began: exit 1 |
-| `worklog.read` | info | `entries`, `transcripts`, `html`, `problems` | The work log is read: its entries, its transcripts, the HTML transcripts left out, the files not read |
+| `worklog.read` | info | `entries`, `days`, `meetings`, `transcripts`, `html`, `problems` | The work log is read: its entries, days, meetings and transcripts, the HTML transcripts left out, the files not read |
 | `worklog.document` | debug | `path`, `id`, `title`, `kind`, `outcome` | A document's file is built: its path in the mirror, its id, its title, `entry`, `day`, `meeting` or `transcript`, and `mirrored`, converted, or `kept`, its revision held |
 | `worklog.end` | info | `documents`, `written`, `unchanged`, `removed`, `to_convert`, `to_remove`, `problems` | The work log's files are written, or in a dry run, counted: those that a run would convert and remove |
 | `worklog.problem` | warning | `where`, `reason` | A file not read, or a document not converted, by its path, never its content: the row fails |

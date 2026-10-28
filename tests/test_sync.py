@@ -1166,10 +1166,11 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
 ) -> None:
     """``worklog.read``, ``worklog.document`` and ``worklog.end``, by their values.
 
-    Fresh, thirteen entries, six transcripts and one HTML transcript read, none unread;
-    each document mirrored, by its kind and path; a file each written. Unchanged, each
-    kept and none written. A dry run says each to convert on an empty mirror, none
-    after a run, and one file to remove once a transcript is deleted.
+    Fresh, thirteen entries, two days, eight meetings, six transcripts and one HTML
+    transcript read, none unread; each document mirrored, by its kind and path; a file
+    each written. Unchanged, each kept and none written. A dry run says each to convert
+    on an empty mirror, none after a run, and one file to remove once a transcript is
+    deleted.
     """
     settings, step = chosen_settings(tmp_path, worklog), Worklog(worklog, archives=True)
     dry = Context(settings, Pandoc.find(), lambda: FIRST, lambda _: None, dry_run=True)
@@ -1183,7 +1184,8 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     with capture_logs() as planned_again:
         sync(dry, [step])
     (read,) = logged_as(fresh, "worklog.read")
-    assert (read["entries"], read["transcripts"], read["html"], read["problems"]) == (13, 6, 1, 0)
+    counts = ("entries", "days", "meetings", "transcripts", "html", "problems")
+    assert tuple(read[each] for each in counts) == (13, 2, 8, 6, 1, 0)
     documents = logged_as(fresh, "worklog.document")
     assert Counter(each["kind"] for each in documents) == WORKLOG_KINDS
     assert {each["outcome"] for each in documents} == {"mirrored"}
