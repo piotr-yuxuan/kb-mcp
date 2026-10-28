@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import pytest
@@ -347,13 +347,35 @@ def test_coverage_and_tombstones_read_back_as_written(store: RawStore) -> None:
         {
             Target("confluence", "MFS"): Period(start, FETCHED),
             Target("jira", "PRB"): Period(start - timedelta(days=1), FETCHED),
-        }
+            Target("jira", "OPS"): Period(start, FETCHED),
+        },
+        frozenset({Target("jira", "PRB")}),
     )
     store.put_coverage(coverage)
     assert store.coverage() == coverage
     stone = Tombstone("pages", "1001", "196613", FETCHED, confirmed=True)
     store.put_tombstones([stone])
     assert store.tombstones() == {("pages", "1001"): stone}
+
+
+def test_a_coverage_record_keeps_the_format_of_before_034_beside_exact(store: RawStore) -> None:
+    """Its four keys as they were, ``exact`` only on an exact entry: old versions read it.
+
+    A record from before plan 034, without ``exact``, reads as inexact.
+    """
+    start = datetime(2026, 10, 15, 9, tzinfo=UTC)
+    period = Period(start, start + timedelta(days=7))
+    space, project = Target("confluence", "MFS"), Target("jira", "PRB")
+    store.put_coverage(Coverage({space: period, project: period}, frozenset({project})))
+    written = json.loads((store.root / "coverage.json").read_text("utf-8"))
+    times = {"start": "2026-10-15T09:00:00+00:00", "end": "2026-10-22T09:00:00+00:00"}
+    assert written == [
+        {"source": "confluence", "key": "MFS", **times},
+        {"source": "jira", "key": "PRB", **times, "exact": True},
+    ]
+    old = [{key: value for key, value in entry.items() if key != "exact"} for entry in written]
+    (store.root / "coverage.json").write_text(json.dumps(old), "utf-8")
+    assert store.coverage() == Coverage({space: period, project: period})
 
 
 def test_records_never_written_read_as_empty(tmp_path: Path) -> None:

@@ -8,13 +8,16 @@ elsewhere.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from atlassian_offline_mcp.kernel.content import PROJECT_KEY, SPACE_KEY, RefusedError, require
 from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, Period, PeriodError
 
 # The rule of a target's key, by source.
 KEYS = {"confluence": SPACE_KEY, "jira": PROJECT_KEY}
+# What a run made of a target's coverage: grown to its window's end, ended at a failure,
+# or left as it was.
+type Extension = Literal["extended", "capped", "held"]
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -39,33 +42,61 @@ class Target:
         """Name the target as the user does: ``space ENG``, ``project PLAT``."""
         return f"{'space' if self.source == 'confluence' else 'project'} {self.key}"
 
+    @property
+    def searched_by_time(self) -> bool:
+        """Say whether its documents are found by their update time: a project's are.
+
+        A space is listed whole.
+        """
+        return self.source == "jira"
+
 
 @dataclass(frozen=True)
 class Coverage:
     """Each target's covered period: every document updated in it is stored.
 
-    A failure within the period (a document whose fetch failed, an entry the adapter
-    refuses) leaves no hole for long: a run without --since starts at the covered start,
-    so it asks for everything in the period again.
+    A space is listed whole on every run, so a failure within its period (a document
+    whose fetch failed, an entry the adapter refuses) leaves no hole for long: a run
+    without --since starts at its covered start, and asks for the whole period again. A
+    project is searched by update time: its period ends at its first failure, so that a
+    search from its end asks for that again. Such an entry is ``exact``; one written
+    before plan 034 is not, and its end may hide a failure.
     """
 
     periods: Mapping[Target, Period] = field(default_factory=dict)
+    exact: frozenset[Target] = frozenset()
 
-    def extended(self, target: Target, fetched: Period) -> Coverage:
-        """Return the coverage once a run listed ``fetched`` whole for the target.
+    def extended(
+        self, target: Target, fetched: Period, failed: datetime | None = None
+    ) -> tuple[Coverage, Extension]:
+        """Return the coverage once a run listed or searched ``fetched`` whole for the target.
 
-        The covered period stays one period: a run that overlaps it, or touches it,
-        joins it; a run apart from it leaves it as it was, since joining would claim the
-        gap between them.
+        ``failed`` is the update time of the earliest document found and not stored whole.
+        The covered period stays one period: a run apart from it leaves it as it was,
+        ``held``, since joining would claim the gap between them; one that overlaps or
+        touches it joins it, ``extended``. A project's period is exact once a run has seen
+        it whole: a first run, a run over an exact entry, or one that starts at or before
+        an inexact entry, which it replaces; there a failure ends the period at
+        ``failed``, even below the old end, ``capped``, or leaves it as it was when the
+        period would then be empty. Any other run over an inexact entry joins it, as a
+        space's does, and leaves it inexact.
         """
         covered = self.periods.get(target)
-        if covered is None:
-            joined = fetched
-        elif fetched.start <= covered.end and fetched.end >= covered.start:
-            joined = Period(min(covered.start, fetched.start), max(covered.end, fetched.end))
+        exact = target.searched_by_time and (
+            covered is None or target in self.exact or fetched.start <= covered.start
+        )
+        marked = self.exact | {target} if exact else self.exact
+        if covered is not None and (fetched.start > covered.end or fetched.end < covered.start):
+            return self, "held"
+        if covered is None or (exact and target not in self.exact):
+            start, end = fetched.start, fetched.end
         else:
-            return self
-        return Coverage({**self.periods, target: joined})
+            start, end = min(covered.start, fetched.start), max(covered.end, fetched.end)
+        if not exact or failed is None:
+            return Coverage({**self.periods, target: Period(start, end)}, marked), "extended"
+        if failed <= start:
+            return self, "capped"
+        return Coverage({**self.periods, target: Period(start, failed)}, marked), "capped"
 
 
 def window(coverage: Coverage, target: Target, since: datetime | None, end: datetime) -> Period:
@@ -82,4 +113,4 @@ def window(coverage: Coverage, target: Target, since: datetime | None, end: date
     return Period(max(start, EPOCH), end)
 
 
-__all__ = ["EPOCH", "Coverage", "Target", "window"]
+__all__ = ["EPOCH", "Coverage", "Extension", "Target", "window"]

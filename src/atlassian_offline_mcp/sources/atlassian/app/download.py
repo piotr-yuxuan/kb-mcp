@@ -136,7 +136,9 @@ class Download:
 
     Each target is fetched over its own window, or over ``period`` when it has none.
     With ``plan``, the run lists and decides, and fetches and writes nothing. ``covered``
-    names the targets whose listing was read whole, so that their coverage can grow.
+    names the targets whose listing was read whole, so that their coverage can grow, and
+    ``first_failed`` the update time of each one's earliest document found and not
+    stored whole; ``held``, those read whole whose coverage stays as it was, and why.
     ``failed_targets`` names the user's own keys that failed, for the command to show;
     they never enter the report.
     """
@@ -152,6 +154,8 @@ class Download:
     windows: Mapping[Target, Period] = field(default_factory=dict)
     plan: bool = False
     covered: list[Target] = field(default_factory=list)
+    first_failed: dict[Target, datetime] = field(default_factory=dict)
+    held: dict[Target, str] = field(default_factory=dict)
     tombstones: dict[tuple[str, str], Tombstone] = field(default_factory=dict)
     absent: dict[str, tuple[dict[tuple[str, str], str], int, dict[tuple[str, str], Tombstone]]] = (
         field(default_factory=dict)
@@ -176,13 +180,13 @@ class Download:
         with task("targets", len(answered_spaces) + len(answered_projects)) as targets:
             for key in targets.each(answered_spaces, str):
                 target = Target("confluence", key)
-                if self.space(key, self.windows.get(target, self.period)):
+                if self.space(target, self.windows.get(target, self.period)):
                     self.covered.append(target)
             if not self.plan:
                 self.probe_absent()
             for key in targets.each(answered_projects, str):
                 target = Target("jira", key)
-                if self.project(key, self.windows.get(target, self.period)):
+                if self.project(target, self.windows.get(target, self.period)):
                     self.covered.append(target)
         if not self.plan:
             self.users()
@@ -230,14 +234,14 @@ class Download:
         self.report.add(f"{label(kind)}: listed", len(found))
         return found
 
-    def space(self, key: str, period: Period) -> bool:
+    def space(self, target: Target, period: Period) -> bool:
         """List a space whole, store its listings, and fetch what changed in the period.
 
-        The task ``listing`` reports the pages of its listings read, and the task
-        ``documents`` the documents it lists, each by its id. Return whether the space
-        was listed whole. All is the span ``download.space``, an error when the space
-        could not be listed.
+        The task ``listing`` reports the pages of its listings read, and ``fetch_listed``
+        the documents. Return whether the space was listed whole. All is the span
+        ``download.space``, an error when the space could not be listed.
         """
+        key = target.key
         with TRACER.start_as_current_span("download.space", attributes={"aom.target": key}) as span:
             try:
                 found = self.collect(confluence_v2.space_request(key), confluence_v2.listing_page)
@@ -271,9 +275,7 @@ class Download:
                 self.track(space.id, listed)
                 folders = self.folders(pages)
                 self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
-            with task("documents", len(documents)) as considered:
-                for document in considered.each(documents, lambda listed: listed.id):
-                    self.consider(document, period)
+            self.fetch_listed(target, documents, period)
             return True
 
     def track(self, space_id: str, listed: Mapping[type[Document], set[str]]) -> None:
@@ -386,14 +388,16 @@ class Download:
                 wanted.append(folder.parent_id)
         return [response for response in found.values() if response is not None]
 
-    def project(self, key: str, period: Period) -> bool:
+    def project(self, target: Target, period: Period) -> bool:
         """Search a project's issues updated in the period, and fetch what changed.
 
-        The task ``listing`` reports the pages of the search read, and the task
-        ``documents`` the issues found, each by its id. Return whether the search was
-        read whole. All is the span ``download.project``, an error when the search
-        could not be read.
+        The task ``listing`` reports the pages of the search read, and ``fetch_listed``
+        the issues found. Return whether the search was read whole, each of its entries
+        read: an entry that the adapter refuses has no update time for the coverage to
+        stop at, so it holds the project's. All is the span ``download.project``, an error
+        when the search could not be read.
         """
+        key = target.key
         start = (period.start - JQL_MARGIN).date()
         end = (period.end + JQL_MARGIN).date()
         attributes = {"aom.target": key}
@@ -413,10 +417,26 @@ class Download:
             structlog.get_logger().info(
                 "download.listed", target=f"project {key}", documents=len(issues)
             )
-            with task("documents", len(issues)) as considered:
-                for issue in considered.each(issues, lambda listed: listed.id):
-                    self.consider(issue, period)
+            self.fetch_listed(target, issues, period)
+            if len(issues) < len(entries):
+                self.held[target] = "entries refused"
+                return False
             return True
+
+    def fetch_listed(self, target: Target, documents: Sequence[Listed], period: Period) -> None:
+        """Consider each document that a target lists, recording its earliest not stored whole.
+
+        The task ``documents`` reports them, each by its id; ``first_failed`` keeps, for
+        the target, the update time of the earliest that ``consider`` did not store whole.
+        """
+        with task("documents", len(documents)) as considered:
+            failed = [
+                document.updated
+                for document in considered.each(documents, lambda listed: listed.id)
+                if not self.consider(document, period)
+            ]
+        if failed:
+            self.first_failed[target] = min(failed)
 
     def count_files(self, entries: Iterable[object], period: Period) -> None:
         """Count the files, and their bytes, that a run would download for these issues."""
@@ -432,25 +452,26 @@ class Download:
             self.report.add("files: to download", len(kept))
             self.report.add("files: bytes to download", sum(each.size for each in kept))
 
-    def consider(self, document: Listed, period: Period) -> None:
+    def consider(self, document: Listed, period: Period) -> bool:
         """Fetch a listed document when it is in the period and its revision not stored.
 
-        The fetch is a trace of its own, ``download.document``, linked to the span of the
-        run's trace current when it begins, saying the document's id and kind; an error
-        when the fetch fails, which is a warning, by the document's id.
+        Return False when it is in the period and not stored whole: its fetch failed, its
+        snapshot was refused, a file it keeps failed, or, stored already, it cannot be
+        read; a plan stores nothing, and fails none. The fetch is a trace of its own,
+        ``download.document``, linked to the span of the run's trace current when it
+        begins, saying the document's id and kind; an error when the fetch fails, which
+        is a warning, by the document's id.
         """
         if document.updated not in period:
-            return
+            return True
         what = label(document.type)
         self.report.add(f"{what}: in the period")
         if self.store.has(document):
             self.report.add(f"{what}: already stored")
-            if not self.plan:
-                self.complete(document)
-            return
+            return self.plan or self.complete(document)
         if self.plan:
             self.report.add(f"{what}: to fetch")
-            return
+            return True
         with TRACER.start_as_current_span(
             "download.document",
             context=Context(),  # no parent: the root of a trace of its own
@@ -462,7 +483,7 @@ class Download:
                     name: self.site.json(request) if read is None else self.collect(request, read)
                     for name, (request, read) in SNAPSHOT_REQUESTS[document.type](document).items()
                 }
-                self.keep(document.type, responses)
+                whole = self.keep(document.type, responses)
             except (RepresentationError, SiteError) as error:
                 self.report.failed(what, error)
                 DOCUMENTS.add(1, {"aom.outcome": "failed"})
@@ -470,17 +491,19 @@ class Download:
                 structlog.get_logger().warning(
                     "download.document_failed", id=document.id, kind=what, reason=str(error)
                 )
-                return
+                return False
             self.report.add(f"{what}: fetched")
             DOCUMENTS.add(1, {"aom.outcome": "fetched"})
+            return whole
 
-    def keep(self, kind: type[Document], responses: dict[str, object]) -> None:
-        """Download a snapshot's files, then store it with their digests.
+    def keep(self, kind: type[Document], responses: dict[str, object]) -> bool:
+        """Download a snapshot's files, then store it with their digests; say if it is whole.
 
         A snapshot that its adapter refuses is stored all the same, without files: raw
         first, so that a fixed adapter reads it, and a later run downloads its files.
         Read, its document's title goes on the current span, and in ``download.document``
-        at DEBUG; refused, it is a warning, without the id that it would have given.
+        at DEBUG; refused, it is a warning, without the id that it would have given. It is
+        whole when read, with every file it keeps.
         """
         try:
             snapshot = REPRESENTATIONS[kind].snapshot(responses)
@@ -495,36 +518,43 @@ class Download:
                 "download.document_unread", kind=label(kind), reason=str(error)
             )
             snapshot = None
-        blobs = self.files(snapshot.attachments) if snapshot else {}
+        blobs, whole = self.files(snapshot.attachments) if snapshot else ({}, False)
         self.store.put(kind, responses, self.now(), blobs)
         if snapshot and snapshot.document.author and kind is not Issue:
             self.authors.add(snapshot.document.author.account_id)
+        return whole
 
-    def complete(self, document: Listed) -> None:
-        """Download the files that a stored snapshot should have and lacks."""
+    def complete(self, document: Listed) -> bool:
+        """Download the files that a stored snapshot should have and lacks.
+
+        Return whether it is now whole: read, with every file it keeps.
+        """
         try:
             stored = self.store.read(document)
         except (RepresentationError, ValueError, OSError) as error:
             self.report.failed(f"{label(document.type)} read", error)
-            return
+            return False
         missing = [
             attachment
             for attachment in stored.snapshot.attachments
             if attachment.id not in stored.blobs
             and skip_reason(attachment, self.max_file_bytes) is None
         ]
-        self.store.add_blobs(document, self.files(missing))
+        blobs, whole = self.files(missing)
+        self.store.add_blobs(document, blobs)
         if stored.snapshot.document.author and document.type is not Issue:
             self.authors.add(stored.snapshot.document.author.account_id)
+        return whole
 
-    def files(self, attachments: Iterable[Attachment]) -> dict[str, str]:
-        """Download the attachments' files that are kept, and return their digests by id.
+    def files(self, attachments: Iterable[Attachment]) -> tuple[dict[str, str], bool]:
+        """Download the attachments' files that are kept; return their digests by id.
 
-        A file skipped is said at INFO, one that failed is a warning, each by its id and
-        its name.
+        Return too whether every file kept was downloaded: a skip is no failure. A file
+        skipped is said at INFO, one that failed is a warning, each by its id and its name.
         """
         log = structlog.get_logger()
         blobs: dict[str, str] = {}
+        whole = True
         for attachment in attachments:
             named = {"id": attachment.id, "file_name": attachment.filename}
             reason = skip_reason(attachment, self.max_file_bytes)
@@ -539,17 +569,19 @@ class Download:
                 self.report.failed("files", error)
                 FILES.add(1, {"aom.outcome": "failed"})
                 log.warning("download.file_failed", **named, reason=str(error))
+                whole = False
                 continue
             if len(data) != attachment.size:  # a proxy's page, say, in the file's place
                 self.report.add("files failed: not the size listed")
                 FILES.add(1, {"aom.outcome": "failed"})
                 log.warning("download.file_failed", **named, reason="not the size listed")
+                whole = False
                 continue
             blobs[attachment.id] = self.store.put_blob(data)
             self.report.add("files: downloaded")
             FILES.add(1, {"aom.outcome": "downloaded"})
             BYTES.add(len(data))
-        return blobs
+        return blobs, whole
 
     def users(self) -> None:
         """Merge the names of the Confluence authors seen into the users kept.
@@ -653,12 +685,14 @@ def download(
 ) -> Outcome:
     """Run a download signed in as the settings say, and save its report, even when stopped.
 
-    Each target is fetched over its window; the coverage of every target listed whole
-    grows, and the tombstones found are kept, even when the run stops. The status is
-    ``OK`` when nothing failed, ``FAILED`` when something did, and ``SIGN_IN_AGAIN``
-    when the sign-in no longer holds or no session was saved. Raises PeriodError for a
-    target with nowhere to start, and StoreBusyError when another run writes, both
-    before anything is written.
+    Each target is fetched over its window. The coverage of every target listed whole
+    grows as ``Coverage.extended`` rules, and the tombstones found are kept, even when
+    the run stops; ``download.coverage`` says at INFO what became of each finished
+    target's coverage, and why it was held, if it was. The status is ``OK`` when nothing
+    failed, ``FAILED`` when something did, and ``SIGN_IN_AGAIN`` when the sign-in no
+    longer holds or no session was saved. Raises PeriodError for a target with nowhere
+    to start, and StoreBusyError when another run writes, both before anything is
+    written.
     """
     report, failed_targets, status = Report(), [], None
     store, started = RawStore(settings.raw), now()
@@ -689,8 +723,18 @@ def download(
                     report.add("runs: stopped, too many failures in a row")
                 finally:
                     signing.keep(client)
+                    log = structlog.get_logger()
                     for target in run.covered:
-                        coverage = coverage.extended(target, windows[target])
+                        failed = run.first_failed.get(target)
+                        coverage, outcome = coverage.extended(target, windows[target], failed)
+                        reason = (
+                            {"reason": "apart from what is covered"} if outcome == "held" else {}
+                        )
+                        log.info("download.coverage", target=str(target), outcome=outcome, **reason)
+                    for target, why in run.held.items():
+                        log.info(
+                            "download.coverage", target=str(target), outcome="held", reason=why
+                        )
                     store.put_coverage(coverage)
                     store.put_tombstones(run.tombstones.values())
         except SignInNeededError:  # from the client: no session was saved

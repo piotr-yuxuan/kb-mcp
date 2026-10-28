@@ -114,7 +114,9 @@ class FakeSite:
     """Answer the GETs of a download as the sandbox would, and record them.
 
     The switches change the site: one page in a changed shape, an expired session, the
-    spaces found by key, no Jira, every page failing, many pages in the period.
+    spaces found by key, no Jira, every page failing, many pages in the period; the
+    issues that the search finds, those whose GET answers a status, and those served
+    without their summary, which the adapter refuses.
     """
 
     changed_labels: bool = False
@@ -131,6 +133,9 @@ class FakeSite:
     search_status: int = 200
     search_changed: bool = False
     bulk_changed: bool = False
+    issues: dict[str, dict[str, object]] = field(default_factory=lambda: dict(ISSUES))
+    failing_issues: dict[str, int] = field(default_factory=dict)
+    unread_issues: set[str] = field(default_factory=set)
     asked: list[httpx.URL] = field(default_factory=list)
 
     def routes(self) -> dict[str, Callable[[httpx.Request], httpx.Response]]:
@@ -157,14 +162,15 @@ class FakeSite:
             ),
             "/file/abc/binary": lambda _: httpx.Response(200, content=PICTURE),
             "/rest/api/3/search/jql": lambda _: httpx.Response(
-                200, json={"issues": list(ISSUES.values()), "isLast": True}
+                200, json={"issues": list(self.issues.values()), "isLast": True}
             ),
-            "/rest/api/3/issue/10000": lambda _: httpx.Response(200, json=ISSUES["10000"]),
-            "/rest/api/3/issue/10000/comment": self.comments,
             "/rest/api/3/attachment/content/10000": lambda _: httpx.Response(
                 303, headers={"location": MEDIA}
             ),
         }
+        for issue_id in self.issues:
+            routes[f"/rest/api/3/issue/{issue_id}"] = lambda _, i=issue_id: self.issue(i)
+            routes[f"/rest/api/3/issue/{issue_id}/comment"] = self.comments
         for folder_id, folder in FOLDERS.items():
             routes[f"/wiki/api/v2/folders/{folder_id}"] = lambda _, f=folder: httpx.Response(
                 200, json=f
@@ -223,11 +229,22 @@ class FakeSite:
         if self.search_status != HTTP_OK:
             return httpx.Response(self.search_status, json={"errorMessages": ["no project"]})
         entries = []
-        for issue in ISSUES.values():
+        for issue in self.issues.values():
             values = issue["fields"]
             assert isinstance(values, dict)
             entries.append({**issue, "fields": {k: v for k, v in values.items() if k != "summary"}})
         return httpx.Response(200, json={"issues": entries, "isLast": True})
+
+    def issue(self, issue_id: str) -> httpx.Response:
+        """Serve an issue, with its status if it fails, or without its summary."""
+        if issue_id in self.failing_issues:
+            return httpx.Response(self.failing_issues[issue_id])
+        issue = self.issues[issue_id]
+        if issue_id in self.unread_issues:
+            values = issue["fields"]
+            assert isinstance(values, dict)
+            issue = {**issue, "fields": {k: v for k, v in values.items() if k != "summary"}}
+        return httpx.Response(200, json=issue)
 
     def many(self) -> dict[str, dict[str, object]]:
         """Give the many pages in the period, by id, as the switch has them: none by default."""

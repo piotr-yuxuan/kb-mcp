@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import pytest
 
 from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target, window
 from atlassian_offline_mcp.sources.atlassian.domain.period import Period, PeriodError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 NOW = datetime(2026, 11, 1, 9, tzinfo=UTC)
 COVERED = datetime(2026, 10, 15, 9, tzinfo=UTC)
@@ -38,15 +42,17 @@ def test_a_target_never_covered_needs_since() -> None:
 
 
 def test_a_first_run_covers_its_period() -> None:
-    """--since 7d on a new target covers the last seven days."""
+    """--since 7d on a new target covers the last seven days; a project's, exactly."""
     fetched = Period(NOW - timedelta(days=7), NOW)
-    assert Coverage().extended(PROJECT, fetched).periods == {PROJECT: fetched}
+    exact = Coverage({PROJECT: fetched}, frozenset({PROJECT}))
+    assert Coverage().extended(PROJECT, fetched) == (exact, "extended")
+    assert Coverage().extended(SPACE, fetched) == (Coverage({SPACE: fetched}), "extended")
 
 
 def test_a_run_apart_from_the_covered_period_leaves_it() -> None:
     """A period that does not touch the covered one would claim the gap; it is not joined."""
     fetched = Period(datetime(2026, 1, 1, tzinfo=UTC), datetime(2026, 6, 1, tzinfo=UTC))
-    assert covered().extended(SPACE, fetched) == covered()
+    assert covered().extended(SPACE, fetched) == (covered(), "held")
 
 
 def test_a_later_short_run_does_not_claim_the_days_between() -> None:
@@ -55,16 +61,94 @@ def test_a_later_short_run_does_not_claim_the_days_between() -> None:
         {SPACE: Period(datetime(2026, 10, 1, tzinfo=UTC), datetime(2026, 10, 8, tzinfo=UTC))}
     )
     late = Period(datetime(2026, 10, 18, tzinfo=UTC), datetime(2026, 10, 21, tzinfo=UTC))
-    assert early.extended(SPACE, late) == early
+    assert early.extended(SPACE, late) == (early, "held")
 
 
 def test_a_run_that_reaches_the_covered_start_joins_it() -> None:
     """A period ending at the covered start makes one period with it."""
     fetched = Period(datetime(2026, 6, 1, tzinfo=UTC), COVERED)
-    assert covered().extended(SPACE, fetched).periods[SPACE] == Period(fetched.start, NOW)
+    assert covered().extended(SPACE, fetched)[0].periods[SPACE] == Period(fetched.start, NOW)
 
 
 def test_a_run_inside_the_covered_period_keeps_it() -> None:
     """A catch-up never moves the covered start forward, nor the end back."""
     fetched = Period(COVERED + timedelta(days=3), NOW - timedelta(days=1))
-    assert covered().extended(SPACE, fetched) == covered()
+    assert covered().extended(SPACE, fetched) == (covered(), "extended")
+
+
+# Plan 034: a project's end is exact, and capped at its first failure.
+END = datetime(2026, 10, 27, 9, tzinfo=UTC)
+DAY = timedelta(days=1)
+
+
+def exactly(start: datetime, end: datetime) -> Coverage:
+    """Return the project covered exactly from ``start`` to ``end``."""
+    return Coverage({PROJECT: Period(start, end)}, frozenset({PROJECT}))
+
+
+def before_034(start: datetime, end: datetime) -> Coverage:
+    """Return the project covered from ``start`` to ``end`` by a record without exact."""
+    return Coverage({PROJECT: Period(start, end)})
+
+
+def test_a_failure_does_not_end_a_space_s_period() -> None:
+    """A space is listed whole: the next catch-up asks for its whole period again."""
+    fetched = Period(COVERED, NOW + DAY)
+    after = covered().extended(SPACE, fetched, NOW)
+    assert after == (Coverage({SPACE: fetched}), "extended")
+
+
+def test_a_project_s_period_ends_at_its_first_failure_whatever_the_run() -> None:
+    """A first run, or a run over an exact entry: the end is the failure's update time."""
+    failed = NOW - 2 * DAY
+    first = Period(NOW - 7 * DAY, NOW)
+    assert Coverage().extended(PROJECT, first, failed) == (exactly(first.start, failed), "capped")
+    later = Period(END - DAY, NOW)
+    capped = exactly(COVERED, failed)
+    assert exactly(COVERED, END).extended(PROJECT, later, failed) == (capped, "capped")
+    assert exactly(COVERED, END).extended(PROJECT, later) == (exactly(COVERED, NOW), "extended")
+
+
+def test_a_failure_below_the_old_end_lowers_it() -> None:
+    """--since before the covered end, and a failure there: the end comes back to it."""
+    failed = END - 3 * DAY
+    fetched = Period(END - 5 * DAY, NOW)
+    assert exactly(COVERED, END).extended(PROJECT, fetched, failed) == (
+        exactly(COVERED, failed),
+        "capped",
+    )
+
+
+def test_a_failure_at_the_start_of_a_catch_up_ends_the_period_there() -> None:
+    """The window starts a day before the covered end; failing at its start ends it there."""
+    fetched = Period(END - DAY, NOW)
+    assert exactly(COVERED, END).extended(PROJECT, fetched, END - DAY) == (
+        exactly(COVERED, END - DAY),
+        "capped",
+    )
+
+
+@pytest.mark.parametrize("record", [exactly, before_034])
+def test_a_failure_at_the_very_start_of_an_earlier_window_leaves_the_coverage(
+    record: Callable[[datetime, datetime], Coverage],
+) -> None:
+    """The period would be empty: nothing is claimed of that moment, nor is it forgotten."""
+    fetched = Period(COVERED - 3 * DAY, NOW)
+    before = record(COVERED, END)
+    assert before.extended(PROJECT, fetched, fetched.start) == (before, "capped")
+
+
+def test_an_entry_from_before_034_is_replaced_by_a_run_from_its_start() -> None:
+    """That run saw it whole: from its start to the reach, exact from then on."""
+    fetched = Period(COVERED, NOW)
+    failed = END - DAY
+    old = before_034(COVERED, END)
+    assert old.extended(PROJECT, fetched, failed) == (exactly(COVERED, failed), "capped")
+    assert old.extended(PROJECT, fetched) == (exactly(COVERED, NOW), "extended")
+
+
+def test_an_entry_from_before_034_met_inside_is_joined_and_stays_inexact() -> None:
+    """--since after its start: joined as before, so that a hidden failure is never blessed."""
+    fetched = Period(END - 2 * DAY, NOW)
+    old = before_034(COVERED, END)
+    assert old.extended(PROJECT, fetched, END - DAY) == (before_034(COVERED, NOW), "extended")

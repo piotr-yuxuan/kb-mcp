@@ -19,6 +19,7 @@ space's or project's span.
 | `download.file_skipped` | info | `id`, `file_name`, `reason` | An attached file is not downloaded, by its media type or its size |
 | `download.file_failed` | warning | `id`, `file_name`, `reason` | An attached file cannot be downloaded, or is not the size listed |
 | `download.target_failed` | warning | `target` | A space or a project named cannot be listed |
+| `download.coverage` | info | `target`, `outcome`, `reason` | A target finished: its coverage `extended` to its window's end; a project's `capped` at the update time of its earliest document not stored whole; or `held` as it was, `reason` saying why: `entries refused` (a search entry that the adapter refuses), `apart from what is covered` |
 | `download.refused` | error | `reason` | The period or a setting is refused, before any request: exit 2 |
 | `download.store_busy` | error | `store`, `hint` | Another run writes the raw store: exit 1 |
 | `download.interrupted` | warning | `counts` | Ctrl-C stopped the download, whose counts are saved there: exit 130 |
