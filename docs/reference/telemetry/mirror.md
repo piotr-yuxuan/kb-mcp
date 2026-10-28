@@ -15,7 +15,7 @@ own: a run of thousands would make its trace too large.
 | `mirror.written` | info | `written`, `unchanged`, `removed`, `converted`, `reused`, `pruned` | The mirror's files are written: how many changed, were already so, were removed; the conversions pandoc ran, those the cache gave, and those deleted from it, which this run did not use, none when it has problems |
 | `mirror.not_mirrored` | warning | `where`, `reason` | Something is not mirrored, by its place in the raw store, never its content: the run exits 1 |
 | `mirror.nothing_removed` | warning | `problems` | A run with problems removes no file, so that each last good copy stays |
-| `mirror.cache_replaced` | warning | `reason` | The cache of conversions was damaged, no database, or of a format that SQLite cannot read or may not write: deleted and started empty, so that the run converts everything; `reason`, SQLite's error name or `integrity_check`, never content |
+| `mirror.cache_replaced` | warning | `reason` | The cache of conversions was damaged, no database, of a format that SQLite cannot read or may not write, or with a schema that names other columns: deleted and started empty, so that the run converts everything; `reason`, SQLite's error name, `integrity_check`, or `UnicodeDecodeError` when SQLite's report quotes a name of the schema that is no longer UTF-8, never content |
 | `mirror.pandoc_missing` | error | `reason` | Pandoc went from PATH once the run began: exit 1 |
 
 ## Spans

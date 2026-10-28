@@ -27,10 +27,16 @@ if TYPE_CHECKING:
 # How long a write waits for another run's, in seconds, as the vector store's do.
 WAIT_S = 60
 CREATE = "CREATE TABLE IF NOT EXISTS conversions (key TEXT PRIMARY KEY, markdown TEXT NOT NULL)"
+# The columns that a run reads: a schema whose text names others, which CREATE TABLE IF NOT
+# EXISTS leaves as it is, fails here, at opening, and not at the run's first lookup.
+COLUMNS = "SELECT key, markdown FROM conversions LIMIT 0"
 # Every run may write: the write lock, taken first, finds a file that SQLite can read but
 # may not write, such as one whose header names a later format; once in WAL mode, a
 # connection finds it only at its first write.
-SETUP = f"BEGIN IMMEDIATE; {CREATE}; COMMIT; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL"
+SETUP = (
+    f"BEGIN IMMEDIATE; {CREATE}; {COLUMNS}; COMMIT; "
+    "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL"
+)
 # SQLite's primary result codes for a damaged file, and for one that is no database.
 DAMAGED = frozenset({sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB})
 # The codes, exactly, that opening a file also gives when SQLite cannot read its format, or
@@ -118,13 +124,14 @@ def opened(
 
     Opening it takes the write lock once, then ``PRAGMA integrity_check`` judges the
     file, each index against its table included. When the check reports damage, or
-    SQLite finds the file damaged, no database, or in a format that it cannot read or
-    may not write, the file and its ``-wal`` and ``-shm`` are deleted,
-    ``mirror.cache_replaced`` says why, by SQLite's error name or ``integrity_check``,
-    and an empty file takes its place. A file locked past the wait is not damaged, nor
-    one in a folder that the run may not write: it raises, as any write that cannot be
-    made does, and stays. Damage that SQLite finds during the run raises too, once the
-    file is deleted, so that the next run starts a new one.
+    SQLite finds the file damaged, no database, in a format that it cannot read or may
+    not write, or with a schema that names other columns or text that is not UTF-8, the
+    file and its ``-wal`` and ``-shm`` are deleted, ``mirror.cache_replaced`` says why,
+    by SQLite's error name, ``integrity_check`` or ``UnicodeDecodeError``, and an empty
+    file takes its place. A file locked past the wait is not damaged, nor one in a folder
+    that the run may not write: it raises, as any write that cannot be made does, and
+    stays. Damage that SQLite finds during the run raises too, once the file is deleted,
+    so that the next run starts a new one.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path, timeout=WAIT_S)
@@ -137,6 +144,10 @@ def opened(
             if code not in UNUSABLE and (code & PRIMARY) not in DAMAGED:
                 raise
             damage = error.sqlite_errorname
+        except UnicodeDecodeError:
+            # SQLite's report, an error or the check's, quotes a name from the file's schema
+            # that is no longer UTF-8 text, which SQLite never writes from these statements.
+            damage = "UnicodeDecodeError"
         else:
             damage = None if checked == [("ok",)] else "integrity_check"
         if damage is not None:

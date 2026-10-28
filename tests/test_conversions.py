@@ -297,6 +297,34 @@ def test_a_header_that_sqlite_cannot_use_is_replaced(path: Path, offset: int, re
     ]
 
 
+@pytest.mark.parametrize(
+    ("text", "byte", "reason"),
+    [
+        (b"sqlite_autoindex_conversions_1", 0xFF, "UnicodeDecodeError"),
+        (b"markdown TEXT", ord("l"), "SQLITE_ERROR"),
+    ],
+    ids=["an index's name no longer UTF-8", "a column renamed"],
+)
+def test_a_schema_whose_text_is_changed_is_replaced(
+    path: Path, text: bytes, byte: int, reason: str
+) -> None:
+    """Review of 039: the first byte of a name in the schema's text, on the file's first page.
+
+    SQLite's report of the first quotes a name that is no longer UTF-8 text; the second
+    leaves a schema that SQLite reads, whose table has no column ``markdown``.
+    """
+    run(path, Scripted(), TEXTS)
+    data = bytearray(path.read_bytes())
+    data[data.index(text)] = byte
+    path.write_bytes(data)
+    scripted = Scripted()
+    with capture_logs() as events:
+        assert run(path, scripted, TEXTS)[1:] == (4, 0)
+    assert events_named(events, "mirror.cache_replaced") == [
+        {"reason": reason, "log_level": "warning"}
+    ]
+
+
 def misplace_index(path: Path) -> None:
     """Point the file's index at a page that is not there, as damage during a run would."""
     with closing(sqlite3.connect(path, isolation_level=None)) as other:

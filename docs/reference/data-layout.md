@@ -355,15 +355,16 @@ SQLite finds damaged, no database, or of a format that it cannot read or may not
 (`SQLITE_CORRUPT` and `SQLITE_NOTADB` by their primary codes, `SQLITE_ERROR` and
 `SQLITE_READONLY` exactly, since their extended codes, such as
 `SQLITE_READONLY_DIRECTORY` for a folder that the run may not write, say nothing of the
-file), is deleted with its `-wal` and `-shm`, `mirror.cache_replaced` says why
-([mirror's telemetry](telemetry/mirror.md)), and an empty file takes its place, so that
-the run goes on and converts everything. Damage that SQLite finds during the run,
-`SQLITE_CORRUPT` or `SQLITE_NOTADB`, fails it, once the file is deleted, so that the
-next run starts a new one. The check sees the file's structure, not the text of each
-row: a row whose Markdown was damaged in place, such as by a file cut short within its
-last page, is given as it is, or fails every run if its text no longer reads as UTF-8.
-Deleting the file is the remedy for a mirror that looks wrong, or a run that fails on
-the file.
+file), or whose schema names columns other than `key` and `markdown`, or a name that is
+no longer UTF-8 text, is deleted with its `-wal` and `-shm`, `mirror.cache_replaced`
+says why ([mirror's telemetry](telemetry/mirror.md)), and an empty file takes its
+place, so that the run goes on and converts everything. Damage that SQLite finds during
+the run, `SQLITE_CORRUPT` or `SQLITE_NOTADB`, fails it, once the file is deleted, so
+that the next run starts a new one. The check sees the file's structure, not the text of
+each row: a row whose Markdown was damaged in place, such as by a file cut short within
+its last page, is given as it is, or fails every run if its text no longer reads as
+UTF-8. Deleting the file is the remedy for a mirror that looks wrong, or a run that
+fails on the file.
 
 A file locked past the wait, or in a folder that the run may not write, is not
 replaced: the run fails, `sync` without its later steps, and the file stays. Nor does
