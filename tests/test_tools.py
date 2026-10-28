@@ -511,6 +511,22 @@ def test_a_name_that_no_document_has_in_its_role_is_refused_with_the_valid_ones(
     assert (header.partition(":")[0], block) == (next(iter(filters)), valid)
 
 
+def test_an_issue_s_hit_names_its_creator_only_when_not_its_author(commented: Library) -> None:
+    """After the author, so that the usual issue, filed by its creator, costs nothing more."""
+    assert dict(FACTS.findall(parts(commented.search("broker"))[1])) == {
+        "PROJ-1": (
+            "Task | To Do | assignee A Person | author A Person | creator Another Person"
+            " | created 2026-10-20"
+        ),
+        "PROJ-2": "Task | To Do | unassigned | author Another Person | created 2026-10-20",
+        "PROJ-3": "Task | To Do | unassigned | author A Person | created 2026-10-20",
+        "PROJ-4": (
+            "Task | To Do | unassigned | author Another Person | creator A Person"
+            " | created 2026-10-20"
+        ),
+    }
+
+
 @pytest.mark.parametrize(
     "ref",
     [

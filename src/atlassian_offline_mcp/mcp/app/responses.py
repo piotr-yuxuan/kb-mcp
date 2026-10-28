@@ -140,14 +140,17 @@ def facts(front: FrontMatter) -> str:
     """Say what a document is, who it is for and from, and when it was created.
 
     Its issue type, its status unless current, its assignee (``unassigned`` for an issue
-    with none), its author and its created day, leaving out what it lacks.
+    with none), its author, its creator when named otherwise than its author, and its
+    created day, leaving out what it lacks.
     """
     unassigned = "unassigned" if front.source == "jira" else ""
+    creator = next((person.name for person in front.people if person.role == "creator"), None)
     shown = (
         short(front.issue_type, LABEL) if front.issue_type else "",
         "" if front.status == "current" else short(front.status, LABEL),
         f"assignee {short(front.assignee, LABEL)}" if front.assignee else unassigned,
         f"author {short(front.author, LABEL)}" if front.author else "",
+        f"creator {short(creator, LABEL)}" if creator and creator != front.author else "",
         f"created {front.created:%Y-%m-%d}",
     )
     return " | ".join(part for part in shown if part)
