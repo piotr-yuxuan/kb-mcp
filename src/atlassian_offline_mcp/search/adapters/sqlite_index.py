@@ -106,12 +106,20 @@ WHERE (:source IS NULL OR d.source = :source)
   AND (:issue_type IS NULL OR d.issue_type = :issue_type)
   AND (:author IS NULL OR d.rowid IN
        (SELECT p.document FROM people p WHERE p.role = 'author' AND p.name = :author))
+  AND (:creator IS NULL OR d.rowid IN
+       (SELECT p.document FROM people p WHERE p.role = 'creator' AND p.name = :creator))
   AND (:assignee IS NULL OR d.rowid IN
        (SELECT p.document FROM people p WHERE p.role = 'assignee' AND p.name = :assignee))
   AND (:updated_after IS NULL OR d.updated >= :updated_after)
   AND (:updated_before IS NULL OR d.updated < :updated_before)
   AND (:created_after IS NULL OR d.created >= :created_after)
   AND (:created_before IS NULL OR d.created < :created_before)
+  AND ((:commenter IS NULL AND :commented_after IS NULL AND :commented_before IS NULL)
+       OR d.rowid IN (
+         SELECT p.document FROM people p WHERE p.role = 'commenter'
+           AND (:commenter IS NULL OR p.name = :commenter)
+           AND (:commented_after IS NULL OR p.at >= :commented_after)
+           AND (:commented_before IS NULL OR p.at < :commented_before)))
 """
 # bm25 cannot be grouped where it is computed, hence the materialised subquery.
 SCORES = """
@@ -189,7 +197,11 @@ VALUES = {
     " GROUP BY 1 ORDER BY 2 DESC, 1",
     "author": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'author'"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
+    "creator": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'creator'"
+    " GROUP BY 1 ORDER BY 2 DESC, 1",
     "assignee": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'assignee'"
+    " GROUP BY 1 ORDER BY 2 DESC, 1",
+    "commenter": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'commenter'"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
     "type": "SELECT type, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
 }

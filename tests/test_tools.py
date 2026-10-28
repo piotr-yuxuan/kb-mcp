@@ -10,9 +10,10 @@ from typing import TYPE_CHECKING
 import pytest
 
 from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
+from atlassian_offline_mcp.mirror.domain.mirror import PersonRole
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from tests.answers import built, continuation, follow, parts
-from tests.mirrors import FILLERS, LOREM, MOMENT, PEOPLE, issue, location, page
+from tests.mirrors import CREATED, FILLERS, LOREM, MOMENT, PEOPLE, issue, location, page
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -401,6 +402,113 @@ def test_a_name_matches_whole_as_shown_and_the_value_given_first(tmp_path: Path)
     }
     for label, expected in labels.items():
         assert refs(library.search(filters={"label": label}, sort="created")) == expected
+
+
+# The made-up people of tests/samples.py, each with the account id that Atlassian gives.
+ACCOUNTS = {"A Person": "account-1", "Another Person": "account-2"}
+EARLIER = CREATED - timedelta(days=7)
+
+
+def held(role: str, name: str, *at: datetime) -> PersonRole:
+    """Give one of ACCOUNTS's people in a role, with their account and comment times."""
+    return PersonRole(role=role, name=name, account=ACCOUNTS[name], at=at)
+
+
+# Four issues, each person in every role. A Person comments three times on PROJ-1 and
+# once on PROJ-2, before the comment of Another Person's there; Another Person once on
+# each of PROJ-2, PROJ-3 and PROJ-4. PROJ-2's creator is its author; PROJ-3 has none.
+COMMENTED = (
+    issue(
+        "PROJ-1",
+        "Broker crash",
+        people=(
+            held("author", "A Person"),
+            held("creator", "Another Person"),
+            held("assignee", "A Person"),
+            held("commenter", "A Person", *(CREATED + timedelta(hours=n) for n in range(3))),
+        ),
+    ),
+    issue(
+        "PROJ-2",
+        "Broker alert",
+        people=(
+            held("author", "Another Person"),
+            held("creator", "Another Person"),
+            held("commenter", "A Person", EARLIER),
+            held("commenter", "Another Person", CREATED),
+        ),
+    ),
+    issue(
+        "PROJ-3",
+        "Broker retention",
+        people=(held("author", "A Person"), held("commenter", "Another Person", EARLIER)),
+    ),
+    issue(
+        "PROJ-4",
+        "Broker upgrade",
+        people=(
+            held("author", "Another Person"),
+            held("creator", "A Person"),
+            held("commenter", "Another Person", CREATED + timedelta(hours=3)),
+        ),
+    ),
+)
+
+
+@pytest.fixture
+def commented(tmp_path: Path) -> Library:
+    """Serve the issues of COMMENTED, beside the fillers."""
+    return built(tmp_path, [(front, None) for front in COMMENTED])
+
+
+@pytest.mark.parametrize(
+    ("filters", "expected"),
+    [
+        ({"creator": "another person"}, ["PROJ-1", "PROJ-2"]),
+        ({"creator": "A PERSON"}, ["PROJ-4"]),
+        ({"author": "another person"}, ["PROJ-2", "PROJ-4"]),
+        ({"commenter": "a person"}, ["PROJ-1", "PROJ-2"]),
+        ({"commenter": "another person"}, ["PROJ-2", "PROJ-3", "PROJ-4"]),
+        ({"creator": "another person", "commenter": "another person"}, ["PROJ-2"]),
+        ({"commented_after": "2026-10-25"}, ["PROJ-1", "PROJ-2", "PROJ-4"]),
+        ({"commented_before": "2026-10-25"}, ["PROJ-2", "PROJ-3"]),
+        ({"commented_after": "2026-10-25T02:00Z"}, ["PROJ-1", "PROJ-4"]),
+        (
+            {"commented_after": "2026-10-25T02:00:01Z", "commented_before": "2026-10-25T03:00Z"},
+            [],
+        ),
+        ({"commenter": "a person", "commented_after": "2026-10-25"}, ["PROJ-1"]),
+        ({"commenter": "another person", "commented_before": "2026-10-25"}, ["PROJ-3"]),
+    ],
+)
+def test_creator_and_commenter_narrow_by_role_and_comment_dates_by_one_comment(
+    commented: Library, filters: dict[str, str], expected: list[str]
+) -> None:
+    """A name matches the people of its role alone; a comment date, the commenter's comments.
+
+    Without a commenter, anyone's. PROJ-2 has a comment of A Person's before the 25th and
+    one of Another Person's on it: A Person did not comment there from the 25th on.
+    """
+    assert sorted(refs(commented.search(filters=filters, sort="created"))) == expected
+    assert sorted(refs(commented.search("broker", filters=filters))) == expected
+
+
+@pytest.mark.parametrize(
+    ("filters", "valid"),
+    [
+        ({"creator": "nobody"}, "Another Person, A Person"),
+        ({"commenter": "nobody"}, "Another Person, A Person"),
+        ({"assignee": "another person"}, "A Person"),
+    ],
+)
+def test_a_name_that_no_document_has_in_its_role_is_refused_with_the_valid_ones(
+    commented: Library, filters: dict[str, str], valid: str
+) -> None:
+    """The most frequent first, counted by documents: A Person's four comments are on two."""
+    with pytest.raises(UnanswerableError) as refused:
+        commented.search("broker", filters=filters)
+    header, block, _ = parts(str(refused.value))
+    assert (header.partition(":")[0], block) == (next(iter(filters)), valid)
 
 
 @pytest.mark.parametrize(

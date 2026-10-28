@@ -32,7 +32,7 @@ to the model.
 **A standing cost kept low**, a practice of this project's own. The instructions and the tool listing travel with every
 request. Older versions of Claude Code keep 2,048 characters of a server's
 instructions, so they stay within that, the key words first; with the listing, they
-stay within 2,300 estimated tokens, measured by the tests over stdio. `filters` stay on
+stay within 2,400 estimated tokens, measured by the tests over stdio. `filters` stay on
 `ask`, so that a question about one space takes one call.
 
 **Answers within a budget, and continued**, plan 006's own practice. Every answer fits 4,000 estimated tokens at
