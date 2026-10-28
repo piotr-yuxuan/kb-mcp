@@ -6,8 +6,8 @@ server. It reads what you can already see on the site, through the REST APIs and
 own signed-in browser session or an API token, and never writes to the site; the work
 log, a folder of org files, it reads in place.
 
-Work in progress: [the roadmap](docs/work/README.md) says what each plan delivers, done
-or to come.
+Work in progress: [the roadmap](docs/work/README.md) says what each plan to come delivers;
+[the changelog](docs/work/changelog/) keeps the record of each plan done.
 
 ## What it needs
 
