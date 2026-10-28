@@ -259,7 +259,9 @@ def document_file(
 ) -> bytes:
     """Return the bytes of one document's file: its front matter, then its Markdown."""
     snapshot, document = placed.stored.snapshot, placed.document
-    matter = front_matter(document, placed.stored.fetched_at, catalogue, context.mirrored.site)
+    matter = front_matter(
+        document, snapshot.comments, placed.stored.fetched_at, catalogue, context.mirrored.site
+    )
     attachments = [
         (each.filename, None if asset is None else context.relative(asset))
         for each in snapshot.attachments

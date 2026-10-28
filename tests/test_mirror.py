@@ -269,7 +269,17 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         status="Parking lot",
         issue_type="Idea",
         labels=("probe",),
-        people=(PersonRole(role="author", name="A Person", account="account-1"),),
+        # The comment without an author names nobody.
+        people=(
+            PersonRole(role="author", name="A Person", account="account-1"),
+            PersonRole(role="creator", name="Another Person", account="account-2"),
+            PersonRole(
+                role="commenter",
+                name="Another Person",
+                account="account-2",
+                at=(datetime(2026, 10, 21, 8, tzinfo=UTC),),
+            ),
+        ),
         created=datetime(2026, 10, 20, 21, 33, 32, tzinfo=UTC),
         updated=datetime(2026, 10, 20, 21, 37, 58, tzinfo=UTC),
         version=None,
