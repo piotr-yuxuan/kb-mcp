@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 
 from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
-from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, PersonRole
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 from atlassian_offline_mcp.search.adapters import vector_store
 from atlassian_offline_mcp.search.domain.search import (
     Embedded,
@@ -47,8 +47,8 @@ BUILDING = ".index-"
 # Why a link among indexes is not followed: a cycle of them would not end.
 LINK = "a link, which is not followed"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id; 4 from plan 041, with
-# people in place of the author and the assignee.
-SCHEMA = "4"
+# people in place of the author and the assignee; 5 from plan 042, with links.
+SCHEMA = "5"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -64,7 +64,7 @@ CREATE TABLE documents (
   path TEXT NOT NULL UNIQUE,
   source TEXT NOT NULL, type TEXT NOT NULL, id TEXT NOT NULL, key TEXT,
   title TEXT NOT NULL, space TEXT, project TEXT, status TEXT NOT NULL, issue_type TEXT,
-  labels TEXT NOT NULL, people TEXT NOT NULL, created TEXT NOT NULL,
+  labels TEXT NOT NULL, people TEXT NOT NULL, links TEXT NOT NULL, created TEXT NOT NULL,
   updated TEXT NOT NULL, version INTEGER, revision TEXT NOT NULL, url TEXT,
   breadcrumb TEXT NOT NULL, fetched_at TEXT NOT NULL,
   length INTEGER NOT NULL, first_section INTEGER NOT NULL, last_section INTEGER NOT NULL,
@@ -240,6 +240,7 @@ class Writer:
             "people": json.dumps(
                 [asdict(person) for person in front.people], ensure_ascii=False, default=moment
             ),
+            "links": json.dumps([asdict(link) for link in front.links], ensure_ascii=False),
             "breadcrumb": json.dumps(front.breadcrumb, ensure_ascii=False),
             "created": moment(front.created),
             "updated": moment(front.updated),
@@ -252,11 +253,12 @@ class Writer:
         try:
             cursor = self._connection.execute(
                 "INSERT INTO documents (path, source, type, id, key, title, space, project,"
-                " status, issue_type, labels, people, created, updated, version, revision,"
-                " url, breadcrumb, fetched_at, length, first_section, last_section)"
+                " status, issue_type, labels, people, links, created, updated, version,"
+                " revision, url, breadcrumb, fetched_at, length, first_section, last_section)"
                 " VALUES (:path, :source, :type, :id, :key, :title, :space, :project, :status,"
-                " :issue_type, :labels, :people, :created, :updated, :version, :revision,"
-                " :url, :breadcrumb, :fetched_at, :length, :first_section, :last_section)",
+                " :issue_type, :labels, :people, :links, :created, :updated, :version,"
+                " :revision, :url, :breadcrumb, :fetched_at, :length, :first_section,"
+                " :last_section)",
                 values,
             )
         except sqlite3.IntegrityError:
@@ -415,6 +417,9 @@ def entry(row: sqlite3.Row) -> Entry:
                 at=tuple(datetime.fromisoformat(at) for at in person["at"]),
             )
             for person in json.loads(row["people"])
+        ),
+        links=tuple(
+            Link(relation=link["relation"], ref=link["ref"]) for link in json.loads(row["links"])
         ),
         created=datetime.fromisoformat(row["created"]),
         updated=datetime.fromisoformat(row["updated"]),

@@ -31,9 +31,11 @@ SITE_PATH = re.compile(r"/(?![/\\])[^\s\\\x00-\x1f\x7f]*")
 # A revision's name: a Confluence version, or a Jira update time in UTC.
 REVISION = re.compile(r"[0-9]{6}|[0-9]{8}T[0-9]{6}\.[0-9]{6}Z")
 # A work-log document's id: an entry's digest, numbered from the second entry of one
-# digest; a transcript's day and name, or its digest.
+# digest; a transcript's day and name, or its digest; a day's date; a meeting's day and
+# title's slug, numbered from the second meeting of one day and slug.
 WORKLOG_ID = re.compile(
     r"e-[0-9a-f]{16}(?:-[0-9]+)?|t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})"
+    r"|d-[0-9]{8}|m-[0-9]{8}-[a-z0-9-]{1,64}"
 )
 # A work-log document's revision: a digest of what pandoc converts, and how.
 WORKLOG_REVISION = re.compile(r"[0-9a-f]{16}")

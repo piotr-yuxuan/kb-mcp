@@ -255,20 +255,23 @@ byte for byte: nothing in it depends on when `mirror` ran.
 <data>/docs/jira/<PROJECT>/<KEY>.md                  an issue
 <data>/docs/assets/<sha256>.<ext>                    an attached file
 <data>/docs/worklog/entries/<id>-<slug>.md           a work-log entry
+<data>/docs/worklog/days/<id>.md                     a work-log day
+<data>/docs/worklog/meetings/<id>.md                 a work-log meeting
 <data>/docs/worklog/transcripts/<id>-<slug>.md       a work-log transcript
 ```
 
 - The documents are exactly the files that `mirror.adapters.markdown.documents(docs)`
-  yields: those of the first, second, fourth, sixth and seventh patterns, except names
-  beginning with `_` or `.`. `_tree.md` has no front matter, and nothing under
-  `assets/` is a document.
+  yields: those of the first, second and fourth patterns and of the sixth to the ninth,
+  in this order, except names beginning with `_` or `.`. `_tree.md` has no front
+  matter, and nothing under `assets/` is a document.
 - `<SPACE>` is the space key, `<PROJECT>` the project key, `<KEY>` the issue key.
 - `<slug>`: the title decomposed (Unicode NFKD) and lowered, its combining marks dropped
   (`Crème` gives `creme`), keeping ASCII letters and digits; every run of other
   characters becomes one `-`; leading and trailing `-` are
   removed; it is cut at 60 characters, and a `-` left at the cut is removed. An empty
-  slug leaves `<id>.md`. When a title changes, the file is renamed and the old name
-  removed.
+  slug leaves `<id>.md`, as does a work-log day or meeting, whose id holds its date or
+  its title's slug already (`mirror.domain.mirror_layout.NAMED_BY_ID`). When a title
+  changes, the file is renamed and the old name removed.
 - `<ext>`: the attachment file name's extension in lower case when it matches
   `[a-z0-9]{1,8}`, otherwise none. Links from documents to assets are relative.
 - `_tree.md`: one nested list item per page and folder of the listings, linking the
@@ -287,7 +290,7 @@ order or type, by name.
 | Key | Type | Value |
 |---|---|---|
 | `source` | string | `confluence`, `jira` or `worklog` |
-| `type` | string | `page` or `blogpost` (Confluence), `issue` (Jira), `entry` or `transcript` (work log) |
+| `type` | string | `page` or `blogpost` (Confluence), `issue` (Jira), `entry`, `day`, `meeting` or `transcript` (work log) |
 | `id` | string | the content id or issue id; a work-log document's, [below](#the-work-log) |
 | `key` | string or null | the issue key; `null` for Confluence |
 | `title` | string | the title |
@@ -296,7 +299,8 @@ order or type, by name.
 | `status` | string | as the site names it; an entry's keyword, else `current`, as a transcript's |
 | `issue_type` | string or null | the issue type, such as `Bug`; `null` for Confluence |
 | `labels` | list of strings | the labels, `[]` when none; a work-log document's tags, its file's `#+FILETAGS`, and `ARCHIVE` when archived |
-| `people` | list of mappings | each person by role, one line each, [below](#people); `[]` when none, and for the work log |
+| `people` | list of mappings | each person by role, one line each, [below](#people); `[]` when none |
+| `links` | list of mappings | each link to another document of the mirror, by relation, one line each, [below](#links); `[]` when none |
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |
 | `revision` | string | the raw store revision mirrored; a work-log document's, 16 hex digits, [below](#the-work-log) |
@@ -343,7 +347,7 @@ people:
 
 | Field | Value |
 |---|---|
-| `role` | one of `mirror.domain.mirror.ROLES`, a closed set: `author`, `creator`, `assignee`, `commenter` |
+| `role` | one of `mirror.domain.mirror.ROLES`, a closed set: `author`, `creator`, `assignee`, `commenter`, `participant` |
 | `name` | the name as the source gives it, one line, never empty: Jira's as it was when the issue was fetched, Confluence's from `users()`, else the account id |
 | `account` | the account id, when the source has one (Confluence and Jira); absent otherwise |
 | `at` | a commenter's comment times, written as `created` is, ascending; absent for any other role |
@@ -354,12 +358,16 @@ people:
 | `creator` | who created an issue, who differs from the reporter when someone files an issue for another |
 | `assignee` | an issue's assignee; nobody when unassigned |
 | `commenter` | the author of an issue's comments, with the time of each; a comment without an author names nobody |
+| `participant` | someone at a work-log meeting, as its `:PARTICIPANTS:` names them, or a speaker of a transcript (042) |
 
 A document has one `author`, one `creator` and one `assignee` at most, and each
-commenter once by name and account. `load` refuses any other role, a field other than
-these or out of their order, a `null`, an empty `at` and any other broken rule of one
-entry, naming the entry, such as `people[1]`; and a second author, creator or assignee,
-a commenter twice, or people out of the order of the roles, naming `people`. Names are
+commenter and each participant once by name and account. `participant` is the work
+log's one role (`mirror.domain.mirror.WORKLOG_ROLES`), which no other source's
+documents hold, so that no document names people of both kinds. `load` refuses any
+other role, a field other than these or out of their order, a `null`, an empty `at` and
+any other broken rule of one entry, naming the entry, such as `people[1]`; and a second
+author, creator or assignee, a commenter or a participant twice, a role of another
+source, or people out of the order of the roles, naming `people`. Names are
 kept as written, never normalised, merged or masked: a colleague renamed between two
 fetches appears under two names, with one account id. `FrontMatter.author`,
 `FrontMatter.creator` and `FrontMatter.assignee` name the one person of that role, or
@@ -392,6 +400,33 @@ the people from all that agents and the server read, until the next `mirror` and
 `index`, or `sync`, write them again from the raw store. Deleting every copy is deleting
 the data directory, the log folder and the folders of `eval-agents`, after which the
 mirror is downloaded again, as from a first run.
+
+### Links
+
+The key `links` (042) names the documents of the mirror that a document links to, by
+relation: one entry per link, in the order that the source gives. `dump` writes each
+entry on one line, in YAML's flow style, as it does a person:
+
+```yaml
+links:
+- {relation: transcript, ref: t-20261027-meeting-1}
+```
+
+| Field | Value |
+|---|---|
+| `relation` | one of `mirror.domain.mirror.RELATIONS`, a closed set: `transcript`, `summary` |
+| `ref` | the other document's ref, which `read` takes: its id, of the rule `kernel.content.IDENTIFIER`, `[A-Za-z0-9_-]+` |
+
+| Relation | On | Ref |
+|---|---|---|
+| `transcript` | a work-log meeting | the transcript that its `:MEETING:` property names |
+| `summary` | a work-log transcript | each meeting whose `:MEETING:` property names it |
+
+The two relations are each other's reverse, and a link is written on both documents,
+so that a program that reads one file finds the other without reading them all.
+`load` refuses any other relation, a field other than these or out of their order, a
+`null` and a ref off its rule, naming the entry, such as `links[0]`; and a link to the
+document itself, by its id or key, or a link given twice, naming `links`.
 
 ### Pandoc's conversions
 
@@ -456,9 +491,12 @@ problem (a file not read, a conversion that failed) removes none of its files.
   `transcripts/<first folder>/`. Of two files of one id, the second in path order takes
   the digest of its whole path from the work log's root, written with a leading `/`,
   which no path below a first folder has.
-- The rule of an id is `kernel.content.WORKLOG_ID`,
-  `e-[0-9a-f]{16}(?:-[0-9]+)?|t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})`. It names
-  the file, with the title's slug, as for a page.
+- The rule of an id is `kernel.content.WORKLOG_ID`:
+  `e-[0-9a-f]{16}(?:-[0-9]+)?|t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})` for an
+  entry or a transcript; `d-[0-9]{8}` for a day, its date; `m-[0-9]{8}-[a-z0-9-]{1,64}`
+  for a meeting, its day's date and its title's slug. It names the file, with the
+  title's slug for an entry or a transcript, as for a page, and alone for a day or a
+  meeting.
 - `revision` is the digest of pandoc's version and options, a NUL, and the org text
   that pandoc converts: a document whose revision has not changed is not converted
   again, and its file keeps its dates.
@@ -522,7 +560,10 @@ and a commenter's one per comment with its time in `at` (null for the other role
 indexed by role and name, which the filters by person read. Each person is so in the
 index twice, as each label is. No piece's text holds the front matter's people
 (`search.domain.chunking`), so a build over files of which only `people` changed embeds
-nothing new. An index of another schema is refused, naming `sync`, or `mirror` then
+nothing new. Schema 5 (042) adds the column `links` to `documents`, the front matter's
+links as JSON, as `labels` is, so that a row still gives its front matter back whole; a
+participant is a row of the table `people`, without account or time. No piece's text
+holds the links either. An index of another schema is refused, naming `sync`, or `mirror` then
 `index` where no source is configured, which write the mirror again before they rebuild
 the index, as a new schema can come with a new format of the files; one cut by a
 chunking that this version lacks, naming `index`. The MCP server opens it read-only,

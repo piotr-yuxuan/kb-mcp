@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.mirror.domain.mirror import PersonRole
+from atlassian_offline_mcp.mirror.domain.mirror import Link, PersonRole
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
@@ -494,11 +494,62 @@ def test_people_are_not_embedded_so_a_rebuild_with_new_people_embeds_nothing(dat
     assert again.embedded == 0
 
 
-@pytest.mark.parametrize("schema", ["1", "2", "3"])
+# A meeting and its transcript of the work log, each naming the other, with their
+# participants: the meeting's as written, the transcript's speakers.
+MEETING = replace(
+    page("m-20261027-payments-stand-up", "Payments stand-up"),
+    source="worklog",
+    type="meeting",
+    space=None,
+    version=None,
+    revision="0123456789abcdef",
+    people=(
+        PersonRole(role="participant", name="Alex Example"),
+        PersonRole(role="participant", name="Kim (not in the header)"),
+    ),
+    links=(Link(relation="transcript", ref="t-20261027-meeting-1"),),
+)
+TRANSCRIPT = replace(
+    MEETING,
+    type="transcript",
+    id="t-20261027-meeting-1",
+    title="Meeting 1",
+    people=(
+        PersonRole(role="participant", name="Alex Example"),
+        PersonRole(role="participant", name="Sam Sample"),
+    ),
+    links=(Link(relation="summary", ref="m-20261027-payments-stand-up"),),
+)
+
+
+def test_links_and_participants_read_back_and_participants_are_rows_of_people(
+    data: Path,
+) -> None:
+    """A row gives the front matter back whole, links included; each participant is a row."""
+    paths = [write(data / "docs", front) for front in (MEETING, TRANSCRIPT)]
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        rows = connection.execute(
+            "SELECT d.id, p.role, p.name, p.account, p.at"
+            " FROM people p JOIN documents d ON d.rowid = p.document ORDER BY p.rowid"
+        )
+        people = rows.fetchall()
+    assert people == [
+        ("m-20261027-payments-stand-up", "participant", "Alex Example", None, None),
+        ("m-20261027-payments-stand-up", "participant", "Kim (not in the header)", None, None),
+        ("t-20261027-meeting-1", "participant", "Alex Example", None, None),
+        ("t-20261027-meeting-1", "participant", "Sam Sample", None, None),
+    ]
+    with reading(data / "index.sqlite") as reader:
+        fronts = {entry.path: entry.front for entry in reader.entries(paths=paths)}
+    assert fronts == dict(zip(paths, (MEETING, TRANSCRIPT), strict=True))
+
+
+@pytest.mark.parametrize("schema", ["1", "2", "3", "4"])
 def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     data: Path, schema: str
 ) -> None:
-    """Plan 006's index, one built before the build id, or before people: never half read.
+    """An index of plan 006, or built before the build id, people or links: never half read.
 
     The commands named write the mirror's files before the index, as 041 changed them:
     ``sync``, which runs only the sources configured, else ``mirror`` then ``index``.

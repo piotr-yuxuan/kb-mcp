@@ -26,6 +26,8 @@ TYPES = {
     "blogpost": "confluence",
     "issue": "jira",
     "entry": "worklog",
+    "day": "worklog",
+    "meeting": "worklog",
     "transcript": "worklog",
 }
 # Keys that one source alone has, always.
@@ -44,9 +46,16 @@ PATTERNS = {
 }
 # The roles that a person can hold in a document, a closed set, in the order that the
 # mirror gives a document's people.
-ROLES = ("author", "creator", "assignee", "commenter")
+ROLES = ("author", "creator", "assignee", "commenter", "participant")
 # The roles that one person alone holds in a document; each other is held once per person.
 SOLE = frozenset({"author", "creator", "assignee"})
+# The roles of the work log's documents, which hold no other: a meeting's participants
+# and a transcript's speakers. No document holds both kinds, so that a read's front
+# matter, which is never cut, names one kind's people alone, within the read's budget.
+WORKLOG_ROLES = frozenset({"participant"})
+# The relations that a document can have to another, a closed set: a meeting's to its
+# transcript, and a transcript's to the meeting that summarises it.
+RELATIONS = ("transcript", "summary")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -85,6 +94,21 @@ class PersonRole:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Link:
+    """A link from a document to another of the mirror: the relation, and the other's ref."""
+
+    relation: str
+    ref: str
+
+    def __post_init__(self) -> None:
+        """Refuse a relation not in RELATIONS, and a ref off IDENTIFIER, as ``read`` takes it."""
+        if self.relation not in RELATIONS:
+            message = "relation: not one of the relations"
+            raise RefusedError(message)
+        require(IDENTIFIER, self.ref, "ref")
+
+
+@dataclass(frozen=True, kw_only=True)
 class FrontMatter:
     """The front matter of one mirrored document, its fields in the order they are written.
 
@@ -103,6 +127,7 @@ class FrontMatter:
     issue_type: str | None
     labels: tuple[str, ...]
     people: tuple[PersonRole, ...]
+    links: tuple[Link, ...]
     created: datetime
     updated: datetime
     version: int | None
@@ -116,8 +141,9 @@ class FrontMatter:
 
         A source and type that disagree, a key that only the other source has, an id or
         key off its rule, a text with a line break of any kind, a time not in UTC, a
-        second author, creator or assignee, a commenter twice by name and account, people
-        out of the order of the roles.
+        second author, creator or assignee, a commenter or a participant twice by name and
+        account, a role of another source, people out of the order of the roles, a link to
+        the document itself, by its id or key, and a link given twice.
         """
         if TYPES.get(self.type) != self.source:
             message = "type: not one of the source's types"
@@ -154,11 +180,20 @@ class FrontMatter:
             for person in self.people
         ]
         order = [ROLES.index(person.role) for person in self.people]
-        if len(set(held)) != len(held) or order != sorted(order):
+        worklog = self.source == "worklog"
+        if (
+            len(set(held)) != len(held)
+            or any((person.role in WORKLOG_ROLES) != worklog for person in self.people)
+            or order != sorted(order)
+        ):
             message = (
-                "people: a second author, creator or assignee, a commenter twice, or out of"
-                " the order of the roles"
+                "people: a second author, creator or assignee, a commenter or a participant"
+                " twice, a role of another source, or out of the order of the roles"
             )
+            raise RefusedError(message)
+        links = [(link.relation, link.ref) for link in self.links]
+        if len(set(links)) != len(links) or any(ref in (self.id, self.key) for _, ref in links):
+            message = "links: a link to the document itself, or one given twice"
             raise RefusedError(message)
 
     @property

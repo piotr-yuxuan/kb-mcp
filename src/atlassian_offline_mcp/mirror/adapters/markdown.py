@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
-from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, PersonRole
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 from atlassian_offline_mcp.mirror.domain.mirror_layout import WORKLOG_FOLDERS
 
 if TYPE_CHECKING:
@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 KEYS = [field.name for field in dataclasses.fields(FrontMatter)]
 PERSON = [field.name for field in dataclasses.fields(PersonRole)]
+LINK = [field.name for field in dataclasses.fields(Link)]
 TIME = "%Y-%m-%dT%H:%M:%SZ"
 OPENING = "---\n"
 CLOSING = "\n---\n"
@@ -34,7 +35,7 @@ DOCUMENTS = (*ATLASSIAN, *WORKLOG)
 
 
 class Dumper(yaml.SafeDumper):
-    """YAML's safe dumper, which writes each person of the front matter on one line."""
+    """YAML's safe dumper, which writes each person and link of the front matter on one line."""
 
     def represent_person(self, person: PersonRole) -> yaml.MappingNode:
         """Write a person in flow style, its fields in ``PersonRole``'s order, as ``load`` asks.
@@ -51,15 +52,22 @@ class Dumper(yaml.SafeDumper):
                 values[name] = value
         return self.represent_mapping("tag:yaml.org,2002:map", values, flow_style=True)
 
+    def represent_link(self, link: Link) -> yaml.MappingNode:
+        """Write a link in flow style, its fields in ``Link``'s order, as ``load`` asks."""
+        values = {name: getattr(link, name) for name in LINK}
+        return self.represent_mapping("tag:yaml.org,2002:map", values, flow_style=True)
+
 
 Dumper.add_representer(PersonRole, Dumper.represent_person)
+Dumper.add_representer(Link, Dumper.represent_link)
 
 
 def dump(front_matter: FrontMatter, body: str) -> str:
     """Write a document: its front matter, a blank line, then its Markdown body.
 
     Times are written in UTC to the second, as quoted strings; every string that YAML
-    could read as another type (``000003``, ``Yes``) is quoted; each person is one line.
+    could read as another type (``000003``, ``Yes``) is quoted; each person and each link
+    is one line.
     """
     values: dict[str, object] = {}
     for key in KEYS:
@@ -75,7 +83,8 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
     """Read a document written by ``dump``: its front matter and its body.
 
     Any other key, order or type is refused, naming ``path`` and the key, as is a
-    person's field other than ``PersonRole``'s, out of their order, or an empty ``at``.
+    person's field other than ``PersonRole``'s, out of their order, or an empty ``at``,
+    and a link's field other than ``Link``'s, or out of their order.
     """
     end = text.find(CLOSING, len(OPENING) - 1)
     if not text.startswith(OPENING) or end < 0:
@@ -116,6 +125,13 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
                     at=tuple(times.time(name) for name in times.value),
                 )
             )
+    links = []
+    for link in fields.objects("links"):
+        if list(link.value) != [name for name in LINK if name in link.value]:
+            message = f"{link.path}: fields other than {', '.join(LINK)}, or out of order"
+            raise RepresentationError(message)
+        with link.refusals():
+            links.append(Link(relation=link.text("relation"), ref=link.text("ref")))
     with fields.refusals():
         front_matter = FrontMatter(
             source=fields.text("source"),
@@ -129,6 +145,7 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
             issue_type=fields.optional_text("issue_type"),
             labels=fields.texts("labels"),
             people=tuple(people),
+            links=tuple(links),
             created=fields.time("created"),
             updated=fields.time("updated"),
             version=fields.optional_integer("version"),

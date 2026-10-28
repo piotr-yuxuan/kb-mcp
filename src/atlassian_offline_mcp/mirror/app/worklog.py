@@ -189,6 +189,7 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                 issue_type=None,
                 labels=tuple(one_line(label) for label in document.labels),
                 people=(),
+                links=(),
                 created=created,
                 updated=updated,
                 version=None,

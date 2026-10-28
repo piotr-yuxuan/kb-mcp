@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -10,7 +11,7 @@ import pytest
 from atlassian_offline_mcp.mcp.app.responses import NAMES, cut
 from atlassian_offline_mcp.mcp.app.responses import page as fitted
 from atlassian_offline_mcp.mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
-from atlassian_offline_mcp.mirror.domain.mirror import ROLES, SOLE, PersonRole
+from atlassian_offline_mcp.mirror.domain.mirror import ROLES, SOLE, WORKLOG_ROLES, PersonRole
 from atlassian_offline_mcp.search.adapters.model_api import ModelError
 from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
@@ -143,42 +144,57 @@ def test_default_answers_stay_within_the_budget(large: tuple[Library, str]) -> N
     assert [answer[:40] for answer in answers if estimate(answer) > BUDGET] == []
 
 
+# The fields of an issue that a meeting of the work log has otherwise.
+MEETING = {
+    "source": "worklog",
+    "type": "meeting",
+    "id": "m-20261027-payments-stand-up",
+    "key": None,
+    "project": None,
+    "issue_type": None,
+    "revision": "0123456789abcdef",
+}
+
+
 @pytest.mark.parametrize("max_chars", [12_000, 1])
+@pytest.mark.parametrize(("ref", "kind"), [("PROJ-1", {}), (MEETING["id"], MEETING)])
 def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
-    tmp_path: Path, max_chars: int
+    tmp_path: Path, max_chars: int, ref: str, kind: dict[str, object]
 ) -> None:
     """The front matter, which a read never cuts, leaves its body room within 4,000.
 
-    Each role is held: by one person where one alone holds it, else by two more people
-    than a role's line names; each name, and each other text, longer than a value shown
-    and in characters that are not ASCII, but the address. At the defaults, then with
-    the smallest slice, where the front matter is the most of the answer.
+    Each role that a document can hold is held: an issue's every role but the work
+    log's, a meeting's the work log's alone. By one person where one alone holds it, else
+    by two more people than a role's line names; each name, and each other text, longer
+    than a value shown and in characters that are not ASCII, but the address. At the
+    defaults, then with the smallest slice, where the front matter is the most of the
+    answer.
     """
+    worklog = kind.get("source") == "worklog"
+    roles = [role for role in ROLES if (role in WORKLOG_ROLES) == worklog]
     people = tuple(
         PersonRole(
             role=role,
             name=f"{role} {number:02} " + "é" * 250,
-            account=f"account-{number}",
+            account=None if worklog else f"account-{number}",
             at=(MOMENT,) if role == "commenter" else (),
         )
-        for role in ROLES
+        for role in roles
         for number in range(1 if role in SOLE else NAMES + 2)
     )
     wide = "長" * 250
-    front = issue(
-        "PROJ-1",
-        wide,
-        people=people,
-        status=wide,
-        issue_type=wide,
-        labels=(wide,) * 12,
-        breadcrumb=(wide,) * 10,
-        url="https://" + "a" * 250,
-    )
+    fields = {
+        "status": wide,
+        "issue_type": wide,
+        "labels": (wide,) * 12,
+        "breadcrumb": (wide,) * 10,
+        "url": "https://" + "a" * 250,
+    }
+    front = replace(issue("PROJ-1", wide, **fields), people=people, **kind)
     library = built(tmp_path, [(front, f"# Long issue\n\n{PROSE * 100}")])
-    answer = library.read("PROJ-1", max_chars=max_chars)
+    answer = library.read(ref, max_chars=max_chars)
     shown = parts(answer)[1]
-    assert [role for role in ROLES if f"\n{role}: {role} 00 " not in shown] == []
+    assert [role for role in roles if f"\n{role}: {role} 00 " not in shown] == []
     assert estimate(answer) <= BUDGET
     assert continuation(answer) is not None
 

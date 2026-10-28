@@ -33,7 +33,12 @@ LOREM = (
     "fermentum. Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor."
 )
 FILLERS = 30
-WORKLOG_FOLDERS = {"entry": "entries", "transcript": "transcripts"}
+WORKLOG_FOLDERS = {
+    "entry": "entries",
+    "day": "days",
+    "meeting": "meetings",
+    "transcript": "transcripts",
+}
 
 
 def named(author: str | None, assignee: str | None = None) -> tuple[PersonRole, ...]:
@@ -64,6 +69,7 @@ def page(
         issue_type=None,
         labels=(),
         people=named(author),
+        links=(),
         created=MOMENT,
         updated=MOMENT,
         version=1,
@@ -101,6 +107,7 @@ def issue(
         issue_type="Task",
         labels=(),
         people=named(author, assignee),
+        links=(),
         created=MOMENT,
         updated=updated,
         version=None,
@@ -116,6 +123,8 @@ def location(front: FrontMatter) -> str:
     """Name a document's file, relative to <data>/docs, as the data layout does."""
     if front.source == "jira":
         return f"jira/{front.project}/{front.key}.md"
+    if front.type in {"day", "meeting"}:
+        return f"worklog/{WORKLOG_FOLDERS[front.type]}/{front.id}.md"
     decomposed = unicodedata.normalize("NFKD", front.title).lower()
     slug = re.sub(r"[^a-z0-9]+", "-", decomposed).strip("-")[:60].rstrip("-")
     name = f"{front.id}-{slug}.md" if slug else f"{front.id}.md"
