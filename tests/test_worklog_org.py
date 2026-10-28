@@ -32,7 +32,10 @@ from atlassian_offline_mcp.sources.worklog.domain.worklog import (
     meeting_ids,
     participants,
     revision,
+    speakers,
+    start,
     transcripts,
+    turns,
 )
 
 KEYWORDS = frozenset({"TODO", "WAITING", "DONE"})
@@ -480,6 +483,26 @@ def test_a_link_through_dot_dot_absolute_or_to_no_file_gives_none(value: str) ->
     assert org.link_target(value) is None
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Alex: x\n", None),
+        ("a\n#+begin_quote\nb\n#+end_quote\nc\n#+BEGIN_QUOTE\nd\n#+END_QUOTE\n", ["b", "d"]),
+        ("  #+Begin_Quote :x y\nb\n  #+end_quote  \n", ["b"]),
+        ("#+begin_quote\n#+end_quote\n", []),
+        ("#+begin_quote\nb\n", None),
+        ("#+begin_quote\nb\n#+end_quote\n#+begin_quote\nc\n", ["b"]),
+        ("#+begin_quotes\nb\n#+end_quote\n", None),
+        ("#+begin_quote\n#+begin_quote\nb\n#+end_quote\nc\n#+end_quote\n", ["#+begin_quote", "b"]),
+    ],
+)
+def test_quote_blocks_are_the_lines_between_their_begin_and_end(
+    text: str, expected: list[str] | None
+) -> None:
+    """None without a block; in any case, indented; one never closed, or inside one, is text."""
+    assert org.quoted(org.read(text).lines) == expected
+
+
 def test_entry_ids_follow_id_then_created_then_title() -> None:
     """The :ID:'s digest; else one of title and :CREATED:; else of the title alone."""
     ids = one(
@@ -804,6 +827,129 @@ def test_a_title_whose_slug_is_another_s_numbered_id_takes_no_id_twice() -> None
         "m-20261027-stand-up",
         "m-20261027-stand-up-3",
     ]
+
+
+# Plan 042's transcripts: who speaks, as the caption cleaner writes turns, and when.
+QUOTED = (
+    "#+TITLE: Stand-up\n"
+    "XQ: ask about the budget.\n"
+    "[08:00] Note: outside the quotes.\n"
+    "#+begin_quote\n"
+    "[09:31] Alex Example: Morning.\n"
+    "[09:32] You: Hello.\n"
+    "[Capture 2: resumed after the connection dropped]\n"
+    "[09:40] Unverified: Can you hear me?\n"
+    "[09:41] Alex Example: Yes.\n"
+    "#+end_quote\n"
+    "XQ: between the captures.\n"
+    "#+BEGIN_QUOTE\n"
+    "[09:50] Sam Sample: Bye.\n"
+    "#+END_QUOTE\n"
+)
+# Names of 64 and 65 characters, the first at the bound.
+AT_BOUND, OVER_BOUND = "N" + "a" * 63, "N" + "a" * 64
+BARE = (
+    "#+TITLE: Payments: stand-up\n"
+    "#+FILETAGS: :standup:\n"
+    "* Agenda: x\n"
+    "- Owner: x\n"
+    "| a: b |\n"
+    "DEADLINE: <2026-10-27 Tue>\n"
+    "SCHEDULED: <2026-10-27 Tue 10:00>\n"
+    "CLOSED: [2026-10-27 Tue 11:00]\n"
+    "CLOCK: [2026-10-27 Tue 09:00]--[2026-10-27 Tue 10:00] =>  1:00\n"
+    ":PROPERTIES:\n"
+    ":END:\n"
+    "[Capture 2: resumed]\n"
+    "2nd speaker: x\n"
+    "See https://example.invalid/a: x\n"
+    "Jo [lead]: x\n"
+    "Alex: Morning.\n"
+    "[09:31] Sam: Hi.\n"
+    "  Kim : indented, a blank before the colon.\n"
+    "Jo (lead): x\n"
+    f"{AT_BOUND}: x\n"
+    f"{OVER_BOUND}: x\n"
+    "Alex: Again.\n"
+)
+
+
+def lines(text: str) -> tuple[str, ...]:
+    """Return an org text's lines, as the work log reads them."""
+    return org.read(text).lines
+
+
+def test_speakers_are_read_inside_the_quote_blocks_when_there_is_any() -> None:
+    """In order of first speech, once; not the notes outside, nor a continuity marker."""
+    assert speakers(lines(QUOTED)) == ("Alex Example", "You", "Unverified", "Sam Sample")
+
+
+def test_a_bare_transcript_s_speakers_are_on_any_line_but_org_s_own() -> None:
+    """No keyword, heading, list, table, planning, clock or drawer line; no bracket in a name."""
+    assert speakers(lines(BARE)) == ("Alex", "Sam", "Kim", "Jo (lead)", AT_BOUND)
+
+
+def test_a_turn_s_time_is_as_written_or_none() -> None:
+    """The bracket before the name, whatever it holds; none without one."""
+    assert turns(lines("[9:31] Alex: x\nSam: y\n[01:02:03.5] Kim: z\n")) == [
+        ("9:31", "Alex"),
+        (None, "Sam"),
+        ("01:02:03.5", "Kim"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("text", "began"),
+    [
+        ("[09:31] Alex: x\n[09:40] Sam: y\n", TUESDAY.replace(hour=9, minute=31)),
+        ("[09:31:05] Alex: x\n", TUESDAY.replace(hour=9, minute=31, second=5)),
+        ("[00:05] Alex: x\n", TUESDAY.replace(minute=5)),  # an offset, read as a time
+        ("Alex: x\n[10:00] Sam: y\nOn <2026-10-27 Tue 14:00>.\n", TUESDAY.replace(hour=14)),
+        ("[9:31] Alex: x\nOn [2026-10-27 Tue 14:00].\n", TUESDAY.replace(hour=14)),
+        ("[25:00] Alex: x\n", TUESDAY),
+        (
+            "[09:31 AM] Alex: x\n<2026-10-26 Mon 08:00> <2026-10-27 Tue 16:00> [2026-10-27 15:00]",
+            TUESDAY.replace(hour=15),
+        ),
+        (QUOTED, TUESDAY.replace(hour=9, minute=31)),
+        ("", TUESDAY),
+    ],
+    ids=[
+        "turn",
+        "seconds",
+        "offset",
+        "first-untimed",
+        "one-digit-hour",
+        "no-time-of-day",
+        "other-day",
+        "quoted",
+        "empty",
+    ],
+)
+def test_a_transcript_begins_at_its_first_turn_else_its_day_s_timestamp_else_its_day(
+    text: str, began: datetime
+) -> None:
+    """The first turn's time, strictly HH:MM or HH:MM:SS; else its day's first timestamp.
+
+    Active or inactive, the timestamps of another day left out; else its day at midnight.
+    """
+    assert start(TUESDAY, lines(text)) == began
+
+
+def test_a_transcript_names_its_speakers_and_a_dated_one_begins_at_its_first_turn() -> None:
+    """Undated, it has no start: its dates are its events'."""
+    found, _ = transcripts(
+        [
+            transcript("current/2026-10-27 Tue/1.org", QUOTED),
+            transcript("misc/a.org", "[09:31] Alex: Said on [2026-10-01 Thu 10:00].\n"),
+        ],
+        archives=True,
+    )
+    assert [(each.people, each.start) for each in found] == [
+        (("Alex Example", "You", "Unverified", "Sam Sample"), TUESDAY.replace(hour=9, minute=31)),
+        (("Alex",), None),
+    ]
+    assert found[1].dates(None) == (datetime(2026, 10, 1, 10, tzinfo=UTC),) * 2
 
 
 # Plan 042's question 1, the journal's shape on a made-up sample.

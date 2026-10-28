@@ -5,7 +5,8 @@ describe it; Emacs's lock, autosave and backup files are added to each copy, sin
 ignores them. Times are fixed by ``os.utime``. Expectations come from the plan's tables,
 written by hand, and every file is read back by ``markdown.load``. Plan 042's journal of
 two days, its archived parts and its meetings are expected as its "Days and meetings:
-the rule", "Ids" and criterion 4 describe them.
+the rule", "Ids" and criterion 4 describe them; its transcripts as its "Ids", "Dates"
+and "Participants" and criteria 5, 6 and 8 do.
 """
 
 from __future__ import annotations
@@ -321,14 +322,23 @@ def test_front_matter_says_status_labels_and_place(
         ("day", "<2026-10-27 Tue>", datetime(2026, 10, 27, tzinfo=UTC), None),
         ("meeting", "Ledger review", datetime(2026, 10, 27, tzinfo=UTC), None),
         ("meeting", "Capacity planning", datetime(2026, 10, 27, tzinfo=UTC), None),
+        (
+            "transcript",
+            "Payments stand-up, 27 October",
+            datetime(2026, 10, 27, 9, 31, tzinfo=UTC),
+            None,
+        ),
+        ("meeting", "Payments stand-up", datetime(2026, 10, 27, 9, 31, tzinfo=UTC), None),
     ],
 )
 def test_dates_are_the_earliest_and_latest_events_up_to_the_file_time(
     run: Run, kind: str, title: str, created: datetime, updated: datetime | None
 ) -> None:
-    """A later timestamp is a plan; no event, the file's time; a transcript, its day.
+    """A later timestamp is a plan; no event, the file's time; a transcript, when it began.
 
-    A day, and a meeting without a transcript, are their day, whatever their lines hold.
+    A transcript begins at its first turn's time, else at its day's timestamp, else at its
+    day; a meeting with it. A day, and a meeting without a transcript, are their day,
+    whatever their lines hold.
     """
     run()
     matter = run.by_title(title, kind).matter
@@ -807,3 +817,21 @@ def test_same_titled_meetings_of_one_day_are_numbered(run: Run) -> None:
         "m-20261026-one-to-one": "Robin Example",
         "m-20261026-one-to-one-2": "Jo Placeholder",
     }
+
+
+@pytest.mark.parametrize(
+    ("identifier", "names"),
+    [
+        ("t-20261027-1", ["Alex Example", "Sam Sample", "Kim"]),
+        ("t-20261020-1", ["Alex", "Sam"]),
+    ],
+)
+def test_a_transcript_names_its_speakers_in_order_of_first_speech(
+    run: Run, identifier: str, names: list[str]
+) -> None:
+    """Quoted: not the XQ: note outside, nor the continuity marker; bare: not #+TITLE."""
+    run()
+    people = run.by_id(identifier).matter.people
+    assert [(each.role, each.name, each.account, each.at) for each in people] == [
+        ("participant", name, None, ()) for name in names
+    ]

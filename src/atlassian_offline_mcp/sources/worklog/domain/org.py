@@ -3,9 +3,10 @@
 It reads a file's settings (the keywords it declares, ``#+TITLE``, ``#+FILETAGS``), its
 headings (stars, keyword, priority, ``COMMENT``, title, statistics cookies, tags), its
 outline (a heading's own lines, then its children), a heading's property drawer and
-planning line, timestamps, a day's title and a link to a file; and it writes what pandoc
-reads for one document, its headings moved to another level. It reads leniently: a line
-that matches no rule is text, and a timestamp that names no real day or time is none.
+planning line, timestamps, a day's title, a link to a file and the lines of quote
+blocks; and it writes what pandoc reads for one document, its headings moved to another
+level. It reads leniently: a line that matches no rule is text, and a timestamp that
+names no real day or time is none.
 """
 
 from __future__ import annotations
@@ -64,6 +65,9 @@ FILE_TYPES = frozenset({"file", "file+sys", "file+emacs"})
 FILE_TARGETS = ("./", "../", "/", "~")
 # What follows a file link's path when it holds a search within the file, as ::*Heading.
 SEARCH = "::"
+# The lines that open and close a quote block, in any case, its options after a blank.
+QUOTE_START = re.compile(r"[ \t]*#\+begin_quote(?:[ \t].*)?", re.IGNORECASE)
+QUOTE_END = re.compile(r"[ \t]*#\+end_quote[ \t]*", re.IGNORECASE)
 # What pandoc reads before a document: subtrees tagged noexport kept, drawers and planning
 # lines kept, headings to level 6, _, ^ and -- as written, archived subtrees as asked.
 EXCLUDE_TAGS = "#+EXCLUDE_TAGS:"
@@ -310,6 +314,26 @@ def link_target(value: str) -> PurePosixPath | None:
     if not path.parts or path.is_absolute() or path.parts[0].startswith("~") or ".." in path.parts:
         return None
     return path
+
+
+def quoted(lines: Iterable[str]) -> list[str] | None:
+    """Return the lines inside the quote blocks, in order, or None when there is none.
+
+    A block runs from a line ``#+begin_quote`` to the next ``#+end_quote``, in any case
+    and indented or not; one never closed is no block, and its lines are text, as org
+    reads them. A block inside a block ends at the first ``#+end_quote``.
+    """
+    found: list[str] | None = None
+    block: list[str] | None = None  # the lines of the block open, if any
+    for line in lines:
+        if block is None:
+            if QUOTE_START.fullmatch(line):
+                block = []
+        elif QUOTE_END.fullmatch(line):
+            found, block = [*(found or []), *block], None
+        else:
+            block.append(line)
+    return found
 
 
 def pandoc_input(

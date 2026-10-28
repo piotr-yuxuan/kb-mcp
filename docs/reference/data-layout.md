@@ -518,6 +518,12 @@ problem (a file not read, a conversion that failed) removes none of its files.
   name. No folder below the first is in an id, so a move under `archive/` keeps it. Of
   two files of one id, the second in path order takes the digest of its whole path from
   the work log's root, written with a leading `/`, which no name has.
+- A transcript's people are its speakers, in the role `participant`, each once, in
+  order of first speech: inside its `#+begin_quote` blocks when it has any, the notes
+  outside them being the user's, else on any line, each line that holds an optional
+  `[time]` and a blank, then a name of at most 64 characters that begins with a letter
+  and holds no colon or bracket, then `: `, blanks before the colon not the name's;
+  the name is none of `SCHEDULED`, `DEADLINE`, `CLOSED` and `CLOCK`.
 - The rule of an id is `kernel.content.WORKLOG_ID`:
   `e-[0-9a-f]{16}(?:-[0-9]+)?|t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})` for an
   entry or a transcript; `d-[0-9]{8}` for a day, its date; `m-[0-9]{8}-[a-z0-9-]{1,64}`
@@ -528,10 +534,12 @@ problem (a file not read, a conversion that failed) removes none of its files.
   that pandoc converts: a document whose revision has not changed is not converted
   again, and its file keeps its dates.
 - `created` and `updated` are a day's date at midnight UTC; a meeting's start, its
-  transcript's, else its day's; a transcript's day at midnight UTC; else the earliest
-  and latest timestamps of the document's lines, as written, up to its file's
-  modification time, a later one being a plan; else, without any, the modification time,
-  `created` keeping an existing file's.
+  transcript's, else its day's; a dated transcript's start, its first turn's time when
+  it reads strictly as `HH:MM` or `HH:MM:SS`, else its earliest timestamp on its day,
+  else its day at midnight, read as written in UTC; else the earliest and latest
+  timestamps of the document's lines, as written, up to its file's modification time, a
+  later one being a plan; else, without any, the modification time, `created` keeping
+  an existing file's.
 - The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
   and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
   file, `transcripts/archive/` and subtrees tagged `ARCHIVE` are left out, and so the

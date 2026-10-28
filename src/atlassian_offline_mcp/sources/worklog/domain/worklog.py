@@ -51,6 +51,13 @@ NAMED = "PARTICIPANTS"
 OUTLINE_PATH = "ARCHIVE_OLPATH"
 # A comma between names: outside brackets, so that Kim (payments, ops) stays one name.
 SEPARATOR = re.compile(r",(?![^(\[]*[)\]])")
+# A turn of a transcript: an optional [time] and a blank, then its speaker's name, of at
+# most 64 characters, beginning with a letter and holding no colon or bracket, then ": ".
+TURN = re.compile(r"[ \t]*(?:\[([^\[\]]*)\][ \t]+)?([^\W\d_][^:\[\]]{0,63}?)[ \t]*: ")
+# Org's planning and clock lines, which read as turns.
+NOT_SPEAKERS = frozenset({"SCHEDULED", "DEADLINE", "CLOSED", "CLOCK"})
+# A turn's time that dates its transcript: two-digit hours and minutes, seconds or not.
+CLOCK_TIME = re.compile(r"([0-9]{2}):([0-9]{2})(?::([0-9]{2}))?")
 
 
 @dataclass(frozen=True)
@@ -435,6 +442,42 @@ def days_and_meetings(
     return found
 
 
+def turns(lines: Sequence[str]) -> list[tuple[str | None, str]]:
+    """Return each turn of a transcript, in order: its time as written, or None, and speaker.
+
+    Turns are read inside the quote blocks when there is any, the notes outside them being
+    the user's, else on every line. A turn's line holds an optional ``[time]`` and a blank,
+    then a name of at most 64 characters that begins with a letter and holds no colon or
+    bracket, then ``: ``, blanks before the colon not being the name's. The name is none
+    of org's planning and clock keywords, such as ``DEADLINE``.
+    """
+    inside = org.quoted(lines)
+    matches = [TURN.match(line) for line in (lines if inside is None else inside)]
+    return [(each[1], each[2]) for each in matches if each and each[2] not in NOT_SPEAKERS]
+
+
+def speakers(lines: Sequence[str]) -> tuple[str, ...]:
+    """Return the speakers of a transcript's turns, as ``turns`` reads them, each once.
+
+    In order of first speech, each name as written.
+    """
+    return tuple(dict.fromkeys(name for _, name in turns(lines)))
+
+
+def start(day: datetime, lines: Sequence[str]) -> datetime:
+    """Return when a transcript of ``day``, at midnight UTC, began, read as written in UTC.
+
+    Its first turn's time, when it reads strictly as ``HH:MM`` or ``HH:MM:SS`` and names a
+    time of day; else its earliest timestamp on its day; else its day.
+    """
+    said = turns(lines)
+    clock = CLOCK_TIME.fullmatch(said[0][0] or "") if said else None
+    if clock is not None:
+        with contextlib.suppress(ValueError):  # 24:00 is no time of day
+            return day.replace(hour=int(clock[1]), minute=int(clock[2]), second=int(clock[3] or 0))
+    return min((each for each in org.timestamps(lines) if each.date() == day.date()), default=day)
+
+
 def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Document], list[str]]:
     """Return the transcripts in path order, and a warning for each id found twice.
 
@@ -444,7 +487,9 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
     and the digest of its name. Of two files of one id, the first in path order keeps it
     and the other takes the digest of its whole path, written from the work log's root
     (``/transcripts/...``): no name holds ``/``, so no other file's digest is the same.
-    Without ``archives``, those under ``transcripts/archive/`` are left out.
+
+    Its people are its ``speakers``; a dated one begins as ``start`` says. Without
+    ``archives``, those under ``transcripts/archive/`` are left out.
     """
     found: list[Document] = []
     warnings: list[str] = []
@@ -490,13 +535,13 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
                     dict.fromkeys([*parsed.filetags, *([org.ARCHIVE] if archived else [])])
                 ),
                 breadcrumb=source.path.parts[:-1],
-                people=(),
+                people=speakers(parsed.lines),
                 links=(),
                 text=org.pandoc_input(
                     parsed.declarations, parsed.lines, parsed.keywords, archives=archives
                 ),
                 events=source.events(parsed.lines),
-                start=named[0][1] if named else None,
+                start=start(named[0][1], parsed.lines) if named else None,
                 source=source,
             )
         )
