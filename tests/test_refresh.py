@@ -9,8 +9,10 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
+from atlassian_offline_mcp.cli.commands import download as download_command
 from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.config.domain.settings import Settings
 from atlassian_offline_mcp.kernel.content import Page
@@ -967,3 +969,55 @@ def test_a_target_whose_catch_up_starts_after_until_is_skipped_and_asked_nothing
         ("space MFS", "extended"),
         ("project PRB", "held", "after --until"),
     ]
+
+
+def test_a_kept_file_that_fails_again_keeps_the_coverage_at_its_issue(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Stored without its file, the issue is completed by the next run: failing again, capped."""
+    chosen = settings(tmp_path)
+    failing = RefreshSite(issues=two_issues(), media_fails=True)
+    run(chosen, monkeypatch, failing, Targets([], ["PRB"], CAP, since=START), RUN)
+    again = RefreshSite(issues=two_issues(), media_fails=True)
+    with capture_logs() as events:
+        run(chosen, monkeypatch, again, catch_up([], ["PRB"]), NEXT)
+    assert ISSUE_FILE in [url.path for url in again.asked]
+    assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
+    assert said_coverage(events) == [("project PRB", "capped")]
+
+
+def test_a_space_whose_catch_up_starts_after_until_is_skipped_and_said_so(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """No listing, the coverage as it was; the summary and the JSON say why, without a window."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    before = RawStore(chosen.raw).coverage()
+    fake = RefreshSite()
+    monkeypatch.setattr(http, "client", lambda *_: fake.client())
+    early = Targets(["MFS"], [], CAP, until=FIRST - WEEK)
+    outcome = download(chosen, early, lambda: SECOND, lambda _: None)
+    assert not [url for url in fake.asked if url.path.startswith("/wiki/api/v2/spaces")]
+    assert RawStore(chosen.raw).coverage() == before
+    detailed = download_command.text(outcome, "detailed")
+    assert "space MFS: skipped, after --until; coverage held\n" in detailed
+    [window] = to_jsonable_python(outcome)["windows"]
+    assert (window["start"], window["end"], window["reason"], window["coverage"]) == (
+        None,
+        None,
+        "after --until",
+        "held",
+    )
+
+
+def test_a_run_apart_from_what_is_covered_leaves_it_and_says_why(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """--since a day after the covered end: joining would claim that day, so it is held."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(issues={}), Targets([], ["PRB"], CAP, since=START), RUN)
+    apart = Targets([], ["PRB"], CAP, since=RUN + timedelta(days=1))
+    with capture_logs() as events:
+        run(chosen, monkeypatch, RefreshSite(issues={}), apart, RUN + timedelta(days=2))
+    assert RawStore(chosen.raw).coverage() == exactly(START, RUN)
+    assert said_coverage(events) == [("project PRB", "held", "apart from what is covered")]
