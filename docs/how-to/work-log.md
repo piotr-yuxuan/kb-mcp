@@ -259,7 +259,8 @@ one colleague is one person to an agent:
   the one account of that name, or else to the same name elsewhere in the work log,
   whatever its case, accents, spaces or trailing part in brackets:
   `Kim (not in the header)` is `Kim`, but `Alex (Ops)` and `Alex (Sales)`, which the
-  brackets tell apart, stay two;
+  brackets tell apart, stay two, as do two notes of one name, `Kim (not in the header)`
+  and `Kim (late)`, which the build warns of;
 - a speaker of one word, such as `Sam`, joined to the one participant whose name begins
   with it, `Sam Sample`, among the meetings that link its transcript.
 
@@ -287,6 +288,7 @@ is several people's:
 "Sam" = "Sam Sample"
 "You" = "Robin Example"
 "Alex" = "p-0123456789abcdef"
+"Kim" = "Kim"
 ```
 
 Rebuild the index, which embeds nothing new:
@@ -299,7 +301,7 @@ atlassian-offline-mcp index
 - It joins its name anywhere but a transcript's speaker whom its meeting's
   participants give someone else: to change that, change the meeting's
   `:PARTICIPANTS:`. Its name ignores brackets: `"Alex"` joins `Alex (Ops)` and
-  `Alex (Sales)` alike.
+  `Alex (Sales)` alike, and `"Kim" = "Kim"` joins two notes of Kim to Kim.
 - Its target is a name or a person's id, never another alias: a name that another
   alias, or the meeting of each transcript, joins to someone else names nobody.
 - A file that breaks a rule stops the build, naming the file and the alias, and the

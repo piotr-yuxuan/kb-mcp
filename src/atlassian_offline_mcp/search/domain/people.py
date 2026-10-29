@@ -14,9 +14,10 @@ each row a person, by the first of these rules that answers:
 
 A name that could be several persons, by rule 3 or 4, or a speaker whom they give
 different persons, is ambiguous: it is reported, never given to one of them, and goes
-by rule 5. Every rule compares names by their
-key, which keeps an annotation that tells two names apart. Nothing here reads the
-index or the alias file.
+by rule 5. Every rule compares names by their key, which keeps an annotation that
+tells two names apart; a key whose annotated names go by rule 5 to several persons is
+reported too, as the annotations may be notes rather than names. Nothing here reads
+the index or the alias file.
 """
 
 from __future__ import annotations
@@ -102,7 +103,11 @@ class Row:
 
 @dataclass(frozen=True)
 class Ambiguity:
-    """A name that could be several persons: none of them is given it."""
+    """A name that could be several persons, none of whom is given it.
+
+    Or a key whose names annotations part among persons by name alone, such as
+    "Kim (not in the header)" and "Kim (late)", which may be one Kim's notes.
+    """
 
     name: str  # as the first of its rows in order writes it
     persons: frozenset[str]  # the ids of those it could be
@@ -340,11 +345,18 @@ def joined(
             how, found = next(
                 ((how, each) for how, each in answers if each is not None), (NAME, None)
             )
-        if isinstance(found, Ambiguity):
-            known = ambiguous.setdefault(name_key(row.name), found)
-            ambiguous[name_key(row.name)] = replace(known, persons=known.persons | found.persons)
+        # The persons that the row could be, none of whom is given it; and, for a name
+        # alone that its annotation keeps from the other names of its key, its own.
+        key = name_key(row.name)
+        could = found.persons if isinstance(found, Ambiguity) else frozenset()
         if not isinstance(found, str):
-            how, found = NAME, person_id(NAME, joining.key(row.name))
+            compared = joining.key(row.name)
+            how, found = NAME, person_id(NAME, compared)
+            if compared != key:
+                could |= {found}
+        if could:
+            known = ambiguous.setdefault(key, Ambiguity(row.name, could))
+            ambiguous[key] = replace(known, persons=known.persons | could)
         joining.persons[row] = found
         members.setdefault(found, []).append((row, how))
     # The persons that an account or a name makes, whatever rule joined that name to its
@@ -383,6 +395,8 @@ def joined(
     return Joined(
         persons=tuple(persons),
         of=joining.persons,
-        ambiguous=tuple(ambiguous[key] for key in sorted(ambiguous)),
+        ambiguous=tuple(
+            ambiguous[key] for key in sorted(ambiguous) if len(ambiguous[key].persons) > 1
+        ),
         unused=tuple(alias for alias in joining.aliases.values() if alias.reason is not None),
     )

@@ -686,8 +686,12 @@ could be either, so that rule 3 finds it among several accounts. A name that rul
 finds among several accounts, or among persons other than its meeting's, or rule 4 among
 several persons, is ambiguous: it joins none of them, goes by rule 5, and the build
 warns of it, as `index.person_ambiguous` ([index's telemetry](telemetry/index.md)); two
-accounts of one name are no warning, as no alias changes them. The same rows in any
-order give the same persons.
+accounts of one name are no warning, as no alias changes them. The join cannot tell a
+note in brackets from a part that tells names apart: two notes of one name,
+`Kim (not in the header)` and `Kim (late)`, part it too, each a person by name alone,
+and the build warns of that name, under the first of them, when they are two persons
+or more; an alias of the name to one of its spellings, such as `"Kim" = "Kim"`, joins
+them. The same rows in any order give the same persons.
 
 A person's id is `p-` and the first 16 hex digits of the SHA-256 of `account`, a line
 feed and the account id, or of `name`, a line feed and the key by which the join

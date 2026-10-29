@@ -310,9 +310,10 @@ def test_every_name_joins_its_person_as_the_rules_say() -> None:
 def test_names_that_two_annotations_tell_apart_stay_apart() -> None:
     """The offsite lists Alex (Ops) and Alex (Sales): two persons, as the user wrote them.
 
-    Its transcript's Alex could be either: it is reported, and goes with the other Alexes
-    by name alone. An alias's target names one of them by its annotation. One annotation
-    of a key still joins its name: the stand-up's Alex Example (not in the header).
+    Its transcript's Alex could be either: it is reported, once with the two, under the
+    first of them, and goes with the other Alexes by name alone. An alias's target names
+    one of them by its annotation. One annotation of a key still joins its name: the
+    stand-up's Alex Example (not in the header).
     """
     offsite, linked_to_offsite = 14, 26
     rows = (
@@ -331,12 +332,52 @@ def test_names_that_two_annotations_tell_apart_stay_apart() -> None:
     assert result.of[named(UNLINKED, "Alex")] == ALEX
     assert result.of[named(UNLINKED, "A. Ops")] == ops
     assert result.of[named(STAND_UP, "Alex Example (not in the header)")] == ALEX_EXAMPLE
-    assert Ambiguity("Alex", frozenset({ops, sales})) in result.ambiguous
+    assert Ambiguity("Alex (Ops)", frozenset({ops, sales})) in result.ambiguous
     assert next(person for person in result.persons if person.id == ops) == Person(
         ops,
         "alex  (OPS)",
         (Spelling("A. Ops", "a. ops", "alias"), Spelling("Alex (Ops)", "alex", "name")),
     )
+
+
+def test_two_notes_of_one_name_part_it_and_are_reported() -> None:
+    """Kim, Kim (not in the header) and Kim (late): two notes, which may be one Kim's.
+
+    The join cannot tell a note from a name that brackets tell apart: each annotated
+    name is a person by name alone, reported as the first of them writes it.
+    """
+    rows = (
+        named(STAND_UP, "Kim"),
+        named(REVIEW, "Kim (not in the header)"),
+        named(PLANNING, "Kim (late)"),
+    )
+    noted, late = anchored("name\nkim (not in the header)"), anchored("name\nkim (late)")
+    result = joined(rows, {}, {})
+    assert result.of == dict(zip(rows, (anchored("name\nkim"), noted, late), strict=True))
+    assert result.ambiguous == (Ambiguity("Kim (not in the header)", frozenset({noted, late})),)
+
+
+def test_two_notes_of_an_account_s_name_part_it_from_the_account_and_are_reported() -> None:
+    """Sam Sample's account, and two meetings writing Sam Sample with a note each.
+
+    Each note is a person by name alone, reported; the alias of the name to the
+    account's joins both to it, and nothing is reported then.
+    """
+    rows = (
+        Row(3, "author", "Sam Sample", "acct-0002", day(19)),
+        named(STAND_UP, "Sam Sample (not in the header)"),
+        named(REVIEW, "Sam Sample (late)"),
+    )
+    noted = anchored("name\nsam sample (not in the header)")
+    late = anchored("name\nsam sample (late)")
+    result = joined(rows, {}, {})
+    assert result.of == dict(zip(rows, (SAM_2, noted, late), strict=True))
+    assert result.ambiguous == (
+        Ambiguity("Sam Sample (not in the header)", frozenset({noted, late})),
+    )
+    aliased = joined(rows, {}, {"Sam Sample": "Sam Sample"})
+    assert set(aliased.of.values()) == {SAM_2}
+    assert (aliased.ambiguous, aliased.unused) == ((), ())
 
 
 def test_a_name_written_as_one_account_s_annotated_name_joins_that_account() -> None:

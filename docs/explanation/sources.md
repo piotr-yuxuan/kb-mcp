@@ -159,10 +159,11 @@ key. A key leaves out case, accents, runs of spaces and a trailing part in brack
 `Kim (not in the header)` is `Kim`, which plan 042 left to this join; but where two
 such parts tell names apart, `Alex (Ops)` and `Alex (Sales)`, the join keeps them
 ([`Joining.key`](../../src/atlassian_offline_mcp/search/domain/people.py)), as the
-user or the site wrote them apart. A name that could be several persons, the name of two
-accounts, a speaker whose word begins two participants' names, or one whose meeting
-names another than the one account of its name, is given to none of them, and the build
-says so, for the user to settle by an alias.
+user or the site wrote them apart. It cannot tell such a part from a note, so that two
+notes of one name part it too, and the build says so. A name that could be several
+persons, the name of two accounts, a speaker whose word begins two participants' names,
+or one whose meeting names another than the one account of its name, is given to none of
+them, and the build says so, for the user to settle by an alias.
 
 A speaker is joined within its meeting alone, as the user wrote that meeting's
 participants for it: there, one "Sam" is one person, and no alias, written for a name
