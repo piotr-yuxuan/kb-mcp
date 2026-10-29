@@ -7,15 +7,14 @@ that agents send as names and keywords; and keeps a search within the user's bou
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping
 from statistics import fmean
-from typing import TYPE_CHECKING
+
+from pydantic import Field
 
 from kb_mcp.evaluation.domain.evaluation import ALPHA, holm, paired_test
+from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import BAR_DEPTHS, BOUND_S
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 # The loss of MRR@10 that a group may show: with some 32 questions a group, the standard
 # error of its mean difference is about 0.05, so that 0.02 would refuse a harmless
@@ -25,8 +24,7 @@ GROUP_LOSS = 0.05
 GROUPS = ("identifier", "keyword")
 
 
-@dataclass(frozen=True)
-class Depthed:
+class Depthed(Record):
     """What the bar reads of one arm: its MRR@10 per question, per group, and its time."""
 
     reciprocal: tuple[float, ...]  # each question's, in the questions' order
@@ -34,8 +32,7 @@ class Depthed:
     tail_ms: int  # a search's 95th percentile, in whole milliseconds
 
 
-@dataclass(frozen=True)
-class Verdict:
+class Verdict(Record):
     """The bar's clauses at one depth, and the adjusted p-value of its gain."""
 
     depth: int
@@ -55,14 +52,13 @@ class Verdict:
         return self.beats and self.holds and self.fast
 
 
-@dataclass(frozen=True)
-class Decision:
+class Decision(Record):
     """The bar's verdicts, depth by depth, and the default depth; None: reranking off."""
 
     verdicts: tuple[Verdict, ...]
     depth: int | None
     # Each qualifying depth's p-value against the best of them, on MRR@10.
-    against_best: Mapping[int, float] = field(default_factory=dict)
+    against_best: Mapping[int, float] = Field(default_factory=dict)
 
 
 def default_reranking(plain: Depthed, arms: Mapping[int, Depthed]) -> Decision | None:

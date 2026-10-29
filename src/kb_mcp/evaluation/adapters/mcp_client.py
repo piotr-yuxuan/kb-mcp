@@ -9,7 +9,6 @@ the SDK's client owns the child.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import anyio
@@ -17,6 +16,8 @@ from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 from mcp.shared.exceptions import MCPError
 from mcp_types import TextContent
+
+from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
@@ -26,16 +27,14 @@ class ServerError(Exception):
     """A server that did not start, or stopped before it answered; the message says how."""
 
 
-@dataclass(frozen=True)
-class Listing:
+class Listing(Record):
     """What a server lists: its instructions, and each tool's name, description and schema."""
 
     instructions: str
     tools: list[dict[str, object]]
 
 
-@dataclass(frozen=True)
-class Answered:
+class Answered(Record):
     """A tool's answer, as text, and whether the tool refused the call."""
 
     text: str

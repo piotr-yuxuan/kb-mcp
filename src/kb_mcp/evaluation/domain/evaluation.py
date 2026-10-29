@@ -9,14 +9,17 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, field
+from collections.abc import Mapping
 from statistics import fmean
 from typing import TYPE_CHECKING
 
 import numpy as np
+from pydantic import Field
+
+from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Sequence
 
 # Measures look at the first CUTOFF documents of a ranking.
 CUTOFF = 10
@@ -38,8 +41,7 @@ COST = 3
 TIE = 0.01
 
 
-@dataclass(frozen=True)
-class Question:
+class Question(Record):
     """A golden question, with the documents that answer it and those that help."""
 
     id: str
@@ -47,7 +49,7 @@ class Question:
     expected: tuple[str, ...]  # paths, relevance 2
     partial: tuple[str, ...] = ()  # paths, relevance 1
     groups: tuple[str, ...] = ()  # such as the kind of wording, or the language
-    evidence: Mapping[str, str] = field(default_factory=dict)  # a phrase of an expected path
+    evidence: Mapping[str, str] = Field(default_factory=dict)  # a phrase of an expected path
 
     @property
     def paths(self) -> tuple[str, ...]:
@@ -55,8 +57,7 @@ class Question:
         return (*self.expected, *self.partial)
 
 
-@dataclass(frozen=True)
-class Measures:
+class Measures(Record):
     """How one ranking answers one question, or many on average."""
 
     recall: float  # share of the expected documents in the first CUTOFF
@@ -80,8 +81,7 @@ class Measures:
         )
 
 
-@dataclass(frozen=True)
-class Quoted:
+class Quoted(Record):
     """How ask's first answer serves one question, or many on average."""
 
     found: float  # Found@ask: the share of the expected documents among its passages
@@ -98,8 +98,7 @@ class Quoted:
         )
 
 
-@dataclass(frozen=True)
-class Scored:
+class Scored(Record):
     """What a chunking scored in hybrid mode, question by question, and what it costs."""
 
     reciprocal_ranks: tuple[float, ...]  # MRR@10 of each question
@@ -107,8 +106,7 @@ class Scored:
     tokens: int  # of the texts that its index embeds, at the characters of a token
 
 
-@dataclass(frozen=True)
-class Choice:
+class Choice(Record):
     """The default chunking that the rule gives, and the tests that it read.
 
     Each test is a challenger's against the control, on ``mrr`` or ``evidence``.

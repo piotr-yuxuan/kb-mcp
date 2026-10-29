@@ -8,7 +8,6 @@ A refusal names the field at fault, never what was found there.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from statistics import fmean
 from typing import TYPE_CHECKING, Literal
 
@@ -22,6 +21,7 @@ from kb_mcp.evaluation.domain.evaluation import (
     paired_test,
     plain,
 )
+from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -79,8 +79,7 @@ def refusal(error: ValidationError) -> str:
     )
 
 
-@dataclass(frozen=True)
-class Graded:
+class Graded(Record):
     """How an answer serves its question."""
 
     found: bool  # the agent said that the base holds the answer
@@ -128,8 +127,7 @@ def grade(
     )
 
 
-@dataclass(frozen=True)
-class Difference:
+class Difference(Record):
     """B's mean less A's on one measure, its seeded bootstrap interval, and its tests."""
 
     difference: float
@@ -138,8 +136,7 @@ class Difference:
     adjusted: float  # by Holm, over the measures compared
 
 
-@dataclass(frozen=True)
-class Verdict:
+class Verdict(Record):
     """Whether ``ask`` stays among the default tools, and each measure's difference."""
 
     keeps_ask: bool

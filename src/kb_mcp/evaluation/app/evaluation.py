@@ -13,14 +13,14 @@ timed and logged, and each mode's scores measured, as
 from __future__ import annotations
 
 import hashlib
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from statistics import median
 from typing import TYPE_CHECKING
 
 import structlog
 import yaml
 from opentelemetry import metrics, trace
-from pydantic import ValidationError
+from pydantic import ConfigDict, Field, ValidationError
 
 from kb_mcp.evaluation.domain.evaluation import (
     CONTROL,
@@ -41,6 +41,7 @@ from kb_mcp.evaluation.domain.evaluation import (
 )
 from kb_mcp.evaluation.domain.golden import Golden
 from kb_mcp.kernel.chunking import CHARACTERS_PER_TOKEN
+from kb_mcp.kernel.record import Record
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.search.app.indexing import Embedding, build_index
@@ -154,8 +155,7 @@ class Target:
     chunking: Chunking
 
 
-@dataclass(frozen=True)
-class Costs:
+class Costs(Record):
     """What a target's index holds and cost, whatever the vector store held before."""
 
     pieces: int
@@ -169,9 +169,10 @@ class Costs:
         return self.characters // CHARACTERS_PER_TOKEN
 
 
-@dataclass
-class Run:
+class Run(Record):
     """How one target's search ranked the golden questions, and ask answered, mode by mode."""
+
+    model_config = ConfigDict(frozen=False)
 
     model: str
     fingerprint: str
@@ -179,15 +180,15 @@ class Run:
     seconds: float  # how long the index took to build, embedding included
     chunking: str = CONTROL
     costs: Costs = Costs(pieces=0, characters=0, tokens=None, bytes=0)
-    per: dict[str, dict[str, Measures]] = field(default_factory=dict)  # mode, then question
-    groups: dict[str, dict[str, Measures]] = field(default_factory=dict)  # mode, then group
-    ranks: dict[str, dict[str, list[int | None]]] = field(default_factory=dict)  # mode, question
-    times: dict[str, tuple[float, float]] = field(default_factory=dict)  # median, 95th, in s
-    pvalues: dict[str, float] = field(default_factory=dict)  # mode against lexical
-    adjusted: dict[str, float] = field(default_factory=dict)  # by Holm, over the whole run
-    asked: dict[str, dict[str, Quoted]] = field(default_factory=dict)  # mode, then question
-    asked_groups: dict[str, dict[str, Quoted]] = field(default_factory=dict)  # mode, group
-    ask_times: dict[str, tuple[float, float]] = field(default_factory=dict)  # median, 95th
+    per: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then question
+    groups: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then group
+    ranks: dict[str, dict[str, list[int | None]]] = Field(default_factory=dict)  # mode, question
+    times: dict[str, tuple[float, float]] = Field(default_factory=dict)  # median, 95th, in s
+    pvalues: dict[str, float] = Field(default_factory=dict)  # mode against lexical
+    adjusted: dict[str, float] = Field(default_factory=dict)  # by Holm, over the whole run
+    asked: dict[str, dict[str, Quoted]] = Field(default_factory=dict)  # mode, then question
+    asked_groups: dict[str, dict[str, Quoted]] = Field(default_factory=dict)  # mode, group
+    ask_times: dict[str, tuple[float, float]] = Field(default_factory=dict)  # median, 95th
 
 
 def evaluate(
@@ -372,24 +373,24 @@ def record(
                 "fingerprint": run.fingerprint,
                 "embedded": run.embedded,
                 "seconds": run.seconds,
-                "costs": asdict(run.costs) | {"estimated": run.costs.estimated},
+                "costs": run.costs.model_dump() | {"estimated": run.costs.estimated},
                 "times": run.times,
                 "ask_times": run.ask_times,
                 "pvalues": run.pvalues,
                 "adjusted": run.adjusted,
                 "groups": {
-                    mode: {group: asdict(each) for group, each in groups.items()}
+                    mode: {group: each.model_dump() for group, each in groups.items()}
                     for mode, groups in run.groups.items()
                 },
                 "asked": {
-                    mode: {group: asdict(each) for group, each in groups.items()}
+                    mode: {group: each.model_dump() for group, each in groups.items()}
                     for mode, groups in run.asked_groups.items()
                 },
                 "ranks": run.ranks,
             }
             for run in runs
         ],
-        "chunking": {model: asdict(choice) for model, choice in choices.items()},
+        "chunking": {model: choice.model_dump() for model, choice in choices.items()},
     }
 
 

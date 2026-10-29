@@ -21,7 +21,7 @@ import shlex
 import time
 from collections import Counter
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -35,18 +35,19 @@ from kb_mcp.evaluation.adapters.mcp_client import ServerError, called, listed
 from kb_mcp.evaluation.domain.evaluation import Question
 from kb_mcp.evaluation.domain.grading import (
     Answer,
+    Graded,
     Harness,
+    Verdict,
     ask_verdict,
     grade,
     refusal,
 )
+from kb_mcp.kernel.record import Record
 from kb_mcp.mcp.app.responses import tokens
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
-    from pathlib import Path
 
-    from kb_mcp.evaluation.domain.grading import Graded, Verdict
     from kb_mcp.kernel.tools import Tool
 
 # What each run's agent is told; its SHA-256 goes with the results.
@@ -175,8 +176,7 @@ class Runs(BaseModel):
         return found
 
 
-@dataclass(frozen=True)
-class Asking:
+class Asking(Record):
     """What ``prepare`` is given besides the questions: who answers, how, and within what.
 
     ``program`` is the command line that reaches ``eval-agents``, for the prompts;
@@ -324,8 +324,7 @@ def locked(directory: Path, run: Run) -> Iterator[None]:
         yield
 
 
-@dataclass(frozen=True)
-class Called:
+class Called(Record):
     """What a call through the bridge gave: how it went, and the text for the agent."""
 
     status: str  # answered, refused by the tool, timeout or failed
@@ -428,8 +427,7 @@ def answer(directory: Path, name: str, given: str) -> Answer:
     return accepted
 
 
-@dataclass(frozen=True)
-class Outcome:
+class Outcome(Record):
     """A run judged: success or failure, no result and why, or pending; and its costs."""
 
     run: str
@@ -526,8 +524,7 @@ def judged(
     return outcome
 
 
-@dataclass(frozen=True)
-class Results:
+class Results(Record):
     """The runs judged, B judged against A, and each outcome counted."""
 
     model: str
@@ -579,7 +576,7 @@ def concluded(directory: Path, runs: Runs, outcomes: Sequence[Outcome]) -> Resul
         "golden_sha256": runs.golden_sha256,
         "agents": runs.model,
         "models": sorted({outcome.model for outcome in outcomes if outcome.model}),
-        **asdict(results),
+        **results.model_dump(),
     }
     (directory / "results.json").write_text(json.dumps(kept, indent=1), encoding="utf-8")
     structlog.get_logger().info(
