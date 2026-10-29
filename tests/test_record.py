@@ -6,7 +6,7 @@ from typing import Self
 
 import numpy as np
 import pytest
-from pydantic import ValidationError, model_validator
+from pydantic import ConfigDict, ValidationError, model_validator
 
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
@@ -38,6 +38,14 @@ class Pair(Record):
     second: Sample
 
 
+class Tally(Record):
+    """A record that accumulates."""
+
+    model_config = ConfigDict(frozen=False)
+
+    count: int = 0
+
+
 def test_a_misspelt_keyword_is_refused() -> None:
     """A keyword that names no field fails, as a dataclass's did, never taken for a default."""
     with pytest.raises(ValidationError, match="cuont"):
@@ -57,6 +65,13 @@ def test_a_record_cannot_be_changed() -> None:
     with pytest.raises(ValidationError, match="frozen"):
         sample.count = 1
     assert sample.count == 0
+
+
+def test_a_record_that_accumulates_is_unhashable_and_a_frozen_one_hashes_by_value() -> None:
+    """As a dataclass: what changes after it is built has no hash; a frozen value has one."""
+    with pytest.raises(TypeError, match="unhashable"):
+        hash(Tally())
+    assert hash(Sample(name="first", count=1)) == hash(Sample(name="first", count=1))
 
 
 def test_a_refusal_is_raised_as_the_domain_s_own() -> None:

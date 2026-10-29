@@ -31,6 +31,17 @@ class Record(BaseModel):
                 raise causes[0] from None
             raise
 
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: object) -> None:
+        """Leave a record that is not frozen unhashable, as a dataclass that was not frozen.
+
+        Pydantic hashes a frozen model by its fields, and a subclass inherits the hash: a
+        record that accumulates would hash the same whatever it holds.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+        if not cls.model_config.get("frozen"):
+            cls.__hash__ = None
+
     def __replace__(self, **changes: object) -> Self:
         """Give a copy with these fields changed, checked again as at construction.
 
