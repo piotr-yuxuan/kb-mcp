@@ -2,8 +2,8 @@
 
 The rules are plan 027's: the former settings file in place of a missing default, the
 former data directory where the default is used and missing, a variable of the former
-prefix, and a setting whose value names the former name. Every test builds the former
-places in its scratch home; none is ever moved.
+prefix, and a path setting with a folder or file named after the former name. Every test
+builds the former places in its scratch home; none is ever moved.
 """
 
 from __future__ import annotations
@@ -113,12 +113,12 @@ def test_a_former_variable_is_renamed_and_its_value_never_shown(
     assert block(advice) == []
 
 
-def test_a_value_naming_the_former_name_names_its_setting_never_its_value(
+def test_a_path_naming_the_former_name_names_its_setting_never_its_value(
     home: Path, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """Rule 4, in any case and from any layer: a path setting and its layer, not its value."""
     monkeypatch.setenv("KB_MCP_LOGS__DIR", str(tmp_path / "Atlassian_Offline_MCP-logs"))
-    data = tmp_path / "former-atlassian-offline-mcp"
+    data = tmp_path / "Atlassian Offline MCP" / "data"
     advice = refusal(home, flags={"--data-dir": ("data_dir", str(data))}).advice
     assert "data_dir (--data-dir)" in advice.splitlines()
     assert "logs.dir (KB_MCP_LOGS__DIR)" in advice.splitlines()
@@ -210,6 +210,11 @@ def test_a_new_file_naming_the_default_data_directory_moves_the_former(home: Pat
             (NEW_FILE, NEW_DATA),
             {"KB_MCP_EMAIL": "me+atlassian-offline-mcp@example.invalid"},
             id="no path naming it",
+        ),
+        pytest.param(
+            (NEW_FILE, NEW_DATA),
+            {"KB_MCP_LOGS__DIR": "/srv/-home-src-atlassian-offline-mcp/scratch/logs"},
+            id="a folder above holding the name",
         ),
     ],
 )
