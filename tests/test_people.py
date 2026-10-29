@@ -745,6 +745,8 @@ def test_no_alias_file_gives_no_alias(tmp_path: Path) -> None:
     [
         ('"" = "Sam Sample"\n', [""], "the name is empty"),
         ('" " = "Sam Sample"\n', [" "], "the name is empty"),
+        ('"\\u0301" = "Robin"\n', ["\u0301"], "the name is empty"),
+        ('"Robin" = "\\u0301\\u0300"\n', ["Robin"], "its target is empty"),
         ('"Sam" = ""\n', ["Sam"], "its target is empty"),
         ('"Sam\\nSample" = "Sam Sample"\n', ["Sam\nSample"], "the name holds a line break"),
         ('"Sam\\u2028" = "Sam Sample"\n', ["Sam\u2028"], "the name holds a line break"),
@@ -766,6 +768,8 @@ def test_no_alias_file_gives_no_alias(tmp_path: Path) -> None:
     ids=[
         "empty name",
         "blank name",
+        "name of an accent alone",
+        "target of accents alone",
         "empty target",
         "line feed in a name",
         "line separator in a name",

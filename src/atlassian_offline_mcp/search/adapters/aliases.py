@@ -19,10 +19,11 @@ if TYPE_CHECKING:
 
 # The most characters of a name or a target: a name, never a text.
 LONGEST = 200
-# What makes a name or a target unusable, each with what a refusal says of it. A line
+# What makes a name or a target unusable, each with what a refusal says of it. Empty is
+# of an empty key, such as white space or accents alone, which no name holds. A line
 # break is any of str.splitlines' line boundaries, as the front matter refuses them.
 REFUSED: tuple[tuple[Callable[[str], bool], str], ...] = (
-    (lambda text: not text.strip(), "is empty"),
+    (lambda text: not name_key(text), "is empty"),
     (lambda text: text.splitlines() != [text], "holds a line break"),
     (lambda text: len(text) > LONGEST, f"is longer than {LONGEST} characters"),
 )
@@ -37,10 +38,10 @@ def read_aliases(path: Path) -> dict[str, str]:
 
     No file holds no alias. Raises AliasFileError, naming the file and the alias, for a
     file that is not UTF-8 TOML; a target that is a table, or not text; a name or a
-    target that is empty, white space alone, holds a line break or is longer than
-    LONGEST; and two names of one key, which the join would take for one name. Raises
-    OSError for a file that cannot be read, such as a folder. A name is quoted as
-    Python writes it, so that a refusal is one line.
+    target of an empty key, such as white space or accents alone, or that holds a line
+    break or is longer than LONGEST; and two names of one key, which the join would take
+    for one name. Raises OSError for a file that cannot be read, such as a folder. A
+    name is quoted as Python writes it, so that a refusal is one line.
     """
     try:
         values = tomllib.loads(path.read_text(encoding="utf-8"))

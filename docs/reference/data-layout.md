@@ -739,10 +739,10 @@ TOML strings:
   not aliases or meetings alone: aliases are not chained, and an alias whose target's
   every name another alias or a meeting joins elsewhere names nobody.
 - A file that is not UTF-8 TOML; a target that is a table or not a string; a name or
-  a target empty, of white space alone, holding a line break or longer than 200
-  characters; or two names of one key: the build stops before it reads the mirror,
-  `index.not_built` naming the file and, but for a file that is not TOML, the alias;
-  the index in place stays, and the run exits 1.
+  a target of an empty key, such as white space or accents alone, holding a line break
+  or longer than 200 characters; or two names of one key: the build stops before it
+  reads the mirror, `index.not_built` naming the file and, but for a file that is not
+  TOML, the alias; the index in place stays, and the run exits 1.
 - An alias whose key no name without an account holds, or whose target names nobody
   or several persons, changes nothing, and the build warns of it, as
   `index.alias_unused`. Neither warning changes the exit status.
