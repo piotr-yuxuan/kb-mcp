@@ -6,10 +6,10 @@ settings the run uses are judged: the settings file that it reads, or the former
 its place when the default is missing (rule 1), then the variables and the flags. Rule 2
 moves the former data directory when the data directory so judged is the default, and
 missing; rule 3 renames each variable of the former prefix that is set, and whose new
-name is not; rule 4 names each path setting with a folder or a file named after the
-former name, a place to move with the setting, never a site or an e-mail, which a user
-cannot rename. Where a former
-place and its new one both exist, the new one is used and nothing stops.
+name is not; rule 4 names each path setting, and the settings file given, that holds a
+folder or a file whose name begins with the former name, a place to move with the
+setting, never a site or an e-mail, which a user cannot rename. Where a former place and
+its new one both exist, the new one is used and nothing stops.
 
 Once the user's machine has moved, the roadmap's row after plan 033 removes this module, its
 call in ``load_settings``, ``advice``'s use in ``enter``, its tests, its line in
@@ -44,7 +44,7 @@ FORMER_DATA_DIR = Path("~/atlassian-offline-mcp")
 # The former name as a path may write it, in any case and with any separator, at the
 # start of a folder's or a file's name: a folder above whose name holds it elsewhere,
 # such as a clone's under an agent's scratch, names no place of the program's.
-FORMER_NAME = re.compile(r"(?:^|[/\\])atlassian.offline.mcp", re.IGNORECASE)
+FORMER_NAME = re.compile(r"(?:^|/)atlassian.offline.mcp", re.IGNORECASE)
 # Each setting renamed since, by its former path, to its path now: none yet. Plans 030
 # and 036, which rename settings, add theirs, so that the stop prints final names.
 RENAMED: dict[tuple[str, ...], tuple[str, ...]] = {}

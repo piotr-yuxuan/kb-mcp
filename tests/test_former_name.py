@@ -129,12 +129,23 @@ def test_a_path_naming_the_former_name_names_its_setting_never_its_value(
     assert str(tmp_path) not in advice
 
 
-def test_a_settings_file_given_by_its_former_path_is_named(home: Path) -> None:
-    """Rule 4 judges the settings file given, which a script may still name."""
-    place(home, FORMER_FILE)
-    advice = refusal(home, home / FORMER_FILE).advice
-    assert "the settings file (--config)" in advice.splitlines()
-    assert block(advice) == []
+@pytest.mark.parametrize(
+    "given",
+    [
+        pytest.param(FORMER_FILE, id="the former file"),
+        pytest.param(Path("atlassian-offline-mcp.toml"), id="relative, named after it"),
+    ],
+)
+def test_a_settings_file_given_by_a_former_path_is_named(
+    home: Path, monkeypatch: MonkeyPatch, given: Path
+) -> None:
+    """Rule 4 judges the settings file given, as written, which a script may still name."""
+    place(home, given)
+    monkeypatch.chdir(home)
+    for path in (given, home / given):
+        advice = refusal(home, path).advice
+        assert "the settings file (--config)" in advice.splitlines()
+        assert block(advice) == []
 
 
 @pytest.mark.parametrize(
