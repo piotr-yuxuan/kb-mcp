@@ -140,6 +140,21 @@ def test_a_client_calls_every_tool_over_stdio(home: Path) -> None:
     assert faults == []
 
 
+def test_the_server_gives_clients_its_name_and_people_its_title(home: Path) -> None:
+    """``serverInfo`` names the server ``kb-mcp``, which clients key, and titles it for people."""
+
+    async def session() -> None:
+        command = StdioServerParameters(
+            command=sys.executable, args=["-m", "kb_mcp"], env={"HOME": str(home)}
+        )
+        async with Client(command) as client:
+            info = client.server_info
+            assert info is not None
+            assert (info.name, info.title) == ("kb-mcp", "Knowledge base MCP")
+
+    anyio.run(session)
+
+
 def talk(
     command: StdioServerParameters,
     calls: Sequence[tuple[str, dict[str, object]]],

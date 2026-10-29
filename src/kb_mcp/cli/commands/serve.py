@@ -41,6 +41,9 @@ if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Loaded
 
 NAME = "kb-mcp"
+# What people read for the server, beside the name that clients key it by, as MCP
+# separates them since its revision of 2025-06-18.
+TITLE = "Knowledge base MCP"
 READ_ONLY = ToolAnnotations(
     read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
 )
@@ -151,7 +154,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None
             for name in offered.tools
         ]
         server = MCPServer(
-            NAME, instructions=offered.instructions, tools=tools, log_level="WARNING"
+            NAME, title=TITLE, instructions=offered.instructions, tools=tools, log_level="WARNING"
         )
         for guide in offered.guides:
             wanted = [
