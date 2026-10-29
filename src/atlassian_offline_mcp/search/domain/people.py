@@ -27,6 +27,7 @@ import re
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass, replace
+from itertools import chain
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -203,8 +204,13 @@ class Joining:
         An alias's target is a person's id; or a name, which means the one account of
         its key, as rule 3 finds it, else the person by name alone of a key that a name
         without an account holds. ``joined`` keeps either when an account or a name
-        makes that person: aliases are not chained.
+        makes that person: aliases are not chained. Raise ValueError, naming them, for
+        documents that are a transcript's meetings and link to meetings themselves, as a
+        transcript, or itself, would: rule 4 needs each meeting joined before.
         """
+        if chained := sorted(set(meetings).intersection(chain.from_iterable(meetings.values()))):
+            message = f"documents {chained} link to meetings and are linked to as meetings"
+            raise ValueError(message)
         self.meetings = meetings
         self.persons: dict[Row, str] = {}
         self.rows: dict[int, list[Row]] = {}  # each document's
@@ -337,7 +343,8 @@ def joined(
     """Join every row into its person: by its account, by RULES in order, or by its name.
 
     ``meetings`` gives each transcript's meetings, by rowid, as its ``summary`` links
-    name them; ``aliases`` each alias's name and target, of distinct keys, as the alias
+    name them, none of them a transcript (``Joining`` refuses one that links to
+    meetings); ``aliases`` each alias's name and target, of distinct keys, as the alias
     file's reader checks. Rows go in order of document, role, name and account, linked
     transcripts' last, so that their meetings' persons are known; the same rows in any
     order give the same result. A person is served by the name on its account's most

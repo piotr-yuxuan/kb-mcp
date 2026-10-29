@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from contextlib import closing
 from dataclasses import replace
@@ -686,6 +687,23 @@ def test_a_transcript_before_its_meeting_joins_by_it() -> None:
     early, late = 5, 30
     rows = (named(early, "Robin"), named(late, "Robin Example"), *ACCOUNTS)
     assert joined(rows, {early: {late}}, {}).of[named(early, "Robin")] == ROBIN
+
+
+@pytest.mark.parametrize(
+    ("meetings", "refused"),
+    [({LINKED: {REVIEW}, REVIEW: {LINKED}}, [REVIEW, LINKED]), ({LINKED: {LINKED}}, [LINKED])],
+    ids=["two linking each other", "one linking itself"],
+)
+def test_a_meeting_that_links_to_meetings_itself_is_refused_naming_it(
+    meetings: dict[int, set[int]], refused: list[int]
+) -> None:
+    """Each meeting must be joined before the transcripts that link it, so links no meeting.
+
+    The index reads the links of transcripts to meetings alone; a caller that gives
+    others is refused, naming the documents, rather than failing within rule 4.
+    """
+    with pytest.raises(ValueError, match=re.escape(f"documents {refused} link to meetings")):
+        joined(ROWS, meetings, {})
 
 
 def test_a_name_is_reported_once_with_every_person_it_could_be() -> None:

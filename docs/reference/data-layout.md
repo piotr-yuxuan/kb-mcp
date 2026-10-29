@@ -700,7 +700,9 @@ person stays. A person is served by a name: an account's, the name on its most r
 updated document; a person by name alone's, the target of the first alias that made it,
 when that is a name, else its most frequent spelling; ties go to the first row in the
 join's order, by document, role, name and account, the rows of transcripts that link
-meetings last, so that their meetings' persons are known.
+meetings last, so that their meetings' persons are known. The join reads the links of
+transcripts to meetings alone, and refuses a document that links to meetings and is a
+transcript's meeting itself, as a programming error.
 
 | Table or column | Holds |
 |---|---|
