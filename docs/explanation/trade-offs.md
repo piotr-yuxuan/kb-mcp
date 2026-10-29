@@ -318,12 +318,20 @@ afresh at each run
   the first archived alone while neither has a transcript, since the archive is read
   after `todo.org`, or the first given a transcript while the second has none. A
   top-level heading of any other purpose with a child titled by a date alone becomes a
-  journal, that child a day and its other children entries. Times are read as written,
-  as UTC: a caption tool that writes an offset from the start, `00:05`, dates its
-  transcript at five past midnight. In a transcript without quote blocks, a line of
-  prose such as `Decision: we wait` reads as a speaker. A meeting's names and its
-  transcript's speakers stay apart, as written: `Kim` and `Kim (not in the header)` are
-  two names to the filter, until a person index joins them. The dates and links of
+  journal, that child a day and its other children entries; the child joins the day of
+  its date that the journal's parts make, and the heading's title is lost: neither the
+  day's text nor its breadcrumb, which are its first part's, holds it, so that a search
+  for that title misses those notes. An archived heading joins its meeting by the
+  meeting's title as org writes it in `:ARCHIVE_OLPATH:`, whose `/` org does not escape
+  ([`Heading.outline_title`](../../src/atlassian_offline_mcp/sources/worklog/domain/org.py)):
+  the longest title of the day that begins the path wins, and a title holding `//`, or
+  beginning or ending with `/`, or one whose keyword `todo.org` does not declare, joins
+  none, its pieces staying in the day. Times are read as written, as UTC: a caption
+  tool that writes an offset from the start, `00:05`, dates its transcript at five past
+  midnight. In a transcript without quote blocks, a line of prose such as
+  `Decision: we wait` reads as a speaker. A meeting's names and its transcript's
+  speakers stay apart, as written: `Kim` and `Kim (not in the header)` are two names to
+  the filter, until a person index joins them. The dates and links of
   every day, meeting and dated transcript are found again at each run, and a file
   whose own changed is written again, unconverted. One rebuild, with plan 041's: the
   index at schema 5

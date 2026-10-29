@@ -559,8 +559,9 @@ problem (a file not read, a conversion that failed) removes none of its files.
   left out, and so the days and meetings below one.
 
 An entry, a day and a meeting hold the user's notes and summaries an AI wrote; a
-transcript, the word-by-word record. The MCP server says so to agents, in its
-instructions and its `source` filter, and `read` opens a document by its id.
+transcript, the word-by-word record. The MCP server says so to agents in its
+instructions, and its `source` filter says it of entries and transcripts; `read` opens a
+document by its id.
 
 ### Reading the mirror from another program
 

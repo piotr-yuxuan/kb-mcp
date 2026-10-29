@@ -71,6 +71,11 @@ A note of the day.
 - The journal's other children, such as the range of days above, are entries; its own
   lines above its first child make one only when they hold text besides its planning
   line and property drawer.
+- Any other top-level heading with a child titled by a date alone is a journal too: that
+  child joins the day of its date, after the other parts of that day, under its own
+  heading line, and the heading's title is lost, in neither the day's text nor its
+  breadcrumb, which are its first part's. Give such notes a title of words, such as
+  `** Sync of <2026-10-13 Tue>`, to keep them in their heading's entry.
 - `:PARTICIPANTS:` names the meeting's people, separated by commas outside brackets,
   each kept as written, annotation included. `:MEETING:` links its transcript, as org
   writes a link to a file (`[[./path]]`, `[[file:path][text]]` or a path alone), from
@@ -214,4 +219,6 @@ the summaries an AI wrote, a meeting linking its transcript; transcripts are the
 word-by-word record, which they should prefer when quoting and check a summary against.
 Its text comes to them as untrusted reference data, as a page's does. `browse` lists
 spaces and projects, not the work log:
-`search(sort="updated", filters={"source": "worklog"})` lists what changed last in it.
+`search(sort="updated", filters={"source": "worklog"})` lists its entries by their last
+change, but its days, meetings and dated transcripts by when they happened, so that an
+edit to an old meeting does not surface there and a day written ahead sorts first.

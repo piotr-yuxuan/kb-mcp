@@ -129,11 +129,12 @@ them all.
 
 The work log holds the user's notes and summaries an AI wrote, its days, meetings and
 entries, and transcripts, the word-by-word record, which a meeting links. The server
-tells agents so, in its instructions
-([`WORKLOG_KINDS`](../../src/atlassian_offline_mcp/mcp/app/surface.py)) and its
-`source` filter
-([`SearchFilters`](../../src/atlassian_offline_mcp/mcp/app/tools.py)), so that they
-quote a transcript rather than a summary of it, and check the one against the other.
+tells agents so in its instructions
+([`WORKLOG_KINDS`](../../src/atlassian_offline_mcp/mcp/app/surface.py)), so that they
+quote a transcript rather than a summary of it, and check the one against the other;
+its `source` filter
+([`SearchFilters`](../../src/atlassian_offline_mcp/mcp/app/tools.py)) says it of
+entries and transcripts alone, its words counted in the schemas of `search` and `ask`.
 It stays on this machine, as all the data does: by default `sync` sends its text to the
 embedding endpoint, which must be a loopback address unless the run is given
 `--allow-remote-embeddings` ([an endpoint off this
