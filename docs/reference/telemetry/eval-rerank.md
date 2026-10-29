@@ -25,6 +25,7 @@ own.
 | Span | Kind | Attributes | What |
 |---|---|---|---|
 | `index.files` | internal | | The mirror's files read and indexed by words |
+| `index.join` | internal | | The documents' people joined into persons, once the files are read |
 | `index.embed` | internal | | The pieces by meaning: their vectors read from the vector store, or embedded |
 | `search.lexical` | internal | | A search by words |
 | `search.semantic` | internal | | A search by meaning |

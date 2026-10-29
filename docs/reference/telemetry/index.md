@@ -2,8 +2,9 @@
 
 What `index` records, besides what every command does ([README](README.md)). A run is
 one trace: its root `index`, the connection to the model when the mode searches by
-meaning, a span to read the mirror's files and one to embed their pieces, each batch an
-embedding by the GenAI conventions over its requests. In the lexical mode, nothing is
+meaning, a span to read the mirror's files, one to join their people into persons and
+one to embed their pieces, each batch an embedding by the GenAI conventions over its
+requests. In the lexical mode, nothing is
 sent to the embedding endpoint, and nothing of it is recorded. A build by meaning holds
 the vector store's lock shared, and waits while a prune holds it. Once its index is in
 place, the prune of the vector store is a span of its own, `index.prune`: the vectors
@@ -36,6 +37,7 @@ the documents' people into persons through it.
 | Span | Kind | Attributes | What |
 |---|---|---|---|
 | `index.files` | internal | | The mirror's files read and indexed by words |
+| `index.join` | internal | | The documents' people joined into persons, once the files are read |
 | `index.embed` | internal | | The pieces by meaning: their vectors read from the vector store, or embedded |
 | `index.prune` | internal | `aom.outcome`, `aom.deleted` | The prune of the vector store, once the index is in place: `pruned`, `deferred`, `held back` or `failed`, and the vectors deleted |
 | `embeddings <model>` | client | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type`, `gen_ai.usage.input_tokens` | An embedding by the GenAI conventions, its attempts included, and the tokens that the endpoint counted, if it did; the provider `openai`, the API spoken |

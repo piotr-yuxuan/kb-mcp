@@ -2,8 +2,8 @@
 
 With an embedding, each piece of each section also gets its vector: from the vector
 store when it holds the piece's text, else from the model, then kept there. A piece
-whose text the model refuses has no vector, and its document is named. Reading the files
-and embedding are each a span; files and pieces are counted, as
+whose text the model refuses has no vector, and its document is named. Reading the files,
+joining persons and embedding are each a span; files and pieces are counted, as
 ``docs/reference/telemetry/index.md`` lists it. ``refresh`` is what ``index`` and
 ``sync`` run alike: ``index_mirror``'s build, which opens the endpoint, if any, then
 builds; then, for an index by meaning, the prune of the vector store to what the indexes
@@ -149,7 +149,8 @@ def build_index(
     its index is in place, so that no prune deletes what it embeds; it waits for a prune
     in progress, and raises TimeoutError past ``vector_store.WAIT_S``. The task ``files``
     reports the files read, each by its path, then the vector store its own. The spans
-    ``index.files`` and ``index.embed`` hold reading the files and embedding the pieces;
+    ``index.files``, ``Writer.join``'s ``index.join`` and ``index.embed`` hold reading the
+    files, joining persons and embedding the pieces;
     ``index.document`` says each file indexed at DEBUG, ``index.built`` the counts at
     INFO once the index is complete.
     """

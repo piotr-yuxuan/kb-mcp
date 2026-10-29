@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
+from opentelemetry import trace
 
 from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
 from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.search.domain.search import Section, Sort
 
+TRACER = trace.get_tracer(__name__)
 # What the file of a build begins with, beside its index, until it is renamed into place.
 BUILDING = ".index-"
 # Why a link among indexes is not followed: a cycle of them would not end.
@@ -407,6 +409,7 @@ class Writer:
         """Count a file of the mirror that could not be indexed."""
         self.skipped += 1
 
+    @TRACER.start_as_current_span("index.join")
     def join(
         self, aliases: Mapping[str, str]
     ) -> tuple[int, tuple[people.Ambiguity, ...], tuple[people.Alias, ...]]:
@@ -418,7 +421,8 @@ class Writer:
         name: no other document, so that each is joined before the transcript.
         ``aliases`` gives each alias's name and target, as the alias file's reader checks
         them. Give back how many persons there are, and what the join left apart: the
-        names that could be several persons, and the aliases that changed nothing.
+        names that could be several persons, and the aliases that changed nothing. The
+        span ``index.join`` holds it.
         """
         rows = {
             rowid: people.Row(document, role, name, account, datetime.fromisoformat(updated))
