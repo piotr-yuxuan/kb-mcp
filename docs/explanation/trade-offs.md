@@ -685,8 +685,10 @@ dataclasses, each for the reason that [the code's layout](code-layout.md#records
   impossible: a record refuses a misspelt keyword, its checks run at every construction,
   a changed copy included, and its errors never print a value, as the settings' model
   already did.
-- **Cost.** A record is slower than a dataclass: about 0.84 µs to build against 0.40,
-  0.39 µs to hash against 0.21. A model copies a list, a dict or a `Counter` that it is
+- **Cost.** A record is slower than a dataclass: about 2 µs to build one of three fields
+  against 0.7, so that a search by words alone, which builds a score for each document
+  that matches, takes about 1.4 ms more, a fifth of its time; one by meaning is the
+  embedding's time. A record checks a record that it holds again. A model copies a list, a dict or a `Counter` that it is
   given, so a field whose object the caller keeps using says so, by `InstanceOf`. The
   types that a record names are imported at run time, and `--help` must not load
   Pydantic, so the classes that `--help` imports stay dataclasses, with those that hold a

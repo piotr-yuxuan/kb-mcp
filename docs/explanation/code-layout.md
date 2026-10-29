@@ -114,7 +114,12 @@ never print a value. Plan 028 made the program's dataclasses records. Their rule
 - A model copies a list, a dict or a `Counter` that it is given: a field whose object
   the caller keeps using is typed `InstanceOf[...]`, which checks its class and keeps it,
   as `Context.unsupported` is.
-- A record has no order: a sort of records takes a `key=`.
+- A record has no order: a sort of records takes a `key=`. A frozen record hashes by its
+  fields; one that accumulates has no hash, as a dataclass that was not frozen.
+- A protocol is never a record's base, as its metaclass and Pydantic's conflict: a
+  record that implements one, such as `site_html.Part` a `Construct` or
+  `display.TaskBar` a `Bar`, has `Record` for its base and meets the protocol by its
+  methods.
 - Pydantic reads a record's annotations, so the types they name are imported at run
   time, never under `TYPE_CHECKING`, and so is a `type` alias that they name. Ruff
   knows records by their base, `kb_mcp.kernel.record.Record`, which `ruff.toml` names
