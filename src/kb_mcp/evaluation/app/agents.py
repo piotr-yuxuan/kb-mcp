@@ -437,7 +437,7 @@ class Outcome(Record):
     reason: str  # why it failed, or gave no result
     calls: dict[str, int]  # by tool
     handed: int  # estimated tokens handed over
-    seconds: float
+    seconds: int | float  # the int 0 when no call was logged, as the sum of none is
     model: str | None  # as the harness reports it
     model_tokens: int | None
     graded: Graded | None
