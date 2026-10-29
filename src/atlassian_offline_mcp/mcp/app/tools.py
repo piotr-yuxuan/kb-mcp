@@ -51,7 +51,7 @@ from atlassian_offline_mcp.search.domain.search import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterator, Mapping, Sequence
     from pathlib import Path
 
     from atlassian_offline_mcp.config.domain.settings import SearchMode as Mode
@@ -398,6 +398,24 @@ def who(reader: Reader, name: str, value: str | None) -> str | None:
     raise UnanswerableError(responses.refusal(message, listed[:VALUES_SHOWN], len(valid)))
 
 
+def about(reader: Reader, filters: Filters, paths: Sequence[str]) -> tuple[str, dict[str, str]]:
+    """Write the person that ``person`` narrows to, and their roles on each document shown.
+
+    The person as ``responses.person`` writes them, then a blank line, with those perhaps
+    the same: the persons by name alone of one word, the first of one of their names; and
+    their roles by path, as ``responses.roles`` says them. Nothing without that filter.
+    """
+    if filters.person is None:
+        return "", {}
+    found = reader.person(filters.person)
+    words = sorted({spelling.key.partition(" ")[0] for spelling in found.person.names})
+    alike = [reader.person(people.person_id(people.NAME, word)) for word in words]
+    others = [each.person for each in alike if each and each.person.id != filters.person]
+    held = reader.roles(filters.person, paths)
+    roles = {path: responses.roles(found.person.name, each) for path, each in held.items()}
+    return f"{responses.person(found, others)}\n\n", roles
+
+
 def bounded(**values: tuple[str | None, int]) -> None:
     """Refuse an argument longer than its limit, naming it."""
     for name, (value, limit) in values.items():
@@ -585,11 +603,12 @@ class Library:
                 }
             )
             items = []
+            person, held = about(reader, kept, [entry.path for entry in shown])
             for number, entry in enumerate(shown, offset + 1):
                 passage = passage_of(reader, entry, ranked, planned)
                 ref = entry.front.key or entry.front.id
                 opening = responses.call(self.read, ref=ref, section=passage.number)
-                items.append(responses.hit(number, entry, passage, opening))
+                items.append(responses.hit(number, entry, passage, opening, held.get(entry.path)))
 
         def more(count: int) -> str:
             after = cursor_at(offset + count, built_at) + written(ranked.order)
@@ -597,14 +616,15 @@ class Library:
                 self.search, query=query, filters=filters, sort=sort, limit=limit, cursor=after
             )
 
-        # A note on falling back to words lengthens the header: the hits make room for it.
-        allowed = responses.budget(limit, SEARCH_LIMIT) - responses.tokens(ranked.note)
+        # A note on falling back to words lengthens the header, and a person the block's
+        # start: the hits make room for them.
+        allowed = responses.budget(limit, SEARCH_LIMIT) - responses.tokens(ranked.note + person)
         count, footer = responses.page(items, total - offset, allowed, more)
         counted = f"Documents {ranked.counted}: {total if whole else f'at least {total}'}"
         header = f"{counted}; {responses.span(offset, count, built_at)}{ranked.note}"
         if planned.dropped:
             header += f" Only the first {MAX_WORDS} words of the query were searched."
-        return responses.answer(header, "\n".join(items[:count]), footer)
+        return responses.answer(header, person + "\n".join(items[:count]), footer)
 
     def ask(
         self, question: str, filters: SearchFilters | None = None, cursor: str | None = None
@@ -649,6 +669,7 @@ class Library:
             paths = ranked.paths[offset : offset + ASK_DOCUMENTS]
             entries = {entry.path: entry for entry in reader.entries(paths=paths)}
             chosen = excerpts(reader, ranked, planned, paths)
+            person, held = about(reader, kept, paths)
         pairs = [(entries[path], passage) for path, passage in zip(paths, chosen, strict=True)]
         items = [
             responses.excerpt(
@@ -658,6 +679,7 @@ class Library:
                 responses.call(
                     self.read, ref=entry.front.key or entry.front.id, section=passage.number
                 ),
+                held.get(entry.path),
             )
             for number, (entry, passage) in enumerate(pairs, offset + 1)
         ]
@@ -666,12 +688,13 @@ class Library:
             after = cursor_at(offset + count, built_at) + written(ranked.order)
             return responses.call(self.ask, question=question, filters=filters, cursor=after)
 
-        allowed = responses.BUDGET - responses.tokens(ranked.note)
+        allowed = responses.BUDGET - responses.tokens(ranked.note + person)
         total = len(ranked.paths)
         count, footer = responses.page(items, total - offset, allowed, more)
         counted = f"Documents {ranked.counted}: {total if ranked.whole else f'at least {total}'}"
         header = f"{counted}; {responses.span(offset, count, built_at)}{ranked.note}"
-        return responses.answer(header, "\n\n".join(items[:count]), footer), pairs[:count], ranked
+        content = person + "\n\n".join(items[:count])
+        return responses.answer(header, content, footer), pairs[:count], ranked
 
     def quoted(self, question: str, mode: Mode) -> list[Shown]:
         """Give the passages of ask's first answer in a mode, for an evaluation."""

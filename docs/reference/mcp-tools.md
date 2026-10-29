@@ -29,7 +29,8 @@ as many documents as fit the budget, 20 at most, then the call that continues.
 A passage is a line of its number, title, ref, section, heading and dates, ending as a
 `search` hit's second line does; a line of the site's address (or the mirror's path)
 and the `read(ref=..., section=N)` call that opens its section; then its text,
-verbatim. By meaning, the text is the unit of the index's chunking (see
+verbatim. With the filter `person`, the passages follow the person, as `search`'s hits
+do. By meaning, the text is the unit of the index's chunking (see
 [chunking](../explanation/chunking.md)); by words, the section
 that holds the question's words best, whole up to 2,400 characters, else 2,400 of it
 centred on the first of the question's words that it holds, cut to whole lines.
@@ -45,6 +46,19 @@ unless `current`, `assignee <name>` (`unassigned` for an issue with none, which 
 filter selects), `author <name>`, `creator <name>` when an issue's creator is named
 otherwise than its author, and `created <day>`, such as
 `Bug | Done | assignee Ada Example | author Bo Sample | created 2026-10-01`.
+
+With the filter `person`, the block opens with the person, then a blank line: a line
+of who they are and what they did, such as `Person: Sam Sample, p-0123456789abcdef:
+creator 3, commenter 2; jira 4; last updated 2026-10-21.`; a line of their names as the
+sources write them, by how each joined (by its account, by an alias, by name, or as a
+speaker, by the meeting of each transcript), ten at most, then how many more; and a
+line for each person by name alone who is perhaps the same, not joined, a one-word
+name that begins one of theirs, by id, with the line of `aliases.toml` that would join
+them, ten at most. Each name is cut at 60 characters. Each hit's second line then ends
+with that person's roles there, in the order of the roles, a commenter's with their
+comments' count and the day of the last, such as
+`Sam Sample: creator, commenter 2 (last 2026-10-21)`. Other filters of people add
+neither.
 
 - `query`: the words, at most 500 characters.
 - `filters`: an object of `source` (`confluence`, `jira` or `worklog`), `space`,

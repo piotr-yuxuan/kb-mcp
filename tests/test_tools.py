@@ -855,6 +855,85 @@ def test_a_person_without_a_document_in_the_role_is_refused_with_its_names(
         persons.search(filters=filters, sort="created")
 
 
+def test_a_person_s_answer_opens_with_who_they_are_and_each_hit_ends_with_their_roles(
+    persons: Library,
+) -> None:
+    """Plan 043, criterion 6, the newest first: Robin's names and how each joined.
+
+    Robin's account is named as on PAY-1, its newest document; its names are written by
+    the account, by name in the meetings, and as the review's speaker. The documents by
+    role and by source, the most first; the unlinked Robin, perhaps the same, with the
+    alias that would join them. Each hit's line of who and when ends with Robin's roles
+    there, a commenter's with the comments' count and the last day.
+    """
+    block = parts(persons.search(filters={"person": "Robin Example"}, sort="updated"))[1]
+    header, _, hits = block.partition("\n\n")
+    assert header.splitlines() == [
+        (
+            f"Person: Robin Sample, {ROBIN}: participant 4, author 1, commenter 1, creator 1;"
+            " worklog 4, jira 2, confluence 1; last updated 2026-10-21."
+        ),
+        (
+            "Names: Robin Example, Robin Sample by its account; Robin Example, robin EXAMPLE"
+            " by name; Robin as a speaker, by the meeting of each transcript."
+        ),
+        (
+            f"Perhaps the same, not joined: {ROBIN_ALONE};"
+            f' the alias "Robin" = "{ROBIN}" would join them.'
+        ),
+    ]
+    roles = {ref: facts.rpartition(" | ")[2] for ref, facts in FACTS.findall(hits)}
+    assert list(roles.items()) == [
+        ("PAY-1", "Robin Sample: creator"),
+        ("300001", "Robin Sample: author"),
+        ("PAY-2", "Robin Sample: commenter 2 (last 2026-10-20)"),
+        ("m-20261020-planning", "Robin Sample: participant"),
+        ("m-20261020-review", "Robin Sample: participant"),
+        ("m-20261020-stand-up", "Robin Sample: participant"),
+        ("t-20261020-1", "Robin Sample: participant"),
+    ]
+
+
+def test_a_person_s_roles_on_a_hit_come_in_the_order_of_the_roles(commented: Library) -> None:
+    """A Person wrote PROJ-1, is assigned it and commented three times; created PROJ-4."""
+    filters = {"person": "a person", "source": "jira"}
+    block = parts(commented.search(filters=filters, sort="created"))[1]
+    assert {ref: facts.rpartition(" | ")[2] for ref, facts in FACTS.findall(block)} == {
+        "PROJ-1": "A Person: author, assignee, commenter 3 (last 2026-10-25)",
+        "PROJ-2": "A Person: commenter 1 (last 2026-10-18)",
+        "PROJ-3": "A Person: author",
+        "PROJ-4": "A Person: creator",
+    }
+
+
+def test_a_filter_of_a_role_adds_no_person_to_the_answer(persons: Library) -> None:
+    """The person and the roles on hits come with person alone."""
+    block = parts(persons.search(filters={"creator": "Robin Sample"}, sort="updated"))[1]
+    assert dict(FACTS.findall(block)) == {
+        "PAY-1": (
+            "Task | To Do | unassigned | author Sam Sample | creator Robin Sample"
+            " | created 2026-10-20"
+        )
+    }
+    assert not block.startswith("Person:")
+
+
+def test_no_answer_about_persons_holds_an_account_id(persons: Library) -> None:
+    """Plan 043, criterion 6: ids of persons are served, never those of accounts."""
+    answers = [
+        persons.search(filters={"person": "Robin Example"}, sort="updated"),
+        persons.search("ledger", filters={"person": SAM_2}),
+        persons.ask("ledger", filters={"person": "Robin Sample"}),
+        *(persons.read(front.key or front.id) for front in PERSONS),
+        persons.status(),
+    ]
+    for filters in ({"person": "Sam Sample"}, {"author": "Sam Sample"}, {"person": "nobody"}):
+        with pytest.raises(UnanswerableError) as refused:
+            persons.search(filters=filters, sort="updated")
+        answers.append(str(refused.value))
+    assert [answer for answer in answers if "acct-" in answer] == []
+
+
 @pytest.mark.parametrize(
     "ref",
     [

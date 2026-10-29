@@ -288,6 +288,22 @@ def test_a_person_narrows_the_passages_as_search_s_filter_does(tmp_path: Path, v
     assert sorted(each["ref"] for each in found) == ROBIN_DOCUMENTS
 
 
+def test_a_person_s_passages_open_as_search_s_hits_do_and_name_their_roles(
+    tmp_path: Path,
+) -> None:
+    """Plan 043: the person as search gives them, then Robin's roles ending each first line."""
+    persons = built(tmp_path, [(front, None) for front in PERSONS])
+    answer = persons.ask("ledger", filters={"person": "Robin Sample"})
+    searched = persons.search(filters={"person": "Robin Sample"}, sort="updated")
+    header = parts(searched)[1].partition("\n\n")[0]
+    assert parts(answer)[1].startswith(f"{header}\n\n1. ")
+    assert {each["ref"]: each["facts"].rpartition(" | ")[2] for each in passages(answer)} == {
+        "300001": "Robin Sample: author",
+        "PAY-1": "Robin Sample: creator",
+        "PAY-2": "Robin Sample: commenter 2 (last 2026-10-20)",
+    }
+
+
 def test_a_passage_s_first_line_ends_with_who_and_when(tmp_path: Path) -> None:
     """As a hit's: an issue's type, status, assignee, author and created day; a page's last two."""
     people = built(tmp_path, [(front, None) for front in PEOPLE])

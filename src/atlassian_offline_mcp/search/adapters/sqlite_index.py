@@ -220,6 +220,14 @@ SELECT d.source, count(DISTINCT d.rowid), max(d.updated)
 FROM people p JOIN documents d ON d.rowid = p.document WHERE p.person = :person
 GROUP BY 1 ORDER BY 2 DESC, 1
 """
+# A person's roles on each of some documents: the rows of each, a commenter's one per
+# comment, and the time of the last comment.
+PERSON_HELD = """
+SELECT d.path, p.role, count(*), max(p.at)
+FROM people p JOIN documents d ON d.rowid = p.document
+WHERE p.person = :person AND d.path IN (SELECT value FROM json_each(:paths))
+GROUP BY 1, 2 ORDER BY 1, 2
+"""
 # Each value that a filter can take, with how many documents have it, the most used first.
 VALUES = {
     "source": "SELECT source, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
@@ -660,6 +668,21 @@ class Reader:
             sources={row[0]: row[1] for row in sources},
             last=max(datetime.fromisoformat(row[2]) for row in sources),
         )
+
+    def roles(
+        self, person: str, paths: Iterable[str]
+    ) -> dict[str, list[tuple[str, int, datetime | None]]]:
+        """Give a person's roles on each of these documents where they hold one, by path.
+
+        Each role with the count of its rows, a commenter's being their comments, and the
+        time of the last comment, None for any other role.
+        """
+        parameters = {"person": person, "paths": json.dumps(list(paths))}
+        held: dict[str, list[tuple[str, int, datetime | None]]] = {}
+        for path, role, count, at in self._connection.execute(PERSON_HELD, parameters):
+            last = None if at is None else datetime.fromisoformat(at)
+            held.setdefault(path, []).append((role, count, last))
+        return held
 
     def built_at(self) -> datetime:
         """Say when the index was built."""

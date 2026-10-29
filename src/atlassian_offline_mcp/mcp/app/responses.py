@@ -15,6 +15,7 @@ from itertools import takewhile
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.mirror.domain.mirror import RELATIONS, ROLES
+from atlassian_offline_mcp.search.domain import people
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+    from atlassian_offline_mcp.search.domain.people import Person
     from atlassian_offline_mcp.search.domain.search import Activity, Entry, Passage, Summary
 
 BUDGET = 4_000  # estimated tokens of an answer to arguments at or below their defaults
@@ -35,6 +37,13 @@ DEPTH = 10  # levels of indentation, at most
 # Estimated tokens kept for an answer's header and the markers of its block.
 RESERVE = 100
 SPACES = re.compile(r"\s+")
+# How each name of a person joined them, as a person's answer says it.
+JOINED = {
+    people.ACCOUNT: "by its account",
+    people.ALIAS: "by an alias",
+    people.NAME: "by name",
+    people.MEETING: "as a speaker, by the meeting of each transcript",
+}
 
 
 def tokens(text: str) -> int:
@@ -154,6 +163,46 @@ def activity(found: Activity) -> str:
     )
 
 
+def person(found: Activity, alike: Sequence[Person]) -> str:
+    """Write the person that an answer is narrowed to, before its documents, on a few lines.
+
+    Who they are and what they did, as ``activity`` says it; their names as the sources
+    write them, by how each joined, in the order of JOINED, NAMES at most, then how many
+    more; then, NAMES at most, each person by name alone who is perhaps the same, not
+    joined, by id, with the line of the alias file that would join them. Each name is cut
+    at LABEL characters, as a hit's.
+    """
+    order = list(JOINED)
+    names = sorted(found.person.names, key=lambda each: order.index(each.how))
+    ways = [
+        (said, [short(each.name, LABEL) for each in names[:NAMES] if each.how == how])
+        for how, said in JOINED.items()
+    ]
+    more = f"; {len(names) - NAMES} more" if len(names) > NAMES else ""
+    written = "; ".join(f"{', '.join(spelt)} {said}" for said, spelt in ways if spelt)
+    lines = [f"Person: {activity(found)}.", f"Names: {written}{more}."]
+    lines += [
+        f"Perhaps the same, not joined: {other.id}; the alias"
+        f" {json.dumps(short(other.name, LABEL), ensure_ascii=False)}"
+        f" = {json.dumps(found.person.id)} would join them."
+        for other in alike[:NAMES]
+    ]
+    return "\n".join(lines)
+
+
+def roles(name: str, held: Sequence[tuple[str, int, datetime | None]]) -> str:
+    """Say a person's roles on one document, in the order of the roles.
+
+    A commenter's with their comments' count and the day of the last, such as
+    ``Sam Sample: creator, commenter 2 (last 2026-10-21)``.
+    """
+    shown = (
+        role if last is None else f"{role} {count} (last {last:%Y-%m-%d})"
+        for role, count, last in sorted(held, key=lambda each: ROLES.index(each[0]))
+    )
+    return f"{short(name, LABEL)}: {', '.join(shown)}"
+
+
 def facts(front: FrontMatter) -> str:
     """Say what a document is, who it is for and from, and when it was created.
 
@@ -174,14 +223,19 @@ def facts(front: FrontMatter) -> str:
     return " | ".join(part for part in shown if part)
 
 
-def hit(number: int, entry: Entry, passage: Passage, opening: str) -> str:
-    """Write one hit of a search: what and where it is, its best section and a snippet."""
+def hit(number: int, entry: Entry, passage: Passage, opening: str, held: str | None = None) -> str:
+    """Write one hit of a search: what and where it is, its best section and a snippet.
+
+    ``held``, if given, ends the line of who and when: a person's roles there, as
+    ``roles`` says them.
+    """
     front = entry.front
     lines = [
         f"{number}. {short(front.title)}",
         (
             f"   {front.key or front.id} | {entry.path} | updated {stamp(front.updated)}"
             f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}"
+            + (f" | {held}" if held else "")
         ),
     ]
     if front.breadcrumb:
@@ -193,17 +247,20 @@ def hit(number: int, entry: Entry, passage: Passage, opening: str) -> str:
     return "\n".join(lines)
 
 
-def excerpt(number: int, entry: Entry, passage: Passage, opening: str) -> str:
+def excerpt(
+    number: int, entry: Entry, passage: Passage, opening: str, held: str | None = None
+) -> str:
     """Write one passage that ask quotes: what and where it is, then its text, verbatim.
 
-    ``passage`` holds the text whole, where a search's holds a snippet.
+    ``passage`` holds the text whole, where a search's holds a snippet; ``held`` ends the
+    line of who and when, as a hit's.
     """
     front = entry.front
     heading = f": {short(passage.heading)}" if passage.heading else ""
     about = (
         f"{number}. {short(front.title)} | {front.key or front.id} | section"
         f" {passage.number}{heading} | updated {stamp(front.updated)}"
-        f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}"
+        f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}" + (f" | {held}" if held else "")
     )
     return f"{about}\n{short(front.url or entry.path)} | {opening}\n{passage.snippet}"
 

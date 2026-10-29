@@ -24,7 +24,8 @@ from atlassian_offline_mcp.search.adapters.model_api import ModelError
 from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
 from tests.endpoint import connector
-from tests.mirrors import MOMENT, issue, page
+from tests.mirrors import MOMENT, issue, page, worklog_document
+from tests.test_people import anchored
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -217,6 +218,42 @@ def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
     assert [relation for relation in RELATIONS if worklog and f"\n{relation}: " not in shown] == []
     assert estimate(answer) <= BUDGET
     assert continuation(answer) is not None
+
+
+# Two more names of one account than a person's answer names, each beginning with a
+# word of its own, longer than a name shown and not ASCII; each word alone a work-log
+# participant, a person by name alone perhaps the same.
+SPELLINGS = tuple(f"Wörd{number:02}{'é' * 60} " + "長" * 200 for number in range(NAMES + 2))
+
+
+def test_a_person_at_their_largest_leaves_the_answer_within_the_budget(tmp_path: Path) -> None:
+    """The hits and passages make room for the person that opens the answer.
+
+    One account wrote each of the large mirror's pages under another name, so the
+    person names as many names, and as many people perhaps the same, as it shows.
+    """
+    pages = large_documents()[1 : len(SPELLINGS) + 1]
+    documents: list[tuple[FrontMatter, str | None]] = []
+    for number, ((front, body), name) in enumerate(zip(pages, SPELLINGS, strict=True)):
+        author = PersonRole(role="author", name=name, account="acct-0001")
+        word = name.split()[0]
+        meeting = worklog_document("meeting", f"m-20261020-{number:02}", "Gamma", (word,))
+        documents += [(replace(front, people=(author,)), body), (meeting, None)]
+    library = built(tmp_path, documents)
+    person = {"person": anchored("account\nacct-0001")}
+    answer = library.search(filters=person, sort="updated")
+    header = parts(answer)[1].partition("\n\n")[0]
+    assert len(header.splitlines()) == len(["person", "names", *range(NAMES)])
+    assert f" by its account; {len(SPELLINGS) - NAMES} more.\n" in header
+    answers = [
+        answer,
+        library.search("gamma", filters=person),
+        library.ask("gamma", filters=person),
+    ]
+    assert [estimate(each) for each in answers if estimate(each) > BUDGET] == []
+    assert [each[:40] for each in answers if continuation(each) is None] == []
+    wide = library.search(filters=person, sort="updated", limit=50)
+    assert estimate(wide) <= CEILING
 
 
 @pytest.mark.parametrize(
