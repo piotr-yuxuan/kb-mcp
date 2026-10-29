@@ -418,23 +418,31 @@ def about(reader: Reader, filters: Filters, paths: Sequence[str]) -> tuple[str, 
 
     The person as ``responses.person`` writes them, then a blank line, with those perhaps
     the same: of each ``people.first_word`` of their names, the one other person whose
-    names of that key joined by name, whom an alias of the word would join to them; none
-    where an account is named by the word, from which the alias would take the name, or
-    where those names are several persons, which annotations keep apart and the alias
-    would join too. Then their roles by path, as ``responses.roles`` says them. Nothing
-    without that filter.
+    names of that key joined by name, whom an alias of the word, written as their name
+    of that key, would join to them; none where an account is named by the word, from
+    which the alias would take the name, or where those names are several persons, which
+    annotations keep apart and the alias would join too. Then their roles by path, as
+    ``responses.roles`` says them. Nothing without that filter.
     """
     if filters.person is None:
         return "", {}
     found = reader.person(filters.person)
     words = sorted({people.first_word(spelling.name) for spelling in found.person.names})
     moved = [
-        reader.persons(word, people.NAME)
+        (word, reader.persons(word, people.NAME))
         for word in words
         if not reader.persons(word, people.ACCOUNT)
     ]
-    alike = [reader.person(ids[0]) for ids in moved if len(ids) == 1 and ids[0] != filters.person]
-    others = [each.person for each in alike if each]
+    alike = [
+        (word, reader.person(ids[0]))
+        for word, ids in moved
+        if len(ids) == 1 and ids[0] != filters.person
+    ]
+    others = [
+        (next(each.name for each in other.person.names if each.key == word), other.person.id)
+        for word, other in alike
+        if other
+    ]
     held = reader.roles(filters.person, paths)
     roles = {path: responses.roles(found.person.name, each) for path, each in held.items()}
     return f"{responses.person(found, others)}\n\n", roles

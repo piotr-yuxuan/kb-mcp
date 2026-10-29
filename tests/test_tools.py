@@ -1027,6 +1027,28 @@ def test_a_speaker_whom_an_account_holds_is_never_shown_as_perhaps_the_same(
     assert offered == perhaps
 
 
+def test_the_alias_suggested_writes_the_word_as_its_person_does(tmp_path: Path) -> None:
+    """The unlinked Robin, whom an alias by id gives three transcripts' Rob, is named Rob.
+
+    The line suggested holds Robin, its name of the word, as Robin Example's first word:
+    "Rob" is a line of the file already, and its key is another.
+    """
+    rob = [worklog("transcript", f"t-2026102{day}-9", "Chat", "Rob") for day in (2, 3, 4)]
+    for front in (*PERSONS, *rob):
+        write(tmp_path / "docs", front)
+    aliases = {"Rob": ROBIN_ALONE}
+    build_index(tmp_path / "docs", tmp_path / "index.sqlite", MOMENT, aliases=aliases)
+    library = Library(tmp_path / "index.sqlite", tmp_path / "docs")
+    alone = parts(library.search(filters={"person": ROBIN_ALONE}, sort="updated"))[1]
+    assert alone.startswith(f"Person: Rob, {ROBIN_ALONE}: ")
+    block = parts(library.search(filters={"person": ROBIN}, sort="updated"))[1]
+    header = block.partition("\n\n")[0]
+    suggested = f'the alias "Robin" = "{ROBIN}" would join them.'
+    assert [line for line in header.splitlines() if line.startswith("Perhaps")] == [
+        f"Perhaps the same, not joined: {ROBIN_ALONE}; {suggested}"
+    ]
+
+
 def test_a_one_word_name_alone_is_never_shown_as_perhaps_the_same_as_itself(
     persons: Library,
 ) -> None:

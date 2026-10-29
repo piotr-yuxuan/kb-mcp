@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
-    from atlassian_offline_mcp.search.domain.people import Person
     from atlassian_offline_mcp.search.domain.search import Activity, Entry, Passage, Summary
 
 BUDGET = 4_000  # estimated tokens of an answer to arguments at or below their defaults
@@ -164,14 +163,15 @@ def activity(found: Activity) -> str:
     )
 
 
-def person(found: Activity, alike: Sequence[Person]) -> str:
+def person(found: Activity, alike: Sequence[tuple[str, str]]) -> str:
     """Write the person that an answer is narrowed to, before its documents, on a few lines.
 
     Who they are and what they did, as ``activity`` says it; their names as the sources
     write them, by how each joined, in the order of JOINED, NAMES at most, then how many
     more; then, NAMES at most, each person by name alone who is perhaps the same, not
-    joined, by id, with the line of the alias file that would join them. Each name is cut
-    at LABEL characters, as a hit's.
+    joined, given as the name that an alias would hold and their id, with the line of
+    the alias file that would join them. Each name is cut at LABEL characters, as a
+    hit's.
     """
     order = list(JOINED)
     names = sorted(found.person.names, key=lambda each: order.index(each.how))
@@ -183,10 +183,10 @@ def person(found: Activity, alike: Sequence[Person]) -> str:
     written = "; ".join(f"{', '.join(spelt)} {said}" for said, spelt in ways if spelt)
     lines = [f"Person: {activity(found)}.", f"Names: {written}{more}."]
     lines += [
-        f"Perhaps the same, not joined: {other.id}; the alias"
-        f" {json.dumps(short(other.name, LABEL), ensure_ascii=False)}"
+        f"Perhaps the same, not joined: {other}; the alias"
+        f" {json.dumps(short(name, LABEL), ensure_ascii=False)}"
         f" = {json.dumps(found.person.id)} would join them."
-        for other in alike[:NAMES]
+        for name, other in alike[:NAMES]
     ]
     return "\n".join(lines)
 
