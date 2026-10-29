@@ -156,10 +156,10 @@ What any command may log.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `<command>` | internal | `aom.command`, `aom.dry_run`, `aom.exit_status` | The root of a run's trace, named after its command, holding `run.start` and `run.end`; `serve` and `completion` have none |
+| `<command>` | internal | `kb_mcp.command`, `kb_mcp.dry_run`, `kb_mcp.exit_status` | The root of a run's trace, named after its command, holding `run.start` and `run.end`; `serve` and `completion` have none |
 
 ## Instruments
 
 | Instrument | Kind | Unit | Attributes | What |
 |---|---|---|---|---|
-| `aom.run.duration` | histogram | `s` | `aom.command`, `aom.exit_status` | How long a run lasted, `serve`'s included, `completion`'s not |
+| `kb_mcp.run.duration` | histogram | `s` | `kb_mcp.command`, `kb_mcp.exit_status` | How long a run lasted, `serve`'s included, `completion`'s not |

@@ -2,7 +2,7 @@
 
 What `eval-agents` records, besides what every command does ([README](README.md)). Each
 step is a run of its own, named `eval-agents` in its log file, its root span and
-`aom.command`; its `run.start` names the step among the arguments given, but a call's
+`kb_mcp.command`; its `run.start` names the step among the arguments given, but a call's
 JSON and an answer's, which carry the question and quote the mirror: each reads
 `[not logged]` in its place, the runs' directory keeping it. The agents run `call` and
 `answer`, once a call each, so each call is a trace of its own. The server that `call`
@@ -31,7 +31,7 @@ On a terminal, `grade` shows its task `runs`, each run judged by its id.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `eval.agent.call` | internal | `aom.surface`, `gen_ai.tool.name`, `aom.status` | A call through the bridge: the run's surface, the tool, the call's status as `eval.agent.call` says it; the server started, called and stopped within |
+| `eval.agent.call` | internal | `kb_mcp.surface`, `gen_ai.tool.name`, `kb_mcp.status` | A call through the bridge: the run's surface, the tool, the call's status as `eval.agent.call` says it; the server started, called and stopped within |
 | `MCP send <method>` | client | `mcp.method.name`, `jsonrpc.request.id`, `error.type`, `rpc.response.status_code` | The MCP SDK's: a request to the server, such as `server/discover` and `tools/list`; `error.type` the code of an error answered |
 | `MCP send tools/call <tool>` | client | `mcp.method.name`, `jsonrpc.request.id`, `error.type`, `rpc.response.status_code` | The MCP SDK's: the call of a tool |
 
@@ -39,7 +39,7 @@ On a terminal, `grade` shows its task `runs`, each run judged by its id.
 
 | Instrument | Kind | Unit | Attributes | What |
 |---|---|---|---|---|
-| `aom.eval.agent.calls` | counter | `{call}` | `aom.surface`, `gen_ai.tool.name`, `aom.status` | Each call through the bridge, by surface, tool and status |
-| `aom.eval.agent.call.duration` | histogram | `s` | `aom.surface`, `gen_ai.tool.name` | How long each call took, its server's start included |
-| `aom.eval.agent.tokens` | histogram | `{token}` | `aom.surface`, `gen_ai.tool.name` | The estimated tokens that each call handed over |
-| `aom.eval.agent.runs` | counter | `{run}` | `aom.surface`, `aom.outcome` | The runs that `grade` judged, by surface and outcome; each `grade` counts every run again |
+| `kb_mcp.eval.agent.calls` | counter | `{call}` | `kb_mcp.surface`, `gen_ai.tool.name`, `kb_mcp.status` | Each call through the bridge, by surface, tool and status |
+| `kb_mcp.eval.agent.call.duration` | histogram | `s` | `kb_mcp.surface`, `gen_ai.tool.name` | How long each call took, its server's start included |
+| `kb_mcp.eval.agent.tokens` | histogram | `{token}` | `kb_mcp.surface`, `gen_ai.tool.name` | The estimated tokens that each call handed over |
+| `kb_mcp.eval.agent.runs` | counter | `{run}` | `kb_mcp.surface`, `kb_mcp.outcome` | The runs that `grade` judged, by surface and outcome; each `grade` counts every run again |

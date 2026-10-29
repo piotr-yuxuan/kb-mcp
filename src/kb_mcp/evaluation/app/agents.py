@@ -93,21 +93,21 @@ METER = metrics.get_meter(__name__)
 # start included, and the estimated tokens that it handed over, by surface and tool;
 # each run judged, by surface and outcome.
 CALLED = METER.create_counter(
-    "aom.eval.agent.calls", unit="{call}", description="Calls through the bridge, by status"
+    "kb_mcp.eval.agent.calls", unit="{call}", description="Calls through the bridge, by status"
 )
 CALL_DURATION = METER.create_histogram(
-    "aom.eval.agent.call.duration",
+    "kb_mcp.eval.agent.call.duration",
     unit="s",
     description="How long a call through the bridge took, its server's start included",
     explicit_bucket_boundaries_advisory=(0.5, 1, 2, 5, 10, 20, 30, 60, 120),
 )
 HANDED_OVER = METER.create_histogram(
-    "aom.eval.agent.tokens",
+    "kb_mcp.eval.agent.tokens",
     unit="{token}",
     description="The estimated tokens that a call through the bridge handed over",
 )
 JUDGED = METER.create_counter(
-    "aom.eval.agent.runs", unit="{run}", description="Runs judged, by outcome"
+    "kb_mcp.eval.agent.runs", unit="{run}", description="Runs judged, by outcome"
 )
 
 
@@ -334,7 +334,7 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
     tool, the arguments, the answer's estimated tokens, the seconds and the status.
 
     The call is the span ``eval.agent.call``, which holds the client's; it is counted by
-    status in ``aom.eval.agent.calls``, its seconds and tokens measured, and
+    status in ``kb_mcp.eval.agent.calls``, its seconds and tokens measured, and
     ``eval.agent.call`` says it at INFO, the arguments aside.
     """
     runs = readied(directory)
@@ -356,7 +356,7 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
             raise AgentsError(message)
         started = time.monotonic()
         server = [*runs.server, "--tools", ",".join(run.tools)]
-        named = {"aom.surface": run.surface, "gen_ai.tool.name": tool}
+        named = {"kb_mcp.surface": run.surface, "gen_ai.tool.name": tool}
         with TRACER.start_as_current_span("eval.agent.call", attributes=named) as span:
             try:
                 answered = called(server, tool, arguments, runs.call_s)
@@ -365,7 +365,7 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
                 done = Called("timeout", f"no answer within {runs.call_s:g} seconds")
             except ServerError as error:
                 done = Called("failed", str(error))
-            span.set_attribute("aom.status", done.status)
+            span.set_attribute("kb_mcp.status", done.status)
         line = Logged(
             tool=tool,
             arguments=arguments,
@@ -375,7 +375,7 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
         )
         with log.open("a", encoding="utf-8") as kept:
             kept.write(line.model_dump_json() + "\n")
-    CALLED.add(1, {**named, "aom.status": done.status})
+    CALLED.add(1, {**named, "kb_mcp.status": done.status})
     CALL_DURATION.record(line.seconds, named)
     HANDED_OVER.record(line.tokens, named)
     structlog.get_logger().info(
@@ -451,7 +451,7 @@ def judged(
     that timed out or whose server failed, gives no result. Returned without an answer
     accepted is the agent's failure; with one, it is graded. Raises AgentsError for a
     harness file, a call log or an answer not as written, naming the file and the field.
-    The run is counted by its outcome in ``aom.eval.agent.runs``, and ``eval.agent.run``
+    The run is counted by its outcome in ``kb_mcp.eval.agent.runs``, and ``eval.agent.run``
     says it at DEBUG.
     """
     harness_file = directory / "harness" / f"{run.id}.json"
@@ -501,7 +501,7 @@ def judged(
         graded=graded,
         prompt_sha256=run.prompt_sha256,
     )
-    JUDGED.add(1, {"aom.surface": run.surface, "aom.outcome": result})
+    JUDGED.add(1, {"kb_mcp.surface": run.surface, "kb_mcp.outcome": result})
     structlog.get_logger().debug(
         "eval.agent.run",
         agent_run=run.id,

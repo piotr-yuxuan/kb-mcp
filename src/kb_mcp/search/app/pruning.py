@@ -28,10 +28,10 @@ if TYPE_CHECKING:
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
 VECTORS = METER.create_counter(
-    "aom.vectors", unit="{vector}", description="A prune's vectors, kept or pruned"
+    "kb_mcp.vectors", unit="{vector}", description="A prune's vectors, kept or pruned"
 )
 STORE_SIZE = METER.create_gauge(
-    "aom.vectors.bytes", unit="By", description="The vector store's size after a prune"
+    "kb_mcp.vectors.bytes", unit="By", description="The vector store's size after a prune"
 )
 
 type Outcome = Literal["pruned", "deferred", "held back", "failed"]
@@ -105,8 +105,8 @@ def shown(path: Path | str) -> str:
 def said(pruned: Pruned, span: Span, started: float) -> Pruned:
     """Record a prune's outcome on its span and as its event; give it with its seconds."""
     pruned = replace(pruned, seconds=round(time.monotonic() - started, 3))
-    span.set_attribute("aom.outcome", pruned.outcome)
-    span.set_attribute("aom.deleted", pruned.deleted)
+    span.set_attribute("kb_mcp.outcome", pruned.outcome)
+    span.set_attribute("kb_mcp.deleted", pruned.deleted)
     level, event, names = SAID[pruned.outcome]
     fields = asdict(pruned)
     getattr(structlog.get_logger(), level)(event, **{name: fields[name] for name in names})
@@ -156,8 +156,8 @@ def prune(
                     swept = opened.prune(kept)
             except sqlite3.Error as error:
                 return said(Pruned("failed", reason=str(error)), span, started)
-        VECTORS.add(swept.kept, {"aom.outcome": "kept"})
-        VECTORS.add(swept.deleted, {"aom.outcome": "pruned"})
+        VECTORS.add(swept.kept, {"kb_mcp.outcome": "kept"})
+        VECTORS.add(swept.deleted, {"kb_mcp.outcome": "pruned"})
         STORE_SIZE.set(swept.bytes_after)
         pruned = Pruned(
             "pruned",

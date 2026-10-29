@@ -83,7 +83,7 @@ NOT_MIRRORED = (
 TRACER = trace.get_tracer(__name__)
 # The searches asked by meaning that ranked by words alone, by the mode asked.
 FALLBACKS = metrics.get_meter(__name__).create_counter(
-    "aom.serve.fallbacks", unit="{fallback}", description="Searches by meaning ranked by words"
+    "kb_mcp.serve.fallbacks", unit="{fallback}", description="Searches by meaning ranked by words"
 )
 
 
@@ -167,7 +167,7 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
     Lexical: by words, as 006 ranks. Semantic: the nearest by meaning. Hybrid: both,
     fused by reciprocal rank. Sorted by a date, or with no meaning to search, by words,
     with a note saying why, which is the warning ``search.fallback``, counted in
-    ``aom.serve.fallbacks``. A document is shown by meaning when that ranks it higher.
+    ``kb_mcp.serve.fallbacks``. A document is shown by meaning when that ranks it higher.
     The search by words is the span ``search.lexical``, by meaning ``search.semantic``.
     """
     planned, filters, by_date = asked.planned, asked.filters, asked.sort != "relevance"
@@ -185,7 +185,7 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
     with TRACER.start_as_current_span("search.semantic"):
         near = meaning.nearest(reader, asked.query, filters) if meaning else Nearest({}, NOT_SET_UP)
     if near.reason:
-        FALLBACKS.add(1, {"aom.mode": asked.mode})
+        FALLBACKS.add(1, {"kb_mcp.mode": asked.mode})
         structlog.get_logger().warning("search.fallback", mode=asked.mode, reason=near.reason)
         note = f" Ranked by words alone: {near.reason}."
         return Ranking(words, whole, {}, note=note, pinned=len(first))
@@ -628,10 +628,10 @@ class Library:
             # stood in for meaning. Said here, as the docstring is the agent's to read.
             trace.get_current_span().set_attributes(
                 {
-                    "aom.mode": self._mode,
-                    "aom.hits": total,
-                    "aom.fallback": bool(ranked.note),
-                    "aom.reranked": bool(ranked.order),
+                    "kb_mcp.mode": self._mode,
+                    "kb_mcp.hits": total,
+                    "kb_mcp.fallback": bool(ranked.note),
+                    "kb_mcp.reranked": bool(ranked.order),
                 }
             )
             items = []
@@ -674,11 +674,11 @@ class Library:
         # whether words stood in for meaning, and the passages quoted.
         trace.get_current_span().set_attributes(
             {
-                "aom.mode": self._mode,
-                "aom.hits": len(ranked.paths),
-                "aom.fallback": bool(ranked.note),
-                "aom.reranked": bool(ranked.order),
-                "aom.passages": len(pairs),
+                "kb_mcp.mode": self._mode,
+                "kb_mcp.hits": len(ranked.paths),
+                "kb_mcp.fallback": bool(ranked.note),
+                "kb_mcp.reranked": bool(ranked.order),
+                "kb_mcp.passages": len(pairs),
             }
         )
         return answer

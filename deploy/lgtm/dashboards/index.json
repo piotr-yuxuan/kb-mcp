@@ -1,5 +1,5 @@
 {
-  "uid": "aom-index",
+  "uid": "kb-mcp-index",
   "title": "index",
   "description": "The index runs in the time range: the files they indexed, the pieces embedded, and the prunes of the vector store.",
   "tags": [
@@ -43,7 +43,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"index\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -88,7 +88,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_sum{job=\"kb-mcp\", aom_command=\"index\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_run_duration_seconds_sum{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -133,7 +133,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(gen_ai_client_operation_duration_seconds_bucket{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"index\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(gen_ai_client_operation_duration_seconds_bucket{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range])))",
           "instant": true,
           "range": false
         }
@@ -178,7 +178,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(gen_ai_client_operation_duration_seconds_count{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"index\"}[$__range]))",
+          "expr": "sum(last_over_time(gen_ai_client_operation_duration_seconds_count{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -223,10 +223,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_outcome) (last_over_time(aom_index_files_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"index\"}[$__range]))",
+          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_index_files_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range]))",
           "instant": true,
           "range": false,
-          "legendFormat": "{{aom_outcome}}"
+          "legendFormat": "{{kb_mcp_outcome}}"
         }
       ],
       "fieldConfig": {
@@ -269,10 +269,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_outcome) (last_over_time(aom_index_pieces_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"index\"}[$__range]))",
+          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_index_pieces_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range]))",
           "instant": true,
           "range": false,
-          "legendFormat": "{{aom_outcome}}"
+          "legendFormat": "{{kb_mcp_outcome}}"
         }
       ],
       "fieldConfig": {
@@ -315,7 +315,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (gen_ai_request_model, error_type) (last_over_time(gen_ai_client_operation_duration_seconds_count{job=\"kb-mcp\", error_type!=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"index\"}[$__range]))",
+          "expr": "sum by (gen_ai_request_model, error_type) (last_over_time(gen_ai_client_operation_duration_seconds_count{job=\"kb-mcp\", error_type!=\"\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{gen_ai_request_model}}: {{error_type}}"
@@ -361,7 +361,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(aom_vectors_bytes{job=\"kb-mcp\"} and on (instance) aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"index\"})",
+          "expr": "max(kb_mcp_vectors_bytes{job=\"kb-mcp\"} and on (instance) kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"})",
           "instant": false,
           "range": true
         }
@@ -401,7 +401,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_vectors_total{job=\"kb-mcp\", aom_outcome=\"pruned\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"index\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_vectors_total{job=\"kb-mcp\", kb_mcp_outcome=\"pruned\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -480,7 +480,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"kb-mcp\" && span.aom.command = \"index\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && span.kb_mcp.command = \"index\" }",
           "limit": 20,
           "tableType": "traces"
         }

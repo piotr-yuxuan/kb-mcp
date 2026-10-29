@@ -201,7 +201,7 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
         task("work-log documents", len(read.documents)) as built,
     ):
         for document in built.each(read.documents, lambda one: one.title):
-            kind = {"aom.kind": document.type}
+            kind = {"kb_mcp.kind": document.type}
             name = revision(converter, document.text)
             old, body = kept.get(document.id, (None, ""))
             began = time.perf_counter()
@@ -217,14 +217,14 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                     body = pandoc.org_markdown(document.text)
                 except PandocFailedError as error:
                     problems.append(Problem(f"{document.source.path}, {document.id}", str(error)))
-                    DOCUMENTS.add(1, {"aom.outcome": "failed", **kind})
+                    DOCUMENTS.add(1, {"kb_mcp.outcome": "failed", **kind})
                     failed.add(document.id)
                     continue
                 outcome = "mirrored"
                 created, updated = document.dates(None if old is None else old.created)
                 fetched_at = document.source.fetched_at
                 CONVERSION_DURATION.record(time.perf_counter() - began, kind)
-            DOCUMENTS.add(1, {"aom.outcome": outcome, **kind})
+            DOCUMENTS.add(1, {"kb_mcp.outcome": outcome, **kind})
             matter = FrontMatter(
                 source=SOURCE,
                 type=document.type,

@@ -114,7 +114,7 @@ def rerank(
         **server(endpoint.http.base_url),
     }
     characters = sum(map(len, texts))
-    traced = {"aom.rerank.texts": len(texts), "aom.rerank.characters": characters}
+    traced = {"kb_mcp.rerank.texts": len(texts), "kb_mcp.rerank.characters": characters}
     with client_span(f"rerank {model}", OPERATION_DURATION, measured, traced):
         documents = [inert(text) for text in texts]
         asked = {"model": model, "query": inert(query), "documents": documents, "top_n": len(texts)}

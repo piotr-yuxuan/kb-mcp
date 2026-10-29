@@ -1,5 +1,5 @@
 {
-  "uid": "aom-serve",
+  "uid": "kb-mcp-serve",
   "title": "serve",
   "description": "The server's tool calls, per second, while it serves.",
   "tags": [
@@ -125,7 +125,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(aom_serve_answer_size_bytes_bucket{job=\"kb-mcp\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(kb_mcp_serve_answer_size_bytes_bucket{job=\"kb-mcp\"}[$__rate_interval])))",
           "instant": false,
           "range": true,
           "legendFormat": "{{gen_ai_tool_name}}"
@@ -166,7 +166,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(aom_serve_fallbacks_total{job=\"kb-mcp\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"kb-mcp\"})",
+          "expr": "sum(rate(kb_mcp_serve_fallbacks_total{job=\"kb-mcp\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"kb-mcp\"})",
           "instant": false,
           "range": true,
           "legendFormat": "fallbacks"
@@ -391,10 +391,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_rerank_fallback) (rate(aom_rerank_fallbacks_total{job=\"kb-mcp\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"kb-mcp\"})",
+          "expr": "sum by (kb_mcp_rerank_fallback) (rate(kb_mcp_rerank_fallbacks_total{job=\"kb-mcp\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"kb-mcp\"})",
           "instant": false,
           "range": true,
-          "legendFormat": "{{aom_rerank_fallback}}"
+          "legendFormat": "{{kb_mcp_rerank_fallback}}"
         }
       ],
       "fieldConfig": {

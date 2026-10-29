@@ -383,16 +383,16 @@ def test_a_run_is_one_trace_whose_root_holds_its_records_and_says_its_command_an
     (root,) = collector.spans()
     assert (root.name, root.parent_span_id) == ("check", b"")
     assert attributes(root.attributes) == {
-        "aom.command": "check",
-        "aom.dry_run": False,
-        "aom.exit_status": 0,
+        "kb_mcp.command": "check",
+        "kb_mcp.dry_run": False,
+        "kb_mcp.exit_status": 0,
     }
     for _, record in collector.records():
         assert (record.trace_id, record.span_id) == (root.trace_id, root.span_id)
-    (duration,) = (metric for metric in collector.metrics() if metric.name == "aom.run.duration")
+    (duration,) = (metric for metric in collector.metrics() if metric.name == "kb_mcp.run.duration")
     assert duration.unit == "s"
     (point,) = duration.histogram.data_points
-    assert attributes(point.attributes) == {"aom.command": "check", "aom.exit_status": 0}
+    assert attributes(point.attributes) == {"kb_mcp.command": "check", "kb_mcp.exit_status": 0}
     assert point.count == 1
 
 
@@ -424,9 +424,9 @@ def test_a_download_s_root_says_whether_it_is_a_dry_run(
     assert ran.status == ExitStatus.REFUSED
     (root,) = collector.spans()
     assert attributes(root.attributes) == {
-        "aom.command": "download",
-        "aom.dry_run": dry,
-        "aom.exit_status": ExitStatus.REFUSED,
+        "kb_mcp.command": "download",
+        "kb_mcp.dry_run": dry,
+        "kb_mcp.exit_status": ExitStatus.REFUSED,
     }
 
 
@@ -444,9 +444,9 @@ def test_serve_is_no_trace_of_its_own(tmp_path: Path) -> None:
     records = [record for _, record in collector.records()]
     assert [plain(record.body) for record in records] == ["run.start", "run.end"]
     assert all(record.trace_id == b"" for record in records)
-    (duration,) = (metric for metric in collector.metrics() if metric.name == "aom.run.duration")
+    (duration,) = (metric for metric in collector.metrics() if metric.name == "kb_mcp.run.duration")
     (point,) = duration.histogram.data_points
-    assert attributes(point.attributes) == {"aom.command": "serve", "aom.exit_status": 0}
+    assert attributes(point.attributes) == {"kb_mcp.command": "serve", "kb_mcp.exit_status": 0}
 
 
 def test_an_endpoint_that_refuses_ends_check_in_bounded_time_with_one_warning(

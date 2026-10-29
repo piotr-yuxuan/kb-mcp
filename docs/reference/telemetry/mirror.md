@@ -30,5 +30,5 @@ own: a run of thousands would make its trace too large.
 
 | Instrument | Kind | Unit | Attributes | What |
 |---|---|---|---|---|
-| `aom.mirror.documents` | counter | `{document}` | `aom.outcome` | The documents whose file was built, `mirrored`, or not, `failed` |
-| `aom.mirror.conversion.duration` | histogram | `s` | | How long each document's file took to build, pandoc's conversion included; a conversion reused costs the lookup alone |
+| `kb_mcp.mirror.documents` | counter | `{document}` | `kb_mcp.outcome` | The documents whose file was built, `mirrored`, or not, `failed` |
+| `kb_mcp.mirror.conversion.duration` | histogram | `s` | | How long each document's file took to build, pandoc's conversion included; a conversion reused costs the lookup alone |

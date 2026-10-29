@@ -121,7 +121,7 @@ class Rows:
 
     def add(self, row: Row) -> None:
         """Keep a row that ended within its step's span: log it, and set its outcome there."""
-        trace.get_current_span().set_attribute("aom.outcome", row.outcome)
+        trace.get_current_span().set_attribute("kb_mcp.outcome", row.outcome)
         structlog.get_logger().info("sync.step", step=row.step, outcome=row.outcome)
         self.added.append(row)
 
@@ -135,7 +135,7 @@ def atlassian(context: Context, step: Atlassian, add: Callable[[Row], None]) -> 
     """
     log, settings = structlog.get_logger(), context.settings
     act = plan if context.dry_run else download
-    with TRACER.start_as_current_span("sync.step", attributes={"aom.step": "download"}):
+    with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "download"}):
         try:
             fetched = act(settings, step.targets, context.now, context.sleep)
         except StoreBusyError:
@@ -148,7 +148,7 @@ def atlassian(context: Context, step: Atlassian, add: Callable[[Row], None]) -> 
             if fetched.status == ExitStatus.SIGN_IN_AGAIN:
                 log.error("download.sign_in_needed", hint=sign_in(settings).again)
             add(Row("download", DOWNLOADED[fetched.status], fetched))
-    with TRACER.start_as_current_span("sync.step", attributes={"aom.step": "mirror"}):
+    with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "mirror"}):
         if context.dry_run:
             add(Row("mirror", "not run", None))
             return
@@ -168,7 +168,7 @@ def worklog(context: Context, step: Worklog, add: Callable[[Row], None]) -> None
     """Mirror the work log, or count what mirroring it would do; say its problems."""
     log = structlog.get_logger()
     act = plan_worklog if context.dry_run else mirror_worklog
-    with TRACER.start_as_current_span("sync.step", attributes={"aom.step": "worklog"}):
+    with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "worklog"}):
         try:
             done = act(step.folder, context.settings.docs, context.pandoc, archives=step.archives)
         except PandocFailedError as error:
@@ -188,7 +188,7 @@ def worklog(context: Context, step: Worklog, add: Callable[[Row], None]) -> None
 
 def index(context: Context, step: Index, add: Callable[[Row], None]) -> None:
     """Build the index from the whole mirror, unless a dry run; its problems as index says."""
-    with TRACER.start_as_current_span("sync.step", attributes={"aom.step": "index"}):
+    with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "index"}):
         if context.dry_run:
             add(Row("index", "not run", None))
             return

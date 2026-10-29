@@ -45,7 +45,7 @@ TELEMETRY = "kb_mcp.observability.adapters.telemetry"
 # How long each run lasted, by its command and its exit status: made once, as the API
 # would have an instrument, and recorded once the SDK, if any, is behind it.
 RUN_DURATION = metrics.get_meter(__name__).create_histogram(
-    "aom.run.duration", unit="s", description="How long a run lasted"
+    "kb_mcp.run.duration", unit="s", description="How long a run lasted"
 )
 
 
@@ -131,9 +131,9 @@ def observed(
 
     A ``traced`` run is one trace, whose root span, named after the command, holds
     ``run.start``, ``run.end`` and all that the body traces. It says the command
-    (``aom.command``), whether the run is a ``dry_run`` (``aom.dry_run``) and its exit
-    status (``aom.exit_status``). Each run, traced or not, records how long it lasted in
-    ``aom.run.duration``, by command and exit status.
+    (``kb_mcp.command``), whether the run is a ``dry_run`` (``kb_mcp.dry_run``) and its exit
+    status (``kb_mcp.exit_status``). Each run, traced or not, records how long it lasted in
+    ``kb_mcp.run.duration``, by command and exit status.
     """
     route_through_logging()
     root = logging.getLogger()
@@ -166,7 +166,8 @@ def observed(
                 log.warning("telemetry.undelivered", endpoint=endpoint, reason=str(error))
         spanned = (
             trace.get_tracer(__name__).start_as_current_span(
-                command, attributes={"aom.command": command, "aom.dry_run": invocation.dry_run}
+                command,
+                attributes={"kb_mcp.command": command, "kb_mcp.dry_run": invocation.dry_run},
             )
             if invocation.traced
             else nullcontext(trace.INVALID_SPAN)
@@ -190,7 +191,8 @@ def observed(
             log.exception("run.failed", seconds=round(time.monotonic() - began, 3))
         else:
             log.info("run.end", status=run.status, seconds=round(time.monotonic() - began, 3))
-        span.set_attribute("aom.exit_status", int(run.status))
+        span.set_attribute("kb_mcp.exit_status", int(run.status))
         RUN_DURATION.record(
-            time.monotonic() - began, {"aom.command": command, "aom.exit_status": int(run.status)}
+            time.monotonic() - began,
+            {"kb_mcp.command": command, "kb_mcp.exit_status": int(run.status)},
         )

@@ -109,7 +109,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
         loaded.settings.telemetry.endpoint,
         Invocation(
             # A step, such as eval-agents' call, is observed as its command: their log
-            # files, root spans and aom.command share its name, as its pattern has it.
+            # files, root spans and kb_mcp.command share its name, as its pattern has it.
             command.name.partition(" ")[0],
             {
                 "arguments": [UNLOGGED if at in hidden else each for at, each in enumerate(given)],

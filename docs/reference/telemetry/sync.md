@@ -31,7 +31,7 @@ says of tasks.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `sync.step` | internal | `aom.step`, `aom.outcome` | A row, `download`, `mirror`, `worklog` or `index`, and how it ended; its step's own spans within. The row that Ctrl-C stops has no outcome, and the rows after it no span |
+| `sync.step` | internal | `kb_mcp.step`, `kb_mcp.outcome` | A row, `download`, `mirror`, `worklog` or `index`, and how it ended; its step's own spans within. The row that Ctrl-C stops has no outcome, and the rows after it no span |
 | `worklog.read` | internal | | The work log's folder listed, its files read and split into documents |
 | `worklog.convert` | internal | | Each document's file built, through pandoc when no file holds its revision |
 | `worklog.write` | internal | | The work log's files that changed written, those of documents gone removed |
@@ -40,5 +40,5 @@ says of tasks.
 
 | Instrument | Kind | Unit | Attributes | What |
 |---|---|---|---|---|
-| `aom.mirror.documents` | counter | `{document}` | `aom.outcome`, `aom.kind` | The mirror's documents, as mirror.md says, and the work log's, by `aom.kind`, `entry`, `day`, `meeting` or `transcript`: `mirrored`, converted, `kept`, its revision held, or `failed` |
-| `aom.mirror.conversion.duration` | histogram | `s` | `aom.kind` | How long each work-log document took pandoc to convert, by its kind; the mirror's, as mirror.md says |
+| `kb_mcp.mirror.documents` | counter | `{document}` | `kb_mcp.outcome`, `kb_mcp.kind` | The mirror's documents, as mirror.md says, and the work log's, by `kb_mcp.kind`, `entry`, `day`, `meeting` or `transcript`: `mirrored`, converted, `kept`, its revision held, or `failed` |
+| `kb_mcp.mirror.conversion.duration` | histogram | `s` | `kb_mcp.kind` | How long each work-log document took pandoc to convert, by its kind; the mirror's, as mirror.md says |

@@ -1,5 +1,5 @@
 {
-  "uid": "aom-eval",
+  "uid": "kb-mcp-eval",
   "title": "eval",
   "description": "The eval runs in the time range: their scores by chunking and mode, and how long questions took.",
   "tags": [
@@ -43,7 +43,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"eval\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"eval\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -88,7 +88,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_sum{job=\"kb-mcp\", aom_command=\"eval\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_run_duration_seconds_sum{job=\"kb-mcp\", kb_mcp_command=\"eval\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -133,7 +133,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(gen_ai_client_operation_duration_seconds_bucket{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"eval\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(gen_ai_client_operation_duration_seconds_bucket{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"eval\"}[$__range])))",
           "instant": true,
           "range": false
         }
@@ -178,7 +178,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(gen_ai_client_operation_duration_seconds_count{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"eval\"}[$__range]))",
+          "expr": "sum(last_over_time(gen_ai_client_operation_duration_seconds_count{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"eval\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -223,10 +223,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "avg by (aom_chunking, aom_mode, aom_measure) (last_over_time(aom_eval_score_ratio{job=\"kb-mcp\"}[$__range]))",
+          "expr": "avg by (kb_mcp_chunking, kb_mcp_mode, kb_mcp_measure) (last_over_time(kb_mcp_eval_score_ratio{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false,
-          "legendFormat": "{{aom_chunking}}, {{aom_mode}}, {{aom_measure}}"
+          "legendFormat": "{{kb_mcp_chunking}}, {{kb_mcp_mode}}, {{kb_mcp_measure}}"
         }
       ],
       "fieldConfig": {
@@ -272,10 +272,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, aom_chunking, aom_mode) (last_over_time(aom_eval_question_duration_seconds_bucket{job=\"kb-mcp\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le, kb_mcp_chunking, kb_mcp_mode) (last_over_time(kb_mcp_eval_question_duration_seconds_bucket{job=\"kb-mcp\"}[$__range])))",
           "instant": true,
           "range": false,
-          "legendFormat": "{{aom_chunking}}, {{aom_mode}}"
+          "legendFormat": "{{kb_mcp_chunking}}, {{kb_mcp_mode}}"
         }
       ],
       "fieldConfig": {
@@ -352,7 +352,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"kb-mcp\" && span.aom.command = \"eval\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && span.kb_mcp.command = \"eval\" }",
           "limit": 20,
           "tableType": "traces"
         }

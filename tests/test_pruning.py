@@ -508,12 +508,14 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     )
     assert done.bytes_after <= done.bytes_before
     [span] = [each for each in telemetry.spans.get_finished_spans() if each.name == "index.prune"]
-    assert span.attributes == {"aom.outcome": "pruned", "aom.deleted": deleted}
+    assert span.attributes == {"kb_mcp.outcome": "pruned", "kb_mcp.deleted": deleted}
     measured = telemetry.measured()
-    points = measured["aom.vectors"].data.data_points
-    counts = {point.attributes["aom.outcome"]: point.value for point in points if point.attributes}
+    points = measured["kb_mcp.vectors"].data.data_points
+    counts = {
+        point.attributes["kb_mcp.outcome"]: point.value for point in points if point.attributes
+    }
     assert counts == {"kept": len(stored(fresh)), "pruned": deleted}
-    [size] = measured["aom.vectors.bytes"].data.data_points
+    [size] = measured["kb_mcp.vectors.bytes"].data.data_points
     assert size.value == done.bytes_after
     assert json.loads(to_json(indexed))["pruned"] == asdict(done)
     assert f"vectors pruned: {deleted}\nvector store: " in index_command.text(indexed, "short")

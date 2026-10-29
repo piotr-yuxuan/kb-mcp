@@ -271,13 +271,13 @@ def test_at_debug_stdout_holds_the_protocol_and_the_collector_a_search_s_spans(
     (lexical,) = (span for span in spans if span.name == "search.lexical")
     assert (lexical.trace_id, lexical.parent_span_id) == (call.trace_id, call.span_id)
     call_says = attributes(call.attributes)
-    assert {key: call_says[key] for key in ("aom.mode", "aom.hits", "aom.fallback")} == {
-        "aom.mode": "lexical",
-        "aom.hits": 2,
-        "aom.fallback": False,
+    assert {key: call_says[key] for key in ("kb_mcp.mode", "kb_mcp.hits", "kb_mcp.fallback")} == {
+        "kb_mcp.mode": "lexical",
+        "kb_mcp.hits": 2,
+        "kb_mcp.fallback": False,
     }
     metrics = {metric.name: metric for metric in collector.metrics()}
-    fallbacks = metrics["aom.serve.fallbacks"].sum.data_points
+    fallbacks = metrics["kb_mcp.serve.fallbacks"].sum.data_points
     assert [point.as_int for point in fallbacks] == [0]
 
 

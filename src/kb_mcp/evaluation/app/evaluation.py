@@ -81,10 +81,10 @@ METER = metrics.get_meter(__name__)
 # all the questions, as the tables' first rows of the mode have them, by model, chunking,
 # mode and measure.
 QUESTION_DURATION = METER.create_histogram(
-    "aom.eval.question.duration", unit="s", description="How long a question took to rank"
+    "kb_mcp.eval.question.duration", unit="s", description="How long a question took to rank"
 )
 SCORE = METER.create_gauge(
-    "aom.eval.score", unit="1", description="A mode's measure on all the golden questions"
+    "kb_mcp.eval.score", unit="1", description="A mode's measure on all the golden questions"
 )
 ASK_HEADER = "| Mode | Group | Found@ask | Evidence@ask | Ask, median | Ask, 95th |"
 ASK_DIVIDER = "|---|---|---|---|---|---|"
@@ -205,8 +205,8 @@ def evaluate(
     ``questions`` every question in every mode, each by its id.
 
     Each target is the span ``eval.model``; each question, timed in
-    ``aom.eval.question.duration`` and said at DEBUG by ``eval.question``; each mode's
-    measures on all the questions, ask's among them, are set in ``aom.eval.score``, but
+    ``kb_mcp.eval.question.duration`` and said at DEBUG by ``eval.question``; each mode's
+    measures on all the questions, ask's among them, are set in ``kb_mcp.eval.score``, but
     Section@10, and Evidence@ask when no question has evidence; ``eval.evaluated`` says
     at INFO each target evaluated. Each names the target's chunking.
     """
@@ -214,7 +214,7 @@ def evaluate(
     runs: list[Run] = []
     for target in targets:
         name = target.embedder.name
-        named = {"gen_ai.request.model": name, "aom.chunking": target.chunking}
+        named = {"gen_ai.request.model": name, "kb_mcp.chunking": target.chunking}
         with TRACER.start_as_current_span("eval.model", attributes=named):
             run, library = prepared(target, settings, questions, clock, built_at)
             with task("questions", len(MODES) * len(questions)) as asked:
@@ -226,7 +226,7 @@ def evaluate(
                         shown, note = library.ranked(question.text, mode, limit=CUTOFF)
                         spent.append(clock() - started)
                         QUESTION_DURATION.record(
-                            spent[-1], {"aom.chunking": target.chunking, "aom.mode": mode}
+                            spent[-1], {"kb_mcp.chunking": target.chunking, "kb_mcp.mode": mode}
                         )
                         if note:
                             message = f"{name}, {mode}:{note}"
@@ -261,15 +261,15 @@ def evaluate(
                     moded = [run.per[mode][question.id].reciprocal_rank for question in questions]
                     run.pvalues[mode] = paired_test(lexical, moded)
                     every = run.groups[mode]["all"]
-                    scored = {**named, "aom.mode": mode}
-                    SCORE.set(every.recall, {**scored, "aom.measure": f"recall@{CUTOFF}"})
-                    SCORE.set(every.reciprocal_rank, {**scored, "aom.measure": f"mrr@{CUTOFF}"})
-                    SCORE.set(every.ndcg, {**scored, "aom.measure": f"ndcg@{CUTOFF}"})
-                    SCORE.set(every.success, {**scored, "aom.measure": "success@1"})
+                    scored = {**named, "kb_mcp.mode": mode}
+                    SCORE.set(every.recall, {**scored, "kb_mcp.measure": f"recall@{CUTOFF}"})
+                    SCORE.set(every.reciprocal_rank, {**scored, "kb_mcp.measure": f"mrr@{CUTOFF}"})
+                    SCORE.set(every.ndcg, {**scored, "kb_mcp.measure": f"ndcg@{CUTOFF}"})
+                    SCORE.set(every.success, {**scored, "kb_mcp.measure": "success@1"})
                     answered = run.asked_groups[mode]["all"]
-                    SCORE.set(answered.found, {**scored, "aom.measure": "found@ask"})
+                    SCORE.set(answered.found, {**scored, "kb_mcp.measure": "found@ask"})
                     if answered.evidence is not None:
-                        SCORE.set(answered.evidence, {**scored, "aom.measure": "evidence@ask"})
+                        SCORE.set(answered.evidence, {**scored, "kb_mcp.measure": "evidence@ask"})
             log.info(
                 "eval.evaluated",
                 model=name,

@@ -97,13 +97,13 @@ METER = metrics.get_meter(__name__)
 # What a run did, by outcome: documents fetched or failed; files downloaded, failed or
 # skipped; the bytes of the files downloaded.
 DOCUMENTS = METER.create_counter(
-    "aom.download.documents", unit="{document}", description="Documents fetched, by outcome"
+    "kb_mcp.download.documents", unit="{document}", description="Documents fetched, by outcome"
 )
 FILES = METER.create_counter(
-    "aom.download.files", unit="{file}", description="Attached files, by outcome"
+    "kb_mcp.download.files", unit="{file}", description="Attached files, by outcome"
 )
 BYTES = METER.create_counter(
-    "aom.download.bytes", unit="By", description="Bytes of the attached files downloaded"
+    "kb_mcp.download.bytes", unit="By", description="Bytes of the attached files downloaded"
 )
 
 
@@ -252,7 +252,9 @@ class Download:
         ``download.space``, an error when the space could not be listed.
         """
         key = target.key
-        with TRACER.start_as_current_span("download.space", attributes={"aom.target": key}) as span:
+        with TRACER.start_as_current_span(
+            "download.space", attributes={"kb_mcp.target": key}
+        ) as span:
             try:
                 found = self.collect(confluence_v2.space_request(key), confluence_v2.listing_page)
                 space = confluence_v2.space(Fields(found[0], "space")) if found else None
@@ -407,7 +409,7 @@ class Download:
         key = target.key
         start = (window.period.start - JQL_MARGIN).date()
         end = (window.period.end + JQL_MARGIN).date()
-        attributes = {"aom.target": key}
+        attributes = {"kb_mcp.target": key}
         with TRACER.start_as_current_span("download.project", attributes=attributes) as span:
             try:
                 with task("listing") as listing:
@@ -510,7 +512,7 @@ class Download:
             "download.document",
             context=Context(),  # no parent: the root of a trace of its own
             links=[trace.Link(trace.get_current_span().get_span_context())],
-            attributes={"aom.document.id": document.id, "aom.document.kind": what},
+            attributes={"kb_mcp.document.id": document.id, "kb_mcp.document.kind": what},
         ) as span:
             try:
                 responses = {
@@ -520,14 +522,14 @@ class Download:
                 whole = self.keep(document.type, responses)
             except (RepresentationError, SiteError) as error:
                 self.report.failed(what, error)
-                DOCUMENTS.add(1, {"aom.outcome": "failed"})
+                DOCUMENTS.add(1, {"kb_mcp.outcome": "failed"})
                 span.set_status(StatusCode.ERROR, str(error))
                 structlog.get_logger().warning(
                     "download.document_failed", id=document.id, kind=what, reason=str(error)
                 )
                 return False
             self.report.add(f"{what}: fetched")
-            DOCUMENTS.add(1, {"aom.outcome": "fetched"})
+            DOCUMENTS.add(1, {"kb_mcp.outcome": "fetched"})
             return whole
 
     def keep(self, kind: type[Document], responses: dict[str, object]) -> bool:
@@ -542,7 +544,7 @@ class Download:
         try:
             snapshot = REPRESENTATIONS[kind].snapshot(responses)
             document = snapshot.document
-            trace.get_current_span().set_attribute("aom.document.title", document.title)
+            trace.get_current_span().set_attribute("kb_mcp.document.title", document.title)
             structlog.get_logger().debug(
                 "download.document", id=document.id, kind=label(kind), title=document.title
             )
@@ -594,26 +596,26 @@ class Download:
             reason = skip_reason(attachment, self.max_file_bytes)
             if reason is not None:
                 self.report.add(f"files: skipped, {reason}")
-                FILES.add(1, {"aom.outcome": "skipped"})
+                FILES.add(1, {"kb_mcp.outcome": "skipped"})
                 log.info("download.file_skipped", **named, reason=reason)
                 continue
             try:
                 data = self.site.file(attachment.download, self.max_file_bytes)
             except SiteError as error:
                 self.report.failed("files", error)
-                FILES.add(1, {"aom.outcome": "failed"})
+                FILES.add(1, {"kb_mcp.outcome": "failed"})
                 log.warning("download.file_failed", **named, reason=str(error))
                 whole = False
                 continue
             if len(data) != attachment.size:  # a proxy's page, say, in the file's place
                 self.report.add("files failed: not the size listed")
-                FILES.add(1, {"aom.outcome": "failed"})
+                FILES.add(1, {"kb_mcp.outcome": "failed"})
                 log.warning("download.file_failed", **named, reason="not the size listed")
                 whole = False
                 continue
             blobs[attachment.id] = self.store.put_blob(data)
             self.report.add("files: downloaded")
-            FILES.add(1, {"aom.outcome": "downloaded"})
+            FILES.add(1, {"kb_mcp.outcome": "downloaded"})
             BYTES.add(len(data))
         return blobs, whole
 

@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 # The searches that kept the order given, by why: the failure's kind, or "quiet" while
 # one is remembered.
 FALLBACKS = metrics.get_meter(__name__).create_counter(
-    "aom.rerank.fallbacks", unit="{fallback}", description="Searches not reranked"
+    "kb_mcp.rerank.fallbacks", unit="{fallback}", description="Searches not reranked"
 )
 
 
@@ -63,18 +63,18 @@ class Reranking:
         """Order the texts by their relevance to the query, the highest first, ties as given.
 
         The request is made outside the lock, which guards only the failure remembered. A
-        search not reranked is counted in ``aom.rerank.fallbacks`` by why, and a failure
+        search not reranked is counted in ``kb_mcp.rerank.fallbacks`` by why, and a failure
         said by the warning ``rerank.fallback``, once: the next ones are quiet.
         """
         with self._lock:
             reason, until = self._failure
         if self._clock() < until:
-            FALLBACKS.add(1, {"aom.rerank.fallback": "quiet"})
+            FALLBACKS.add(1, {"kb_mcp.rerank.fallback": "quiet"})
             return Reordered(None, reason, "quiet")
         try:
             scores = self._score(query, texts).scores
         except RerankError as error:
-            FALLBACKS.add(1, {"aom.rerank.fallback": error.kind})
+            FALLBACKS.add(1, {"kb_mcp.rerank.fallback": error.kind})
             structlog.get_logger().warning("rerank.fallback", kind=error.kind, reason=str(error))
             if error.kind != "refused":
                 with self._lock:

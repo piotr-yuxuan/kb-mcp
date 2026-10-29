@@ -201,14 +201,14 @@ def test_a_refusal_is_the_request_s_and_the_next_search_asks_again(root: Path) -
 
 
 def reranked_said(telemetry: InMemory, tool: str, call: Callable[[], str]) -> object:
-    """Call a tool within its call's span, as the SDK opens one; give its ``aom.reranked``."""
+    """Call a tool within its call's span, as the SDK opens one; give its ``kb_mcp.reranked``."""
     telemetry.spans.clear()
     with trace.get_tracer(__name__).start_as_current_span(f"tools/call {tool}"):
         call()
     (span,) = (
         each for each in telemetry.spans.get_finished_spans() if each.name == f"tools/call {tool}"
     )
-    return (span.attributes or {}).get("aom.reranked")
+    return (span.attributes or {}).get("kb_mcp.reranked")
 
 
 def test_the_call_s_span_says_reranked_and_the_counter_why_not(
@@ -227,8 +227,8 @@ def test_the_call_s_span_says_reranked_and_the_counter_why_not(
     searched = [reranked_said(telemetry, "search", lambda: served.search(QUERY)) for _ in "ab"]
     assert searched == [False, False]
     counted = {
-        point.attributes["aom.rerank.fallback"]: point.value
-        for point in telemetry.measured()["aom.rerank.fallbacks"].data.data_points
+        point.attributes["kb_mcp.rerank.fallback"]: point.value
+        for point in telemetry.measured()["kb_mcp.rerank.fallbacks"].data.data_points
         if point.attributes
     }
     assert counted == {"unanswered": 1, "quiet": 1}

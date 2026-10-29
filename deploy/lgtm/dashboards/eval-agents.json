@@ -1,5 +1,5 @@
 {
-  "uid": "aom-eval-agents",
+  "uid": "kb-mcp-eval-agents",
   "title": "eval-agents",
   "description": "The eval-agents runs in the time range: the agents' calls through the bridge by surface and tool, their tokens and time, and the runs judged by outcome.",
   "tags": [
@@ -43,7 +43,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"eval-agents\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"eval-agents\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -88,7 +88,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_eval_agent_calls_total{job=\"kb-mcp\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_eval_agent_calls_total{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -133,7 +133,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_eval_agent_calls_total{job=\"kb-mcp\", aom_status=~\"timeout|failed\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_eval_agent_calls_total{job=\"kb-mcp\", kb_mcp_status=~\"timeout|failed\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -178,7 +178,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_eval_agent_tokens_sum{job=\"kb-mcp\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_eval_agent_tokens_sum{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -223,10 +223,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_surface, aom_outcome) (last_over_time(aom_eval_agent_runs_total{job=\"kb-mcp\"}[$__range]))",
+          "expr": "sum by (kb_mcp_surface, kb_mcp_outcome) (last_over_time(kb_mcp_eval_agent_runs_total{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false,
-          "legendFormat": "{{aom_surface}}, {{aom_outcome}}"
+          "legendFormat": "{{kb_mcp_surface}}, {{kb_mcp_outcome}}"
         }
       ],
       "fieldConfig": {
@@ -271,10 +271,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_surface, gen_ai_tool_name) (last_over_time(aom_eval_agent_calls_total{job=\"kb-mcp\"}[$__range]))",
+          "expr": "sum by (kb_mcp_surface, gen_ai_tool_name) (last_over_time(kb_mcp_eval_agent_calls_total{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false,
-          "legendFormat": "{{aom_surface}}, {{gen_ai_tool_name}}"
+          "legendFormat": "{{kb_mcp_surface}}, {{gen_ai_tool_name}}"
         }
       ],
       "fieldConfig": {
@@ -319,10 +319,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_surface) (last_over_time(aom_eval_agent_tokens_sum{job=\"kb-mcp\"}[$__range])) / sum by (aom_surface) (last_over_time(aom_eval_agent_tokens_count{job=\"kb-mcp\"}[$__range]))",
+          "expr": "sum by (kb_mcp_surface) (last_over_time(kb_mcp_eval_agent_tokens_sum{job=\"kb-mcp\"}[$__range])) / sum by (kb_mcp_surface) (last_over_time(kb_mcp_eval_agent_tokens_count{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false,
-          "legendFormat": "{{aom_surface}}"
+          "legendFormat": "{{kb_mcp_surface}}"
         }
       ],
       "fieldConfig": {
@@ -367,10 +367,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, aom_surface) (last_over_time(aom_eval_agent_call_duration_seconds_bucket{job=\"kb-mcp\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le, kb_mcp_surface) (last_over_time(kb_mcp_eval_agent_call_duration_seconds_bucket{job=\"kb-mcp\"}[$__range])))",
           "instant": true,
           "range": false,
-          "legendFormat": "{{aom_surface}}"
+          "legendFormat": "{{kb_mcp_surface}}"
         }
       ],
       "fieldConfig": {
@@ -449,7 +449,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"kb-mcp\" && span.aom.command = \"eval-agents\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && span.kb_mcp.command = \"eval-agents\" }",
           "limit": 20,
           "tableType": "traces"
         }

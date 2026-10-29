@@ -540,7 +540,7 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     assert [each["outcome"] for each in logged_as(logged, "sync.step")] == ["failed"]
     spans = telemetry.spans.get_finished_spans()
     (row,) = [span for span in spans if span.name == "sync.step"]
-    assert row.attributes["aom.outcome"] == "failed"
+    assert row.attributes["kb_mcp.outcome"] == "failed"
     assert by_kind_and_outcome(telemetry.measured()).get(("entry", "failed")) == 1
     assert gone.exists()
     todo.write_text(todo.read_text("utf-8").replace("Drafted, failing, on", "Drafted on"), "utf-8")
@@ -1106,9 +1106,9 @@ def missing() -> Pandoc:
 def by_kind_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, object], object]:
     """Give the work log's documents counted, by kind and outcome."""
     return {
-        (point.attributes["aom.kind"], point.attributes["aom.outcome"]): point.value
-        for point in measured["aom.mirror.documents"].data.data_points
-        if point.attributes and "aom.kind" in point.attributes
+        (point.attributes["kb_mcp.kind"], point.attributes["kb_mcp.outcome"]): point.value
+        for point in measured["kb_mcp.mirror.documents"].data.data_points
+        if point.attributes and "kb_mcp.kind" in point.attributes
     }
 
 
@@ -1133,13 +1133,13 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
     assert by_kind_and_outcome(second) == {
         (kind, "kept"): count for kind, count in WORKLOG_KINDS.items()
     }
-    timed = first["aom.mirror.conversion.duration"].data.data_points
-    assert {point.attributes["aom.kind"]: point.count for point in timed} == WORKLOG_KINDS
-    assert "aom.mirror.conversion.duration" not in second
-    rows = {span.attributes["aom.step"]: span for span in spans if span.name == "sync.step"}
+    timed = first["kb_mcp.mirror.conversion.duration"].data.data_points
+    assert {point.attributes["kb_mcp.kind"]: point.count for point in timed} == WORKLOG_KINDS
+    assert "kb_mcp.mirror.conversion.duration" not in second
+    rows = {span.attributes["kb_mcp.step"]: span for span in spans if span.name == "sync.step"}
     assert list(rows) == ["worklog", "index"]
     row = rows["worklog"]
-    assert row.attributes["aom.outcome"] == "done"
+    assert row.attributes["kb_mcp.outcome"] == "done"
     (root,) = [span for span in spans if span.name == "sync"]
     assert row.parent is not None
     assert row.parent.span_id == root.context.span_id

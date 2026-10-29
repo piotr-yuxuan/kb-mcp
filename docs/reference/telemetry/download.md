@@ -34,11 +34,11 @@ space's or project's span.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `download.space` | internal | `aom.target` | A space, by its key: listed, stored, its documents fetched; an error when it cannot be listed |
-| `download.project` | internal | `aom.target` | A project, by its key: searched, its issues fetched; an error when the search cannot be read |
+| `download.space` | internal | `kb_mcp.target` | A space, by its key: listed, stored, its documents fetched; an error when it cannot be listed |
+| `download.project` | internal | `kb_mcp.target` | A project, by its key: searched, its issues fetched; an error when the search cannot be read |
 | `download.probes` | internal | | The documents that a space no longer lists, probed |
 | `download.users` | internal | | The authors' names, fetched and merged |
-| `download.document` | internal | `aom.document.id`, `aom.document.kind`, `aom.document.title` | A document fetched: the root of a trace of its own, linked to its space's or project's span; an error when the fetch fails |
+| `download.document` | internal | `kb_mcp.document.id`, `kb_mcp.document.kind`, `kb_mcp.document.title` | A document fetched: the root of a trace of its own, linked to its space's or project's span; an error when the fetch fails |
 | `GET` | client | `http.request.method`, `server.address`, `server.port`, `url.full`, `http.response.status_code`, `error.type` | Each request, by the HTTP conventions, until its answer's headers; an error from status 400 |
 
 ## Instruments
@@ -46,6 +46,6 @@ space's or project's span.
 | Instrument | Kind | Unit | Attributes | What |
 |---|---|---|---|---|
 | `http.client.request.duration` | histogram | `s` | `http.request.method`, `server.address`, `server.port`, `http.response.status_code`, `error.type` | Each request, by the HTTP conventions |
-| `aom.download.documents` | counter | `{document}` | `aom.outcome` | The documents fetched, `fetched` or `failed` |
-| `aom.download.files` | counter | `{file}` | `aom.outcome` | The attached files, `downloaded`, `failed` or `skipped` |
-| `aom.download.bytes` | counter | `By` | | The bytes of the files downloaded |
+| `kb_mcp.download.documents` | counter | `{document}` | `kb_mcp.outcome` | The documents fetched, `fetched` or `failed` |
+| `kb_mcp.download.files` | counter | `{file}` | `kb_mcp.outcome` | The attached files, `downloaded`, `failed` or `skipped` |
+| `kb_mcp.download.bytes` | counter | `By` | | The bytes of the files downloaded |

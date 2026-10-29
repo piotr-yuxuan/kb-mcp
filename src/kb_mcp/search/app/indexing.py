@@ -47,9 +47,9 @@ TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
 # The files of the mirror, indexed or skipped, and the pieces by meaning, given a vector
 # or refused one, that each build counts.
-FILES = METER.create_counter("aom.index.files", unit="{file}", description="Files, by outcome")
+FILES = METER.create_counter("kb_mcp.index.files", unit="{file}", description="Files, by outcome")
 PIECES = METER.create_counter(
-    "aom.index.pieces", unit="{piece}", description="Pieces by meaning, by outcome"
+    "kb_mcp.index.pieces", unit="{piece}", description="Pieces by meaning, by outcome"
 )
 
 
@@ -195,12 +195,12 @@ def build_index(
                         key = vector_store.key(model.fingerprint, text)
                         pending.append((first + number, start, end, key, path))
                         texts[key] = text
-                    FILES.add(1, {"aom.outcome": "indexed"})
+                    FILES.add(1, {"kb_mcp.outcome": "indexed"})
                     log.debug("index.document", path=path, type=front.type, sections=len(cut))
                     continue
                 writer.skip()
                 report.skipped.append((path, reason))
-                FILES.add(1, {"aom.outcome": "skipped"})
+                FILES.add(1, {"kb_mcp.outcome": "skipped"})
         report.persons = writer.join(aliases or {})
         if embedding is not None:
             with TRACER.start_as_current_span("index.embed"):
@@ -211,8 +211,8 @@ def build_index(
             report.pieces = len(kept)
             report.characters = sum(len(text) for text in texts.values())
             report.unembedded = sorted({piece[4] for piece in pending if piece[3] not in found})
-            PIECES.add(len(kept), {"aom.outcome": "indexed"})
-            PIECES.add(len(pending) - len(kept), {"aom.outcome": "refused"})
+            PIECES.add(len(kept), {"kb_mcp.outcome": "indexed"})
+            PIECES.add(len(pending) - len(kept), {"kb_mcp.outcome": "refused"})
     log.info(
         "index.built",
         documents=report.types.total(),

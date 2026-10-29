@@ -104,13 +104,13 @@ too. In Explore, choose the source `tempo` and TraceQL; for instance:
 
 | To find | TraceQL |
 |---|---|
-| The runs of a command | `{ resource.service.name = "kb-mcp" && span.aom.command = "download" }` |
-| The runs that failed | `{ span.aom.exit_status != 0 }` |
+| The runs of a command | `{ resource.service.name = "kb-mcp" && span.kb_mcp.command = "download" }` |
+| The runs that failed | `{ span.kb_mcp.exit_status != 0 }` |
 | One run, by the `run` of its log file | `{ resource.service.instance.id = "<run>" }` |
-| The issues that a download fetched | `{ name = "download.document" && span.aom.document.kind = "jira issues" }` |
+| The issues that a download fetched | `{ name = "download.document" && span.kb_mcp.document.kind = "jira issues" }` |
 | The requests refused or failed | `{ span.http.response.status_code >= 400 }` |
 | The slow requests and embeddings | `{ kind = client && duration > 500ms }` |
-| The searches that fell back to words | `{ span.mcp.method.name = "tools/call" && span.aom.fallback = true }` |
+| The searches that fell back to words | `{ span.mcp.method.name = "tools/call" && span.kb_mcp.fallback = true }` |
 | Anything that failed | `{ status = error }` |
 
 The spans, their attributes and the instruments are listed in

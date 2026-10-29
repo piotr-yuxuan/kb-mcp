@@ -78,10 +78,10 @@ METER = metrics.get_meter(__name__)
 # The documents whose file a run built, or failed to; how long each took to build, pandoc
 # writing its Markdown included. A span each would make a run's trace too large.
 DOCUMENTS = METER.create_counter(
-    "aom.mirror.documents", unit="{document}", description="Documents built, by outcome"
+    "kb_mcp.mirror.documents", unit="{document}", description="Documents built, by outcome"
 )
 CONVERSION_DURATION = METER.create_histogram(
-    "aom.mirror.conversion.duration", unit="s", description="How long a document's file took"
+    "kb_mcp.mirror.conversion.duration", unit="s", description="How long a document's file took"
 )
 
 
@@ -311,11 +311,11 @@ def mirror(store: RawStore, docs: Path, site: str | None, conversions: Conversio
                 began = time.perf_counter()
                 try:
                     wanted[each.path] = document_file(each, catalogue, context, conversions)
-                    DOCUMENTS.add(1, {"aom.outcome": "mirrored"})
+                    DOCUMENTS.add(1, {"kb_mcp.outcome": "mirrored"})
                 except DOCUMENT_ERRORS as error:
                     reason = str(error) if isinstance(error, NAMED_ERRORS) else type(error).__name__
                     problems.append(Problem(where(store, each.stored), reason))
-                    DOCUMENTS.add(1, {"aom.outcome": "failed"})
+                    DOCUMENTS.add(1, {"kb_mcp.outcome": "failed"})
                 seconds = time.perf_counter() - began
                 CONVERSION_DURATION.record(seconds)
                 log.debug(

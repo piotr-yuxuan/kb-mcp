@@ -56,7 +56,7 @@ OPERATION_DURATION = METER.create_histogram(
     explicit_bucket_boundaries_advisory=BUCKETS_S,
 )
 ANSWER_SIZE = METER.create_histogram(
-    "aom.serve.answer.size", unit="By", description="How long a tool's answer is"
+    "kb_mcp.serve.answer.size", unit="By", description="How long a tool's answer is"
 )
 
 
@@ -68,7 +68,7 @@ def served(method: Callable[..., str]) -> Callable[..., str]:
     ``mcp.server.operation.duration``, an unanswerable one's with the ``error.type``
     ``tool_error``, as the MCP conventions have it, and one that raises any other
     exception, which goes on, with its class, qualified by its module; each answer's
-    size, in ``aom.serve.answer.size``; and ``serve.call`` says at DEBUG the tool, its
+    size, in ``kb_mcp.serve.answer.size``; and ``serve.call`` says at DEBUG the tool, its
     arguments, the error, the seconds and the size.
     """
     name = method.__name__
@@ -124,11 +124,11 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None
 
     The lexical mode never opens the embedding endpoint, nor does a server not reranking
     open the reranking server's. The protocol is the output:
-    no result is given. ``aom.serve.fallbacks`` is 0 from the start, so that a chart of
+    no result is given. ``kb_mcp.serve.fallbacks`` is 0 from the start, so that a chart of
     it has data before any search falls back.
     """
     settings = loaded.settings
-    FALLBACKS.add(0, {"aom.mode": settings.search_mode})
+    FALLBACKS.add(0, {"kb_mcp.mode": settings.search_mode})
     opened = None if settings.search_mode == "lexical" else open_endpoint(arguments, settings)
     with opened or contextlib.nullcontext(), contextlib.ExitStack() as stack:
         meaning = None if opened is None else Meaning(functools.partial(connect, opened))

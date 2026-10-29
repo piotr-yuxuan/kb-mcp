@@ -16,13 +16,13 @@ OpenAI-compatible API, and the index built by meaning ([embeddings](embeddings.m
 else `ask` answers by words and says so in its answer. Neither `calls/` nor
 `results.json` keeps that, but
 the server's own log file does, `serve-<start>-<pid>.jsonl` in `logs.dir`, by the
-warning `search.fallback`, and with telemetry on the counter `aom.serve.fallbacks`
+warning `search.fallback`, and with telemetry on the counter `kb_mcp.serve.fallbacks`
 counts it ([serve](../reference/telemetry/serve.md)). Run `model check` before the runs,
 and look for `search.fallback` in those files after them. `search_mode = "lexical"`
 measures words alone. Reranking is off by default; with `enabled = true` under
 `[rerank]`, the reranking server must be running ([reranking](reranking.md)), else
 answers keep their order and say "Not reranked", which the warning `rerank.fallback`
-and the counter `aom.rerank.fallbacks` record: run `reranker check` before the runs
+and the counter `kb_mcp.rerank.fallbacks` record: run `reranker check` before the runs
 too.
 
 ## Prepare the runs
