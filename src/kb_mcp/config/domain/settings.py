@@ -11,7 +11,7 @@ the loader has resolved the data directory.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from collections.abc import Mapping
 from functools import reduce
 from operator import getitem
 from pathlib import Path
@@ -35,11 +35,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
 from kb_mcp.kernel.endpoint import endpoint_host, loopback
 from kb_mcp.kernel.names import MODEL_NAME, PROJECT_KEY, SPACE_KEY
+from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS
 
 if TYPE_CHECKING:
     import re
-    from collections.abc import Callable, Iterable, Mapping
+    from collections.abc import Callable, Iterable
 
     from pydantic_settings import PydanticBaseSettingsSource
 
@@ -550,8 +551,7 @@ def variable(path: tuple[str, ...]) -> str:
     return f"{PREFIX}{NESTING.join(path).upper()}"
 
 
-@dataclass(frozen=True)
-class Entry:
+class Entry(Record):
     """A value that a layer gives a setting: the setting's path, the value, the layer.
 
     A default's layer is None, so that no layer is taken for the defaults by its name,
@@ -562,13 +562,12 @@ class Entry:
     """
 
     path: tuple[str, ...]
-    value: object = field(repr=False)
+    value: object = Field(repr=False)
     layer: str | None
     implicit: bool = False
 
 
-@dataclass(frozen=True)
-class Ignored:
+class Ignored(Record):
     """A value read and not used: the setting it would set, if any, its layer, and why."""
 
     setting: str | None
@@ -576,8 +575,7 @@ class Ignored:
     why: str
 
 
-@dataclass(frozen=True)
-class Loaded:
+class Loaded(Record):
     """The settings, each one's layer by its path joined by dots, and the values ignored.
 
     ``replaced`` names each setting, by its path joined by dots, whose value that a layer
@@ -585,7 +583,7 @@ class Loaded:
     """
 
     settings: Settings
-    layers: Mapping[str, str] = field(default_factory=dict)
+    layers: Mapping[str, str] = Field(default_factory=dict)
     ignored: tuple[Ignored, ...] = ()
     replaced: frozenset[str] = frozenset()
 

@@ -19,7 +19,6 @@ call in ``load_settings``, ``advice``'s use in ``enter``, its tests, its line in
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from functools import reduce
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -32,6 +31,7 @@ from kb_mcp.config.domain.settings import (
     at_home,
     variable,
 )
+from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -78,8 +78,7 @@ class FormerNameError(SettingsError):
         self.advice = advice
 
 
-@dataclass(frozen=True)
-class Found:
+class Found(Record):
     """What the loader found of the default places and the former ones, written from ``~``.
 
     ``settings_file`` is the default settings file, ``settings_given`` the one that the run
