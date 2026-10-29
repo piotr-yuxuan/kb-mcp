@@ -43,7 +43,7 @@ flowchart LR
 | `download` | the site, GET only | `<data>/raw/` | a lock, and each snapshot renamed into place | the document is counted and skipped; the run goes on |
 | `mirror` | the raw store | `<data>/docs/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is reported, its last good file kept; a damaged cache is replaced |
 | the work log, in `sync` | its folder, in place | `<data>/docs/worklog/` | each file renamed into place | the file or document is named by its path; no file is removed |
-| `index` | the mirror; the endpoint, for new texts | `<data>/index.sqlite`, `<data>/vectors.sqlite` | the index built aside, then renamed into place; the vector store pruned under its lock, its deletions one transaction | the file is skipped and named; without the endpoint, the old index stays; a prune it cannot trust deletes nothing |
+| `index` | the mirror; the user's alias file, if any; the endpoint, for new texts | `<data>/index.sqlite`, `<data>/vectors.sqlite` | the index built aside, then renamed into place; the vector store pruned under its lock, its deletions one transaction | the file is skipped and named; a name that could be several people is joined to none, and named; without the endpoint, or with an alias file refused, the old index stays; a prune it cannot trust deletes nothing |
 | `serve` | the index; the endpoint, for queries; the reranking server, when on | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why; without the reranker, it keeps its order and says why |
 
 ## Sync: the stages in one command
@@ -229,14 +229,30 @@ and gives each piece a vector.
   ([`shared`](../../src/atlassian_offline_mcp/search/adapters/vector_store.py)); then
   [`refresh`](../../src/atlassian_offline_mcp/search/app/indexing.py), which `index` and
   `sync` run, prunes the store (below).
+- **Joins** the documents' people into persons, once every file is read, in the same
+  transaction
+  ([`Writer.join`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)):
+  each row of `people` is given its person by the rules of
+  [`joined`](../../src/atlassian_offline_mcp/search/domain/people.py), through the
+  aliases of `<data>/aliases.toml`, which the build reads first, before the mirror and
+  the endpoint
+  ([`index_mirror`](../../src/atlassian_offline_mcp/search/app/indexing.py)); the
+  persons and their names go into tables of their own, which the filters by person read.
+  A transcript's meetings, which a speaker may join by, are those that its `summary`
+  links name. The join is whole at each build, as the index is: one account indexed
+  late can make a name of the work log ambiguous
+  ([sources](sources.md#one-person-across-sources) says why persons are joined so).
 - **One document's failure**, a file not UTF-8, front matter refused, or a second
   document of the same id, skips that file and names it, with a reason that holds no
   content; the build completes and exits 1. A piece whose text the endpoint refuses is
-  left without a vector, its document named, and asked again at the next build. Only an
+  left without a vector, its document named, and asked again at the next build. A name
+  that could be several persons, or an alias that changes nothing, is a warning, and
+  the build is whole. Only an alias file that cannot be read or is refused, or an
   endpoint that does not answer, or lacks the model, stops the build: the old index
   stays.
-- **Offline**, the words: the index is rebuilt from the mirror alone. Meaning needs the
-  endpoint, but only for texts that the vector store lacks (below).
+- **Offline**, the words and the persons: the index is rebuilt from the mirror and the
+  alias file alone. Meaning needs the endpoint, but only for texts that the vector store
+  lacks (below).
 
 ## Serve: from the index to agents
 
