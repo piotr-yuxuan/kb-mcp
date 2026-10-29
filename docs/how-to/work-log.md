@@ -221,7 +221,10 @@ opens. `read` of a meeting names its participants and its transcript, such as
 `summary:`, so that an agent goes from a summary to its record in one call.
 
 `filters={"participant": "Sam Sample"}` keeps the meetings that name Sam Sample and the
-transcripts in which Sam Sample speaks, the name matched whole, in any case: `Kim` and
+transcripts in which Sam Sample speaks, the name matched whole, given in any case, but
+one spelling at a time: when a meeting writes `sam sample` and a transcript
+`Sam Sample`, the filter keeps the spelling given exactly, else the most used, so ask
+again with the other, as `read` shows it, for the rest. `Kim` and
 `Kim (not in the header)` are two names. With `"created_after": "2026-10-26"` beside
 it, those since that day. A name that no document holds is refused with the valid
 ones, those that the most meetings name first ([the tools](../reference/mcp-tools.md)).
