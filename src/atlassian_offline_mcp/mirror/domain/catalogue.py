@@ -177,6 +177,7 @@ def front_matter(
         issue_type=None if issue is None else one_line(issue.issue_type),
         labels=tuple(one_line(label) for label in document.labels),
         people=(*sole, *commenters),
+        links=(),
         created=document.created.astimezone(UTC),
         updated=document.updated.astimezone(UTC),
         version=None if confluence is None else confluence.version,

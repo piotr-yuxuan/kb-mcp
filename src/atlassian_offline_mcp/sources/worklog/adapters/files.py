@@ -1,11 +1,11 @@
 """The work log's folder, read in place: never written, and never through git.
 
-``listed`` finds ``todo.org``, ``todo.org_archive`` and every ``*.org`` under
-``transcripts/``, and counts the HTML transcripts, which are never read; ``source`` reads
-one of them. Names beginning with ``.`` or ``#`` or ending in ``~`` (hidden files, and
-Emacs's lock, autosave and backup files) are passed over. A link is followed only to a
-file or a folder inside the work log. A file over a bound, linking out or not UTF-8 is
-named by its path, never by its content.
+``listed`` finds ``todo.org``, ``todo.org_archive`` and every ``*.org`` under the folders
+of transcripts, ``transcripts/`` and ``meetings/``, and counts the HTML transcripts, which
+are never read; ``source`` reads one of them. Names beginning with ``.`` or ``#`` or
+ending in ``~`` (hidden files, and Emacs's lock, autosave and backup files) are passed
+over. A link is followed only to a file or a folder inside the work log. A file over a
+bound, linking out or not UTF-8 is named by its path, never by its content.
 """
 
 from __future__ import annotations
@@ -60,8 +60,9 @@ class Listing:
 def listed(folder: Path, *, archives: bool) -> Listing:
     """Find the work log's org files under ``folder``, following links inside it alone.
 
-    Without ``archives``, ``todo.org_archive`` and ``transcripts/archive/`` are left out.
-    Past 20,000 transcripts, the first in path order are kept and a problem is reported.
+    Without ``archives``, ``todo.org_archive``, ``transcripts/archive/`` and
+    ``meetings/archive/`` are left out. Past 20,000 transcripts in both folders, the first
+    in path order are kept and a problem naming the folders is reported.
     """
     root = folder.resolve()
     if not root.is_dir():
@@ -71,11 +72,15 @@ def listed(folder: Path, *, archives: bool) -> Listing:
     seen = {root}
     archive = PurePosixPath(TODO_ARCHIVE)
     # Archived by its path, or by what it links to.
-    archived_paths = ((root / archive).resolve(), (root / TRANSCRIPTS / ARCHIVED).resolve())
+    archived_paths = (
+        (root / archive).resolve(),
+        *((root / each / ARCHIVED).resolve() for each in TRANSCRIPTS),
+    )
     # Paths that cross fewer links come first, then in path order: a folder is read by
     # its own path before any link to it, wherever the link is.
     queue = [
-        (int(path.is_symlink()), path) for path in (root / TODO, root / archive, root / TRANSCRIPTS)
+        (int(path.is_symlink()), path)
+        for path in (root / TODO, root / archive, *(root / each for each in TRANSCRIPTS))
     ]
     heapq.heapify(queue)
     while queue:
@@ -84,7 +89,7 @@ def listed(folder: Path, *, archives: bool) -> Listing:
         real = path.resolve()
         archived = (
             relative == archive
-            or relative.parts[:2] == (TRANSCRIPTS, ARCHIVED)
+            or relative.parts[:2] in [(each, ARCHIVED) for each in TRANSCRIPTS]
             or any(real.is_relative_to(each) for each in archived_paths)
         )
         if (
@@ -97,7 +102,7 @@ def listed(folder: Path, *, archives: bool) -> Listing:
             continue
         if not real.is_relative_to(root):
             problems.append(Problem(str(relative), "links outside the work log"))
-        elif real.is_dir() and relative.parts[0] == TRANSCRIPTS:
+        elif real.is_dir() and relative.parts[0] in TRANSCRIPTS:
             seen.add(real)
             try:
                 for each in path.iterdir():
@@ -108,13 +113,13 @@ def listed(folder: Path, *, archives: bool) -> Listing:
             found.append(relative)
     # Of the files found, the HTML transcripts are counted; todo.org, todo.org_archive and
     # the org transcripts are read.
-    html = sum(1 for path in found if path.parts[0] == TRANSCRIPTS and path.suffix == HTML)
-    others = sorted(path for path in found if path.parts[0] != TRANSCRIPTS)
+    html = sum(1 for path in found if path.parts[0] in TRANSCRIPTS and path.suffix == HTML)
+    others = sorted(path for path in found if path.parts[0] not in TRANSCRIPTS)
     transcripts = sorted(
-        path for path in found if path.parts[0] == TRANSCRIPTS and path.suffix == ORG
+        path for path in found if path.parts[0] in TRANSCRIPTS and path.suffix == ORG
     )
     if len(transcripts) > TRANSCRIPT_COUNT:
-        problems.append(Problem(TRANSCRIPTS, f"over {TRANSCRIPT_COUNT} transcripts"))
+        problems.append(Problem(", ".join(TRANSCRIPTS), f"over {TRANSCRIPT_COUNT} transcripts"))
     paths = (*others, *transcripts[:TRANSCRIPT_COUNT])
     return Listing(root, paths, html, tuple(problems))
 

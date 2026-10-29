@@ -2,8 +2,11 @@
 
 Search narrowed to the work log finds a transcript by a word only it holds; the ref that
 its hit shows opens it, its text inside the untrusted block, as is an entry's injected
-line. What the server says names entries as the user's notes and AI-written summaries,
-and transcripts as the word-by-word record to quote and to check a summary against.
+line. Plan 042: a meeting's summary finds the meeting, not its day; a participant and a
+date narrow to whom one met, and when; a meeting's read names its transcript, which
+names it back. What the server says names days, meetings and entries as the user's notes
+and AI-written summaries, a meeting linking its transcript, and transcripts as the
+word-by-word record to quote and to check a summary against.
 """
 
 from __future__ import annotations
@@ -103,25 +106,75 @@ def test_an_entry_s_injected_line_is_inside_the_block(home: Path) -> None:
     assert "PWNED" not in before + after
 
 
+def test_a_meeting_found_by_its_summary_is_read_by_its_ref_with_its_sections(
+    home: Path,
+) -> None:
+    """Its summary's word finds the meeting, not its day, which holds its heading alone."""
+    served = library(home)
+    assert refs(served.search("rota", filters={"source": "worklog"})) == ["m-20261026-one-to-one"]
+    _, block, _ = parts(served.read("m-20261026-one-to-one"))
+    assert "## Summary" in block
+    assert "on-call rota" in block
+    (day,) = refs(served.search("dashboard cluster", filters={"source": "worklog"}))
+    assert day == "d-20261026"
+    _, block, _ = parts(served.read(day))
+    assert "One-to-one" in block
+    assert "rota" not in block
+
+
+def test_a_participant_and_a_created_date_give_whom_one_met_and_when(home: Path) -> None:
+    """Kim's meetings and transcripts, then those from the 27th on; not Kim (not in the header).
+
+    The whole name matches, so the ledger review, whose Kim is annotated, is not among them.
+    """
+    served = library(home)
+    kim = {"source": "worklog", "participant": "kim"}
+    assert sorted(refs(served.search(filters=kim, sort="created"))) == [
+        "m-20261027-capacity-planning",
+        "t-20261021-notes-on-x",
+        "t-20261027-1",
+        "t-d99a5f2dc74e8488",
+    ]
+    since = {**kim, "created_after": "2026-10-27"}
+    assert sorted(refs(served.search(filters=since, sort="created"))) == [
+        "m-20261027-capacity-planning",
+        "t-20261027-1",
+    ]
+
+
+def test_a_meeting_s_read_names_its_transcript_which_names_it_back(home: Path) -> None:
+    """From the summary to the word-by-word record in one call, and back."""
+    served = library(home)
+    meeting = parts(served.read("m-20261027-payments-stand-up"))[1].splitlines()
+    assert "participant: Alex Example; Sam Sample" in meeting
+    assert "transcript: t-20261027-1" in meeting
+    record = parts(served.read("t-20261027-1"))[1]
+    assert "Then the retry budget stays at three." in record
+    assert "\nparticipant: Alex Example; Sam Sample; Kim\n" in record
+    assert "\nsummary: m-20261027-payments-stand-up\n" in record
+
+
 def test_the_server_says_what_entries_and_transcripts_are(home: Path) -> None:
     """Instructions and the source filter, as a client sees them over stdio.
 
-    Entries: the user's notes and AI-written summaries. Transcripts: the word-by-word
-    record, to prefer when quoting and to check a summary against. Each kind is named
-    before what it is, and the entries first, so that the roles cannot be swapped; once
-    the record is named, no entry is, so that what to quote is the transcripts.
+    Days, meetings and entries: the user's notes and AI-written summaries, a meeting
+    linking its transcript. Transcripts: the word-by-word record, to prefer when quoting
+    and to check a summary against. Each kind is named before what it is, and the notes
+    first, so that the roles cannot be swapped; once the record is named, no day, meeting
+    or entry is, so that what to quote is the transcripts.
     """
     instructions, tools, _ = seen(home)
     (said,) = [s for s in re.split(r"(?<=\.)\s", instructions) if "transcripts" in s]
     told = [
-        *("entries", "user's", "notes", "AI-written", "summaries"),
-        *("transcripts", "word-by-word", "prefer", "quoting"),
+        *("days", "meetings", "entries", "user's", "notes", "AI-written", "summaries"),
+        *("meeting linking its transcript", "transcripts", "word-by-word", "prefer", "quoting"),
     ]
     assert [words for words in [*told, "check a summary"] if words not in said] == [], said
     assert [said.index(words) for words in told] == sorted(said.index(words) for words in told)
     assert said.index("quoting") < said.index("check a summary")
     record = said[said.index("word-by-word") :]
-    assert [words for words in ("entries", "notes", "summaries") if words in record] == []
+    kinds = ("days", "meetings", "entries", "notes", "summaries")
+    assert [words for words in kinds if words in record] == []
     (search,) = [tool for tool in tools.tools if tool.name == "search"]
     filters = search.input_schema["$defs"]["SearchFilters"]
     assert "worklog" in filters["properties"]["source"]["enum"]

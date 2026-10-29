@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 ORDER = ["ask", "search", "read", "browse", "status"]
 WITHOUT_ASK = "search,read,browse,status"
 INSTRUCTIONS = 2048  # characters that older Claude Code keeps
-STANDING = 2400  # estimated tokens of the instructions and the tool listing together
+STANDING = 2500  # estimated tokens of the instructions and the tool listing together
 ASK_DESCRIPTION = 600  # characters of ask's description
 ASK_SENTENCES = 240  # characters that name ask in the instructions and search's description
 INVALID_PARAMS = -32602
@@ -119,7 +119,7 @@ def test_the_filters_of_search_and_ask_have_no_titles(home: Path) -> None:
     assert list(listed) == ["ask", "search"]
     names = [
         *("source", "space", "project", "status", "label", "issue_type"),
-        *("author", "creator", "assignee", "commenter"),
+        *("author", "creator", "assignee", "commenter", "participant"),
         *("updated_after", "updated_before", "created_after", "created_before"),
         *("commented_after", "commented_before"),
     ]

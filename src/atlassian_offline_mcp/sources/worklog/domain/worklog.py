@@ -1,14 +1,16 @@
 """The work log's documents: what each is, and its id, title, dates and revision.
 
-An entry is a top-level heading of ``todo.org`` or ``todo.org_archive`` with its subtree;
-a transcript is an org file under ``transcripts/``. The rules are those of plan 017's
-"Documents and their identity" and "Front matter and conversion"; org's syntax is read
-by ``org``.
+The journal of ``todo.org`` and ``todo.org_archive`` makes a document of each day and of
+each meeting, and the other top-level headings are entries; a transcript is an org file
+under ``transcripts/`` or ``meetings/``. The rules are those of plan 017's "Documents and
+their identity" and "Front matter and conversion", and plan 042's "Days and meetings:
+the rule", "Ids", "Participants" and "Links"; org's syntax is read by ``org``.
 """
 
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import hashlib
 import re
 from collections import Counter
@@ -16,25 +18,62 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.kernel.content import WORKLOG_ID
+from atlassian_offline_mcp.kernel.content import WORKLOG_IDS
+from atlassian_offline_mcp.kernel.slug import slug
 from atlassian_offline_mcp.sources.worklog.domain import org
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Collection, Iterable, Mapping, Sequence
     from pathlib import PurePosixPath
 
 TODO = "todo.org"
 TODO_ARCHIVE = "todo.org_archive"
-TRANSCRIPTS = "transcripts"
-# The folder of transcripts/ that holds archived transcripts.
+# The folders of transcripts: those saved, and the meeting files that a meeting's
+# :MEETING: links, as the user's meeting notes save them.
+MEETINGS = "meetings"
+TRANSCRIPTS = ("transcripts", MEETINGS)
+# What a file under meetings/ takes before its name in its id, so that one day's 1.org
+# in both folders never shares an id.
+MEETING_FILE = "meeting-"
+# The folder of each that holds archived transcripts.
 ARCHIVED = "archive"
 ORG = ".org"
 ENTRY = "entry"
+DAY_TYPE = "day"
+MEETING_TYPE = "meeting"
 TRANSCRIPT = "transcript"
+# The relations of a meeting to its transcript, and of a transcript to each meeting
+# that links to it, as the mirror's front matter names them.
+TRANSCRIBED = "transcript"
+SUMMARY = "summary"
 CURRENT = "current"
 DIGITS = 16
+# What comes between a meeting's id and its number: two dashes, which no slug holds, so
+# that a numbered id is never another title's, as Stand-up 2's is stand-up-2.
+NUMBERED = "--"
 # The date that begins a folder's or a file's name.
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+# The deepest level of a day's heading: 1, or 2 below the journal.
+DAY_LEVEL = 2
+# The level of what joins a day's or a meeting's document, which begins at level 1: one
+# below it, whatever level its day's heading had.
+JOINED_LEVEL = 2
+# The properties of a meeting's drawer: the file of its transcript, and its people. A
+# child of a day with either is a meeting.
+LINKED = "MEETING"
+NAMED = "PARTICIPANTS"
+# Where org's archiving writes the titles above a subtree, joined by /.
+OUTLINE_PATH = "ARCHIVE_OLPATH"
+# The brackets within which a comma is a name's, as in Kim (payments, ops).
+OPENING = "(["
+CLOSING = ")]"
+# A turn of a transcript: an optional [time] and a blank, then its speaker's name, of at
+# most 64 characters, beginning with a letter and holding no colon or bracket, then ": ".
+TURN = re.compile(r"[ \t]*(?:\[([^\[\]]*)\][ \t]+)?([^\W\d_][^:\[\]]{0,63}?)[ \t]*: ")
+# Org's planning and clock lines, which read as turns.
+NOT_SPEAKERS = frozenset({"SCHEDULED", "DEADLINE", "CLOSED", "CLOCK"})
+# A turn's time that dates its transcript: two-digit hours and minutes, seconds or not.
+CLOCK_TIME = re.compile(r"([0-9]{2}):([0-9]{2})(?::([0-9]{2}))?")
 
 
 @dataclass(frozen=True)
@@ -62,30 +101,112 @@ class Source:
 
 @dataclass(frozen=True)
 class Document:
-    """One document of the work log: what the mirror says of it, and what pandoc converts."""
+    """One document of the work log: what the mirror says of it, and what pandoc converts.
 
-    type: str  # entry or transcript
+    ``people`` names its participants as written; ``links`` holds each relation to another
+    document of the work log and that document's id, such as a meeting's ``transcript``
+    and that transcript's ``summary``.
+    """
+
+    type: str  # entry, day, meeting or transcript
     id: str
     title: str
     status: str
     labels: tuple[str, ...]
     breadcrumb: tuple[str, ...]
+    people: tuple[str, ...]
+    links: tuple[tuple[str, str], ...]
     text: str  # pandoc's input
     events: tuple[datetime, ...]
-    day: datetime | None  # a transcript's day, at midnight UTC
+    start: datetime | None  # when a day, a meeting or a dated transcript began, in UTC
     source: Source
 
     def dates(self, created: datetime | None) -> tuple[datetime, datetime]:
         """Return when it was created and last updated.
 
-        A transcript's day, else its earliest and latest events; without any, its file's
+        Its start, else its earliest and latest events; without any, its file's
         modification time, created being ``created``, the existing file's, when given.
         """
-        if self.day is not None:
-            return self.day, self.day
+        if self.start is not None:
+            return self.start, self.start
         if self.events:
             return min(self.events), max(self.events)
         return created or self.source.fetched_at, self.source.fetched_at
+
+
+@dataclass(frozen=True)
+class Part:
+    """A heading of ``todo.org`` or its archive, and the titles above it: org's outline path.
+
+    Below the journal, the path is the journal's title, then for a meeting its day's; at
+    the top of a file, it is what org wrote in ``:ARCHIVE_OLPATH:`` when it archived the
+    heading, else empty. It is ``archived`` when its file is the archive or it, or a
+    heading above it, is tagged ARCHIVE; ``inherited`` are the tags of the headings above
+    it in its file, which org gives it too.
+    """
+
+    subtree: org.Subtree
+    path: tuple[str, ...]
+    source: Source
+    parsed: org.OrgFile
+    archived: bool
+    inherited: tuple[str, ...]
+
+    @property
+    def day(self) -> datetime | None:
+        """Return its date when it is a day: at level 1 or 2, titled by a date alone."""
+        heading = self.subtree.heading
+        return org.date_title(heading.title) if heading.level <= DAY_LEVEL else None
+
+    @property
+    def within(self) -> tuple[int, datetime] | None:
+        """Return the place in its path of the first day's title, and that day, or None."""
+        return next(
+            (
+                (place, date)
+                for place, title in enumerate(self.path)
+                if (date := org.date_title(title)) is not None
+            ),
+            None,
+        )
+
+    @property
+    def meeting(self) -> bool:
+        """Say whether it is a meeting: a child of a day, with a meeting's property."""
+        within, properties = self.within, self.subtree.properties
+        return (
+            within is not None
+            and within[0] == len(self.path) - 1
+            and (LINKED in properties or NAMED in properties)
+        )
+
+    @property
+    def labels(self) -> list[str]:
+        """Return its labels: the tags above it, its own, its file's, then ARCHIVE if archived.
+
+        As org gives a heading the tags of the headings above it and of ``#+FILETAGS``.
+        """
+        return [
+            *self.inherited,
+            *self.subtree.heading.tags,
+            *self.parsed.filetags,
+            *([org.ARCHIVE] if self.archived else []),
+        ]
+
+    @property
+    def children(self) -> list[Part]:
+        """Return its children, below its path and title, archived when it is, given its tags."""
+        return [
+            Part(
+                child,
+                (*self.path, self.subtree.heading.title),
+                self.source,
+                self.parsed,
+                self.archived or org.ARCHIVE in child.heading.tags,
+                (*self.inherited, *self.subtree.heading.tags),
+            )
+            for child in self.subtree.children(self.parsed.keywords)
+        ]
 
 
 def digest(text: str) -> str:
@@ -98,13 +219,132 @@ def revision(converter: str, text: str) -> str:
     return digest(f"{converter}\0{text}")
 
 
-def entries(todo: Source | None, archive: Source | None, *, archives: bool) -> list[Document]:
-    """Return the entries of ``todo.org``, then of ``todo.org_archive``, in reading order.
+def participants(value: str) -> tuple[str, ...]:
+    """Return the names that a ``:PARTICIPANTS:`` value gives, in order, each once.
 
-    An entry's id is the digest of its ``:ID:``; else of its title and ``:CREATED:``; else
-    of its title, numbered from the second entry of one digest. The archive file takes
-    ``todo.org``'s keywords when it declares none. Without ``archives``, the archive
-    file's entries and those tagged ARCHIVE are left out.
+    Names are separated by commas outside brackets, ``()`` or ``[]``, a closing one
+    without its opening one being text, and stripped; each is kept as written, an
+    annotation included, such as ``Kim (not in the header)``. One pass, so that the time
+    grows with the value's length alone.
+    """
+    names: list[str] = []
+    depth, begun = 0, 0  # the brackets open, and where the name being read begins
+    for place, char in enumerate(value):
+        if char in OPENING:
+            depth += 1
+        elif char in CLOSING:
+            depth = max(depth - 1, 0)
+        elif char == "," and not depth:
+            names.append(value[begun:place])
+            begun = place + 1
+    names.append(value[begun:])
+    return tuple(dict.fromkeys(name for each in names if (name := each.strip())))
+
+
+def meeting_ids(day: datetime, meetings: Sequence[tuple[str, datetime]]) -> list[str]:
+    """Return the ids of one day's meetings, each given by its title and start, in order.
+
+    An id is ``m-``, the day as ``%Y%m%d``, ``-`` and the title's slug, else the first 16
+    hex digits of the title's SHA-256. Of one id, the meetings are numbered from the
+    second, ``--2``, ``--3``, by start, then in the order given. No slug or digest holds
+    ``--``, so that the ids are distinct, and one title's never depend on another's.
+    """
+    bases = [f"m-{day:%Y%m%d}-{slug(title) or digest(title)}" for title, _ in meetings]
+    taken: Counter[str] = Counter()
+    found: dict[int, str] = {}
+    for index in sorted(range(len(meetings)), key=lambda index: (meetings[index][1], index)):
+        base = bases[index]
+        taken[base] += 1
+        found[index] = base if taken[base] == 1 else f"{base}{NUMBERED}{taken[base]}"
+    return [found[index] for index in range(len(meetings))]
+
+
+@dataclass(frozen=True)
+class Meeting:
+    """A meeting of a day, and the transcript that it links, as ``read`` finds them.
+
+    ``link`` is its ``:MEETING:`` as written; ``file``, the file that it names, from the
+    work log's folder, or None; ``transcript``, that file's when read, else the one of
+    the id that its path gives, as ``read`` says; ``start``, when that transcript starts
+    if on the meeting's day, else the day. ``added`` are the lines of the archived
+    headings that join it.
+    """
+
+    part: Part
+    link: str
+    file: PurePosixPath | None
+    transcript: Document | None
+    start: datetime
+    added: list[str] = dataclasses.field(default_factory=list)
+
+    @classmethod
+    def read(
+        cls,
+        part: Part,
+        day: datetime,
+        transcripts: Mapping[PurePosixPath, Document],
+        ids: Mapping[str, Document],
+    ) -> Meeting:
+        """Read a meeting of ``day``, its link resolved from the folder of its file.
+
+        ``transcripts`` are those read, by their path from the work log's folder, and
+        ``ids`` the same, by their id. A link to a file under ``transcripts/`` or
+        ``meetings/`` that no transcript read has reaches the transcript of the id that
+        its path gives, ``transcript_id``'s: a file moved under ``archive/`` keeps its id,
+        and org rewrites no link to it.
+        """
+        link = part.subtree.properties.get(LINKED, "")
+        target = org.link_target(link)
+        file = None if target is None else part.source.path.parent / target
+        transcript: Document | None = None
+        if file is not None:
+            transcript = transcripts.get(file)
+            if transcript is None and file.parts[0] in TRANSCRIPTS:
+                transcript = ids.get(transcript_id(file))
+        start = None if transcript is None else transcript.start
+        # A transcript of another day, such as a recurring meeting's link copied with its
+        # heading, is linked but dates nothing: the meeting is its day's.
+        today = start is not None and start.date() == day.date()
+        return cls(part, link, file, transcript, start if today else day)
+
+
+@dataclass
+class Day:
+    """What one date of the journal gathers, in reading order, ``todo.org`` first.
+
+    ``title``, ``breadcrumb`` and ``first`` (its file and settings) come from its first
+    part, a day's heading or an archived heading that names the day. ``lines`` are what
+    pandoc converts, before the settings; ``meetings``, its meetings.
+    """
+
+    title: str
+    breadcrumb: tuple[str, ...]
+    first: Part
+    headings: list[Part] = dataclasses.field(default_factory=list)
+    lines: list[str] = dataclasses.field(default_factory=list)
+    meetings: list[Meeting] = dataclasses.field(default_factory=list)
+
+
+def journal(
+    todo: Source | None,
+    archive: Source | None,
+    *,
+    archives: bool,
+    transcripts: Iterable[Document],
+) -> tuple[list[Document], list[str]]:
+    """Return the entries, then the days and meetings, of ``todo.org`` and its archive.
+
+    The journal is a top-level heading with a day among its children: its days are days,
+    its other children entries, and its own lines an entry only when they hold text
+    besides its heading's ``preamble``. A top-level heading that is a day, or that
+    ``:ARCHIVE_OLPATH:`` places below one, is the day's, as ``days_and_meetings`` says;
+    every other is an entry. An entry's id is the digest of its ``:ID:``; else of its
+    title and ``:CREATED:``; else of its title, numbered from the second entry of one
+    digest, in reading order, ``todo.org`` first. The archive file takes ``todo.org``'s
+    keywords when it declares none. Without ``archives``, the archive file and the
+    headings tagged ARCHIVE, or below one, are left out. ``transcripts`` are those read,
+    which a meeting may link to; each meeting whose ``:MEETING:`` links none is named
+    too, as ``days_and_meetings`` says.
     """
     files: list[tuple[Source, org.OrgFile]] = []
     first = None
@@ -113,79 +353,313 @@ def entries(todo: Source | None, archive: Source | None, *, archives: bool) -> l
         files.append((todo, first))
     if archive is not None and archives:
         files.append((archive, org.read(archive.text, first)))
-    found: list[Document] = []
-    taken: Counter[str] = Counter()
+    parts: list[Part] = []
     for source, parsed in files:
         for subtree in parsed.subtrees:
             archived = source.path.name == TODO_ARCHIVE or org.ARCHIVE in subtree.heading.tags
-            if archived and not archives:
+            path = tuple(filter(None, subtree.properties.get(OUTLINE_PATH, "").split("/")))
+            top = Part(subtree, path, source, parsed, archived, ())
+            children = top.children
+            if not any(child.day is not None for child in children):
+                parts.append(top)
                 continue
-            title, properties = subtree.heading.title, subtree.properties
-            created = properties.get("CREATED")
-            base = digest(properties.get("ID") or (f"{title}\n{created}" if created else title))
-            taken[base] += 1
-            labels = [
-                *subtree.heading.tags,
-                *parsed.filetags,
-                *([org.ARCHIVE] if archived else []),
+            own = dataclasses.replace(top, subtree=org.Subtree(subtree.heading, subtree.own))
+            text = subtree.own[1 + len(subtree.preamble) :]
+            parts.extend([own] if any(line.strip() for line in text) else [])
+            parts.extend(children)
+    kept = [part for part in parts if archives or not part.archived]
+    found: list[Document] = []
+    taken: Counter[str] = Counter()
+    for part in kept:
+        if part.day is not None or part.within is not None:
+            continue
+        heading, properties = part.subtree.heading, part.subtree.properties
+        created = properties.get("CREATED")
+        title = heading.title
+        base = digest(properties.get("ID") or (f"{title}\n{created}" if created else title))
+        taken[base] += 1
+        found.append(
+            Document(
+                type=ENTRY,
+                id=f"e-{base}" if taken[base] == 1 else f"e-{base}-{taken[base]}",
+                title=title,
+                status=heading.keyword or CURRENT,
+                labels=tuple(dict.fromkeys(part.labels)),
+                breadcrumb=(part.source.path.name, *part.path),
+                people=(),
+                links=(),
+                text=org.pandoc_input(
+                    part.parsed.declarations,
+                    org.shifted(part.subtree.lines),
+                    part.parsed.keywords,
+                    archives=archives,
+                ),
+                events=part.source.events(part.subtree.lines),
+                start=None,
+                source=part.source,
+            )
+        )
+    dated, unlinked = days_and_meetings(kept, archives=archives, transcripts=transcripts)
+    return [*found, *dated], unlinked
+
+
+def days_and_meetings(
+    parts: Sequence[Part], *, archives: bool, transcripts: Iterable[Document]
+) -> tuple[list[Document], list[str]]:
+    """Return each day of the journal's parts, then its meetings, by date of first part.
+
+    ``parts`` are those kept, in reading order. One date makes one day, ``d-`` and the
+    date: its headings, each meeting among their children cut to its heading line, then
+    what an archived heading brings that ``:ARCHIVE_OLPATH:`` places below it: a meeting
+    archived alone, its heading line; anything else that names none of its meetings
+    next, or two alike, itself. A meeting is its subtree, then each archived heading
+    whose path after its day begins with the meeting's title as org writes it there, the
+    longest such title of the day, when no other meeting of the day has it. Each
+    document begins at level 1, what joins it at level 2.
+
+    A meeting links to the transcript whose file its ``:MEETING:`` names, from the folder
+    of the file that holds it, or whose id that file's path gives, as ``Meeting.read``
+    says, and starts when that transcript starts on the meeting's day, else at its day;
+    its id is as ``meeting_ids`` gives it. Labels: a meeting's, as ``Part.labels`` gives
+    them; a day's, those of each of its headings, else, when it has none, its first
+    part's file's ``#+FILETAGS`` and ARCHIVE.
+
+    Also returned, in the order of the meetings, each whose ``:MEETING:`` links no
+    transcript: by the file that it names, from the work log's folder, when it is a link
+    in brackets or a path after ``file:`` or ``./`` and that file was not read; else by
+    the meeting's id. Never the link as written, which may hold a meeting room's
+    passcode, as any text reads as a path alone. A meeting without ``:MEETING:`` links
+    nothing and is not among them.
+    """
+    linked = {each.source.path: each for each in transcripts}
+    ids = {each.id: each for each in linked.values()}
+    days: dict[datetime, Day] = {}
+    joining: list[tuple[Day, str, Part]] = []  # its day, its path after the day, it
+    for part in parts:
+        within = part.within
+        if part.day is not None:
+            day = days.setdefault(
+                part.day,
+                Day(part.subtree.heading.title, (part.source.path.name, *part.path), part),
+            )
+            day.headings.append(part)
+            children = part.children
+            day.meetings.extend(
+                Meeting.read(child, part.day, linked, ids)
+                for child in children
+                if child.meeting and (archives or not child.archived)
+            )
+            cut = [
+                line
+                for child in children
+                for line in (child.subtree.lines[:1] if child.meeting else child.subtree.lines)
             ]
+            day.lines.extend(org.shifted([*part.subtree.own, *cut]))
+        elif within is not None:
+            place, date = within
+            day = days.setdefault(
+                date,
+                Day(part.path[place], (part.source.path.name, *part.path[:place]), part),
+            )
+            if part.meeting:
+                day.meetings.append(Meeting.read(part, date, linked, ids))
+                day.lines.extend(org.shifted(part.subtree.lines[:1], JOINED_LEVEL))
+            else:
+                joining.append((day, "/".join(part.path[place + 1 :]), part))
+    for day, rest, part in joining:
+        # Org joins the titles of a path by a / that it does not escape, so that a title
+        # such as 1/1 with Robin spans two parts: the longest title that begins the rest.
+        named = [
+            (len(title), meeting.added)
+            for meeting in day.meetings
+            if (title := meeting.part.subtree.heading.outline_title)
+            and (rest == title or rest.startswith(f"{title}/"))
+        ]
+        # The path names two meetings of one title alike: neither is told, the day keeps it.
+        longest = max((length for length, _ in named), default=0)
+        chosen = [added for length, added in named if length == longest]
+        target = chosen[0] if len(chosen) == 1 else day.lines
+        target.extend(org.shifted(part.subtree.lines, JOINED_LEVEL))
+    found: list[Document] = []
+    unlinked: list[str] = []
+    for date, day in days.items():
+        ids = meeting_ids(
+            date, [(each.part.subtree.heading.title, each.start) for each in day.meetings]
+        )
+        unlinked.extend(
+            str(each.file) if org.link_target(each.link, bare=False) else identifier
+            for each, identifier in zip(day.meetings, ids, strict=True)
+            if each.link and each.transcript is None
+        )
+        headings = day.headings
+        # Each heading's labels; a day of archived pieces alone is archived.
+        labels = (
+            [label for each in headings for label in each.labels]
+            if headings
+            else [*day.first.parsed.filetags, org.ARCHIVE]
+        )
+        found.append(
+            Document(
+                type=DAY_TYPE,
+                id=f"d-{date:%Y%m%d}",
+                title=day.title,
+                status=(headings[0].subtree.heading.keyword if headings else None) or CURRENT,
+                labels=tuple(dict.fromkeys(labels)),
+                breadcrumb=day.breadcrumb,
+                people=(),
+                links=(),
+                text=org.pandoc_input(
+                    day.first.parsed.declarations,
+                    day.lines,
+                    day.first.parsed.keywords,
+                    archives=archives,
+                ),
+                events=(),
+                start=date,
+                source=day.first.source,
+            )
+        )
+        for each, identifier in zip(day.meetings, ids, strict=True):
+            meeting, transcript = each.part, each.transcript
+            heading = meeting.subtree.heading
             found.append(
                 Document(
-                    type=ENTRY,
-                    id=f"e-{base}" if taken[base] == 1 else f"e-{base}-{taken[base]}",
-                    title=title,
-                    status=subtree.heading.keyword or CURRENT,
-                    labels=tuple(dict.fromkeys(labels)),
-                    breadcrumb=(source.path.name,),
+                    type=MEETING_TYPE,
+                    id=identifier,
+                    title=heading.title,
+                    status=heading.keyword or CURRENT,
+                    labels=tuple(dict.fromkeys(meeting.labels)),
+                    breadcrumb=(meeting.source.path.name, *meeting.path),
+                    people=participants(meeting.subtree.properties.get(NAMED, "")),
+                    links=() if transcript is None else ((TRANSCRIBED, transcript.id),),
                     text=org.pandoc_input(
-                        parsed.declarations, subtree.lines, parsed.keywords, archives=archives
+                        meeting.parsed.declarations,
+                        [*org.shifted(meeting.subtree.lines), *each.added],
+                        meeting.parsed.keywords,
+                        archives=archives,
                     ),
-                    events=source.events(subtree.lines),
-                    day=None,
-                    source=source,
+                    events=(),
+                    start=each.start,
+                    source=meeting.source,
                 )
             )
-    return found
+    return found, unlinked
+
+
+def turns(lines: Sequence[str]) -> list[tuple[str | None, str]]:
+    """Return each turn of a transcript, in order: its time as written, or None, and speaker.
+
+    Turns are read inside the quote blocks when there is any, the notes outside them being
+    the user's, else on every line. A turn's line holds an optional ``[time]`` and a blank,
+    then a name of at most 64 characters that begins with a letter and holds no colon or
+    bracket, then ``: ``, blanks before the colon not being the name's. The name is none
+    of org's planning and clock keywords, such as ``DEADLINE``.
+    """
+    inside = org.quoted(lines)
+    matches = [TURN.match(line) for line in (lines if inside is None else inside)]
+    return [(each[1], each[2]) for each in matches if each and each[2] not in NOT_SPEAKERS]
+
+
+def speakers(lines: Sequence[str]) -> tuple[str, ...]:
+    """Return the speakers of a transcript's turns, as ``turns`` reads them, each once.
+
+    In order of first speech, each name as written.
+    """
+    return tuple(dict.fromkeys(name for _, name in turns(lines)))
+
+
+def start(day: datetime, lines: Sequence[str]) -> datetime:
+    """Return when a transcript of ``day``, at midnight UTC, began, read as written in UTC.
+
+    Its first turn's time, when it reads strictly as ``HH:MM`` or ``HH:MM:SS`` and names a
+    time of day; else its earliest timestamp on its day; else its day.
+    """
+    said = turns(lines)
+    clock = CLOCK_TIME.fullmatch(said[0][0] or "") if said else None
+    if clock is not None:
+        with contextlib.suppress(ValueError):  # 24:00 is no time of day
+            return day.replace(hour=int(clock[1]), minute=int(clock[2]), second=int(clock[3] or 0))
+    return min((each for each in org.timestamps(lines) if each.date() == day.date()), default=day)
+
+
+def named_day(path: PurePosixPath) -> tuple[str, datetime] | None:
+    """Return the name that begins with a day, and that day at midnight UTC, or None.
+
+    The name of the folder that holds the transcript at ``path``, else its own less
+    ``.org``.
+    """
+    folders = path.parts[1:-1]
+    for name in (folders[-1] if folders else "", path.name.removesuffix(ORG)):
+        match = DAY.match(name)
+        if match is not None:
+            with contextlib.suppress(ValueError):  # 2026-13-40 begins no day
+                return name, datetime.fromisoformat(match[0]).replace(tzinfo=UTC)
+    return None
+
+
+def transcript_id(path: PurePosixPath) -> str:
+    """Return the id that a transcript's path, from the work log's folder, gives it.
+
+    ``t-``, the day that ``named_day`` reads, ``-``, ``meeting-`` for a file under
+    ``meetings/``, then its name less ``.org`` when the id holds to its rule so, else
+    that name's slug, else the first 16 hex digits of its name's SHA-256. Without a day,
+    ``t-`` and the digest of its name, ``meeting-`` before it under ``meetings/``. Of its
+    folders, the first alone, by ``meeting-``, and the day that begins the name of the
+    one that holds it are in it, so that a move under ``archive/`` keeps it.
+    """
+    own = path.name
+    stem = own.removesuffix(ORG)
+    named = named_day(path)
+    prefix = MEETING_FILE if path.parts[0] == MEETINGS else ""
+    dated = [
+        f"t-{named[1]:%Y%m%d}-{prefix}{part}"
+        for part in (stem, slug(stem), digest(own))
+        if named and part
+    ]
+    rule = WORKLOG_IDS[TRANSCRIPT]
+    return next((each for each in dated if rule.fullmatch(each)), f"t-{digest(prefix + own)}")
 
 
 def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Document], list[str]]:
-    """Return the transcripts in path order, and a warning for each id found twice.
+    """Return the transcripts, and a warning for each id found twice.
 
-    A transcript's id is ``t-``, the day that begins its folder's name (or its own) and
-    its name less ``.org``; without a day, or when that is off the id's rule, the digest
-    of its path below ``transcripts/<first folder>/``. Of two files of one id, the first
-    in path order keeps it and the other takes the digest of its whole path, written
-    from the work log's root (``/transcripts/...``): no path below a first folder begins
-    with ``/``, so no other file's digest is the same. Without ``archives``, those under
-    ``transcripts/archive/`` are left out.
+    A transcript is a file under ``transcripts/`` or ``meetings/``, its id as
+    ``transcript_id`` gives it. They come in order of their first folder, the folder
+    that holds them, their name, then their path: of two files of one id, the first
+    keeps it and the other takes the digest of its whole path, written from the work
+    log's root (``/transcripts/...``), and no name holds ``/``, so no other file's
+    digest is the same. So a file moved under ``archive/`` with the folder that holds it
+    never hands its id to the other file, unless both are in folders of one name.
+
+    Its people are its ``speakers``; a dated one begins as ``start`` says. Without
+    ``archives``, those under ``transcripts/archive/`` and ``meetings/archive/`` are left
+    out.
     """
     found: list[Document] = []
     warnings: list[str] = []
     keepers: dict[str, PurePosixPath] = {}
-    for source in sorted(sources, key=lambda each: each.path.as_posix()):
-        folders = source.path.parts[1:-1]
-        archived = folders[:1] == (ARCHIVED,)
+    for source in sorted(
+        sources,
+        key=lambda each: (
+            each.path.parts[0],
+            each.path.parts[1:-1][-1:],
+            each.path.name,
+            each.path.as_posix(),
+        ),
+    ):
+        archived = source.path.parts[1:-1][:1] == (ARCHIVED,)
         if archived and not archives:
             continue
         stem = source.path.name.removesuffix(ORG)
-        folder = folders[-1] if folders else ""
-        named: list[tuple[str, datetime]] = []  # the name that begins with a day, and the day
-        for name in (folder, stem):
-            match = DAY.match(name)
-            if match is None:
-                continue
-            with contextlib.suppress(ValueError):  # 2026-13-40 begins no day
-                named.append((name, datetime.fromisoformat(match[0]).replace(tzinfo=UTC)))
-        dated = f"t-{named[0][1]:%Y%m%d}-{stem}" if named else ""
-        below = "/".join(source.path.parts[2:] or source.path.parts[-1:])
-        identifier = dated if WORKLOG_ID.fullmatch(dated) else f"t-{digest(below)}"
+        named = named_day(source.path)
+        identifier = transcript_id(source.path)
         if identifier in keepers:
             keeper = keepers[identifier]
             warnings.append(f"{source.path}: same id as {keeper}; named by its whole path")
             identifier = f"t-{digest(f'/{source.path.as_posix()}')}"
         keepers[identifier] = source.path
         parsed = org.read(source.text)
-        fallback = f"Transcript, {named[0][0]}, {stem}" if named else f"Transcript, {stem}"
+        fallback = f"Transcript, {named[0]}, {stem}" if named else f"Transcript, {stem}"
         first = next((each.title for each in parsed.headings if each.title), fallback)
         found.append(
             Document(
@@ -197,12 +671,58 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
                     dict.fromkeys([*parsed.filetags, *([org.ARCHIVE] if archived else [])])
                 ),
                 breadcrumb=source.path.parts[:-1],
+                people=speakers(parsed.lines),
+                links=(),
                 text=org.pandoc_input(
                     parsed.declarations, parsed.lines, parsed.keywords, archives=archives
                 ),
                 events=source.events(parsed.lines),
-                day=named[0][1] if named else None,
+                start=start(named[1], parsed.lines) if named else None,
                 source=source,
             )
         )
     return found, warnings
+
+
+def linked_back(transcripts: Iterable[Document], documents: Iterable[Document]) -> list[Document]:
+    """Return the transcripts, each linked back to the documents that link to it.
+
+    A transcript gains ``summary`` and a document's id for each of ``documents`` whose
+    ``transcript`` link names it, in their order, after its own links: the journal's
+    meetings, so that each file names the other.
+    """
+    summaries: dict[str, list[tuple[str, str]]] = {}
+    for document in documents:
+        for relation, ref in document.links:
+            if relation == TRANSCRIBED:
+                summaries.setdefault(ref, []).append((SUMMARY, document.id))
+    return [
+        dataclasses.replace(each, links=(*each.links, *summaries.get(each.id, ())))
+        for each in transcripts
+    ]
+
+
+def writable(
+    documents: Iterable[Document], unread: Collection[str], linked: Collection[str]
+) -> list[Document]:
+    """Return the documents whose files a run may write, when ``unread`` were not read.
+
+    ``unread`` names each file or folder of the work log not read, by its path from the
+    work log's folder; ``linked``, the id of each document whose file, as the mirror holds
+    it, has links. A day draws on ``todo.org`` and its archive, and an entry's number on
+    both: without either, none is written. A meeting draws too on the transcript that it
+    links, whose start numbers its id among its day's, and a transcript's links name
+    those ids: without any other, neither a meeting nor a document that links one, or
+    whose file does, is written. So no file is written from a part of what it draws on,
+    each keeps its last good copy until a run reads the folder whole, and a link that a
+    file kept names stays written on both documents.
+    """
+    if {TODO, TODO_ARCHIVE} & set(unread):
+        return []
+    if unread:
+        return [
+            each
+            for each in documents
+            if each.type != MEETING_TYPE and not each.links and each.id not in linked
+        ]
+    return list(documents)

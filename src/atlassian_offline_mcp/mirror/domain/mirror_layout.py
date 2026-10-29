@@ -14,6 +14,7 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.kernel.content import BlogPost
+from atlassian_offline_mcp.kernel.slug import slug
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -25,13 +26,16 @@ TREE = "_tree.md"
 # The work log's folders, by the type of their documents.
 WORKLOG_FOLDERS = {
     "entry": PurePosixPath("worklog/entries"),
+    "day": PurePosixPath("worklog/days"),
+    "meeting": PurePosixPath("worklog/meetings"),
     "transcript": PurePosixPath("worklog/transcripts"),
 }
-SLUG_LENGTH = 60
+# The work log's types whose id names the file alone: a day's id is its date, and a
+# meeting's holds its title's slug already.
+NAMED_BY_ID = frozenset({"day", "meeting"})
 EXTENSION = re.compile(r"[a-z0-9]{1,8}")
 # The name of an asset: the file's SHA-256, then its extension if it has one.
 ASSET_NAME = re.compile(r"[0-9a-f]{64}(?:\.[a-z0-9]{1,8})?")
-NOT_SLUG = re.compile(r"[^a-z0-9]+")
 # Characters that show nothing, reorder what is shown, or cannot be written, apart from
 # tab and line feed: controls, format characters (zero-width, bidirectional controls,
 # tags), lone surrogates, private use and unassigned code points.
@@ -42,18 +46,6 @@ SEPARATORS = frozenset({"Zl", "Zp"})
 # The variation selectors supplement, which no visible text needs.
 VARIATION_SUPPLEMENT = range(0xE0100, 0xE01F0)
 NONE = "<p>None.</p>"
-
-
-def slug(title: str) -> str:
-    """Name a title in a path: ASCII letters and digits, other runs as one ``-``.
-
-    The title is decomposed (NFKD) and lowered, and its combining marks dropped, so that
-    an accented letter keeps its base letter. It is cut at 60 characters, without a
-    ``-`` at either end; it may be empty.
-    """
-    decomposed = unicodedata.normalize("NFKD", title).lower()
-    kept = "".join(char for char in decomposed if not unicodedata.combining(char))
-    return NOT_SLUG.sub("-", kept).strip("-")[:SLUG_LENGTH].rstrip("-")
 
 
 def confluence_path(document: ConfluenceDocument, space: str) -> PurePosixPath:
@@ -71,8 +63,13 @@ def issue_path(issue: Issue) -> PurePosixPath:
 
 
 def worklog_path(document_type: str, identifier: str, title: str) -> PurePosixPath:
-    """Return where a document of the work log, of this type, id and title, is mirrored."""
-    name = "-".join(part for part in (identifier, slug(title)) if part)
+    """Return where a document of the work log, of this type, id and title, is mirrored.
+
+    An entry's or a transcript's file is its id and its title's slug; a day's or a
+    meeting's, its id alone.
+    """
+    parts = (identifier,) if document_type in NAMED_BY_ID else (identifier, slug(title))
+    name = "-".join(part for part in parts if part)
     return WORKLOG_FOLDERS[document_type] / f"{name}.md"
 
 

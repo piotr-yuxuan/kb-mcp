@@ -14,7 +14,7 @@ import re
 from itertools import takewhile
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.mirror.domain.mirror import ROLES
+from atlassian_offline_mcp.mirror.domain.mirror import RELATIONS, ROLES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -199,8 +199,10 @@ def metadata(entry: Entry, *, whole: bool) -> str:
     ``whole`` gives every key; otherwise the title, path and mirror date alone. People
     come by name alone, one line per role in the order of the roles: NAMES names at
     most, then how many more, each commenter with their comments' count and the day of
-    the last. A role's line is not cut as a value is, so that the count of the rest stays;
-    each name in it is, so that a name that a hit cuts comes whole.
+    the last. Links come by ref, one line per relation in the order of the relations:
+    LABELS refs at most, then how many more. A role's or a relation's line is not cut as a
+    value is, so that the count of the rest stays; each name or ref in it is, so that a
+    name that a hit cuts comes whole.
     """
     front = entry.front
     rows = [("title", front.title), ("path", entry.path), ("mirrored", stamp(front.fetched_at))]
@@ -225,13 +227,18 @@ def metadata(entry: Entry, *, whole: bool) -> str:
             ]
             more = f"; {len(held) - NAMES} more" if len(held) > NAMES else ""
             rows.append((role, "; ".join(names) + more))
+        for relation in RELATIONS:
+            refs = [short(link.ref) for link in front.links if link.relation == relation]
+            more = f"; {len(refs) - LABELS} more" if len(refs) > LABELS else ""
+            rows.append((relation, "; ".join(refs[:LABELS]) + more))
         rows += [
             ("created", stamp(front.created)),
             ("updated", stamp(front.updated)),
             ("url", front.url),
         ]
+    uncut = {*ROLES, *RELATIONS}
     return "\n".join(
-        f"{key}: {value if key in ROLES else short(value)}" for key, value in rows if value
+        f"{key}: {value if key in uncut else short(value)}" for key, value in rows if value
     )
 
 

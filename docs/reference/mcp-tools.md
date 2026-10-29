@@ -51,18 +51,25 @@ otherwise than its author, and `created <day>`, such as
   `project`, `status`, `label`, `issue_type`, `author` (an issue's reporter, the person
   it is for, who may not be who created it; a page's creator), `creator` (who created
   an issue), `assignee`, `commenter` (who wrote one of an issue's comments),
-  `updated_after`, `created_after` and `commented_after` (included), and
-  `updated_before`, `created_before` and `commented_before` (excluded). The comment
-  dates narrow by one comment: the commenter's, when `commenter` is given, so that
+  `participant` (someone at a work-log meeting, as its `:PARTICIPANTS:` names them,
+  such as `Kim (not in the header)`, or a speaker of a transcript), `updated_after`,
+  `created_after` and `commented_after` (included), and `updated_before`,
+  `created_before` and `commented_before` (excluded). The comment dates narrow by one
+  comment: the commenter's, when `commenter` is given, so that
   `{"commenter": "Bo Sample", "commented_after": "2026-10-20"}` keeps the issues that
-  Bo Sample commented on since that day; else anyone's. Values match whole, without
-  regard to case, accents or runs of spaces; a name that a hit cuts at 60 characters,
-  `read` gives whole. Of several values that match, one is kept: the one given, else
-  one that a hit shows alike, the most used first, so that a lookalike's documents are
-  left out. A value that no document has (a name, in that role), or that several have
-  but for accents alone, is refused with the valid ones, those that hold it first, the
-  most used first, by documents. Dates are ISO 8601, a date being its midnight UTC. The
-  work log's entries are the user's notes and AI-written summaries, its transcripts the
+  Bo Sample commented on since that day; else anyone's. A meeting and a transcript are
+  created when they began, so that
+  `{"participant": "Bo Sample", "created_after": "2026-10-26"}` keeps what Bo Sample
+  attended or said since that day. Values match whole, without regard to case, accents
+  or runs of spaces; a name that a hit cuts at 60 characters, `read` gives whole. Of
+  several values that match, one is kept: the one given, else one that a hit shows
+  alike, the most used first, so that a lookalike's documents are left out. A value
+  that no document has (a name, in that role), or that several have but for accents
+  alone, is refused with the valid ones, those that hold it first, the most used first,
+  by documents; participants by meetings first, so that the speakers that a caption
+  tool writes, `You` and `Unverified`, never lead. Dates are ISO 8601, a date being its
+  midnight UTC. The work log's days, meetings and entries are the user's notes and
+  AI-written summaries, a meeting linking its transcript; its transcripts are the
   word-by-word record.
 - `sort`: `relevance`; `updated` or `created`, newest first, by words alone and
   counting every match, after the documents that the query names; with no query, they
@@ -75,14 +82,17 @@ otherwise than its author, and `created <day>`, such as
 Reads a document, or one of its sections, from a character offset, in slices. Each
 slice opens with the document's title, path and mirror date, and one from the body's
 start with its whole front matter, a `key: value` line each. People come there one line
-per role, `author`, `creator`, `assignee` and `commenter`, by name, without the account
-id that the mirror keeps beside it, which stands for the name only where the source
-gives none: ten names at most, then how many more, each commenter with their count of
-comments and the day of the last, such as
-`commenter: Ada Example (2, last 2026-10-21); Bo Sample (1, last 2026-10-20)`.
+per role, `author`, `creator`, `assignee`, `commenter` and `participant`, by name,
+without the account id that the mirror keeps beside it, which stands for the name only
+where the source gives none: ten names at most, then how many more, each commenter with
+their count of comments and the day of the last, such as
+`commenter: Ada Example (2, last 2026-10-21); Bo Sample (1, last 2026-10-20)`. Links
+come after them, one line per relation, by the ref that `read` takes: a meeting's
+`transcript`, and a transcript's `summary`, each meeting that links it, ten refs at
+most, then how many more, such as `transcript: t-20261027-1`.
 
-- `ref`: a page id, an issue key, a work-log id (`e-...` or `t-...`), a page's or an
-  issue's address, or a path in the mirror, at most 300 characters.
+- `ref`: a page id, an issue key, a work-log id (`e-...`, `d-...`, `m-...` or `t-...`),
+  a page's or an issue's address, or a path in the mirror, at most 300 characters.
 - `section`: a section's number, from 1.
 - `offset`: a character of the body to start from.
 - `max_chars`: 1 to 40,000 characters, 12,000 by default.

@@ -1,0 +1,11 @@
+#+TITLE: Payments stand-up, 27 October
+#+FILETAGS: :standup:
+
+XQ: asked twice about the retry budget; check the figures.
+
+#+begin_quote
+[09:31] Alex Example: Morning. The payout gateway rollback is done.
+[09:32] Sam Sample: Then the retry budget stays at three.
+[Capture 2: resumed after the connection dropped]
+[09:40] Kim: The ledger migration still waits on the schema owner.
+#+end_quote

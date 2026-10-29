@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
-from atlassian_offline_mcp.mirror.domain.mirror import PersonRole
+from atlassian_offline_mcp.mirror.domain.mirror import Link, PersonRole
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from tests.answers import built, continuation, follow, parts
 from tests.mirrors import CREATED, FILLERS, LOREM, MOMENT, PEOPLE, issue, location, page
@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
     from atlassian_offline_mcp.mcp.app.tools import Library
+    from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 NEWER = MOMENT + timedelta(days=1)
 HIT = re.compile(r"^\d+\. .*\n {3}(\S+) \|", re.MULTILINE)
@@ -584,6 +585,151 @@ def test_no_answer_holds_an_account_id(commented: Library, tmp_path: Path) -> No
         commented.search(filters={"commenter": "nobody"})
     served = [*answers, str(refused.value)]
     assert [each for each in served if any(id_ in each for id_ in ACCOUNTS.values())] == []
+
+
+def worklog(kind: str, id_: str, title: str, *names: str) -> FrontMatter:
+    """Give a meeting or a transcript of the work log, its participants by name, in order."""
+    return replace(
+        page(id_, title),
+        source="worklog",
+        type=kind,
+        space=None,
+        people=tuple(PersonRole(role="participant", name=name) for name in names),
+        version=None,
+        revision="0123456789abcdef",
+    )
+
+
+# Three meetings and three transcripts, beside the fillers, which A Person wrote, and a
+# page that Sam Sample wrote. By meetings, then documents: Sam Sample 3 and 4, Alex
+# Example 2 and 3, Robin Example 1 and 2, Kim (not in the header) 1 and 1; You, whom the
+# caption tool writes, 0 and 3, more documents than Robin's; Unverified 0 and 1. The
+# stand-up and its transcript link each other.
+MET = (
+    page("196845", "Lorem notes", author="Sam Sample"),
+    replace(
+        worklog(
+            "meeting",
+            "m-20261027-payments-stand-up",
+            "Payments stand-up",
+            *("Alex Example", "Sam Sample"),
+        ),
+        links=(Link(relation="transcript", ref="t-20261027-1"),),
+    ),
+    worklog(
+        "meeting",
+        "m-20261027-ledger-review",
+        "Ledger review",
+        *("Robin Example", "Kim (not in the header)", "Sam Sample"),
+    ),
+    worklog("meeting", "m-20261027-vendor-call", "Vendor call", "Sam Sample", "Alex Example"),
+    replace(
+        worklog("transcript", "t-20261027-1", "Stand-up", "Alex Example", "Sam Sample", "You"),
+        links=(Link(relation="summary", ref="m-20261027-payments-stand-up"),),
+    ),
+    worklog("transcript", "t-20261020-1", "Retrospective", "You", "Unverified"),
+    worklog("transcript", "t-20261021-1", "Planning", "You", "Robin Example"),
+)
+
+
+@pytest.fixture
+def met(tmp_path: Path) -> Library:
+    """Serve the documents of MET, beside the fillers."""
+    return built(tmp_path, [(front, None) for front in MET])
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        (
+            "sam sample",
+            [
+                "m-20261027-ledger-review",
+                "m-20261027-payments-stand-up",
+                "m-20261027-vendor-call",
+                "t-20261027-1",
+            ],
+        ),
+        ("KIM (not in the HEADER)", ["m-20261027-ledger-review"]),
+        ("you", ["t-20261020-1", "t-20261021-1", "t-20261027-1"]),
+    ],
+)
+def test_participant_narrows_to_the_documents_naming_that_person_in_any_case(
+    met: Library, name: str, expected: list[str]
+) -> None:
+    """A meeting's participants and a transcript's speakers alike, by their whole name.
+
+    Sam Sample's page is not among them: its author is no participant.
+    """
+    filters = {"participant": name}
+    assert sorted(refs(met.search(filters=filters, sort="created"))) == expected
+    assert sorted(refs(met.search("lorem", filters=filters))) == expected
+
+
+@pytest.mark.parametrize(
+    ("filters", "valid"),
+    [
+        (
+            {"participant": "nobody"},
+            "Sam Sample, Alex Example, Robin Example, Kim (not in the header), You, Unverified",
+        ),
+        (
+            {"participant": "kim"},
+            "Kim (not in the header), Sam Sample, Alex Example, Robin Example, You, Unverified",
+        ),
+        (
+            {"participant": "a person"},
+            "Sam Sample, Alex Example, Robin Example, Kim (not in the header), You, Unverified",
+        ),
+        ({"author": "alex example"}, "A Person, Sam Sample"),
+    ],
+)
+def test_a_participant_that_no_document_names_is_refused_meetings_first(
+    met: Library, filters: dict[str, str], valid: str
+) -> None:
+    """By the meetings naming them, then the documents: You never leads, nor Unverified.
+
+    A name matches whole, so Kim alone is not Kim (not in the header), listed first as the
+    name that holds it. A Person, the fillers' author, is no participant, nor is a
+    participant an author.
+    """
+    with pytest.raises(UnanswerableError) as refused:
+        met.search("lorem", filters=filters)
+    header, block, _ = parts(str(refused.value))
+    assert (header.partition(":")[0], block) == (next(iter(filters)), valid)
+
+
+def test_read_shows_a_meeting_s_participants_and_its_transcript_and_back(met: Library) -> None:
+    """Participants as written, in order, then the link's line, before the created date.
+
+    The ref that the line gives opens the document linked, which links back.
+    """
+    expected = {
+        "m-20261027-payments-stand-up": [
+            "participant: Alex Example; Sam Sample",
+            "transcript: t-20261027-1",
+        ],
+        "t-20261027-1": [
+            "participant: Alex Example; Sam Sample; You",
+            "summary: m-20261027-payments-stand-up",
+        ],
+    }
+    for ref, lines in expected.items():
+        shown = parts(met.read(ref))[1].splitlines()
+        start = shown.index(lines[0])
+        assert shown[start : start + 3] == [*lines, "created: 2026-10-20 21:52 UTC"]
+        linked = lines[1].partition(": ")[2]
+        assert f"ref: {linked}" in parts(met.read(linked))[1].splitlines()
+
+
+def test_read_names_ten_links_of_a_relation_whole_then_how_many_more(tmp_path: Path) -> None:
+    """Twelve meetings that one transcript summarises, each id of 64 characters after its day."""
+    meetings = [f"m-20261027-{number:02}-{'x' * 61}" for number in range(12)]
+    links = tuple(Link(relation="summary", ref=each) for each in meetings)
+    front = replace(worklog("transcript", "t-20261027-1", "Stand-up"), links=links)
+    read = parts(built(tmp_path, [(front, None)]).read("t-20261027-1"))[1]
+    assert f"\nsummary: {'; '.join(meetings[:10])}; 2 more\n" in read
+    assert "\ntranscript:" not in read
 
 
 @pytest.mark.parametrize(

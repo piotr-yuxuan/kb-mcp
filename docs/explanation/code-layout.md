@@ -20,7 +20,7 @@ Each context may use those below it, never those above:
 | `sources` | Where documents come from: `atlassian/`, Confluence and Jira, with the sign-in (the saved session or an API token) and the raw store; `worklog/`, the user's work log, read in place |
 | `config` | The settings, their file, and the guard on where data lives |
 | `observability` | What a run tells of itself: structured logs, progress on the terminal, traces and metrics |
-| `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses, how a run reports, whether an endpoint is this machine and how each service there is named and started, the bounds of a reranking, the names of the chunkings and of the server's tools |
+| `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses, how a run reports, whether an endpoint is this machine and how each service there is named and started, the bounds of a reranking, the names of the chunkings and of the server's tools, the slug of a title |
 
 The order follows what each needs: `eval` ranks through the `Library` of `mcp`, which
 ranks with `search`, which indexes the mirror's front matter; the mirror reads the raw

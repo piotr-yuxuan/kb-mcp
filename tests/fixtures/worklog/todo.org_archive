@@ -12,3 +12,40 @@ Archived entries from file ~/todo/todo.org
   :ARCHIVE_TODO: WAITING
   :END:
   Waiting on the vendor's signed copy since [2026-09-21 Mon].
+
+* <2026-10-26 Mon>
+  :PROPERTIES:
+  :ARCHIVE_TIME: 2026-10-27 Tue 18:00
+  :ARCHIVE_FILE: ~/todo/todo.org
+  :ARCHIVE_OLPATH: Entries
+  :ARCHIVE_CATEGORY: todo
+  :END:
+Archived text of the Monday, written before its other part.
+** Incident review
+:PROPERTIES:
+:PARTICIPANTS: Alex Example, Robin Example
+:END:
+*** Summary
+Archived text of the incident review: the alert fired twice.
+
+* Capacity planning
+:PROPERTIES:
+:PARTICIPANTS: Kim, Alex Example
+:ARCHIVE_TIME: 2026-10-28 Wed 09:00
+:ARCHIVE_FILE: ~/todo/todo.org
+:ARCHIVE_OLPATH: Entries/<2026-10-27 Tue>
+:ARCHIVE_CATEGORY: todo
+:END:
+** Summary
+Archived text of the capacity planning: two more nodes in November.
+
+* DONE Close the rollback ticket
+CLOSED: [2026-10-27 Tue 15:00]
+:PROPERTIES:
+:ARCHIVE_TIME: 2026-10-28 Wed 09:05
+:ARCHIVE_FILE: ~/todo/todo.org
+:ARCHIVE_OLPATH: Entries/<2026-10-27 Tue>/Payments stand-up/Actions
+:ARCHIVE_CATEGORY: todo
+:ARCHIVE_TODO: DONE
+:END:
+Archived text of a task of the stand-up: the ticket is closed.

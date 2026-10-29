@@ -1,0 +1,10 @@
+#+TITLE: Vendor call, 27 October
+
+Called on <2026-10-27 Tue 15:00>, by phone.
+XQ: ask who signs for the vendor.
+
+#+begin_quote
+Sam Sample: The vendor's signed copy arrives next week.
+Jo Placeholder: Then the renewal closes before the quarter ends.
+Sam Sample: Agreed, with the rollback figures first.
+#+end_quote

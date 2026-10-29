@@ -304,7 +304,7 @@ leaves out those confirmed gone, unless a listing taken since names them again, 
 page or a post in the space whose freshest listing names it, and names each one's file
 by [`confluence_path`](../../src/atlassian_offline_mcp/mirror/domain/mirror_layout.py): the
 space's key, then the id and the title's
-[`slug`](../../src/atlassian_offline_mcp/mirror/domain/mirror_layout.py).
+[`slug`](../../src/atlassian_offline_mcp/kernel/slug.py).
 
 [`document_file`](../../src/atlassian_offline_mcp/mirror/app/mirror.py) then builds each
 document's file:

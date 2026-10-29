@@ -217,14 +217,14 @@ class WorklogSource(BaseModel):
         default=None,
         description=(
             "The work log's folder, absolute or under ~, which holds todo.org,"
-            " todo.org_archive and transcripts/; read in place, never written."
+            " todo.org_archive, transcripts/ and meetings/; read in place, never written."
         ),
     )
     archives: bool = Field(
         default=True,
         description=(
-            "Whether todo.org_archive, transcripts/archive/ and the subtrees tagged ARCHIVE"
-            " are mirrored too."
+            "Whether todo.org_archive, transcripts/archive/, meetings/archive/ and the"
+            " subtrees tagged ARCHIVE are mirrored too."
         ),
     )
 

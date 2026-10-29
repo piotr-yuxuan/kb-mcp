@@ -1,9 +1,11 @@
 """The work log's folder, read in place, as plan 017's "Read in place, never written" says.
 
 What is read: ``todo.org``, ``todo.org_archive`` and every ``*.org`` under
-``transcripts/``; HTML transcripts counted, never read; hidden and Emacs names passed
-over; links followed inside the folder alone; 32 MiB a file and 20,000 transcripts; a
-file breaking a rule named by its path, never by its content.
+``transcripts/``, and under ``meetings/`` by the same rules (plan 042's "The meeting
+files under meetings/"); HTML transcripts counted, never read; hidden and Emacs names
+passed over; links followed inside the folder alone; 32 MiB a file and 20,000
+transcripts in both folders; a file breaking a rule named by its path, never by its
+content.
 """
 
 from __future__ import annotations
@@ -48,6 +50,8 @@ def worklog(tmp_path: Path) -> Path:
         "transcripts/current/2026-10-20 Tue/1.org",
         "transcripts/archive/2026/2026-09/2026-09-15 Tue/1.org",
         "transcripts/misc/a.org",
+        "meetings/2026-10-27 Tue/1.org",
+        "meetings/archive/2026/2026-10/2026-10-26 Mon/1.org",
         "notes.org",  # not a file of the work log
         "transcripts/todo.org_archive",  # nor an archive file below the root
         "transcripts/x/todo.org_archive",
@@ -55,6 +59,7 @@ def worklog(tmp_path: Path) -> Path:
     ):
         write(root, relative)
     write(root, "transcripts/current/2026-10-20 Tue/2.html", "<p>" + CONTENT)
+    write(root, "meetings/2026-10-27 Tue/2.html", "<p>" + CONTENT)
     for relative in (
         "transcripts/current/2026-10-20 Tue/.#1.org",
         "transcripts/current/2026-10-20 Tue/#1.org#",
@@ -62,6 +67,8 @@ def worklog(tmp_path: Path) -> Path:
         "transcripts/.hidden/x.org",
         "transcripts/#saved#/x.org",
         "transcripts/old~/x.org",
+        "meetings/2026-10-27 Tue/.#1.org",
+        "meetings/2026-10-27 Tue/1.org~",
         ".#todo.org",
     ):
         write(root, relative, NOT_UTF8)
@@ -69,22 +76,26 @@ def worklog(tmp_path: Path) -> Path:
 
 
 def test_the_work_log_files_are_listed_in_path_order(worklog: Path) -> None:
-    """The two files, then every .org under transcripts/; the HTML counted; nothing else."""
+    """The two files, then every .org under meetings/ and transcripts/; the HTML counted."""
     listing = files.listed(worklog, archives=True)
     assert paths(listing) == [
         "todo.org",
         "todo.org_archive",
+        "meetings/2026-10-27 Tue/1.org",
+        "meetings/archive/2026/2026-10/2026-10-26 Mon/1.org",
         "transcripts/archive/2026/2026-09/2026-09-15 Tue/1.org",
         "transcripts/current/2026-10-20 Tue/1.org",
         "transcripts/misc/a.org",
     ]
-    assert (listing.html, listing.problems, listing.root) == (1, (), worklog.resolve())
+    html = ["transcripts/current/2026-10-20 Tue/2.html", "meetings/2026-10-27 Tue/2.html"]
+    assert (listing.html, listing.problems, listing.root) == (len(html), (), worklog.resolve())
 
 
 def test_without_archives_the_archive_file_and_folder_are_not_listed(worklog: Path) -> None:
-    """todo.org_archive and transcripts/archive/ are left out."""
+    """todo.org_archive, transcripts/archive/ and meetings/archive/ are left out."""
     assert paths(files.listed(worklog, archives=False)) == [
         "todo.org",
+        "meetings/2026-10-27 Tue/1.org",
         "transcripts/current/2026-10-20 Tue/1.org",
         "transcripts/misc/a.org",
     ]
@@ -99,6 +110,7 @@ def test_without_archives_the_archive_file_and_folder_are_not_listed(worklog: Pa
             "transcripts/current/2026-10-20 Tue/1.org",
         ),
         ("transcripts/a/link", "../misc", "transcripts/misc/a.org"),
+        ("meetings/a/link", "../../transcripts/misc", "transcripts/misc/a.org"),
     ],
 )
 def test_a_folder_is_read_by_its_own_path_before_any_link(
@@ -133,8 +145,10 @@ def test_without_archives_a_link_to_an_archived_folder_is_left_out(worklog: Path
     shortcut = worklog / "transcripts/current/shortcut"
     shortcut.symlink_to("../archive/2026/2026-09/2026-09-15 Tue")
     (worklog / "transcripts/current/plan.org").symlink_to("../../todo.org_archive")
+    (worklog / "meetings/latest").symlink_to("archive/2026/2026-10/2026-10-26 Mon")
     assert paths(files.listed(worklog, archives=False)) == [
         "todo.org",
+        "meetings/2026-10-27 Tue/1.org",
         "transcripts/current/2026-10-20 Tue/1.org",
         "transcripts/misc/a.org",
     ]
@@ -175,17 +189,21 @@ def test_a_linked_todo_file_outside_is_named_and_not_listed(tmp_path: Path) -> N
 def test_past_the_bound_the_first_transcripts_are_kept(
     worklog: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Past the bound, the first in path order, and a problem naming the folder."""
+    """One bound for both folders: the first in path order, and a problem naming them.
+
+    Three: neither folder holds more, both together do.
+    """
     assert files.TRANSCRIPT_COUNT == TRANSCRIPTS
-    monkeypatch.setattr(files, "TRANSCRIPT_COUNT", 2)
+    monkeypatch.setattr(files, "TRANSCRIPT_COUNT", 3)
     listing = files.listed(worklog, archives=True)
     assert paths(listing) == [
         "todo.org",
         "todo.org_archive",
+        "meetings/2026-10-27 Tue/1.org",
+        "meetings/archive/2026/2026-10/2026-10-26 Mon/1.org",
         "transcripts/archive/2026/2026-09/2026-09-15 Tue/1.org",
-        "transcripts/current/2026-10-20 Tue/1.org",
     ]
-    assert listing.problems == (files.Problem("transcripts", "over 2 transcripts"),)
+    assert listing.problems == (files.Problem("transcripts, meetings", "over 3 transcripts"),)
 
 
 def test_a_folder_that_is_not_there_is_a_problem(tmp_path: Path) -> None:

@@ -8,13 +8,13 @@ from pathlib import PurePosixPath
 import pytest
 
 from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
+from atlassian_offline_mcp.kernel.slug import slug
 from atlassian_offline_mcp.mirror.domain.mirror_layout import (
     asset_path,
     confluence_path,
     document_html,
     issue_path,
     one_line,
-    slug,
     tree_path,
     visible,
     worklog_path,
@@ -99,12 +99,23 @@ def test_documents_are_placed_by_space_project_and_key() -> None:
             "transcripts/t-20261020-1-transcript-2026-10-20-tue-1.md",
         ),
         ("entry", "e-0123456789abcdef", "", "entries/e-0123456789abcdef.md"),
+        ("day", "d-20261027", "<2026-10-27 Tue>", "days/d-20261027.md"),
+        (
+            "meeting",
+            "m-20261027-payments-stand-up",
+            "Payments stand-up",
+            "meetings/m-20261027-payments-stand-up.md",
+        ),
     ],
 )
 def test_work_log_documents_are_placed_by_type_id_and_title(
     document_type: str, identifier: str, title: str, expected: str
 ) -> None:
-    """<data>/docs/worklog/{entries,transcripts}/<id>-<slug>.md, as plan 017 says."""
+    """<data>/docs/worklog/{entries,transcripts}/<id>-<slug>.md, as plan 017 says.
+
+    A day's and a meeting's file is <data>/docs/worklog/{days,meetings}/<id>.md alone, as
+    plan 042 says: the title is in the id already.
+    """
     assert worklog_path(document_type, identifier, title) == PurePosixPath("worklog", expected)
 
 

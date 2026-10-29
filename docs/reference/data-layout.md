@@ -255,20 +255,23 @@ byte for byte: nothing in it depends on when `mirror` ran.
 <data>/docs/jira/<PROJECT>/<KEY>.md                  an issue
 <data>/docs/assets/<sha256>.<ext>                    an attached file
 <data>/docs/worklog/entries/<id>-<slug>.md           a work-log entry
+<data>/docs/worklog/days/<id>.md                     a work-log day
+<data>/docs/worklog/meetings/<id>.md                 a work-log meeting
 <data>/docs/worklog/transcripts/<id>-<slug>.md       a work-log transcript
 ```
 
 - The documents are exactly the files that `mirror.adapters.markdown.documents(docs)`
-  yields: those of the first, second, fourth, sixth and seventh patterns, except names
-  beginning with `_` or `.`. `_tree.md` has no front matter, and nothing under
-  `assets/` is a document.
+  yields: those of the first, second and fourth patterns and of the sixth to the ninth,
+  in this order, except names beginning with `_` or `.`. `_tree.md` has no front
+  matter, and nothing under `assets/` is a document.
 - `<SPACE>` is the space key, `<PROJECT>` the project key, `<KEY>` the issue key.
 - `<slug>`: the title decomposed (Unicode NFKD) and lowered, its combining marks dropped
   (`Crème` gives `creme`), keeping ASCII letters and digits; every run of other
   characters becomes one `-`; leading and trailing `-` are
   removed; it is cut at 60 characters, and a `-` left at the cut is removed. An empty
-  slug leaves `<id>.md`. When a title changes, the file is renamed and the old name
-  removed.
+  slug leaves `<id>.md`, as does a work-log day or meeting, whose id holds its date or
+  its title's slug already (`mirror.domain.mirror_layout.NAMED_BY_ID`). When a title
+  changes, the file is renamed and the old name removed.
 - `<ext>`: the attachment file name's extension in lower case when it matches
   `[a-z0-9]{1,8}`, otherwise none. Links from documents to assets are relative.
 - `_tree.md`: one nested list item per page and folder of the listings, linking the
@@ -287,21 +290,22 @@ order or type, by name.
 | Key | Type | Value |
 |---|---|---|
 | `source` | string | `confluence`, `jira` or `worklog` |
-| `type` | string | `page` or `blogpost` (Confluence), `issue` (Jira), `entry` or `transcript` (work log) |
+| `type` | string | `page` or `blogpost` (Confluence), `issue` (Jira), `entry`, `day`, `meeting` or `transcript` (work log) |
 | `id` | string | the content id or issue id; a work-log document's, [below](#the-work-log) |
 | `key` | string or null | the issue key; `null` for Confluence |
 | `title` | string | the title |
 | `space` | string or null | the space key; `null` for Jira |
 | `project` | string or null | the project key; `null` for Confluence |
-| `status` | string | as the site names it; an entry's keyword, else `current`, as a transcript's |
+| `status` | string | as the site names it; a work-log entry's, day's or meeting's keyword, else `current`, as a transcript's |
 | `issue_type` | string or null | the issue type, such as `Bug`; `null` for Confluence |
 | `labels` | list of strings | the labels, `[]` when none; a work-log document's tags, its file's `#+FILETAGS`, and `ARCHIVE` when archived |
-| `people` | list of mappings | each person by role, one line each, [below](#people); `[]` when none, and for the work log |
+| `people` | list of mappings | each person by role, one line each, [below](#people); `[]` when none |
+| `links` | list of mappings | each link to another document of the mirror, by relation, one line each, [below](#links); `[]` when none |
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |
 | `revision` | string | the raw store revision mirrored; a work-log document's, 16 hex digits, [below](#the-work-log) |
 | `url` | string or null | the absolute address of the web page: the `site` setting and `Document.url`; `null` when no site is set, and for the work log |
-| `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for an entry, its file's name; for a transcript, its folders from `transcripts` |
+| `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
 | `fetched_at` | string | `fetched_at` of the snapshot, as `created`; a work-log document's file's modification time when converted |
 
 Images: an image in the rendered HTML names its attachment by
@@ -343,7 +347,7 @@ people:
 
 | Field | Value |
 |---|---|
-| `role` | one of `mirror.domain.mirror.ROLES`, a closed set: `author`, `creator`, `assignee`, `commenter` |
+| `role` | one of `mirror.domain.mirror.ROLES`, a closed set: `author`, `creator`, `assignee`, `commenter`, `participant` |
 | `name` | the name as the source gives it, one line, never empty: Jira's as it was when the issue was fetched, Confluence's from `users()`, else the account id |
 | `account` | the account id, when the source has one (Confluence and Jira); absent otherwise |
 | `at` | a commenter's comment times, written as `created` is, ascending; absent for any other role |
@@ -354,12 +358,16 @@ people:
 | `creator` | who created an issue, who differs from the reporter when someone files an issue for another |
 | `assignee` | an issue's assignee; nobody when unassigned |
 | `commenter` | the author of an issue's comments, with the time of each; a comment without an author names nobody |
+| `participant` | someone at a work-log meeting, as its `:PARTICIPANTS:` names them, or a speaker of a transcript (042) |
 
 A document has one `author`, one `creator` and one `assignee` at most, and each
-commenter once by name and account. `load` refuses any other role, a field other than
-these or out of their order, a `null`, an empty `at` and any other broken rule of one
-entry, naming the entry, such as `people[1]`; and a second author, creator or assignee,
-a commenter twice, or people out of the order of the roles, naming `people`. Names are
+commenter and each participant once by name and account. `participant` is the work
+log's one role (`mirror.domain.mirror.WORKLOG_ROLES`), which no other source's
+documents hold, so that no document names people of both kinds. `load` refuses any
+other role, a field other than these or out of their order, a `null`, an empty `at` and
+any other broken rule of one entry, naming the entry, such as `people[1]`; and a second
+author, creator or assignee, a commenter or a participant twice, a role of another
+source, or people out of the order of the roles, naming `people`. Names are
 kept as written, never normalised, merged or masked: a colleague renamed between two
 fetches appears under two names, with one account id. `FrontMatter.author`,
 `FrontMatter.creator` and `FrontMatter.assignee` name the one person of that role, or
@@ -392,6 +400,36 @@ the people from all that agents and the server read, until the next `mirror` and
 `index`, or `sync`, write them again from the raw store. Deleting every copy is deleting
 the data directory, the log folder and the folders of `eval-agents`, after which the
 mirror is downloaded again, as from a first run.
+
+### Links
+
+The key `links` (042) names the documents of the mirror that a document links to, by
+relation: one entry per link, in the order that the source gives. `dump` writes each
+entry on one line, in YAML's flow style, as it does a person:
+
+```yaml
+links:
+- {relation: transcript, ref: t-20261027-meeting-1}
+```
+
+| Field | Value |
+|---|---|
+| `relation` | one of `mirror.domain.mirror.RELATIONS`, a closed set: `transcript`, `summary` |
+| `ref` | the other document's ref, which `read` takes: its id, of the rule `kernel.content.IDENTIFIER`, `[A-Za-z0-9_-]+` |
+
+| Relation | On | Ref |
+|---|---|---|
+| `transcript` | a work-log meeting | the transcript that its `:MEETING:` property names |
+| `summary` | a work-log transcript | each meeting whose `:MEETING:` property names it |
+
+The two relations are each other's reverse, and a link is written on both documents,
+so that a program that reads one file finds the other without reading them all. A ref
+always names a file: in a run where a document's conversion fails and it has no file
+yet, the links to it are left out of the other documents' files, until a run converts
+it.
+`load` refuses any other relation, a field other than these or out of their order, a
+`null` and a ref off its rule, naming the entry, such as `links[0]`; and a link to the
+document itself, by its id or key, or a link given twice, naming `links`.
 
 ### Pandoc's conversions
 
@@ -442,37 +480,102 @@ Owned by `sync`'s work-log step (017), in `mirror.app.worklog`: `<data>/docs/wor
 from the folder that `sources.worklog.path` names, read in place and never written.
 `mirror.adapters.mirror_files.owned` and `worklog_owned` tell each owner's files apart,
 so that `mirror` and the work-log step never remove each other's. A run that meets a
-problem (a file not read, a conversion that failed) removes none of its files.
+problem (a file not read, a conversion that failed) removes none of its files, and a
+file not read holds back the files of what draws on it: every one for `todo.org` or
+`todo.org_archive`, on which days, meetings and entries' numbers draw; for any other,
+each meeting, whose link, start and id draw on the transcripts, and each document that
+links one, or whose file does, so that a link stays written on both files.
 
-- An **entry** is a top-level heading of `todo.org` or `todo.org_archive`, with what
-  lies below it. Its id is `e-` and the first 16 hex digits of the SHA-256 of its `:ID:`
-  property; else of its title, a line feed, and its `:CREATED:` property; else of its
-  title alone. The title is the heading without keyword, priority, tags and statistics
-  cookies. The second entry of one digest takes `-2`, the third `-3`, in file order,
-  `todo.org` first.
-- A **transcript** is an `*.org` file under `transcripts/`. Its id is `t-`, the day
-  that begins its folder's name, else its own, as `%Y%m%d`, `-` and its name without
-  `.org`, when that matches the rule below; else `t-` and the digest of its path below
-  `transcripts/<first folder>/`. Of two files of one id, the second in path order takes
+- The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
+  a day among its children, whatever its title. A **day** is a heading at level 1, or 2
+  below the journal, whose title is one active timestamp of a date alone, such as
+  `<2026-10-28 Wed>`; a **meeting**, a child of a day with `:MEETING:` or
+  `:PARTICIPANTS:` in its drawer. A top-level heading whose `:ARCHIVE_OLPATH:`, which
+  org writes when it archives a subtree, names a day joins that day: a meeting archived
+  alone is one of its meetings; anything else joins the meeting whose title, as org
+  writes it there (each link its description, else its target; filled statistics
+  cookies left out; a `/` within unescaped), is the path after the day or begins it
+  before a `/`, the longest such title, if one meeting of the day alone has it; else
+  the day.
+- A **day** is one document per date: each of its headings, `todo.org` first, each
+  meeting among their children cut to its heading line, then what joins it. Its id is
+  `d-` and the date, `%Y%m%d`; its title, its first heading's, else the path's part.
+- A **meeting** is its subtree, then what joins it. Its id is `m-`, its day's date, `-`
+  and its title's slug, as a file name's, else the first 16 hex digits of the title's
+  SHA-256; of one day and id, the meetings take `--2`, `--3` by start, then in file
+  order: two dashes, which no slug or digest holds, so that a numbered id is never
+  another title's. Its people are the names that its `:PARTICIPANTS:` gives, split at
+  commas outside brackets, each once and as written, in the role `participant`; its link
+  `transcript` names the transcript whose file its `:MEETING:` names, from the folder of
+  its org file, when that file is read, else, for a file under `transcripts/` or
+  `meetings/`, the transcript read of the id that the file's path gives, since a move
+  under `archive/` keeps the id and org rewrites no link; that transcript's link
+  `summary` names it back; a `:MEETING:` that reaches no file read links nothing, and
+  `worklog.unlinked` counts it, a warning that holds no removal back ([sync's
+  telemetry](telemetry/sync.md)). A day and a meeting begin at level 1, what joins them
+  at level 2.
+- An **entry** is any other top-level heading, a child of the journal that is no day, or
+  the journal's own lines above its children when they hold text besides its planning
+  line and property drawer, with what lies below it, beginning at level 1. Its id is
+  `e-` and the first 16 hex digits of the SHA-256 of its `:ID:` property; else of its
+  title, a line feed, and its `:CREATED:` property; else of its title alone. The title
+  is the heading without keyword, priority, tags and statistics cookies. The second
+  entry of one digest takes `-2`, the third `-3`, in file order, `todo.org` first.
+- The breadcrumb of an entry, a day or a meeting is its file's name, then the titles
+  above it: the journal's, then a meeting's day's; for a heading at the top of a file,
+  its `:ARCHIVE_OLPATH:` instead. Its labels are its tags and those of the headings
+  above it in its file, as org inherits them (not the `:ARCHIVE_ITAGS:` that archiving
+  writes), its file's `#+FILETAGS` and `ARCHIVE` when it, or a heading above it, is
+  archived; a day's are those of each of its headings, in order, else, when it has
+  none, its first part's file's `#+FILETAGS` and `ARCHIVE`.
+- A **transcript** is an `*.org` file under `transcripts/` or `meetings/`, where the
+  user's meeting-notes tool saves the file that a meeting's `:MEETING:` names, both read
+  by the same rules, their 20,000 files shared. Its id is `t-`, the day that begins its
+  folder's name, else its own, as `%Y%m%d`, `-`, then `meeting-` for a file under
+  `meetings/`, then its name without `.org` when the id so matches the rule below, else
+  that name's slug, as a file name's, else the first 16 hex digits of the SHA-256 of its
+  name: `notes on x.org` of 21 October is `t-20261021-notes-on-x`,
+  `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. Without a day, it is `t-`
+  and the digest of its name, `meeting-` before it under `meetings/`. No folder below
+  the first is in an id, so a move under `archive/` keeps it. Of two files of one id,
+  the second in order of first folder, the folder that holds it, name, then path takes
   the digest of its whole path from the work log's root, written with a leading `/`,
-  which no path below a first folder has.
-- The rule of an id is `kernel.content.WORKLOG_ID`,
-  `e-[0-9a-f]{16}(?:-[0-9]+)?|t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})`. It names
-  the file, with the title's slug, as for a page.
+  which no name has: a move under `archive/` with the folder that holds a file never
+  hands its id to the other, unless both folders have one name.
+- A transcript's people are its speakers, in the role `participant`, each once, in
+  order of first speech: inside its `#+begin_quote` blocks when it has any, the notes
+  outside them being the user's, else on any line, each line that holds an optional
+  `[time]` and a blank, then a name of at most 64 characters that begins with a letter
+  and holds no colon or bracket, then `: `, blanks before the colon not the name's;
+  the name is none of `SCHEDULED`, `DEADLINE`, `CLOSED` and `CLOCK`.
+- The rule of an id is its type's, `kernel.content.WORKLOG_IDS`:
+  `e-[0-9a-f]{16}(?:-[0-9]+)?` for an entry;
+  `t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})` for a transcript; `d-[0-9]{8}` for
+  a day, its date; `m-[0-9]{8}-[a-z0-9-]{1,64}` for a meeting, its day's date and its
+  title's slug. A front matter whose id has another type's shape is refused. The id
+  names the file, with the title's slug for an entry or a transcript, as for a page,
+  and alone for a day or a meeting.
 - `revision` is the digest of pandoc's version and options, a NUL, and the org text
   that pandoc converts: a document whose revision has not changed is not converted
-  again, and its file keeps its dates.
-- `created` and `updated` are a transcript's day at midnight UTC; else the earliest and
-  latest timestamps of the document's lines, as written, up to its file's modification
-  time, a later one being a plan; else, without any, the modification time, `created`
-  keeping an existing file's.
+  again, and its file keeps its dates, but a day's, a meeting's and a dated
+  transcript's, which come from the work log as read at each run, so that a transcript
+  read since dates its meeting.
+- `created` and `updated` are a day's date at midnight UTC; a meeting's start, its
+  transcript's when that is on the meeting's day, else its day's; a dated transcript's
+  start, its first turn's time when it reads strictly as `HH:MM` or `HH:MM:SS`, else
+  its earliest timestamp on its day, else its day at midnight, read as written in UTC;
+  else the earliest and latest timestamps of the document's lines, as written, up to its
+  file's modification time, a later one being a plan; else, without any, the
+  modification time, `created` keeping an existing file's.
 - The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
   and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
-  file, `transcripts/archive/` and subtrees tagged `ARCHIVE` are left out.
+  file, `transcripts/archive/`, `meetings/archive/` and subtrees tagged `ARCHIVE` are
+  left out, and so the days and meetings below one.
 
-An entry holds the user's notes and summaries an AI wrote; a transcript, the
-word-by-word record. The MCP server says so to agents, in its instructions and its
-`source` filter, and `read` opens a document by its id.
+An entry, a day and a meeting hold the user's notes and summaries an AI wrote; a
+transcript, the word-by-word record. The MCP server says so to agents in its
+instructions, and its `source` filter says it of entries and transcripts; `read` opens a
+document by its id.
 
 ### Reading the mirror from another program
 
@@ -522,7 +625,10 @@ and a commenter's one per comment with its time in `at` (null for the other role
 indexed by role and name, which the filters by person read. Each person is so in the
 index twice, as each label is. No piece's text holds the front matter's people
 (`search.domain.chunking`), so a build over files of which only `people` changed embeds
-nothing new. An index of another schema is refused, naming `sync`, or `mirror` then
+nothing new. Schema 5 (042) adds the column `links` to `documents`, the front matter's
+links as JSON, as `labels` is, so that a row still gives its front matter back whole; a
+participant is a row of the table `people`, without account or time. No piece's text
+holds the links either. An index of another schema is refused, naming `sync`, or `mirror` then
 `index` where no source is configured, which write the mirror again before they rebuild
 the index, as a new schema can come with a new format of the files; one cut by a
 chunking that this version lacks, naming `index`. The MCP server opens it read-only,

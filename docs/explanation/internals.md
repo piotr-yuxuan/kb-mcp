@@ -177,16 +177,17 @@ trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost
 `sync`, reads the work log's folder in place and never writes there, following a link
 only inside it ([`listed`](../../src/atlassian_offline_mcp/sources/worklog/adapters/files.py)).
 It has no raw store: its files are already on this machine, and reading them whole costs
-less than keeping a copy. They become documents, one per top-level entry of `todo.org`
-and of its archive ([`entries`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py))
-and one per transcript
+less than keeping a copy. They become documents, one per day of the journal, one per
+meeting of a day, one per other top-level entry of `todo.org` and of its archive
+([`journal`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)), and one
+per transcript
 ([`transcripts`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)), each
 with an id that org's own edits leave alone. A document's revision is a digest of what
 pandoc reads, with pandoc's version and options
 ([`revision`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py),
 [`Pandoc.org_converter`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)): a
-document whose file holds that revision keeps the file as it is, dates included; another
-is converted again
+document whose file holds that revision keeps its body and its dates, but a day, a meeting
+or a dated transcript, dated afresh by when it happened; another is converted again
 ([`Pandoc.org_markdown`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)).
 
 - **Writes**, into `<data>/docs/worklog/` alone, through the mirror's
@@ -198,6 +199,8 @@ is converted again
   over 32 MiB or is not UTF-8
   ([`source`](../../src/atlassian_offline_mcp/sources/worklog/adapters/files.py)), or a
   conversion that fails, is named by its path, never by its content; the run goes on,
+  writes no file that draws on a file not read
+  ([`writable`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
   and then removes no file, so that the last good copy of each stays.
 - **Offline**, everything: the work log is on this machine.
 
@@ -365,7 +368,7 @@ The work log's step does the same from the folder itself. Closing an entry turns
 keyword to `DONE`, or another that means done, and adds a `CLOSED:` line under its
 heading. Its id is taken from its `:ID:`, else its title and `:CREATED:`, else its
 title, never from its keyword or planning lines
-([`entries`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)), so its
+([`journal`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)), so its
 file keeps its name. Its text changed, so its revision did
 ([`revision`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)): the
 entry is converted again, its `status` becomes `DONE`, and its `updated` the latest of
