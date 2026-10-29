@@ -174,6 +174,15 @@ class Joined:
     unused: tuple[Alias, ...]  # the aliases that changed nothing, in their order
 
 
+@dataclass(frozen=True)
+class Outcome:
+    """What a build says of its join: how many persons, and what it left apart, as Joined."""
+
+    count: int = 0
+    ambiguous: tuple[Ambiguity, ...] = ()
+    unused: tuple[Alias, ...] = ()
+
+
 class Joining:
     """What the rules read, and the person of each row joined so far.
 

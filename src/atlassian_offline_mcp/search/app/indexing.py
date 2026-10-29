@@ -30,6 +30,7 @@ from atlassian_offline_mcp.search.adapters.embedding import connect
 from atlassian_offline_mcp.search.adapters.model_api import ModelError
 from atlassian_offline_mcp.search.app.pruning import prune
 from atlassian_offline_mcp.search.domain.chunking import CHUNKERS
+from atlassian_offline_mcp.search.domain.people import Outcome
 from atlassian_offline_mcp.search.domain.search import Embedded, sections
 
 if TYPE_CHECKING:
@@ -41,7 +42,6 @@ if TYPE_CHECKING:
     from atlassian_offline_mcp.search.adapters.embedding import Embedder
     from atlassian_offline_mcp.search.adapters.model_api import Endpoint
     from atlassian_offline_mcp.search.app.pruning import Pruned
-    from atlassian_offline_mcp.search.domain.people import Alias, Ambiguity
 
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
@@ -72,9 +72,7 @@ class Report:
     embedded: int = 0  # texts that the model embedded, the store lacking them
     unembedded: list[str] = field(default_factory=list)  # paths with a piece refused
     characters: int = 0  # of the texts that the pieces embed, whatever the store held
-    people: int = 0  # persons that the documents' people make
-    ambiguous: tuple[Ambiguity, ...] = ()  # names that could be several persons, by key
-    unused: tuple[Alias, ...] = ()  # aliases that changed nothing, in the file's order
+    persons: Outcome = field(default_factory=Outcome)  # that the documents' people make
 
     @property
     def whole(self) -> bool:
@@ -203,7 +201,7 @@ def build_index(
                 writer.skip()
                 report.skipped.append((path, reason))
                 FILES.add(1, {"aom.outcome": "skipped"})
-        report.people, report.ambiguous, report.unused = writer.join(aliases or {})
+        report.persons = writer.join(aliases or {})
         if embedding is not None:
             with TRACER.start_as_current_span("index.embed"):
                 with vector_store.opened(embedding.store) as store:
@@ -222,7 +220,7 @@ def build_index(
         skipped=len(report.skipped),
         pieces=report.pieces,
         embedded=report.embedded,
-        people=report.people,
+        people=report.persons.count,
     )
     return report
 
@@ -263,11 +261,11 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
         log.warning("index.piece_refused", path=path)
     if report.skipped:
         log.warning("index.lacks_files", count=len(report.skipped))
-    for ambiguity in report.ambiguous:
+    for ambiguity in report.persons.ambiguous:
         log.warning(
             "index.person_ambiguous", spelling=ambiguity.name, people=len(ambiguity.persons)
         )
-    for alias in report.unused:
+    for alias in report.persons.unused:
         log.warning("index.alias_unused", alias=alias.name, key=alias.key, reason=alias.reason)
     return Indexed(report, indexing.index, None if embedding is None else indexing.model)
 

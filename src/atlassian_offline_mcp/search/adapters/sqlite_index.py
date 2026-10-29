@@ -410,9 +410,7 @@ class Writer:
         self.skipped += 1
 
     @TRACER.start_as_current_span("index.join")
-    def join(
-        self, aliases: Mapping[str, str]
-    ) -> tuple[int, tuple[people.Ambiguity, ...], tuple[people.Alias, ...]]:
+    def join(self, aliases: Mapping[str, str]) -> people.Outcome:
         """Join the people of the documents added into persons, as ``people.joined`` rules.
 
         Once the last document is added: every row of ``people`` is given its person, and
@@ -421,8 +419,8 @@ class Writer:
         name: no other document, so that each is joined before the transcript.
         ``aliases`` gives each alias's name and target, as the alias file's reader checks
         them. Give back how many persons there are, and what the join left apart: the
-        names that could be several persons, and the aliases that changed nothing. The
-        span ``index.join`` holds it.
+        names that could be several persons, and the aliases that changed nothing; each
+        row's person stays here. The span ``index.join`` holds it.
         """
         rows = {
             rowid: people.Row(document, role, name, account, datetime.fromisoformat(updated))
@@ -450,7 +448,7 @@ class Writer:
                 for spelling in person.names
             ],
         )
-        return len(found.persons), found.ambiguous, found.unused
+        return people.Outcome(len(found.persons), found.ambiguous, found.unused)
 
 
 def indexes_in(folder: Path) -> list[Path]:

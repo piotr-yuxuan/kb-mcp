@@ -21,7 +21,13 @@ from atlassian_offline_mcp.mirror.domain.mirror import Link, PersonRole
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
-from atlassian_offline_mcp.search.domain.people import UNHELD, Ambiguity, Person, Spelling
+from atlassian_offline_mcp.search.domain.people import (
+    UNHELD,
+    Ambiguity,
+    Outcome,
+    Person,
+    Spelling,
+)
 from atlassian_offline_mcp.search.domain.search import Filters
 from tests.endpoint import nothing_listening, tiny
 from tests.mirrors import (
@@ -677,12 +683,14 @@ def test_the_report_counts_the_persons_and_gives_what_the_join_left_apart(data: 
     for front in PERSONS:
         write(data / "docs", front)
     report = build_index(data / "docs", data / "index.sqlite", MOMENT)
-    assert report.people == len(JOINED)
-    assert report.ambiguous == (
-        Ambiguity("Robin", frozenset({ROBIN, ROBIN_OTHER})),
-        Ambiguity("Sam Sample", frozenset({SAM_2, SAM_3})),
+    assert report.persons == Outcome(
+        len(JOINED),
+        (
+            Ambiguity("Robin", frozenset({ROBIN, ROBIN_OTHER})),
+            Ambiguity("Sam Sample", frozenset({SAM_2, SAM_3})),
+        ),
+        (),
     )
-    assert report.unused == ()
 
 
 def test_aliases_join_names_alone_and_one_that_changes_nothing_is_reported(data: Path) -> None:
@@ -695,9 +703,10 @@ def test_aliases_join_names_alone_and_one_that_changes_nothing_is_reported(data:
         write(data / "docs", front)
     aliases = {"Robin": "Robin Example", "Jo Placeholder": "Robin Example"}
     report = build_index(data / "docs", data / "index.sqlite", MOMENT, aliases=aliases)
-    assert report.people == len(JOINED) - 1
-    assert [ambiguity.name for ambiguity in report.ambiguous] == ["Sam Sample"]
-    assert [(alias.name, alias.reason) for alias in report.unused] == [("Jo Placeholder", UNHELD)]
+    assert report.persons.count == len(JOINED) - 1
+    assert [ambiguity.name for ambiguity in report.persons.ambiguous] == ["Sam Sample"]
+    unused = [(alias.name, alias.reason) for alias in report.persons.unused]
+    assert unused == [("Jo Placeholder", UNHELD)]
     held, names, person_of = joined_rows(data / "index.sqlite")
     assert ROBIN_ALONE not in {person for person, _ in held}
     assert (ROBIN, "Robin", "robin", "alias") in names
@@ -812,7 +821,7 @@ def test_a_rebuild_embeds_nothing_with_or_without_new_aliases(data: Path) -> Non
     )
     assert first.embedded > 0
     assert (again.embedded, aliased.embedded) == (0, 0)
-    assert (again.people, aliased.people) == (len(JOINED), len(JOINED) - 1)
+    assert (again.persons.count, aliased.persons.count) == (len(JOINED), len(JOINED) - 1)
 
 
 @pytest.mark.parametrize("schema", ["1", "2", "3", "4", "5"])
