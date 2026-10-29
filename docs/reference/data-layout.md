@@ -542,12 +542,13 @@ links one.
   `[time]` and a blank, then a name of at most 64 characters that begins with a letter
   and holds no colon or bracket, then `: `, blanks before the colon not the name's;
   the name is none of `SCHEDULED`, `DEADLINE`, `CLOSED` and `CLOCK`.
-- The rule of an id is `kernel.content.WORKLOG_ID`:
-  `e-[0-9a-f]{16}(?:-[0-9]+)?|t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})` for an
-  entry or a transcript; `d-[0-9]{8}` for a day, its date; `m-[0-9]{8}-[a-z0-9-]{1,64}`
-  for a meeting, its day's date and its title's slug. It names the file, with the
-  title's slug for an entry or a transcript, as for a page, and alone for a day or a
-  meeting.
+- The rule of an id is its type's, `kernel.content.WORKLOG_IDS`:
+  `e-[0-9a-f]{16}(?:-[0-9]+)?` for an entry;
+  `t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})` for a transcript; `d-[0-9]{8}` for
+  a day, its date; `m-[0-9]{8}-[a-z0-9-]{1,64}` for a meeting, its day's date and its
+  title's slug. A front matter whose id has another type's shape is refused. The id
+  names the file, with the title's slug for an entry or a transcript, as for a page,
+  and alone for a day or a meeting.
 - `revision` is the digest of pandoc's version and options, a NUL, and the org text
   that pandoc converts: a document whose revision has not changed is not converted
   again, and its file keeps its dates, but a day's, a meeting's and a dated

@@ -12,7 +12,7 @@ from atlassian_offline_mcp.kernel.content import (
     PROJECT_KEY,
     REVISION,
     SPACE_KEY,
-    WORKLOG_ID,
+    WORKLOG_IDS,
     WORKLOG_REVISION,
     RefusedError,
     require,
@@ -38,11 +38,13 @@ ONLY = {
     "project": "jira",
     "issue_type": "jira",
 }
-# The rules of each source's ids and revisions.
+# The rules of each type's ids, and of its source's revisions: a work-log document's id
+# by its type, so that a day never bears a meeting's.
 PATTERNS = {
-    "confluence": (IDENTIFIER, REVISION),
-    "jira": (IDENTIFIER, REVISION),
-    "worklog": (WORKLOG_ID, WORKLOG_REVISION),
+    "page": (IDENTIFIER, REVISION),
+    "blogpost": (IDENTIFIER, REVISION),
+    "issue": (IDENTIFIER, REVISION),
+    **{kind: (pattern, WORKLOG_REVISION) for kind, pattern in WORKLOG_IDS.items()},
 }
 # The role of a meeting's participants and a transcript's speakers.
 PARTICIPANT = "participant"
@@ -141,11 +143,11 @@ class FrontMatter:
     def __post_init__(self) -> None:
         """Refuse what the layout's table rules out.
 
-        A source and type that disagree, a key that only the other source has, an id or
-        key off its rule, a text with a line break of any kind, a time not in UTC, a
-        second author, creator or assignee, a commenter or a participant twice by name and
-        account, a role of another source, people out of the order of the roles, a link to
-        the document itself, by its id or key, and a link given twice.
+        A source and type that disagree, a key that only the other source has, an id off
+        its type's rule, a key off its rule, a text with a line break of any kind, a time
+        not in UTC, a second author, creator or assignee, a commenter or a participant
+        twice by name and account, a role of another source, people out of the order of
+        the roles, a link to the document itself, by its id or key, and a link given twice.
         """
         if TYPES.get(self.type) != self.source:
             message = "type: not one of the source's types"
@@ -154,7 +156,7 @@ class FrontMatter:
             if (getattr(self, name) is not None) != (self.source == source):
                 message = f"{name}: only and always for {source}"
                 raise RefusedError(message)
-        identifier, revision = PATTERNS[self.source]
+        identifier, revision = PATTERNS[self.type]
         require(identifier, self.id, "id")
         require(revision, self.revision, "revision")
         for value, pattern, name in (

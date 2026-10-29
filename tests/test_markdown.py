@@ -474,6 +474,25 @@ def test_work_log_front_matter_off_its_rules_is_refused(changes: dict[str, objec
         replace(ENTRY, **changes)
 
 
+@pytest.mark.parametrize(
+    ("kind", "identifier"),
+    [
+        ("entry", "m-20261027-payments-stand-up"),
+        ("entry", "d-20261028"),
+        ("day", "e-0123456789abcdef"),
+        ("day", "m-20261027-payments-stand-up"),
+        ("meeting", "t-20261027-1"),
+        ("meeting", "d-20261028"),
+        ("transcript", "d-20261028"),
+        ("transcript", "e-0123456789abcdef"),
+    ],
+)
+def test_a_work_log_id_of_another_type_s_shape_is_refused(kind: str, identifier: str) -> None:
+    """Each type has its own shape of id: a day bearing a meeting's is refused, naming id."""
+    with pytest.raises(RefusedError, match=r"^id: does not match"):
+        replace(ENTRY, type=kind, id=identifier)
+
+
 def test_a_file_without_front_matter_is_refused() -> None:
     """A Markdown file that does not start with front matter is not a document."""
     with pytest.raises(RepresentationError, match="no front matter"):
