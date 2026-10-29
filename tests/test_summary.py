@@ -19,15 +19,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.cli.commands import login as login_command
-from atlassian_offline_mcp.cli.commands import model as model_command
-from atlassian_offline_mcp.cli.commands._shared import enter
-from atlassian_offline_mcp.cli.domain.command_line import command_line
-from atlassian_offline_mcp.cli.domain.summary import values_of
-from atlassian_offline_mcp.cli.main import main, parser
-from atlassian_offline_mcp.cli.options.index import by_words_alone
-from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL
-from atlassian_offline_mcp.observability.app.observed import early
+from kb_mcp.cli.commands import login as login_command
+from kb_mcp.cli.commands import model as model_command
+from kb_mcp.cli.commands._shared import enter
+from kb_mcp.cli.domain.command_line import command_line
+from kb_mcp.cli.domain.summary import values_of
+from kb_mcp.cli.main import main, parser
+from kb_mcp.cli.options.index import by_words_alone
+from kb_mcp.config.domain.settings import DEFAULT_MODEL
+from kb_mcp.observability.app.observed import early
 from tests.endpoint import nothing_listening
 from tests.test_settings import user_log_folder
 
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.domain.settings import Loaded
 
 SITE = "https://sandbox.example.invalid"
 # The variables of the email, the API token and the embedding endpoint's key.
@@ -82,9 +82,7 @@ def runs(monkeypatch: MonkeyPatch) -> list[tuple[argparse.Namespace, Loaded]]:
         return 0, None
 
     for module in WRITING:
-        monkeypatch.setattr(
-            importlib.import_module(f"atlassian_offline_mcp.cli.commands.{module}"), "run", run
-        )
+        monkeypatch.setattr(importlib.import_module(f"kb_mcp.cli.commands.{module}"), "run", run)
     return recorded
 
 
@@ -312,7 +310,7 @@ def test_serve_says_what_it_ignores_on_stderr_and_answers_its_first_line(home: P
         UNKNOWN: "1",
     }
     with subprocess.Popen(
-        [sys.executable, "-m", "atlassian_offline_mcp", "serve"],
+        [sys.executable, "-m", "kb_mcp", "serve"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

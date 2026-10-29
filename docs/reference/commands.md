@@ -4,11 +4,11 @@ What the command says with `--help`, then each of its subcommands, and each step
 as the parser declares them; then the exit statuses. This page is generated from the
 code by `uv run python -m tests.reference_pages`, and `tests/test_reference.py` fails
 while it differs: change a subcommand's declaration in
-[`cli/options/`](../../src/atlassian_offline_mcp/cli/options/), then run that command;
+[`cli/options/`](../../src/kb_mcp/cli/options/), then run that command;
 never edit the page.
 
 With no arguments, the command serves MCP on stdio, as `serve` does: that is how agents
-start it ([`main`](../../src/atlassian_offline_mcp/cli/main.py)). A flag that overrides
+start it ([`main`](../../src/kb_mcp/cli/main.py)). A flag that overrides
 a setting does so for its run alone, the strongest of the layers that
 [the settings](settings.md) describe. Help is shown here 88 columns wide and without
 colour; `~` stands for the home directory, and `<log directory>` for the platform's
@@ -598,7 +598,7 @@ not run) and its result, as its own command gives it.
 ## Exit statuses
 
 Every command ends with one of these statuses, which
-[`MEANINGS`](../../src/atlassian_offline_mcp/kernel/exit_status.py) defines once, for
+[`MEANINGS`](../../src/kb_mcp/kernel/exit_status.py) defines once, for
 `--help` and for this page.
 
 | Status | Meaning |

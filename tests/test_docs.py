@@ -31,9 +31,9 @@ import pytest
 from markdown_it import MarkdownIt
 from mcp.client.stdio import StdioServerParameters
 
-from atlassian_offline_mcp.cli.main import parser
-from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.cli.main import parser
+from kb_mcp.config.domain.settings import DEFAULT_MODEL
+from kb_mcp.kernel.exit_status import ExitStatus
 from tests.test_serve import talk
 
 if TYPE_CHECKING:
@@ -581,7 +581,7 @@ def test_the_reference_names_each_tool_and_prompt_served_and_each_of_their_param
     another line's mention does not stand for its own.
     """
     command = StdioServerParameters(
-        command=sys.executable, args=["-m", "atlassian_offline_mcp"], env={"HOME": str(tmp_path)}
+        command=sys.executable, args=["-m", "kb_mcp"], env={"HOME": str(tmp_path)}
     )
     _, listed, _ = talk(command, [])
     served = {

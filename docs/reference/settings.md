@@ -3,7 +3,7 @@
 Every setting of the command: how each is named, which layer wins, then a row per
 setting; then the variables that a run reads besides. This page is generated from the
 settings' model,
-[`Settings`](../../src/atlassian_offline_mcp/config/domain/settings.py),
+[`Settings`](../../src/kb_mcp/config/domain/settings.py),
 by `uv run python -m tests.reference_pages`, and `tests/test_reference.py` fails while
 it differs: change a setting's `Field` and its description, then run that command;
 never edit the page.
@@ -13,7 +13,7 @@ never edit the page.
 A run takes each setting from the strongest layer that gives it. From the weakest: its
 default; the settings file; the environment; the flags of the run. A stronger layer's
 value replaces a weaker one's whole, a list included, as
-[`settings_of`](../../src/atlassian_offline_mcp/config/domain/settings.py) merges them;
+[`settings_of`](../../src/kb_mcp/config/domain/settings.py) merges them;
 `check --summary detailed` names the layer that gave each setting.
 
 - **The settings file** is TOML: `~/.config/atlassian-offline-mcp/config.toml`, unless
@@ -65,7 +65,7 @@ A path that starts with `~` starts in the home directory.
 
 A run takes every other `OTEL_` variable out of its environment as it starts, before
 OpenTelemetry reads any
-([`READ`](../../src/atlassian_offline_mcp/observability/__init__.py)); the reference of
+([`READ`](../../src/kb_mcp/observability/__init__.py)); the reference of
 [telemetry](telemetry/README.md#settings-and-variables) says why.
 
 The libraries that a run uses read variables of their own, which no test finds; these

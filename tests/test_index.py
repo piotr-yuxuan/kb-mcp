@@ -16,19 +16,19 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.mirror.domain.mirror import Link, PersonRole
-from atlassian_offline_mcp.search.adapters import sqlite_index
-from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
-from atlassian_offline_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
-from atlassian_offline_mcp.search.domain.people import (
+from kb_mcp.cli.main import main
+from kb_mcp.mirror.domain.mirror import Link, PersonRole
+from kb_mcp.search.adapters import sqlite_index
+from kb_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
+from kb_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
+from kb_mcp.search.domain.people import (
     UNHELD,
     Ambiguity,
     Outcome,
     Person,
     Spelling,
 )
-from atlassian_offline_mcp.search.domain.search import Filters
+from kb_mcp.search.domain.search import Filters
 from tests.endpoint import nothing_listening, tiny
 from tests.mirrors import (
     CREATED,
@@ -64,7 +64,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.search.domain.search import Sort
+    from kb_mcp.search.domain.search import Sort
 
 BAD_SETTINGS = 2
 SKIPPED = 3
@@ -879,7 +879,7 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     """
     fillers(data / "docs")
     piped = subprocess.run(
-        [sys.executable, "-m", "atlassian_offline_mcp", "index", "--yes", "--format", "json"],
+        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--format", "json"],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         env=child_environment(data),
@@ -893,7 +893,7 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     assert (last["task"], last["done"], last["total"]) == ("files", FILLERS, FILLERS)
     controller, terminal = pty.openpty()
     with subprocess.Popen(
-        [sys.executable, "-m", "atlassian_offline_mcp", "index", "--yes", "--format", "json"],
+        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--format", "json"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=terminal,
@@ -908,7 +908,7 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     assert re.search(rf"files [━╸╺ ]+ {FILLERS}/{FILLERS} {clock} {clock} ", shown)
     controller, terminal = pty.openpty()
     with subprocess.Popen(
-        [sys.executable, "-m", "atlassian_offline_mcp", "index", "--yes", "--format", "json", "-q"],
+        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--format", "json", "-q"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=terminal,

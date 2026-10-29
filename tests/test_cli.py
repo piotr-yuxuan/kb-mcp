@@ -19,11 +19,11 @@ from typing import TYPE_CHECKING, override
 import argcomplete
 import pytest
 
-from atlassian_offline_mcp.cli import commands, options
-from atlassian_offline_mcp.cli.main import main, parser
-from atlassian_offline_mcp.config.domain.settings import SETTING_PATHS
-from atlassian_offline_mcp.kernel.exit_status import MEANINGS, ExitStatus
-from atlassian_offline_mcp.kernel.output import Output
+from kb_mcp.cli import commands, options
+from kb_mcp.cli.main import main, parser
+from kb_mcp.config.domain.settings import SETTING_PATHS
+from kb_mcp.kernel.exit_status import MEANINGS, ExitStatus
+from kb_mcp.kernel.output import Output
 from tests.endpoint import nothing_listening
 from tests.test_observed import said as said_on
 from tests.test_question import read_until
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.kernel.output import Level
+    from kb_mcp.kernel.output import Level
 
 ROOT = Path(__file__).parents[1]
 # The exit status for what is refused before acting: options, and settings, an unsafe data
@@ -65,8 +65,8 @@ RUNS_PACKAGES = frozenset(
 DECLARED = """
 from pathlib import Path
 
-from atlassian_offline_mcp.cli.domain.command import Command
-from atlassian_offline_mcp.cli.options._common import add_output_options
+from kb_mcp.cli.domain.command import Command
+from kb_mcp.cli.options._common import add_output_options
 
 def register(subparsers):
     parser = subparsers.add_parser("extra", help="a command added by a module pair")
@@ -275,7 +275,7 @@ def test_the_help_on_a_terminal_has_no_colour_under_no_color(
     """
     controller, terminal = pty.openpty()
     with subprocess.Popen(
-        [sys.executable, "-m", "atlassian_offline_mcp", "--help"],
+        [sys.executable, "-m", "kb_mcp", "--help"],
         stdin=subprocess.DEVNULL,
         stdout=terminal,
         stderr=terminal,
@@ -312,7 +312,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
     children = (
         (
             subprocess.run(
-                [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "--version"],
+                [sys.executable, "-X", "importtime", "-m", "kb_mcp", "--version"],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
@@ -324,7 +324,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
         ),
         (
             subprocess.run(
-                [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "--help"],
+                [sys.executable, "-X", "importtime", "-m", "kb_mcp", "--help"],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
@@ -341,7 +341,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
                     "-X",
                     "importtime",
                     "-m",
-                    "atlassian_offline_mcp",
+                    "kb_mcp",
                     "download",
                     "--help",
                 ],
@@ -356,7 +356,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
         ),
         (
             subprocess.run(
-                [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp"],
+                [sys.executable, "-X", "importtime", "-m", "kb_mcp"],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
@@ -368,7 +368,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
         ),
         (
             subprocess.run(
-                [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "completion"],
+                [sys.executable, "-X", "importtime", "-m", "kb_mcp", "completion"],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
@@ -388,7 +388,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
             if line.startswith("import time:")
         }
         imported |= {module.split(".")[0] for module in imported}
-        assert {"argparse", "atlassian_offline_mcp"} <= imported
+        assert {"argparse", "kb_mcp"} <= imported
         assert not imported & refused
 
 
@@ -412,7 +412,7 @@ def test_the_shell_completes_the_command_line(home: Path, line: str, offered: se
         "_ARGCOMPLETE_STDOUT_FILENAME": str(home / "completions"),
     }
     child = subprocess.run(
-        [sys.executable, "-m", "atlassian_offline_mcp"],
+        [sys.executable, "-m", "kb_mcp"],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
@@ -1174,7 +1174,7 @@ def test_help_version_completions_and_completion_write_no_log_file(
     capsys.readouterr()
     typed = "atlassian-offline-mcp check --"
     child = subprocess.run(
-        [sys.executable, "-m", "atlassian_offline_mcp"],
+        [sys.executable, "-m", "kb_mcp"],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
@@ -1324,7 +1324,7 @@ def test_stderr_on_a_terminal_is_coloured_unless_no_color(
         [
             sys.executable,
             "-m",
-            "atlassian_offline_mcp",
+            "kb_mcp",
             "check",
             "-v",
             "--site",

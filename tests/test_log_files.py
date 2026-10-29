@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from atlassian_offline_mcp.observability.domain.log_files import expired, log_file_name
+from kb_mcp.observability.domain.log_files import expired, log_file_name
 
 NOW = datetime(2026, 10, 22, 21, 5, 9, tzinfo=UTC)
 # A start long past, as a log file's name writes it.

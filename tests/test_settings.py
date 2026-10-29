@@ -13,9 +13,9 @@ import pytest
 from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model
 from pydantic_settings import EnvSettingsSource
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.app.settings import UnsafeDataDirError, load_settings
-from atlassian_offline_mcp.config.domain.settings import (
+from kb_mcp.cli.main import main
+from kb_mcp.config.app.settings import UnsafeDataDirError, load_settings
+from kb_mcp.config.domain.settings import (
     SETTING_PATHS,
     ConfluenceSource,
     Entry,
@@ -29,8 +29,8 @@ from atlassian_offline_mcp.config.domain.settings import (
     settings_of,
     unsafe_location,
 )
-from atlassian_offline_mcp.kernel.endpoint import Service, loopback, refused_endpoint
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.endpoint import Service, loopback, refused_endpoint
+from kb_mcp.kernel.exit_status import ExitStatus
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch

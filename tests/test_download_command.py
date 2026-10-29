@@ -12,14 +12,14 @@ import pytest
 from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.cli.commands import download as download_command
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import Settings
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.sources.atlassian.adapters import http
-from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
-from atlassian_offline_mcp.sources.atlassian.app.download import (
+from kb_mcp.cli.commands import download as download_command
+from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import Settings
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.sources.atlassian.adapters import http
+from kb_mcp.sources.atlassian.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.app.download import (
     Outcome,
     Report,
     Targets,

@@ -11,15 +11,15 @@ import pytest
 from mcp.client.stdio import StdioServerParameters
 from opentelemetry import trace
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.kernel.reranking import LONGEST_TEXT, MOST_TEXTS
-from atlassian_offline_mcp.mcp.app import responses
-from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
-from atlassian_offline_mcp.search.adapters.reranking import Reranked, RerankError
-from atlassian_offline_mcp.search.app.indexing import build_index
-from atlassian_offline_mcp.search.app.reranking import Reranking
-from atlassian_offline_mcp.search.domain.reranking import PLACES, split_order, written
+from kb_mcp.cli.main import main
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.reranking import LONGEST_TEXT, MOST_TEXTS
+from kb_mcp.mcp.app import responses
+from kb_mcp.mcp.app.tools import Library, UnanswerableError
+from kb_mcp.search.adapters.reranking import Reranked, RerankError
+from kb_mcp.search.app.indexing import build_index
+from kb_mcp.search.app.reranking import Reranking
+from kb_mcp.search.domain.reranking import PLACES, split_order, written
 from tests.answers import built, continuation, follow, parts
 from tests.endpoint import Reranks, nothing_listening, relevance, serving
 from tests.mirrors import MOMENT, fillers, issue, page, write
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from _pytest.tempdir import TempPathFactory
 
-    from atlassian_offline_mcp.search.domain.search import Sort
+    from kb_mcp.search.domain.search import Sort
     from tests.conftest import InMemory
 
 QUERY = "release rollback"

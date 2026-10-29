@@ -225,7 +225,7 @@ the same way, as the comparison with plan 011's model below was made:
 ```python
 import json, math, statistics, sys
 
-from atlassian_offline_mcp.evaluation.domain.evaluation import paired_test
+from kb_mcp.evaluation.domain.evaluation import paired_test
 
 
 def reciprocal(ranks):  # MRR@10 of one question: 1 over its best rank, else 0
@@ -555,7 +555,7 @@ p-value, then the questions where meaning alone did better, worse and the same; 
 uv run python - <data>/eval/results/<time>.json <<'EOF'
 import json, sys
 from statistics import fmean
-from atlassian_offline_mcp.evaluation.domain.evaluation import paired_test
+from kb_mcp.evaluation.domain.evaluation import paired_test
 runs = json.load(open(sys.argv[1]))["runs"]
 ranks = next(run["ranks"] for run in runs if run["chunking"] == "windows")
 mrr = {

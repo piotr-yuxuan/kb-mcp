@@ -79,7 +79,7 @@ fields as `key=value`, by name, a value with spaces in quotes; a traceback follo
 line of `run.failed`:
 
 ```
-2026-10-22T21:05:09.123456Z [warning  ] search.fallback                [atlassian_offline_mcp.mcp.app.tools] mode=hybrid reason=...
+2026-10-22T21:05:09.123456Z [warning  ] search.fallback                [kb_mcp.mcp.app.tools] mode=hybrid reason=...
 ```
 
 On a terminal, unless `-q`, the tasks of a run are bars, with what is done of how much,

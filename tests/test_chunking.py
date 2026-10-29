@@ -9,13 +9,13 @@ from typing import TYPE_CHECKING, get_args
 import numpy as np
 import pytest
 
-from atlassian_offline_mcp.kernel.chunking import CHUNKINGS, Chunking
-from atlassian_offline_mcp.search.domain.chunking import CHUNKERS, passages
-from atlassian_offline_mcp.search.domain.search import sections
+from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
+from kb_mcp.search.domain.chunking import CHUNKERS, passages
+from kb_mcp.search.domain.search import sections
 from tests.mirrors import page
 
 if TYPE_CHECKING:
-    from atlassian_offline_mcp.search.domain.search import Section
+    from kb_mcp.search.domain.search import Section
 
 SEED = 19
 TEXTS = 3000

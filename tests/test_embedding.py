@@ -21,16 +21,16 @@ import httpx
 import numpy as np
 import pytest
 
-from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
-from atlassian_offline_mcp.cli.main import main, parser
-from atlassian_offline_mcp.config.domain.settings import (
+from kb_mcp.cli.commands._embedding import open_endpoint
+from kb_mcp.cli.main import main, parser
+from kb_mcp.config.domain.settings import (
     DEFAULT_EMBEDDING_URL,
     Settings,
     SettingsError,
 )
-from atlassian_offline_mcp.kernel.endpoint import EMBEDDINGS, Service
-from atlassian_offline_mcp.search.adapters import embedding
-from atlassian_offline_mcp.search.adapters.embedding import (
+from kb_mcp.kernel.endpoint import EMBEDDINGS, Service
+from kb_mcp.search.adapters import embedding
+from kb_mcp.search.adapters.embedding import (
     BATCH,
     DOCUMENTS,
     SINGLE,
@@ -42,7 +42,7 @@ from atlassian_offline_mcp.search.adapters.embedding import (
     embed,
     embeddings,
 )
-from atlassian_offline_mcp.search.adapters.model_api import (
+from kb_mcp.search.adapters.model_api import (
     MAX_ANSWER_BYTES,
     Bounds,
     Endpoint,

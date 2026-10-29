@@ -13,14 +13,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
-from atlassian_offline_mcp.mcp.app import responses
-from atlassian_offline_mcp.search.adapters import vector_store
-from atlassian_offline_mcp.search.adapters.model_api import ModelError
-from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
-from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
-from atlassian_offline_mcp.search.domain.search import Embedded
+from kb_mcp.cli.main import main
+from kb_mcp.kernel.chunking import CHUNKINGS
+from kb_mcp.mcp.app import responses
+from kb_mcp.search.adapters import vector_store
+from kb_mcp.search.adapters.model_api import ModelError
+from kb_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
+from kb_mcp.search.app.indexing import Embedding, build_index
+from kb_mcp.search.domain.search import Embedded
 from tests.endpoint import DIMENSIONS, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, fillers, page, write
 from tests.test_cli import logged_as
@@ -33,8 +33,8 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from numpy.typing import NDArray
 
-    from atlassian_offline_mcp.kernel.chunking import Chunking
-    from atlassian_offline_mcp.search.adapters.embedding import ApiEmbedder
+    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.search.adapters.embedding import ApiEmbedder
 
 BODY = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
 FILLER_PAGES = 5

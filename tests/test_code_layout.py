@@ -5,9 +5,9 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import atlassian_offline_mcp
+import kb_mcp
 
-PACKAGE = Path(atlassian_offline_mcp.__file__).parent
+PACKAGE = Path(kb_mcp.__file__).parent
 # OpenTelemetry's SDK, exporters and instrumentation, which plan 016 keeps within
 # observability: elsewhere code uses the API alone. Import Linter forbids root packages
 # only, and the API and the SDK share theirs, opentelemetry.

@@ -12,30 +12,30 @@ import httpx
 import pytest
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.config.domain.settings import Settings
-from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
-from atlassian_offline_mcp.sources.atlassian.adapters import http
-from atlassian_offline_mcp.sources.atlassian.adapters.http import (
+from kb_mcp.config.domain.settings import Settings
+from kb_mcp.kernel.content import BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.adapters import http
+from kb_mcp.sources.atlassian.adapters.http import (
     MAX_FAILED_IN_A_ROW,
     Site,
     TooManyFailuresError,
 )
-from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import (
+from kb_mcp.sources.atlassian.adapters.raw_store import (
     RawStore,
     StoreBusyError,
     Stored,
     Unreadable,
 )
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import (
+from kb_mcp.sources.atlassian.adapters.session_file import (
     COOKIES,
     for_site,
     read_cookies,
     write_cookies,
 )
-from atlassian_offline_mcp.sources.atlassian.app import download as download_module
-from atlassian_offline_mcp.sources.atlassian.app.download import Download, Targets, download
-from atlassian_offline_mcp.sources.atlassian.domain.coverage import Target, Window
-from atlassian_offline_mcp.sources.atlassian.domain.period import Period, period
+from kb_mcp.sources.atlassian.app import download as download_module
+from kb_mcp.sources.atlassian.app.download import Download, Targets, download
+from kb_mcp.sources.atlassian.domain.coverage import Target, Window
+from kb_mcp.sources.atlassian.domain.period import Period, period
 from tests.samples import (
     v1_user,
     v2_attachment,

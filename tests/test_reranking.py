@@ -13,25 +13,25 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from atlassian_offline_mcp.cli.commands.reranker import (
+from kb_mcp.cli.commands.reranker import (
     ANSWER,
     PROBE,
     UNRELATED,
     Checked,
     text,
 )
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import Rerank, Settings, SettingsError
-from atlassian_offline_mcp.kernel.endpoint import RERANKING
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.kernel.reranking import (
+from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import Rerank, Settings, SettingsError
+from kb_mcp.kernel.endpoint import RERANKING
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.reranking import (
     BOUND_S,
     LONGEST_QUERY,
     LONGEST_TEXT,
     MOST_TEXTS,
 )
-from atlassian_offline_mcp.search.adapters.model_api import Bounds, endpoint
-from atlassian_offline_mcp.search.adapters.reranking import (
+from kb_mcp.search.adapters.model_api import Bounds, endpoint
+from kb_mcp.search.adapters.reranking import (
     EVALUATION,
     SEARCH,
     RerankError,
@@ -59,7 +59,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.search.adapters.model_api import Endpoint
+    from kb_mcp.search.adapters.model_api import Endpoint
     from tests.conftest import InMemory
 
 QUERY = "how do I roll back a release"

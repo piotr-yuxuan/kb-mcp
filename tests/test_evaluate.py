@@ -15,10 +15,10 @@ import pytest
 import yaml
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import Settings
-from atlassian_offline_mcp.evaluation.app import evaluation
-from atlassian_offline_mcp.evaluation.app.evaluation import (
+from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import Settings
+from kb_mcp.evaluation.app import evaluation
+from kb_mcp.evaluation.app.evaluation import (
     ASK_HEADER,
     HEADER,
     EvaluationError,
@@ -29,13 +29,13 @@ from atlassian_offline_mcp.evaluation.app.evaluation import (
     record,
     table,
 )
-from atlassian_offline_mcp.evaluation.domain.evaluation import Question, Quoted, holm
-from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
-from atlassian_offline_mcp.mcp.app.tools import Library
-from atlassian_offline_mcp.search.adapters.model_api import ModelError
-from atlassian_offline_mcp.search.adapters.sqlite_index import reading
-from atlassian_offline_mcp.search.app.indexing import build_index
-from atlassian_offline_mcp.search.app.meaning import Meaning
+from kb_mcp.evaluation.domain.evaluation import Question, Quoted, holm
+from kb_mcp.kernel.chunking import CHUNKINGS
+from kb_mcp.mcp.app.tools import Library
+from kb_mcp.search.adapters.model_api import ModelError
+from kb_mcp.search.adapters.sqlite_index import reading
+from kb_mcp.search.app.indexing import build_index
+from kb_mcp.search.app.meaning import Meaning
 from tests.endpoint import DIGEST, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.test_cli import logged_as
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.search.adapters.embedding import Embedder
+    from kb_mcp.search.adapters.embedding import Embedder
     from tests.conftest import InMemory
 
 GOLDEN = """

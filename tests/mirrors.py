@@ -13,18 +13,18 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.kernel.content import time_revision
-from atlassian_offline_mcp.mirror.adapters import conversions
-from atlassian_offline_mcp.mirror.adapters.markdown import dump
-from atlassian_offline_mcp.mirror.app.mirror import mirror
-from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
+from kb_mcp.kernel.content import time_revision
+from kb_mcp.mirror.adapters import conversions
+from kb_mcp.mirror.adapters.markdown import dump
+from kb_mcp.mirror.app.mirror import mirror
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
-    from atlassian_offline_mcp.mirror.app.mirror import Outcome
-    from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
+    from kb_mcp.mirror.app.mirror import Outcome
+    from kb_mcp.sources.atlassian.adapters.raw_store import RawStore
 
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 LOREM = (

@@ -16,7 +16,7 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
-from atlassian_offline_mcp.sources.worklog.adapters import files
+from kb_mcp.sources.worklog.adapters import files
 
 CONTENT = "words of the file that must never show"
 # The plan's bound on transcripts.

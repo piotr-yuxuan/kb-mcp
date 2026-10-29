@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.sources.atlassian.domain.coverage import (
+from kb_mcp.sources.atlassian.domain.coverage import (
     Coverage,
     Target,
     Window,
     window,
 )
-from atlassian_offline_mcp.sources.atlassian.domain.period import Period, PeriodError
+from kb_mcp.sources.atlassian.domain.period import Period, PeriodError
 
 if TYPE_CHECKING:
     from collections.abc import Callable

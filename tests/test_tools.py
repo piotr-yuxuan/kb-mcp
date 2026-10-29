@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
-from atlassian_offline_mcp.mirror.domain.mirror import Link, PersonRole
-from atlassian_offline_mcp.search.adapters import sqlite_index
-from atlassian_offline_mcp.search.app.indexing import build_index
+from kb_mcp.mcp.app.tools import Library, UnanswerableError
+from kb_mcp.mirror.domain.mirror import Link, PersonRole
+from kb_mcp.search.adapters import sqlite_index
+from kb_mcp.search.app.indexing import build_index
 from tests.answers import built, continuation, follow, parts
 from tests.mirrors import (
     CREATED,
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+    from kb_mcp.mirror.domain.mirror import FrontMatter
 
 NEWER = MOMENT + timedelta(days=1)
 HIT = re.compile(r"^\d+\. .*\n {3}(\S+) \|", re.MULTILINE)

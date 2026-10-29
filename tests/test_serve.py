@@ -19,10 +19,10 @@ from mcp.shared.message import SessionMessage
 from mcp_types import JSONRPCError, JSONRPCResponse, TextContent, jsonrpc_message_adapter
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.cli.commands.serve import served
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
-from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
+from kb_mcp.cli.commands.serve import served
+from kb_mcp.cli.main import main
+from kb_mcp.mcp.app.tools import UnanswerableError
+from kb_mcp.search.app.indexing import Embedding, build_index
 from tests.answers import TOOLS, estimate, parts
 from tests.collector import Collector, attributes, collecting
 from tests.endpoint import Scripted, serving, tiny
@@ -58,7 +58,7 @@ def guard(event, arguments):
     os._exit(3)
 sys.addaudithook(guard)
 sys.argv = ["atlassian-offline-mcp"]
-runpy.run_module("atlassian_offline_mcp", run_name="__main__", alter_sys=True)
+runpy.run_module("kb_mcp", run_name="__main__", alter_sys=True)
 """
 ROOT = Path(__file__).parents[1]
 
@@ -93,7 +93,7 @@ def test_a_client_calls_every_tool_over_stdio(home: Path) -> None:
 
     async def session() -> None:
         command = StdioServerParameters(
-            command=sys.executable, args=["-m", "atlassian_offline_mcp"], env={"HOME": str(home)}
+            command=sys.executable, args=["-m", "kb_mcp"], env={"HOME": str(home)}
         )
         async with Client(command, message_handler=handle) as client:
             instructions = client.instructions or ""

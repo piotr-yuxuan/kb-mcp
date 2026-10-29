@@ -10,11 +10,11 @@ from typing import TYPE_CHECKING
 import pytest
 import structlog
 
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.kernel.output import Output
-from atlassian_offline_mcp.observability.adapters.logs import QUIET, default_log_folder
-from atlassian_offline_mcp.observability.adapters.progress import task
-from atlassian_offline_mcp.observability.app.observed import Invocation, early, observed
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.output import Output
+from kb_mcp.observability.adapters.logs import QUIET, default_log_folder
+from kb_mcp.observability.adapters.progress import task
+from kb_mcp.observability.app.observed import Invocation, early, observed
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.kernel.output import Level
+    from kb_mcp.kernel.output import Level
 
 # A log line on stderr: its time, its level padded in brackets, its event, then the rest.
 LOG_LINE = re.compile(r"\S+ \[(\w+) *\] (\S+)")

@@ -20,8 +20,8 @@ import structlog
 from opentelemetry.sdk.trace import TracerProvider
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.observability.adapters import logs
-from atlassian_offline_mcp.observability.adapters.logs import (
+from kb_mcp.observability.adapters import logs
+from kb_mcp.observability.adapters.logs import (
     default_log_folder,
     log_file,
     route_through_logging,

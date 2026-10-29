@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from atlassian_offline_mcp.kernel.fields import Fields, RepresentationError
+from kb_mcp.kernel.fields import Fields, RepresentationError
 
 
 def test_a_boolean_is_read_as_itself_and_nothing_else_is_one() -> None:

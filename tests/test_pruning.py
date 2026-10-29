@@ -20,15 +20,15 @@ import pytest
 from pydantic_core import to_json
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.cli.commands import index as index_command
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import Settings
-from atlassian_offline_mcp.evaluation.app.evaluation import Target, evaluate
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.search.adapters import vector_store
-from atlassian_offline_mcp.search.adapters.sqlite_index import indexes_in, reading
-from atlassian_offline_mcp.search.app.indexing import Embedding, Indexing, build_index, refresh
-from atlassian_offline_mcp.search.app.pruning import (
+from kb_mcp.cli.commands import index as index_command
+from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import Settings
+from kb_mcp.evaluation.app.evaluation import Target, evaluate
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.search.adapters import vector_store
+from kb_mcp.search.adapters.sqlite_index import indexes_in, reading
+from kb_mcp.search.app.indexing import Embedding, Indexing, build_index, refresh
+from kb_mcp.search.app.pruning import (
     DEFERRED,
     NO_DOCUMENT,
     SKIPPED,
@@ -51,9 +51,9 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from numpy.typing import NDArray
 
-    from atlassian_offline_mcp.kernel.chunking import Chunking
-    from atlassian_offline_mcp.search.adapters.embedding import Embedder
-    from atlassian_offline_mcp.search.app.indexing import Indexed
+    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.search.adapters.embedding import Embedder
+    from kb_mcp.search.app.indexing import Indexed
     from tests.conftest import InMemory
 
 FILLER_PAGES = 5

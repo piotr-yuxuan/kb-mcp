@@ -8,7 +8,7 @@ from statistics import fmean
 
 import pytest
 
-from atlassian_offline_mcp.evaluation.domain.evaluation import (
+from kb_mcp.evaluation.domain.evaluation import (
     Measures,
     Question,
     Quoted,

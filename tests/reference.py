@@ -25,7 +25,7 @@ from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogR
 from opentelemetry.sdk.metrics.export import Gauge, Histogram, Sum
 from opentelemetry.trace import get_current_span
 
-from atlassian_offline_mcp.observability.adapters.telemetry import Exported
+from kb_mcp.observability.adapters.telemetry import Exported
 from tests.collector import attributes, plain
 
 if TYPE_CHECKING:
@@ -38,7 +38,7 @@ PAGES = Path(__file__).parents[1] / "docs" / "reference" / "telemetry"
 # The page of what every command records.
 README = "README"
 # The package whose code logs the events of the reference; others' records are no event.
-PACKAGE = "atlassian_offline_mcp"
+PACKAGE = "kb_mcp"
 # The fields that a line or an event holds whatever its event: its own, the run's, the
 # span's, the traceback that ``log.exception`` adds.
 STANDARD = frozenset(

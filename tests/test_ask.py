@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING
 import pytest
 from opentelemetry import trace
 
-from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
-from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
-from atlassian_offline_mcp.search.app.meaning import Meaning
+from kb_mcp.mcp.app.tools import Library, UnanswerableError
+from kb_mcp.search.app.indexing import Embedding, build_index
+from kb_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, built, continuation, estimate, follow, parts
 from tests.endpoint import connector, tiny
 from tests.mirrors import MOMENT, PEOPLE, PERSONS, fillers, issue, page, write
@@ -27,8 +27,8 @@ if TYPE_CHECKING:
 
     from _pytest.tempdir import TempPathFactory
 
-    from atlassian_offline_mcp.kernel.chunking import Chunking
-    from atlassian_offline_mcp.mcp.app.tools import SearchFilters
+    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.mcp.app.tools import SearchFilters
     from tests.conftest import InMemory
 
 # A passage's two lines about it, then its text, which runs to the next passage.

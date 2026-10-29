@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from atlassian_offline_mcp.kernel.content import Attachment
-from atlassian_offline_mcp.sources.atlassian.domain.files import skip_reason
+from kb_mcp.kernel.content import Attachment
+from kb_mcp.sources.atlassian.domain.files import skip_reason
 
 CAP = 50 * 1024 * 1024
 

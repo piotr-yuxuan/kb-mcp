@@ -19,10 +19,10 @@ from typing import TYPE_CHECKING, override
 
 import pytest
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import Settings
-from atlassian_offline_mcp.sources.atlassian.adapters import http
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import Settings
+from kb_mcp.sources.atlassian.adapters import http
+from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.endpoint import Scripted, serving
 from tests.test_download import SITE, FakeSite
 from tests.test_observed import said as said_on
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.domain.settings import Loaded
 
 DECLINED = 1
 REFUSED = 2
@@ -132,9 +132,7 @@ def runs(monkeypatch: MonkeyPatch) -> list[tuple[argparse.Namespace, Loaded]]:
         return 0, None
 
     for _, module in WRITING.values():
-        monkeypatch.setattr(
-            importlib.import_module(f"atlassian_offline_mcp.cli.commands.{module}"), "run", run
-        )
+        monkeypatch.setattr(importlib.import_module(f"kb_mcp.cli.commands.{module}"), "run", run)
     return recorded
 
 
@@ -441,7 +439,7 @@ def test_on_a_pseudo_terminal_no_leaves_the_data_then_yes_builds_the_index(home:
     for answer in (b"n\n", b"y\n"):
         controller, terminal = pty.openpty()
         with subprocess.Popen(
-            [sys.executable, "-m", "atlassian_offline_mcp", "index"],
+            [sys.executable, "-m", "kb_mcp", "index"],
             stdin=terminal,
             stdout=subprocess.PIPE,
             stderr=terminal,

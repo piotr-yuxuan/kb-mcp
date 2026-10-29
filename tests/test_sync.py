@@ -25,29 +25,29 @@ import pytest
 from pydantic_core import to_json
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.cli.app import sync as sync_app
-from atlassian_offline_mcp.cli.app.sync import Atlassian, Context, Index, Row, Worklog, sync
-from atlassian_offline_mcp.cli.domain.sync import SOURCES, chosen
-from atlassian_offline_mcp.cli.main import main, parser
-from atlassian_offline_mcp.cli.options.sync import refused
-from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL, Settings
-from atlassian_offline_mcp.kernel.content import SOURCE_NAMES
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.mirror.adapters import pandoc as pandoc_adapter
-from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes
-from atlassian_offline_mcp.mirror.adapters.pandoc import (
+from kb_mcp.cli.app import sync as sync_app
+from kb_mcp.cli.app.sync import Atlassian, Context, Index, Row, Worklog, sync
+from kb_mcp.cli.domain.sync import SOURCES, chosen
+from kb_mcp.cli.main import main, parser
+from kb_mcp.cli.options.sync import refused
+from kb_mcp.config.domain.settings import DEFAULT_MODEL, Settings
+from kb_mcp.kernel.content import SOURCE_NAMES
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.mirror.adapters import pandoc as pandoc_adapter
+from kb_mcp.mirror.adapters.mirror_files import Changes
+from kb_mcp.mirror.adapters.pandoc import (
     Pandoc,
     PandocFailedError,
     PandocMissingError,
 )
-from atlassian_offline_mcp.mirror.app import mirror as mirror_app
-from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
-from atlassian_offline_mcp.search.app.indexing import Indexing
-from atlassian_offline_mcp.sources.atlassian.adapters import http
-from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, StoreBusyError
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
-from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report, Targets
-from atlassian_offline_mcp.sources.atlassian.domain.coverage import Target
+from kb_mcp.mirror.app import mirror as mirror_app
+from kb_mcp.search.adapters import sqlite_index, vector_store
+from kb_mcp.search.app.indexing import Indexing
+from kb_mcp.sources.atlassian.adapters import http
+from kb_mcp.sources.atlassian.adapters.raw_store import RawStore, StoreBusyError
+from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.app.download import Outcome, Report, Targets
+from kb_mcp.sources.atlassian.domain.coverage import Target
 from tests.endpoint import DIGEST, Scripted, scripted, serving
 from tests.mirrors import fillers
 from tests.reference import Emitted, documented, pattern, undocumented

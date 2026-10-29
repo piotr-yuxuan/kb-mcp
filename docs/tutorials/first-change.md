@@ -108,7 +108,7 @@ It ends with:
 `count` rests on one rule: given the paths of the mirror's documents, how many each
 source has. A rule decides without effects, with no file, clock or network, so it lives
 in a layer named `domain`, here the mirror's:
-`src/atlassian_offline_mcp/mirror/domain/`. A rule is the easiest code to test, so we
+`src/kb_mcp/mirror/domain/`. A rule is the easiest code to test, so we
 write its test first, from what `count` must do. Create `tests/test_count.py`:
 
 ```python
@@ -116,7 +116,7 @@ write its test first, from what `count` must do. Create `tests/test_count.py`:
 
 from pathlib import PurePosixPath
 
-from atlassian_offline_mcp.mirror.domain.count import per_source
+from kb_mcp.mirror.domain.count import per_source
 
 
 def test_each_source_counts_its_documents_and_one_without_any_counts_zero() -> None:
@@ -138,12 +138,12 @@ uv run pytest tests/test_count.py
 It fails, as it should, since the rule does not exist yet. Among its lines:
 
 ```text
-E   ModuleNotFoundError: No module named 'atlassian_offline_mcp.mirror.domain.count'
+E   ModuleNotFoundError: No module named 'kb_mcp.mirror.domain.count'
 ```
 
 ## 4. Write the rule
 
-Create `src/atlassian_offline_mcp/mirror/domain/count.py`:
+Create `src/kb_mcp/mirror/domain/count.py`:
 
 ```python
 """How many documents the mirror holds of each source: a rule, without effects."""
@@ -153,7 +153,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.kernel.content import SOURCE_NAMES
+from kb_mcp.kernel.content import SOURCE_NAMES
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -170,7 +170,7 @@ def per_source(documents: Iterable[PurePath]) -> dict[str, int]:
 ```
 
 The sources are named once, in the kernel
-([`SOURCE_NAMES`](../../src/atlassian_offline_mcp/kernel/content.py)), so that `count`
+([`SOURCE_NAMES`](../../src/kb_mcp/kernel/content.py)), so that `count`
 names each source as `sync` does. Run the test again:
 
 ```bash
@@ -187,9 +187,9 @@ It ends with:
 
 A subcommand is two modules. Its declaration, in `cli/options/`, is light: the parser
 imports every declaration for `--help`, and finds each by itself
-([`parser`](../../src/atlassian_offline_mcp/cli/main.py)). Its run, in `cli/commands/`,
+([`parser`](../../src/kb_mcp/cli/main.py)). Its run, in `cli/commands/`,
 is imported only once it is chosen. Create
-`src/atlassian_offline_mcp/cli/options/count.py`:
+`src/kb_mcp/cli/options/count.py`:
 
 ```python
 """``count``'s declaration; ``cli.commands.count`` runs it."""
@@ -198,8 +198,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.cli.domain.command import Command
-from atlassian_offline_mcp.cli.options._common import add_output_options, add_settings_options
+from kb_mcp.cli.domain.command import Command
+from kb_mcp.cli.options._common import add_output_options, add_settings_options
 
 if TYPE_CHECKING:
     import argparse
@@ -217,7 +217,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.set_defaults(
         command=Command(
             "count",
-            "atlassian_offline_mcp.cli.commands.count",
+            "kb_mcp.cli.commands.count",
             reads=("data_dir",),
             flags=flags,
             actions=actions,
@@ -225,11 +225,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
 ```
 
-The [`Command`](../../src/atlassian_offline_mcp/cli/domain/command.py) names the module
+The [`Command`](../../src/kb_mcp/cli/domain/command.py) names the module
 that runs it and the one setting that it reads, the data directory, which `--data-dir`
-may give ([`add_settings_options`](../../src/atlassian_offline_mcp/cli/options/_common.py)).
+may give ([`add_settings_options`](../../src/kb_mcp/cli/options/_common.py)).
 The epilog says what `--format json` writes, as a test of `tests/test_cli.py` asks of
-every subcommand. Then create `src/atlassian_offline_mcp/cli/commands/count.py`:
+every subcommand. Then create `src/kb_mcp/cli/commands/count.py`:
 
 ```python
 """``count``: how many documents the mirror holds of each source."""
@@ -238,15 +238,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.mirror.adapters.markdown import documents
-from atlassian_offline_mcp.mirror.domain.count import per_source
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.mirror.adapters.markdown import documents
+from kb_mcp.mirror.domain.count import per_source
 
 if TYPE_CHECKING:
     import argparse
 
-    from atlassian_offline_mcp.config.domain.settings import Loaded
-    from atlassian_offline_mcp.kernel.output import Summary
+    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.kernel.output import Summary
 
 
 def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, dict[str, int]]:
@@ -262,11 +262,11 @@ def text(counts: dict[str, int], _summary: Summary) -> str:
 
 Finding the files is an effect, so it stays out of the rule: the run takes the mirror's
 folder from the settings
-([`Settings.docs`](../../src/atlassian_offline_mcp/config/domain/settings.py)), lets
-[`documents`](../../src/atlassian_offline_mcp/mirror/adapters/markdown.py), in the
+([`Settings.docs`](../../src/kb_mcp/config/domain/settings.py)), lets
+[`documents`](../../src/kb_mcp/mirror/adapters/markdown.py), in the
 mirror's `adapters` layer, find the files there, and hands their paths to the rule.
 What the run returns, the entry of every subcommand writes, as text or as JSON
-([`enter`](../../src/atlassian_offline_mcp/cli/commands/_shared.py)). Run it:
+([`enter`](../../src/kb_mcp/cli/commands/_shared.py)). Run it:
 
 ```console
 $ uv run atlassian-offline-mcp count
@@ -289,7 +289,7 @@ $ uv run atlassian-offline-mcp count --format json
 ## 6. Break a contract
 
 Why keep the reading out of the rule? Try the other way: let the rule find the files
-itself. Replace `src/atlassian_offline_mcp/mirror/domain/count.py` with:
+itself. Replace `src/kb_mcp/mirror/domain/count.py` with:
 
 ```python
 """How many documents the mirror holds of each source: a rule, without effects."""
@@ -299,8 +299,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.kernel.content import SOURCE_NAMES
-from atlassian_offline_mcp.mirror.adapters.markdown import documents
+from kb_mcp.kernel.content import SOURCE_NAMES
+from kb_mcp.mirror.adapters.markdown import documents
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -328,9 +328,9 @@ Contracts: 6 kept, 2 broken.
 ```
 
 ```text
-atlassian_offline_mcp.mirror.domain is not allowed to import atlassian_offline_mcp.mirror.adapters:
+kb_mcp.mirror.domain is not allowed to import kb_mcp.mirror.adapters:
 
-- atlassian_offline_mcp.mirror.domain.count -> atlassian_offline_mcp.mirror.adapters.markdown (l.9)
+- kb_mcp.mirror.domain.count -> kb_mcp.mirror.adapters.markdown (l.9)
 ```
 
 A rule that reads files can be tested only with files, and changes whenever their

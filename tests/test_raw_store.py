@@ -9,18 +9,18 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.kernel.content import BlogPost, Folder, Issue, Page, Person, Space
-from atlassian_offline_mcp.kernel.fields import RepresentationError
-from atlassian_offline_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
-from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import (
+from kb_mcp.kernel.content import BlogPost, Folder, Issue, Page, Person, Space
+from kb_mcp.kernel.fields import RepresentationError
+from kb_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
+from kb_mcp.sources.atlassian.adapters.raw_store import (
     RawStore,
     StoreBusyError,
     Stored,
     Unreadable,
 )
-from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target
-from atlassian_offline_mcp.sources.atlassian.domain.deletions import Tombstone
-from atlassian_offline_mcp.sources.atlassian.domain.period import Period
+from kb_mcp.sources.atlassian.domain.coverage import Coverage, Target
+from kb_mcp.sources.atlassian.domain.deletions import Tombstone
+from kb_mcp.sources.atlassian.domain.period import Period
 from tests.samples import (
     v1_user,
     v2_attachment,

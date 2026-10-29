@@ -10,7 +10,7 @@ from itertools import pairwise, product
 import pytest
 import structlog
 
-from atlassian_offline_mcp.observability.domain.redaction import redact_secrets, redacted
+from kb_mcp.observability.domain.redaction import redact_secrets, redacted
 
 SENTINEL = "sentinel-token-5b1e"
 COOKIE = "sentinel-cookie-9c4d"

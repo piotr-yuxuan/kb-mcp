@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import ValidationError
 
-from atlassian_offline_mcp.evaluation.domain.evaluation import Question
-from atlassian_offline_mcp.evaluation.domain.grading import (
+from kb_mcp.evaluation.domain.evaluation import Question
+from kb_mcp.evaluation.domain.grading import (
     Answer,
     Harness,
     ask_verdict,
@@ -18,7 +18,7 @@ from atlassian_offline_mcp.evaluation.domain.grading import (
 )
 
 if TYPE_CHECKING:
-    from atlassian_offline_mcp.evaluation.domain.grading import Graded
+    from kb_mcp.evaluation.domain.grading import Graded
 
 BODIES = {
     "kafka.md": "# Kafka\n\nKafka keeps logs\nfor **seven days**, then drops them.\n",

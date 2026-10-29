@@ -25,18 +25,18 @@ import httpx
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
-from atlassian_offline_mcp.cli.commands import login as login_command
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import Settings
-from atlassian_offline_mcp.kernel.content import Page
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
-from atlassian_offline_mcp.search.adapters import vector_store
-from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
-from atlassian_offline_mcp.sources.atlassian.adapters import http
-from atlassian_offline_mcp.sources.atlassian.adapters.browser import SignInFailedError
-from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.cli.commands import login as login_command
+from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import Settings
+from kb_mcp.kernel.content import Page
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
+from kb_mcp.search.adapters import vector_store
+from kb_mcp.search.app.indexing import Embedding, build_index
+from kb_mcp.sources.atlassian.adapters import http
+from kb_mcp.sources.atlassian.adapters.browser import SignInFailedError
+from kb_mcp.sources.atlassian.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.collector import Collector, collecting
 from tests.endpoint import URL, Reranks, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, PERSONS, fillers, issue, page, write

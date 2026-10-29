@@ -22,12 +22,12 @@ import pytest
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.evaluation.adapters.mcp_client import Answered
-from atlassian_offline_mcp.evaluation.app import agents
-from atlassian_offline_mcp.mcp.app.tools import Library
-from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
-from atlassian_offline_mcp.search.app.meaning import Meaning
+from kb_mcp.cli.main import main
+from kb_mcp.evaluation.adapters.mcp_client import Answered
+from kb_mcp.evaluation.app import agents
+from kb_mcp.mcp.app.tools import Library
+from kb_mcp.search.app.indexing import Embedding, build_index
+from kb_mcp.search.app.meaning import Meaning
 from tests.answers import estimate, parts
 from tests.endpoint import Scripted, connector, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
@@ -76,7 +76,7 @@ VALID = {"found": True, "answer": "Seven days.", "sources": ["196845"]}
 # A call as the bridge logs it.
 LOGGED = '{"tool": "search", "arguments": {}, "tokens": 9, "seconds": 1.0, "status": "answered"}\n'
 # The command line of eval-agents, as a prompt names it.
-PROGRAM = [sys.executable, "-m", "atlassian_offline_mcp", "eval-agents"]
+PROGRAM = [sys.executable, "-m", "kb_mcp", "eval-agents"]
 
 
 @dataclass(frozen=True)
@@ -317,7 +317,7 @@ def test_two_calls_at_once_at_the_twelfth_give_one_answer(world: World) -> None:
     calling = [
         sys.executable,
         "-m",
-        "atlassian_offline_mcp",
+        "kb_mcp",
         *bridged(out, run, "search", {"query": "kafka"}),
     ]
     statuses: list[int] = []

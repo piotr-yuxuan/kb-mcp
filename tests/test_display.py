@@ -17,9 +17,9 @@ import structlog
 from rich.console import Console
 from rich.progress import Progress
 
-from atlassian_offline_mcp.observability.adapters import progress
-from atlassian_offline_mcp.observability.adapters.display import Bars, ConsoleLines, Remaining
-from atlassian_offline_mcp.observability.adapters.logs import log_file, route_through_logging
+from kb_mcp.observability.adapters import progress
+from kb_mcp.observability.adapters.display import Bars, ConsoleLines, Remaining
+from kb_mcp.observability.adapters.logs import log_file, route_through_logging
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

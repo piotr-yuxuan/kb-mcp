@@ -1,7 +1,7 @@
 # The code's layout
 
-The package `atlassian_offline_mcp` is grouped by concern: each folder under
-`src/atlassian_offline_mcp/` is a bounded context, holding everything one part of the
+The package `kb_mcp` is grouped by concern: each folder under
+`src/kb_mcp/` is a bounded context, holding everything one part of the
 program knows, from its pure rules to its effects. So a change to search stays under
 `search/`, and a change to how the site answers stays under `sources/atlassian/`. Plan
 014 made this layout; Import Linter, run by `uv run lint-imports`, keeps it.

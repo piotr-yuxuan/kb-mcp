@@ -18,9 +18,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.mcp.app.surface import guides
-from atlassian_offline_mcp.mcp.app.tools import Library
+from kb_mcp.cli.main import main
+from kb_mcp.mcp.app.surface import guides
+from kb_mcp.mcp.app.tools import Library
 from tests.answers import parts
 from tests.mirrors import page, write
 from tests.test_surface import seen
