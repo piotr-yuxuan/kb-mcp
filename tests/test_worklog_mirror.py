@@ -767,6 +767,40 @@ def test_a_journal_file_not_read_holds_every_file_back(run: Run, name: str) -> N
     assert snapshot(run.docs) == before
 
 
+def one_way(files: list[Mirrored]) -> list[tuple[str, str, str]]:
+    """Return each link, by its document, relation and ref, that the other does not return.
+
+    A meeting's transcript names it by summary, and a transcript's summary by transcript;
+    a ref that names no file is one way too.
+    """
+    back = {"transcript": "summary", "summary": "transcript"}
+    links = {
+        each.matter.id: {(link.relation, link.ref) for link in each.matter.links} for each in files
+    }
+    return sorted(
+        (identifier, relation, ref)
+        for identifier, pairs in links.items()
+        for relation, ref in pairs
+        if (back[relation], identifier) not in links.get(ref, set())
+    )
+
+
+def test_a_link_that_a_file_held_back_names_stays_written_both_ways(run: Run) -> None:
+    """The stand-up's link removed while a transcript is not read: both files stay.
+
+    The meeting is held back, its file naming its transcript, so the transcript, which
+    links nothing now, keeps its file, which names the meeting back.
+    """
+    run()
+    run.edit("todo.org", ":MEETING: [[./transcripts/current/2026-10-27 Tue/1.org]]\n", "")
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    outcome = run()
+    assert [each.where for each in outcome.problems] == ["transcripts/misc/a.org"]
+    record = run.by_id("t-20261027-1").matter
+    assert [(each.relation, each.ref) for each in record.links] == [("summary", STANDUP)]
+    assert one_way(run.files()) == []
+
+
 def test_a_transcript_not_read_holds_back_meetings_and_what_links_them(run: Run) -> None:
     """A meeting's link, start and id draw on transcripts, and a transcript's links on ids.
 

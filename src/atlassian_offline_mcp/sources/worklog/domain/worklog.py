@@ -702,19 +702,27 @@ def linked_back(transcripts: Iterable[Document], documents: Iterable[Document]) 
     ]
 
 
-def writable(documents: Iterable[Document], unread: Collection[str]) -> list[Document]:
+def writable(
+    documents: Iterable[Document], unread: Collection[str], linked: Collection[str]
+) -> list[Document]:
     """Return the documents whose files a run may write, when ``unread`` were not read.
 
     ``unread`` names each file or folder of the work log not read, by its path from the
-    work log's folder. A day draws on ``todo.org`` and its archive, and an entry's number
-    on both: without either, none is written. A meeting draws too on the transcript that
-    it links, whose start numbers its id among its day's, and a transcript's links name
-    those ids: without any other, neither a meeting nor a document that links one is
-    written. So no file is written from a part of what it draws on, and each keeps its
-    last good copy until a run reads the folder whole.
+    work log's folder; ``linked``, the id of each document whose file, as the mirror holds
+    it, has links. A day draws on ``todo.org`` and its archive, and an entry's number on
+    both: without either, none is written. A meeting draws too on the transcript that it
+    links, whose start numbers its id among its day's, and a transcript's links name
+    those ids: without any other, neither a meeting nor a document that links one, or
+    whose file does, is written. So no file is written from a part of what it draws on,
+    each keeps its last good copy until a run reads the folder whole, and a link that a
+    file kept names stays written on both documents.
     """
     if {TODO, TODO_ARCHIVE} & set(unread):
         return []
     if unread:
-        return [each for each in documents if each.type != MEETING_TYPE and not each.links]
+        return [
+            each
+            for each in documents
+            if each.type != MEETING_TYPE and not each.links and each.id not in linked
+        ]
     return list(documents)

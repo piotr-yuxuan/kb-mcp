@@ -481,7 +481,7 @@ problem (a file not read, a conversion that failed) removes none of its files, a
 file not read holds back the files of what draws on it: every one for `todo.org` or
 `todo.org_archive`, on which days, meetings and entries' numbers draw; for any other,
 each meeting, whose link, start and id draw on the transcripts, and each document that
-links one.
+links one, or whose file does, so that a link stays written on both files.
 
 - The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
   a day among its children, whatever its title. A **day** is a heading at level 1, or 2

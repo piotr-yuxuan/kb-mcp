@@ -48,6 +48,7 @@ from atlassian_offline_mcp.sources.worklog.domain.worklog import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from atlassian_offline_mcp.mirror.adapters.pandoc import Pandoc
@@ -97,14 +98,17 @@ class Planned:
     warnings: tuple[str, ...]
 
 
-def read_worklog(folder: Path, *, archives: bool) -> Read:
+def read_worklog(
+    folder: Path, kept: Mapping[str, tuple[FrontMatter, str]], *, archives: bool
+) -> Read:
     """Read the work log under ``folder``: its entries, days and meetings, then its transcripts.
 
     A meeting links to its transcript and the transcript back to it, both read in this
     one run. Without ``archives``, the archive file, ``transcripts/archive/``,
     ``meetings/archive/`` and the subtrees tagged ARCHIVE are left out. A file not read
     is a problem, named by its path, and the documents that draw on it are left out, as
-    ``writable`` says, so that a run writes none of their files. The span
+    ``writable`` says, so that a run writes none of their files; so is a document whose
+    file of ``kept``, the mirror's as ``existing`` reads them, has links. The span
     ``worklog.read`` holds the reading; ``worklog.read`` says at INFO what was read.
     ``worklog.unlinked``, a warning, says how many meetings' ``:MEETING:`` link no
     transcript read, and the first by its file, else its id: never a problem, so that it
@@ -126,7 +130,8 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
         todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
         journaled, unlinked = journal(todo, archive, archives=archives, transcripts=named)
         unread = {each.where for each in problems}
-        documents_read = writable((*journaled, *linked_back(named, journaled)), unread)
+        linked = {identifier for identifier, (matter, _) in kept.items() if matter.links}
+        documents_read = writable((*journaled, *linked_back(named, journaled)), unread, linked)
     log = structlog.get_logger()
     kinds = Counter(each.type for each in journaled)
     log.info(
@@ -173,10 +178,10 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
     outcome and kind, and each conversion timed.
     """
     log = structlog.get_logger()
-    read = read_worklog(folder, archives=archives)
+    kept = existing(docs)
+    read = read_worklog(folder, kept, archives=archives)
     problems = list(read.problems)
     converter = pandoc.org_converter()
-    kept = existing(docs)
     wanted: dict[PurePosixPath, bytes | Path] = {}
     with (
         TRACER.start_as_current_span("worklog.convert"),
@@ -263,9 +268,10 @@ def plan_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = T
     ``PandocFailedError`` when it gives none. ``worklog.end`` says at INFO what a run
     would do.
     """
-    read = read_worklog(folder, archives=archives)
+    kept = existing(docs)
+    read = read_worklog(folder, kept, archives=archives)
     converter = pandoc.org_converter()
-    held = {identifier: matter.revision for identifier, (matter, _) in existing(docs).items()}
+    held = {identifier: matter.revision for identifier, (matter, _) in kept.items()}
     to_convert = sum(
         1
         for document in read.documents

@@ -204,7 +204,8 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
   log whole.
 - A file not read also holds back the files that draw on it, which stay as they were:
   for `todo.org` or its archive, every file; for a transcript, every meeting's and each
-  that links a meeting. The others are written as usual.
+  that links a meeting, or whose file does, so that a link stays written on both files.
+  The others are written as usual.
 - `archives = false` removes, at the next run, the files of what the archive file holds,
   of `transcripts/archive/` and `meetings/archive/`, and of the headings tagged
   `ARCHIVE`; a meeting that links an archived transcript then links nothing, and is

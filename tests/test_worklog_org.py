@@ -1444,20 +1444,30 @@ def test_only_a_meeting_s_link_that_reaches_nothing_is_returned_in_meetings_orde
     assert unlinked == ["first.org", "m-20261027-second"]
 
 
+# The transcript that no meeting of SAMPLE links.
+ALONE = f"t-{sha('alone.org')}"
+
+
 @pytest.mark.parametrize(
-    ("unread", "kinds"),
+    ("unread", "linked", "kinds"),
     [
-        (set(), ["entry", "day", "meeting", "transcript", "transcript"]),
-        ({"todo.org"}, []),
-        ({"todo.org_archive"}, []),
-        ({"transcripts/misc/x.org"}, ["entry", "day", "transcript"]),
-        ({"transcripts, meetings"}, ["entry", "day", "transcript"]),
+        (set(), set(), ["entry", "day", "meeting", "transcript", "transcript"]),
+        (set(), {ALONE}, ["entry", "day", "meeting", "transcript", "transcript"]),
+        ({"todo.org"}, set(), []),
+        ({"todo.org_archive"}, set(), []),
+        ({"transcripts/misc/x.org"}, set(), ["entry", "day", "transcript"]),
+        ({"transcripts/misc/x.org"}, {ALONE}, ["entry", "day"]),
+        ({"transcripts, meetings"}, set(), ["entry", "day", "transcript"]),
     ],
 )
 def test_a_file_not_read_holds_back_each_document_that_draws_on_it(
-    unread: set[str], kinds: list[str]
+    unread: set[str], linked: set[str], kinds: list[str]
 ) -> None:
-    """The journal's files: every one; another: the meetings and what links one."""
+    """The journal's files: every one; another: the meetings and what links one.
+
+    Nor a document whose file links one, as the mirror holds it, though it links none
+    now: the meeting that its file names keeps its file, which names it back.
+    """
     read, _ = transcripts(
         [
             Source(PurePosixPath("meetings/2026-10-27 Tue/1.org"), "Words.\n", MODIFIED),
@@ -1467,7 +1477,7 @@ def test_a_file_not_read_holds_back_each_document_that_draws_on_it(
     )
     found, _ = journal(todo(DECLARED + SAMPLE), None, archives=True, transcripts=read)
     documents = [*found, *linked_back(read, found)]
-    written = writable(documents, unread)
+    written = writable(documents, unread, linked)
     assert [each.type for each in written] == kinds
     assert all(each.links == () for each in written if unread)
 

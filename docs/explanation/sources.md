@@ -41,7 +41,7 @@ A file that breaks a bound, links out, or is not UTF-8 is named by its path alon
 its content could be anything, and the run then removes no file, nor writes one that
 draws on the file not read: none for `todo.org` or its archive, which every day draws
 on; for a transcript, no meeting, whose link, start and id draw on the transcripts, nor
-a document that links one
+a document that links one, or whose file does
 ([`writable`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)). So
 the last good copy of each document stays until a run reads the folder whole.
 
