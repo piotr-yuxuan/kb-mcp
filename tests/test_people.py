@@ -400,11 +400,29 @@ def test_aliases_are_not_chained() -> None:
     assert robin_other == Person(ROBIN_OTHER, "Robin Other", (Spelling("Alex", "alex", "alias"),))
 
 
-def test_an_account_s_name_comes_before_a_meeting_s_participant() -> None:
-    """Rule 3 before rule 4: a speaker of an account's one-word name joins the account."""
-    robin = Row(5, "author", "Robin", "acct-0004", day(20))
-    result = joined((*ROWS, robin), LINKS, {})
-    assert result.of[named(LINKED, "Robin")] == anchored("account\nacct-0004")
+def test_a_speaker_whom_its_meeting_and_an_account_tell_apart_is_ambiguous() -> None:
+    """An account named Robin, one word, beside the review's Robin Example.
+
+    The site's name and the participants that the user wrote disagree: the review's
+    transcript's Robin joins neither, nor the planning's, and both are reported; Robin
+    without a meeting joins the account by its name; and where a meeting's participants
+    hold the account, the retro's Robin and Robin Other, its speaker is the account's.
+    """
+    one_word = anchored("account\nacct-0004")
+    retro, linked_to_retro = 14, 26
+    rows = (
+        *ROWS,
+        Row(5, "author", "Robin", "acct-0004", day(20)),
+        named(retro, "Robin"),
+        named(retro, "Robin Other"),
+        named(linked_to_retro, "Robin"),
+    )
+    result = joined(rows, LINKS | {linked_to_retro: {retro}}, {})
+    assert result.of[named(LINKED, "Robin")] == ROBIN_ALONE
+    assert result.of[named(PLANNED, "Robin")] == ROBIN_ALONE
+    assert result.of[named(UNLINKED, "Robin")] == one_word
+    assert result.of[named(linked_to_retro, "Robin")] == one_word
+    assert result.ambiguous[0] == Ambiguity("Robin", frozenset({one_word, ROBIN, ROBIN_OTHER}))
 
 
 def test_a_transcript_before_its_meeting_joins_by_it() -> None:

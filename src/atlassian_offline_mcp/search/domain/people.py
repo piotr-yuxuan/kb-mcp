@@ -214,9 +214,16 @@ def by_alias(row: Row, joining: Joining) -> Answer:
 def by_name(row: Row, joining: Joining) -> Answer:
     """Join a name without an account to the one account of its key (rule 3).
 
-    A name of several accounts' key is ambiguous.
+    A name of several accounts' key is ambiguous; so is a transcript's speaker whose
+    meetings give it, by rule 4, persons that do not hold that account: the site's name
+    and the participants that the user wrote for the meeting then disagree.
     """
-    return joining.account(row.name)
+    found = joining.account(row.name)
+    meeting = by_meeting(row, joining)
+    if meeting is None or not isinstance(found, str):
+        return found
+    others = meeting.persons if isinstance(meeting, Ambiguity) else frozenset({meeting})
+    return found if found in others else Ambiguity(row.name, others | {found})
 
 
 def by_meeting(row: Row, joining: Joining) -> Answer:
