@@ -50,8 +50,11 @@ CURRENT = "current"
 DIGITS = 16
 # The date that begins a folder's or a file's name.
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-# A day is a heading at level 1, or 2 below the journal; what joins it, a level below.
+# The deepest level of a day's heading: 1, or 2 below the journal.
 DAY_LEVEL = 2
+# The level of what joins a day's or a meeting's document, which begins at level 1: one
+# below it, whatever level its day's heading had.
+JOINED_LEVEL = 2
 # The properties of a meeting's drawer: the file of its transcript, and its people. A
 # child of a day with either is a meeting.
 LINKED = "MEETING"
@@ -436,7 +439,7 @@ def days_and_meetings(
             )
             if part.meeting:
                 day.meetings.append(Meeting.read(part, date, linked))
-                day.lines.extend(org.shifted(part.subtree.lines[:1], DAY_LEVEL))
+                day.lines.extend(org.shifted(part.subtree.lines[:1], JOINED_LEVEL))
             else:
                 joining.append((day, "/".join(part.path[place + 1 :]), part))
     for day, rest, part in joining:
@@ -452,7 +455,7 @@ def days_and_meetings(
         longest = max((length for length, _ in named), default=0)
         chosen = [added for length, added in named if length == longest]
         target = chosen[0] if len(chosen) == 1 else day.lines
-        target.extend(org.shifted(part.subtree.lines, DAY_LEVEL))
+        target.extend(org.shifted(part.subtree.lines, JOINED_LEVEL))
     found: list[Document] = []
     unlinked: list[str] = []
     for date, day in days.items():
