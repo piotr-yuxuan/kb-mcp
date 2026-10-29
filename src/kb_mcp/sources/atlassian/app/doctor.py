@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import shutil
 import sys
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
+from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.adapters import confluence_v2, http, jira_v3
 from kb_mcp.sources.atlassian.adapters.http import SignInNeededError, Site, SiteError
 from kb_mcp.sources.atlassian.adapters.sign_in import sign_in
@@ -19,8 +19,7 @@ if TYPE_CHECKING:
 WELL, SIGN_IN, FAILED = "well", "sign in", "failed"
 
 
-@dataclass(frozen=True)
-class Verdict:
+class Verdict(Record):
     """One check: what it looked at, what it found, and what that means."""
 
     name: str

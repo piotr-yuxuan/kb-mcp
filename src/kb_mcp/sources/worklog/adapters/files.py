@@ -12,11 +12,10 @@ from __future__ import annotations
 
 import heapq
 import stat
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import PurePosixPath
-from typing import TYPE_CHECKING
+from pathlib import Path, PurePosixPath
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.sources.worklog.domain.worklog import (
     ARCHIVED,
     ORG,
@@ -25,9 +24,6 @@ from kb_mcp.sources.worklog.domain.worklog import (
     TRANSCRIPTS,
     Source,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 MEBIBYTE = 1024 * 1024
 FILE_BYTES = 32 * MEBIBYTE
@@ -39,16 +35,14 @@ class UnreadableError(OSError):
     """A file of the work log not read; the message says why, never with its content."""
 
 
-@dataclass(frozen=True)
-class Problem:
+class Problem(Record):
     """Something of the work log not read: its path within the folder, and why."""
 
     path: str
     reason: str
 
 
-@dataclass(frozen=True)
-class Listing:
+class Listing(Record):
     """The org files found, in path order, the HTML transcripts counted, and problems."""
 
     root: Path  # the work log's folder, resolved

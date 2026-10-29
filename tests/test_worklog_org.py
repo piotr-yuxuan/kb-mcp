@@ -14,7 +14,7 @@ question 1's sample first.
 
 from __future__ import annotations
 
-import dataclasses
+import copy
 import hashlib
 import itertools
 import re
@@ -433,7 +433,7 @@ def test_shifting_moves_the_stars_alone() -> None:
         ], line
         before, after = org.heading(line, KEYWORDS), org.heading(moved[0], KEYWORDS)
         assert before is not None
-        assert after == dataclasses.replace(before, level=level), line
+        assert after == copy.replace(before, level=level), line
 
 
 def test_a_meeting_shifted_begins_at_level_one() -> None:
@@ -1321,7 +1321,7 @@ def test_same_titled_meetings_are_numbered_by_their_transcripts_starts() -> None
         archives=True,
     )
     early, late = (
-        dataclasses.replace(each, start=TUESDAY.replace(hour=hour))
+        copy.replace(each, start=TUESDAY.replace(hour=hour))
         for each, hour in zip(read, (9, 14), strict=True)
     )
     found, _ = journal(todo("\n".join(lines)), None, archives=True, transcripts=[late, early])
@@ -1364,7 +1364,7 @@ def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
     written, which may hold a passcode, whatever case its scheme takes.
     """
     (record,), _ = transcripts([transcript("2026-10-27 Tue/1.org")], archives=True)
-    record = dataclasses.replace(record, start=TUESDAY.replace(hour=9, minute=31))
+    record = copy.replace(record, start=TUESDAY.replace(hour=9, minute=31))
     found, named = journal(
         todo(
             "* Entries\n** <2026-10-27 Tue>\n*** Stand-up\n"
@@ -1409,7 +1409,7 @@ def test_a_link_to_a_transcript_moved_under_archive_reaches_it_by_its_id(
     (record,), _ = transcripts(
         [transcript("archive/2026/2026-10/2026-10-27 Tue/1.org")], archives=True
     )
-    record = dataclasses.replace(record, start=TUESDAY.replace(hour=9, minute=31))
+    record = copy.replace(record, start=TUESDAY.replace(hour=9, minute=31))
     found, named = journal(
         todo(
             "* Entries\n** <2026-10-27 Tue>\n*** Stand-up\n"
@@ -1433,7 +1433,7 @@ def test_a_link_to_a_transcript_moved_under_archive_reaches_it_by_its_id(
 def test_a_meeting_linking_another_day_s_transcript_starts_at_its_own_day() -> None:
     """A recurring meeting's heading copied with its link: the link kept, the date its day's."""
     (record,), _ = transcripts([transcript("2026-10-21 Wed/1.org")], archives=True)
-    record = dataclasses.replace(record, start=datetime(2026, 10, 21, 9, tzinfo=UTC))
+    record = copy.replace(record, start=datetime(2026, 10, 21, 9, tzinfo=UTC))
     text = "".join(
         f"** {day}\n*** Weekly sync\n:PROPERTIES:\n"
         ":MEETING: [[./transcripts/2026-10-21 Wed/1.org]]\n:END:\n"

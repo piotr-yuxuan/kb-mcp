@@ -8,11 +8,14 @@ whole anyway; a target never covered, its last week.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping
 from datetime import timedelta
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Self
+
+from pydantic import Field, model_validator
 
 from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY, RefusedError, require
+from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.domain.period import EPOCH, FIRST_FETCH, Period
 
 # The rule of a target's key, by source.
@@ -30,23 +33,23 @@ type Reason = Literal["given", "since the last fetch", "covered start", "first f
 CATCH_UP_MARGIN = timedelta(days=1)
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     from datetime import datetime
 
 
-@dataclass(frozen=True, order=True)
-class Target:
+class Target(Record):
     """A space of Confluence or a project of Jira, by its key."""
 
     source: str  # confluence or jira
     key: str
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_target(self) -> Self:
         """Refuse a source that is neither, and a key that does not look like its kind's."""
         if self.source not in KEYS:
             message = "source: neither confluence nor jira"
             raise RefusedError(message)
         require(KEYS[self.source], self.key, "key")
+        return self
 
     def __str__(self) -> str:
         """Name the target as the user does: ``space ENG``, ``project PLAT``."""
@@ -61,8 +64,7 @@ class Target:
         return self.source == "jira"
 
 
-@dataclass(frozen=True)
-class Coverage:
+class Coverage(Record):
     """Each target's covered period: every document updated in it is stored.
 
     A space is listed whole on every run, so a failure within its period (a document
@@ -73,7 +75,7 @@ class Coverage:
     before plan 034 is not, and its end may hide a failure.
     """
 
-    periods: Mapping[Target, Period] = field(default_factory=dict)
+    periods: Mapping[Target, Period] = Field(default_factory=dict)
     exact: frozenset[Target] = frozenset()
 
     def extended(
@@ -117,8 +119,7 @@ class Coverage:
         ), "capped"
 
 
-@dataclass(frozen=True)
-class Window:
+class Window(Record):
     """The period that a run fetches for a target, and why it starts where it does."""
 
     period: Period

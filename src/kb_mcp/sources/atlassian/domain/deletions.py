@@ -8,16 +8,18 @@ mass deletion, so the caller checks the session before believing it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from datetime import timedelta
+from copy import replace
+from datetime import datetime, timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
+
+from pydantic import model_validator
 
 from kb_mcp.kernel.names import RefusedError
+from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
-    from datetime import datetime
 
 # Gone answers in one space beyond which the session is checked again: a count, and a
 # share of the space's stored documents.
@@ -37,8 +39,7 @@ class Answer(StrEnum):
     UNSETTLED = "unsettled"  # found, but no stored listing names it yet: probed again
 
 
-@dataclass(frozen=True)
-class Tombstone:
+class Tombstone(Record):
     """A document absent from its space's listing, on its way to being believed gone.
 
     It is pending until a probe answers gone (``first_gone`` is then that time), and
@@ -52,11 +53,13 @@ class Tombstone:
     first_gone: datetime | None = None
     confirmed: bool = False
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_tombstone(self) -> Self:
         """Refuse a confirmation without the first answer that it follows."""
         if self.confirmed and self.first_gone is None:
             message = "confirmed: without a first answer of gone"
             raise RefusedError(message)
+        return self
 
     @property
     def key(self) -> tuple[str, str]:

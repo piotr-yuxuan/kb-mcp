@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from itertools import batched
 from typing import TYPE_CHECKING, Literal
@@ -21,11 +22,13 @@ import structlog
 from opentelemetry import metrics, trace
 from opentelemetry.context import Context
 from opentelemetry.trace import StatusCode
+from pydantic import ConfigDict, Field
 
 from kb_mcp.kernel.content import BlogPost, Issue, Page
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER
+from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.adapters.http import (
@@ -59,8 +62,7 @@ from kb_mcp.sources.atlassian.domain.deletions import (
 from kb_mcp.sources.atlassian.domain.files import skip_reason
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping, Sequence
-    from datetime import datetime
+    from collections.abc import Callable, Iterable, Mapping
 
     from kb_mcp.config.domain.settings import Settings
     from kb_mcp.kernel.content import Attachment, Document, Listed
@@ -108,11 +110,12 @@ BYTES = METER.create_counter(
 )
 
 
-@dataclass
-class Report:
+class Report(Record):
     """What a run did, by count; it names nothing that the site served."""
 
-    counts: Counter[str] = field(default_factory=Counter)
+    model_config = ConfigDict(frozen=False)
+
+    counts: Counter[str] = Field(default_factory=Counter)
 
     def add(self, what: str, number: int = 1) -> None:
         """Count something that happened."""
@@ -643,8 +646,7 @@ class Download:
             self.report.add("confluence users: named", len(users))
 
 
-@dataclass(frozen=True)
-class Targets:
+class Targets(Record):
     """What a run downloads: spaces and projects, from when, and the largest file kept.
 
     ``since`` starts every target's window there; without it, each target catches up on
@@ -669,8 +671,7 @@ class Targets:
         return {target: window(coverage, target, self.since, end) for target in named}
 
 
-@dataclass(frozen=True)
-class TargetWindow:
+class TargetWindow(Record):
     """A target of a run: its window, from ``start`` to ``end``, and why it starts there.
 
     A target skipped, its catch-up after --until, has none, as ``reason`` says.
@@ -709,8 +710,7 @@ def windows_of(
     )
 
 
-@dataclass(frozen=True)
-class Outcome:
+class Outcome(Record):
     """What a run did, the user's keys that failed, and the run's exit status.
 
     ``windows`` holds each target's window, and what became of its coverage; ``dry_run``

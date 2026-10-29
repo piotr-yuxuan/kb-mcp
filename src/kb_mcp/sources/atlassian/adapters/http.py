@@ -5,19 +5,21 @@ from __future__ import annotations
 import json
 import ssl
 import time
-from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 import certifi
 import httpx
 import structlog
 import truststore
+from pydantic import ConfigDict, Field
 
 from kb_mcp.kernel.names import SITE_PATH
+from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.http import Recorded
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping
+    from collections.abc import Callable, Iterable
 
     from kb_mcp.kernel.fields import Fields
 
@@ -38,15 +40,14 @@ MAX_FAILED_IN_A_ROW = 10
 CAUSE_DEPTH = 10
 
 
-@dataclass(frozen=True)
-class Request:
+class Request(Record):
     """A GET on the site: a site-relative path, perhaps with a query, and parameters.
 
     A parameter with a list of values is repeated, once per value.
     """
 
     path: str
-    params: Mapping[str, str | list[str]] = field(default_factory=dict)
+    params: Mapping[str, str | list[str]] = Field(default_factory=dict)
 
 
 # How a representation reads one page of a paged listing: its entries, and the request
@@ -81,14 +82,15 @@ def refuse_plain_http(request: httpx.Request) -> None:
         raise SiteError(message)
 
 
-@dataclass
-class Breaker:
+class Breaker(Record):
     """Stop a run once the site or the network stops answering, GET after GET.
 
     Only a GET that got no answer counts: a transport error, or a throttling or gateway
     status, once its retries are spent. Any other answer, even a refusal of one item,
     shows the site is there, and starts the count again.
     """
+
+    model_config = ConfigDict(frozen=False)
 
     limit: int
     failed: int = 0

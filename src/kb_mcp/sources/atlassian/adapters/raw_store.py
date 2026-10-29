@@ -9,26 +9,26 @@ import os
 import re
 import shutil
 import tempfile
+from collections.abc import Callable, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import UTC
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import BlogPost, Folder, Issue, Listed, Page, Person, Space
+from kb_mcp.kernel.content import BlogPost, Folder, Issue, Listed, Page, Person, Snapshot, Space
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER, REVISION, RefusedError, require
+from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.domain.coverage import Coverage, Target
 from kb_mcp.sources.atlassian.domain.deletions import Tombstone
 from kb_mcp.sources.atlassian.domain.period import Period, PeriodError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Mapping
-    from datetime import datetime
+    from collections.abc import Iterable, Iterator
 
-    from kb_mcp.kernel.content import Document, Snapshot
+    from kb_mcp.kernel.content import Document
 
 # The store's own file in a snapshot, beside the responses.
 RECORD = "store.json"
@@ -44,8 +44,7 @@ DIGEST = re.compile(r"[0-9a-f]{64}")
 UNREADABLE = (ValueError, OSError)
 
 
-@dataclass(frozen=True)
-class Representation:
+class Representation(Record):
     """How the snapshots of one kind of document are read.
 
     ``files`` names the responses that a snapshot of the kind must have. ``identity``
@@ -83,8 +82,7 @@ class StoreBusyError(RuntimeError):
     """Another run is writing the raw store."""
 
 
-@dataclass(frozen=True)
-class Stored:
+class Stored(Record):
     """A stored snapshot, read into the domain, with the store's record of it.
 
     ``blobs`` maps each downloaded attachment's id to its file's SHA-256; an attachment
@@ -97,8 +95,7 @@ class Stored:
     blobs: Mapping[str, str]
 
 
-@dataclass(frozen=True)
-class Unreadable:
+class Unreadable(Record):
     """Something stored that its adapter refuses: where it is, and why, without content."""
 
     where: str  # the path within the store, with an index for an entry of a listing
@@ -477,7 +474,9 @@ class RawStore:
                 "end": covered.end.astimezone(UTC).isoformat(),
                 **({"exact": True} if target in coverage.exact else {}),
             }
-            for target, covered in sorted(coverage.periods.items())
+            for target, covered in sorted(
+                coverage.periods.items(), key=lambda item: (item[0].source, item[0].key)
+            )
         ]
         _replace_synced(self.root / COVERAGE, _encode(entries))
 
