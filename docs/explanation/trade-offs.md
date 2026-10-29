@@ -266,6 +266,94 @@ that what read the two keys, a hit's line among them
   on the maintainer's feedback, its questions answered by their defaults when the
   maintainer approved it.
 
+## The journal split by shape
+
+The work log's journal, a top-level heading with a day among its children, whatever its
+title, is no longer one entry: each day is a document, and each meeting of a day
+([`journal`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+Both are found by their shape alone. A day is a heading at level 1 or 2 titled by one
+active timestamp of a date alone, such as `<2026-10-28 Wed>`
+([`date_title`](../../src/atlassian_offline_mcp/sources/worklog/domain/org.py),
+[`Part.day`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py));
+a meeting, a child of a day with `:MEETING:` or `:PARTICIPANTS:` in its drawer
+([`Part.meeting`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+A heading that org archived joins the day, or the meeting, that its `:ARCHIVE_OLPATH:`
+names, and every part of one date makes one day
+([`days_and_meetings`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+A day's id is `d-` and its date; a meeting's, `m-`, its day's date and its title's
+slug, numbered by start time where two share one
+([`meeting_ids`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+A meeting names its participants as its `:PARTICIPANTS:` writes them
+([`participants`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
+and a transcript its speakers
+([`speakers`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py));
+a meeting links the transcript whose file its `:MEETING:` names
+([`link_target`](../../src/atlassian_offline_mcp/sources/worklog/domain/org.py)),
+which links it back
+([`linked_back`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+A day, a meeting and a transcript are dated by when they happened
+([`start`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py),
+[`Document.dates`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
+afresh at each run
+([`mirror_worklog`](../../src/atlassian_offline_mcp/mirror/app/worklog.py)).
+
+- **Why.** The journal was one entry of about 2 MB: a hit in any meeting named the
+  whole journal, its meetings named nobody, a transcript was created at midnight,
+  nothing tied a summary to its record, and the meeting files under `meetings/` were
+  never read. The maintainer's feedback asked for days and meetings as documents, the
+  meetings' sections kept, participants, and each summary and its transcript linked
+  both ways. By shape rather than by the journal's name, so that a renamed journal, an
+  older "Daily notes", and the archive file, where org writes a day at level 1 and a
+  meeting archived alone with the path of its day, read alike: what Emacs 31.1's
+  archiving writes was probed for it. A day's id is its date, so that archiving one
+  part of a day moves nothing; a meeting's holds its title, readable in every hit, and
+  never the file name that its `:MEETING:` gives, which a transcript exported again
+  would change. Links are written on both files, since a program that reads one file
+  cannot compute the reverse ([the data layout](../reference/data-layout.md#links)).
+  With 040's created range, the meetings that someone attended this week are two
+  filters, `participant` and `created_after`
+  ([`KEPT`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)).
+- **Cost.** A meeting renamed takes a new id, as an entry without `:ID:` does. Two
+  meetings of one day and one title swap ids when the order of their starts changes:
+  the first archived alone while neither has a transcript, since the archive is read
+  after `todo.org`, or the first given a transcript while the second has none. A
+  top-level heading of any other purpose with a child titled by a date alone becomes a
+  journal, that child a day and its other children entries. Times are read as written,
+  as UTC: a caption tool that writes an offset from the start, `00:05`, dates its
+  transcript at five past midnight. In a transcript without quote blocks, a line of
+  prose such as `Decision: we wait` reads as a speaker. A meeting's names and its
+  transcript's speakers stay apart, as written: `Kim` and `Kim (not in the header)` are
+  two names to the filter, until a person index joins them. The dates and links of
+  every day, meeting and dated transcript are found again at each run, and a file
+  whose own changed is written again, unconverted. One rebuild, with plan 041's: the
+  index at schema 5
+  ([`SCHEMA`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)),
+  a column `links` in `documents`; the journal's text embedded again, as days and
+  meetings; transcripts named with a blank, and undated ones, given new ids once; a
+  bookmark to the journal's `e-` id broken. Every request carries 77 more estimated
+  tokens, 59 for `participant` in the schemas of `search` and `ask` and 18 for the
+  instructions' sentence: 2,471, within a standing budget raised from 2,400 to 2,500,
+  as [the tests](../../tests/test_surface.py) measure it over stdio. A meeting's front
+  matter at its largest, twelve participants and twelve refs per relation, each of the
+  longest, reads in 3,463 of `read`'s 4,000 with the smallest slice
+  ([the tests](../../tests/test_budgets.py)): `participant` is the work log's role
+  alone ([`WORKLOG_ROLES`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)),
+  since an issue with every other role and twelve participants would read 5,702, and
+  an issue with those links 4,318, so backlinks for issue keys will need a budget of
+  their own.
+- **Rejected.** The journal by its name. A second heading of one date numbered `-2`,
+  whose id archiving the first part would move. A meeting's id from its `:ID:`, which
+  survives a rename and the swaps above, but needs one in every meeting, which org does
+  not add by itself. A meeting's id from the file name that its `:MEETING:` gives.
+  Relations between a day and its meetings, whose breadcrumb and id already name the
+  day; a side table of links, and "Linked from" in `read`; participants joined across
+  documents, left to plan 043; a filter by type, which `source` with a participant or a
+  date already narrows.
+- **Settled** by [plan
+  042](../work/plans/042-work-log-days-and-meetings.md#days-and-meetings-the-rule), on
+  the maintainer's feedback, its questions answered by their defaults when the
+  maintainer approved it.
+
 ## SQLite FTS5
 
 Words are indexed by SQLite's full-text engine, FTS5, in one file,
