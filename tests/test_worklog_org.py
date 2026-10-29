@@ -580,6 +580,22 @@ def test_quote_blocks_are_the_lines_between_their_begin_and_end(
     assert org.quoted(org.read(text).lines) == expected
 
 
+# Blocks of one line, about 6 MB, as a file of 32 MiB may hold, and the seconds they
+# take at most: a pass over them, not the many that copying the lines gathered at each
+# block's end took.
+BLOCKS, BLOCKS_S = 200_000, 5
+
+
+def test_many_quote_blocks_are_read_in_time_that_grows_with_them() -> None:
+    """Each block's lines in order, within seconds."""
+    lines = [
+        line for number in range(BLOCKS) for line in ("#+begin_quote", f"{number}", "#+end_quote")
+    ]
+    began = time.perf_counter()
+    assert org.quoted(lines) == [f"{number}" for number in range(BLOCKS)]
+    assert time.perf_counter() - began < BLOCKS_S
+
+
 def test_entry_ids_follow_id_then_created_then_title() -> None:
     """The :ID:'s digest; else one of title and :CREATED:; else of the title alone."""
     ids = one(

@@ -344,7 +344,8 @@ def quoted(lines: Iterable[str]) -> list[str] | None:
 
     A block runs from a line ``#+begin_quote`` to the next ``#+end_quote``, in any case
     and indented or not; one never closed is no block, and its lines are text, as org
-    reads them. A block inside a block ends at the first ``#+end_quote``.
+    reads them. A block inside a block ends at the first ``#+end_quote``. Each block's
+    lines are added once, so that the time grows with the lines alone.
     """
     found: list[str] | None = None
     block: list[str] | None = None  # the lines of the block open, if any
@@ -353,7 +354,9 @@ def quoted(lines: Iterable[str]) -> list[str] | None:
             if QUOTE_START.fullmatch(line):
                 block = []
         elif QUOTE_END.fullmatch(line):
-            found, block = [*(found or []), *block], None
+            found = found if found is not None else []
+            found.extend(block)
+            block = None
         else:
             block.append(line)
     return found
