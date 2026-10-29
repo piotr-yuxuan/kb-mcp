@@ -13,7 +13,8 @@ each row a person, by the first of these rules that answers:
 
 A name that could be several persons, by rule 3 or 4, is ambiguous: it is reported,
 never given to one of them, and goes by rule 5. Every rule compares names by their
-key. Nothing here reads the index or the alias file.
+key, which keeps an annotation that tells two names of the work log apart. Nothing here
+reads the index or the alias file.
 """
 
 from __future__ import annotations
@@ -45,19 +46,28 @@ NOBODY = "its target names nobody"
 SEVERAL = "its target names several people"
 
 
-def name_key(name: str) -> str:
-    """Give the key by which names are compared: names of one key are one name.
+def written_key(name: str) -> str:
+    """Give a name's key with its annotation: ``name_key`` but for the part in brackets.
 
     The name casefolded, decomposed by NFKD without its accents, the combining
     diacritical marks of U+0300 to U+036F, as filters drop them, and casefolded again;
-    its runs of white space made one space, trimmed; and a trailing part in brackets
-    dropped when a name comes before it. So "Hélène  Example" and "helene example" share
-    a key, and "Kim (not in the header)" has Kim's. A kana's voicing mark, which makes
+    its runs of white space made one space, trimmed. A kana's voicing mark, which makes
     another letter, stays.
     """
     decomposed = unicodedata.normalize("NFKD", name.casefold())
     plain = "".join(char for char in decomposed if not "\u0300" <= char <= "\u036f").casefold()
-    return ANNOTATION.sub("", " ".join(plain.split()))
+    return " ".join(plain.split())
+
+
+def name_key(name: str) -> str:
+    """Give the key by which names are compared: names of one key are one name.
+
+    Its ``written_key``, without a trailing part in brackets when a name comes before
+    it. So "Hélène  Example" and "helene example" share a key, and "Kim (not in the
+    header)" has Kim's; ``Joining.key`` keeps the part where two of them tell names
+    apart.
+    """
+    return ANNOTATION.sub("", written_key(name))
 
 
 def person_id(anchor: str, value: str) -> str:
@@ -150,7 +160,9 @@ class Joining:
     """What the rules read, and the person of each row joined so far.
 
     The names of the accounts, the aliases, each transcript's meetings and each
-    document's rows.
+    document's rows. Names compare by ``key``: by their key, but for the names without
+    an account of a key written with two annotations or more, such as "Alex (Ops)" and
+    "Alex (Sales)", which the user wrote apart, and which then keep them.
     """
 
     def __init__(
@@ -169,31 +181,56 @@ class Joining:
         self.meetings = meetings
         self.persons: dict[Row, str] = {}
         self.rows: dict[int, list[Row]] = {}  # each document's
-        self.accounts: dict[str, set[str]] = {}  # each name key's accounts' persons
-        self.held: set[str] = set()  # the keys of the names without an account
+        # Each name key's names, by their written key, with their account's person, None
+        # for a name without an account.
+        spelt: dict[str, set[tuple[str, str | None]]] = {}
         for row in rows:
             self.rows.setdefault(row.document, []).append(row)
-            key = name_key(row.name)
-            if row.account is None:
-                self.held.add(key)
-            else:
-                self.accounts.setdefault(key, set()).add(person_id(ACCOUNT, row.account))
+            written = written_key(row.name)
+            account = None if row.account is None else person_id(ACCOUNT, row.account)
+            spelt.setdefault(ANNOTATION.sub("", written), set()).add((written, account))
+        # The name keys that names without an account write with two annotations or more.
+        self.split = {
+            key
+            for key, names in spelt.items()
+            if len({written for written, account in names if account is None} - {key}) > 1
+        }
+        self.accounts: dict[str, set[str]] = {}  # each ``key``'s accounts' persons
+        self.held: set[str] = set()  # the ``key`` of each name without an account
+        for key, names in spelt.items():
+            for written, account in names:
+                compared = written if key in self.split else key
+                if account is None:
+                    self.held.add(compared)
+                else:
+                    self.accounts.setdefault(compared, set()).add(account)
         self.aliases: dict[str, Alias] = {}
         for name, target in aliases.items():
             if PERSON_ID.fullmatch(target):
                 means: Answer = target
             else:
-                key = name_key(target)
+                key = self.key(target)
                 means = self.account(target) or (person_id(NAME, key) if key in self.held else None)
             key = name_key(name)
-            self.aliases[key] = Alias(name, key, target, means, held=key in self.held)
+            held = any(account is None for _, account in spelt.get(key, ()))
+            self.aliases[key] = Alias(name, key, target, means, held=held)
+
+    def key(self, name: str) -> str:
+        """Give the key by which the join compares a name, and a name alone's id hashes.
+
+        Its key, but its written key, annotation kept, where two annotations or more
+        tell apart names without an account of that key.
+        """
+        written = written_key(name)
+        key = ANNOTATION.sub("", written)
+        return written if key in self.split else key
 
     def account(self, name: str) -> Answer:
-        """Find the person of the one account with a name of this name's key.
+        """Find the person of the one account with a name of this name's ``key``.
 
         A name of several accounts' key is ambiguous; one of none, None.
         """
-        persons = self.accounts.get(name_key(name), set())
+        persons = self.accounts.get(self.key(name), set())
         if len(persons) > 1:
             return Ambiguity(name, frozenset(persons))
         return next(iter(persons), None)
@@ -298,7 +335,7 @@ def joined(
             known = ambiguous.setdefault(name_key(row.name), found)
             ambiguous[name_key(row.name)] = replace(known, persons=known.persons | found.persons)
         if not isinstance(found, str):
-            how, found = NAME, person_id(NAME, name_key(row.name))
+            how, found = NAME, person_id(NAME, joining.key(row.name))
         joining.persons[row] = found
         members.setdefault(found, []).append((row, how))
     # The persons that an account or a name makes, not an alias or a meeting alone.

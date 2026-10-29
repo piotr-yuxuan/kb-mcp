@@ -36,6 +36,7 @@ from atlassian_offline_mcp.search.domain.people import (
     by_name,
     joined,
     name_key,
+    written_key,
 )
 from tests.endpoint import nothing_listening
 from tests.mirrors import PERSONS, write
@@ -147,6 +148,12 @@ def test_a_key_drops_a_trailing_part_in_brackets() -> None:
     assert name_key("Kim (not in the header)") == "kim"
     assert name_key("Alex Example(guest)") == "alex example"
     assert name_key("(Guest)") == "(guest)"
+
+
+def test_a_written_key_keeps_the_annotation() -> None:
+    """The same folds as the key's, the part in brackets kept."""
+    assert written_key("Kim  (Not in the HEADER)") == "kim (not in the header)"
+    assert written_key("Hélène Example") == name_key("Hélène Example")
 
 
 @pytest.mark.parametrize(
@@ -276,6 +283,38 @@ def test_every_name_joins_its_person_as_the_rules_say() -> None:
         unused=(),
     )
     assert joined(ROWS, LINKS, {}) == expected
+
+
+def test_names_that_two_annotations_tell_apart_stay_apart() -> None:
+    """The offsite lists Alex (Ops) and Alex (Sales): two persons, as the user wrote them.
+
+    Its transcript's Alex could be either: it is reported, and goes with the other Alexes
+    by name alone. An alias's target names one of them by its annotation. One annotation
+    of a key still joins its name: the stand-up's Alex Example (not in the header).
+    """
+    offsite, linked_to_offsite = 14, 26
+    rows = (
+        *ROWS,
+        named(offsite, "Alex (Ops)"),
+        named(offsite, "Alex (Sales)"),
+        named(linked_to_offsite, "Alex"),
+        named(UNLINKED, "A. Ops"),
+    )
+    links = LINKS | {linked_to_offsite: {offsite}}
+    result = joined(rows, links, {"A. Ops": "alex  (OPS)"})
+    ops, sales = anchored("name\nalex (ops)"), anchored("name\nalex (sales)")
+    assert result.of[named(offsite, "Alex (Ops)")] == ops
+    assert result.of[named(offsite, "Alex (Sales)")] == sales
+    assert result.of[named(linked_to_offsite, "Alex")] == ALEX
+    assert result.of[named(UNLINKED, "Alex")] == ALEX
+    assert result.of[named(UNLINKED, "A. Ops")] == ops
+    assert result.of[named(STAND_UP, "Alex Example (not in the header)")] == ALEX_EXAMPLE
+    assert Ambiguity("Alex", frozenset({ops, sales})) in result.ambiguous
+    assert next(person for person in result.persons if person.id == ops) == Person(
+        ops,
+        "alex  (OPS)",
+        (Spelling("A. Ops", "a. ops", "alias"), Spelling("Alex (Ops)", "alex", "name")),
+    )
 
 
 def test_an_account_named_on_two_documents_of_one_date_takes_the_first() -> None:
