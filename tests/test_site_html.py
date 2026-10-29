@@ -6,6 +6,7 @@ inputs follow the same markup. These tests run pandoc, and fail without it.
 
 from __future__ import annotations
 
+import copy
 import re
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
@@ -166,6 +167,14 @@ def test_an_unknown_macro_leaves_a_placeholder_and_its_text() -> None:
     page = Pandoc.find().markdown(normalise(html, context))
     assert "\\[unsupported macro: roadmap\\]" in page
     assert "Road text" in page
+    assert context.unsupported == {"macro: roadmap": 1}
+
+
+def test_a_comment_counts_its_unknown_macro_in_its_document_s_count() -> None:
+    """A comment, normalised under its own heading, counts where its document counts."""
+    html = '<div class="conf-macro" data-macro-name="roadmap"><p>Road text</p></div>'
+    context = Context(owner="PRB-1", here=HERE, mirrored=MIRRORED)
+    normalise(html, copy.replace(context, shift=1))
     assert context.unsupported == {"macro: roadmap": 1}
 
 
