@@ -72,6 +72,7 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
     }
     found = Found(
         settings_file=SETTINGS_PATH,
+        settings_given=path,
         reads_default=path.expanduser().resolve() == defaults[SETTINGS_PATH].resolve(),
         existing=frozenset(place for place, there in defaults.items() if there.exists()),
         former_data_in_git=git_root(defaults[FORMER_DATA_DIR]) is not None,
@@ -108,7 +109,7 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
             "logs": logs.model_copy(update={"dir": (logs.dir or default_log_folder()).resolve()}),
         }
     )
-    refuse_former_name(found, settings, loaded.layers, os.environ, home)
+    refuse_former_name(found, loaded, settings.data_dir, os.environ, home)
     places = [
         ("data_dir", settings.data_dir, ""),
         *(("data_dir", part, f"{part.name}: ") for part in settings.parts),

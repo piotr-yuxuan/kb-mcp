@@ -36,7 +36,7 @@ from kb_mcp.config.domain.settings import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.domain.settings import Loaded
 
 FORMER_PREFIX = "ATLASSIAN_OFFLINE_MCP_"
 FORMER_SETTINGS_FILE = Path("~/.config/atlassian-offline-mcp/config.toml")
@@ -82,15 +82,16 @@ class FormerNameError(SettingsError):
 class Found:
     """What the loader found of the default places and the former ones, written from ``~``.
 
-    ``settings_file`` is the default settings file, and ``reads_default`` says whether the
-    run reads it, by whatever path. ``existing`` holds those of four places that exist:
-    the default settings file, ``FORMER_SETTINGS_FILE``, the default data directory and
-    ``FORMER_DATA_DIR``.
+    ``settings_file`` is the default settings file, ``settings_given`` the one that the run
+    was given, as written, and ``reads_default`` says whether they are one, by whatever
+    path. ``existing`` holds those of four places that exist: the default settings file,
+    ``FORMER_SETTINGS_FILE``, the default data directory and ``FORMER_DATA_DIR``.
     ``former_data_in_git`` says whether the former data directory lies in a git working
     tree, which was never the program's data, as the guard on where data lives refuses it.
     """
 
     settings_file: Path
+    settings_given: Path
     reads_default: bool
     existing: frozenset[Path]
     former_data_in_git: bool
@@ -106,24 +107,21 @@ class Found:
 
 
 def refuse_former_name(
-    found: Found,
-    settings: Settings,
-    layers: Mapping[str, str],
-    environ: Mapping[str, str],
-    home: Path,
+    found: Found, loaded: Loaded, data_dir: Path, environ: Mapping[str, str], home: Path
 ) -> None:
     """Raise FormerNameError for what the former name left, saying how to move it.
 
-    ``settings`` are those judged, the former file's when rule 1 holds, with ``~`` as
-    ``home``, which is resolved, and the data directory resolved; ``layers`` gives each
-    one's layer by its path joined by dots. The advice holds, each section only when it
+    ``loaded`` holds the settings judged as given, the former file's when rule 1 holds,
+    with ``~`` as ``home``, and their layers; ``data_dir`` is the data directory that
+    the run uses, resolved, as ``home`` is. The advice holds, each section only when it
     has a line: a block of the moves of rules 1 and 2, which a shell can run as it is,
     headed ``# Move the files:`` and ended by a blank line; each variable of rule 3 and
-    its new name, never its value; each path setting of rule 4 and its layer, never its
-    value; then, always, what is done by hand. A variable is read without regard to
-    case, as pydantic-settings reads it, and is set when it is not empty.
+    its new name, never its value; each path of rule 4, a setting's or the settings file
+    given, and its layer, never its value; then, always, what is done by hand. A
+    variable is read without regard to case, as pydantic-settings reads it, and is set
+    when it is not empty.
     """
-    data_dir = Path(DEFAULT_DATA_DIR)
+    default_data = Path(DEFAULT_DATA_DIR)
     moves = []
     if found.former_file_judged:
         moves.append(
@@ -131,12 +129,12 @@ def refuse_former_name(
             f" && mv {FORMER_SETTINGS_FILE} {found.settings_file}"
         )
     if (
-        settings.data_dir == at_home(data_dir, home)
-        and data_dir not in found.existing
+        data_dir == at_home(default_data, home)
+        and default_data not in found.existing
         and FORMER_DATA_DIR in found.existing
         and not found.former_data_in_git
     ):
-        moves.append(f"mv {FORMER_DATA_DIR} {data_dir}")
+        moves.append(f"mv {FORMER_DATA_DIR} {default_data}")
     given = {name.lower() for name, value in environ.items() if value}
     variables = []
     for name in sorted(environ):
@@ -146,22 +144,25 @@ def refuse_former_name(
         renamed = variable(RENAMED.get(path, path))
         if renamed.lower() not in given:
             variables.append(f"{name} to {renamed}")
-    settings = [
-        f"{setting} ({layer})"
-        for setting, layer in sorted(layers.items())
-        if SETTING_PATHS[tuple(setting.split("."))] == "path"
-        and FORMER_NAME.search(str(reduce(getattr, setting.split("."), settings)))
+    judged = [
+        *(
+            (setting, layer, reduce(getattr, setting.split("."), loaded.settings))
+            for setting, layer in sorted(loaded.layers.items())
+            if SETTING_PATHS[tuple(setting.split("."))] == "path"
+        ),
+        ("the settings file", "--config", found.settings_given),
     ]
+    paths = [f"{name} ({layer})" for name, layer, value in judged if FORMER_NAME.search(str(value))]
     sections = [
         ("# Move the files:", moves),
         (
             "Rename each variable where it is set (a shell's profile, an MCP client, sops):",
             variables,
         ),
-        ("Change each setting whose path names the former name, moving what it names:", settings),
+        ("Change each setting whose path names the former name, moving what it names:", paths),
         ("Then, by hand, as docs/how-to/move-to-kb-mcp.md says:", BY_HAND),
     ]
-    if moves or variables or settings:
+    if moves or variables or paths:
         message = "atlassian-offline-mcp, the program's former name, left what is said below"
         advice = "".join(
             f"{line}\n" for heading, lines in sections if lines for line in (heading, *lines, "")

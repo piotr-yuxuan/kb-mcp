@@ -117,12 +117,23 @@ def test_a_path_naming_the_former_name_names_its_setting_never_its_value(
     home: Path, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """Rule 4, in any case and from any layer: a path setting and its layer, not its value."""
+    worklog = tmp_path / "atlassian-offline-mcp-notes"
+    place(home, NEW_FILE, f'sources.worklog.path = "{worklog}"\n')
     monkeypatch.setenv("KB_MCP_LOGS__DIR", str(tmp_path / "Atlassian_Offline_MCP-logs"))
     data = tmp_path / "Atlassian Offline MCP" / "data"
     advice = refusal(home, flags={"--data-dir": ("data_dir", str(data))}).advice
     assert "data_dir (--data-dir)" in advice.splitlines()
     assert "logs.dir (KB_MCP_LOGS__DIR)" in advice.splitlines()
+    assert "sources.worklog.path (config.toml)" in advice.splitlines()
     assert str(tmp_path) not in advice
+
+
+def test_a_settings_file_given_by_its_former_path_is_named(home: Path) -> None:
+    """Rule 4 judges the settings file given, which a script may still name."""
+    place(home, FORMER_FILE)
+    advice = refusal(home, home / FORMER_FILE).advice
+    assert "the settings file (--config)" in advice.splitlines()
+    assert block(advice) == []
 
 
 @pytest.mark.parametrize(
@@ -172,11 +183,21 @@ def test_an_empty_new_variable_is_not_set(home: Path, monkeypatch: MonkeyPatch) 
     assert "ATLASSIAN_OFFLINE_MCP_SITE to KB_MCP_SITE" in refusal(home).advice.splitlines()
 
 
-def test_a_link_to_nothing_at_the_new_data_directory_moves_nothing(home: Path) -> None:
-    """The run's data directory is where the link leads, not ``~/kb-mcp``: no move, no stop."""
+@pytest.mark.parametrize("target", [Path("nowhere"), FORMER_DATA])
+def test_a_link_at_the_new_data_directory_is_followed(home: Path, target: Path) -> None:
+    """The run's data directory is where ``~/kb-mcp`` leads, named or not: nothing stops."""
     place(home, FORMER_DATA)
-    (home / NEW_DATA).symlink_to(home / "nowhere")
-    load_settings(SETTINGS_PATH, {}, home)
+    (home / NEW_DATA).symlink_to(home / target)
+    for flags in ({}, {"--data-dir": ("data_dir", str(home / NEW_DATA))}):
+        load_settings(SETTINGS_PATH, flags, home)
+
+
+def test_a_linked_settings_folder_still_holds_the_default(home: Path) -> None:
+    """Rule 1 holds where ``~/.config`` is a link, as a manager of dotfiles makes it."""
+    (home / "dotfiles").mkdir()
+    (home / ".config").symlink_to(home / "dotfiles")
+    place(home, FORMER_FILE)
+    assert block(refusal(home).advice) == ["# Move the files:", FILE_MOVE]
 
 
 def test_the_former_file_is_judged_in_place_of_the_missing_one(home: Path) -> None:
