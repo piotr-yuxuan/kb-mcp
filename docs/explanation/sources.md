@@ -128,7 +128,11 @@ a meeting's `transcript`, and a transcript's `summary`, each meeting that links 
 work log's step writes each link both ways
 ([`linked_back`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
 since a program that reads one file cannot find those that link to it without reading
-them all.
+them all. A meeting finds its transcript by the path that its `:MEETING:` names, else by
+the id that the path gives
+([`Meeting.read`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)):
+org rewrites no link when the user moves a transcript under `archive/`, and the move
+keeps its id.
 
 ## Untrusted, local
 

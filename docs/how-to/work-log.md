@@ -80,8 +80,10 @@ A note of the day.
 - `:PARTICIPANTS:` names the meeting's people, separated by commas outside brackets,
   each kept as written, annotation included. `:MEETING:` links its transcript, as org
   writes a link to a file (`[[./path]]`, `[[file:path][text]]` or a path alone), from
-  the folder of the org file that holds the meeting. A `:TRANSCRIPT:` URL is no link
-  here.
+  the folder of the org file that holds the meeting. Org rewrites no link when you
+  move a file, so a link to a file under `transcripts/` or `meetings/` that moved, as
+  under `archive/`, reaches it by the id that its path gives, which the move kept. A
+  `:TRANSCRIPT:` URL is no link here.
 - A transcript's people are its speakers: each line such as
   `[09:31] Alex Example: Morning.`, the time optional, read inside the file's
   `#+begin_quote` blocks when it has any, so that your notes outside them name nobody;
@@ -186,17 +188,17 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
 - A day or a meeting archived keeps its id and its file, but for the swaps of two
   meetings of one slug above. A meeting renamed takes a new id, as an entry without
   `:ID:` does.
-- A transcript added, removed, or moved from the path that a `:MEETING:` names changes
-  the links and dates of that meeting, whose file is written again without a
-  conversion.
+- A transcript added or removed changes the links and dates of the meeting whose
+  `:MEETING:` names it, whose file is written again without a conversion; one moved
+  under `archive/`, its id kept, changes neither.
 - A `:MEETING:` that links no transcript read, through `..`, absolute, of another type,
-  or to a file not read, such as one outside `transcripts/` and `meetings/`, leaves its
-  meeting without a link. The run warns once, `worklog.unlinked`, with how many and the
-  first: the file that its link names when it is in brackets or begins `file:` or `./`,
-  else the meeting's id, a path alone included, since any text, a meeting room's URL
-  among them, reads as one; never the link itself
-  ([sync's telemetry](../reference/telemetry/sync.md)). It goes on: the warning holds no
-  removal back.
+  or to a file not read, such as one outside `transcripts/` and `meetings/`, or one
+  there whose id no transcript read has, leaves its meeting without a link. The run
+  warns once, `worklog.unlinked`, with how many and the first: the file that its link
+  names when it is in brackets or begins `file:` or `./`, else the meeting's id, a path
+  alone included, since any text, a meeting room's URL among them, reads as one; never
+  the link itself ([sync's telemetry](../reference/telemetry/sync.md)). It goes on: the
+  warning holds no removal back.
 - A document removed loses its file, unless the run reported a problem (a file not
   read, a conversion that failed): then every file stays, until a run reads the work
   log whole.
@@ -205,7 +207,8 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
   that links a meeting. The others are written as usual.
 - `archives = false` removes, at the next run, the files of what the archive file holds,
   of `transcripts/archive/` and `meetings/archive/`, and of the headings tagged
-  `ARCHIVE`.
+  `ARCHIVE`; a meeting that links an archived transcript then links nothing, and is
+  counted in the warning.
 - Search: `sync` ends by rebuilding the index whole from the mirror, as `index` does,
   so a document's old pieces leave search with its old text, and a document removed
   leaves search. Each piece's vector is kept in `<data>/vectors.sqlite` by its model and

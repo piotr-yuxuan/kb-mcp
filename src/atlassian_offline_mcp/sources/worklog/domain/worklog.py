@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from atlassian_offline_mcp.kernel.content import WORKLOG_ID
+from atlassian_offline_mcp.kernel.content import WORKLOG_IDS
 from atlassian_offline_mcp.kernel.slug import slug
 from atlassian_offline_mcp.sources.worklog.domain import org
 
@@ -264,9 +264,10 @@ class Meeting:
     """A meeting of a day, and the transcript that it links, as ``read`` finds them.
 
     ``link`` is its ``:MEETING:`` as written; ``file``, the file that it names, from the
-    work log's folder, or None; ``transcript``, that file's when read; ``start``, when
-    that transcript starts if on the meeting's day, else the day. ``added`` are the
-    lines of the archived headings that join it.
+    work log's folder, or None; ``transcript``, that file's when read, else the one of
+    the id that its path gives, as ``read`` says; ``start``, when that transcript starts
+    if on the meeting's day, else the day. ``added`` are the lines of the archived
+    headings that join it.
     """
 
     part: Part
@@ -278,16 +279,28 @@ class Meeting:
 
     @classmethod
     def read(
-        cls, part: Part, day: datetime, transcripts: Mapping[PurePosixPath, Document]
+        cls,
+        part: Part,
+        day: datetime,
+        transcripts: Mapping[PurePosixPath, Document],
+        ids: Mapping[str, Document],
     ) -> Meeting:
         """Read a meeting of ``day``, its link resolved from the folder of its file.
 
-        ``transcripts`` are those read, by their path from the work log's folder.
+        ``transcripts`` are those read, by their path from the work log's folder, and
+        ``ids`` the same, by their id. A link to a file under ``transcripts/`` or
+        ``meetings/`` that no transcript read has reaches the transcript of the id that
+        its path gives, ``transcript_id``'s: a file moved under ``archive/`` keeps its id,
+        and org rewrites no link to it.
         """
         link = part.subtree.properties.get(LINKED, "")
         target = org.link_target(link)
         file = None if target is None else part.source.path.parent / target
-        transcript = None if file is None else transcripts.get(file)
+        transcript: Document | None = None
+        if file is not None:
+            transcript = transcripts.get(file)
+            if transcript is None and file.parts[0] in TRANSCRIPTS:
+                transcript = ids.get(transcript_id(file))
         start = None if transcript is None else transcript.start
         # A transcript of another day, such as a recurring meeting's link copied with its
         # heading, is linked but dates nothing: the meeting is its day's.
@@ -405,10 +418,11 @@ def days_and_meetings(
     document begins at level 1, what joins it at level 2.
 
     A meeting links to the transcript whose file its ``:MEETING:`` names, from the folder
-    of the file that holds it, and starts when that transcript starts on the meeting's
-    day, else at its day; its id is as ``meeting_ids`` gives it. Labels: a meeting's, as
-    ``Part.labels`` gives them; a day's, those of each of its headings, else, when it has
-    none, its first part's file's ``#+FILETAGS`` and ARCHIVE.
+    of the file that holds it, or whose id that file's path gives, as ``Meeting.read``
+    says, and starts when that transcript starts on the meeting's day, else at its day;
+    its id is as ``meeting_ids`` gives it. Labels: a meeting's, as ``Part.labels`` gives
+    them; a day's, those of each of its headings, else, when it has none, its first
+    part's file's ``#+FILETAGS`` and ARCHIVE.
 
     Also returned, in the order of the meetings, each whose ``:MEETING:`` links no
     transcript: by the file that it names, from the work log's folder, when it is a link
@@ -418,6 +432,7 @@ def days_and_meetings(
     nothing and is not among them.
     """
     linked = {each.source.path: each for each in transcripts}
+    ids = {each.id: each for each in linked.values()}
     days: dict[datetime, Day] = {}
     joining: list[tuple[Day, str, Part]] = []  # its day, its path after the day, it
     for part in parts:
@@ -430,7 +445,7 @@ def days_and_meetings(
             day.headings.append(part)
             children = part.children
             day.meetings.extend(
-                Meeting.read(child, part.day, linked)
+                Meeting.read(child, part.day, linked, ids)
                 for child in children
                 if child.meeting and (archives or not child.archived)
             )
@@ -447,7 +462,7 @@ def days_and_meetings(
                 Day(part.path[place], (part.source.path.name, *part.path[:place]), part),
             )
             if part.meeting:
-                day.meetings.append(Meeting.read(part, date, linked))
+                day.meetings.append(Meeting.read(part, date, linked, ids))
                 day.lines.extend(org.shifted(part.subtree.lines[:1], JOINED_LEVEL))
             else:
                 joining.append((day, "/".join(part.path[place + 1 :]), part))
@@ -567,20 +582,54 @@ def start(day: datetime, lines: Sequence[str]) -> datetime:
     return min((each for each in org.timestamps(lines) if each.date() == day.date()), default=day)
 
 
+def named_day(path: PurePosixPath) -> tuple[str, datetime] | None:
+    """Return the name that begins with a day, and that day at midnight UTC, or None.
+
+    The name of the folder that holds the transcript at ``path``, else its own less
+    ``.org``.
+    """
+    folders = path.parts[1:-1]
+    for name in (folders[-1] if folders else "", path.name.removesuffix(ORG)):
+        match = DAY.match(name)
+        if match is not None:
+            with contextlib.suppress(ValueError):  # 2026-13-40 begins no day
+                return name, datetime.fromisoformat(match[0]).replace(tzinfo=UTC)
+    return None
+
+
+def transcript_id(path: PurePosixPath) -> str:
+    """Return the id that a transcript's path, from the work log's folder, gives it.
+
+    ``t-``, the day that ``named_day`` reads, ``-``, ``meeting-`` for a file under
+    ``meetings/``, then its name less ``.org`` when the id holds to its rule so, else
+    that name's slug, else the first 16 hex digits of its name's SHA-256. Without a day,
+    ``t-`` and the digest of its name, ``meeting-`` before it under ``meetings/``. Of its
+    folders, the first alone, by ``meeting-``, and the day that begins the name of the
+    one that holds it are in it, so that a move under ``archive/`` keeps it.
+    """
+    own = path.name
+    stem = own.removesuffix(ORG)
+    named = named_day(path)
+    prefix = MEETING_FILE if path.parts[0] == MEETINGS else ""
+    dated = [
+        f"t-{named[1]:%Y%m%d}-{prefix}{part}"
+        for part in (stem, slug(stem), digest(own))
+        if named and part
+    ]
+    rule = WORKLOG_IDS[TRANSCRIPT]
+    return next((each for each in dated if rule.fullmatch(each)), f"t-{digest(prefix + own)}")
+
+
 def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Document], list[str]]:
     """Return the transcripts, and a warning for each id found twice.
 
-    A transcript is a file under ``transcripts/`` or ``meetings/``. Its id is ``t-``, the
-    day that begins its folder's name (or its own), ``-``, ``meeting-`` for a file under
-    ``meetings/``, then its name less ``.org`` when the id holds to its rule so, else
-    that name's slug, else the first 16 hex digits of its name's SHA-256. Without a day,
-    it is ``t-`` and the digest of its name, ``meeting-`` before it under ``meetings/``.
-    They come in order of their first folder, the folder that holds them, their name,
-    then their path: of two files of one id, the first keeps it and the other takes the
-    digest of its whole path, written from the work log's root (``/transcripts/...``),
-    and no name holds ``/``, so no other file's digest is the same. So a file moved under
-    ``archive/`` with the folder that holds it never hands its id to the other file,
-    unless both are in folders of one name.
+    A transcript is a file under ``transcripts/`` or ``meetings/``, its id as
+    ``transcript_id`` gives it. They come in order of their first folder, the folder
+    that holds them, their name, then their path: of two files of one id, the first
+    keeps it and the other takes the digest of its whole path, written from the work
+    log's root (``/transcripts/...``), and no name holds ``/``, so no other file's
+    digest is the same. So a file moved under ``archive/`` with the folder that holds it
+    never hands its id to the other file, unless both are in folders of one name.
 
     Its people are its ``speakers``; a dated one begins as ``start`` says. Without
     ``archives``, those under ``transcripts/archive/`` and ``meetings/archive/`` are left
@@ -598,36 +647,19 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
             each.path.as_posix(),
         ),
     ):
-        folders = source.path.parts[1:-1]
-        archived = folders[:1] == (ARCHIVED,)
+        archived = source.path.parts[1:-1][:1] == (ARCHIVED,)
         if archived and not archives:
             continue
-        own = source.path.name
-        stem = own.removesuffix(ORG)
-        folder = folders[-1] if folders else ""
-        named: list[tuple[str, datetime]] = []  # the name that begins with a day, and the day
-        for name in (folder, stem):
-            match = DAY.match(name)
-            if match is None:
-                continue
-            with contextlib.suppress(ValueError):  # 2026-13-40 begins no day
-                named.append((name, datetime.fromisoformat(match[0]).replace(tzinfo=UTC)))
-        prefix = MEETING_FILE if source.path.parts[0] == MEETINGS else ""
-        dated = [
-            f"t-{named[0][1]:%Y%m%d}-{prefix}{part}"
-            for part in (stem, slug(stem), digest(own))
-            if named and part
-        ]
-        identifier = next(
-            (each for each in dated if WORKLOG_ID.fullmatch(each)), f"t-{digest(prefix + own)}"
-        )
+        stem = source.path.name.removesuffix(ORG)
+        named = named_day(source.path)
+        identifier = transcript_id(source.path)
         if identifier in keepers:
             keeper = keepers[identifier]
             warnings.append(f"{source.path}: same id as {keeper}; named by its whole path")
             identifier = f"t-{digest(f'/{source.path.as_posix()}')}"
         keepers[identifier] = source.path
         parsed = org.read(source.text)
-        fallback = f"Transcript, {named[0][0]}, {stem}" if named else f"Transcript, {stem}"
+        fallback = f"Transcript, {named[0]}, {stem}" if named else f"Transcript, {stem}"
         first = next((each.title for each in parsed.headings if each.title), fallback)
         found.append(
             Document(
@@ -645,7 +677,7 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
                     parsed.declarations, parsed.lines, parsed.keywords, archives=archives
                 ),
                 events=source.events(parsed.lines),
-                start=start(named[0][1], parsed.lines) if named else None,
+                start=start(named[1], parsed.lines) if named else None,
                 source=source,
             )
         )

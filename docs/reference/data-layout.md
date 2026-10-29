@@ -504,9 +504,11 @@ links one.
   another title's. Its people are the names that its `:PARTICIPANTS:` gives, split at
   commas outside brackets, each once and as written, in the role `participant`; its link
   `transcript` names the transcript whose file its `:MEETING:` names, from the folder of
-  its org file, when that file is read, and that transcript's link `summary` names it
-  back; a `:MEETING:` that reaches no file read links nothing, and `worklog.unlinked`
-  counts it, a warning that holds no removal back ([sync's
+  its org file, when that file is read, else, for a file under `transcripts/` or
+  `meetings/`, the transcript read of the id that the file's path gives, since a move
+  under `archive/` keeps the id and org rewrites no link; that transcript's link
+  `summary` names it back; a `:MEETING:` that reaches no file read links nothing, and
+  `worklog.unlinked` counts it, a warning that holds no removal back ([sync's
   telemetry](telemetry/sync.md)). A day and a meeting begin at level 1, what joins them
   at level 2.
 - An **entry** is any other top-level heading, a child of the journal that is no day, or

@@ -1369,6 +1369,51 @@ def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
         assert (meeting.links, meeting.start, named) == ((), TUESDAY, [unlinked])
 
 
+@pytest.mark.parametrize(
+    ("value", "unlinked"),
+    [
+        ("[[./transcripts/current/2026-10-27 Tue/1.org]]", None),
+        ("[[file:transcripts/2026-10-27 Tue/1.org][Transcript]]", None),
+        ("[[./meetings/2026-10-27 Tue/1.org]]", "meetings/2026-10-27 Tue/1.org"),
+        ("[[./notes/2026-10-27 Tue/1.org]]", "notes/2026-10-27 Tue/1.org"),
+        (
+            "[[./transcripts/current/2026-10-27 Tue/2.org]]",
+            "transcripts/current/2026-10-27 Tue/2.org",
+        ),
+    ],
+)
+def test_a_link_to_a_transcript_moved_under_archive_reaches_it_by_its_id(
+    value: str, unlinked: str | None
+) -> None:
+    """Org rewrites no link when a file moves, and the move keeps its id.
+
+    Under transcripts/ or meetings/, a link that reaches no file read reaches the
+    transcript of the id that its path gives; elsewhere, or of another id, none.
+    """
+    (record,), _ = transcripts(
+        [transcript("archive/2026/2026-10/2026-10-27 Tue/1.org")], archives=True
+    )
+    record = dataclasses.replace(record, start=TUESDAY.replace(hour=9, minute=31))
+    found, named = journal(
+        todo(
+            "* Entries\n** <2026-10-27 Tue>\n*** Stand-up\n"
+            f":PROPERTIES:\n:MEETING: {value}\n:END:\n"
+        ),
+        None,
+        archives=True,
+        transcripts=[record],
+    )
+    (meeting,) = [each for each in found if each.type == "meeting"]
+    if unlinked is None:
+        assert (meeting.links, meeting.start, named) == (
+            (("transcript", record.id),),
+            record.start,
+            [],
+        )
+    else:
+        assert (meeting.links, meeting.start, named) == ((), TUESDAY, [unlinked])
+
+
 def test_a_meeting_linking_another_day_s_transcript_starts_at_its_own_day() -> None:
     """A recurring meeting's heading copied with its link: the link kept, the date its day's."""
     (record,), _ = transcripts([transcript("2026-10-21 Wed/1.org")], archives=True)

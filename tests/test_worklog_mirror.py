@@ -896,6 +896,36 @@ def test_a_linked_meeting_and_its_transcript_name_each_other(run: Run) -> None:
     }
 
 
+def test_linked_transcripts_archived_keep_their_links_and_their_meetings_starts(
+    run: Run,
+) -> None:
+    """Both day folders moved under archive/, as the user archives them; todo.org unchanged.
+
+    Org rewrites no link, but each moved file keeps its id, which the link's path gives:
+    every link and date stays, and the one warning is the missing file's, as before.
+    """
+    run()
+    before = {
+        each.matter.id: (each.matter.links, each.matter.created, each.matter.updated)
+        for each in run.files()
+    }
+    for folder in ("transcripts/current", "meetings"):
+        archived = run.root / folder.split("/")[0] / "archive/2026/2026-10"
+        archived.mkdir(parents=True, exist_ok=True)
+        (run.root / folder / "2026-10-27 Tue").rename(archived / "2026-10-27 Tue")
+    with capture_logs() as logged:
+        outcome = run()
+    after = {
+        each.matter.id: (each.matter.links, each.matter.created, each.matter.updated)
+        for each in run.files()
+    }
+    warned = [each for each in logged if each["event"] == "worklog.unlinked"]
+    assert (after, outcome.problems) == (before, ())
+    assert [(each["meetings"], each["first"]) for each in warned] == [
+        (1, "meetings/2026-10-27 Tue/2.org")
+    ]
+
+
 def test_a_transcript_added_dates_and_links_its_meeting_without_converting_it(run: Run) -> None:
     """todo.org unchanged: the stand-up is kept, its start and link its transcript's.
 
