@@ -134,7 +134,8 @@ class Part:
     Below the journal, the path is the journal's title, then for a meeting its day's; at
     the top of a file, it is what org wrote in ``:ARCHIVE_OLPATH:`` when it archived the
     heading, else empty. It is ``archived`` when its file is the archive or it, or a
-    heading above it, is tagged ARCHIVE.
+    heading above it, is tagged ARCHIVE; ``inherited`` are the tags of the headings above
+    it in its file, which org gives it too.
     """
 
     subtree: org.Subtree
@@ -142,6 +143,7 @@ class Part:
     source: Source
     parsed: org.OrgFile
     archived: bool
+    inherited: tuple[str, ...]
 
     @property
     def day(self) -> datetime | None:
@@ -173,7 +175,7 @@ class Part:
 
     @property
     def children(self) -> list[Part]:
-        """Return its children, below its path and its title, archived when it is."""
+        """Return its children, below its path and title, archived when it is, given its tags."""
         return [
             Part(
                 child,
@@ -181,6 +183,7 @@ class Part:
                 self.source,
                 self.parsed,
                 self.archived or org.ARCHIVE in child.heading.tags,
+                (*self.inherited, *self.subtree.heading.tags),
             )
             for child in self.subtree.children(self.parsed.keywords)
         ]
@@ -310,7 +313,7 @@ def journal(
         for subtree in parsed.subtrees:
             archived = source.path.name == TODO_ARCHIVE or org.ARCHIVE in subtree.heading.tags
             path = tuple(filter(None, subtree.properties.get(OUTLINE_PATH, "").split("/")))
-            top = Part(subtree, path, source, parsed, archived)
+            top = Part(subtree, path, source, parsed, archived, ())
             children = top.children
             if not any(child.day is not None for child in children):
                 parts.append(top)
@@ -330,7 +333,12 @@ def journal(
         title = heading.title
         base = digest(properties.get("ID") or (f"{title}\n{created}" if created else title))
         taken[base] += 1
-        labels = [*heading.tags, *part.parsed.filetags, *([org.ARCHIVE] if part.archived else [])]
+        labels = [
+            *part.inherited,
+            *heading.tags,
+            *part.parsed.filetags,
+            *([org.ARCHIVE] if part.archived else []),
+        ]
         found.append(
             Document(
                 type=ENTRY,
@@ -372,9 +380,9 @@ def days_and_meetings(
 
     A meeting links to the transcript whose file its ``:MEETING:`` names, from the folder
     of the file that holds it, and starts when that transcript starts on the meeting's
-    day, else at its day; its id is as ``meeting_ids`` gives it. Labels: tags,
-    ``#+FILETAGS`` and ARCHIVE when it is archived; a day is archived when one of its
-    headings is, or it has none.
+    day, else at its day; its id is as ``meeting_ids`` gives it. Labels: the tags of its
+    headings and of those above them, ``#+FILETAGS`` and ARCHIVE when it is archived; a
+    day is archived when one of its headings is, or it has none.
 
     Also returned, in the order of the meetings, each whose ``:MEETING:`` links no
     transcript: by the file that it names, from the work log's folder, when it is a link
@@ -444,7 +452,7 @@ def days_and_meetings(
         )
         headings = day.headings
         archived = not headings or any(each.archived for each in headings)
-        tags = [tag for each in headings for tag in each.subtree.heading.tags]
+        tags = [tag for each in headings for tag in (*each.inherited, *each.subtree.heading.tags)]
         found.append(
             Document(
                 type=DAY_TYPE,
@@ -474,6 +482,7 @@ def days_and_meetings(
             meeting, transcript = each.part, each.transcript
             heading = meeting.subtree.heading
             labels = [
+                *meeting.inherited,
                 *heading.tags,
                 *meeting.parsed.filetags,
                 *([org.ARCHIVE] if meeting.archived else []),

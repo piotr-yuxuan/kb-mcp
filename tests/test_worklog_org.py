@@ -1199,6 +1199,26 @@ def test_a_meeting_is_a_child_of_a_day_with_a_meeting_s_property() -> None:
     ]
 
 
+def test_days_meetings_and_entries_take_the_tags_of_the_headings_above_them() -> None:
+    """As org inherits tags: the journal's, then the day's, then its own; not a child's."""
+    found, _ = journal(
+        todo(
+            "* Entries :work:\n** <2026-10-28 Wed> :offsite:\n"
+            "*** Weekly sync :sync:\n:PROPERTIES:\n:PARTICIPANTS: Sam\n:END:\n"
+            "**** Notes :private:\n"
+            f"** {CONDENSED} :condensed:\n"
+        ),
+        None,
+        archives=True,
+        transcripts=(),
+    )
+    assert [(each.type, each.labels) for each in found] == [
+        ("entry", ("work", "condensed")),
+        ("day", ("work", "offsite")),
+        ("meeting", ("work", "offsite", "sync")),
+    ]
+
+
 def test_same_titled_meetings_are_numbered_by_their_transcripts_starts() -> None:
     """The meeting without a transcript starts at its day, first; then by each transcript's."""
     lines = ["* Entries", "** <2026-10-27 Tue>"]

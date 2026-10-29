@@ -517,9 +517,10 @@ links one.
   entry of one digest takes `-2`, the third `-3`, in file order, `todo.org` first.
 - The breadcrumb of an entry, a day or a meeting is its file's name, then the titles
   above it: the journal's, then a meeting's day's; for a heading at the top of a file,
-  its `:ARCHIVE_OLPATH:` instead. Its labels are its tags, its file's `#+FILETAGS` and
-  `ARCHIVE` when it, or a heading above it, is archived; a day is archived when one of
-  its headings is, or it has none.
+  its `:ARCHIVE_OLPATH:` instead. Its labels are its tags and those of the headings
+  above it in its file, as org inherits them (not the `:ARCHIVE_ITAGS:` that archiving
+  writes), its file's `#+FILETAGS` and `ARCHIVE` when it, or a heading above it, is
+  archived; a day is archived when one of its headings is, or it has none.
 - A **transcript** is an `*.org` file under `transcripts/` or `meetings/`, where the
   user's meeting-notes tool saves the file that a meeting's `:MEETING:` names, both read
   by the same rules, their 20,000 files shared. Its id is `t-`, the day that begins its

@@ -130,10 +130,11 @@ atlassian-offline-mcp sync --include worklog
 
 The files go to `<data>/docs/worklog/`: `entries/` and `transcripts/` as
 `<id>-<title>.md`, `days/` and `meetings/` as `<id>.md`. Each holds the usual front
-matter: the heading's keyword as its `status` (else `current`), its tags, the file's
-`#+FILETAGS` and `ARCHIVE` as `labels`, its file and the titles above it, or a
-transcript's folders, as `breadcrumb`. A meeting's participants and a transcript's
-speakers are its `people`, and each names the other in `links`:
+matter: the heading's keyword as its `status` (else `current`), its tags and those of
+the headings above it, the file's `#+FILETAGS` and `ARCHIVE` as `labels`, its file and
+the titles above it, or a transcript's folders, as `breadcrumb`. A meeting's
+participants and a transcript's speakers are its `people`, and each names the other in
+`links`:
 
 ```yaml
 people:
