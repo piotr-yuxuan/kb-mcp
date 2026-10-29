@@ -767,6 +767,9 @@ def test_a_journal_file_not_read_holds_every_file_back(run: Run, name: str) -> N
     assert snapshot(run.docs) == before
 
 
+STANDUP = "m-20261027-payments-stand-up"
+
+
 def one_way(files: list[Mirrored]) -> list[tuple[str, str, str]]:
     """Return each link, by its document, relation and ref, that the other does not return.
 
@@ -801,6 +804,37 @@ def test_a_link_that_a_file_held_back_names_stays_written_both_ways(run: Run) ->
     assert one_way(run.files()) == []
 
 
+@pytest.mark.parametrize(
+    ("failing", "file", "failed", "written"),
+    [
+        ("My own note before the meeting", "todo.org", STANDUP, "t-20261027-1"),
+        (
+            "XQ: asked twice about the retry budget",
+            "transcripts/current/2026-10-27 Tue/1.org",
+            "t-20261027-1",
+            STANDUP,
+        ),
+    ],
+)
+def test_a_document_that_fails_with_no_file_is_no_link_s_other_end(
+    run: Run, failing: str, file: str, failed: str, written: str
+) -> None:
+    """A meeting, or its transcript, that pandoc fails on at the first run: a problem.
+
+    The other is written without the link, so that no file names a document without one;
+    the next clean run writes both, each naming the other.
+    """
+    outcome = run(failing=failing)
+    assert [each.where for each in outcome.problems] == [f"{file}, {failed}"]
+    assert (run.by_id(written).matter.links, one_way(run.files())) == ((), [])
+    assert failed not in {each.matter.id for each in run.files()}
+    assert run().problems == ()
+    assert [(each.relation, each.ref) for each in run.by_id(written).matter.links] == [
+        ("transcript" if written == STANDUP else "summary", failed)
+    ]
+    assert one_way(run.files()) == []
+
+
 def test_a_transcript_not_read_holds_back_meetings_and_what_links_them(run: Run) -> None:
     """A meeting's link, start and id draw on transcripts, and a transcript's links on ids.
 
@@ -822,9 +856,6 @@ def test_a_transcript_not_read_holds_back_meetings_and_what_links_them(run: Run)
     assert {path: after[path] for path in held} == {path: before[path] for path in held}
     assert "An edited note of the Tuesday" in run.by_id("d-20261027").body
     assert "one edited word only" in run.by_title("WAITING Notes").body
-
-
-STANDUP = "m-20261027-payments-stand-up"
 
 
 def test_a_meeting_s_file_keeps_its_sections_as_headings_from_level_one(run: Run) -> None:

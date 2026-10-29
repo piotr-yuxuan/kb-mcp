@@ -423,7 +423,10 @@ links:
 | `summary` | a work-log transcript | each meeting whose `:MEETING:` property names it |
 
 The two relations are each other's reverse, and a link is written on both documents,
-so that a program that reads one file finds the other without reading them all.
+so that a program that reads one file finds the other without reading them all. A ref
+always names a file: in a run where a document's conversion fails and it has no file
+yet, the links to it are left out of the other documents' files, until a run converts
+it.
 `load` refuses any other relation, a field other than these or out of their order, a
 `null` and a ref off its rule, naming the entry, such as `links[0]`; and a link to the
 document itself, by its id or key, or a link given twice, naming `links`.

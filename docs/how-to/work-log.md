@@ -201,7 +201,8 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
   warning holds no removal back.
 - A document removed loses its file, unless the run reported a problem (a file not
   read, a conversion that failed): then every file stays, until a run reads the work
-  log whole.
+  log whole. A document whose conversion fails before it has a file is named in no
+  other's `links` until a run converts it.
 - A file not read also holds back the files that draw on it, which stay as they were:
   for `todo.org` or its archive, every file; for a transcript, every meeting's and each
   that links a meeting, or whose file does, so that a link stays written on both files.

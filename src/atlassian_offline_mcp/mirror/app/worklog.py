@@ -16,6 +16,7 @@ document is counted, and each conversion timed, by its kind, as
 
 from __future__ import annotations
 
+import dataclasses
 import time
 from collections import Counter
 from dataclasses import dataclass
@@ -175,14 +176,17 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
     ``worklog.convert`` and ``worklog.write`` hold building the files and writing them.
     ``worklog.document`` says at DEBUG each document, by its path, id and title, and how
     it went; ``worklog.end`` at INFO the files written. Each document is counted by its
-    outcome and kind, and each conversion timed.
+    outcome and kind, and each conversion timed. A document whose conversion failed, and
+    that has no file, is no link's other end: the links to it are left out of the
+    others' files, so that each link names a file.
     """
     log = structlog.get_logger()
     kept = existing(docs)
     read = read_worklog(folder, kept, archives=archives)
     problems = list(read.problems)
     converter = pandoc.org_converter()
-    wanted: dict[PurePosixPath, bytes | Path] = {}
+    ready: dict[PurePosixPath, tuple[FrontMatter, str]] = {}
+    failed: set[str] = set()
     with (
         TRACER.start_as_current_span("worklog.convert"),
         task("work-log documents", len(read.documents)) as built,
@@ -205,6 +209,7 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                 except PandocFailedError as error:
                     problems.append(Problem(f"{document.source.path}, {document.id}", str(error)))
                     DOCUMENTS.add(1, {"aom.outcome": "failed", **kind})
+                    failed.add(document.id)
                     continue
                 outcome = "mirrored"
                 created, updated = document.dates(None if old is None else old.created)
@@ -237,7 +242,7 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                 fetched_at=fetched_at,
             )
             path = worklog_path(document.type, document.id, document.title)
-            wanted[path] = dump(matter, body).encode()
+            ready[path] = (matter, body)
             log.debug(
                 "worklog.document",
                 path=str(path),
@@ -246,6 +251,16 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                 kind=document.type,
                 outcome=outcome,
             )
+    gone = failed - kept.keys()
+    wanted: dict[PurePosixPath, bytes | Path] = {
+        path: dump(
+            dataclasses.replace(
+                matter, links=tuple(link for link in matter.links if link.ref not in gone)
+            ),
+            body,
+        ).encode()
+        for path, (matter, body) in ready.items()
+    }
     with TRACER.start_as_current_span("worklog.write"):
         changes = sync(docs, wanted, worklog_owned, remove=not problems)
     log.info(
