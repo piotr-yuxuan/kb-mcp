@@ -1,10 +1,10 @@
 # kb-mcp
 
-Knowledge base MCP: an offline mirror of Confluence and Jira Cloud, and of your work log, kept on your own
-machine and served to coding agents (Claude Code, VS Code Copilot) through a local MCP
-server. It reads what you can already see on the site, through the REST APIs and your
-own signed-in browser session or an API token, and never writes to the site; the work
-log, a folder of org files, it reads in place.
+Knowledge base MCP: an offline mirror of Confluence and Jira Cloud, and of your work
+log, kept on your own machine and served to coding agents (Claude Code, VS Code Copilot)
+through a local MCP server. It reads what you can already see on the site, through the
+REST APIs and your own signed-in browser session or an API token, and never writes to
+the site; the work log, a folder of org files, it reads in place.
 
 Work in progress: [the roadmap](docs/work/README.md) says what each plan to come delivers;
 [the changelog](docs/work/changelog/) keeps the record of each plan done.

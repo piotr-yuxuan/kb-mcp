@@ -16,12 +16,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from kb_mcp.cli.main import main
 from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
 from kb_mcp.config.app.settings import load_settings
 from kb_mcp.config.domain.former_name import FormerNameError
 from kb_mcp.kernel.exit_status import ExitStatus
 
 if TYPE_CHECKING:
+    from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
 ROOT = Path(__file__).parents[1]
@@ -106,6 +108,7 @@ def test_a_former_variable_is_renamed_and_its_value_never_shown(
     monkeypatch.setenv(name, SITE)
     advice = refusal(home).advice
     assert f"{name} to {renamed}" in advice.splitlines()
+    assert "Then, by hand, as docs/how-to/move-to-kb-mcp.md says:" in advice.splitlines()
     assert "secret" not in advice
     assert block(advice) == []
 
@@ -253,21 +256,47 @@ def test_check_stops_before_any_log_file_and_moves_nothing(tmp_path: Path) -> No
         text=True,
         check=False,
     )
+    said = done.stderr.splitlines()
     assert done.returncode == ExitStatus.REFUSED
     assert "settings.refused" in done.stderr
     assert block(done.stderr) == ["# Move the files:", FILE_MOVE, DATA_MOVE]
-    assert "ATLASSIAN_OFFLINE_MCP_SITE to KB_MCP_SITE" in done.stderr.splitlines()
+    assert "ATLASSIAN_OFFLINE_MCP_SITE to KB_MCP_SITE" in said
+    assert "Then, by hand, as docs/how-to/move-to-kb-mcp.md says:" in said
+    assert (
+        "- uv tool uninstall atlassian-offline-mcp, then uv tool install --force <checkout>" in said
+    )
+    assert "- Claude Code: claude mcp remove --scope user atlassian-offline-mcp, then" in said
+    assert "  added again on ~/kb-mcp/docs/" in said
     assert "secret" not in done.stderr
     assert files(home) == before
 
 
+@pytest.mark.parametrize("arguments", [["--help"], ["--version"], ["completion"]])
+def test_what_reads_no_settings_never_stops(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], arguments: list[str]
+) -> None:
+    """``--help``, ``--version`` and ``completion`` read no settings: none of them stops."""
+    place(home, FORMER_FILE)
+    place(home, FORMER_DATA)
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", SITE)
+    try:
+        status = main(arguments)
+    except SystemExit as stopped:
+        status = stopped.code
+    assert status == ExitStatus.OK
+    assert "settings.refused" not in capsys.readouterr().err
+
+
 def test_the_how_to_page_holds_every_line_the_stop_prints(
-    home: Path, monkeypatch: MonkeyPatch
+    home: Path, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """The page says what the stop says, for a home holding every former place."""
     place(home, FORMER_FILE)
     place(home, FORMER_DATA)
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", SITE)
+    monkeypatch.setenv("KB_MCP_LOGS__DIR", str(tmp_path / "logs" / "atlassian-offline-mcp"))
     page = (ROOT / "docs" / "how-to" / "move-to-kb-mcp.md").read_text(encoding="utf-8")
     lines = set(page.splitlines())
-    assert [line for line in refusal(home).advice.splitlines() if line not in lines] == []
+    printed = refusal(home).advice.splitlines()
+    assert "Change each setting whose path names the former name, moving what it names:" in printed
+    assert [line for line in printed if line not in lines] == []
