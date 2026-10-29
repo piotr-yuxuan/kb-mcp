@@ -773,15 +773,30 @@ def test_a_whole_path_digest_is_never_another_file_s_digest() -> None:
         archives=True,
     )
     assert {str(each.source.path): each.id for each in found} == {
-        "transcripts/F/transcripts/misc/a.org": f"t-{sha('a.org')}",
-        "transcripts/aa/a.org": f"t-{sha('/transcripts/aa/a.org')}",
+        "transcripts/aa/a.org": f"t-{sha('a.org')}",
+        "transcripts/F/transcripts/misc/a.org": f"t-{sha('/transcripts/F/transcripts/misc/a.org')}",
         "transcripts/misc/a.org": f"t-{sha('/transcripts/misc/a.org')}",
     }
-    keeper = "transcripts/F/transcripts/misc/a.org"
+    keeper = "transcripts/aa/a.org"
     assert warnings == [
-        f"transcripts/aa/a.org: same id as {keeper}; named by its whole path",
+        f"transcripts/F/transcripts/misc/a.org: same id as {keeper}; named by its whole path",
         f"transcripts/misc/a.org: same id as {keeper}; named by its whole path",
     ]
+
+
+def test_archiving_one_of_two_files_of_one_id_never_hands_it_the_other_s() -> None:
+    """The file of the first folder by name keeps it, wherever under its folder it is."""
+    vendor_a, vendor_b = "current/vendor-a/notes.org", "current/vendor-b/notes.org"
+    archived = "archive/2026/2026-10/vendor-b/notes.org"
+    for other in (vendor_b, archived):
+        for paths in ([vendor_a, other], [other, vendor_a]):
+            found, warnings = transcripts([transcript(path) for path in paths], archives=True)
+            ids = {each.source.path.parts[-2]: each.id for each in found}
+            assert ids == {
+                "vendor-a": f"t-{sha('notes.org')}",
+                "vendor-b": f"t-{sha(f'/transcripts/{other}')}",
+            }, paths
+            assert len(warnings) == 1
 
 
 def test_two_undated_files_of_one_name_get_distinct_ids() -> None:

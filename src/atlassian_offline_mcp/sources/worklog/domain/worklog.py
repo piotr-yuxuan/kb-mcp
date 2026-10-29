@@ -530,16 +530,19 @@ def start(day: datetime, lines: Sequence[str]) -> datetime:
 
 
 def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Document], list[str]]:
-    """Return the transcripts in path order, and a warning for each id found twice.
+    """Return the transcripts, and a warning for each id found twice.
 
     A transcript is a file under ``transcripts/`` or ``meetings/``. Its id is ``t-``, the
     day that begins its folder's name (or its own), ``-``, ``meeting-`` for a file under
     ``meetings/``, then its name less ``.org`` when the id holds to its rule so, else
     that name's slug, else the first 16 hex digits of its name's SHA-256. Without a day,
     it is ``t-`` and the digest of its name, ``meeting-`` before it under ``meetings/``.
-    Of two files of one id, the first in path order keeps it and the other takes the
-    digest of its whole path, written from the work log's root (``/transcripts/...``):
-    no name holds ``/``, so no other file's digest is the same.
+    They come in order of their first folder, the folder that holds them, their name,
+    then their path: of two files of one id, the first keeps it and the other takes the
+    digest of its whole path, written from the work log's root (``/transcripts/...``),
+    and no name holds ``/``, so no other file's digest is the same. So a file moved under
+    ``archive/`` with the folder that holds it never hands its id to the other file,
+    unless both are in folders of one name.
 
     Its people are its ``speakers``; a dated one begins as ``start`` says. Without
     ``archives``, those under ``transcripts/archive/`` and ``meetings/archive/`` are left
@@ -548,7 +551,15 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
     found: list[Document] = []
     warnings: list[str] = []
     keepers: dict[str, PurePosixPath] = {}
-    for source in sorted(sources, key=lambda each: each.path.as_posix()):
+    for source in sorted(
+        sources,
+        key=lambda each: (
+            each.path.parts[0],
+            each.path.parts[1:-1][-1:],
+            each.path.name,
+            each.path.as_posix(),
+        ),
+    ):
         folders = source.path.parts[1:-1]
         archived = folders[:1] == (ARCHIVED,)
         if archived and not archives:

@@ -109,8 +109,11 @@ under `transcripts/archive/`. A name holding other characters than ASCII letters
 digits, `_` and `-` takes its slug, as a file name does: `notes on x.org` of 21 October
 is `t-20261021-notes-on-x`. A file under `meetings/` takes `meeting-` before its name,
 so that `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. A file without a day
-takes a digest of its name. Of two files of one id, a copy and its original, the first
-in path order keeps it, and a warning names both.
+takes a digest of its name. Of two files of one id, such as a copy and its original,
+or two `notes.org` in two folders, the file whose folder comes first by name keeps it,
+then the first in path order, and a warning names both. So archiving one, with its
+folder, never hands its id to the other, unless the two folders have one name, as a
+copy's may.
 
 ## 4. Mirror it
 

@@ -525,8 +525,10 @@ problem (a file not read, a conversion that failed) removes none of its files.
   `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. Without a day, it is `t-`
   and the digest of its name, `meeting-` before it under `meetings/`. No folder below
   the first is in an id, so a move under `archive/` keeps it. Of two files of one id,
-  the second in path order takes the digest of its whole path from the work log's
-  root, written with a leading `/`, which no name has.
+  the second in order of first folder, the folder that holds it, name, then path takes
+  the digest of its whole path from the work log's root, written with a leading `/`,
+  which no name has: a move under `archive/` with the folder that holds a file never
+  hands its id to the other, unless both folders have one name.
 - A transcript's people are its speakers, in the role `participant`, each once, in
   order of first speech: inside its `#+begin_quote` blocks when it has any, the notes
   outside them being the user's, else on any line, each line that holds an optional
