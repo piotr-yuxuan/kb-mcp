@@ -17,7 +17,7 @@ from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, Link, Person
 from atlassian_offline_mcp.mirror.domain.mirror_layout import WORKLOG_FOLDERS
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable, Iterator, Sequence
     from pathlib import Path
 
 KEYS = [field.name for field in dataclasses.fields(FrontMatter)]
@@ -79,6 +79,16 @@ def dump(front_matter: FrontMatter, body: str) -> str:
     return f"{OPENING}{text}{CLOSING.lstrip()}\n{body}"
 
 
+def in_order(entry: Fields, names: Sequence[str]) -> None:
+    """Refuse an entry of a list whose fields are other than ``names``, or out of their order.
+
+    The refusal names the entry's place, such as ``people[0]``, and the fields.
+    """
+    if list(entry.value) != [name for name in names if name in entry.value]:
+        message = f"{entry.path}: fields other than {', '.join(names)}, or out of order"
+        raise RepresentationError(message)
+
+
 def load(text: str, path: str) -> tuple[FrontMatter, str]:
     """Read a document written by ``dump``: its front matter and its body.
 
@@ -104,9 +114,7 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
     fields = Fields(values, path)
     people = []
     for person in fields.objects("people"):
-        if list(person.value) != [name for name in PERSON if name in person.value]:
-            message = f"{person.path}: fields other than {', '.join(PERSON)}, or out of order"
-            raise RepresentationError(message)
+        in_order(person, PERSON)
         # The times go through a Fields of their own, keyed at[0], at[1] and so on, so
         # that Fields.time reads each strictly and a refusal names its place, as objects
         # names an entry's. An empty list, which dump never writes, would read as no
@@ -127,9 +135,7 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
             )
     links = []
     for link in fields.objects("links"):
-        if list(link.value) != [name for name in LINK if name in link.value]:
-            message = f"{link.path}: fields other than {', '.join(LINK)}, or out of order"
-            raise RepresentationError(message)
+        in_order(link, LINK)
         with link.refusals():
             links.append(Link(relation=link.text("relation"), ref=link.text("ref")))
     with fields.refusals():
