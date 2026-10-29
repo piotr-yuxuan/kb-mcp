@@ -369,7 +369,7 @@ class Pieces:
             key=lambda item: (-similarity[item[1]], -self.updated[item[0]].timestamp(), item[0]),
         )[:limit]
         return {
-            path: (Score(float(similarity[index]), self.updated[path]), index)
+            path: (Score(relevance=float(similarity[index]), updated=self.updated[path]), index)
             for path, index in chosen
         }
 
@@ -392,8 +392,8 @@ def identifiers(text: str) -> Identifiers:
         *(word for word in alone if word.isascii() and word.isdigit()),
     )
     return Identifiers(
-        tuple(dict.fromkeys(key for key in keys if ISSUE_KEY.fullmatch(key))),
-        tuple(dict.fromkeys(ids)),
+        keys=tuple(dict.fromkeys(key for key in keys if ISSUE_KEY.fullmatch(key))),
+        ids=tuple(dict.fromkeys(ids)),
     )
 
 
@@ -441,11 +441,11 @@ def sections(body: str) -> list[Section]:
     ends = [start for start, _, _ in cuts[1:]] + [len(body)]
     return [
         Section(
-            number,
-            heading,
-            start,
-            body[start : start + head],
-            body[start + head : end],
+            number=number,
+            heading=heading,
+            start=start,
+            head=body[start : start + head],
+            body=body[start + head : end],
         )
         for number, ((start, heading, head), end) in enumerate(zip(cuts, ends, strict=True), 1)
     ]

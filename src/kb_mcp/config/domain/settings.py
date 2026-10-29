@@ -615,11 +615,11 @@ def entries_of(value: object, path: tuple[str, ...], layer: str) -> list[Entry]:
         ]
     if value == {} and SETTING_PATHS.get(path) == "table":
         return [
-            Entry(setting, default, layer, implicit=True)
+            Entry(path=setting, value=default, layer=layer, implicit=True)
             for setting, default in DEFAULTS.items()
             if setting[: len(path)] == path
         ]
-    return [Entry(path, value, layer)]
+    return [Entry(path=path, value=value, layer=layer)]
 
 
 def file_entries(values: Mapping[str, object], layer: str) -> list[Entry]:
@@ -670,7 +670,9 @@ def environment_entries(
         kind = SETTING_PATHS.get(path)
         if kind is None or not environ[name]:
             setting = None if kind is None else ".".join(path)
-            ignored.append(Ignored(setting, name, "empty" if setting else "names no setting"))
+            ignored.append(
+                Ignored(setting=setting, layer=name, why="empty" if setting else "names no setting")
+            )
             continue
         if kind in JSON_TYPES:
             try:
@@ -722,17 +724,27 @@ def shared_entries(environ: Mapping[str, str]) -> tuple[list[Entry], list[Entry]
     shared = environ.get(SHARED_ENDPOINT)
     if shared is not None:
         try:
-            below.append(Entry(ENDPOINT, telemetry_address(shared), SHARED_ENDPOINT))
+            below.append(
+                Entry(path=ENDPOINT, value=telemetry_address(shared), layer=SHARED_ENDPOINT)
+            )
         except ValueError as error:
-            ignored.append(Ignored(".".join(ENDPOINT), SHARED_ENDPOINT, f"not {error}"))
+            ignored.append(
+                Ignored(setting=".".join(ENDPOINT), layer=SHARED_ENDPOINT, why=f"not {error}")
+            )
     disabled = environ.get(SDK_DISABLED, "").strip().lower() == "true"
-    return below, [Entry(ENDPOINT, None, SDK_DISABLED)] if disabled else [], ignored
+    return (
+        below,
+        [Entry(path=ENDPOINT, value=None, layer=SDK_DISABLED)] if disabled else [],
+        ignored,
+    )
 
 
 # Each path setting at its default, an entry of no layer, the weakest, so that
 # ``settings_of`` makes ``~`` the home in it as in a path given.
 PATH_DEFAULTS = [
-    Entry(path, DEFAULTS[path], None) for path, kind in SETTING_PATHS.items() if kind == "path"
+    Entry(path=path, value=DEFAULTS[path], layer=None)
+    for path, kind in SETTING_PATHS.items()
+    if kind == "path"
 ]
 
 
@@ -801,10 +813,13 @@ def settings_of(entries: Iterable[Entry], home: Path) -> Loaded:
         if weaker.layer is not None and not weaker.implicit
     ]
     return Loaded(
-        settings,
-        layers,
-        tuple(Ignored(setting, layer, f"replaced by {by}") for setting, layer, by in said),
-        frozenset(setting for setting, _, _ in said),
+        settings=settings,
+        layers=layers,
+        ignored=tuple(
+            Ignored(setting=setting, layer=layer, why=f"replaced by {by}")
+            for setting, layer, by in said
+        ),
+        replaced=frozenset(setting for setting, _, _ in said),
     )
 
 

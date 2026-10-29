@@ -198,12 +198,12 @@ class Part:
         """Return its children, below its path and title, archived when it is, given its tags."""
         return [
             Part(
-                child,
-                (*self.path, self.subtree.heading.title),
-                self.source,
-                self.parsed,
-                self.archived or org.ARCHIVE in child.heading.tags,
-                (*self.inherited, *self.subtree.heading.tags),
+                subtree=child,
+                path=(*self.path, self.subtree.heading.title),
+                source=self.source,
+                parsed=self.parsed,
+                archived=self.archived or org.ARCHIVE in child.heading.tags,
+                inherited=(*self.inherited, *self.subtree.heading.tags),
             )
             for child in self.subtree.children(self.parsed.keywords)
         ]
@@ -305,7 +305,9 @@ class Meeting:
         # A transcript of another day, such as a recurring meeting's link copied with its
         # heading, is linked but dates nothing: the meeting is its day's.
         today = start is not None and start.date() == day.date()
-        return cls(part, link, file, transcript, start if today else day)
+        return cls(
+            part=part, link=link, file=file, transcript=transcript, start=start if today else day
+        )
 
 
 @dataclass
@@ -358,12 +360,21 @@ def journal(
         for subtree in parsed.subtrees:
             archived = source.path.name == TODO_ARCHIVE or org.ARCHIVE in subtree.heading.tags
             path = tuple(filter(None, subtree.properties.get(OUTLINE_PATH, "").split("/")))
-            top = Part(subtree, path, source, parsed, archived, ())
+            top = Part(
+                subtree=subtree,
+                path=path,
+                source=source,
+                parsed=parsed,
+                archived=archived,
+                inherited=(),
+            )
             children = top.children
             if not any(child.day is not None for child in children):
                 parts.append(top)
                 continue
-            own = dataclasses.replace(top, subtree=org.Subtree(subtree.heading, subtree.own))
+            own = dataclasses.replace(
+                top, subtree=org.Subtree(heading=subtree.heading, lines=subtree.own)
+            )
             text = subtree.own[1 + len(subtree.preamble) :]
             parts.extend([own] if any(line.strip() for line in text) else [])
             parts.extend(children)
@@ -440,7 +451,11 @@ def days_and_meetings(
         if part.day is not None:
             day = days.setdefault(
                 part.day,
-                Day(part.subtree.heading.title, (part.source.path.name, *part.path), part),
+                Day(
+                    title=part.subtree.heading.title,
+                    breadcrumb=(part.source.path.name, *part.path),
+                    first=part,
+                ),
             )
             day.headings.append(part)
             children = part.children
@@ -459,7 +474,11 @@ def days_and_meetings(
             place, date = within
             day = days.setdefault(
                 date,
-                Day(part.path[place], (part.source.path.name, *part.path[:place]), part),
+                Day(
+                    title=part.path[place],
+                    breadcrumb=(part.source.path.name, *part.path[:place]),
+                    first=part,
+                ),
             )
             if part.meeting:
                 day.meetings.append(Meeting.read(part, date, linked, ids))

@@ -189,8 +189,10 @@ class Chunker:
 
 
 CHUNKERS: Mapping[Chunking, Chunker] = {
-    "sections": Chunker(lambda front, cut: passages(front.title, cut), lambda piece, _: piece),
-    "windows": Chunker(windows, lambda piece, _: piece),
-    "section-paths": Chunker(section_paths, lambda piece, _: piece),
-    "small-to-big": Chunker(functools.partial(section_paths, limit=SMALL), around),
+    "sections": Chunker(
+        cut=lambda front, cut: passages(front.title, cut), unit=lambda piece, _: piece
+    ),
+    "windows": Chunker(cut=windows, unit=lambda piece, _: piece),
+    "section-paths": Chunker(cut=section_paths, unit=lambda piece, _: piece),
+    "small-to-big": Chunker(cut=functools.partial(section_paths, limit=SMALL), unit=around),
 }

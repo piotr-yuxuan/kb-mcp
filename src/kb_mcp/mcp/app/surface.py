@@ -141,25 +141,30 @@ def guides(library: Library) -> tuple[Guide, ...]:
     scope = "space:KEY or project:KEY, as status() names them"
     return (
         Guide(
-            "brief",
-            "Summarise one document: purpose, facts, decisions, status, dates.",
-            (("ref", "A page, issue or work-log id, an address or a path in the mirror."),),
-            ("read",),
-            brief,
+            name="brief",
+            description="Summarise one document: purpose, facts, decisions, status, dates.",
+            arguments=(
+                ("ref", "A page, issue or work-log id, an address or a path in the mirror."),
+            ),
+            needs=("read",),
+            render=brief,
         ),
         Guide(
-            "changes",
-            "Summarise what changed in a space or a project since a date, by theme.",
-            (("scope", scope), ("since", "An ISO 8601 date or time, such as 2026-10-01.")),
-            ("search",),
-            changes,
+            name="changes",
+            description="Summarise what changed in a space or a project since a date, by theme.",
+            arguments=(
+                ("scope", scope),
+                ("since", "An ISO 8601 date or time, such as 2026-10-01."),
+            ),
+            needs=("search",),
+            render=changes,
         ),
         Guide(
-            "overview",
-            "Say how a space or a project is organised, and what to read first.",
-            (("scope", scope),),
-            ("browse", "read"),
-            overview,
+            name="overview",
+            description="Say how a space or a project is organised, and what to read first.",
+            arguments=(("scope", scope),),
+            needs=("browse", "read"),
+            render=overview,
         ),
     )
 
@@ -172,4 +177,6 @@ def surface(library: Library, tools: Sequence[Tool]) -> Surface:
         descriptions["search"] += TO_ASK
     offered = tuple(guide for guide in guides(library) if set(guide.needs) <= set(tools))
     instructions = f"{OPENING} {said}.{WORKLOG_KINDS}{CLOSING}"
-    return Surface(tuple(tools), instructions, descriptions, offered)
+    return Surface(
+        tools=tuple(tools), instructions=instructions, descriptions=descriptions, guides=offered
+    )

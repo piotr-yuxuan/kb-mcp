@@ -158,7 +158,12 @@ def build_index(
     report = Report()
     model = embedding.embedder if embedding else None
     embedded = (
-        Embedded(model.name, model.fingerprint, model.dimensions, embedding.chunking)
+        Embedded(
+            model=model.name,
+            fingerprint=model.fingerprint,
+            dimensions=model.dimensions,
+            chunking=embedding.chunking,
+        )
         if model
         else None
     )
@@ -267,7 +272,9 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
         )
     for alias in report.persons.unused:
         log.warning("index.alias_unused", alias=alias.name, key=alias.key, reason=alias.reason)
-    return Indexed(report, indexing.index, None if embedding is None else indexing.model)
+    return Indexed(
+        report=report, index=indexing.index, model=None if embedding is None else indexing.model
+    )
 
 
 def refresh(indexing: Indexing, built_at: datetime) -> Indexed | None:

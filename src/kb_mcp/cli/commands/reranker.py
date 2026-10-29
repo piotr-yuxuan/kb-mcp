@@ -30,7 +30,7 @@ UNRELATED = "The canteen opens at noon and closes at two."
 # Each text of the request timed: as long as any that a search sends.
 LONGEST = (ANSWER + " ") * (LONGEST_TEXT // len(ANSWER) + 1)
 # The request timed is made once, however long it takes, within an evaluation's deadline.
-TIMED = Bounds(300, 1)
+TIMED = Bounds(deadline_s=300, attempts=1)
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,15 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Chec
         )
         structlog.get_logger().error("reranker.not_ready", reason=reason)
         return ExitStatus.FAILED, None
-    checked = Checked(name, settings.url, listed, answering, unrelated, settings.depth, seconds)
+    checked = Checked(
+        model=name,
+        url=settings.url,
+        served=listed,
+        answering=answering,
+        unrelated=unrelated,
+        depth=settings.depth,
+        seconds=seconds,
+    )
     return ExitStatus.OK, checked
 
 

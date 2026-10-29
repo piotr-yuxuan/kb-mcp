@@ -53,11 +53,11 @@ def test_users_are_asked_for_by_repeated_account_ids() -> None:
 def test_a_v2_listing_follows_its_next_link() -> None:
     """The next page is the path in _links.next, query included; none on the last page."""
     first = Fields({"results": [{"id": "1"}], "_links": {"next": NEXT}}, "response")
-    results, following = confluence_v2.listing_page(first, Request("/wiki/x"))
+    results, following = confluence_v2.listing_page(first, Request(path="/wiki/x"))
     assert [item.text("id") for item in results] == ["1"]
-    assert following == Request(NEXT)
+    assert following == Request(path=NEXT)
     last = Fields({"results": [], "_links": {"base": "https://site/wiki"}}, "response")
-    assert confluence_v2.listing_page(last, Request("/wiki/x"))[1] is None
+    assert confluence_v2.listing_page(last, Request(path="/wiki/x"))[1] is None
 
 
 def test_an_anonymous_user_is_not_signed_in() -> None:

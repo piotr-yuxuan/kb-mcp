@@ -164,4 +164,6 @@ class Bars(Display):
     def bar(self, what: str, total: int | None) -> Bar:
         """Begin the line of a task, below those of the tasks under way."""
         self.progress.start()
-        return TaskBar(self.progress, self.progress.add_task(what, total=total, item=""))
+        return TaskBar(
+            progress=self.progress, id=self.progress.add_task(what, total=total, item="")
+        )

@@ -110,7 +110,9 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
     results.parent.mkdir(parents=True, exist_ok=True)
     kept = recorded(found, decision, golden, about)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
-    return ExitStatus.OK, Evaluated(found, decision, settings.search_mode, results)
+    return ExitStatus.OK, Evaluated(
+        arms=found, decision=decision, mode=settings.search_mode, results=results
+    )
 
 
 def arm_row(arm: Arm, group: str) -> str:

@@ -162,7 +162,15 @@ class VectorStore:
         kept = connection.execute("SELECT count(*) FROM vectors").fetchone()[0]
         after = connection.execute(SIZE).fetchone()[0]
         shrinks = connection.execute("PRAGMA auto_vacuum").fetchone()[0] == INCREMENTAL
-        return Swept(deleted, kept, before, after, shrinks, converted, unreclaimed)
+        return Swept(
+            deleted=deleted,
+            kept=kept,
+            bytes_before=before,
+            bytes_after=after,
+            shrinks=shrinks,
+            converted=converted,
+            unreclaimed=unreclaimed,
+        )
 
     def count(self, keys: Iterable[str]) -> int:
         """Count the vectors that the store holds for these keys."""

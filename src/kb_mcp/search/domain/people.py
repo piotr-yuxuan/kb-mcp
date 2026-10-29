@@ -251,7 +251,7 @@ class Joining:
                 means = self.account(target) or (person_id(NAME, key) if key in self.held else None)
             key = name_key(name)
             held = any(account is None for _, account in spelt.get(key, ()))
-            self.aliases[key] = Alias(name, key, target, means, held=held)
+            self.aliases[key] = Alias(name=name, key=key, target=target, means=means, held=held)
 
     def key(self, name: str) -> str:
         """Give the key by which the join compares a name, and a name alone's id hashes.
@@ -271,7 +271,7 @@ class Joining:
         """
         persons = self.accounts.get(self.key(name), set())
         if len(persons) > 1:
-            return Ambiguity(name, frozenset(persons))
+            return Ambiguity(name=name, persons=frozenset(persons))
         return next(iter(persons), None)
 
 
@@ -303,8 +303,8 @@ def by_name(row: Row, joining: Joining) -> Answer:
         return found
     others = meeting.persons if isinstance(meeting, Ambiguity) else frozenset({meeting})
     if isinstance(found, Ambiguity):
-        return Ambiguity(row.name, found.persons | others)
-    return found if found in others else Ambiguity(row.name, others | {found})
+        return Ambiguity(name=row.name, persons=found.persons | others)
+    return found if found in others else Ambiguity(name=row.name, persons=others | {found})
 
 
 def by_meeting(row: Row, joining: Joining) -> Answer:
@@ -324,7 +324,7 @@ def by_meeting(row: Row, joining: Joining) -> Answer:
         if first_word(other.name) == key
     }
     if len(persons) > 1:
-        return Ambiguity(row.name, frozenset(persons))
+        return Ambiguity(name=row.name, persons=frozenset(persons))
     return next(iter(persons), None)
 
 
@@ -388,7 +388,7 @@ def joined(
                 could |= {found}
         if could:
             key = name_key(row.name)
-            known = ambiguous.setdefault(key, Ambiguity(row.name, could))
+            known = ambiguous.setdefault(key, Ambiguity(name=row.name, persons=could))
             ambiguous[key] = replace(known, persons=known.persons | could)
         joining.persons[row] = found
         members.setdefault(found, []).append((row, how))
@@ -423,8 +423,10 @@ def joined(
             name = max(own, key=lambda row: row.updated).name
         else:
             name = written.get(person) or Counter(row.name for row, _ in joins).most_common(1)[0][0]
-        spellings = sorted({Spelling(row.name, name_key(row.name), how) for row, how in joins})
-        persons.append(Person(person, name, tuple(spellings)))
+        spellings = sorted(
+            {Spelling(name=row.name, key=name_key(row.name), how=how) for row, how in joins}
+        )
+        persons.append(Person(id=person, name=name, names=tuple(spellings)))
     return Joined(
         persons=tuple(persons),
         of=joining.persons,

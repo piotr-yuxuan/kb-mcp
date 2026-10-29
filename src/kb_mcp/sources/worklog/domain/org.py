@@ -202,7 +202,7 @@ class Subtree:
                 found.append((child, [line]))
             elif found:
                 found[-1][1].append(line)
-        return tuple(Subtree(first, tuple(rest)) for first, rest in found)
+        return tuple(Subtree(heading=first, lines=tuple(rest)) for first, rest in found)
 
 
 @dataclass(frozen=True)
@@ -264,7 +264,7 @@ def read(text: str, inherited: OrgFile | None = None) -> OrgFile:
             for tag in value.replace(":", " ").split()
         ),
         headings=tuple(headings),
-        subtrees=tuple(Subtree(first, tuple(rest)) for first, rest in subtrees),
+        subtrees=tuple(Subtree(heading=first, lines=tuple(rest)) for first, rest in subtrees),
     )
 
 

@@ -139,7 +139,7 @@ def observed(
     root = logging.getLogger()
     log = structlog.get_logger()
     command = invocation.command
-    run = Run(secrets.token_hex(8))
+    run = Run(id=secrets.token_hex(8))
     with ExitStack() as stack:
         for handler in [handler for handler in root.handlers if isinstance(handler, ConsoleLines)]:
             root.removeHandler(handler)

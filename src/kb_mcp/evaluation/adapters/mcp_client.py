@@ -85,7 +85,7 @@ def listed(server: Sequence[str], deadline_s: float) -> Listing:
                     tool.model_dump(mode="json", by_alias=True, exclude_none=True, include=fields)
                     for tool in tools
                 ]
-                found.append(Listing(client.instructions or "", dumped))
+                found.append(Listing(instructions=client.instructions or "", tools=dumped))
 
     finished(session)
     return found[0]
@@ -108,7 +108,7 @@ def called(
                 text = "\n".join(
                     part.text for part in result.content if isinstance(part, TextContent)
                 )
-                found.append(Answered(text, result.is_error))
+                found.append(Answered(text=text, refused=result.is_error))
 
     finished(session)
     return found[0]

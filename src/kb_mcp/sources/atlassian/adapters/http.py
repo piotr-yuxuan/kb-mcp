@@ -160,7 +160,7 @@ class Site:
         self._sleep = sleep
         self._clock = clock
         self._last = float("-inf")
-        self._breaker = Breaker(MAX_FAILED_IN_A_ROW)
+        self._breaker = Breaker(limit=MAX_FAILED_IN_A_ROW)
 
     def json(self, request: Request) -> object:
         """GET a JSON response; a body that is not JSON (a proxy's page, say) fails it."""
@@ -178,7 +178,7 @@ class Site:
         known) fails this file alone: the session was checked when the run began.
         """
         try:
-            return self.get(Request(path), max_bytes)
+            return self.get(Request(path=path), max_bytes)
         except SignInNeededError:
             message = "refused, or sent to an unknown host"
             raise SiteError(message) from None

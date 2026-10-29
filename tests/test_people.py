@@ -64,7 +64,7 @@ def day(number: int) -> datetime:
 
 def named(document: int, name: str) -> Row:
     """Give a row of the work log's: a participant or a speaker, without an account."""
-    return Row(document, "participant", name, None, day(20))
+    return Row(document=document, role="participant", name=name, account=None, updated=day(20))
 
 
 ROBIN = anchored("account\nacct-0001")
@@ -80,10 +80,10 @@ STAND_UP, REVIEW, PLANNING = 11, 12, 13
 LINKED, UNLINKED, OTHER_UNLINKED, PLANNED, STOOD = 21, 22, 23, 24, 25
 LINKS = {LINKED: {REVIEW}, PLANNED: {PLANNING}, STOOD: {STAND_UP}}
 ACCOUNTS = (
-    Row(1, "author", "Robin Example", "acct-0001", day(20)),
-    Row(2, "creator", "Robin Sample", "acct-0001", day(21)),
-    Row(3, "author", "Sam Sample", "acct-0002", day(19)),
-    Row(4, "commenter", "Sam Sample", "acct-0003", day(19)),
+    Row(document=1, role="author", name="Robin Example", account="acct-0001", updated=day(20)),
+    Row(document=2, role="creator", name="Robin Sample", account="acct-0001", updated=day(21)),
+    Row(document=3, role="author", name="Sam Sample", account="acct-0002", updated=day(19)),
+    Row(document=4, role="commenter", name="Sam Sample", account="acct-0003", updated=day(19)),
 )
 ROWS = (
     *ACCOUNTS,
@@ -128,7 +128,9 @@ PERSONS_OF_ROWS = (
 def account(person: str, *names: str) -> Person:
     """Give an account's person: its spellings are its account's names alone."""
     return Person(
-        person, names[0], tuple(Spelling(name, name_key(name), "account") for name in names)
+        id=person,
+        name=names[0],
+        names=tuple(Spelling(name=name, key=name_key(name), how="account") for name in names),
     )
 
 
@@ -210,7 +212,7 @@ def test_by_name_joins_a_name_to_the_one_account_of_its_key() -> None:
     assert by_name(named(STAND_UP, "robin  EXAMPLE"), joining) == ROBIN
     assert by_name(named(STAND_UP, "Robin Sample"), joining) == ROBIN
     assert by_name(named(STAND_UP, "Sam Sample"), joining) == Ambiguity(
-        "Sam Sample", frozenset({SAM_2, SAM_3})
+        name="Sam Sample", persons=frozenset({SAM_2, SAM_3})
     )
     assert by_name(named(STAND_UP, "Alex Example"), joining) is None
 
@@ -237,7 +239,7 @@ def test_by_meeting_joins_a_speaker_to_the_one_person_whose_first_word_it_is() -
     assert by_meeting(named(LINKED, "robin"), joining) == ROBIN
     assert by_meeting(named(linked_to_offsite, "Robin"), joining) == ROBIN
     assert by_meeting(named(PLANNED, "Robin"), joining) == Ambiguity(
-        "Robin", frozenset({ROBIN, ROBIN_OTHER})
+        name="Robin", persons=frozenset({ROBIN, ROBIN_OTHER})
     )
     assert by_meeting(named(UNLINKED, "Robin"), joining) is None
     assert by_meeting(named(LINKED, "Example"), joining) is None  # not a first word
@@ -253,7 +255,10 @@ def test_a_speaker_whose_word_only_begins_a_participant_s_is_a_name_alone() -> N
     rob = anchored("name\nrob")
     result = joined((*ROWS, named(LINKED, "Rob")), LINKS, {})
     assert result.of[named(LINKED, "Rob")] == rob
-    assert Person(rob, "Rob", (Spelling("Rob", "rob", "name"),)) in result.persons
+    assert (
+        Person(id=rob, name="Rob", names=(Spelling(name="Rob", key="rob", how="name"),))
+        in result.persons
+    )
 
 
 def test_every_name_joins_its_person_as_the_rules_say() -> None:
@@ -270,41 +275,51 @@ def test_every_name_joins_its_person_as_the_rules_say() -> None:
             sorted(
                 (
                     Person(
-                        ROBIN,
-                        "Robin Sample",
-                        (
-                            Spelling("Robin", "robin", "meeting"),
-                            Spelling("Robin Example", "robin example", "account"),
-                            Spelling("Robin Example", "robin example", "name"),
-                            Spelling("Robin Sample", "robin sample", "account"),
-                            Spelling("robin  EXAMPLE", "robin example", "name"),
+                        id=ROBIN,
+                        name="Robin Sample",
+                        names=(
+                            Spelling(name="Robin", key="robin", how="meeting"),
+                            Spelling(name="Robin Example", key="robin example", how="account"),
+                            Spelling(name="Robin Example", key="robin example", how="name"),
+                            Spelling(name="Robin Sample", key="robin sample", how="account"),
+                            Spelling(name="robin  EXAMPLE", key="robin example", how="name"),
                         ),
                     ),
                     account(SAM_2, "Sam Sample"),
                     account(SAM_3, "Sam Sample"),
                     Person(
-                        SAM_ALONE,
-                        "Sam Sample",
-                        (
-                            Spelling("Sam", "sam", "meeting"),
-                            Spelling("Sam Sample", "sam sample", "name"),
+                        id=SAM_ALONE,
+                        name="Sam Sample",
+                        names=(
+                            Spelling(name="Sam", key="sam", how="meeting"),
+                            Spelling(name="Sam Sample", key="sam sample", how="name"),
                         ),
                     ),
                     Person(
-                        ALEX_EXAMPLE,
-                        "Alex Example (not in the header)",
-                        (
-                            Spelling("Alex", "alex", "meeting"),
-                            Spelling("Alex Example", "alex example", "name"),
-                            Spelling("Alex Example (not in the header)", "alex example", "name"),
+                        id=ALEX_EXAMPLE,
+                        name="Alex Example (not in the header)",
+                        names=(
+                            Spelling(name="Alex", key="alex", how="meeting"),
+                            Spelling(name="Alex Example", key="alex example", how="name"),
+                            Spelling(
+                                name="Alex Example (not in the header)",
+                                key="alex example",
+                                how="name",
+                            ),
                         ),
                     ),
-                    Person(ALEX, "Alex", (Spelling("Alex", "alex", "name"),)),
-                    Person(ROBIN_ALONE, "Robin", (Spelling("Robin", "robin", "name"),)),
                     Person(
-                        ROBIN_OTHER,
-                        "Robin Other",
-                        (Spelling("Robin Other", "robin other", "name"),),
+                        id=ALEX, name="Alex", names=(Spelling(name="Alex", key="alex", how="name"),)
+                    ),
+                    Person(
+                        id=ROBIN_ALONE,
+                        name="Robin",
+                        names=(Spelling(name="Robin", key="robin", how="name"),),
+                    ),
+                    Person(
+                        id=ROBIN_OTHER,
+                        name="Robin Other",
+                        names=(Spelling(name="Robin Other", key="robin other", how="name"),),
                     ),
                 ),
                 key=lambda person: person.id,
@@ -312,8 +327,8 @@ def test_every_name_joins_its_person_as_the_rules_say() -> None:
         ),
         of=dict(zip(ROWS, PERSONS_OF_ROWS, strict=True)),
         ambiguous=(
-            Ambiguity("Robin", frozenset({ROBIN, ROBIN_OTHER})),
-            Ambiguity("Sam Sample", frozenset({SAM_2, SAM_3})),
+            Ambiguity(name="Robin", persons=frozenset({ROBIN, ROBIN_OTHER})),
+            Ambiguity(name="Sam Sample", persons=frozenset({SAM_2, SAM_3})),
         ),
         unused=(),
     )
@@ -345,11 +360,14 @@ def test_names_that_two_annotations_tell_apart_stay_apart() -> None:
     assert result.of[named(UNLINKED, "Alex")] == ALEX
     assert result.of[named(UNLINKED, "A. Ops")] == ops
     assert result.of[named(STAND_UP, "Alex Example (not in the header)")] == ALEX_EXAMPLE
-    assert Ambiguity("Alex (Ops)", frozenset({ops, sales})) in result.ambiguous
+    assert Ambiguity(name="Alex (Ops)", persons=frozenset({ops, sales})) in result.ambiguous
     assert next(person for person in result.persons if person.id == ops) == Person(
-        ops,
-        "alex  (OPS)",
-        (Spelling("A. Ops", "a. ops", "alias"), Spelling("Alex (Ops)", "alex", "name")),
+        id=ops,
+        name="alex  (OPS)",
+        names=(
+            Spelling(name="A. Ops", key="a. ops", how="alias"),
+            Spelling(name="Alex (Ops)", key="alex", how="name"),
+        ),
     )
 
 
@@ -367,7 +385,9 @@ def test_two_notes_of_one_name_part_it_and_are_reported() -> None:
     noted, late = anchored("name\nkim (not in the header)"), anchored("name\nkim (late)")
     result = joined(rows, {}, {})
     assert result.of == dict(zip(rows, (anchored("name\nkim"), noted, late), strict=True))
-    assert result.ambiguous == (Ambiguity("Kim (not in the header)", frozenset({noted, late})),)
+    assert result.ambiguous == (
+        Ambiguity(name="Kim (not in the header)", persons=frozenset({noted, late})),
+    )
 
 
 def test_two_notes_of_an_account_s_name_part_it_from_the_account_and_are_reported() -> None:
@@ -377,7 +397,7 @@ def test_two_notes_of_an_account_s_name_part_it_from_the_account_and_are_reporte
     account's joins both to it, and nothing is reported then.
     """
     rows = (
-        Row(3, "author", "Sam Sample", "acct-0002", day(19)),
+        Row(document=3, role="author", name="Sam Sample", account="acct-0002", updated=day(19)),
         named(STAND_UP, "Sam Sample (not in the header)"),
         named(REVIEW, "Sam Sample (late)"),
     )
@@ -386,7 +406,7 @@ def test_two_notes_of_an_account_s_name_part_it_from_the_account_and_are_reporte
     result = joined(rows, {}, {})
     assert result.of == dict(zip(rows, (SAM_2, noted, late), strict=True))
     assert result.ambiguous == (
-        Ambiguity("Sam Sample (not in the header)", frozenset({noted, late})),
+        Ambiguity(name="Sam Sample (not in the header)", persons=frozenset({noted, late})),
     )
     aliased = joined(rows, {}, {"Sam Sample": "Sam Sample"})
     assert set(aliased.of.values()) == {SAM_2}
@@ -423,14 +443,14 @@ def test_a_name_written_as_one_account_s_annotated_name_joins_that_account() -> 
     """
     ops, sales = anchored("account\nacct-0005"), anchored("account\nacct-0006")
     rows = (
-        Row(5, "creator", "Robin (Ops)", "acct-0005", day(20)),
-        Row(6, "creator", "Robin (Sales)", "acct-0006", day(20)),
+        Row(document=5, role="creator", name="Robin (Ops)", account="acct-0005", updated=day(20)),
+        Row(document=6, role="creator", name="Robin (Sales)", account="acct-0006", updated=day(20)),
         named(STAND_UP, "robin  (OPS)"),
         named(REVIEW, "Robin"),
     )
     result = joined(rows, {}, {})
     assert result.of == {rows[0]: ops, rows[1]: sales, rows[2]: ops, rows[3]: ROBIN_ALONE}
-    assert result.ambiguous == (Ambiguity("Robin", frozenset({ops, sales})),)
+    assert result.ambiguous == (Ambiguity(name="Robin", persons=frozenset({ops, sales})),)
 
 
 def test_a_name_annotated_otherwise_than_its_one_account_joins_no_account() -> None:
@@ -440,7 +460,13 @@ def test_a_name_annotated_otherwise_than_its_one_account_joins_no_account() -> N
     could be two people is not joined by a guess.
     """
     rows = (
-        Row(5, "creator", "Robin Example (Sales)", "acct-0007", day(20)),
+        Row(
+            document=5,
+            role="creator",
+            name="Robin Example (Sales)",
+            account="acct-0007",
+            updated=day(20),
+        ),
         named(STAND_UP, "Robin Example (Ops)"),
     )
     result = joined(rows, {}, {})
@@ -451,8 +477,8 @@ def test_a_name_annotated_otherwise_than_its_one_account_joins_no_account() -> N
 def test_an_account_named_on_two_documents_of_one_date_takes_the_first() -> None:
     """Ties between an account's newest documents go to the first row in order."""
     rows = (
-        Row(2, "author", "Robin Sample", "acct-0001", day(20)),
-        Row(1, "author", "Robin Example", "acct-0001", day(20)),
+        Row(document=2, role="author", name="Robin Sample", account="acct-0001", updated=day(20)),
+        Row(document=1, role="author", name="Robin Example", account="acct-0001", updated=day(20)),
     )
     assert joined(rows, {}, {}).persons[0].name == "Robin Example"
 
@@ -475,8 +501,8 @@ def test_an_alias_joins_a_name_without_a_meeting_to_its_target() -> None:
     assert result.of[named(UNLINKED, "Robin")] == ROBIN
     assert result.of[named(PLANNED, "Robin")] == ROBIN
     robin = next(person for person in result.persons if person.id == ROBIN)
-    assert Spelling("Robin", "robin", "alias") in robin.names
-    assert Spelling("Robin", "robin", "meeting") not in robin.names
+    assert Spelling(name="Robin", key="robin", how="alias") in robin.names
+    assert Spelling(name="Robin", key="robin", how="meeting") not in robin.names
     assert ROBIN_ALONE not in {person.id for person in result.persons}
     assert [ambiguity.name for ambiguity in result.ambiguous] == ["Sam Sample"]
     assert result.unused == ()
@@ -495,7 +521,7 @@ def test_an_alias_never_takes_a_speaker_its_meeting_gives_another() -> None:
     assert result.of[named(linked_to_retro, "Robin")] == ROBIN_OTHER
     assert result.of[named(UNLINKED, "Robin")] == ROBIN
     robin_other = next(person for person in result.persons if person.id == ROBIN_OTHER)
-    assert Spelling("Robin", "robin", "meeting") in robin_other.names
+    assert Spelling(name="Robin", key="robin", how="meeting") in robin_other.names
     assert result.unused == ()
 
 
@@ -509,12 +535,12 @@ def test_an_alias_to_an_account_s_id_settles_a_name_of_two_accounts() -> None:
     assert result.of[named(STAND_UP, "Sam Sample")] == SAM_3
     assert result.of[named(STOOD, "Sam")] == SAM_3
     assert next(person for person in result.persons if person.id == SAM_3) == Person(
-        SAM_3,
-        "Sam Sample",
-        (
-            Spelling("Sam", "sam", "meeting"),
-            Spelling("Sam Sample", "sam sample", "account"),
-            Spelling("Sam Sample", "sam sample", "alias"),
+        id=SAM_3,
+        name="Sam Sample",
+        names=(
+            Spelling(name="Sam", key="sam", how="meeting"),
+            Spelling(name="Sam Sample", key="sam sample", how="account"),
+            Spelling(name="Sam Sample", key="sam sample", how="alias"),
         ),
     )
     assert SAM_ALONE not in {person.id for person in result.persons}
@@ -540,7 +566,11 @@ def test_an_alias_to_the_id_of_a_speaker_left_apart_joins_it() -> None:
     One account is named Robin, yet the disputed speaker is a person by name alone: an
     alias of R. to its id joins it there.
     """
-    rows = (*ROWS, Row(5, "author", "Robin", "acct-0004", day(20)), named(UNLINKED, "R."))
+    rows = (
+        *ROWS,
+        Row(document=5, role="author", name="Robin", account="acct-0004", updated=day(20)),
+        named(UNLINKED, "R."),
+    )
     result = joined(rows, LINKS, {"R.": ROBIN_ALONE})
     assert result.of[named(LINKED, "Robin")] == ROBIN_ALONE
     assert result.of[named(UNLINKED, "R.")] == ROBIN_ALONE
@@ -672,7 +702,7 @@ def test_a_speaker_whom_its_meeting_and_an_account_tell_apart_is_ambiguous() -> 
     retro, linked_to_retro = 14, 26
     rows = (
         *ROWS,
-        Row(5, "author", "Robin", "acct-0004", day(20)),
+        Row(document=5, role="author", name="Robin", account="acct-0004", updated=day(20)),
         named(retro, "Robin"),
         named(retro, "Robin Other"),
         named(linked_to_retro, "Robin"),
@@ -682,7 +712,9 @@ def test_a_speaker_whom_its_meeting_and_an_account_tell_apart_is_ambiguous() -> 
     assert result.of[named(PLANNED, "Robin")] == ROBIN_ALONE
     assert result.of[named(UNLINKED, "Robin")] == one_word
     assert result.of[named(linked_to_retro, "Robin")] == one_word
-    assert result.ambiguous[0] == Ambiguity("Robin", frozenset({one_word, ROBIN, ROBIN_OTHER}))
+    assert result.ambiguous[0] == Ambiguity(
+        name="Robin", persons=frozenset({one_word, ROBIN, ROBIN_OTHER})
+    )
 
 
 def test_a_speaker_of_two_accounts_name_is_reported_with_its_meeting_s_person() -> None:
@@ -694,14 +726,14 @@ def test_a_speaker_of_two_accounts_name_is_reported_with_its_meeting_s_person() 
     ops, sales = anchored("account\nacct-0005"), anchored("account\nacct-0006")
     rows = (
         *ACCOUNTS,
-        Row(5, "creator", "Robin (Ops)", "acct-0005", day(20)),
-        Row(6, "creator", "Robin (Sales)", "acct-0006", day(20)),
+        Row(document=5, role="creator", name="Robin (Ops)", account="acct-0005", updated=day(20)),
+        Row(document=6, role="creator", name="Robin (Sales)", account="acct-0006", updated=day(20)),
         named(REVIEW, "Robin Example"),
         named(LINKED, "Robin"),
     )
     result = joined(rows, LINKS, {})
     assert result.of[named(LINKED, "Robin")] == ROBIN_ALONE
-    assert result.ambiguous == (Ambiguity("Robin", frozenset({ops, sales, ROBIN})),)
+    assert result.ambiguous == (Ambiguity(name="Robin", persons=frozenset({ops, sales, ROBIN})),)
 
 
 def test_a_transcript_before_its_meeting_joins_by_it() -> None:
@@ -736,7 +768,9 @@ def test_a_name_is_reported_once_with_every_person_it_could_be() -> None:
         (*rows, named(linked_to_retro, "Robin")), LINKS | {linked_to_retro: {retro}}, {}
     )
     robin_third = anchored("name\nrobin third")
-    assert result.ambiguous[0] == Ambiguity("Robin", frozenset({ROBIN, ROBIN_OTHER, robin_third}))
+    assert result.ambiguous[0] == Ambiguity(
+        name="Robin", persons=frozenset({ROBIN, ROBIN_OTHER, robin_third})
+    )
 
 
 @pytest.mark.parametrize(

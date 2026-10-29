@@ -111,8 +111,8 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
         Invocation(
             # A step, such as eval-agents' call, is observed as its command: their log
             # files, root spans and kb_mcp.command share its name, as its pattern has it.
-            command.name.partition(" ")[0],
-            {
+            command=command.name.partition(" ")[0],
+            described={
                 "arguments": [UNLOGGED if at in hidden else each for at, each in enumerate(given)],
                 "settings": to_jsonable_python(loaded),
                 "telemetry_layer": loaded.layer("telemetry.endpoint"),

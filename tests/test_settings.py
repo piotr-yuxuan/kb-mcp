@@ -130,7 +130,7 @@ def test_the_data_directory_is_absolute_with_the_home_given_for_the_tilde(
     given: str | None, data_dir: Path
 ) -> None:
     """Data written under a relative path would land below the current directory."""
-    entries = [] if given is None else [Entry(("data_dir",), given, "--data-dir")]
+    entries = [] if given is None else [Entry(path=("data_dir",), value=given, layer="--data-dir")]
     assert settings_of(entries, HOME).settings.data_dir == data_dir
 
 
@@ -326,7 +326,9 @@ def test_an_empty_table_gives_each_setting_under_it_and_none_other() -> None:
         "sources.worklog.path": "stronger",
         "sources.worklog.archives": "stronger",
     }
-    assert loaded.ignored == (Ignored("sources.confluence.spaces", FILE, "replaced by stronger"),)
+    assert loaded.ignored == (
+        Ignored(setting="sources.confluence.spaces", layer=FILE, why="replaced by stronger"),
+    )
     assert loaded.replaced == {"sources.confluence.spaces"}
 
 
@@ -335,7 +337,7 @@ def test_a_value_replacing_an_empty_table_s_default_replaces_no_value_given() ->
     loaded = settings_of(
         [
             *file_entries({"sources": {"jira": {}}}, FILE),
-            Entry(("sources", "jira", "projects"), ["PRB"], "--project"),
+            Entry(path=("sources", "jira", "projects"), value=["PRB"], layer="--project"),
         ],
         HOME,
     )
@@ -365,7 +367,7 @@ def test_the_model_refuses_a_key_that_names_no_setting_whatever_its_layer(key: s
     ``_env_file``, which reads the file named, and ``SITE`` as ``site``.
     """
     with pytest.raises(SettingsError, match=re.escape(f"{key} (a layer):")):
-        settings_of([Entry((key,), "/etc/passwd", "a layer")], HOME)
+        settings_of([Entry(path=(key,), value="/etc/passwd", layer="a layer")], HOME)
 
 
 def test_a_refusal_never_holds_the_value() -> None:
@@ -378,21 +380,21 @@ def test_a_refusal_never_holds_the_value() -> None:
 def test_the_layer_of_a_path_that_names_no_setting_is_refused() -> None:
     """A misspelt path would otherwise name the default layer, silently."""
     with pytest.raises(KeyError):
-        Loaded(from_file({})).layer("sources.confluence.spacez")
+        Loaded(settings=from_file({})).layer("sources.confluence.spacez")
 
 
 def test_a_stronger_layer_replaces_a_weaker_one_and_the_weaker_is_ignored() -> None:
     """A flag wins over the file; the file's value is recorded as replaced."""
     loaded = settings_of(
         [
-            Entry(("site",), "https://file.example.invalid", FILE),
-            Entry(("site",), "https://flag.example.invalid", "--site"),
+            Entry(path=("site",), value="https://file.example.invalid", layer=FILE),
+            Entry(path=("site",), value="https://flag.example.invalid", layer="--site"),
         ],
         HOME,
     )
     assert loaded.settings.site == "https://flag.example.invalid"
     assert loaded.layers == {"site": "--site"}
-    assert loaded.ignored == (Ignored("site", FILE, "replaced by --site"),)
+    assert loaded.ignored == (Ignored(setting="site", layer=FILE, why="replaced by --site"),)
 
 
 def test_a_stronger_list_replaces_a_weaker_one_whole() -> None:
@@ -400,29 +402,31 @@ def test_a_stronger_list_replaces_a_weaker_one_whole() -> None:
     loaded = settings_of(
         [
             *file_entries({"sources": {"confluence": {"spaces": ["ENG", "OPS"]}}}, FILE),
-            Entry(("sources", "confluence", "spaces"), ["MFS"], "--space"),
+            Entry(path=("sources", "confluence", "spaces"), value=["MFS"], layer="--space"),
         ],
         HOME,
     )
     assert loaded.settings.sources.confluence.spaces == ("MFS",)
     assert loaded.layers == {"sources.confluence.spaces": "--space"}
-    assert loaded.ignored == (Ignored("sources.confluence.spaces", FILE, "replaced by --space"),)
+    assert loaded.ignored == (
+        Ignored(setting="sources.confluence.spaces", layer=FILE, why="replaced by --space"),
+    )
 
 
 def test_a_value_replaces_a_weaker_table_above_or_below_it() -> None:
     """A value at a table's place replaces the values under it, and the reverse."""
     loaded = settings_of(
         [
-            Entry(("sources", "jira", "projects"), ["PLAT"], FILE),
-            Entry(("sources", "jira"), {}, "stronger"),
-            Entry(("sources", "jira", "projects"), ["PRB"], "strongest"),
+            Entry(path=("sources", "jira", "projects"), value=["PLAT"], layer=FILE),
+            Entry(path=("sources", "jira"), value={}, layer="stronger"),
+            Entry(path=("sources", "jira", "projects"), value=["PRB"], layer="strongest"),
         ],
         HOME,
     )
     assert loaded.settings.sources.jira.projects == ("PRB",)
     assert loaded.ignored == (
-        Ignored("sources.jira.projects", FILE, "replaced by stronger"),
-        Ignored("sources.jira", "stronger", "replaced by strongest"),
+        Ignored(setting="sources.jira.projects", layer=FILE, why="replaced by stronger"),
+        Ignored(setting="sources.jira", layer="stronger", why="replaced by strongest"),
     )
 
 
@@ -455,8 +459,8 @@ def test_the_loader_takes_the_file_then_the_flags_and_makes_the_home_s_path(
         "sources.jira.projects": "--project",
     }
     assert set(loaded.ignored) == {
-        Ignored("data_dir", "work.toml", "replaced by --data-dir"),
-        Ignored("sources.jira.projects", "work.toml", "replaced by --project"),
+        Ignored(setting="data_dir", layer="work.toml", why="replaced by --data-dir"),
+        Ignored(setting="sources.jira.projects", layer="work.toml", why="replaced by --project"),
     }
 
 
@@ -520,7 +524,11 @@ def test_opentelemetry_s_endpoint_is_a_layer_below_the_file(
     assert from_the_file.settings.telemetry.endpoint == "http://127.0.0.1:4318"
     assert from_the_file.layers == {"telemetry.endpoint": FILE}
     assert from_the_file.ignored == (
-        Ignored("telemetry.endpoint", "OTEL_EXPORTER_OTLP_ENDPOINT", f"replaced by {FILE}"),
+        Ignored(
+            setting="telemetry.endpoint",
+            layer="OTEL_EXPORTER_OTLP_ENDPOINT",
+            why=f"replaced by {FILE}",
+        ),
     )
 
     variable = "KB_MCP_TELEMETRY__ENDPOINT"
@@ -571,8 +579,12 @@ def test_opentelemetry_disabled_leaves_telemetry_s_endpoint_unset_whatever_gave_
     assert loaded.settings.telemetry.endpoint is None
     assert loaded.layers == {"telemetry.endpoint": "OTEL_SDK_DISABLED"}
     assert loaded.ignored == (
-        Ignored("telemetry.endpoint", "OTEL_EXPORTER_OTLP_ENDPOINT", f"replaced by {FILE}"),
-        Ignored("telemetry.endpoint", FILE, "replaced by OTEL_SDK_DISABLED"),
+        Ignored(
+            setting="telemetry.endpoint",
+            layer="OTEL_EXPORTER_OTLP_ENDPOINT",
+            why=f"replaced by {FILE}",
+        ),
+        Ignored(setting="telemetry.endpoint", layer=FILE, why="replaced by OTEL_SDK_DISABLED"),
     )
 
 
@@ -604,7 +616,9 @@ def test_each_layer_wins_over_the_weaker_and_the_weaker_is_ignored(
     from_the_variable = loaded_from(tmp_path, text)
     assert from_the_variable.settings.site == "https://variable.example.invalid"
     assert from_the_variable.layers["site"] == "KB_MCP_SITE"
-    assert from_the_variable.ignored == (Ignored("site", FILE, "replaced by KB_MCP_SITE"),)
+    assert from_the_variable.ignored == (
+        Ignored(setting="site", layer=FILE, why="replaced by KB_MCP_SITE"),
+    )
 
     from_the_flag = loaded_from(
         tmp_path, text, {"--site": ("site", "https://flag.example.invalid")}
@@ -612,8 +626,8 @@ def test_each_layer_wins_over_the_weaker_and_the_weaker_is_ignored(
     assert from_the_flag.settings.site == "https://flag.example.invalid"
     assert from_the_flag.layers["site"] == "--site"
     assert set(from_the_flag.ignored) == {
-        Ignored("site", FILE, "replaced by KB_MCP_SITE"),
-        Ignored("site", "KB_MCP_SITE", "replaced by --site"),
+        Ignored(setting="site", layer=FILE, why="replaced by KB_MCP_SITE"),
+        Ignored(setting="site", layer="KB_MCP_SITE", why="replaced by --site"),
     }
 
 
@@ -694,7 +708,9 @@ def test_an_empty_table_from_the_environment_replaces_the_file_s_values_under_it
     loaded = loaded_from(tmp_path, '[sources.jira]\nprojects = ["PLAT"]\n')
     assert loaded.settings.sources.jira.projects == ()
     assert loaded.ignored == (
-        Ignored("sources.jira.projects", FILE, "replaced by KB_MCP_SOURCES__JIRA"),
+        Ignored(
+            setting="sources.jira.projects", layer=FILE, why="replaced by KB_MCP_SOURCES__JIRA"
+        ),
     )
 
 
@@ -782,7 +798,7 @@ def test_a_variable_naming_no_setting_inside_another_s_setting_is_ignored_alone(
     loaded = loaded_from(tmp_path, "")
     assert loaded.settings.sources.jira.projects == ("PRB",)
     assert loaded.layers == {"sources.jira.projects": given[0]}
-    assert loaded.ignored == (Ignored(None, unknown, "names no setting"),)
+    assert loaded.ignored == (Ignored(setting=None, layer=unknown, why="names no setting"),)
 
 
 def test_a_variable_naming_no_setting_below_a_value_is_ignored_alone(
@@ -793,7 +809,9 @@ def test_a_variable_naming_no_setting_below_a_value_is_ignored_alone(
     monkeypatch.setenv("KB_MCP_SITE__X", "1")
     loaded = loaded_from(tmp_path, "")
     assert loaded.settings.site == "https://variable.example.invalid"
-    assert loaded.ignored == (Ignored(None, "KB_MCP_SITE__X", "names no setting"),)
+    assert loaded.ignored == (
+        Ignored(setting=None, layer="KB_MCP_SITE__X", why="names no setting"),
+    )
 
 
 def test_a_variable_is_read_without_regard_to_case_and_named_as_written(
@@ -805,7 +823,7 @@ def test_a_variable_is_read_without_regard_to_case_and_named_as_written(
     loaded = loaded_from(tmp_path, "")
     assert loaded.settings.site == "https://lower.example.invalid"
     assert loaded.layers == {"site": "kb_mcp_site"}
-    assert loaded.ignored == (Ignored(None, "Kb_Mcp_Spaces", "names no setting"),)
+    assert loaded.ignored == (Ignored(setting=None, layer="Kb_Mcp_Spaces", why="names no setting"),)
 
 
 def test_the_generic_atlassian_names_are_not_read(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
@@ -919,9 +937,9 @@ def test_variables_naming_no_setting_or_empty_are_ignored(
     assert loaded.settings.site == "https://file.example.invalid"
     assert loaded.settings.sources.jira.projects == ()
     assert set(loaded.ignored) == {
-        Ignored(None, "KB_MCP_SOURCES__JIRA__PROJETS", "names no setting"),
-        Ignored(None, "KB_MCP_SPACES", "names no setting"),
-        Ignored("site", "KB_MCP_SITE", "empty"),
+        Ignored(setting=None, layer="KB_MCP_SOURCES__JIRA__PROJETS", why="names no setting"),
+        Ignored(setting=None, layer="KB_MCP_SPACES", why="names no setting"),
+        Ignored(setting="site", layer="KB_MCP_SITE", why="empty"),
     }
 
 

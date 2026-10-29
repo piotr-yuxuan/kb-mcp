@@ -172,12 +172,14 @@ def ask_verdict(pairs: Mapping[str, Sequence[tuple[float, float]]]) -> Verdict:
     adjusted = dict(zip(pvalues, holm(list(pvalues.values())), strict=True))
     differences = {
         name: Difference(
-            fmean(b - a for a, b in each) if each else 0.0,
-            interval([b - a for a, b in each]),
-            pvalues[name],
-            adjusted[name],
+            difference=fmean(b - a for a, b in each) if each else 0.0,
+            interval=interval([b - a for a, b in each]),
+            pvalue=pvalues[name],
+            adjusted=adjusted[name],
         )
         for name, each in pairs.items()
     }
     success = differences["success"]
-    return Verdict(not (success.difference < 0 and success.adjusted < ALPHA), differences)
+    return Verdict(
+        keeps_ask=not (success.difference < 0 and success.adjusted < ALPHA), differences=differences
+    )

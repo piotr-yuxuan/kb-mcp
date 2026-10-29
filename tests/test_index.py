@@ -298,14 +298,14 @@ def test_a_bug_in_the_database_s_use_is_not_taken_for_a_failure_to_write(
     write(data / "docs", page("196845", "Kafka"))
     monkeypatch.setattr(sqlite_index.Writer, "add", misused)
     indexing = Indexing(
-        data / "docs",
-        data / "index.sqlite",
-        data / "vectors.sqlite",
-        data / "eval" / "indexes",
-        data / "aliases.toml",
-        "tiny",
-        "sections",
-        None,
+        docs=data / "docs",
+        index=data / "index.sqlite",
+        vectors=data / "vectors.sqlite",
+        evaluation_indexes=data / "eval" / "indexes",
+        aliases=data / "aliases.toml",
+        model="tiny",
+        chunking="sections",
+        endpoint=None,
     )
     with pytest.raises(sqlite3.ProgrammingError):
         index_mirror(indexing, MOMENT)
@@ -591,31 +591,34 @@ def persons(data: Path) -> Path:
 # spellings' first in the order of the files, all being as frequent: the review's Alex
 # Example, the stand-up's Sam Sample.
 ROBIN_SPELT = (
-    Spelling("Robin", "robin", "meeting"),
-    Spelling("Robin Example", "robin example", "account"),
-    Spelling("Robin Example", "robin example", "name"),
-    Spelling("Robin Sample", "robin sample", "account"),
-    Spelling("robin  EXAMPLE", "robin example", "name"),
+    Spelling(name="Robin", key="robin", how="meeting"),
+    Spelling(name="Robin Example", key="robin example", how="account"),
+    Spelling(name="Robin Example", key="robin example", how="name"),
+    Spelling(name="Robin Sample", key="robin sample", how="account"),
+    Spelling(name="robin  EXAMPLE", key="robin example", how="name"),
 )
 JOINED = {
     ROBIN: ("Robin Sample", ROBIN_SPELT),
-    SAM_2: ("Sam Sample", (Spelling("Sam Sample", "sam sample", "account"),)),
-    SAM_3: ("Sam Sample", (Spelling("Sam Sample", "sam sample", "account"),)),
+    SAM_2: ("Sam Sample", (Spelling(name="Sam Sample", key="sam sample", how="account"),)),
+    SAM_3: ("Sam Sample", (Spelling(name="Sam Sample", key="sam sample", how="account"),)),
     SAM_ALONE: (
         "Sam Sample",
-        (Spelling("Sam", "sam", "meeting"), Spelling("Sam Sample", "sam sample", "name")),
+        (
+            Spelling(name="Sam", key="sam", how="meeting"),
+            Spelling(name="Sam Sample", key="sam sample", how="name"),
+        ),
     ),
     ALEX_EXAMPLE: (
         "Alex Example",
         (
-            Spelling("Alex", "alex", "meeting"),
-            Spelling("Alex Example", "alex example", "name"),
-            Spelling("Alex Example (not in the header)", "alex example", "name"),
+            Spelling(name="Alex", key="alex", how="meeting"),
+            Spelling(name="Alex Example", key="alex example", how="name"),
+            Spelling(name="Alex Example (not in the header)", key="alex example", how="name"),
         ),
     ),
-    ALEX: ("Alex", (Spelling("Alex", "alex", "name"),)),
-    ROBIN_ALONE: ("Robin", (Spelling("Robin", "robin", "name"),)),
-    ROBIN_OTHER: ("Robin Other", (Spelling("Robin Other", "robin other", "name"),)),
+    ALEX: ("Alex", (Spelling(name="Alex", key="alex", how="name"),)),
+    ROBIN_ALONE: ("Robin", (Spelling(name="Robin", key="robin", how="name"),)),
+    ROBIN_OTHER: ("Robin Other", (Spelling(name="Robin Other", key="robin other", how="name"),)),
 }
 # The person of each document's people, by the document's key or id and the name.
 PERSON_OF = {
@@ -684,12 +687,12 @@ def test_the_report_counts_the_persons_and_gives_what_the_join_left_apart(data: 
         write(data / "docs", front)
     report = build_index(data / "docs", data / "index.sqlite", MOMENT)
     assert report.persons == Outcome(
-        len(JOINED),
-        (
-            Ambiguity("Robin", frozenset({ROBIN, ROBIN_OTHER})),
-            Ambiguity("Sam Sample", frozenset({SAM_2, SAM_3})),
+        count=len(JOINED),
+        ambiguous=(
+            Ambiguity(name="Robin", persons=frozenset({ROBIN, ROBIN_OTHER})),
+            Ambiguity(name="Sam Sample", persons=frozenset({SAM_2, SAM_3})),
         ),
-        (),
+        unused=(),
     )
 
 
@@ -798,7 +801,7 @@ def test_a_person_s_documents_are_counted_by_role_and_by_source(persons: Path) -
         robin = reader.person(ROBIN)
         assert reader.person("p-0123456789abcdef") is None
     assert robin is not None
-    assert robin.person == Person(ROBIN, "Robin Sample", ROBIN_SPELT)
+    assert robin.person == Person(id=ROBIN, name="Robin Sample", names=ROBIN_SPELT)
     assert list(robin.roles.items()) == [
         ("participant", 4),
         ("author", 1),

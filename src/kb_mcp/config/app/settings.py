@@ -94,7 +94,7 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
             *file_entries(values, path.name),
             *environment,
             *(
-                Entry(tuple(setting.split(".")), value, flag)
+                Entry(path=tuple(setting.split(".")), value=value, layer=flag)
                 for flag, (setting, value) in flags.items()
                 if value is not None
             ),
@@ -121,4 +121,9 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
         if problem is not None:
             message = f"{setting} ({loaded.layer(setting)}): {where}{problem}"
             raise UnsafeDataDirError(message)
-    return Loaded(settings, loaded.layers, (*unread, *unshared, *loaded.ignored), loaded.replaced)
+    return Loaded(
+        settings=settings,
+        layers=loaded.layers,
+        ignored=(*unread, *unshared, *loaded.ignored),
+        replaced=loaded.replaced,
+    )

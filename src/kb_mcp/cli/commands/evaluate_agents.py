@@ -79,7 +79,7 @@ def prepared(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus,
         structlog.get_logger().error("eval.agent.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     if arguments.dry_run:
-        return ExitStatus.OK, Prepared(2 * len(asked), arguments.out, written=False)
+        return ExitStatus.OK, Prepared(runs=2 * len(asked), directory=arguments.out, written=False)
     # The server reads the settings as this run did: the same file, the same variables,
     # and the data directory given here, if one was.
     given = ("--data-dir", str(settings.data_dir)) if arguments.data_dir else ()
@@ -111,7 +111,7 @@ def prepared(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus,
             "eval.agent.not_prepared", reason=f"a surface's server listed nothing ({error!r})"
         )
         return ExitStatus.FAILED, None
-    return ExitStatus.OK, Prepared(len(runs.runs), arguments.out, written=True)
+    return ExitStatus.OK, Prepared(runs=len(runs.runs), directory=arguments.out, written=True)
 
 
 def bridged(arguments: argparse.Namespace, _loaded: Loaded) -> tuple[ExitStatus, Called | None]:

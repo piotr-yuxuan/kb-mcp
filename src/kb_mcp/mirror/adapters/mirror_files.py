@@ -93,4 +93,4 @@ def sync(
         while folder != docs and not any(folder.iterdir()):
             folder.rmdir()
             folder = folder.parent
-    return Changes(written, unchanged, len(stale))
+    return Changes(written=written, unchanged=unchanged, removed=len(stale))

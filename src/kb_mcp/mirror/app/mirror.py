@@ -132,7 +132,7 @@ def readable[T](items: Iterable[T | Unreadable], problems: list[Problem]) -> lis
     kept: list[T] = []
     for item in items:
         if isinstance(item, Unreadable):
-            problems.append(Problem(item.where, item.reason))
+            problems.append(Problem(where=item.where, reason=item.reason))
         else:
             kept.append(item)
     return kept
@@ -148,7 +148,9 @@ def listed_at(store: RawStore, space_id: str, problems: list[Problem]) -> dateti
     try:
         return store.listed_at(space_id) or EPOCH
     except UNREADABLE as error:
-        problems.append(Problem(f"confluence/spaces/{space_id}/listed_at.json", reason(error)))
+        problems.append(
+            Problem(where=f"confluence/spaces/{space_id}/listed_at.json", reason=reason(error))
+        )
         return EPOCH
 
 
@@ -175,7 +177,7 @@ def read_catalogue(
         if len(problems) > before:
             damaged.add(space_id)
     names = {user.account_id: user.display_name for user in users if user.display_name}
-    return Catalogue(spaces, names, listed, folders), damaged, times
+    return Catalogue(spaces=spaces, names=names, listed=listed, folders=folders), damaged, times
 
 
 def place(
@@ -195,12 +197,12 @@ def place(
     try:
         gone = {key: stone for key, stone in store.tombstones().items() if stone.confirmed}
     except UNREADABLE as error:
-        problems.append(Problem("tombstones.json", reason(error)))
+        problems.append(Problem(where="tombstones.json", reason=reason(error)))
         gone = {}
     for found in (item for kind in KINDS for item in readable(store.latest(kind), problems)):
         stored, document = found, found.snapshot.document
         if isinstance(document, Issue):
-            placed.append(Placed(stored, issue_path(document)))
+            placed.append(Placed(stored=stored, path=issue_path(document)))
             continue
         if not isinstance(document, ConfluenceDocument):
             continue
@@ -222,11 +224,11 @@ def place(
             document = moved
         if document.space_id in catalogue.spaces:
             key = catalogue.spaces[document.space_id].key
-            placed.append(Placed(stored, confluence_path(document, key)))
+            placed.append(Placed(stored=stored, path=confluence_path(document, key)))
             if moves and old is not None:
                 retired[old] = confluence_path(document, key)
         else:
-            problems.append(Problem(where(store, stored), "space not listed"))
+            problems.append(Problem(where=where(store, stored), reason="space not listed"))
     return placed, retired
 
 
@@ -246,7 +248,7 @@ def index(
             if digest is not None and asset is not None:
                 assets[asset] = store.blob(digest)
     documents = {each.handle: each.path for each in placed}
-    return Mirrored(site, documents, files, names), assets
+    return Mirrored(site=site, documents=documents, files=files, names=names), assets
 
 
 def document_file(
@@ -302,14 +304,16 @@ def mirror(store: RawStore, docs: Path, site: str | None, conversions: Conversio
     with TRACER.start_as_current_span("mirror.build"):
         with task("documents", len(placed)) as built:
             for each in built.each(placed, lambda one: str(one.path)):
-                context = Context(each.handle, each.path, mirrored, unsupported=unsupported)
+                context = Context(
+                    owner=each.handle, here=each.path, mirrored=mirrored, unsupported=unsupported
+                )
                 began = time.perf_counter()
                 try:
                     wanted[each.path] = document_file(each, catalogue, context, conversions)
                     DOCUMENTS.add(1, {"kb_mcp.outcome": "mirrored"})
                 except DOCUMENT_ERRORS as error:
                     reason = str(error) if isinstance(error, NAMED_ERRORS) else type(error).__name__
-                    problems.append(Problem(where(store, each.stored), reason))
+                    problems.append(Problem(where=where(store, each.stored), reason=reason))
                     DOCUMENTS.add(1, {"kb_mcp.outcome": "failed"})
                 seconds = time.perf_counter() - began
                 CONVERSION_DURATION.record(seconds)
@@ -334,7 +338,7 @@ def mirror(store: RawStore, docs: Path, site: str | None, conversions: Conversio
                 if space.id not in damaged:
                     wanted[tree] = conversions.markdown(catalogue.tree(space, links)).encode()
             except PandocFailedError as error:
-                problems.append(Problem(f"confluence/spaces/{space.id}", str(error)))
+                problems.append(Problem(where=f"confluence/spaces/{space.id}", reason=str(error)))
     written = sum(1 for each in placed if each.path in wanted)
     # A moved document's old file goes once its new one is built, never before.
     gone = [old for old, new in retired.items() if new is None or new in wanted]
@@ -351,5 +355,10 @@ def mirror(store: RawStore, docs: Path, site: str | None, conversions: Conversio
         pruned=pruned,
     )
     return Outcome(
-        written, conversions.converted, conversions.reused, changes, unsupported, tuple(problems)
+        documents=written,
+        converted=conversions.converted,
+        reused=conversions.reused,
+        changes=changes,
+        unsupported=unsupported,
+        problems=tuple(problems),
     )

@@ -210,7 +210,7 @@ def test_an_answer_that_is_not_one_vector_per_text_is_refused(
 def test_a_row_of_another_length_than_the_probe_s_is_refused() -> None:
     """Every vector of a model has the length its probe had."""
     opened = answering(lambda _: data({"embedding": [1.0, 0.0, 0.0], "index": 0}))
-    embedder = ApiEmbedder(opened, "tiny", DIGEST, 2, Prefixes("", ""))
+    embedder = ApiEmbedder(opened, "tiny", DIGEST, 2, Prefixes(query="", document=""))
     with pytest.raises(ModelError, match="not one vector of 2 per text"):
         embedder.query("undo")
 
@@ -479,8 +479,8 @@ def test_the_fingerprint_changes_with_anything_that_makes_vectors(
         replace(first, name="other"),
         replace(first, digest="d2" * 32),
         replace(first, dimensions=8),
-        replace(first, prefixes=Prefixes("query: ", "")),
-        replace(first, prefixes=Prefixes("", "passage: ")),
+        replace(first, prefixes=Prefixes(query="query: ", document="")),
+        replace(first, prefixes=Prefixes(query="", document="passage: ")),
     ]
     prints = {each.fingerprint for each in changed}
     assert len(prints) == len(changed)
@@ -636,7 +636,7 @@ def test_a_gateway_failing_while_texts_go_alone_leaves_no_hole() -> None:
 def test_a_document_of_another_length_than_the_probe_s_is_refused() -> None:
     """The batch's rows are held to the probe's length, as the query's are."""
     opened = answering(lambda _: data({"embedding": [1.0, 0.0, 0.0], "index": 0}))
-    embedder = ApiEmbedder(opened, "tiny", DIGEST, 2, Prefixes("", ""))
+    embedder = ApiEmbedder(opened, "tiny", DIGEST, 2, Prefixes(query="", document=""))
     with pytest.raises(ModelError, match="not one vector of 2 per text"):
         embedder.documents(["undo"])
 
@@ -673,7 +673,11 @@ CARDS = [
 def test_a_family_is_known_however_ollama_lets_its_name_be_spelt(spelt: str) -> None:
     """The name that finds the digest finds the prefixes too."""
     answers = Scripted({QWEN: DIGEST})
-    assert tiny(answers, spelt).prefixes == tiny(answers, QWEN).prefixes != Prefixes("", "")
+    assert (
+        tiny(answers, spelt).prefixes
+        == tiny(answers, QWEN).prefixes
+        != Prefixes(query="", document="")
+    )
 
 
 @pytest.mark.parametrize(("model", "query", "document"), CARDS)
@@ -722,7 +726,7 @@ def test_an_allowed_remote_endpoint_goes_through_the_environment_s_proxy(
                 ) as opened,
                 pytest.raises(ModelError),
             ):
-                embed(opened, "tiny", ["undo"], Bounds(LISTENED_S, 1))
+                embed(opened, "tiny", ["undo"], Bounds(deadline_s=LISTENED_S, attempts=1))
             thread.join(timeout=LISTENED_S)
         finally:
             REACHABLE.discard(port)

@@ -123,8 +123,8 @@ def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Questio
         raise GoldenError(message) from None
     return [
         Question(
-            given.id,
-            given.question,
+            id=given.id,
+            text=given.question,
             expected=tuple(path_of(ref, f"golden[{index}]", resolve) for ref in given.expected),
             partial=tuple(path_of(ref, f"golden[{index}]", resolve) for ref in given.partial),
             groups=tuple(given.groups),
@@ -178,7 +178,7 @@ class Run:
     embedded: int  # texts that the model embedded for this run
     seconds: float  # how long the index took to build, embedding included
     chunking: str = CONTROL
-    costs: Costs = Costs(0, 0, None, 0)
+    costs: Costs = Costs(pieces=0, characters=0, tokens=None, bytes=0)
     per: dict[str, dict[str, Measures]] = field(default_factory=dict)  # mode, then question
     groups: dict[str, dict[str, Measures]] = field(default_factory=dict)  # mode, then group
     ranks: dict[str, dict[str, list[int | None]]] = field(default_factory=dict)  # mode, question
@@ -308,8 +308,20 @@ def prepared(
     embedding = Embedding(embedder, settings.vectors, chunking=target.chunking)
     report = build_index(settings.docs, index, built_at, embedding)
     seconds = clock() - started
-    costs = Costs(report.pieces, report.characters, embedder.tokens, index.stat().st_size)
-    run = Run(name, embedder.fingerprint, report.embedded, seconds, target.chunking, costs)
+    costs = Costs(
+        pieces=report.pieces,
+        characters=report.characters,
+        tokens=embedder.tokens,
+        bytes=index.stat().st_size,
+    )
+    run = Run(
+        model=name,
+        fingerprint=embedder.fingerprint,
+        embedded=report.embedded,
+        seconds=seconds,
+        chunking=target.chunking,
+        costs=costs,
+    )
     # The model that the index names is this embedder's.
     meaning = Meaning({name: embedder}.__getitem__)
     library = Library(index, settings.docs, meaning, "lexical")
@@ -332,9 +344,11 @@ def compared(runs: Sequence[Run], questions: Sequence[Question]) -> dict[str, Ch
     for run in runs:
         asked = (run.asked["hybrid"][question.id].evidence for question in questions)
         scored.setdefault(run.model, {})[run.chunking] = Scored(
-            tuple(run.per["hybrid"][question.id].reciprocal_rank for question in questions),
-            tuple(each for each in asked if each is not None),
-            run.costs.estimated,
+            reciprocal_ranks=tuple(
+                run.per["hybrid"][question.id].reciprocal_rank for question in questions
+            ),
+            evidence=tuple(each for each in asked if each is not None),
+            tokens=run.costs.estimated,
         )
     return {
         model: default_chunking(chunkings)

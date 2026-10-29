@@ -80,7 +80,7 @@ def after_probes(
     """
     kept: dict[tuple[str, str], Tombstone] = {}
     for key, space_id in absent.items():
-        stone = known.get(key, Tombstone(key[0], key[1], space_id))
+        stone = known.get(key, Tombstone(kind=key[0], id=key[1], space_id=space_id))
         answer = answers.get(key)
         if answer is None:
             kept[key] = stone

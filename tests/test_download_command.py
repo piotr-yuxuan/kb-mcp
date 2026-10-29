@@ -121,7 +121,9 @@ def test_a_stopped_download_says_why_in_short(
         "confluence pages failed: status 503": 5,
         "runs: stopped, too many failures in a row": 1,
     }
-    stopped = Outcome(Report(Counter(counts)), [], ExitStatus.FAILED)
+    stopped = Outcome(
+        report=Report(counts=Counter(counts)), failed_targets=[], status=ExitStatus.FAILED
+    )
     monkeypatch.setattr(download_command, "download", lambda *_: stopped)
     assert main(command(home, "--site", SITE, "--space", "MFS")) == SOME_FAILED
     assert capsys.readouterr().out == (
@@ -306,11 +308,20 @@ def counted(
     }
     chosen = settings(tmp_path)
     first = RefreshSite(listing=dict(list(pages.items())[:4]), posts={})
-    assert run(chosen, monkeypatch, first, Targets(["MFS"], [], CAP, since=SINCE), LISTED_AT) == 0
+    assert (
+        run(
+            chosen,
+            monkeypatch,
+            first,
+            Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=SINCE),
+            LISTED_AT,
+        )
+        == 0
+    )
     if first_fetch:
         (chosen.raw / "coverage.json").unlink()
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite(listing=pages, posts={}).client())
-    targets = Targets(["MFS"], [], CAP, since=since)
+    targets = Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=since)
     with capture_logs() as events:
         outcome = download(chosen, targets, lambda: COUNTED_AT, lambda _: None)
     return outcome, events, chosen

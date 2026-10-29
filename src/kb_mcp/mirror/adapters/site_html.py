@@ -390,22 +390,22 @@ class Computed(Construct):
 
 # What each macro of the site becomes; a macro absent from this table is unsupported.
 MACROS: dict[str, Construct] = {
-    "info": Panel("Info", INFORMATION_BODY, INFORMATION_TITLE),
-    "note": Panel("Note", INFORMATION_BODY, INFORMATION_TITLE),
-    "warning": Panel("Warning", INFORMATION_BODY, INFORMATION_TITLE),
-    "tip": Panel("Tip", INFORMATION_BODY, INFORMATION_TITLE),
-    "panel": Panel("", PANEL_CONTENT, PANEL_HEADER),
+    "info": Panel(kind="Info", body=INFORMATION_BODY, header=INFORMATION_TITLE),
+    "note": Panel(kind="Note", body=INFORMATION_BODY, header=INFORMATION_TITLE),
+    "warning": Panel(kind="Warning", body=INFORMATION_BODY, header=INFORMATION_TITLE),
+    "tip": Panel(kind="Tip", body=INFORMATION_BODY, header=INFORMATION_TITLE),
+    "panel": Panel(kind="", body=PANEL_CONTENT, header=PANEL_HEADER),
     "code": Code(),
     "status": Status(),
     "expand": Expand(),
     "include": AS_RENDERED,
     "excerpt": AS_RENDERED,
-    "excerpt-include": Part(PANEL_CONTENT),
+    "excerpt-include": Part(name=PANEL_CONTENT),
     "children": AS_RENDERED,
     "details": AS_RENDERED,
     "jira": AS_RENDERED,
     "blog-posts": AS_RENDERED,
-    "detailssummary": Computed("page properties report", REPORT_QUERY),
+    "detailssummary": Computed(name="page properties report", query=REPORT_QUERY),
 }
 
 

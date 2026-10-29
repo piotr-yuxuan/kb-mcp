@@ -42,7 +42,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sign
     except SignInFailedError as error:
         structlog.get_logger().error("login.not_signed_in", reason=str(error))
         return ExitStatus.SIGN_IN_AGAIN, None
-    return ExitStatus.OK, SignedIn(site, settings.session)
+    return ExitStatus.OK, SignedIn(site=site, session=settings.session)
 
 
 def text(_signed_in: SignedIn, _summary: Summary) -> str:

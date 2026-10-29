@@ -124,13 +124,13 @@ def read_worklog(
     """
     with TRACER.start_as_current_span("worklog.read"):
         listing = files.listed(folder, archives=archives)
-        problems = [Problem(each.path, each.reason) for each in listing.problems]
+        problems = [Problem(where=each.path, reason=each.reason) for each in listing.problems]
         sources: list[Source] = []
         for relative in listing.paths:
             try:
                 sources.append(files.source(listing.root, relative))
             except files.UnreadableError as error:
-                problems.append(Problem(str(relative), str(error)))
+                problems.append(Problem(where=str(relative), reason=str(error)))
         found = {each.path: each for each in sources}
         named, warnings = transcripts(
             [each for each in sources if each.path.parts[0] in TRANSCRIPTS], archives=archives
@@ -155,7 +155,13 @@ def read_worklog(
     if unlinked:
         log.warning("worklog.unlinked", meetings=len(unlinked), first=unlinked[0])
     held_back = len(every) - len(documents_read)
-    return Read(tuple(documents_read), listing.html, tuple(problems), tuple(warnings), held_back)
+    return Read(
+        documents=tuple(documents_read),
+        html=listing.html,
+        problems=tuple(problems),
+        warnings=tuple(warnings),
+        held_back=held_back,
+    )
 
 
 def existing(docs: Path) -> dict[str, tuple[FrontMatter, str]]:
@@ -216,7 +222,9 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                 try:
                     body = pandoc.org_markdown(document.text)
                 except PandocFailedError as error:
-                    problems.append(Problem(f"{document.source.path}, {document.id}", str(error)))
+                    problems.append(
+                        Problem(where=f"{document.source.path}, {document.id}", reason=str(error))
+                    )
                     DOCUMENTS.add(1, {"kb_mcp.outcome": "failed", **kind})
                     failed.add(document.id)
                     continue
@@ -280,7 +288,14 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
         removed=changes.removed,
         problems=len(problems),
     )
-    return Outcome(len(wanted), changes, read.html, tuple(problems), read.warnings, read.held_back)
+    return Outcome(
+        documents=len(wanted),
+        changes=changes,
+        html=read.html,
+        problems=tuple(problems),
+        warnings=read.warnings,
+        held_back=read.held_back,
+    )
 
 
 def plan_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True) -> Planned:
@@ -311,11 +326,11 @@ def plan_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = T
         problems=len(read.problems),
     )
     return Planned(
-        len(read.documents),
-        to_convert,
-        to_remove,
-        read.html,
-        read.problems,
-        read.warnings,
-        read.held_back,
+        documents=len(read.documents),
+        to_convert=to_convert,
+        to_remove=to_remove,
+        html=read.html,
+        problems=read.problems,
+        warnings=read.warnings,
+        held_back=read.held_back,
     )

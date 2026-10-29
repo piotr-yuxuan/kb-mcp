@@ -105,6 +105,8 @@ def sign_in(settings: Settings) -> SignIn:
     """
     token = settings.api_token
     if token is None:
-        return SavedSession(str(settings.site), settings.session)
+        return SavedSession(site=str(settings.site), folder=settings.session)
     pair = f"{settings.email or ''}:{token.get_secret_value()}"
-    return ApiToken(str(settings.site), f"Basic {base64.b64encode(pair.encode()).decode()}")
+    return ApiToken(
+        site=str(settings.site), authorisation=f"Basic {base64.b64encode(pair.encode()).decode()}"
+    )

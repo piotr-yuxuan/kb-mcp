@@ -49,7 +49,7 @@ class Pandoc:
         if path is None:
             message = "pandoc: not found on PATH; install pandoc 3"
             raise PandocMissingError(message)
-        return cls(path)
+        return cls(path=path)
 
     def markdown(self, html: str) -> str:
         """Write one document's HTML as Markdown."""

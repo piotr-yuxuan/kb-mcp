@@ -168,8 +168,8 @@ def test_links_are_followed_inside_the_work_log_alone(tmp_path: Path, worklog: P
     assert "transcripts/misc/a.org" in paths(listing)  # the folder itself, before its link
     assert "transcripts/linked folder/a.org" not in paths(listing)
     assert sorted(listing.problems, key=lambda problem: problem.path) == [
-        files.Problem("transcripts/out folder", "links outside the work log"),
-        files.Problem("transcripts/out.org", "links outside the work log"),
+        files.Problem(path="transcripts/out folder", reason="links outside the work log"),
+        files.Problem(path="transcripts/out.org", reason="links outside the work log"),
     ]
     assert all(CONTENT not in problem.reason for problem in listing.problems)
 
@@ -182,7 +182,7 @@ def test_a_linked_todo_file_outside_is_named_and_not_listed(tmp_path: Path) -> N
     listing = files.listed(root, archives=True)
     assert (paths(listing), listing.problems) == (
         [],
-        (files.Problem("todo.org", "links outside the work log"),),
+        (files.Problem(path="todo.org", reason="links outside the work log"),),
     )
 
 
@@ -203,13 +203,18 @@ def test_past_the_bound_the_first_transcripts_are_kept(
         "meetings/archive/2026/2026-10/2026-10-26 Mon/1.org",
         "transcripts/archive/2026/2026-09/2026-09-15 Tue/1.org",
     ]
-    assert listing.problems == (files.Problem("transcripts, meetings", "over 3 transcripts"),)
+    assert listing.problems == (
+        files.Problem(path="transcripts, meetings", reason="over 3 transcripts"),
+    )
 
 
 def test_a_folder_that_is_not_there_is_a_problem(tmp_path: Path) -> None:
     """So that a run removes nothing when the work log is out of reach."""
     listing = files.listed(tmp_path / "absent", archives=True)
-    assert (listing.paths, listing.problems) == ((), (files.Problem(".", "not a folder"),))
+    assert (listing.paths, listing.problems) == (
+        (),
+        (files.Problem(path=".", reason="not a folder"),),
+    )
 
 
 def test_a_file_is_read_with_its_time_of_change(worklog: Path) -> None:

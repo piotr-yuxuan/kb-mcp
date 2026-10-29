@@ -66,7 +66,9 @@ def listed(folder: Path, *, archives: bool) -> Listing:
     """
     root = folder.resolve()
     if not root.is_dir():
-        return Listing(root, (), 0, (Problem(".", "not a folder"),))
+        return Listing(
+            root=root, paths=(), html=0, problems=(Problem(path=".", reason="not a folder"),)
+        )
     problems: list[Problem] = []
     found: list[PurePosixPath] = []  # every file found, of any kind
     seen = {root}
@@ -101,14 +103,16 @@ def listed(folder: Path, *, archives: bool) -> Listing:
         ):
             continue
         if not real.is_relative_to(root):
-            problems.append(Problem(str(relative), "links outside the work log"))
+            problems.append(Problem(path=str(relative), reason="links outside the work log"))
         elif real.is_dir() and relative.parts[0] in TRANSCRIPTS:
             seen.add(real)
             try:
                 for each in path.iterdir():
                     heapq.heappush(queue, (crossed + each.is_symlink(), each))
             except OSError as error:
-                problems.append(Problem(str(relative), f"not read ({type(error).__name__})"))
+                problems.append(
+                    Problem(path=str(relative), reason=f"not read ({type(error).__name__})")
+                )
         elif real.is_file():
             found.append(relative)
     # Of the files found, the HTML transcripts are counted; todo.org, todo.org_archive and
@@ -119,9 +123,11 @@ def listed(folder: Path, *, archives: bool) -> Listing:
         path for path in found if path.parts[0] in TRANSCRIPTS and path.suffix == ORG
     )
     if len(transcripts) > TRANSCRIPT_COUNT:
-        problems.append(Problem(", ".join(TRANSCRIPTS), f"over {TRANSCRIPT_COUNT} transcripts"))
+        problems.append(
+            Problem(path=", ".join(TRANSCRIPTS), reason=f"over {TRANSCRIPT_COUNT} transcripts")
+        )
     paths = (*others, *transcripts[:TRANSCRIPT_COUNT])
-    return Listing(root, paths, html, tuple(problems))
+    return Listing(root=root, paths=paths, html=html, problems=tuple(problems))
 
 
 def source(root: Path, relative: PurePosixPath) -> Source:
@@ -150,4 +156,4 @@ def source(root: Path, relative: PurePosixPath) -> Source:
     except UnicodeDecodeError:
         message = "not UTF-8"
         raise UnreadableError(message) from None
-    return Source(relative, text, modified)
+    return Source(path=relative, text=text, modified=modified)

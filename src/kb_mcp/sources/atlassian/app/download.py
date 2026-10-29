@@ -188,14 +188,14 @@ class Download:
         answered_projects = projects if jira else ()
         with task("targets", len(answered_spaces) + len(answered_projects)) as targets:
             for key in targets.each(answered_spaces, str):
-                target = Target("confluence", key)
+                target = Target(source="confluence", key=key)
                 window = self.windows[target]
                 if window is not None and self.space(target, window):
                     self.covered[target] = window.period
             if not self.plan:
                 self.probe_absent()
             for key in targets.each(answered_projects, str):
-                target = Target("jira", key)
+                target = Target(source="jira", key=key)
                 window = self.windows[target]
                 if window is not None and self.project(target, window):
                     self.covered[target] = window.period
@@ -663,8 +663,8 @@ class Targets:
 
         Raises PeriodError when --since does not come before the windows' end.
         """
-        named = [Target("confluence", key) for key in self.spaces]
-        named += [Target("jira", key) for key in self.projects]
+        named = [Target(source="confluence", key=key) for key in self.spaces]
+        named += [Target(source="jira", key=key) for key in self.projects]
         end = min(self.until, now) if self.until else now  # never past what a run can see
         return {target: window(coverage, target, self.since, end) for target in named}
 
@@ -690,10 +690,20 @@ def windows_of(
 ) -> tuple[TargetWindow, ...]:
     """Give each target's record: its window, and what became of its coverage."""
     return tuple(
-        TargetWindow(target, None, None, "after --until", coverage.get(target))
+        TargetWindow(
+            target=target,
+            start=None,
+            end=None,
+            reason="after --until",
+            coverage=coverage.get(target),
+        )
         if window is None
         else TargetWindow(
-            target, window.period.start, window.period.end, window.reason, coverage.get(target)
+            target=target,
+            start=window.period.start,
+            end=window.period.end,
+            reason=window.reason,
+            coverage=coverage.get(target),
         )
         for target, window in windows.items()
     )
@@ -730,7 +740,7 @@ def plan(
     try:
         client = sign_in(settings).client()
     except SignInNeededError:
-        return planned(report, [], ExitStatus.SIGN_IN_AGAIN)
+        return planned(report=report, failed_targets=[], status=ExitStatus.SIGN_IN_AGAIN)
     with client:
         run = Download(
             Site(client, sleep=sleep),
@@ -744,12 +754,18 @@ def plan(
         try:
             run.run(targets.spaces, targets.projects)
         except SignInNeededError:
-            return planned(report, run.failed_targets, ExitStatus.SIGN_IN_AGAIN)
+            return planned(
+                report=report, failed_targets=run.failed_targets, status=ExitStatus.SIGN_IN_AGAIN
+            )
         except TooManyFailuresError:
             report.add("runs: stopped, too many failures in a row")
-            return planned(report, run.failed_targets, ExitStatus.FAILED)
+            return planned(
+                report=report, failed_targets=run.failed_targets, status=ExitStatus.FAILED
+            )
     return planned(
-        report, run.failed_targets, ExitStatus.FAILED if report.failures else ExitStatus.OK
+        report=report,
+        failed_targets=run.failed_targets,
+        status=ExitStatus.FAILED if report.failures else ExitStatus.OK,
     )
 
 
@@ -826,4 +842,9 @@ def download(
             stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
             saved = {"status": status, "counts": dict(sorted(report.counts.items()))}
             (settings.runs / f"{stamp}.json").write_text(json.dumps(saved, indent=1), "utf-8")
-    return Outcome(report, failed_targets, status, windows_of(windows, extensions))
+    return Outcome(
+        report=report,
+        failed_targets=failed_targets,
+        status=status,
+        windows=windows_of(windows, extensions),
+    )

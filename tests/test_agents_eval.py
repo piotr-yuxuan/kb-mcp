@@ -617,7 +617,7 @@ def test_each_call_starts_the_server_that_prepare_named(
 
     def recorded(server: list[str], *_: object) -> Answered:
         started.append(server)
-        return Answered("an answer", refused=False)
+        return Answered(text="an answer", refused=False)
 
     monkeypatch.setattr(agents, "called", recorded)
     run = runs_of(out)[0]

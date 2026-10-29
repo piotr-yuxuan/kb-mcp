@@ -87,7 +87,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
     choices = compared(runs, questions)
     kept = record(runs, golden, built_at, choices)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
-    return ExitStatus.OK, Evaluated(runs, choices, results)
+    return ExitStatus.OK, Evaluated(runs=runs, choices=choices, results=results)
 
 
 def text(evaluated: Evaluated, summary: Summary) -> str:

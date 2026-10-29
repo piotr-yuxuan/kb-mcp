@@ -104,11 +104,17 @@ class Coverage:
         else:
             start, end = min(covered.start, fetched.start), max(covered.end, fetched.end)
         if not exact or failed is None:
-            return Coverage({**self.periods, target: Period(start, end)}, marked), "extended"
+            return Coverage(
+                periods={**self.periods, target: Period(start, end)}, exact=marked
+            ), "extended"
         if failed <= start:
             inside = covered is not None and covered.start <= failed
-            return Coverage(self.periods, self.exact - {target} if inside else self.exact), "capped"
-        return Coverage({**self.periods, target: Period(start, failed)}, marked), "capped"
+            return Coverage(
+                periods=self.periods, exact=self.exact - {target} if inside else self.exact
+            ), "capped"
+        return Coverage(
+            periods={**self.periods, target: Period(start, failed)}, exact=marked
+        ), "capped"
 
 
 @dataclass(frozen=True)
@@ -132,7 +138,7 @@ def window(
     nothing on the site is older, and dates stay in range.
     """
     if since is not None:
-        return Window(Period(max(since, EPOCH), end), "given")
+        return Window(period=Period(max(since, EPOCH), end), reason="given")
     covered = coverage.periods.get(target)
     start: datetime
     reason: Reason
@@ -145,7 +151,7 @@ def window(
     start = max(start, EPOCH)
     if start >= end:
         return None
-    return Window(Period(start, end), reason)
+    return Window(period=Period(start, end), reason=reason)
 
 
 __all__ = ["EPOCH", "Coverage", "Extension", "Target", "Window", "window"]

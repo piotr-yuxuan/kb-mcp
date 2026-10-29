@@ -145,7 +145,18 @@ def measured(
             times = (median(spent), percentile(spent, TAIL))
             groups = averages(per, questions, Measures.mean)
             asked = averages(quoted, questions, Quoted.mean)
-            found.append(Arm(depth, per, groups, asked, ranks, times, counted, recall))
+            found.append(
+                Arm(
+                    depth=depth,
+                    per=per,
+                    groups=groups,
+                    asked=asked,
+                    ranks=ranks,
+                    times=times,
+                    tokens=counted,
+                    recall=recall,
+                )
+            )
     return found
 
 
@@ -153,9 +164,9 @@ def decided(found: Sequence[Arm], questions: Sequence[Question]) -> Decision | N
     """Apply plan 022's bar to the arms measured: the first, not reranked, against the rest."""
     read = {
         arm.depth: Depthed(
-            tuple(arm.per[question.id].reciprocal_rank for question in questions),
-            {group: each.reciprocal_rank for group, each in arm.groups.items()},
-            round(arm.times[1] * 1000),
+            reciprocal=tuple(arm.per[question.id].reciprocal_rank for question in questions),
+            groups={group: each.reciprocal_rank for group, each in arm.groups.items()},
+            tail_ms=round(arm.times[1] * 1000),
         )
         for arm in found
     }

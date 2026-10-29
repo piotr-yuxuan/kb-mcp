@@ -409,14 +409,14 @@ def test_a_reader_keeps_its_snapshot_while_a_prune_runs(tmp_path: Path) -> None:
 def indexing(data: Path) -> Indexing:
     """Say how index builds the data directory's index by meaning, with the scripted model."""
     return Indexing(
-        data / "docs",
-        data / "index.sqlite",
-        data / "vectors.sqlite",
-        data / "eval" / "indexes",
-        data / "aliases.toml",
-        "tiny",
-        "sections",
-        scripted,
+        docs=data / "docs",
+        index=data / "index.sqlite",
+        vectors=data / "vectors.sqlite",
+        evaluation_indexes=data / "eval" / "indexes",
+        aliases=data / "aliases.toml",
+        model="tiny",
+        chunking="sections",
+        endpoint=scripted,
     )
 
 
@@ -496,7 +496,7 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     assert other not in stored(store)
     assert deleted == ORPHANS
     assert done == Pruned(
-        "pruned",
+        outcome="pruned",
         kept=len(stored(fresh)),
         kept_for_evaluation=len(alone),
         deleted=deleted,
@@ -711,7 +711,7 @@ def test_a_store_that_cannot_delete_fails_the_prune_not_the_index(
     assert indexed is not None
     assert indexed.report.whole
     assert pruned(indexed) == Pruned(
-        "failed", seconds=pruned(indexed).seconds, reason="database is locked"
+        outcome="failed", seconds=pruned(indexed).seconds, reason="database is locked"
     )
 
 
@@ -837,9 +837,11 @@ def test_each_outcome_is_said_short_and_in_detail() -> None:
     """Deferred, held back with its file, failed: the outcome, and in detail why."""
     file = "/data/eval/indexes/x.sqlite"
     cases = {
-        Pruned("deferred", reason=DEFERRED): f"deferred: {DEFERRED}",
-        Pruned("held back", reason=UNREADABLE, file=file): f"held back: {UNREADABLE} ({file})",
-        Pruned("failed", reason="database is locked"): "failed: database is locked",
+        Pruned(outcome="deferred", reason=DEFERRED): f"deferred: {DEFERRED}",
+        Pruned(
+            outcome="held back", reason=UNREADABLE, file=file
+        ): f"held back: {UNREADABLE} ({file})",
+        Pruned(outcome="failed", reason="database is locked"): "failed: database is locked",
     }
     for done, why in cases.items():
         assert index_command.prune_text(done, "short") == f"vectors pruned: none, {done.outcome}\n"
@@ -889,7 +891,14 @@ def test_a_store_not_yet_converted_is_said_so_with_the_reason(
 ) -> None:
     """Its conversion failed for want of space: the summary says why, and that it is retried."""
     pruned(refresh(indexing(data), MOMENT))
-    swept = vector_store.Swept(1, 10, 8192, 8192, shrinks=False, unreclaimed="disk is full")
+    swept = vector_store.Swept(
+        deleted=1,
+        kept=10,
+        bytes_before=8192,
+        bytes_after=8192,
+        shrinks=False,
+        unreclaimed="disk is full",
+    )
     monkeypatch.setattr(vector_store.VectorStore, "prune", lambda *_: swept)
     indexed = refresh(indexing(data), MOMENT)
     assert indexed is not None
@@ -900,7 +909,14 @@ def test_a_store_not_yet_converted_is_said_so_with_the_reason(
 def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: MonkeyPatch) -> None:
     """Pruned, the space not reclaimed: the outcome holds why, and so does the summary."""
     pruned(refresh(indexing(data), MOMENT))
-    swept = vector_store.Swept(1, 10, 8192, 8192, shrinks=True, unreclaimed="disk is full")
+    swept = vector_store.Swept(
+        deleted=1,
+        kept=10,
+        bytes_before=8192,
+        bytes_after=8192,
+        shrinks=True,
+        unreclaimed="disk is full",
+    )
     monkeypatch.setattr(vector_store.VectorStore, "prune", lambda *_: swept)
     indexed = refresh(indexing(data), MOMENT)
     done = pruned(indexed)

@@ -230,7 +230,7 @@ def test_a_server_that_accepts_and_says_nothing_is_given_up_at_the_deadline() ->
         started = time.monotonic()
         try:
             with pytest.raises(RerankError) as failed:
-                rerank(opened, RERANKER, QUERY, TEXTS, Bounds(DEADLINE_S, 1))
+                rerank(opened, RERANKER, QUERY, TEXTS, Bounds(deadline_s=DEADLINE_S, attempts=1))
         finally:
             released.set()
         waited = time.monotonic() - started
@@ -461,7 +461,15 @@ def test_the_check_says_when_the_server_lists_another_name(
 
 def test_the_check_says_when_a_request_at_the_depth_is_slower_than_the_bound() -> None:
     """Past the user's 5 seconds, lower the depth; at them, nothing said."""
-    checked = Checked(RERANKER, RERANK_URL, (RERANKER,), 0.9, 0.1, 30, BOUND_S + 0.1)
+    checked = Checked(
+        model=RERANKER,
+        url=RERANK_URL,
+        served=(RERANKER,),
+        answering=0.9,
+        unrelated=0.1,
+        depth=30,
+        seconds=BOUND_S + 0.1,
+    )
     said = text(checked, "short").splitlines()
     assert said[-1] == "slower than 5 s, the bound on a search: lower rerank.depth"
     at_bound = text(replace(checked, seconds=BOUND_S), "short").splitlines()

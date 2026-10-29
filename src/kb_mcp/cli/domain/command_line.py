@@ -98,4 +98,4 @@ def command_line(
         for setting in command.reads
         if setting in given and setting not in settings.values()
     )
-    return Copy("".join(emptied), written + "\n", unflagged)
+    return Copy(emptied="".join(emptied), command=written + "\n", unflagged=unflagged)

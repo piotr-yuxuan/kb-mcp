@@ -181,20 +181,26 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
         words = rank((one for one, _ in found), first, sort=asked.sort)
         whole = all(every for _, every in found)
     if asked.mode == "lexical" or by_date:
-        return Ranking(words, whole, {}, pinned=len(first))
+        return Ranking(paths=words, whole=whole, meaning={}, pinned=len(first))
     with TRACER.start_as_current_span("search.semantic"):
-        near = meaning.nearest(reader, asked.query, filters) if meaning else Nearest({}, NOT_SET_UP)
+        near = (
+            meaning.nearest(reader, asked.query, filters)
+            if meaning
+            else Nearest(found={}, reason=NOT_SET_UP)
+        )
     if near.reason:
         FALLBACKS.add(1, {"kb_mcp.mode": asked.mode})
         structlog.get_logger().warning("search.fallback", mode=asked.mode, reason=near.reason)
         note = f" Ranked by words alone: {near.reason}."
-        return Ranking(words, whole, {}, note=note, pinned=len(first))
+        return Ranking(paths=words, whole=whole, meaning={}, note=note, pinned=len(first))
     scores = {path: score for path, (score, *_) in near.found.items()}
     by_meaning = rank([scores], first, sort="relevance")
     shown = {path: tuple(where) for path, (_, *where) in near.found.items()}
     if asked.mode == "semantic":
         counted = "nearest in meaning"
-        return Ranking(by_meaning, whole=True, meaning=shown, counted=counted, pinned=len(first))
+        return Ranking(
+            paths=by_meaning, whole=True, meaning=shown, counted=counted, pinned=len(first)
+        )
     updated = {path: s.updated for one, _ in found for path, s in one.items()}
     updated |= {path: score.updated for path, score in scores.items()}
     # Both lists begin with the documents named; the rest is fused.
@@ -204,7 +210,9 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
     higher = [path for at, path in enumerate(by_meaning) if at < places.get(path, math.inf)]
     by_higher = {path: shown[path] for path in higher if path in shown}
     counted = "found by words or meaning"
-    return Ranking([*first, *fused], whole, by_higher, counted=counted, pinned=len(first))
+    return Ranking(
+        paths=[*first, *fused], whole=whole, meaning=by_higher, counted=counted, pinned=len(first)
+    )
 
 
 def passage_of(reader: Reader, entry: Entry, ranked: Ranking, planned: Plan) -> Passage:
@@ -216,10 +224,10 @@ def passage_of(reader: Reader, entry: Entry, ranked: Ranking, planned: Plan) -> 
     if entry.path in ranked.meaning:
         number, start, end = ranked.meaning[entry.path]
         lead = reader.text(entry.path, start, min(end, start + 2 * responses.SNIPPET))
-        return Passage(number, reader.heading(entry.path, number), lead)
+        return Passage(number=number, heading=reader.heading(entry.path, number), snippet=lead)
     passage = reader.passage(entry.path, planned.match) if planned.words else None
     lead = "" if passage else reader.text(entry.path, 0, 2 * responses.SNIPPET)
-    return passage or Passage(1, "", lead.partition("\n")[2])
+    return passage or Passage(number=1, heading="", snippet=lead.partition("\n")[2])
 
 
 def folded(text: str) -> str:
@@ -287,7 +295,7 @@ def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -
             text = reader.text(path, start, end)
             text = text if end == last else text[: text.rfind("\n", UNIT // 2) + 1 or UNIT]
             text = text if start == first else text[text.find("\n", 0, UNIT // 2) + 1 :]
-        found.append(Passage(number, reader.heading(path, number), text))
+        found.append(Passage(number=number, heading=reader.heading(path, number), snippet=text))
     return found
 
 
@@ -614,9 +622,16 @@ class Library:
             kept = narrowed(reader, given)
             if not planned.words and sort == "relevance":
                 return responses.answer(NO_WORDS)
-            ranked = Ranking([], whole=True, meaning={})
+            ranked = Ranking(paths=[], whole=True, meaning={})
             if planned.words:
-                asked = Asked(query, planned, kept, sort, self._mode, order)
+                asked = Asked(
+                    query=query,
+                    planned=planned,
+                    filters=kept,
+                    sort=sort,
+                    mode=self._mode,
+                    order=order,
+                )
                 first = ranking(reader, self._meaning, asked)
                 ranked = reranked(reader, asked, first, self._reranking)
                 total, whole = len(ranked.paths), ranked.whole
@@ -694,9 +709,16 @@ class Library:
             built_at = reader.built_at()
             offset, order = continued(cursor, built_at)
             kept = narrowed(reader, given)
-            asked = Asked(question, planned, kept, sort="relevance", mode=mode, order=order)
+            asked = Asked(
+                query=question,
+                planned=planned,
+                filters=kept,
+                sort="relevance",
+                mode=mode,
+                order=order,
+            )
             if not planned.words:
-                return responses.answer(NO_QUESTION), [], Ranking([], whole=True, meaning={})
+                return responses.answer(NO_QUESTION), [], Ranking(paths=[], whole=True, meaning={})
             ranked = reranked(reader, asked, ranking(reader, self._meaning, asked), self._reranking)
             paths = ranked.paths[offset : offset + ASK_DOCUMENTS]
             entries = {entry.path: entry for entry in reader.entries(paths=paths)}
@@ -731,7 +753,7 @@ class Library:
     def quoted(self, question: str, mode: Mode) -> list[Shown]:
         """Give the passages of ask's first answer in a mode, for an evaluation."""
         return [
-            Shown(entry.path, passage.number, passage.snippet)
+            Shown(path=entry.path, section=passage.number, text=passage.snippet)
             for entry, passage in self._asked(question, None, None, mode)[1]
         ]
 
@@ -754,14 +776,16 @@ class Library:
         """
         planned = plan(query)
         with self._reading() as reader:
-            asked = Asked(query, planned, Filters(), sort="relevance", mode=mode)
+            asked = Asked(
+                query=query, planned=planned, filters=Filters(), sort="relevance", mode=mode
+            )
             ranked = reranked(reader, asked, ranking(reader, self._meaning, asked), self._reranking)
             entries = {entry.path: entry for entry in reader.entries(paths=ranked.paths[:limit])}
             shown = []
             for path in ranked.paths[:limit]:
                 number = passage_of(reader, entries[path], ranked, planned).number
                 start, end = reader.bounds(path)[number - 1]
-                shown.append(Shown(path, number, reader.text(path, start, end)))
+                shown.append(Shown(path=path, section=number, text=reader.text(path, start, end)))
         return shown, ranked.note
 
     def read(

@@ -158,7 +158,13 @@ class Runs(BaseModel):
     def question(self, name: str) -> Question:
         """Give what grades a question, by its id, as the evaluation's question."""
         given = next(each for each in self.questions if each.id == name)
-        return Question(name, "", given.expected, given.partial, evidence=given.evidence)
+        return Question(
+            id=name,
+            text="",
+            expected=given.expected,
+            partial=given.partial,
+            evidence=given.evidence,
+        )
 
     def run(self, name: str) -> Run:
         """Give a run by its id, or refuse one that is not there."""
@@ -360,11 +366,13 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
         with TRACER.start_as_current_span("eval.agent.call", attributes=named) as span:
             try:
                 answered = called(server, tool, arguments, runs.call_s)
-                done = Called("refused" if answered.refused else "answered", answered.text)
+                done = Called(
+                    status="refused" if answered.refused else "answered", text=answered.text
+                )
             except TimeoutError:
-                done = Called("timeout", f"no answer within {runs.call_s:g} seconds")
+                done = Called(status="timeout", text=f"no answer within {runs.call_s:g} seconds")
             except ServerError as error:
-                done = Called("failed", str(error))
+                done = Called(status="failed", text=str(error))
             span.set_attribute("kb_mcp.status", done.status)
         line = Logged(
             tool=tool,
@@ -560,12 +568,12 @@ def concluded(directory: Path, runs: Runs, outcomes: Sequence[Outcome]) -> Resul
         [1 for each in by_question.values() if any(o.result == "pending" for o in each.values())]
     )
     results = Results(
-        runs.model,
-        list(outcomes),
-        verdict,
-        dict(Counter(outcome.result for outcome in outcomes)),
-        settled - len(pairs),
-        len(pairs),
+        model=runs.model,
+        outcomes=list(outcomes),
+        verdict=verdict,
+        counted=dict(Counter(outcome.result for outcome in outcomes)),
+        left_out=settled - len(pairs),
+        pairs=len(pairs),
     )
     kept = {
         "golden_sha256": runs.golden_sha256,

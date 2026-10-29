@@ -80,8 +80,8 @@ def default_reranking(plain: Depthed, arms: Mapping[int, Depthed]) -> Decision |
     mean = {depth: round(fmean(arm.reciprocal), 3) for depth, arm in {0: plain, **arms}.items()}
     verdicts = tuple(
         Verdict(
-            depth,
-            adjusted,
+            depth=depth,
+            adjusted=adjusted,
             beats=mean[depth] > mean[0] and round(adjusted, 4) < ALPHA,
             losses={
                 group: round(round(plain.groups[group], 3) - round(arms[depth].groups[group], 3), 3)
@@ -94,8 +94,8 @@ def default_reranking(plain: Depthed, arms: Mapping[int, Depthed]) -> Decision |
     )
     qualifying = [verdict.depth for verdict in verdicts if verdict.qualifies]
     if not qualifying:
-        return Decision(verdicts, None)
+        return Decision(verdicts=verdicts, depth=None)
     shown = arms[max(qualifying, key=mean.__getitem__)].reciprocal
     against = {depth: paired_test(shown, arms[depth].reciprocal) for depth in qualifying}
     kept = (depth for depth, pvalue in against.items() if round(pvalue, 4) >= ALPHA)
-    return Decision(verdicts, min(kept), against)
+    return Decision(verdicts=verdicts, depth=min(kept), against_best=against)

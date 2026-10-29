@@ -40,8 +40,8 @@ if TYPE_CHECKING:
 # A search makes one attempt: a server that hangs costs one deadline, and the search goes
 # on in its own order. An evaluation, which stops at a failure, tries again, as the
 # embeddings of documents do.
-SEARCH = Bounds(30, 1)
-EVALUATION = Bounds(300, len(WAITS_S) + 1)
+SEARCH = Bounds(deadline_s=30, attempts=1)
+EVALUATION = Bounds(deadline_s=300, attempts=len(WAITS_S) + 1)
 # The provider, as the GenAI conventions name it by the client's best knowledge: the
 # server whose API, and whose quirks, this module knows.
 PROVIDER = "llama.cpp"
@@ -160,7 +160,7 @@ def rerank(
         structlog.get_logger().debug(
             "rerank.request", model=model, texts=len(texts), characters=characters, tokens=tokens
         )
-        return Reranked(scores, tokens)
+        return Reranked(scores=scores, tokens=tokens)
 
 
 def served(endpoint: Endpoint) -> tuple[str, ...]:

@@ -31,18 +31,22 @@ class Verdict:
 def pandoc() -> Verdict:
     """Say where the pandoc that the mirror needs is on PATH, or that there is none."""
     found = shutil.which("pandoc")
-    return Verdict("pandoc", found) if found else Verdict("pandoc", "not found on PATH", FAILED)
+    return (
+        Verdict(name="pandoc", found=found)
+        if found
+        else Verdict(name="pandoc", found="not found on PATH", state=FAILED)
+    )
 
 
 def public_trust(site: str) -> Verdict:
     """Say whether the public CAs verify the site; if not, TLS is inspected on the way."""
     verified = http.verified_by_public_cas(site + confluence_v2.current_user_request().path)
     if verified is None:
-        return Verdict("tls", "no answer from the site", FAILED)
+        return Verdict(name="tls", found="no answer from the site", state=FAILED)
     if verified:
-        return Verdict("tls", "verified by public CAs")
+        return Verdict(name="tls", found="verified by public CAs")
     return Verdict(
-        "tls", "not verified by public CAs: TLS is inspected; the OS trust store is used"
+        name="tls", found="not verified by public CAs: TLS is inspected; the OS trust store is used"
     )
 
 
@@ -55,8 +59,8 @@ def access(settings: Settings) -> list[Verdict]:
     try:
         client = signing.client()
     except SignInNeededError:
-        return [Verdict("sign-in", f"no session saved: {signing.again}", SIGN_IN)]
-    verdicts = [Verdict("sign-in", signing.name)]
+        return [Verdict(name="sign-in", found=f"no session saved: {signing.again}", state=SIGN_IN)]
+    verdicts = [Verdict(name="sign-in", found=signing.name)]
     with client:
         reader = Site(client)
         for name, request, signed_in in (
@@ -66,14 +70,14 @@ def access(settings: Settings) -> list[Verdict]:
             try:
                 user = Fields(reader.json(request), "user")
                 verdict = (
-                    Verdict(name, "signed in")
+                    Verdict(name=name, found="signed in")
                     if signed_in(user)
-                    else Verdict(name, f"anonymous: {signing.again}", SIGN_IN)
+                    else Verdict(name=name, found=f"anonymous: {signing.again}", state=SIGN_IN)
                 )
             except SignInNeededError:
-                verdict = Verdict(name, f"refused: {signing.again}", SIGN_IN)
+                verdict = Verdict(name=name, found=f"refused: {signing.again}", state=SIGN_IN)
             except (RepresentationError, SiteError) as error:
-                verdict = Verdict(name, f"no answer ({error})", FAILED)
+                verdict = Verdict(name=name, found=f"no answer ({error})", state=FAILED)
             verdicts.append(verdict)
     return verdicts
 
@@ -81,13 +85,15 @@ def access(settings: Settings) -> list[Verdict]:
 def doctor(settings: Settings) -> list[Verdict]:
     """Run every check, and return each one's verdict."""
     verdicts = [
-        Verdict("python", sys.version.split()[0]),
+        Verdict(name="python", found=sys.version.split()[0]),
         pandoc(),
-        Verdict("data directory", f"{settings.data_dir}: allowed"),
+        Verdict(name="data directory", found=f"{settings.data_dir}: allowed"),
     ]
     if settings.site is None:
         return [
             *verdicts,
-            Verdict("site", "not set: add it to the settings or pass --site", FAILED),
+            Verdict(
+                name="site", found="not set: add it to the settings or pass --site", state=FAILED
+            ),
         ]
     return [*verdicts, public_trust(settings.site), *access(settings)]

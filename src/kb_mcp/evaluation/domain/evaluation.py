@@ -72,11 +72,11 @@ class Measures:
         """Average measures over questions; Section@10 over those that have one."""
         sections = [each.section for each in many if each.section is not None]
         return cls(
-            fmean(each.recall for each in many),
-            fmean(each.reciprocal_rank for each in many),
-            fmean(each.ndcg for each in many),
-            fmean(each.success for each in many),
-            fmean(sections) if sections else None,
+            recall=fmean(each.recall for each in many),
+            reciprocal_rank=fmean(each.reciprocal_rank for each in many),
+            ndcg=fmean(each.ndcg for each in many),
+            success=fmean(each.success for each in many),
+            section=fmean(sections) if sections else None,
         )
 
 
@@ -93,7 +93,9 @@ class Quoted:
     def mean(cls, many: Sequence[Quoted]) -> Quoted:
         """Average over questions; Evidence@ask over those that have evidence."""
         evidence = [each.evidence for each in many if each.evidence is not None]
-        return cls(fmean(each.found for each in many), fmean(evidence) if evidence else None)
+        return cls(
+            found=fmean(each.found for each in many), evidence=fmean(evidence) if evidence else None
+        )
 
 
 @dataclass(frozen=True)
@@ -162,7 +164,7 @@ def quoting(passages: Sequence[tuple[str, str]], question: Question) -> Quoted:
         if path in question.expected
     ]
     found = sum(path in texts for path in question.expected) / len(question.expected)
-    return Quoted(found, fmean(held) if held else None)
+    return Quoted(found=found, evidence=fmean(held) if held else None)
 
 
 def default_chunking(scored: Mapping[str, Scored]) -> Choice:
@@ -202,7 +204,7 @@ def default_chunking(scored: Mapping[str, Scored]) -> Choice:
     best = max((evidence[name] for name in qualified), default=0.0)
     close = [name for name in qualified if best - evidence[name] <= TIE]
     chosen = min(close, key=lambda name: scored[name].tokens, default=CONTROL)
-    return Choice(chosen, pvalues, adjusted)
+    return Choice(chunking=chosen, pvalues=pvalues, adjusted=adjusted)
 
 
 def paired_test(

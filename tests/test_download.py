@@ -294,8 +294,10 @@ class FakeSite:
 
 def given(span: Period, spaces: list[str], projects: list[str]) -> dict[Target, Window | None]:
     """Give each space and project the window that --since gives: ``span``."""
-    named = [Target("confluence", key) for key in spaces] + [Target("jira", k) for k in projects]
-    return {target: Window(span, "given") for target in named}
+    named = [Target(source="confluence", key=key) for key in spaces] + [
+        Target(source="jira", key=k) for k in projects
+    ]
+    return {target: Window(period=span, reason="given") for target in named}
 
 
 def week(spaces: list[str], projects: list[str]) -> dict[Target, Window | None]:
@@ -464,7 +466,9 @@ def settings(tmp_path: Path) -> Settings:
 
 def targets(spaces: list[str], projects: list[str]) -> Targets:
     """Return the targets of a run over the last week, with the test's cap."""
-    return Targets(spaces, projects, CAP, since=period("7d", None, NOW).start)
+    return Targets(
+        spaces=spaces, projects=projects, max_file_bytes=CAP, since=period("7d", None, NOW).start
+    )
 
 
 def saved_session(tmp_path: Path, monkeypatch: MonkeyPatch, fake: FakeSite) -> Settings:

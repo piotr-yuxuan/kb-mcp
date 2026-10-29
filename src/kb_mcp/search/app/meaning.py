@@ -64,20 +64,20 @@ class Meaning:
         """Find the documents passing the filters whose best piece is nearest the query."""
         embedded = reader.embedded()
         if embedded is None:
-            return Nearest({}, NO_VECTORS)
+            return Nearest(found={}, reason=NO_VECTORS)
         try:
             embedder, pieces = self.prepared(reader, embedded)
             fresh = embedder.fingerprint == embedded.fingerprint
             vector = embedder.query(query) if fresh else None
         except ModelError as error:
-            return Nearest({}, str(error))
+            return Nearest(found={}, reason=str(error))
         if vector is None:
-            return Nearest({}, STALE.format(name=embedded.model))
+            return Nearest(found={}, reason=STALE.format(name=embedded.model))
         kept = reader.kept(filters)
         allowed = None if kept is None else set(json.loads(kept))
         found = pieces.nearest(vector, allowed, DEPTH)
         return Nearest(
-            {
+            found={
                 path: (score, pieces.sections[index], pieces.offsets[index], pieces.ends[index])
                 for path, (score, index) in found.items()
             }

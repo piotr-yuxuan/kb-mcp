@@ -48,7 +48,12 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Read
         except ModelError as error:
             structlog.get_logger().error("model.not_ready", reason=str(error))
             return ExitStatus.FAILED, None
-    return ExitStatus.OK, Ready(name, embedder.dimensions, settings.embedding_url, embedder.digest)
+    return ExitStatus.OK, Ready(
+        name=name,
+        dimensions=embedder.dimensions,
+        url=settings.embedding_url,
+        digest=embedder.digest,
+    )
 
 
 def text(ready: Ready, _summary: Summary) -> str:

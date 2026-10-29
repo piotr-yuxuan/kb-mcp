@@ -39,7 +39,9 @@ CONTENT_PATH = "/rest/api/"
 def person(fields: Fields) -> Person:
     """Read a user; the email address, when there is one, is left behind."""
     with fields.refusals():
-        return Person(fields.text("accountId"), fields.optional_text("displayName"))
+        return Person(
+            account_id=fields.text("accountId"), display_name=fields.optional_text("displayName")
+        )
 
 
 def attachment(fields: Fields) -> Attachment:
@@ -53,11 +55,11 @@ def attachment(fields: Fields) -> Attachment:
         raise RepresentationError(message)
     with fields.refusals():
         return Attachment(
-            fields.text("id"),
-            fields.text("filename"),
-            fields.text("mimeType"),
-            fields.integer("size"),
-            content.path,
+            id=fields.text("id"),
+            filename=fields.text("filename"),
+            media_type=fields.text("mimeType"),
+            size=fields.integer("size"),
+            download=content.path,
         )
 
 
@@ -97,10 +99,10 @@ def comment(fields: Fields) -> Comment:
     author = fields.optional_object("author", absent=True)
     with fields.refusals():
         return Comment(
-            fields.text("id"),
-            None if author is None else person(author),
-            fields.time("created"),
-            fields.text("renderedBody"),
+            id=fields.text("id"),
+            author=None if author is None else person(author),
+            created=fields.time("created"),
+            html=fields.text("renderedBody"),
         )
 
 
@@ -118,10 +120,12 @@ def snapshot(responses: Mapping[str, object]) -> Snapshot:
     """
     fields = Fields(responses.get(ISSUE), ISSUE)
     return Snapshot(
-        issue(fields),
-        fields.object("renderedFields").optional_text("description") or "",
-        tuple(attachment(item) for item in fields.object("fields").objects("attachment")),
-        tuple(comment(item) for item in Fields.each(responses.get(COMMENTS), COMMENTS)),
+        document=issue(fields),
+        html=fields.object("renderedFields").optional_text("description") or "",
+        attachments=tuple(
+            attachment(item) for item in fields.object("fields").objects("attachment")
+        ),
+        comments=tuple(comment(item) for item in Fields.each(responses.get(COMMENTS), COMMENTS)),
     )
 
 
@@ -140,7 +144,8 @@ def search_request(project: str, start: date, end: date) -> Request:
         f' AND updated < "{end.isoformat()}" ORDER BY updated DESC'
     )
     return Request(
-        "/rest/api/3/search/jql", {"jql": jql, "fields": ISSUE_FIELDS, "maxResults": PAGE_SIZE}
+        path="/rest/api/3/search/jql",
+        params={"jql": jql, "fields": ISSUE_FIELDS, "maxResults": PAGE_SIZE},
     )
 
 
@@ -149,7 +154,7 @@ def search_page(response: Fields, request: Request) -> tuple[list[Fields], Reque
     token = response.optional_text("nextPageToken", absent=True)
     following = None
     if token is not None and not response.flag("isLast"):
-        following = Request(request.path, {**request.params, "nextPageToken": token})
+        following = Request(path=request.path, params={**request.params, "nextPageToken": token})
     return response.objects("issues"), following
 
 
@@ -157,7 +162,9 @@ def listed(fields: Fields) -> Listed:
     """Read of a search's entry only what decides a fetch: id and update time."""
     updated = fields.object("fields").time("updated")
     with fields.refusals():
-        return Listed(Issue, fields.text("id"), time_revision(updated), updated)
+        return Listed(
+            type=Issue, id=fields.text("id"), revision=time_revision(updated), updated=updated
+        )
 
 
 def listed_attachments(fields: Fields) -> tuple[Attachment, ...]:
@@ -175,14 +182,14 @@ def snapshot_requests(issue: Listed) -> dict[str, tuple[Request, ReadPage | None
 
 def issue_request(issue_id: str) -> Request:
     """GET an issue with its rendered fields."""
-    return Request(f"/rest/api/3/issue/{issue_id}", {"expand": "renderedFields"})
+    return Request(path=f"/rest/api/3/issue/{issue_id}", params={"expand": "renderedFields"})
 
 
 def comments_request(issue_id: str) -> Request:
     """GET the first page of an issue's comments, with their rendered bodies."""
     return Request(
-        f"/rest/api/3/issue/{issue_id}/comment",
-        {"expand": "renderedBody", "maxResults": PAGE_SIZE, "startAt": "0"},
+        path=f"/rest/api/3/issue/{issue_id}/comment",
+        params={"expand": "renderedBody", "maxResults": PAGE_SIZE, "startAt": "0"},
     )
 
 
@@ -192,13 +199,13 @@ def comments_page(response: Fields, request: Request) -> tuple[list[Fields], Req
     start = response.integer("startAt") + len(comments)
     following = None
     if comments and start < response.integer("total"):
-        following = Request(request.path, {**request.params, "startAt": str(start)})
+        following = Request(path=request.path, params={**request.params, "startAt": str(start)})
     return comments, following
 
 
 def myself_request() -> Request:
     """GET the user whom the session signs in; Jira answers 401 to an expired session."""
-    return Request("/rest/api/3/myself")
+    return Request(path="/rest/api/3/myself")
 
 
 def signed_in(response: Fields) -> bool:

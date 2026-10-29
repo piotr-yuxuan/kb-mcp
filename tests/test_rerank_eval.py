@@ -45,7 +45,7 @@ GROUPS = {"identifier": 0.600, "keyword": 0.800}
 
 def arm(score: float, tail_ms: int = 900, **groups: float) -> Depthed:
     """Make an arm whose every question scores ``score``, its groups as given or as GROUPS."""
-    return Depthed((score,) * QUESTIONS, GROUPS | groups, tail_ms)
+    return Depthed(reciprocal=(score,) * QUESTIONS, groups=GROUPS | groups, tail_ms=tail_ms)
 
 
 PLAIN = arm(0.0)
@@ -188,7 +188,13 @@ def test_with_no_depth_qualifying_reranking_stays_off_each_clause_said() -> None
 
 def test_counted_asks_a_query_s_texts_once_and_sums_the_tokens() -> None:
     """Ask's request repeats search's: kept; tokens summed, None once an answer counts none."""
-    answers = iter([Reranked([1.0], 3), Reranked([1.0, 0.0], None), Reranked([0.5], 4)])
+    answers = iter(
+        [
+            Reranked(scores=[1.0], tokens=3),
+            Reranked(scores=[1.0, 0.0], tokens=None),
+            Reranked(scores=[0.5], tokens=4),
+        ]
+    )
     asked: list[tuple[str, ...]] = []
 
     def score(_query: str, texts: Sequence[str]) -> Reranked:
@@ -302,10 +308,16 @@ def test_the_bar_s_verdicts_are_written_by_this_machine_s_times(
 ) -> None:
     """Each clause, a group's loss or n/a, each p-value against the best, the depth chosen."""
     verdicts = (
-        Verdict(10, 0.004, beats=True, losses={"keyword": 0.051}, fast=False),
-        Verdict(20, 0.004, beats=True, losses={"identifier": 0.0, "keyword": -0.012}, fast=True),
+        Verdict(depth=10, adjusted=0.004, beats=True, losses={"keyword": 0.051}, fast=False),
+        Verdict(
+            depth=20,
+            adjusted=0.004,
+            beats=True,
+            losses={"identifier": 0.0, "keyword": -0.012},
+            fast=True,
+        ),
     )
-    decision = Decision(verdicts, chosen, {20: 1.0, 30: 0.3})
+    decision = Decision(verdicts=verdicts, depth=chosen, against_best={20: 1.0, 30: 0.3})
     monkeypatch.setattr(measuring, "default_reranking", lambda _plain, _arms: decision)
     with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
         assert evaluated(data, url, rerank_url) == 0
