@@ -256,6 +256,32 @@ def test_a_person_at_their_largest_leaves_the_answer_within_the_budget(tmp_path:
     assert estimate(wide) <= CEILING
 
 
+def test_a_name_of_many_persons_is_refused_within_the_budget(tmp_path: Path) -> None:
+    """Two hundred accounts of one name, as a site names those who left: NAMES are listed.
+
+    Those of the most documents first, the account of two issues, then by id; then how
+    many more, and the refusal stays within the budget.
+    """
+    accounts = 200
+    first = anchored("account\nacct-0001")
+    documents: list[tuple[FrontMatter, str | None]] = []
+    for number in range(1, accounts + 2):
+        account = f"acct-{number % accounts:04}"  # acct-0001 writes the first and the last
+        author = PersonRole(role="author", name="Former user", account=account)
+        documents.append((issue(f"PAY-{number}", "Ledger", people=(author,)), None))
+    library = built(tmp_path, documents)
+    with pytest.raises(UnanswerableError) as refused:
+        library.search(filters={"author": "Former user"}, sort="created")
+    answer = str(refused.value)
+    header, block, footer = parts(answer)
+    assert header.strip() == f'author: "Former user" names {accounts} people; give the id of one:'
+    listed = block.splitlines()
+    assert len(listed) == NAMES
+    assert listed[0].startswith(f"Former user, {first}: author 2; jira 2;")
+    assert footer.strip() == f"({accounts - NAMES} more are not shown.)"
+    assert estimate(answer) <= BUDGET
+
+
 @pytest.mark.parametrize(
     ("tool", "arguments"),
     [

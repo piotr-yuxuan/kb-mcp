@@ -785,8 +785,9 @@ def test_a_person_is_found_in_any_role_by_any_of_their_names_or_their_id(
 def test_a_name_of_several_persons_is_refused_listing_each_by_id(persons: Library) -> None:
     """Without aliases, Sam Sample is two accounts and the stand-up's name alone.
 
-    Each by name, id, documents by role then source, and the last day one was updated;
-    the id of one keeps that person's documents alone.
+    Each by name, id, documents by role then source, and the last day one was updated,
+    those of the most documents first, then by id; the id of one keeps that person's
+    documents alone.
     """
     with pytest.raises(UnanswerableError) as refused:
         persons.search("lorem", filters={"person": "Sam Sample"})
@@ -797,7 +798,7 @@ def test_a_name_of_several_persons_is_refused_listing_each_by_id(persons: Librar
         SAM_ALONE: f"Sam Sample, {SAM_ALONE}: participant 2; worklog 2; last updated 2026-10-20",
     }
     assert header.strip() == 'person: "Sam Sample" names 3 people; give the id of one:'
-    assert block.splitlines() == [each[person] for person in sorted(each)]
+    assert block.splitlines() == [each[person] for person in (SAM_ALONE, *sorted((SAM_2, SAM_3)))]
     assert refs(persons.search(filters={"person": SAM_3}, sort="created")) == ["PAY-2"]
     alone = sorted(refs(persons.search(filters={"person": SAM_ALONE}, sort="created")))
     assert alone == ["m-20261020-stand-up", "t-20261020-3"]
@@ -833,7 +834,7 @@ def test_each_filter_of_a_role_keeps_its_person_under_any_of_their_names(
     [
         ({"author": "Sam Sample"}, [SAM_2, SAM_3]),
         ({"participant": "robin"}, [ROBIN, ROBIN_ALONE]),
-        ({"person": "Alex"}, [ALEX, ALEX_EXAMPLE]),
+        ({"person": "Alex"}, [ALEX_EXAMPLE, ALEX]),
     ],
 )
 def test_a_role_s_name_is_refused_when_several_persons_hold_it_there(
@@ -842,7 +843,8 @@ def test_a_role_s_name_is_refused_when_several_persons_hold_it_there(
     """Only those with a document in the role: the stand-up's Sam Sample wrote nothing.
 
     The review's Robin is Robin Example's account, the planning's a person apart; the
-    review's Alex is Alex Example, the unlinked transcripts' another. By id, in order.
+    review's Alex is Alex Example, the unlinked transcripts' another. Those of
+    the most documents first, then by id.
     """
     with pytest.raises(UnanswerableError) as refused:
         persons.search(filters=filters, sort="created")

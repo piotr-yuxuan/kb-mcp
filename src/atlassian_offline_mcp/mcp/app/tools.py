@@ -375,8 +375,9 @@ def who(reader: Reader, name: str, value: str | None) -> str | None:
     that id, else those holding a name of the value's key (``people.name_key``): one is
     taken. Refuse a value that none holds there, listing the role's names: those whose
     key holds the value's first, the most used first; and one that several hold, listing
-    each in order of id, by name, id, documents by role and by source and the last
-    update, so that the agent gives one's id.
+    ``responses.NAMES`` of them at most, those of the most documents first, then by id,
+    each by name, id, documents by role and by source and the last update, so that the
+    agent gives one's id, then how many more.
     """
     if value is None:
         return None
@@ -390,8 +391,11 @@ def who(reader: Reader, name: str, value: str | None) -> str | None:
     quoted = json.dumps(value, ensure_ascii=False)
     if found:
         message = f"{name}: {quoted} names {len(found)} people; give the id of one:"
-        listed = "\n".join(responses.activity(each) for each in found)
-        raise UnanswerableError(responses.answer(message, listed))
+        found.sort(key=lambda each: (-sum(each.sources.values()), each.person.id))
+        listed = "\n".join(responses.activity(each) for each in found[: responses.NAMES])
+        rest = len(found) - responses.NAMES
+        more = f"({rest} more are not shown.)" if rest > 0 else ""
+        raise UnanswerableError(responses.answer(message, listed, more))
     message = f"{name}: no document has {quoted}; the valid values:"
     valid = [candidate for candidate, _ in reader.values(name)]
     listed = sorted(valid, key=lambda each: wanted not in people.name_key(each))
