@@ -258,13 +258,15 @@ one colleague is one person to an agent:
 - a name written in a meeting's `:PARTICIPANTS:` or by a transcript's speaker, joined to
   the one account of that name, or else to the same name elsewhere in the work log,
   whatever its case, accents, spaces or trailing part in brackets:
-  `Kim (not in the header)` is `Kim`;
+  `Kim (not in the header)` is `Kim`, but `Alex (Ops)` and `Alex (Sales)`, which the
+  brackets tell apart, stay two;
 - a speaker of one word, such as `Sam`, joined to the one participant whose name begins
   with it, `Sam Sample`, among the meetings that link its transcript.
 
 The rest stays apart: a first name in a transcript that no meeting links, a nickname,
 `You` as the caption tool writes you, and two accounts of one name. A name that could
-be two people, such as a meeting's `Sam Sample` when two accounts have that name, is
+be two people, such as a meeting's `Sam Sample` when two accounts have that name, or a
+speaker `Sam` whose meeting names `Sam Sample` when an account is named `Sam`, is
 joined to neither. To see what stays apart:
 
 - `index` and `sync` warn of each name that could be several people,
@@ -294,6 +296,10 @@ atlassian-offline-mcp index
 ```
 
 - An alias joins names without an account alone: an account's names are the site's.
+- It joins its name anywhere but a transcript's speaker whom its meeting's
+  participants give someone else: to change that, change the meeting's
+  `:PARTICIPANTS:`. Its name ignores brackets: `"Alex"` joins `Alex (Ops)` and
+  `Alex (Sales)` alike.
 - Its target is a name or a person's id, never another alias.
 - A file that breaks a rule stops the build, naming the file and the alias, and the
   index in place stays: a file that is not UTF-8 TOML, a value that is not a string in

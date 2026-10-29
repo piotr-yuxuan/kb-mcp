@@ -53,8 +53,8 @@ creator 3, commenter 2; jira 4; last updated 2026-10-21.`; a line of their names
 sources write them, by how each joined (by its account, by an alias, by name, or as a
 speaker, by the meeting of each transcript), ten at most, then how many more; and a
 line for each person by name alone who is perhaps the same, not joined, a one-word
-name that begins one of theirs, by id, with the line of `aliases.toml` that would join
-them, ten at most. Each name is cut at 60 characters. Each hit's second line then ends
+name that begins one of theirs and that no account is named by, by id, with the line
+of `aliases.toml` that would join them, ten at most. Each name is cut at 60 characters. Each hit's second line then ends
 with that person's roles there, in the order of the roles, a commenter's with their
 comments' count and the day of the last, such as
 `Sam Sample: creator, commenter 2 (last 2026-10-21)`. Other filters of people add
@@ -89,11 +89,13 @@ neither.
   `{"creator": "Robin Sample"}` keeps the issues created as Robin Example too; a name
   that a hit cuts at 60 characters, `read` gives whole. A name or id that no person
   holds in that role is refused with the role's names, by `person` every role's, those
-  that hold it first, the most used first, by documents; participants by meetings
-  first, so that the speakers that a caption tool writes, `You` and `Unverified`, never
-  lead. A name that several persons hold there, such as two accounts of one name, is
-  refused listing each, in order of id, by name, id, documents by role then by source,
-  and the day of the last update, such as
+  that hold it first, the most used first, by documents; participants, and those of
+  `person`, by meetings or documents other than transcripts first, so that the
+  speakers that a caption tool writes, `You` and `Unverified`, never lead. A name that
+  several persons hold there, such as two accounts of one name, or `Alex (Ops)` and
+  `Alex (Sales)`, which brackets tell apart, is refused listing ten of them at most,
+  those of the most documents first, then in order of id, then how many more, each by
+  name, id, documents by role then by source, and the day of the last update, such as
   `Sam Sample, p-0123456789abcdef: author 1; jira 1; last updated 2026-10-20`: give the
   id of the one meant. The other values match whole, without regard to case, accents
   or runs of spaces. Of several values that match, one is kept: the one given, else one

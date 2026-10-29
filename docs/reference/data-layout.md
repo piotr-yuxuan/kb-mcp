@@ -664,9 +664,11 @@ Once every file is read, each build joins the rows of `people` into persons (043
 1. a row with an account is the account's person, under each of its names; two
    accounts are never one person, even of one name;
 2. a name without an account whose key an alias holds goes to the person that the alias
-   means ([below](#the-alias-file));
+   means ([below](#the-alias-file)), but for a transcript's speaker whom rule 4 gives
+   one other person;
 3. one whose key is the key of a name of exactly one account joins that account's
-   person;
+   person, but for a transcript's speaker to whom rule 4 gives persons that do not
+   hold that account, which is ambiguous;
 4. a transcript's speaker whose key is the first word of the keys of participants of
    the meetings that its `summary` links name joins their person, when they are one;
 5. else, a person by name alone, shared by every name without an account of its key.
@@ -675,18 +677,22 @@ A name's key (`search.domain.people.name_key`) is the name casefolded, decompose
 Unicode NFKD without the combining marks of U+0300 to U+036F, casefolded again, its
 runs of white space made one space, trimmed, and a trailing part in brackets dropped
 when a name comes before it: `Hélène  Example` and `helene example` share one, and
-`Kim (not in the header)` has `kim`. A name that rule 3 finds among several accounts,
-or rule 4 among several persons, is ambiguous: it joins none of them, goes by rule 5,
-and the build warns of it, as `index.person_ambiguous` ([index's
-telemetry](telemetry/index.md)); two accounts of one name are no warning, as no alias
-changes them. The same rows in any order give the same persons.
+`Kim (not in the header)` has `kim`. The join keeps that part, though
+(`search.domain.people.Joining.key`), for the names without an account of a key that
+two parts or more tell apart, as the user wrote them: `Alex (Ops)` and `Alex (Sales)`
+are two persons, and a bare `Alex` is neither. A name that rule 3 finds among several
+accounts, or among persons other than its meeting's, or rule 4 among several persons,
+is ambiguous: it joins none of them, goes by rule 5, and the build warns of it, as
+`index.person_ambiguous` ([index's telemetry](telemetry/index.md)); two accounts of one
+name are no warning, as no alias changes them. The same rows in any order give the
+same persons.
 
 A person's id is `p-` and the first 16 hex digits of the SHA-256 of `account`, a line
-feed and the account id, or of `name`, a line feed and the name's key
-(`search.domain.people.person_id`): stable while what anchors the person stays. A
-person is served by a name: an account's, the name on its most recently updated
-document; a person by name alone's, the target of the first alias that made it, when
-that is a name, else its most frequent spelling; ties go to the first row in the
+feed and the account id, or of `name`, a line feed and the key by which the join
+compares the name (`search.domain.people.person_id`): stable while what anchors the
+person stays. A person is served by a name: an account's, the name on its most recently
+updated document; a person by name alone's, the target of the first alias that made it,
+when that is a name, else its most frequent spelling; ties go to the first row in the
 join's order, by document, role, name and account, the rows of transcripts that link
 meetings last, so that their meetings' persons are known.
 
@@ -718,8 +724,13 @@ TOML strings:
 
 - No file is no alias.
 - An alias moves names without an account alone (rule 2): an account's names are the
-  site's. A target that is a name means the one account with a name of its key, else
-  the person by name alone of its key; aliases are not chained.
+  site's. It means its name anywhere but in a transcript whose meetings give the
+  speaker one other person: the participants that the user wrote for a meeting tell
+  more. Its name compares by its key, without annotation, so that `"Alex"` moves
+  `Alex (Ops)` and `Alex (Sales)` alike. A target that is a name means the one account
+  with a name of its key, else the person by name alone of its key; one that is a
+  person's id, a person that an account or a name makes, not aliases alone; aliases
+  are not chained.
 - A file that is not UTF-8 TOML; a target that is a table or not a string; a name or
   a target empty, of white space alone, holding a line break or longer than 200
   characters; or two names of one key: the build stops before it reads the mirror,

@@ -388,8 +388,11 @@ to whose name the speaker's word begins
 ([`by_meeting`](../../src/atlassian_offline_mcp/search/domain/people.py)); else it is
 a person by name alone, shared by every name of its key. Names compare by a key, without
 case, accents, runs of spaces or a trailing part in brackets
-([`name_key`](../../src/atlassian_offline_mcp/search/domain/people.py)). A name that
-could be several persons joins none of them, and the build warns of it, as of an alias
+([`name_key`](../../src/atlassian_offline_mcp/search/domain/people.py)), but for the
+parts that tell two names of one key apart
+([`Joining.key`](../../src/atlassian_offline_mcp/search/domain/people.py)). A name that
+could be several persons joins none of them, a speaker whose meeting names another
+than the one account of its name among them, and the build warns of it, as of an alias
 that changes nothing
 ([`index_mirror`](../../src/atlassian_offline_mcp/search/app/indexing.py)). The
 aliases are a file of the data directory, `aliases.toml`, read at each build
@@ -409,14 +412,15 @@ joined ([`person`](../../src/atlassian_offline_mcp/mcp/app/responses.py)).
   attended. An account id is the site's identity, so it joins a renamed colleague's
   names without doubt. An equal key joins what differs only in how it was typed, as most
   of the work log's names do. A speaker's first name is joined within its meeting
-  alone, whose participants the user wrote for it: there, one "Sam" is one person. Each
-  join that could be wrong is reported instead of made, since an agent that quotes one
-  colleague as another misleads, where one asked to choose between two ids does not. A
-  filter rather than a tool, since tools follow kinds of question, and "what has this
-  person done" is a search narrowed, which combines with words, sources and dates
-  ([the MCP surface](mcp-surface.md)). Persons are joined whole at each build, since one
-  account fetched late can make a work-log name ambiguous. The aliases are a file,
-  since a setting cannot hold a free mapping of names
+  alone, whose participants the user wrote for it: there, one "Sam" is one person, and
+  an alias, which the user wrote for the name anywhere, does not take the speaker from
+  them. Each join that could be wrong is reported instead of made, since an agent that
+  quotes one colleague as another misleads, where one asked to choose between two ids
+  does not. A filter rather than a tool, since tools follow kinds of question, and
+  "what has this person done" is a search narrowed, which combines with words, sources
+  and dates ([the MCP surface](mcp-surface.md)). Persons are joined whole at each
+  build, since one account fetched late can make a work-log name ambiguous. The aliases
+  are a file, since a setting cannot hold a free mapping of names
   ([`kind_of`](../../src/atlassian_offline_mcp/config/domain/settings.py)), and a file
   adds no setting to log, layer or document.
 - **Cost.** A first name outside a linked meeting, a nickname, a caption tool's `You`,
@@ -425,8 +429,16 @@ joined ([`person`](../../src/atlassian_offline_mcp/mcp/app/responses.py)).
   same, with the alias's line that would join it
   ([`about`](../../src/atlassian_offline_mcp/mcp/app/tools.py)). Two accounts of one
   name stay two, and a name without an account that matches both is a person by name
-  alone, until an alias names one by id. The files hold no person, so another engine
-  sees names
+  alone, until an alias names one by id. An alias compares names by their key, so it
+  joins `Alex (Ops)` and `Alex (Sales)` alike and can tell them apart from nobody; one
+  of a word that an account is named by takes that name from the account too, and no
+  answer suggests it. The join is whole at each build: on a synthetic index of 20,000
+  issues of 40 accounts and 2,000 meetings with their transcripts, 148,000 rows of
+  people and 2,000 links, it took 1.4 s on this laptop, the meetings of the transcripts
+  read in 9 ms by their source and id
+  ([`SUMMARIES`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)),
+  where a search of a source's documents for each of them took 28 s. The files hold no
+  person, so another engine sees names
   ([the how-to](../how-to/other-search-engines.md#what-another-engine-does-not-get)).
   A person's id is an opaque handle that protects nothing: hashing a known account id
   finds it again. One rebuild, at schema 6

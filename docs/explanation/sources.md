@@ -156,16 +156,22 @@ to whose name begins with the speaker's word
 stand-up's "Sam Sample"; else it is a person by name alone, one for every name of its
 key. A key leaves out case, accents, runs of spaces and a trailing part in brackets
 ([`name_key`](../../src/atlassian_offline_mcp/search/domain/people.py)), so that
-`Kim (not in the header)` is `Kim`, which plan 042 left to this join. A name that could
-be several persons, the name of two accounts or a speaker whose word begins two
-participants' names, is given to none of them, and the build says so, for the user to
-settle by an alias.
+`Kim (not in the header)` is `Kim`, which plan 042 left to this join; but where two
+such parts tell names apart, `Alex (Ops)` and `Alex (Sales)`, the join keeps them
+([`Joining.key`](../../src/atlassian_offline_mcp/search/domain/people.py)), as the
+user wrote them apart. A name that could be several persons, the name of two accounts,
+a speaker whose word begins two participants' names, or one whose meeting names
+another than the one account of its name, is given to none of them, and the build
+says so, for the user to settle by an alias.
 
 A speaker is joined within its meeting alone, as the user wrote that meeting's
-participants for it: there, one "Sam" is one person. Over the whole mirror, a new
-colleague of the same first name would move the old one's meetings without a word.
-Outside it, an answer narrowed to a person shows a one-word name alone as perhaps the
-same, with the alias that would join them
+participants for it: there, one "Sam" is one person, and no alias, written for a name
+anywhere, takes the speaker from that person
+([`by_alias`](../../src/atlassian_offline_mcp/search/domain/people.py)). Over the
+whole mirror, a new colleague of the same first name would move the old one's meetings
+without a word. Outside it, an answer narrowed to a person shows a one-word name alone
+as perhaps the same, with the alias that would join them, unless an account is named
+by that word, from which the alias would take it too
 ([`about`](../../src/atlassian_offline_mcp/mcp/app/tools.py)). The aliases are a file
 that the user writes in the data directory, `aliases.toml`, read at each build
 ([`read_aliases`](../../src/atlassian_offline_mcp/search/adapters/aliases.py)), rather

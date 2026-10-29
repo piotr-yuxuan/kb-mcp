@@ -238,8 +238,8 @@ and gives each piece a vector.
   the endpoint
   ([`index_mirror`](../../src/atlassian_offline_mcp/search/app/indexing.py)); the
   persons and their names go into tables of their own, which the filters by person read.
-  A transcript's meetings, which a speaker may join by, are those that its `summary`
-  links name. The join is whole at each build, as the index is: one account indexed
+  A transcript's meetings, which a speaker may join by, are the meetings that its
+  `summary` links name, read by their source and id; the join is a span of its own. The join is whole at each build, as the index is: one account indexed
   late can make a name of the work log ambiguous
   ([sources](sources.md#one-person-across-sources) says why persons are joined so).
 - **One document's failure**, a file not UTF-8, front matter refused, or a second

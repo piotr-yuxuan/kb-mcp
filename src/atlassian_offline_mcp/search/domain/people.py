@@ -5,14 +5,16 @@ people, the meetings that each transcript links to and the user's aliases, and g
 each row a person, by the first of these rules that answers:
 
 1. an account is a person, under each of its names: two accounts are never one;
-2. a name without an account whose key an alias holds goes to the alias's target;
+2. a name without an account whose key an alias holds goes to the alias's target, but
+   for a transcript's speaker whom rule 4 gives one other person;
 3. a name of the key of exactly one account's name joins that account's person;
 4. a transcript's speaker of one word joins the one person among its meetings'
    participants whose key begins with that word;
 5. any other name is a person by name alone, shared by every name of its key.
 
-A name that could be several persons, by rule 3 or 4, is ambiguous: it is reported,
-never given to one of them, and goes by rule 5. Every rule compares names by their
+A name that could be several persons, by rule 3 or 4, or a speaker whom they give
+different persons, is ambiguous: it is reported, never given to one of them, and goes
+by rule 5. Every rule compares names by their
 key, which keeps an annotation that tells two names of the work log apart. Nothing here
 reads the index or the alias file.
 """
