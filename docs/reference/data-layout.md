@@ -731,8 +731,9 @@ TOML strings:
   more. Its name compares by its key, without annotation, so that `"Alex"` moves
   `Alex (Ops)` and `Alex (Sales)` alike. A target that is a name means the one account
   with a name of its key, else the person by name alone of its key; one that is a
-  person's id, a person that an account or a name makes, not aliases alone; aliases
-  are not chained.
+  person's id, that person. Either must be a person that an account or a name makes,
+  not aliases or meetings alone: aliases are not chained, and an alias whose target's
+  every name another alias or a meeting joins elsewhere names nobody.
 - A file that is not UTF-8 TOML; a target that is a table or not a string; a name or
   a target empty, of white space alone, holding a line break or longer than 200
   characters; or two names of one key: the build stops before it reads the mirror,

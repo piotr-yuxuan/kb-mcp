@@ -541,15 +541,47 @@ def test_of_two_aliases_naming_one_person_the_first_names_it() -> None:
 
 
 def test_aliases_are_not_chained() -> None:
-    """An alias's target is looked up without the aliases: Alex joins Robin Other's name.
+    """An alias's target must be a person that names make, as without the aliases.
 
-    Robin Other itself goes to Robin's account by its own alias, written first.
+    Robin Other's own alias, written first, takes every Robin Other to Robin's account:
+    the name makes no person, so Alex's alias to it names nobody, and changes nothing.
     """
-    result = joined(ROWS, LINKS, {"Robin Other": "Robin Example", "Alex": "Robin Other"})
+    first = {"Robin Other": "Robin Example"}
+    result = joined(ROWS, LINKS, first | {"Alex": "Robin Other"})
     assert result.of[named(PLANNING, "Robin Other")] == ROBIN
-    assert result.of[named(UNLINKED, "Alex")] == ROBIN_OTHER
-    robin_other = next(person for person in result.persons if person.id == ROBIN_OTHER)
-    assert robin_other == Person(ROBIN_OTHER, "Robin Other", (Spelling("Alex", "alex", "alias"),))
+    assert result.of[named(UNLINKED, "Alex")] == ALEX
+    assert [(alias.name, alias.reason) for alias in result.unused] == [("Alex", NOBODY)]
+    assert replace(result, unused=()) == joined(ROWS, LINKS, first)
+
+
+def test_an_alias_to_a_name_that_its_meeting_joins_elsewhere_names_nobody() -> None:
+    """With "Sammy" = "Sam": the stand-up's Sam is its Sam Sample, by its meeting.
+
+    No name makes a person of Sam alone, so the alias names nobody, and Sammy stays
+    apart, as without it.
+    """
+    rows = (*ROWS, named(UNLINKED, "Sammy"))
+    result = joined(rows, LINKS, {"Sammy": "Sam"})
+    assert result.of[named(UNLINKED, "Sammy")] == anchored("name\nsammy")
+    assert [(alias.name, alias.reason) for alias in result.unused] == [("Sammy", NOBODY)]
+    assert replace(result, unused=()) == joined(rows, LINKS, {})
+
+
+@pytest.mark.parametrize("target", ["Kim", anchored("name\nkim")])
+def test_an_alias_of_a_name_to_itself_joins_its_annotated_spellings(target: str) -> None:
+    """Kim and two notes of Kim, which the two annotations part; "Kim" = "Kim" joins them.
+
+    Its target is the person of Kim alone, which Kim makes though the alias takes it, as
+    does that person's id; then no name is several persons.
+    """
+    rows = (
+        named(STAND_UP, "Kim"),
+        named(REVIEW, "Kim (not in the header)"),
+        named(PLANNING, "Kim (late)"),
+    )
+    result = joined(rows, {}, {"Kim": target})
+    assert set(result.of.values()) == {anchored("name\nkim")}
+    assert (result.ambiguous, result.unused) == ((), ())
 
 
 def test_a_speaker_whom_its_meeting_and_an_account_tell_apart_is_ambiguous() -> None:

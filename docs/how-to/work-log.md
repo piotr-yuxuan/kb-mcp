@@ -300,7 +300,8 @@ atlassian-offline-mcp index
   participants give someone else: to change that, change the meeting's
   `:PARTICIPANTS:`. Its name ignores brackets: `"Alex"` joins `Alex (Ops)` and
   `Alex (Sales)` alike.
-- Its target is a name or a person's id, never another alias.
+- Its target is a name or a person's id, never another alias: a name that another
+  alias, or the meeting of each transcript, joins to someone else names nobody.
 - A file that breaks a rule stops the build, naming the file and the alias, and the
   index in place stays: a file that is not UTF-8 TOML, a value that is not a string in
   quotes, an empty name, a name or value of several lines or longer than 200

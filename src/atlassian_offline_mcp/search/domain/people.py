@@ -177,10 +177,10 @@ class Joining:
     ) -> None:
         """Read the rows, the meetings of each transcript, by rowid, and the aliases.
 
-        An alias's target is a person's id, which ``joined`` keeps when an account or a
-        name makes that person; or a name, which means the one account of its key, as
-        rule 3 finds it, else the person by name alone of a key that a name without an
-        account holds. Aliases are not chained.
+        An alias's target is a person's id; or a name, which means the one account of
+        its key, as rule 3 finds it, else the person by name alone of a key that a name
+        without an account holds. ``joined`` keeps either when an account or a name
+        makes that person: aliases are not chained.
         """
         self.meetings = meetings
         self.persons: dict[Row, str] = {}
@@ -314,8 +314,9 @@ def joined(
     order give the same result. A person is served by the name on its account's most
     recently updated document; else by the target of the alias that made it, when that
     is a name; else by its most frequent spelling: ties go to the first row in order.
-    An alias to a person's id that no account or name makes, but aliases alone, names
-    nobody: the join is made again without it, each pass with fewer aliases.
+    An alias whose target, a person's id or a name, means a person that no account or
+    name makes, but aliases or meetings alone, names nobody: the join is made again
+    without it, each pass with fewer aliases.
     """
     ordered = sorted(
         set(rows),
@@ -346,14 +347,18 @@ def joined(
             how, found = NAME, person_id(NAME, joining.key(row.name))
         joining.persons[row] = found
         members.setdefault(found, []).append((row, how))
-    # The persons that an account or a name makes, not an alias or a meeting alone.
+    # The persons that an account or a name makes, whatever rule joined that name to its
+    # own person, but not an alias or a meeting alone, which join a name to another's.
     made = {
-        person for person, joins in members.items() for _, how in joins if how in {ACCOUNT, NAME}
+        person
+        for person, joins in members.items()
+        for row, how in joins
+        if how == ACCOUNT or person == person_id(NAME, joining.key(row.name))
     }
     nobody = {
         alias.key: replace(alias, means=None)
         for alias in joining.aliases.values()
-        if alias.reason is None and PERSON_ID.fullmatch(alias.target) and alias.means not in made
+        if alias.reason is None and alias.means not in made
     }
     if nobody:
         kept = {name: target for name, target in aliases.items() if name_key(name) not in nobody}
