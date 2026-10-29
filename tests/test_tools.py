@@ -959,6 +959,53 @@ def test_a_one_word_name_of_an_account_is_never_shown_as_perhaps_the_same(
     assert sorted(refs(alone)) == ["t-20261020-1", "t-20261020-2"]
 
 
+# An account named Robin, one word, as the site may name a colleague.
+ROBIN_ACCOUNT = PersonRole(role="author", name="Robin", account="acct-0004")
+
+
+@pytest.mark.parametrize(
+    ("extra", "perhaps"),
+    [((), [ROBIN_ALONE]), ((issue("PAY-3", "Ledger audit", people=(ROBIN_ACCOUNT,)),), [])],
+    ids=["no account named Robin", "an account named Robin"],
+)
+def test_a_speaker_whom_an_account_holds_is_never_shown_as_perhaps_the_same(
+    tmp_path: Path, extra: tuple[FrontMatter, ...], perhaps: list[str]
+) -> None:
+    """An unlinked transcript's Robin: a name alone, or the account named Robin's by name.
+
+    A person of an account is not one by name alone, and an alias of Robin would take
+    the speaker from that account: Robin Example's answer offers Robin only without it.
+    """
+    example = PersonRole(role="author", name="Robin Example", account="acct-0001")
+    documents = (
+        page("300001", "Ledger runbook", people=(example,)),
+        worklog("transcript", "t-20261022-1", "Pairing", "Robin"),
+        *extra,
+    )
+    library = built(tmp_path, [(front, None) for front in documents])
+    block = parts(library.search(filters={"person": "Robin Example"}, sort="updated"))[1]
+    header = block.partition("\n\n")[0]
+    offered = [
+        line.removeprefix("Perhaps the same, not joined: ").partition(";")[0]
+        for line in header.splitlines()
+        if line.startswith("Perhaps the same")
+    ]
+    assert offered == perhaps
+
+
+def test_a_one_word_name_alone_is_never_shown_as_perhaps_the_same_as_itself(
+    persons: Library,
+) -> None:
+    """Alex, of the two unlinked transcripts, is the one person of its word by name alone.
+
+    No alias joins a person to itself.
+    """
+    block = parts(persons.search(filters={"person": ALEX}, sort="updated"))[1]
+    header = block.partition("\n\n")[0]
+    assert header.startswith(f"Person: Alex, {ALEX}: ")
+    assert not [line for line in header.splitlines() if line.startswith("Perhaps the same")]
+
+
 def test_no_alias_is_suggested_that_would_join_persons_kept_apart(tmp_path: Path) -> None:
     """Two meetings name Robin (Ops) and Robin (Sales), whom their annotations keep apart.
 

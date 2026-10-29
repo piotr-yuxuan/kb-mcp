@@ -244,6 +244,7 @@ def test_a_person_at_their_largest_leaves_the_answer_within_the_budget(tmp_path:
     answer = library.search(filters=person, sort="updated")
     header = parts(answer)[1].partition("\n\n")[0]
     assert len(header.splitlines()) == len(["person", "names", *range(NAMES)])
+    assert header.splitlines()[1].count("Wörd") == NAMES
     assert f" by its account; {len(SPELLINGS) - NAMES} more.\n" in header
     answers = [
         answer,
