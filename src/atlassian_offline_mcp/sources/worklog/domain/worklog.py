@@ -23,7 +23,7 @@ from atlassian_offline_mcp.kernel.slug import slug
 from atlassian_offline_mcp.sources.worklog.domain import org
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
     from pathlib import PurePosixPath
 
 TODO = "todo.org"
@@ -223,14 +223,46 @@ def meeting_ids(day: datetime, meetings: Sequence[tuple[str, datetime]]) -> list
     return [found[index] for index in range(len(meetings))]
 
 
+@dataclass(frozen=True)
+class Meeting:
+    """A meeting of a day, and the transcript that it links, as ``read`` finds them.
+
+    ``link`` is its ``:MEETING:`` as written; ``file``, the file that it names, from the
+    work log's folder, or None; ``transcript``, that file's when read; ``start``, when
+    that transcript starts, else the day. ``added`` are the lines of the archived
+    headings that join it.
+    """
+
+    part: Part
+    link: str
+    file: PurePosixPath | None
+    transcript: Document | None
+    start: datetime
+    added: list[str] = dataclasses.field(default_factory=list)
+
+    @classmethod
+    def read(
+        cls, part: Part, day: datetime, transcripts: Mapping[PurePosixPath, Document]
+    ) -> Meeting:
+        """Read a meeting of ``day``, its link resolved from the folder of its file.
+
+        ``transcripts`` are those read, by their path from the work log's folder.
+        """
+        link = part.subtree.properties.get(LINKED, "")
+        target = org.link_target(link)
+        file = None if target is None else part.source.path.parent / target
+        transcript = None if file is None else transcripts.get(file)
+        start = None if transcript is None else transcript.start
+        return cls(part, link, file, transcript, start or day)
+
+
 @dataclass
 class Day:
     """What one date of the journal gathers, in reading order, ``todo.org`` first.
 
     ``title``, ``breadcrumb`` and ``first`` (its file and settings) come from its first
     part, a day's heading or an archived heading that names the day. ``lines`` are what
-    pandoc converts, before the settings; ``meetings``, each meeting and the lines that
-    join it.
+    pandoc converts, before the settings; ``meetings``, its meetings.
     """
 
     title: str
@@ -238,7 +270,7 @@ class Day:
     first: Part
     headings: list[Part] = dataclasses.field(default_factory=list)
     lines: list[str] = dataclasses.field(default_factory=list)
-    meetings: list[tuple[Part, list[str]]] = dataclasses.field(default_factory=list)
+    meetings: list[Meeting] = dataclasses.field(default_factory=list)
 
 
 def journal(
@@ -355,7 +387,7 @@ def days_and_meetings(
             day.headings.append(part)
             children = part.children
             day.meetings.extend(
-                (child, [])
+                Meeting.read(child, part.day, linked)
                 for child in children
                 if child.meeting and (archives or not child.archived)
             )
@@ -372,7 +404,7 @@ def days_and_meetings(
                 Day(part.path[place], (part.source.path.name, *part.path[:place]), part),
             )
             if part.meeting:
-                day.meetings.append((part, []))
+                day.meetings.append(Meeting.read(part, date, linked))
                 day.lines.extend(org.shifted(part.subtree.lines[:1], DAY_LEVEL))
             else:
                 joining.append((day, "/".join(part.path[place + 1 :]), part))
@@ -380,9 +412,9 @@ def days_and_meetings(
         # Org joins the titles of a path by a / that it does not escape, so that a title
         # such as 1/1 with Robin spans two parts: the longest title that begins the rest.
         named = [
-            (len(title), added)
-            for meeting, added in day.meetings
-            if (title := meeting.subtree.heading.outline_title)
+            (len(title), meeting.added)
+            for meeting in day.meetings
+            if (title := meeting.part.subtree.heading.outline_title)
             and (rest == title or rest.startswith(f"{title}/"))
         ]
         target = max(named, key=lambda each: each[0], default=(0, day.lines))[1]
@@ -390,23 +422,9 @@ def days_and_meetings(
     found: list[Document] = []
     unlinked: list[str] = []
     for date, day in days.items():
-        written = [meeting.subtree.properties.get(LINKED, "") for meeting, _ in day.meetings]
-        transcribed = [
-            None
-            if (target := org.link_target(link)) is None
-            else linked.get(meeting.source.path.parent / target)
-            for (meeting, _), link in zip(day.meetings, written, strict=True)
-        ]
-        unlinked.extend(
-            link for link, each in zip(written, transcribed, strict=True) if link and each is None
-        )
-        starts = [(None if each is None else each.start) or date for each in transcribed]
+        unlinked.extend(each.link for each in day.meetings if each.link and each.transcript is None)
         ids = meeting_ids(
-            date,
-            [
-                (meeting.subtree.heading.title, start)
-                for (meeting, _), start in zip(day.meetings, starts, strict=True)
-            ],
+            date, [(each.part.subtree.heading.title, each.start) for each in day.meetings]
         )
         headings = day.headings
         archived = not headings or any(each.archived for each in headings)
@@ -436,9 +454,8 @@ def days_and_meetings(
                 source=day.first.source,
             )
         )
-        for (meeting, added), transcript, start, identifier in zip(
-            day.meetings, transcribed, starts, ids, strict=True
-        ):
+        for each, identifier in zip(day.meetings, ids, strict=True):
+            meeting, transcript = each.part, each.transcript
             heading = meeting.subtree.heading
             labels = [
                 *heading.tags,
@@ -457,12 +474,12 @@ def days_and_meetings(
                     links=() if transcript is None else ((TRANSCRIPT, transcript.id),),
                     text=org.pandoc_input(
                         meeting.parsed.declarations,
-                        [*org.shifted(meeting.subtree.lines), *added],
+                        [*org.shifted(meeting.subtree.lines), *each.added],
                         meeting.parsed.keywords,
                         archives=archives,
                     ),
                     events=(),
-                    start=start,
+                    start=each.start,
                     source=meeting.source,
                 )
             )
