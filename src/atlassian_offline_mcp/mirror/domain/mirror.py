@@ -44,15 +44,17 @@ PATTERNS = {
     "jira": (IDENTIFIER, REVISION),
     "worklog": (WORKLOG_ID, WORKLOG_REVISION),
 }
+# The role of a meeting's participants and a transcript's speakers.
+PARTICIPANT = "participant"
 # The roles that a person can hold in a document, a closed set, in the order that the
 # mirror gives a document's people.
-ROLES = ("author", "creator", "assignee", "commenter", "participant")
+ROLES = ("author", "creator", "assignee", "commenter", PARTICIPANT)
 # The roles that one person alone holds in a document; each other is held once per person.
 SOLE = frozenset({"author", "creator", "assignee"})
 # The roles of the work log's documents, which hold no other: a meeting's participants
 # and a transcript's speakers. No document holds both kinds, so that a read's front
 # matter, which is never cut, names one kind's people alone, within the read's budget.
-WORKLOG_ROLES = frozenset({"participant"})
+WORKLOG_ROLES = frozenset({PARTICIPANT})
 # The relations that a document can have to another, a closed set: a meeting's to its
 # transcript, and a transcript's to the meeting that summarises it.
 RELATIONS = ("transcript", "summary")

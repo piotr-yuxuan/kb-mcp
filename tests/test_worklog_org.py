@@ -24,8 +24,11 @@ from pathlib import PurePosixPath
 import pytest
 
 from atlassian_offline_mcp.kernel.content import WORKLOG_ID, WORKLOG_REVISION
+from atlassian_offline_mcp.mirror.domain.mirror import RELATIONS
 from atlassian_offline_mcp.sources.worklog.domain import org
 from atlassian_offline_mcp.sources.worklog.domain.worklog import (
+    SUMMARY,
+    TRANSCRIBED,
     Document,
     Source,
     journal,
@@ -1237,6 +1240,11 @@ def test_only_a_meeting_s_link_that_reaches_nothing_is_returned_in_meetings_orde
     )
     _, unlinked = journal(todo(text), None, archives=False, transcripts=())
     assert unlinked == ["first.org", "m-20261027-second"]
+
+
+def test_the_work_log_s_relations_are_among_the_front_matter_s() -> None:
+    """The two layers name each relation apart; a rename on one side alone fails here."""
+    assert {TRANSCRIBED, SUMMARY} <= set(RELATIONS)
 
 
 def test_a_transcript_links_back_to_each_meeting_that_links_to_it() -> None:

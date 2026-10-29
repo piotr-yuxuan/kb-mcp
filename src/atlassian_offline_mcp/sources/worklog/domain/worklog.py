@@ -41,9 +41,10 @@ ORG = ".org"
 ENTRY = "entry"
 DAY_TYPE = "day"
 MEETING_TYPE = "meeting"
-# A transcript's type, and the relation of a meeting to its transcript.
 TRANSCRIPT = "transcript"
-# The relation of a transcript to each meeting that links to it.
+# The relations of a meeting to its transcript, and of a transcript to each meeting
+# that links to it, as the mirror's front matter names them.
+TRANSCRIBED = "transcript"
 SUMMARY = "summary"
 CURRENT = "current"
 DIGITS = 16
@@ -477,7 +478,7 @@ def days_and_meetings(
                     labels=tuple(dict.fromkeys(labels)),
                     breadcrumb=(meeting.source.path.name, *meeting.path),
                     people=participants(meeting.subtree.properties.get(NAMED, "")),
-                    links=() if transcript is None else ((TRANSCRIPT, transcript.id),),
+                    links=() if transcript is None else ((TRANSCRIBED, transcript.id),),
                     text=org.pandoc_input(
                         meeting.parsed.declarations,
                         [*org.shifted(meeting.subtree.lines), *each.added],
@@ -612,7 +613,7 @@ def linked_back(transcripts: Iterable[Document], documents: Iterable[Document]) 
     summaries: dict[str, list[tuple[str, str]]] = {}
     for document in documents:
         for relation, ref in document.links:
-            if relation == TRANSCRIPT:
+            if relation == TRANSCRIBED:
                 summaries.setdefault(ref, []).append((SUMMARY, document.id))
     return [
         dataclasses.replace(each, links=(*each.links, *summaries.get(each.id, ())))
