@@ -298,8 +298,8 @@ def test_a_name_alone_is_named_by_its_most_frequent_spelling_ties_to_the_first()
 def test_an_alias_joins_a_name_without_a_meeting_to_its_target() -> None:
     """With "Robin" = "Robin Example", every Robin without an account is Robin's account.
 
-    Before any meeting: the linked transcript's Robin joins by the alias too, and the
-    planning's is no longer ambiguous.
+    The review's transcript's Robin, whom its meeting gives Robin's account too, joins by
+    the alias, and the planning's, of two Robins, is no longer ambiguous.
     """
     result = joined(ROWS, LINKS, {"Robin": "Robin Example"})
     assert result.of[named(UNLINKED, "Robin")] == ROBIN
@@ -309,6 +309,23 @@ def test_an_alias_joins_a_name_without_a_meeting_to_its_target() -> None:
     assert Spelling("Robin", "robin", "meeting") not in robin.names
     assert ROBIN_ALONE not in {person.id for person in result.persons}
     assert [ambiguity.name for ambiguity in result.ambiguous] == ["Sam Sample"]
+    assert result.unused == ()
+
+
+def test_an_alias_never_takes_a_speaker_its_meeting_gives_another() -> None:
+    """With "Robin" = "Robin Example", the retro's transcript's Robin stays Robin Other's.
+
+    The retro's one Robin is Robin Other: the participants that the user wrote for that
+    meeting tell more than the alias, written for the name anywhere. Robin elsewhere
+    joins by the alias, as does no row of the retro's, and the alias is not unused.
+    """
+    retro, linked_to_retro = 14, 26
+    rows = (*ROWS, named(retro, "Robin Other"), named(linked_to_retro, "Robin"))
+    result = joined(rows, LINKS | {linked_to_retro: {retro}}, {"Robin": "Robin Example"})
+    assert result.of[named(linked_to_retro, "Robin")] == ROBIN_OTHER
+    assert result.of[named(UNLINKED, "Robin")] == ROBIN
+    robin_other = next(person for person in result.persons if person.id == ROBIN_OTHER)
+    assert Spelling("Robin", "robin", "meeting") in robin_other.names
     assert result.unused == ()
 
 

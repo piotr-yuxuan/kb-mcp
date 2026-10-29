@@ -205,10 +205,15 @@ class Joining:
 def by_alias(row: Row, joining: Joining) -> Answer:
     """Give a name without an account to the person its alias means (rule 2).
 
-    An alias whose target names nobody, or several, changes nothing.
+    An alias whose target names nobody, or several, changes nothing; nor does it take a
+    transcript's speaker whom its meetings give one other person, by rule 4: the user
+    wrote those participants for that meeting, and the alias for the name anywhere.
     """
     alias = joining.aliases.get(name_key(row.name))
-    return alias.means if alias is not None and alias.reason is None else None
+    if alias is None or alias.reason is not None:
+        return None
+    meeting = by_meeting(row, joining)
+    return None if isinstance(meeting, str) and meeting != alias.means else alias.means
 
 
 def by_name(row: Row, joining: Joining) -> Answer:
