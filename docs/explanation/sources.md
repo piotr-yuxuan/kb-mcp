@@ -28,12 +28,38 @@ program reads it and never writes there, never runs git, and follows a link only
 it. Unlike the Atlassian sources, it has no raw store: re-reading it whole on every run
 costs less than keeping a copy, and its files of a few megabytes are converted again
 only when their text changed. A document whose file holds its revision, a digest of
-what pandoc reads and of pandoc's version, keeps that file as it is: an edit elsewhere
-in `todo.org`, which changes the file's time, moves no other entry's dates.
+what pandoc reads and of pandoc's version
+([`revision`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)), keeps
+that file's body: an edit elsewhere in `todo.org`, which changes the file's time, moves
+no other entry's dates. A day, a meeting and a dated transcript are dated, and linked,
+afresh at each run
+([`mirror_worklog`](../../src/atlassian_offline_mcp/mirror/app/worklog.py)): a meeting
+starts when its transcript does, and the transcript may be saved after the meeting's
+notes, so neither its dates nor its links are part of its revision.
 
 A file that breaks a bound, links out, or is not UTF-8 is named by its path alone, as
 its content could be anything, and the run then removes no file: the last good copy of
 each document stays until a run reads the folder whole.
+
+## Days and meetings, found by shape
+
+The user's journal, a top-level heading of `todo.org`, holds a heading per day, and
+below a day a heading per meeting, with its participants, a link to its transcript, and
+its summary, details and actions ([the
+how-to](../how-to/work-log.md#the-journal-days-and-meetings)). Read as one entry, it was
+one document of megabytes, whose meetings no filter or hit could tell apart; read by its
+headings, each day and each meeting is a document of its own
+([`journal`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
+which search ranks, `read` opens and the filters narrow to. The rule reads the
+outline's shape, not the journal's name: a day is a heading titled by a date alone
+([`date_title`](../../src/atlassian_offline_mcp/sources/worklog/domain/org.py)),
+a meeting a child of a day with a meeting's property
+([`Part.meeting`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+So a renamed journal reads as the old one, and so does the archive file, where org
+moves a day to the top and names, in `:ARCHIVE_OLPATH:`, the day of a meeting archived
+alone
+([`days_and_meetings`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+[The trade-offs](trade-offs.md#the-journal-split-by-shape) give what this costs.
 
 ## Identity that survives org's edits
 
@@ -41,43 +67,76 @@ Org adds a `CLOSED:` line and a logged state when an entry is closed, moves it t
 archive file when archived, and rewrites its tags and statistics cookies as the user
 works. An entry's id is therefore taken from what those edits leave alone: its `:ID:`
 property, else its title and `:CREATED:`, else its title. Planning lines, notes, the
-keyword, tags and cookies never count. Transcripts are named by their day and file name,
-so that moving one under `transcripts/archive/` keeps its id, and a copy left beside its
-original is told apart by its path, with a warning.
+keyword, tags and cookies never count. A day is named by its date, so that every part
+of one date, archived or not, makes one document
+([`days_and_meetings`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py));
+a meeting by its day's date and its title's slug, numbered by start time where two
+share one
+([`meeting_ids`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
+so that archiving it keeps its id. Transcripts are named by their day and file name, or
+that name's slug, never by their folders
+([`transcripts`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
+so that moving one under `transcripts/archive/` keeps its id, and a copy left beside
+its original is told apart by its path, with a warning.
 
 ## One front matter for every source
 
 A work-log document takes the keys every document has, so that search and the index read
-it as they read a page: its keyword as `status`, its tags as `labels`, its timestamps as
-`created` and `updated`, its file as `breadcrumb`; the keys of other sources are `null`.
-Keys of its own (scheduled, deadline, priority) would change every file of the mirror
-and the index's schema; they wait until something filters on them.
+it as they read a page: its keyword as `status`, its tags as `labels`, its timestamps,
+or when it happened, as `created` and `updated`, its file and the titles above it as
+`breadcrumb`; the keys of other sources are `null`. Keys of its own (scheduled,
+deadline, priority) would change every file of the mirror and the index's schema; they
+wait until something filters on them.
 
 People are one key for every source, `people`, each person by role
 ([`FrontMatter.people`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)),
 rather than a key for each of Atlassian's fields. The roles are a closed set, as the
 types of document are
 ([`ROLES`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)): `author`,
-`creator`, `assignee` and `commenter`. Each source fills the roles that it has
-([`front_matter`](../../src/atlassian_offline_mcp/mirror/domain/catalogue.py)): a page
-or a blog post, its author; an issue, its reporter as its author, its creator, its
-assignee, and each commenter with the times of their comments; the work log, nobody. So
-the filters by person read every source alike
+`creator`, `assignee`, `commenter` and `participant`. Each source fills the roles that
+it has ([`front_matter`](../../src/atlassian_offline_mcp/mirror/domain/catalogue.py)): a
+page or a blog post, its author; an issue, its reporter as its author, its creator, its
+assignee, and each commenter with the times of their comments. The work log fills
+`participant` alone
+([`mirror_worklog`](../../src/atlassian_offline_mcp/mirror/app/worklog.py)):
+a meeting's names as its `:PARTICIPANTS:` writes them
+([`participants`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
+a transcript's speakers
+([`speakers`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+So the filters by person read every source alike
 ([`KEPT`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), and a role
 that a source adds is one more value of `role`, where a key of its own would change
-every file and the index's schema, as the work log's own keys would. The other keys
+every file and the index's schema, as the work log's own keys would. No other source
+holds `participant`, and the work log holds no other role
+([`WORKLOG_ROLES`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)),
+so that no front matter, which `read` never cuts, names people of both kinds: an issue
+with every role at its largest already fills most of a read's budget. The other keys
 that Atlassian shapes, `key`, `space`, `project`, `issue_type` and `version`, stay as
 they are, `null` for the other sources: nothing yet needs them generic. [The
 trade-offs](trade-offs.md#people-a-generic-key) give what this costs.
 
+Links between documents are one key too, `links`, each a relation and the other's ref
+([`Link`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)),
+the relations a closed set
+([`RELATIONS`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)):
+a meeting's `transcript`, and a transcript's `summary`, each meeting that links it. The
+work log's step writes each link both ways
+([`linked_back`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
+since a program that reads one file cannot find those that link to it without reading
+them all.
+
 ## Untrusted, local
 
-The work log holds the user's notes and summaries an AI wrote, and transcripts, the
-word-by-word record. The server tells agents so, in its instructions and its `source`
-filter, so that they quote a transcript rather than a summary of it, and check the one
-against the other. It stays on this machine, as all the data does: by default `sync`
-sends its text to the embedding endpoint, which must be a loopback address unless the
-run is given `--allow-remote-embeddings` ([an endpoint off this
+The work log holds the user's notes and summaries an AI wrote, its days, meetings and
+entries, and transcripts, the word-by-word record, which a meeting links. The server
+tells agents so, in its instructions
+([`WORKLOG_KINDS`](../../src/atlassian_offline_mcp/mcp/app/surface.py)) and its
+`source` filter
+([`SearchFilters`](../../src/atlassian_offline_mcp/mcp/app/tools.py)), so that they
+quote a transcript rather than a summary of it, and check the one against the other.
+It stays on this machine, as all the data does: by default `sync` sends its text to the
+embedding endpoint, which must be a loopback address unless the run is given
+`--allow-remote-embeddings` ([an endpoint off this
 machine](../how-to/embeddings.md#reach-an-endpoint-off-this-machine)). Served to agents
 it is untrusted reference data, like every page: a line in it that tells the reader
 what to do is text, not an instruction.
