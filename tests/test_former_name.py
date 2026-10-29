@@ -9,6 +9,7 @@ builds the former places in its scratch home; none is ever moved.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -297,7 +298,7 @@ def test_check_stops_before_any_log_file_and_moves_nothing(tmp_path: Path) -> No
     assert files(home) == before
 
 
-@pytest.mark.parametrize("arguments", [["--help"], ["--version"], ["completion"]])
+@pytest.mark.parametrize("arguments", [["--help"], ["--version"], ["completion"]], ids=" ".join)
 def test_what_reads_no_settings_never_stops(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], arguments: list[str]
 ) -> None:
@@ -316,13 +317,12 @@ def test_what_reads_no_settings_never_stops(
 def test_the_how_to_page_holds_every_line_the_stop_prints(
     home: Path, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The page says what the stop says, for a home holding every former place."""
+    """The page's sample is what the stop says, line for line, for a home holding all four."""
     place(home, FORMER_FILE)
     place(home, FORMER_DATA)
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", SITE)
     monkeypatch.setenv("KB_MCP_LOGS__DIR", str(tmp_path / "logs" / "atlassian-offline-mcp"))
     page = (ROOT / "docs" / "how-to" / "move-to-kb-mcp.md").read_text(encoding="utf-8")
-    lines = set(page.splitlines())
-    printed = refusal(home).advice.splitlines()
-    assert "Change each setting whose path names the former name, moving what it names:" in printed
-    assert [line for line in printed if line not in lines] == []
+    sample = re.search(r"```text\n(.*?)```", page, re.DOTALL)
+    assert sample is not None
+    assert refusal(home).advice.rstrip("\n") == sample[1].rstrip("\n")

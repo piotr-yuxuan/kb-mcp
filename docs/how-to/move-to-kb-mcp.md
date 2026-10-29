@@ -7,8 +7,10 @@ configuration: it says what it finds, and you move it.
 
 ## 1. Replace the command
 
-The former tool gives the command `atlassian-offline-mcp` alone. From a checkout of the
-repository at this version:
+Quit the coding agents first: a server started under the former name runs from the tool
+that this step removes, and keeps the former data directory open. The former tool gives
+the command `atlassian-offline-mcp` alone. From a checkout of the repository at this
+version:
 
 ```bash
 uv tool uninstall atlassian-offline-mcp
@@ -28,8 +30,9 @@ former name left in what it would use:
   clone, is never taken for the data;
 - a variable named `ATLASSIAN_OFFLINE_MCP_…`, in any case, set and not empty, whose new
   name, `KB_MCP_…`, is not set;
-- a setting whose path names the former name, such as
-  `data_dir = "~/atlassian-offline-mcp"`; a site or an e-mail is never judged.
+- a setting whose path holds a folder or a file named after the former name, such as
+  `data_dir = "~/atlassian-offline-mcp"`, or a `--config` naming such a file; a site or
+  an e-mail is never judged.
 
 Where a former place and its new one both exist, the new one is used and nothing stops.
 A run given `--config` and `--data-dir` elsewhere uses neither former place. `--help`,
@@ -72,14 +75,14 @@ Then, by hand, as docs/how-to/move-to-kb-mcp.md says:
   added again on ~/kb-mcp/docs/
 ```
 
-Variables and settings are named with their layer, never with their values.
+Variables are named, and settings with their layer, never with their values.
 
 ## 3. Move the files
 
-Quit the coding agents first: a server started under the former name keeps the former
-data directory open. Then run the block that `check` printed, from `# Move the files:`
-to the blank line: it holds only the moves that your machine needs, each to a place that
-is missing. The data directory's files hold no path of their own: the index, the
+Run the block that `check` printed, from `# Move the files:` to the blank line: it
+holds only the moves that your machine needs, each to a place that is missing. A
+`~/kb-mcp` that is already a link is not missing: the run uses where it leads, and
+nothing is moved; remove a link that leads nowhere first. The data directory's files hold no path of their own: the index, the
 vectors, the conversions, the raw store, the sign-in and the aliases keep working where
 they are moved, and the next run rebuilds and converts nothing.
 
@@ -122,7 +125,10 @@ Remove the former script, `~/.local/share/bash-completion/completions/atlassian-
 for bash or `_atlassian-offline-mcp` in a folder of `$fpath` for zsh, or the line
 `eval "$(atlassian-offline-mcp completion)"` in `~/.bashrc` or `~/.zshrc`. Then load
 `kb-mcp completion` as [shell completions](shell-completions.md) says: a shell finds a
-script by the command's name, so it goes under the new name.
+script by the command's name, so it goes under the new name. In zsh, remove
+`~/.zcompdump*`, or those in `$ZDOTDIR`, before opening a new shell: `compinit` keeps
+its dump while the number of completion files is the same, which a rename leaves as it
+was.
 
 ## 7. What else named it
 
