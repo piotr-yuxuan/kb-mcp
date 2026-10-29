@@ -698,6 +698,13 @@ def test_participant_narrows_to_the_documents_naming_that_person_in_any_case(
             "Sam Sample, Alex Example, Robin Example, Kim (not in the header), You, Unverified",
         ),
         ({"author": "alex example"}, "A Person, Sam Sample"),
+        (
+            {"person": "nobody"},
+            (
+                "A Person, Sam Sample, Alex Example, Robin Example, Kim (not in the header),"
+                " You, Unverified"
+            ),
+        ),
     ],
 )
 def test_a_participant_that_no_document_names_is_refused_meetings_first(
@@ -707,7 +714,8 @@ def test_a_participant_that_no_document_names_is_refused_meetings_first(
 
     A name matches whole, so Robin alone is not Robin Example, listed first as the name
     that holds it. A Person, the fillers' author, is no participant, nor is a participant
-    an author.
+    an author. A person, of every role, comes by the documents other than transcripts
+    first, as a participant by meetings.
     """
     with pytest.raises(UnanswerableError) as refused:
         met.search("lorem", filters=filters)

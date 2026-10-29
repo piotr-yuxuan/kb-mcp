@@ -263,7 +263,11 @@ VALUES = {
     "label": "SELECT label, count(*) FROM labels GROUP BY 1 ORDER BY 2 DESC, 1",
     "issue_type": "SELECT issue_type, count(*) FROM documents WHERE issue_type IS NOT NULL"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
-    "person": "SELECT name, count(DISTINCT document) FROM people GROUP BY 1 ORDER BY 2 DESC, 1",
+    # By the documents other than transcripts first, as participant's below.
+    "person": "SELECT p.name, count(DISTINCT p.document) FROM people p"
+    " JOIN documents d ON d.rowid = p.document"
+    " GROUP BY 1 ORDER BY count(DISTINCT p.document) FILTER (WHERE d.type <> 'transcript') DESC,"
+    " 2 DESC, 1",
     "author": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'author'"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
     "creator": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'creator'"
