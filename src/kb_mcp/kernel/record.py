@@ -36,10 +36,11 @@ class Record(BaseModel):
         """Leave a record that is not frozen unhashable, as a dataclass that was not frozen.
 
         Pydantic hashes a frozen model by its fields, and a subclass inherits the hash: a
-        record that accumulates would hash the same whatever it holds.
+        record that accumulates would hash the same whatever it holds. A ``__hash__`` that
+        the class defines is kept, as a dataclass keeps it.
         """
         super().__pydantic_init_subclass__(**kwargs)
-        if not cls.model_config.get("frozen"):
+        if not cls.model_config.get("frozen") and "__hash__" not in vars(cls):
             cls.__hash__ = None
 
     def __replace__(self, **changes: object) -> Self:

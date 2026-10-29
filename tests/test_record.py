@@ -46,6 +46,14 @@ class Tally(Record):
     count: int = 0
 
 
+class Keyed(Tally):
+    """A record that accumulates, hashed by identity as its own ``__hash__`` says."""
+
+    def __hash__(self) -> int:
+        """Hash by identity."""
+        return id(self)
+
+
 def test_a_misspelt_keyword_is_refused() -> None:
     """A keyword that names no field fails, as a dataclass's did, never taken for a default."""
     with pytest.raises(ValidationError, match="cuont"):
@@ -68,10 +76,13 @@ def test_a_record_cannot_be_changed() -> None:
 
 
 def test_a_record_that_accumulates_is_unhashable_and_a_frozen_one_hashes_by_value() -> None:
-    """As a dataclass: what changes after it is built has no hash; a frozen value has one."""
+    """As a dataclass: what changes has no hash unless it defines one; a value, by fields."""
     with pytest.raises(TypeError, match="unhashable"):
         hash(Tally())
+    keyed = Keyed()
+    assert hash(keyed) == id(keyed)
     assert hash(Sample(name="first", count=1)) == hash(Sample(name="first", count=1))
+    assert hash(Sample(name="first", count=1)) != hash(Sample(name="first", count=2))
 
 
 def test_a_refusal_is_raised_as_the_domain_s_own() -> None:
