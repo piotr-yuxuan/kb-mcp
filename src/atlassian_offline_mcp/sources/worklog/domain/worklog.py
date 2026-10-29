@@ -372,10 +372,11 @@ def days_and_meetings(
     it is archived; a day is archived when one of its headings is, or it has none.
 
     Also returned, in the order of the meetings, each whose ``:MEETING:`` links no
-    transcript: by the file that it names, from the work log's folder, when that file
-    was not read; by the meeting's id for a link through ``..``, absolute or of another
-    type. Never the link as written, which may hold a meeting room's passcode. A meeting
-    without ``:MEETING:`` links nothing and is not among them.
+    transcript: by the file that it names, from the work log's folder, when it is a link
+    in brackets or a path after ``file:`` or ``./`` and that file was not read; else by
+    the meeting's id. Never the link as written, which may hold a meeting room's
+    passcode, as any text reads as a path alone. A meeting without ``:MEETING:`` links
+    nothing and is not among them.
     """
     linked = {each.source.path: each for each in transcripts}
     days: dict[datetime, Day] = {}
@@ -429,7 +430,7 @@ def days_and_meetings(
             date, [(each.part.subtree.heading.title, each.start) for each in day.meetings]
         )
         unlinked.extend(
-            str(each.file) if each.file else identifier
+            str(each.file) if org.link_target(each.link, bare=False) else identifier
             for each, identifier in zip(day.meetings, ids, strict=True)
             if each.link and each.transcript is None
         )

@@ -900,13 +900,23 @@ def test_a_link_to_a_missing_file_warns_once_and_holds_nothing_back(run: Run) ->
     assert not gone.exists()
 
 
-def test_a_meeting_room_s_link_is_never_logged(run: Run) -> None:
-    """A :MEETING: of another type, such as a URL with its passcode, warns by meeting id."""
+@pytest.mark.parametrize(
+    "value",
+    [
+        "[[https://meet.example.invalid/j/123?pwd=s3cr3tPass][Join]]",
+        "HTTPS://meet.example.invalid/j/123?pwd=s3cr3tPass",
+        "meet.example.invalid/j/123?pwd=s3cr3tPass",
+        "Zoom 123 456 7890, passcode s3cr3tPass",
+        "Teams: https://teams.example.invalid/l/1?p=s3cr3tPass",
+        "<https://meet.example.invalid/j/123?pwd=s3cr3tPass>",
+    ],
+)
+def test_a_meeting_room_s_link_is_never_logged(run: Run, value: str) -> None:
+    """A :MEETING: that is no file link, such as a URL with its passcode, warns by meeting id."""
     todo = run.root / "todo.org"
     text = todo.read_text(encoding="utf-8")
     old = "[[./meetings/2026-10-27 Tue/2.org]]"
-    url = "[[https://meet.example.invalid/j/123?pwd=s3cr3tPass][Join]]"
-    todo.write_text(text.replace(old, url), encoding="utf-8")
+    todo.write_text(text.replace(old, value), encoding="utf-8")
     with capture_logs() as logged:
         run()
     (warned,) = [each for each in logged if each["event"] == "worklog.unlinked"]

@@ -182,8 +182,9 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
 - A `:MEETING:` that links no transcript read, through `..`, absolute, of another type,
   or to a file not read, such as one outside `transcripts/` and `meetings/`, leaves its
   meeting without a link. The run warns once, `worklog.unlinked`, with how many and the
-  first: the file that its link names, else, for a link that names no file here, the
-  meeting's id, never the link itself
+  first: the file that its link names when it is in brackets or begins `file:` or `./`,
+  else the meeting's id, a path alone included, since any text, a meeting room's URL
+  among them, reads as one; never the link itself
   ([sync's telemetry](../reference/telemetry/sync.md)). It goes on: the warning holds no
   removal back.
 - A document removed loses its file, unless the run reported a problem (a file not

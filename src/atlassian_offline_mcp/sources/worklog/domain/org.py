@@ -315,21 +315,23 @@ def date_title(title: str) -> datetime | None:
     return None
 
 
-def link_target(value: str) -> PurePosixPath | None:
+def link_target(value: str, *, bare: bool = True) -> PurePosixPath | None:
     """Return the file that a link names, relative to the folder of the file that holds it.
 
     The link is as org writes one to a file, ``[[./path]]`` or ``[[file:path][text]]``,
     or a path alone, after ``file:`` or not; a search after ``::`` is not part of the
     path. None for a link of another type, such as ``https:``; for an untyped target in
     brackets that org reads as a search for a heading, ``[[path]]``; and for a path that
-    is absolute, from a home folder (``~``), through ``..``, or empty.
+    is absolute, from a home folder (``~``), through ``..``, or empty. Without ``bare``,
+    a path alone names a file only after ``file:`` or ``./``, since any text reads as a
+    path alone, such as ``HTTPS://meet.example.invalid/j/1?pwd=x``.
     """
     bracket = BRACKET_LINK.fullmatch(value)
     target = bracket[1] if bracket else value
     kind = LINK_TYPE.match(target)
     if kind is not None and kind[1] not in FILE_TYPES:
         return None
-    if bracket and kind is None and not target.startswith(FILE_TARGETS):
+    if (bracket or not bare) and kind is None and not target.startswith(FILE_TARGETS):
         return None
     path = PurePosixPath((target[kind.end() :] if kind else target).partition(SEARCH)[0])
     if not path.parts or path.is_absolute() or path.parts[0].startswith("~") or ".." in path.parts:

@@ -536,6 +536,29 @@ def test_a_link_through_dot_dot_absolute_or_to_no_file_gives_none(value: str) ->
 
 
 @pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("[[./meetings/1.org]]", "meetings/1.org"),
+        ("[[file:meetings/1.org][Transcript]]", "meetings/1.org"),
+        ("file:meetings/1.org", "meetings/1.org"),
+        ("./meetings/1.org", "meetings/1.org"),
+        ("meetings/1.org", None),
+        ("HTTPS://meet.example.invalid/j/123?pwd=s3cr3tPass", None),
+        ("meet.example.invalid/j/123?pwd=s3cr3tPass", None),
+        ("Zoom 123 456 7890, passcode s3cr3tPass", None),
+        ("<https://meet.example.invalid/j/123?pwd=s3cr3tPass>", None),
+        ("[[https://meet.example.invalid/j/1?pwd=s3cr3tPass][Join]] at nine", None),
+    ],
+)
+def test_without_bare_paths_only_a_link_in_org_s_file_forms_names_a_file(
+    value: str, expected: str | None
+) -> None:
+    """In brackets, after file: or from ./; a path alone may be any text, so names none."""
+    found = org.link_target(value, bare=False)
+    assert found == (None if expected is None else PurePosixPath(expected))
+
+
+@pytest.mark.parametrize(
     ("text", "expected"),
     [
         ("Alex: x\n", None),
@@ -1207,11 +1230,19 @@ def test_same_titled_meetings_are_numbered_by_their_transcripts_starts() -> None
         ("[[file:transcripts/2026-10-27 Tue/1.org][Transcript]]", None),
         ("transcripts/2026-10-27 Tue/1.org", None),
         ("[[./transcripts/2026-10-27 Tue/2.org]]", "transcripts/2026-10-27 Tue/2.org"),
+        ("file:transcripts/2026-10-27 Tue/2.org", "transcripts/2026-10-27 Tue/2.org"),
+        ("./transcripts/2026-10-27 Tue/2.org", "transcripts/2026-10-27 Tue/2.org"),
+        ("transcripts/2026-10-27 Tue/2.org", "m-20261027-stand-up"),
         ("[[../todo/transcripts/2026-10-27 Tue/1.org]]", "m-20261027-stand-up"),
         ("[[/srv/todo/transcripts/2026-10-27 Tue/1.org]]", "m-20261027-stand-up"),
         ("[[transcripts/2026-10-27 Tue/1.org]]", "m-20261027-stand-up"),
         ("https://meet.example.invalid/abc", "m-20261027-stand-up"),
         ("[[https://meet.example.invalid/j/123?pwd=s3cr3tPass][Join]]", "m-20261027-stand-up"),
+        ("HTTPS://meet.example.invalid/j/123?pwd=s3cr3tPass", "m-20261027-stand-up"),
+        ("meet.example.invalid/j/123?pwd=s3cr3tPass", "m-20261027-stand-up"),
+        ("Zoom 123 456 7890, passcode s3cr3tPass", "m-20261027-stand-up"),
+        ("Teams: https://teams.example.invalid/l/1?p=s3cr3tPass", "m-20261027-stand-up"),
+        ("<https://meet.example.invalid/j/123?pwd=s3cr3tPass>", "m-20261027-stand-up"),
     ],
 )
 def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
@@ -1220,7 +1251,8 @@ def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
     """From the folder of its file, and starts with it; a file not read, up, or none: no link.
 
     A link that reaches no transcript read is named, for the run's warning, by the file
-    that it names, else by the meeting's id: never as written, which may hold a passcode.
+    that it names in brackets or after file: or ./, else by the meeting's id: never as
+    written, which may hold a passcode, whatever case its scheme takes.
     """
     (record,), _ = transcripts([transcript("2026-10-27 Tue/1.org")], archives=True)
     record = dataclasses.replace(record, start=TUESDAY.replace(hour=9, minute=31))
