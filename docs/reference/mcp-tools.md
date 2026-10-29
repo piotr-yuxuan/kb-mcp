@@ -140,7 +140,13 @@ Lists the documents of a space or a project in tree order, or those under a pare
 ### status
 
 Says what the mirror holds, when its index was built, and whether it searches by
-meaning: the model, the pieces, and the chunking that cut them. It takes no argument.
+meaning: the model, the pieces, and the chunking that cut them. A line counts the
+persons, those in more than one source and those by name alone, of no account, then
+names the names that several accounts hold, five at most, then how many more, each
+with the persons holding it, such as `people: 42, 12 in more than one source, 9 by name
+alone; names of several accounts: "Sam Sample" (3)`: an alias settles a name that a
+source writes without an account, and a filter takes a person's id where the name is
+not enough. It takes no argument.
 
 ## Prompts
 

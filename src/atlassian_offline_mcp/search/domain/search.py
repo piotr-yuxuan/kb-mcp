@@ -286,6 +286,18 @@ class Passage:
 
 
 @dataclass(frozen=True)
+class Persons:
+    """The persons that an index joined, and the names that several accounts hold."""
+
+    count: int
+    across: int  # persons with documents in more than one source
+    alone: int  # persons by name alone, of no account
+    # Each name whose key two accounts or more hold, as one of them writes it, with the
+    # persons holding that key, the most first, ties by name.
+    shared: tuple[tuple[str, int], ...]
+
+
+@dataclass(frozen=True)
 class Summary:
     """What an index holds, and when it was built."""
 
@@ -296,6 +308,7 @@ class Summary:
     projects: dict[str, int]
     sections: int
     newest_fetch: datetime | None
+    people: Persons
     model: str | None = None  # the model of the vectors, if any
     pieces: int = 0
     chunking: Chunking | None = None  # how the pieces were cut, if there are vectors

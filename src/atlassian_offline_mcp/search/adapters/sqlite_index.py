@@ -33,6 +33,7 @@ from atlassian_offline_mcp.search.domain.search import (
     Entry,
     Filters,
     Passage,
+    Persons,
     Pieces,
     Score,
     Summary,
@@ -227,6 +228,25 @@ SELECT d.path, p.role, count(*), max(p.at)
 FROM people p JOIN documents d ON d.rowid = p.document
 WHERE p.person = :person AND d.path IN (SELECT value FROM json_each(:paths))
 GROUP BY 1, 2 ORDER BY 1, 2
+"""
+# What status says of persons: how many, by name alone, in more than one source; and
+# each name of two accounts or more, with the persons holding its key.
+PERSON_COUNTS = """
+SELECT count(*), count(*) FILTER (WHERE id NOT IN
+  (SELECT person FROM person_names WHERE joined = 'account'))
+FROM persons
+"""
+ACROSS = """
+SELECT count(*) FROM (
+  SELECT p.person FROM people p JOIN documents d ON d.rowid = p.document
+  GROUP BY p.person HAVING count(DISTINCT d.source) > 1
+)
+"""
+SHARED = """
+SELECT min(n.name), (SELECT count(DISTINCT m.person) FROM person_names m WHERE m.key = n.key)
+FROM person_names n WHERE n.joined = 'account'
+GROUP BY n.key HAVING count(DISTINCT n.person) > 1
+ORDER BY 2 DESC, 1
 """
 # Each value that a filter can take, with how many documents have it, the most used first.
 VALUES = {
@@ -747,6 +767,9 @@ class Reader:
         newest = self._connection.execute("SELECT max(fetched_at) FROM documents").fetchone()[0]
         sections = self._connection.execute("SELECT count(*) FROM sections").fetchone()[0]
         pieces = self._connection.execute("SELECT count(*) FROM pieces").fetchone()[0]
+        persons, alone = self._connection.execute(PERSON_COUNTS).fetchone()
+        across = self._connection.execute(ACROSS).fetchone()[0]
+        shared = tuple((row[0], row[1]) for row in self._connection.execute(SHARED))
         embedded = self.embedded()
         return Summary(
             built_at=self.built_at(),
@@ -756,6 +779,7 @@ class Reader:
             projects=dict(self.values("project")),
             sections=sections,
             newest_fetch=None if newest is None else datetime.fromisoformat(newest),
+            people=Persons(persons, across, alone, shared),
             model=meta["model"] or None,
             pieces=pieces,
             chunking=embedded.chunking if embedded else None,

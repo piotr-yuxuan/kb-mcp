@@ -32,6 +32,7 @@ FIELD = 200  # characters of a one-line field or a heading, as shown
 LABEL = 60
 LABELS = 10
 NAMES = 10  # names of one role that a read shows, then how many more
+SHARED = 5  # names of several accounts that status shows, then how many more
 SNIPPET = 300
 DEPTH = 10  # levels of indentation, at most
 # Estimated tokens kept for an answer's header and the markers of its block.
@@ -340,10 +341,22 @@ def tree(pairs: Sequence[tuple[tuple[str, ...], Entry]], base: int) -> list[str]
 
 
 def status(summary: Summary, docs: Path) -> str:
-    """Say what the index holds, and when it was built."""
+    """Say what the index holds, and when it was built.
+
+    Its persons on one line: how many, in more than one source, and by name alone; then
+    SHARED at most of the names of several accounts, each with the persons holding it,
+    and how many more, so that the agent knows which names to ask about by id.
+    """
 
     def counts(values: dict[str, int]) -> str:
         return ", ".join(f"{name} {count}" for name, count in values.items()) or "none"
+
+    persons = summary.people
+    shared = ", ".join(
+        f"{json.dumps(short(name, LABEL), ensure_ascii=False)} ({count})"
+        for name, count in persons.shared[:SHARED]
+    )
+    rest = len(persons.shared) - SHARED
 
     lines = [
         f"built: {stamp(summary.built_at)}",
@@ -355,6 +368,12 @@ def status(summary: Summary, docs: Path) -> str:
         ),
         f"spaces: {counts(summary.spaces)}",
         f"projects: {counts(summary.projects)}",
+        (
+            f"people: {persons.count}, {persons.across} in more than one source,"
+            f" {persons.alone} by name alone"
+            + (f"; names of several accounts: {shared}" if shared else "")
+            + (f", and {rest} more" if rest > 0 else "")
+        ),
         f"files skipped at build: {summary.skipped}",
         f"newest mirror date: {stamp(summary.newest_fetch) if summary.newest_fetch else 'none'}",
         f"mirror files: {docs}",

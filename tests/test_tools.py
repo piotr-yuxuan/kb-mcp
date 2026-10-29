@@ -9,11 +9,23 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
+from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.mirror.domain.mirror import Link, PersonRole
 from atlassian_offline_mcp.search.adapters import sqlite_index
+from atlassian_offline_mcp.search.app.indexing import build_index
 from tests.answers import built, continuation, follow, parts
-from tests.mirrors import CREATED, FILLERS, LOREM, MOMENT, PEOPLE, PERSONS, issue, location, page
+from tests.mirrors import (
+    CREATED,
+    FILLERS,
+    LOREM,
+    MOMENT,
+    PEOPLE,
+    PERSONS,
+    issue,
+    location,
+    page,
+    write,
+)
 from tests.test_people import ALEX, ALEX_EXAMPLE, ROBIN, ROBIN_ALONE, SAM_2, SAM_3, SAM_ALONE
 
 if TYPE_CHECKING:
@@ -21,7 +33,6 @@ if TYPE_CHECKING:
 
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.mcp.app.tools import Library
     from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 NEWER = MOMENT + timedelta(days=1)
@@ -1126,6 +1137,67 @@ def test_status_says_what_the_index_holds(varied: Library) -> None:
     assert "documents: page 32, issue 2; sections: " in content
     assert "spaces: ENG 31, OPS 1\nprojects: PROJ 2\n" in content
     assert content.startswith("built: 2026-10-20 21:52 UTC\n")
+
+
+@pytest.mark.parametrize(
+    ("aliases", "line"),
+    [
+        (
+            {},
+            (
+                "people: 8, 1 in more than one source, 5 by name alone;"
+                ' names of several accounts: "Sam Sample" (3)'
+            ),
+        ),
+        (
+            {"Sam Sample": SAM_3},
+            (
+                "people: 7, 2 in more than one source, 4 by name alone;"
+                ' names of several accounts: "Sam Sample" (2)'
+            ),
+        ),
+    ],
+)
+def test_status_counts_the_persons_and_names_those_of_several_accounts(
+    tmp_path: Path, aliases: dict[str, str], line: str
+) -> None:
+    """Plan 043, criterion 7, over the mirror of PERSONS alone.
+
+    Robin's account alone is in three sources; five persons are names alone. Sam Sample
+    is two accounts and, without aliases, the stand-up's name alone; the alias to the
+    account of PAY-2 gives it the stand-up and its Sam too, in two sources. Robin and
+    Sam, a name of no account, are never listed.
+    """
+    for front in PERSONS:
+        write(tmp_path / "docs", front)
+    build_index(tmp_path / "docs", tmp_path / "index.sqlite", MOMENT, aliases=aliases)
+    content = parts(Library(tmp_path / "index.sqlite", tmp_path / "docs").status())[1]
+    assert f"\nprojects: PAY 2\n{line}\nfiles skipped at build: 0\n" in content
+
+
+def test_status_names_five_names_of_several_accounts_then_how_many_more(
+    tmp_path: Path,
+) -> None:
+    """Six names of two accounts each, the most held first, ties by name; one of one account.
+
+    Beside the fillers' A Person, a name alone.
+    """
+    fronts = [
+        issue(
+            f"PROJ-{number}",
+            "Broker",
+            people=(
+                PersonRole(role="author", name=f"Person {number // 2}", account=f"a-{number}"),
+            ),
+        )
+        for number in range(2, 15)
+    ]
+    library = built(tmp_path, [(front, None) for front in fronts])
+    shown = ", ".join(f'"Person {number}" (2)' for number in range(1, 6))
+    assert (
+        f"\npeople: 14, 0 in more than one source, 1 by name alone; names of several accounts:"
+        f" {shown}, and 1 more\n"
+    ) in parts(library.status())[1]
 
 
 def test_no_index_is_refused_with_the_command_that_builds_it(tmp_path: Path) -> None:
