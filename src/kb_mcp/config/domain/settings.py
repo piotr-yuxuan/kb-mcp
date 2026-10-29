@@ -736,6 +736,11 @@ PATH_DEFAULTS = [
 ]
 
 
+def at_home(path: Path, home: Path) -> Path:
+    """Give a path that begins with ``~`` with ``home`` in its place."""
+    return home.joinpath(*path.parts[1:])
+
+
 def settings_of(entries: Iterable[Entry], home: Path) -> Loaded:
     """Merge the layers' entries, weakest first, and build the settings from them.
 
@@ -771,7 +776,7 @@ def settings_of(entries: Iterable[Entry], home: Path) -> Loaded:
             and isinstance(value, str | Path)
             and Path(value).parts[:1] == ("~",)
         ):
-            value = home.joinpath(*Path(value).parts[1:])
+            value = at_home(Path(value), home)
         table[path[-1]] = value
     layers = {
         ".".join(path): entry.layer for path, entry in kept.items() if entry.layer is not None

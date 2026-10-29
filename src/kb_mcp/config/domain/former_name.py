@@ -28,13 +28,14 @@ from kb_mcp.config.domain.settings import (
     NESTING,
     SETTING_PATHS,
     SettingsError,
+    at_home,
     variable,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.domain.settings import Settings
 
 FORMER_PREFIX = "ATLASSIAN_OFFLINE_MCP_"
 FORMER_SETTINGS_FILE = Path("~/.config/atlassian-offline-mcp/config.toml")
@@ -73,13 +74,14 @@ class FormerNameError(SettingsError):
 
 @dataclass(frozen=True)
 class Found:
-    """What the loader found of the former and new places, each written from ``~``.
+    """What the loader found of the default places and the former ones, written from ``~``.
 
-    ``settings_file`` is the default settings file, which the run ``reads_default`` or
-    not; ``existing`` holds those of it, ``FORMER_SETTINGS_FILE``, the default data
-    directory and ``FORMER_DATA_DIR`` that exist; ``former_data_in_git`` says whether
-    the former data directory lies in a git working tree, which was never the program's
-    data, as the guard on where data lives refuses it.
+    ``settings_file`` is the default settings file, and ``reads_default`` says whether the
+    run reads it, by whatever path. ``existing`` holds those of four places that exist:
+    the default settings file, ``FORMER_SETTINGS_FILE``, the default data directory and
+    ``FORMER_DATA_DIR``.
+    ``former_data_in_git`` says whether the former data directory lies in a git working
+    tree, which was never the program's data, as the guard on where data lives refuses it.
     """
 
     settings_file: Path
@@ -98,17 +100,22 @@ class Found:
 
 
 def refuse_former_name(
-    found: Found, loaded: Loaded, environ: Mapping[str, str], home: Path
+    found: Found,
+    settings: Settings,
+    layers: Mapping[str, str],
+    environ: Mapping[str, str],
+    home: Path,
 ) -> None:
     """Raise FormerNameError for what the former name left, saying how to move it.
 
-    ``loaded`` holds the settings judged, the former file's when rule 1 holds, with
-    ``~`` as ``home``. The advice holds, each section only when it has a line: a block of
-    the moves of rules 1 and 2, which a shell can run as it is, headed ``# Move the
-    files:`` and ended by a blank line; each variable of rule 3 and its new name, never
-    its value; each path setting of rule 4 and its layer, never its value; then, always,
-    what is done by hand. A variable is read without regard to case, as pydantic-settings
-    reads it, and is set when it is not empty.
+    ``settings`` are those judged, the former file's when rule 1 holds, with ``~`` as
+    ``home``, which is resolved, and the data directory resolved; ``layers`` gives each
+    one's layer by its path joined by dots. The advice holds, each section only when it
+    has a line: a block of the moves of rules 1 and 2, which a shell can run as it is,
+    headed ``# Move the files:`` and ended by a blank line; each variable of rule 3 and
+    its new name, never its value; each path setting of rule 4 and its layer, never its
+    value; then, always, what is done by hand. A variable is read without regard to
+    case, as pydantic-settings reads it, and is set when it is not empty.
     """
     data_dir = Path(DEFAULT_DATA_DIR)
     moves = []
@@ -118,7 +125,7 @@ def refuse_former_name(
             f" && mv {FORMER_SETTINGS_FILE} {found.settings_file}"
         )
     if (
-        loaded.settings.data_dir == home.joinpath(*data_dir.parts[1:])
+        settings.data_dir == at_home(data_dir, home)
         and data_dir not in found.existing
         and FORMER_DATA_DIR in found.existing
         and not found.former_data_in_git
@@ -135,9 +142,9 @@ def refuse_former_name(
             variables.append(f"{name} to {renamed}")
     settings = [
         f"{setting} ({layer})"
-        for setting, layer in sorted(loaded.layers.items())
+        for setting, layer in sorted(layers.items())
         if SETTING_PATHS[tuple(setting.split("."))] == "path"
-        and FORMER_NAME.search(str(reduce(getattr, setting.split("."), loaded.settings)))
+        and FORMER_NAME.search(str(reduce(getattr, setting.split("."), settings)))
     ]
     sections = [
         ("# Move the files:", moves),

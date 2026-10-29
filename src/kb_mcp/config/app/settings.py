@@ -21,6 +21,7 @@ from kb_mcp.config.domain.settings import (
     Loaded,
     Settings,
     SettingsError,
+    at_home,
     environment_entries,
     file_entries,
     settings_of,
@@ -61,19 +62,21 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
 
     Before the guard, ``refuse_former_name`` judges what the program's former name left,
     from what exists under ``home``: the former settings file is read in place of the
-    default one when that is missing, so that its values are judged too.
+    default one when that is missing, so that its values are judged too. The settings
+    file given and the data directory are compared with the defaults once resolved, so
+    that any path naming a default is taken for it.
     """
-    places = {
-        place: home.joinpath(*place.parts[1:])
+    defaults = {
+        place: at_home(place, home)
         for place in (SETTINGS_PATH, FORMER_SETTINGS_FILE, Path(DEFAULT_DATA_DIR), FORMER_DATA_DIR)
     }
     found = Found(
-        SETTINGS_PATH,
-        path.expanduser() == SETTINGS_PATH.expanduser(),
-        frozenset(place for place, there in places.items() if there.exists()),
-        git_root(places[FORMER_DATA_DIR]) is not None,
+        settings_file=SETTINGS_PATH,
+        reads_default=path.expanduser().resolve() == defaults[SETTINGS_PATH].resolve(),
+        existing=frozenset(place for place, there in defaults.items() if there.exists()),
+        former_data_in_git=git_root(defaults[FORMER_DATA_DIR]) is not None,
     )
-    read = places[FORMER_SETTINGS_FILE] if found.former_file_judged else path
+    read = defaults[FORMER_SETTINGS_FILE] if found.former_file_judged else path
     try:
         values = read_settings_file(read)
     except ValueError as error:
@@ -98,7 +101,6 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
         ],
         home,
     )
-    refuse_former_name(found, loaded, os.environ, home)
     logs = loaded.settings.logs
     settings = loaded.settings.model_copy(
         update={
@@ -106,6 +108,7 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
             "logs": logs.model_copy(update={"dir": (logs.dir or default_log_folder()).resolve()}),
         }
     )
+    refuse_former_name(found, settings, loaded.layers, os.environ, home)
     places = [
         ("data_dir", settings.data_dir, ""),
         *(("data_dir", part, f"{part.name}: ") for part in settings.parts),

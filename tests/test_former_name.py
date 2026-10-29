@@ -122,6 +122,60 @@ def test_a_value_naming_the_former_name_names_its_setting_never_its_value(
     assert str(tmp_path) not in advice
 
 
+@pytest.mark.parametrize(
+    "given",
+    [
+        pytest.param(NEW_FILE, id="straight"),
+        pytest.param(Path(".config/other/../kb-mcp/config.toml"), id="through another folder"),
+    ],
+)
+def test_the_default_settings_file_named_by_any_path_is_the_default(
+    home: Path, monkeypatch: MonkeyPatch, given: Path
+) -> None:
+    """Rule 1 holds for ``--config`` naming the default, from the home or relative to it."""
+    place(home, FORMER_FILE)
+    monkeypatch.chdir(home)
+    for path in (given, home / given):
+        assert block(refusal(home, path).advice) == ["# Move the files:", FILE_MOVE]
+
+
+def test_the_default_data_directory_named_by_any_path_is_the_default(home: Path) -> None:
+    """Rule 2 holds for ``--data-dir`` naming the default through another folder."""
+    place(home, FORMER_DATA)
+    flags = {"--data-dir": ("data_dir", str(home / "other" / ".." / NEW_DATA))}
+    assert block(refusal(home, flags=flags).advice) == ["# Move the files:", DATA_MOVE]
+
+
+def test_the_defaults_named_through_a_linked_home_are_the_defaults(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A home reached by a link, its places written from the link: rules 1 and 2 hold."""
+    home = tmp_path / "home"
+    home.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(home)
+    monkeypatch.setenv("HOME", str(link))
+    place(home, FORMER_FILE)
+    place(home, FORMER_DATA)
+    flags = {"--data-dir": ("data_dir", str(link / NEW_DATA))}
+    advice = refusal(home, link / NEW_FILE, flags).advice
+    assert block(advice) == ["# Move the files:", FILE_MOVE, DATA_MOVE]
+
+
+def test_an_empty_new_variable_is_not_set(home: Path, monkeypatch: MonkeyPatch) -> None:
+    """An empty variable is ignored, as the loader ignores it: the former one still stops."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", SITE)
+    monkeypatch.setenv("KB_MCP_SITE", "")
+    assert "ATLASSIAN_OFFLINE_MCP_SITE to KB_MCP_SITE" in refusal(home).advice.splitlines()
+
+
+def test_a_link_to_nothing_at_the_new_data_directory_moves_nothing(home: Path) -> None:
+    """The run's data directory is where the link leads, not ``~/kb-mcp``: no move, no stop."""
+    place(home, FORMER_DATA)
+    (home / NEW_DATA).symlink_to(home / "nowhere")
+    load_settings(SETTINGS_PATH, {}, home)
+
+
 def test_the_former_file_is_judged_in_place_of_the_missing_one(home: Path) -> None:
     """A former file naming the former data directory: its move, and its key to change."""
     place(home, FORMER_FILE, 'data_dir = "~/atlassian-offline-mcp"\n')
