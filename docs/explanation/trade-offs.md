@@ -685,14 +685,15 @@ dataclasses, each for the reason that [the code's layout](code-layout.md#records
   impossible: a record refuses a misspelt keyword, its checks run at every construction,
   a changed copy included, and its errors never print a value, as the settings' model
   already did.
-- **Cost.** A record is slower than a dataclass: about 2 µs to build one of three fields
-  against 0.7, so that a search by words alone, which builds a score for each document
-  that matches, takes about 1.4 ms more, a fifth of its time; one by meaning is the
-  embedding's time. A record checks a record that it holds again. A model copies a list, a dict or a `Counter` that it is
-  given, so a field whose object the caller keeps using says so, by `InstanceOf`. The
-  types that a record names are imported at run time, and `--help` must not load
-  Pydantic, so the classes that `--help` imports stay dataclasses, with those that hold a
-  live client or that Pydantic cannot build.
+- **Cost.** A record is slower than a dataclass: about 0.9 µs to build one of three
+  fields against 0.3. A search by words alone builds hundreds a question, a score for
+  each document that matches, and takes about 1.4 ms more, a fifth of its time; one by
+  meaning is the embedding's time. A record checks a record that it holds again. A model
+  copies a list, a dict or a `Counter` that it is given, so a field whose object the
+  caller keeps using says so, by `InstanceOf`. The types that a record names are
+  imported at run time, and `--help` must not load Pydantic, so the classes that
+  `--help` imports stay dataclasses, with those that hold a live client or that Pydantic
+  cannot build.
 - **Rejected.** Pydantic's own dataclasses, which keep positional arguments; strict
   mode, which would have changed hundreds of callers; `SkipValidation`, which would make
   the exceptions models in name only.
