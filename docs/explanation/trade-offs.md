@@ -314,9 +314,11 @@ afresh at each run
   filters, `participant` and `created_after`
   ([`KEPT`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)).
 - **Cost.** A meeting renamed takes a new id, as an entry without `:ID:` does. Two
-  meetings of one day and one title swap ids when the order of their starts changes:
-  the first archived alone while neither has a transcript, since the archive is read
-  after `todo.org`, or the first given a transcript while the second has none. A
+  meetings of one day and one title swap ids when the order of their starts changes,
+  or, neither with a transcript, the order in which they are read: `todo.org` first,
+  then the archive in the order org appended to it, so that archiving the first alone,
+  or the second alone and then its day, swaps them; so does giving the first a
+  transcript while the second has none. A
   top-level heading of any other purpose with a child titled by a date alone becomes a
   journal, that child a day and its other children entries; the child joins the day of
   its date that the journal's parts make, and the heading's title is lost: neither the

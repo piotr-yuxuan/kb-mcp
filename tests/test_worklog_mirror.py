@@ -187,9 +187,12 @@ def run(tmp_path: Path) -> Run:
     return Run(root, tmp_path / "data" / "docs")
 
 
-def identities(files: list[Mirrored]) -> list[tuple[str, str]]:
-    """Return each file's id and path."""
-    return sorted((each.matter.id, each.path) for each in files)
+def identities(files: list[Mirrored]) -> list[tuple[str, str, tuple[str, ...]]]:
+    """Return each file's id, path and people: two files that swap contents differ."""
+    return sorted(
+        (each.matter.id, each.path, tuple(person.name for person in each.matter.people))
+        for each in files
+    )
 
 
 def snapshot(root: Path) -> dict[str, tuple[bytes, int]]:
@@ -477,6 +480,13 @@ def archive_day(run: Run) -> None:
     archive(run, day, "Entries")
 
 
+def archive_monday(run: Run) -> None:
+    """Archive the Monday whole, its two One-to-ones with it, in their order."""
+    text = (run.root / "todo.org").read_text("utf-8")
+    day = text[text.index("** <2026-10-26 Mon>\n") : text.index("** <2026-10-27 Tue>\n")]
+    archive(run, day, "Entries")
+
+
 @pytest.mark.parametrize(
     "change",
     [
@@ -496,6 +506,7 @@ def archive_day(run: Run) -> None:
         move_named,
         archive_meeting,
         archive_day,
+        archive_monday,
     ],
     ids=[
         "body",
@@ -508,12 +519,14 @@ def archive_day(run: Run) -> None:
         "moving-named",
         "meeting",
         "day",
+        "same-titled",
     ],
 )
 def test_ids_and_paths_hold_through_org_s_edits(run: Run, change: Callable[[Run], None]) -> None:
     """Editing, closing, retagging, ticking, archiving, moving: each id keeps its file.
 
-    A meeting archived alone, or with its day, keeps the id it had under its day.
+    A meeting archived alone, or with its day, keeps the id it had under its day, and two
+    of one title archived together keep theirs, each with its own participants.
     """
     run()
     before = identities(run.files())

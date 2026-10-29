@@ -77,7 +77,8 @@ of one date, archived or not, makes one document
 a meeting by its day's date and its title's slug, numbered by start time where two
 share one
 ([`meeting_ids`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
-so that archiving it keeps its id. Transcripts are named by their day and file name, or
+so that archiving it keeps its id, but for two of one title archived apart ([the
+trade-offs](trade-offs.md#the-journal-split-by-shape)). Transcripts are named by their day and file name, or
 that name's slug, never by their folders
 ([`transcripts`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
 so that moving one under `transcripts/archive/` keeps its id, and a copy left beside

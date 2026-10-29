@@ -1190,7 +1190,10 @@ def test_a_day_is_a_date_alone_at_level_one_or_two() -> None:
 
 
 def test_a_meeting_is_a_child_of_a_day_with_a_meeting_s_property() -> None:
-    """:MEETING: or :PARTICIPANTS: alone; another drawer, or a grandchild, stays in the day."""
+    """:MEETING: or :PARTICIPANTS: alone; another drawer, or a grandchild, stays in the day.
+
+    So does an archived heading with a meeting's property whose path runs below the day.
+    """
     found, _ = journal(
         todo(
             DECLARED + "* Entries\n** <2026-10-27 Tue>\n"
@@ -1199,7 +1202,10 @@ def test_a_meeting_is_a_child_of_a_day_with_a_meeting_s_property() -> None:
             "*** TODO Task\n:PROPERTIES:\n:ID: 6f1c\n:END:\n"
             "**** Deeper\n:PROPERTIES:\n:PARTICIPANTS: Kim\n:END:\n"
         ),
-        None,
+        archived(
+            "* Call\n:PROPERTIES:\n:PARTICIPANTS: Kim\n"
+            ":ARCHIVE_OLPATH: Entries/<2026-10-27 Tue>/Notes\n:END:\n"
+        ),
         archives=True,
         transcripts=(),
     )
@@ -1210,6 +1216,7 @@ def test_a_meeting_is_a_child_of_a_day_with_a_meeting_s_property() -> None:
         "** Named",
         "** TODO Task",
         "*** Deeper",
+        "** Call",
     ]
 
 
