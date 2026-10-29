@@ -6,7 +6,8 @@ settings the run uses are judged: the settings file that it reads, or the former
 its place when the default is missing (rule 1), then the variables and the flags. Rule 2
 moves the former data directory when the data directory so judged is the default, and
 missing; rule 3 renames each variable of the former prefix that is set, and whose new
-name is not; rule 4 names each setting whose value names the former name. Where a former
+name is not; rule 4 names each path setting that names the former name, a place to move
+with the setting, never a site or an e-mail, which a user cannot rename. Where a former
 place and its new one both exist, the new one is used and nothing stops.
 
 Once the user's machine has moved, the roadmap's row after plan 033 removes this module, its
@@ -105,8 +106,8 @@ def refuse_former_name(
     ``~`` as ``home``. The advice holds, each section only when it has a line: a block of
     the moves of rules 1 and 2, which a shell can run as it is, headed ``# Move the
     files:`` and ended by a blank line; each variable of rule 3 and its new name, never
-    its value; each setting of rule 4 and its layer, never its value; then, always, what
-    is done by hand. A variable is read without regard to case, as pydantic-settings
+    its value; each path setting of rule 4 and its layer, never its value; then, always,
+    what is done by hand. A variable is read without regard to case, as pydantic-settings
     reads it, and is set when it is not empty.
     """
     data_dir = Path(DEFAULT_DATA_DIR)
@@ -135,7 +136,7 @@ def refuse_former_name(
     settings = [
         f"{setting} ({layer})"
         for setting, layer in sorted(loaded.layers.items())
-        if SETTING_PATHS[tuple(setting.split("."))] != "secret"
+        if SETTING_PATHS[tuple(setting.split("."))] == "path"
         and FORMER_NAME.search(str(reduce(getattr, setting.split("."), loaded.settings)))
     ]
     sections = [
@@ -144,7 +145,7 @@ def refuse_former_name(
             "Rename each variable where it is set (a shell's profile, an MCP client, sops):",
             variables,
         ),
-        ("Change each setting that names the former name, in the layer that gives it:", settings),
+        ("Change each setting whose path names the former name, moving what it names:", settings),
         ("Then, by hand, as docs/how-to/move-to-kb-mcp.md says:", BY_HAND),
     ]
     if moves or variables or settings:

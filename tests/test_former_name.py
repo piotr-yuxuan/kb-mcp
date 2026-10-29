@@ -113,7 +113,7 @@ def test_a_former_variable_is_renamed_and_its_value_never_shown(
 def test_a_value_naming_the_former_name_names_its_setting_never_its_value(
     home: Path, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Rule 4, in any case and from any layer: the setting and its layer, not its value."""
+    """Rule 4, in any case and from any layer: a path setting and its layer, not its value."""
     monkeypatch.setenv("KB_MCP_LOGS__DIR", str(tmp_path / "Atlassian_Offline_MCP-logs"))
     data = tmp_path / "former-atlassian-offline-mcp"
     advice = refusal(home, flags={"--data-dir": ("data_dir", str(data))}).advice
@@ -149,6 +149,11 @@ def test_a_new_file_naming_the_default_data_directory_moves_the_former(home: Pat
             id="variable renamed already",
         ),
         pytest.param((NEW_FILE, FORMER_DATA / ".git"), {}, id="former data in git"),
+        pytest.param(
+            (NEW_FILE, NEW_DATA),
+            {"KB_MCP_EMAIL": "me+atlassian-offline-mcp@example.invalid"},
+            id="no path naming it",
+        ),
     ],
 )
 def test_a_run_that_finds_new_places_goes_on(
