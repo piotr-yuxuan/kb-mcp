@@ -23,7 +23,7 @@ says of tasks.
 | `worklog.end` | info | `documents`, `written`, `unchanged`, `removed`, `to_convert`, `to_remove`, `problems` | The work log's files are written, or in a dry run, counted: those that a run would convert and remove |
 | `worklog.problem` | warning | `where`, `reason` | A file not read, or a document not converted, by its path, never its content: the row fails |
 | `worklog.same_id` | warning | `reason` | Two transcripts of one id: the second in path order is named by its whole path, both paths said |
-| `worklog.unlinked` | warning | `meetings`, `first` | Meetings whose `:MEETING:` links no transcript read, once a run: how many, and the first one's link as written. A link through `..`, absolute or of another type, or to a file not read, such as one in a folder other than `transcripts/` and `meetings/`; each such meeting is written without the link, and the row neither fails nor holds a removal back |
+| `worklog.unlinked` | warning | `meetings`, `first` | Meetings whose `:MEETING:` links no transcript read, once a run: how many, and the first one: by the file that its link names, from the work log's folder, when that file was not read, such as one in a folder other than `transcripts/` and `meetings/`; by its id for a link through `..`, absolute or of another type. Never the link as written, which may be a meeting room's URL with its passcode. Each such meeting is written without the link, and the row neither fails nor holds a removal back |
 | `worklog.nothing_removed` | warning | `problems` | A run with problems removes no work-log file, so that each last good copy stays |
 | `worklog.pandoc_failed` | error | `reason` | Pandoc gave no version, so that no revision can be named: the work log's row fails |
 

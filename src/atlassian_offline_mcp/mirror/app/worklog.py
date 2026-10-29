@@ -104,8 +104,8 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     ``meetings/archive/`` and the subtrees tagged ARCHIVE are left out. A file not read
     is a problem, named by its path. The span ``worklog.read`` holds the reading;
     ``worklog.read`` says at INFO what was read. ``worklog.unlinked``, a warning, says
-    how many meetings' ``:MEETING:`` link no transcript read, and the first as written:
-    never a problem, so that it holds no removal back.
+    how many meetings' ``:MEETING:`` link no transcript read, and the first by its file,
+    else its id: never a problem, so that it holds no removal back.
     """
     with TRACER.start_as_current_span("worklog.read"):
         listing = files.listed(folder, archives=archives)

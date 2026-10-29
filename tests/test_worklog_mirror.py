@@ -880,7 +880,7 @@ def test_a_transcript_added_dates_and_links_its_meeting_without_converting_it(ru
 
 
 def test_a_link_to_a_missing_file_warns_once_and_holds_nothing_back(run: Run) -> None:
-    """One worklog.unlinked: how many, the first link as written; the meeting written.
+    """One worklog.unlinked: how many, the first one's file; the meeting written.
 
     A warning, not a problem: a transcript deleted meanwhile loses its file.
     """
@@ -893,11 +893,25 @@ def test_a_link_to_a_missing_file_warns_once_and_holds_nothing_back(run: Run) ->
     assert (warned["log_level"], warned["meetings"], warned["first"]) == (
         "warning",
         1,
-        "[[./meetings/2026-10-27 Tue/2.org]]",
+        "meetings/2026-10-27 Tue/2.org",
     )
     assert run.by_id("m-20261027-rollout-planning").matter.links == ()
     assert (outcome.problems, outcome.warnings, outcome.changes.removed) == ((), (), 1)
     assert not gone.exists()
+
+
+def test_a_meeting_room_s_link_is_never_logged(run: Run) -> None:
+    """A :MEETING: of another type, such as a URL with its passcode, warns by meeting id."""
+    todo = run.root / "todo.org"
+    text = todo.read_text(encoding="utf-8")
+    old = "[[./meetings/2026-10-27 Tue/2.org]]"
+    url = "[[https://meet.example.invalid/j/123?pwd=s3cr3tPass][Join]]"
+    todo.write_text(text.replace(old, url), encoding="utf-8")
+    with capture_logs() as logged:
+        run()
+    (warned,) = [each for each in logged if each["event"] == "worklog.unlinked"]
+    assert (warned["meetings"], warned["first"]) == (1, "m-20261027-rollout-planning")
+    assert [each for each in logged if "s3cr3tPass" in repr(each)] == []
 
 
 def test_same_titled_meetings_of_one_day_are_numbered(run: Run) -> None:

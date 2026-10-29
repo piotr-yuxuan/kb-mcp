@@ -291,8 +291,8 @@ def journal(
     digest, in reading order, ``todo.org`` first. The archive file takes ``todo.org``'s
     keywords when it declares none. Without ``archives``, the archive file and the
     headings tagged ARCHIVE, or below one, are left out. ``transcripts`` are those read,
-    which a meeting may link to; each ``:MEETING:`` that links none is returned too, as
-    ``days_and_meetings`` says.
+    which a meeting may link to; each meeting whose ``:MEETING:`` links none is named
+    too, as ``days_and_meetings`` says.
     """
     files: list[tuple[Source, org.OrgFile]] = []
     first = None
@@ -370,9 +370,11 @@ def days_and_meetings(
     its id is as ``meeting_ids`` gives it. Labels: tags, ``#+FILETAGS`` and ARCHIVE when
     it is archived; a day is archived when one of its headings is, or it has none.
 
-    Also returned: each ``:MEETING:`` that links no transcript, as written, in the order
-    of the meetings: a link through ``..``, absolute or of another type, or to a file not
-    read. A meeting without one links nothing and is not among them.
+    Also returned, in the order of the meetings, each whose ``:MEETING:`` links no
+    transcript: by the file that it names, from the work log's folder, when that file
+    was not read; by the meeting's id for a link through ``..``, absolute or of another
+    type. Never the link as written, which may hold a meeting room's passcode. A meeting
+    without ``:MEETING:`` links nothing and is not among them.
     """
     linked = {each.source.path: each for each in transcripts}
     days: dict[datetime, Day] = {}
@@ -422,9 +424,13 @@ def days_and_meetings(
     found: list[Document] = []
     unlinked: list[str] = []
     for date, day in days.items():
-        unlinked.extend(each.link for each in day.meetings if each.link and each.transcript is None)
         ids = meeting_ids(
             date, [(each.part.subtree.heading.title, each.start) for each in day.meetings]
+        )
+        unlinked.extend(
+            str(each.file) if each.file else identifier
+            for each, identifier in zip(day.meetings, ids, strict=True)
+            if each.link and each.transcript is None
         )
         headings = day.headings
         archived = not headings or any(each.archived for each in headings)

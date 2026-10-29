@@ -1183,28 +1183,30 @@ def test_same_titled_meetings_are_numbered_by_their_transcripts_starts() -> None
 
 
 @pytest.mark.parametrize(
-    ("value", "linked"),
+    ("value", "unlinked"),
     [
-        ("[[./transcripts/2026-10-27 Tue/1.org]]", True),
-        ("[[file:transcripts/2026-10-27 Tue/1.org][Transcript]]", True),
-        ("transcripts/2026-10-27 Tue/1.org", True),
-        ("[[./transcripts/2026-10-27 Tue/2.org]]", False),
-        ("[[../todo/transcripts/2026-10-27 Tue/1.org]]", False),
-        ("[[/srv/todo/transcripts/2026-10-27 Tue/1.org]]", False),
-        ("[[transcripts/2026-10-27 Tue/1.org]]", False),
-        ("https://meet.example.invalid/abc", False),
+        ("[[./transcripts/2026-10-27 Tue/1.org]]", None),
+        ("[[file:transcripts/2026-10-27 Tue/1.org][Transcript]]", None),
+        ("transcripts/2026-10-27 Tue/1.org", None),
+        ("[[./transcripts/2026-10-27 Tue/2.org]]", "transcripts/2026-10-27 Tue/2.org"),
+        ("[[../todo/transcripts/2026-10-27 Tue/1.org]]", "m-20261027-stand-up"),
+        ("[[/srv/todo/transcripts/2026-10-27 Tue/1.org]]", "m-20261027-stand-up"),
+        ("[[transcripts/2026-10-27 Tue/1.org]]", "m-20261027-stand-up"),
+        ("https://meet.example.invalid/abc", "m-20261027-stand-up"),
+        ("[[https://meet.example.invalid/j/123?pwd=s3cr3tPass][Join]]", "m-20261027-stand-up"),
     ],
 )
 def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
-    value: str, *, linked: bool
+    value: str, unlinked: str | None
 ) -> None:
     """From the folder of its file, and starts with it; a file not read, up, or none: no link.
 
-    A link that reaches no transcript read is returned as written, for the run's warning.
+    A link that reaches no transcript read is named, for the run's warning, by the file
+    that it names, else by the meeting's id: never as written, which may hold a passcode.
     """
     (record,), _ = transcripts([transcript("2026-10-27 Tue/1.org")], archives=True)
     record = dataclasses.replace(record, start=TUESDAY.replace(hour=9, minute=31))
-    found, unlinked = journal(
+    found, named = journal(
         todo(
             "* Entries\n** <2026-10-27 Tue>\n*** Stand-up\n"
             f":PROPERTIES:\n:MEETING: {value}\n:END:\n"
@@ -1214,12 +1216,14 @@ def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
         transcripts=[record],
     )
     (meeting,) = [each for each in found if each.type == "meeting"]
-    if linked:
-        assert (meeting.links, meeting.start) == ((("transcript", record.id),), record.start)
-        assert unlinked == []
+    if unlinked is None:
+        assert (meeting.links, meeting.start, named) == (
+            (("transcript", record.id),),
+            record.start,
+            [],
+        )
     else:
-        assert (meeting.links, meeting.start) == ((), TUESDAY)
-        assert unlinked == [value]
+        assert (meeting.links, meeting.start, named) == ((), TUESDAY, [unlinked])
 
 
 def test_only_a_meeting_s_link_that_reaches_nothing_is_returned_in_meetings_order() -> None:
@@ -1232,7 +1236,7 @@ def test_only_a_meeting_s_link_that_reaches_nothing_is_returned_in_meetings_orde
         "** <2026-10-27 Tue>\n*** Second\n:PROPERTIES:\n:MEETING: [[../second.org]]\n:END:\n"
     )
     _, unlinked = journal(todo(text), None, archives=False, transcripts=())
-    assert unlinked == ["[[./first.org]]", "[[../second.org]]"]
+    assert unlinked == ["first.org", "m-20261027-second"]
 
 
 def test_a_transcript_links_back_to_each_meeting_that_links_to_it() -> None:
