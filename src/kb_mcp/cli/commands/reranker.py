@@ -6,13 +6,13 @@ It never starts the server nor downloads a model: the user does, as the guide sh
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import structlog
 
 from kb_mcp.kernel.endpoint import RERANKING
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import BOUND_S, LONGEST_TEXT
 from kb_mcp.search.adapters.model_api import Bounds, endpoint
 from kb_mcp.search.adapters.reranking import SEARCH, RerankError, rerank, served
@@ -33,8 +33,7 @@ LONGEST = (ANSWER + " ") * (LONGEST_TEXT // len(ANSWER) + 1)
 TIMED = Bounds(deadline_s=300, attempts=1)
 
 
-@dataclass(frozen=True)
-class Checked:
+class Checked(Record):
     """A reranker that ranks: its scores of the probe, and one request at the depth, timed."""
 
     model: str

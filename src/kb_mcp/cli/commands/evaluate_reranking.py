@@ -5,8 +5,8 @@ from __future__ import annotations
 import functools
 import json
 import time
-from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
@@ -20,15 +20,17 @@ from kb_mcp.evaluation.app.evaluation import (
     read_golden,
 )
 from kb_mcp.evaluation.app.reranked import (
+    Arm,
     Arms,
     Counted,
     decided,
     measured,
     recorded,
 )
-from kb_mcp.evaluation.domain.reranking import GROUPS
+from kb_mcp.evaluation.domain.reranking import GROUPS, Decision
 from kb_mcp.kernel.endpoint import RERANKING
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import BAR_DEPTHS, BOUND_S
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.search.adapters.embedding import connect
@@ -37,11 +39,8 @@ from kb_mcp.search.adapters.reranking import EVALUATION, rerank, served
 
 if TYPE_CHECKING:
     import argparse
-    from pathlib import Path
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.evaluation.app.reranked import Arm
-    from kb_mcp.evaluation.domain.reranking import Decision
     from kb_mcp.kernel.output import Summary
 
 STAMP = "%Y%m%dT%H%M%SZ"
@@ -52,8 +51,7 @@ HEADER = (
 DIVIDER = "|---|---|---|---|---|---|---|---|---|---|---|---|"
 
 
-@dataclass(frozen=True)
-class Evaluated:
+class Evaluated(Record):
     """Each arm measured, the bar's decision, the mode, and the results file."""
 
     arms: list[Arm]

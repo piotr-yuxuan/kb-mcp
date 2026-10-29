@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
@@ -18,6 +18,7 @@ from kb_mcp.evaluation.app.evaluation import (
     HEADER,
     EvaluationError,
     GoldenError,
+    Run,
     Target,
     ask_row,
     built,
@@ -29,27 +30,24 @@ from kb_mcp.evaluation.app.evaluation import (
     row,
     table,
 )
-from kb_mcp.evaluation.domain.evaluation import CONTROL
+from kb_mcp.evaluation.domain.evaluation import CONTROL, Choice
 from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.record import Record
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError
 
 if TYPE_CHECKING:
     import argparse
-    from pathlib import Path
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.evaluation.app.evaluation import Run
-    from kb_mcp.evaluation.domain.evaluation import Choice
     from kb_mcp.kernel.output import Summary
 
 STAMP = "%Y%m%dT%H%M%SZ"
 
 
-@dataclass(frozen=True)
-class Evaluated:
+class Evaluated(Record):
     """How each target served the golden questions, each model's chunking, the results file."""
 
     runs: list[Run]

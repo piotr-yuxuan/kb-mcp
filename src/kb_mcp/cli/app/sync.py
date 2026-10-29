@@ -13,33 +13,31 @@ run plans the download and counts the work log, and writes nothing. Each row is 
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 import structlog
 from opentelemetry import trace
+from pydantic import ConfigDict, Field
 
-from kb_mcp.cli.domain.sync import RANKED
+from kb_mcp.cli.domain.sync import RANKED, Outcome
+from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters import conversions
-from kb_mcp.mirror.adapters.pandoc import PandocFailedError
+from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
 from kb_mcp.mirror.app.mirror import mirror
 from kb_mcp.mirror.app.worklog import mirror_worklog, plan_worklog
-from kb_mcp.search.app.indexing import refresh
+from kb_mcp.search.app.indexing import Indexing, refresh
 from kb_mcp.sources.atlassian.adapters.raw_store import RawStore, StoreBusyError
 from kb_mcp.sources.atlassian.adapters.sign_in import sign_in
-from kb_mcp.sources.atlassian.app.download import download, plan
+from kb_mcp.sources.atlassian.app.download import Targets, download, plan
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
-    from datetime import datetime
-    from pathlib import Path
+    from collections.abc import Sequence
 
-    from kb_mcp.cli.domain.sync import Outcome
-    from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.mirror.adapters.pandoc import Pandoc
-    from kb_mcp.search.app.indexing import Indexing
-    from kb_mcp.sources.atlassian.app.download import Targets
 
 # How a download or its plan ended, by its status. A download that Ctrl-C stops raises
 # KeyboardInterrupt, so its status is never none here.
@@ -57,8 +55,7 @@ class SyncRefusedError(ValueError):
     """What a sync cannot run with, found before its first step; the message names it."""
 
 
-@dataclass(frozen=True)
-class Atlassian:
+class Atlassian(Record):
     """Confluence's and Jira's step: what to download, then the mirror of the raw store."""
 
     rows: ClassVar[tuple[str, ...]] = ("download", "mirror")
@@ -66,8 +63,7 @@ class Atlassian:
     targets: Targets
 
 
-@dataclass(frozen=True)
-class Worklog:
+class Worklog(Record):
     """The work log's step: its folder, read in place, and whether archives are mirrored."""
 
     rows: ClassVar[tuple[str, ...]] = ("worklog",)
@@ -76,8 +72,7 @@ class Worklog:
     archives: bool
 
 
-@dataclass(frozen=True)
-class Index:
+class Index(Record):
     """The index's step: how it is built, from the whole mirror, whatever sources were taken."""
 
     rows: ClassVar[tuple[str, ...]] = ("index",)
@@ -85,8 +80,7 @@ class Index:
     indexing: Indexing
 
 
-@dataclass(frozen=True)
-class Context:
+class Context(Record):
     """What every step needs: the settings, pandoc, the clock, the pause, and a dry run."""
 
     settings: Settings
@@ -96,8 +90,7 @@ class Context:
     dry_run: bool
 
 
-@dataclass(frozen=True)
-class Row:
+class Row(Record):
     """A step's row: its name, how it ended, and its own result, None when it gave none."""
 
     step: str
@@ -105,19 +98,19 @@ class Row:
     result: object | None
 
 
-@dataclass(frozen=True)
-class Synced:
+class Synced(Record):
     """What a sync did: its exit status, then a row per step, in their order."""
 
     exit_status: ExitStatus
     steps: tuple[Row, ...]
 
 
-@dataclass
-class Rows:
+class Rows(Record):
     """A sync's rows so far, in their order."""
 
-    added: list[Row] = field(default_factory=list)
+    model_config = ConfigDict(frozen=False)
+
+    added: list[Row] = Field(default_factory=list)
 
     def add(self, row: Row) -> None:
         """Keep a row that ended within its step's span: log it, and set its outcome there."""

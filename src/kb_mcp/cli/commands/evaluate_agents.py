@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -39,6 +38,7 @@ from kb_mcp.evaluation.app.agents import (
 )
 from kb_mcp.evaluation.app.evaluation import GoldenError, read_golden
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.tools import TOOLS
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.mirror.adapters import markdown
@@ -56,8 +56,7 @@ if TYPE_CHECKING:
 PROGRAM = (sys.executable, "-m", "kb_mcp")
 
 
-@dataclass(frozen=True)
-class Prepared:
+class Prepared(Record):
     """The runs that ``prepare`` wrote, or would write with --dry-run, and where."""
 
     runs: int

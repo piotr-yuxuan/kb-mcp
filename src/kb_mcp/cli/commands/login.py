@@ -3,25 +3,24 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
 
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.adapters.browser import SignInFailedError
 from kb_mcp.sources.atlassian.app.login import login
 
 if TYPE_CHECKING:
     import argparse
-    from pathlib import Path
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
 
 
-@dataclass(frozen=True)
-class SignedIn:
+class SignedIn(Record):
     """The site signed in to, and the folder that keeps its session."""
 
     site: str
