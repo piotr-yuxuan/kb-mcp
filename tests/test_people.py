@@ -156,6 +156,28 @@ def test_a_written_key_keeps_the_annotation() -> None:
     assert written_key("Hélène Example") == name_key("Hélène Example")
 
 
+@pytest.mark.parametrize("name", ["Kim(not in the header)", "Kim ( not in the header )"])
+def test_a_written_key_writes_one_annotation_however_it_is_spaced(name: str) -> None:
+    """No space before the brackets, or spaces within them, write the same annotation."""
+    assert written_key(name) == "kim (not in the header)"
+
+
+def test_one_annotation_spaced_two_ways_is_one_person() -> None:
+    """Kim with one annotation, written three ways: one person, as with one spelling.
+
+    Two annotations would keep the names apart; the spaces make none.
+    """
+    rows = (
+        named(STAND_UP, "Kim"),
+        named(REVIEW, "Kim (not in the header)"),
+        named(PLANNING, "Kim(not in the header)"),
+        named(UNLINKED, "Kim ( not in the header )"),
+    )
+    result = joined(rows, {}, {})
+    assert [person.id for person in result.persons] == [anchored("name\nkim")]
+    assert result.ambiguous == ()
+
+
 @pytest.mark.parametrize(
     ("one", "other"),
     [

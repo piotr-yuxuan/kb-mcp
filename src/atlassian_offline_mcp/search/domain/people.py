@@ -33,8 +33,9 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 # A trailing part in brackets, once a key's spaces are collapsed: an annotation of the
-# work log's, such as "Kim (not in the header)". It needs a name before it.
-ANNOTATION = re.compile(r"(?<=\S) ?\([^()]*\)\Z")
+# work log's, such as "Kim (not in the header)", and what it says. It needs a name
+# before it.
+ANNOTATION = re.compile(r"(?<=\S) ?\(([^()]*)\)\Z")
 # A person's id, as an alias's target may give it.
 PERSON_ID = re.compile(r"p-[0-9a-f]{16}")
 # How a name joined its person. ACCOUNT and NAME also say what a person's id hashes.
@@ -53,12 +54,13 @@ def written_key(name: str) -> str:
 
     The name casefolded, decomposed by NFKD without its accents, the combining
     diacritical marks of U+0300 to U+036F, as filters drop them, and casefolded again;
-    its runs of white space made one space, trimmed. A kana's voicing mark, which makes
-    another letter, stays.
+    its runs of white space made one space, trimmed; its annotation after one space,
+    trimmed within its brackets, so that "Kim(late)" and "Kim ( late )" write one. A
+    kana's voicing mark, which makes another letter, stays.
     """
     decomposed = unicodedata.normalize("NFKD", name.casefold())
     plain = "".join(char for char in decomposed if not "\u0300" <= char <= "\u036f").casefold()
-    return " ".join(plain.split())
+    return ANNOTATION.sub(lambda part: f" ({part[1].strip()})", " ".join(plain.split()))
 
 
 def name_key(name: str) -> str:
