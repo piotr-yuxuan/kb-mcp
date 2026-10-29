@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from copy import replace
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest

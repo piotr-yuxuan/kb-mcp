@@ -18,3 +18,8 @@ max-complexity = 10
 [lint.per-file-ignores]
 # pytest checks with assert.
 "**/test_*.py" = ["S101"]
+
+[lint.flake8-type-checking]
+# Pydantic reads a record's annotations when its class is made: the types they name are
+# imported at run time.
+runtime-evaluated-base-classes = ["kb_mcp.kernel.record.Record"]

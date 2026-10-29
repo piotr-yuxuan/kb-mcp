@@ -15,7 +15,8 @@ from __future__ import annotations
 import posixpath
 import time
 from collections import Counter
-from dataclasses import dataclass, replace
+from copy import replace
+from dataclasses import dataclass
 from datetime import UTC
 from typing import TYPE_CHECKING
 
