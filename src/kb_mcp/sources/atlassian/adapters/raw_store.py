@@ -16,20 +16,9 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import (
-    IDENTIFIER,
-    REVISION,
-    BlogPost,
-    Folder,
-    Issue,
-    Listed,
-    Page,
-    Person,
-    RefusedError,
-    Space,
-    require,
-)
+from kb_mcp.kernel.content import BlogPost, Folder, Issue, Listed, Page, Person, Space
 from kb_mcp.kernel.fields import Fields, RepresentationError
+from kb_mcp.kernel.names import IDENTIFIER, REVISION, RefusedError, require
 from kb_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.domain.coverage import Coverage, Target
 from kb_mcp.sources.atlassian.domain.deletions import Tombstone

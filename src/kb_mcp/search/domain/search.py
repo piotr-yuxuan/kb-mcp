@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
-from kb_mcp.kernel.content import ISSUE_KEY
+from kb_mcp.kernel.names import ISSUE_KEY
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping, Sequence

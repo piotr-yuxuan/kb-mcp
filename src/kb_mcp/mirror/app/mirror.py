@@ -22,13 +22,8 @@ from typing import TYPE_CHECKING
 import structlog
 from opentelemetry import metrics, trace
 
-from kb_mcp.kernel.content import (
-    BlogPost,
-    ConfluenceDocument,
-    Issue,
-    Page,
-    RefusedError,
-)
+from kb_mcp.kernel.content import BlogPost, ConfluenceDocument, Issue, Page
+from kb_mcp.kernel.names import RefusedError
 from kb_mcp.mirror.adapters.markdown import TIME, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, owned, sync
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError

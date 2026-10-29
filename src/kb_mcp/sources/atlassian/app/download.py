@@ -22,9 +22,10 @@ from opentelemetry import metrics, trace
 from opentelemetry.context import Context
 from opentelemetry.trace import StatusCode
 
-from kb_mcp.kernel.content import IDENTIFIER, BlogPost, Issue, Page
+from kb_mcp.kernel.content import BlogPost, Issue, Page
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import Fields, RepresentationError
+from kb_mcp.kernel.names import IDENTIFIER
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.adapters.http import (

@@ -13,7 +13,7 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import RefusedError
+from kb_mcp.kernel.names import RefusedError
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping

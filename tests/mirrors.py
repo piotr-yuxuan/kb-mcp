@@ -13,7 +13,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import time_revision
+from kb_mcp.kernel.names import time_revision
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.app.mirror import mirror

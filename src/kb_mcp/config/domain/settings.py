@@ -33,8 +33,8 @@ from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
-from kb_mcp.kernel.content import MODEL_NAME, PROJECT_KEY, SPACE_KEY
 from kb_mcp.kernel.endpoint import endpoint_host, loopback
+from kb_mcp.kernel.names import MODEL_NAME, PROJECT_KEY, SPACE_KEY
 from kb_mcp.kernel.reranking import DEPTHS
 
 if TYPE_CHECKING:

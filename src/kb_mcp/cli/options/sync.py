@@ -19,7 +19,7 @@ from kb_mcp.cli.options._common import (
 )
 from kb_mcp.cli.options.download import add_period_options, period_refused
 from kb_mcp.cli.options.index import INDEX_SETTINGS, by_words_alone
-from kb_mcp.kernel.content import SOURCE_NAMES
+from kb_mcp.kernel.names import SOURCE_NAMES
 
 if TYPE_CHECKING:
     import argparse

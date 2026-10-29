@@ -13,7 +13,7 @@ import httpx
 import structlog
 import truststore
 
-from kb_mcp.kernel.content import SITE_PATH
+from kb_mcp.kernel.names import SITE_PATH
 from kb_mcp.observability.adapters.http import Recorded
 
 if TYPE_CHECKING:

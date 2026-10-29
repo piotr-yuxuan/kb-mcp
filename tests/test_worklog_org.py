@@ -24,7 +24,7 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from kb_mcp.kernel.content import WORKLOG_ID, WORKLOG_REVISION
+from kb_mcp.kernel.names import WORKLOG_ID, WORKLOG_REVISION
 from kb_mcp.mirror.domain.mirror import RELATIONS
 from kb_mcp.sources.worklog.domain import org
 from kb_mcp.sources.worklog.domain.worklog import (

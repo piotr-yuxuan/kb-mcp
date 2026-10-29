@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict
 import structlog
 from opentelemetry import metrics, trace
 
-from kb_mcp.kernel.content import WORKLOG_ID
+from kb_mcp.kernel.names import WORKLOG_ID
 from kb_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from kb_mcp.mcp.app import responses
 from kb_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading

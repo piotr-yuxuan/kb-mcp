@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import (
+from kb_mcp.kernel.names import (
     IDENTIFIER,
     ISSUE_KEY,
     PROJECT_KEY,

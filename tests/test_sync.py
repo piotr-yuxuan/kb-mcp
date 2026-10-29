@@ -31,8 +31,8 @@ from kb_mcp.cli.domain.sync import SOURCES, chosen
 from kb_mcp.cli.main import main, parser
 from kb_mcp.cli.options.sync import refused
 from kb_mcp.config.domain.settings import DEFAULT_MODEL, Settings
-from kb_mcp.kernel.content import SOURCE_NAMES
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import SOURCE_NAMES
 from kb_mcp.mirror.adapters import pandoc as pandoc_adapter
 from kb_mcp.mirror.adapters.mirror_files import Changes
 from kb_mcp.mirror.adapters.pandoc import (

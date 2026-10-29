@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING, Literal
 
-from kb_mcp.kernel.content import PROJECT_KEY, SPACE_KEY, RefusedError, require
+from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY, RefusedError, require
 from kb_mcp.sources.atlassian.domain.period import EPOCH, Period
 
 # The rule of a target's key, by source.

@@ -7,16 +7,8 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from kb_mcp.kernel.content import (
-    BlogPost,
-    Comment,
-    Folder,
-    Issue,
-    Page,
-    Person,
-    RefusedError,
-    Space,
-)
+from kb_mcp.kernel.content import BlogPost, Comment, Folder, Issue, Page, Person, Space
+from kb_mcp.kernel.names import RefusedError
 from kb_mcp.mirror.domain.catalogue import Catalogue, front_matter
 from kb_mcp.mirror.domain.mirror import PersonRole
 

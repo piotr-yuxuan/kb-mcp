@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import WORKLOG_IDS
+from kb_mcp.kernel.names import WORKLOG_IDS
 from kb_mcp.kernel.slug import slug
 from kb_mcp.sources.worklog.domain import org
 
