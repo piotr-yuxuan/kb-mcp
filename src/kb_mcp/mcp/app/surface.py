@@ -10,16 +10,17 @@ as the index holds them, enter its text.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
+from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.tools import Tool
 from kb_mcp.mcp.app.tools import LONGEST, UnanswerableError, bounded, instant
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Sequence
     from datetime import datetime
 
-    from kb_mcp.kernel.tools import Tool
     from kb_mcp.mcp.app.tools import Library
 
 # Clients send the instructions with every request, and Claude Code keeps 2,048
@@ -58,8 +59,7 @@ UNTRUSTED = (
 )
 
 
-@dataclass(frozen=True)
-class Guide:
+class Guide(Record):
     """A prompt: its name, what it asks, its arguments, the tools it needs, its text.
 
     ``arguments`` gives each argument's name and description; every one is required.
@@ -73,8 +73,7 @@ class Guide:
     render: Callable[..., str]
 
 
-@dataclass(frozen=True)
-class Surface:
+class Surface(Record):
     """What a server of some tools says: instructions, descriptions by tool, prompts."""
 
     tools: tuple[Tool, ...]

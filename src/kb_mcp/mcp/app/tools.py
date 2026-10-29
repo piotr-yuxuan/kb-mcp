@@ -16,14 +16,16 @@ import math
 import re
 import unicodedata
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from copy import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 import structlog
 from opentelemetry import metrics, trace
 
+from kb_mcp.config.domain.settings import SearchMode as Mode
 from kb_mcp.kernel.names import WORKLOG_ID
+from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from kb_mcp.mcp.app import responses
 from kb_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
@@ -41,6 +43,7 @@ from kb_mcp.search.domain.search import (
     MAX_WORDS,
     Filters,
     Passage,
+    Plan,
     Sort,
     fuse,
     identifiers,
@@ -54,11 +57,10 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
     from pathlib import Path
 
-    from kb_mcp.config.domain.settings import SearchMode as Mode
     from kb_mcp.search.adapters.sqlite_index import Reader
     from kb_mcp.search.app.meaning import Meaning
     from kb_mcp.search.app.reranking import Reranking
-    from kb_mcp.search.domain.search import Entry, Plan
+    from kb_mcp.search.domain.search import Entry
 
 SEARCH_LIMIT = 8
 SEARCH_LIMITS = (1, 50)
@@ -135,8 +137,7 @@ class UnanswerableError(Exception):
     """A call that cannot be answered as asked; the message says what would do."""
 
 
-@dataclass(frozen=True)
-class Ranking:
+class Ranking(Record):
     """The documents ranked for a query, best first, and how they were ranked."""
 
     paths: list[str]
@@ -149,8 +150,7 @@ class Ranking:
     order: tuple[int, ...] = ()  # how the documents after those were reranked, by place
 
 
-@dataclass(frozen=True)
-class Asked:
+class Asked(Record):
     """A search as asked: its query and plan, its filters, its order and its mode."""
 
     query: str
@@ -548,8 +548,7 @@ def clamp(value: int, limits: tuple[int, int]) -> int:
     return max(limits[0], min(value, limits[1]))
 
 
-@dataclass(frozen=True)
-class Shown:
+class Shown(Record):
     """A document ranked for a query, with the section a search shows for it."""
 
     path: str
