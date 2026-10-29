@@ -58,8 +58,9 @@ LINKED = "MEETING"
 NAMED = "PARTICIPANTS"
 # Where org's archiving writes the titles above a subtree, joined by /.
 OUTLINE_PATH = "ARCHIVE_OLPATH"
-# A comma between names: outside brackets, so that Kim (payments, ops) stays one name.
-SEPARATOR = re.compile(r",(?![^(\[]*[)\]])")
+# The brackets within which a comma is a name's, as in Kim (payments, ops).
+OPENING = "(["
+CLOSING = ")]"
 # A turn of a transcript: an optional [time] and a blank, then its speaker's name, of at
 # most 64 characters, beginning with a letter and holding no colon or bracket, then ": ".
 TURN = re.compile(r"[ \t]*(?:\[([^\[\]]*)\][ \t]+)?([^\W\d_][^:\[\]]{0,63}?)[ \t]*: ")
@@ -202,10 +203,23 @@ def revision(converter: str, text: str) -> str:
 def participants(value: str) -> tuple[str, ...]:
     """Return the names that a ``:PARTICIPANTS:`` value gives, in order, each once.
 
-    Names are separated by commas outside brackets, and stripped; each is kept as written,
-    an annotation included, such as ``Kim (not in the header)``.
+    Names are separated by commas outside brackets, ``()`` or ``[]``, a closing one
+    without its opening one being text, and stripped; each is kept as written, an
+    annotation included, such as ``Kim (not in the header)``. One pass, so that the time
+    grows with the value's length alone.
     """
-    return tuple(dict.fromkeys(name for part in SEPARATOR.split(value) if (name := part.strip())))
+    names: list[str] = []
+    depth, begun = 0, 0  # the brackets open, and where the name being read begins
+    for place, char in enumerate(value):
+        if char in OPENING:
+            depth += 1
+        elif char in CLOSING:
+            depth = max(depth - 1, 0)
+        elif char == "," and not depth:
+            names.append(value[begun:place])
+            begun = place + 1
+    names.append(value[begun:])
+    return tuple(dict.fromkeys(name for each in names if (name := each.strip())))
 
 
 def meeting_ids(day: datetime, meetings: Sequence[tuple[str, datetime]]) -> list[str]:

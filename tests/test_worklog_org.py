@@ -18,6 +18,7 @@ import dataclasses
 import hashlib
 import itertools
 import re
+import time
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import PurePosixPath
 
@@ -892,6 +893,9 @@ def test_a_revision_names_the_input_and_the_converter() -> None:
 
 # Plan 042's meetings: who they name, and their ids.
 TUESDAY = datetime(2026, 10, 27, tzinfo=UTC)
+# Seconds that 40,000 names take at most: a pass over them, not the minutes that a look
+# ahead from each comma to the end of the value took.
+SPLIT_S = 5
 
 
 @pytest.mark.parametrize(
@@ -903,6 +907,8 @@ TUESDAY = datetime(2026, 10, 27, tzinfo=UTC)
         ),
         ("Robin (payments, ops),Jo [lead, ops]", ("Robin (payments, ops)", "Jo [lead, ops]")),
         ("  Sam ,, Sam, sam ,", ("Sam", "sam")),
+        ("Kim (a [b, c] d, e), Sam", ("Kim (a [b, c] d, e)", "Sam")),
+        ("Alex :), Sam", ("Alex :)", "Sam")),
         ("", ()),
     ],
 )
@@ -911,6 +917,14 @@ def test_participants_are_the_names_between_commas_outside_brackets(
 ) -> None:
     """Stripped, in order, each once, written as given, an annotation included."""
     assert participants(value) == expected
+
+
+def test_a_long_participants_value_is_split_in_time_that_grows_with_it() -> None:
+    """40,000 names, about 460 kB, as a file of 32 MiB may hold: within seconds."""
+    names = tuple(f"Name {number}" for number in range(40_000))
+    began = time.perf_counter()
+    assert participants(", ".join(names)) == names
+    assert time.perf_counter() - began < SPLIT_S
 
 
 def test_meeting_ids_name_the_day_and_the_title_numbered_by_start_then_order() -> None:
