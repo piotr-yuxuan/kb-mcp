@@ -739,6 +739,44 @@ def test_a_dry_run_that_meets_a_problem_would_remove_nothing(run: Run) -> None:
     )
 
 
+@pytest.mark.parametrize("name", ["todo.org", "todo.org_archive"])
+def test_a_journal_file_not_read_holds_every_file_back(run: Run, name: str) -> None:
+    """Days and meetings draw on both files, entries' numbers too: nothing is written.
+
+    Not even a transcript edited meanwhile, whose links name meetings of both files.
+    """
+    run()
+    before = snapshot(run.docs)
+    (run.root / name).write_bytes(NOT_UTF8)
+    run.edit("transcripts/misc/a.org", "one word only", "one edited word only")
+    outcome = run()
+    assert [(each.where, each.reason) for each in outcome.problems] == [(name, "not UTF-8")]
+    assert snapshot(run.docs) == before
+
+
+def test_a_transcript_not_read_holds_back_meetings_and_what_links_them(run: Run) -> None:
+    """A meeting's link, start and id draw on transcripts, and a transcript's links on ids.
+
+    So no meeting is written, nor a document that links one; the day and the transcripts
+    that no meeting links are, as before.
+    """
+    run()
+    before = {each.path: each for each in run.files()}
+    run.edit("todo.org", "A note of the Tuesday", "An edited note of the Tuesday")
+    run.edit("transcripts/misc/a.org", "one word only", "one edited word only")
+    (run.root / "transcripts/current/2026-10-27 Tue/1.org").write_bytes(NOT_UTF8)
+    outcome = run()
+    assert [(each.where, each.reason) for each in outcome.problems] == [
+        ("transcripts/current/2026-10-27 Tue/1.org", "not UTF-8")
+    ]
+    after = {each.path: each for each in run.files()}
+    held = [path for path, each in before.items() if each.matter.type == "meeting"]
+    held += [path for path, each in before.items() if each.matter.links]
+    assert {path: after[path] for path in held} == {path: before[path] for path in held}
+    assert "An edited note of the Tuesday" in run.by_id("d-20261027").body
+    assert "one edited word only" in run.by_title("WAITING Notes").body
+
+
 STANDUP = "m-20261027-payments-stand-up"
 
 

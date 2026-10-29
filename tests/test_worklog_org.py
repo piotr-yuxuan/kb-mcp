@@ -40,6 +40,7 @@ from atlassian_offline_mcp.sources.worklog.domain.worklog import (
     start,
     transcripts,
     turns,
+    writable,
 )
 
 KEYWORDS = frozenset({"TODO", "WAITING", "DONE"})
@@ -1304,6 +1305,34 @@ def test_only_a_meeting_s_link_that_reaches_nothing_is_returned_in_meetings_orde
     )
     _, unlinked = journal(todo(text), None, archives=False, transcripts=())
     assert unlinked == ["first.org", "m-20261027-second"]
+
+
+@pytest.mark.parametrize(
+    ("unread", "kinds"),
+    [
+        (set(), ["entry", "day", "meeting", "transcript", "transcript"]),
+        ({"todo.org"}, []),
+        ({"todo.org_archive"}, []),
+        ({"transcripts/misc/x.org"}, ["entry", "day", "transcript"]),
+        ({"transcripts, meetings"}, ["entry", "day", "transcript"]),
+    ],
+)
+def test_a_file_not_read_holds_back_each_document_that_draws_on_it(
+    unread: set[str], kinds: list[str]
+) -> None:
+    """The journal's files: every one; another: the meetings and what links one."""
+    read, _ = transcripts(
+        [
+            Source(PurePosixPath("meetings/2026-10-27 Tue/1.org"), "Words.\n", MODIFIED),
+            transcript("misc/alone.org"),
+        ],
+        archives=True,
+    )
+    found, _ = journal(todo(DECLARED + SAMPLE), None, archives=True, transcripts=read)
+    documents = [*found, *linked_back(read, found)]
+    written = writable(documents, unread)
+    assert [each.type for each in written] == kinds
+    assert all(each.links == () for each in written if unread)
 
 
 def test_the_work_log_s_relations_are_among_the_front_matter_s() -> None:

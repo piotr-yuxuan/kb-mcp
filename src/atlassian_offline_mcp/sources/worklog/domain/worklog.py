@@ -23,7 +23,7 @@ from atlassian_offline_mcp.kernel.slug import slug
 from atlassian_offline_mcp.sources.worklog.domain import org
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Collection, Iterable, Mapping, Sequence
     from pathlib import PurePosixPath
 
 TODO = "todo.org"
@@ -635,3 +635,21 @@ def linked_back(transcripts: Iterable[Document], documents: Iterable[Document]) 
         dataclasses.replace(each, links=(*each.links, *summaries.get(each.id, ())))
         for each in transcripts
     ]
+
+
+def writable(documents: Iterable[Document], unread: Collection[str]) -> list[Document]:
+    """Return the documents whose files a run may write, when ``unread`` were not read.
+
+    ``unread`` names each file or folder of the work log not read, by its path from the
+    work log's folder. A day draws on ``todo.org`` and its archive, and an entry's number
+    on both: without either, none is written. A meeting draws too on the transcript that
+    it links, whose start numbers its id among its day's, and a transcript's links name
+    those ids: without any other, neither a meeting nor a document that links one is
+    written. So no file is written from a part of what it draws on, and each keeps its
+    last good copy until a run reads the folder whole.
+    """
+    if {TODO, TODO_ARCHIVE} & set(unread):
+        return []
+    if unread:
+        return [each for each in documents if each.type != MEETING_TYPE and not each.links]
+    return list(documents)

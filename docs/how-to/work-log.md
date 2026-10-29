@@ -31,8 +31,9 @@ atlassian-offline-mcp check
 - Names beginning with `.` or `#`, or ending in `~`, are passed over: hidden files, and
   Emacs's lock, autosave and backup files. A link is followed only inside the folder.
 - A file over 32 MiB, a link out of the folder, or a file that is not UTF-8 is named by
-  its path, never by its content, and the run removes nothing until it is fixed. Past
-  20,000 transcripts in the two folders, the first in path order are read.
+  its path, never by its content, and the run removes nothing, nor writes what draws on
+  it, until it is fixed. Past 20,000 transcripts in the two folders, the first in path
+  order are read.
 
 Keywords are those `todo.org` declares, as org reads them: put the line that your Emacs
 configuration holds in the file, such as `#+TODO: TODO WAITING | DONE`, else only `TODO`
@@ -192,6 +193,9 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
 - A document removed loses its file, unless the run reported a problem (a file not
   read, a conversion that failed): then every file stays, until a run reads the work
   log whole.
+- A file not read also holds back the files that draw on it, which stay as they were:
+  for `todo.org` or its archive, every file; for a transcript, every meeting's and each
+  that links a meeting. The others are written as usual.
 - `archives = false` removes, at the next run, the files of what the archive file holds,
   of `transcripts/archive/` and `meetings/archive/`, and of the headings tagged
   `ARCHIVE`.

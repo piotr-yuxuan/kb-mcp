@@ -477,7 +477,11 @@ Owned by `sync`'s work-log step (017), in `mirror.app.worklog`: `<data>/docs/wor
 from the folder that `sources.worklog.path` names, read in place and never written.
 `mirror.adapters.mirror_files.owned` and `worklog_owned` tell each owner's files apart,
 so that `mirror` and the work-log step never remove each other's. A run that meets a
-problem (a file not read, a conversion that failed) removes none of its files.
+problem (a file not read, a conversion that failed) removes none of its files, and a
+file not read holds back the files of what draws on it: every one for `todo.org` or
+`todo.org_archive`, on which days, meetings and entries' numbers draw; for any other,
+each meeting, whose link, start and id draw on the transcripts, and each document that
+links one.
 
 - The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
   a day among its children, whatever its title. A **day** is a heading at level 1, or 2

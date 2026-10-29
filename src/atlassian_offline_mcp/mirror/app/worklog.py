@@ -6,9 +6,10 @@ removes, under ``worklog/`` alone, those of documents gone. A document whose fil
 its revision keeps that file's body, dates and time of fetch, so that an edit elsewhere
 in its org file moves neither; but a day, a meeting and a dated transcript are dated by
 when they happened, afresh at each run, so that a transcript read since dates its
-meeting without a conversion. A run that reports a problem removes nothing, so that the
-last good copy of each file stays; a meeting whose link reaches no transcript read is a
-warning, not a problem. Reading, building and writing are each a span; each
+meeting without a conversion. A run that reports a problem removes nothing, and a file
+not read holds back every document that draws on it, as ``worklog.writable`` says, so
+that the last good copy of each file stays; a meeting whose link reaches no transcript
+read is a warning, not a problem. Reading, building and writing are each a span; each
 document is counted, and each conversion timed, by its kind, as
 ``docs/reference/telemetry/sync.md`` lists them.
 """
@@ -43,6 +44,7 @@ from atlassian_offline_mcp.sources.worklog.domain.worklog import (
     linked_back,
     revision,
     transcripts,
+    writable,
 )
 
 if TYPE_CHECKING:
@@ -57,9 +59,10 @@ TRACER = trace.get_tracer(__name__)
 
 @dataclass(frozen=True)
 class Read:
-    """The work log's documents as read, in order, and the HTML transcripts left out.
+    """The work log's documents to write, in order, and the HTML transcripts left out.
 
-    Problems stop removals; warnings, such as two transcripts of one id, do not.
+    The documents are those read that draw on no file not read. Problems stop removals;
+    warnings, such as two transcripts of one id, do not.
     """
 
     documents: tuple[Document, ...]
@@ -100,10 +103,12 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     A meeting links to its transcript and the transcript back to it, both read in this
     one run. Without ``archives``, the archive file, ``transcripts/archive/``,
     ``meetings/archive/`` and the subtrees tagged ARCHIVE are left out. A file not read
-    is a problem, named by its path. The span ``worklog.read`` holds the reading;
-    ``worklog.read`` says at INFO what was read. ``worklog.unlinked``, a warning, says
-    how many meetings' ``:MEETING:`` link no transcript read, and the first by its file,
-    else its id: never a problem, so that it holds no removal back.
+    is a problem, named by its path, and the documents that draw on it are left out, as
+    ``writable`` says, so that a run writes none of their files. The span
+    ``worklog.read`` holds the reading; ``worklog.read`` says at INFO what was read.
+    ``worklog.unlinked``, a warning, says how many meetings' ``:MEETING:`` link no
+    transcript read, and the first by its file, else its id: never a problem, so that it
+    holds no removal back.
     """
     with TRACER.start_as_current_span("worklog.read"):
         listing = files.listed(folder, archives=archives)
@@ -120,7 +125,8 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
         )
         todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
         journaled, unlinked = journal(todo, archive, archives=archives, transcripts=named)
-        documents_read = (*journaled, *linked_back(named, journaled))
+        unread = {each.where for each in problems}
+        documents_read = writable((*journaled, *linked_back(named, journaled)), unread)
     log = structlog.get_logger()
     kinds = Counter(each.type for each in journaled)
     log.info(
@@ -134,7 +140,7 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     )
     if unlinked:
         log.warning("worklog.unlinked", meetings=len(unlinked), first=unlinked[0])
-    return Read(documents_read, listing.html, tuple(problems), tuple(warnings))
+    return Read(tuple(documents_read), listing.html, tuple(problems), tuple(warnings))
 
 
 def existing(docs: Path) -> dict[str, tuple[FrontMatter, str]]:

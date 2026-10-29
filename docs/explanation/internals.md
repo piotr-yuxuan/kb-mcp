@@ -199,6 +199,8 @@ or a dated transcript, dated afresh by when it happened; another is converted ag
   over 32 MiB or is not UTF-8
   ([`source`](../../src/atlassian_offline_mcp/sources/worklog/adapters/files.py)), or a
   conversion that fails, is named by its path, never by its content; the run goes on,
+  writes no file that draws on a file not read
+  ([`writable`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
   and then removes no file, so that the last good copy of each stays.
 - **Offline**, everything: the work log is on this machine.
 
