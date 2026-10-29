@@ -48,29 +48,45 @@ otherwise than its author, and `created <day>`, such as
 
 - `query`: the words, at most 500 characters.
 - `filters`: an object of `source` (`confluence`, `jira` or `worklog`), `space`,
-  `project`, `status`, `label`, `issue_type`, `author` (an issue's reporter, the person
-  it is for, who may not be who created it; a page's creator), `creator` (who created
-  an issue), `assignee`, `commenter` (who wrote one of an issue's comments),
-  `participant` (someone at a work-log meeting, as its `:PARTICIPANTS:` names them,
-  such as `Kim (not in the header)`, or a speaker of a transcript), `updated_after`,
-  `created_after` and `commented_after` (included), and `updated_before`,
-  `created_before` and `commented_before` (excluded). The comment dates narrow by one
-  comment: the commenter's, when `commenter` is given, so that
+  `project`, `status`, `label`, `issue_type`, `person` (someone in any role, by any
+  name that a source writes for them or by their id, `p-` and 16 hex digits),
+  `author` (an issue's reporter, the person it is for, who may not be who created it; a
+  page's creator), `creator` (who created an issue), `assignee`, `commenter` (who wrote
+  one of an issue's comments), `participant` (someone at a work-log meeting, as its
+  `:PARTICIPANTS:` names them, such as `Kim (not in the header)`, or a speaker of a
+  transcript), `updated_after`, `created_after` and `commented_after` (included), and
+  `updated_before`, `created_before` and `commented_before` (excluded). The comment
+  dates narrow by one comment: the commenter's, when `commenter` is given, so that
   `{"commenter": "Bo Sample", "commented_after": "2026-10-20"}` keeps the issues that
   Bo Sample commented on since that day; else anyone's. A meeting and a transcript are
   created when they began, so that
   `{"participant": "Bo Sample", "created_after": "2026-10-26"}` keeps what Bo Sample
-  attended or said since that day. Values match whole, without regard to case, accents
-  or runs of spaces; a name that a hit cuts at 60 characters, `read` gives whole. Of
-  several values that match, one is kept: the one given, else one that a hit shows
-  alike, the most used first, so that a lookalike's documents are left out. A value
-  that no document has (a name, in that role), or that several have but for accents
-  alone, is refused with the valid ones, those that hold it first, the most used first,
-  by documents; participants by meetings first, so that the speakers that a caption
-  tool writes, `You` and `Unverified`, never lead. Dates are ISO 8601, a date being its
-  midnight UTC. The work log's days, meetings and entries are the user's notes and
-  AI-written summaries, a meeting linking its transcript; its transcripts are the
-  word-by-word record.
+  attended or said since that day. Dates are ISO 8601, a date being its midnight UTC.
+  The work log's days, meetings and entries are the user's notes and AI-written
+  summaries, a meeting linking its transcript; its transcripts are the word-by-word
+  record.
+
+  The six filters of people each mean a person, as the index joins the names of every
+  source into persons: by account, by the user's aliases, by name, and a speaker by
+  the meeting of its transcript. A name matches one of a person's names whole, without
+  regard to case, accents, runs of spaces or a trailing part in brackets, so that `Kim`
+  is `Kim (not in the header)`, and keeps the documents where that person holds the
+  filter's role, under any of their names: when one account wrote both names,
+  `{"creator": "Robin Sample"}` keeps the issues created as Robin Example too; a name
+  that a hit cuts at 60 characters, `read` gives whole. A name or id that no person
+  holds in that role is refused with the role's names, by `person` every role's, those
+  that hold it first, the most used first, by documents; participants by meetings
+  first, so that the speakers that a caption tool writes, `You` and `Unverified`, never
+  lead. A name that several persons hold there, such as two accounts of one name, is
+  refused listing each, in order of id, by name, id, documents by role then by source,
+  and the day of the last update, such as
+  `Sam Sample, p-0123456789abcdef: author 1; jira 1; last updated 2026-10-20`: give the
+  id of the one meant. The other values match whole, without regard to case, accents
+  or runs of spaces. Of several values that match, one is kept: the one given, else one
+  that a hit shows alike, the most used first, so that a lookalike's documents are left
+  out. A value that no document has, or that several have but for accents alone, is
+  refused with the valid ones, those that hold it first, the most used first, by
+  documents.
 - `sort`: `relevance`; `updated` or `created`, newest first, by words alone and
   counting every match, after the documents that the query names; with no query, they
   list the documents that pass the filters.

@@ -47,6 +47,7 @@ from tests.test_people import (
     SAM_2,
     SAM_3,
     SAM_ALONE,
+    anchored,
 )
 from tests.test_question import read_until
 
@@ -404,11 +405,11 @@ def people(data: Path) -> Path:
     ("filters", "expected"),
     [
         (Filters(issue_type="Bug"), ["PROJ-1"]),
-        (Filters(author="Bo Sample"), ["196845", "PROJ-1"]),
-        (Filters(assignee="Ada Example"), ["PROJ-1", "PROJ-3"]),
+        (Filters(author=anchored("name\nbo sample")), ["196845", "PROJ-1"]),
+        (Filters(assignee=anchored("name\nada example")), ["PROJ-1", "PROJ-3"]),
         (Filters(created_after=CREATED), ["PROJ-1", "PROJ-3"]),
         (Filters(created_before=CREATED), ["196845", "PROJ-2"]),
-        (Filters(author="Ada Example", created_after=CREATED), []),
+        (Filters(author=anchored("name\nada example"), created_after=CREATED), []),
     ],
 )
 def test_people_and_the_created_range_narrow_each_list(
@@ -416,7 +417,8 @@ def test_people_and_the_created_range_narrow_each_list(
 ) -> None:
     """A listing, a search by words and a page of the newest narrow alike.
 
-    created_after keeps a document created at that moment; created_before does not.
+    A person by their id, as plan 043 gives it: these, by name alone. created_after
+    keeps a document created at that moment; created_before does not.
     """
     paths = {location(front): front.key or front.id for front in PEOPLE}
     with reading(people) as reader:

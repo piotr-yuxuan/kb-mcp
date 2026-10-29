@@ -123,14 +123,16 @@ def test_a_meeting_found_by_its_summary_is_read_by_its_ref_with_its_sections(
 
 
 def test_a_participant_and_a_created_date_give_whom_one_met_and_when(home: Path) -> None:
-    """Kim's meetings and transcripts, then those from the 27th on; not Kim (not in the header).
+    """Kim's meetings and transcripts, then those from the 27th on.
 
-    The whole name matches, so the ledger review, whose Kim is annotated, is not among them.
+    Plan 043: a trailing part in brackets is no part of a name, so the ledger review's Kim
+    (not in the header), with no transcript and so at the 27th's midnight, is Kim too.
     """
     served = library(home)
     kim = {"source": "worklog", "participant": "kim"}
     assert sorted(refs(served.search(filters=kim, sort="created"))) == [
         "m-20261027-capacity-planning",
+        "m-20261027-ledger-review",
         "t-20261021-notes-on-x",
         "t-20261027-1",
         "t-d99a5f2dc74e8488",
@@ -138,6 +140,7 @@ def test_a_participant_and_a_created_date_give_whom_one_met_and_when(home: Path)
     since = {**kim, "created_after": "2026-10-27"}
     assert sorted(refs(served.search(filters=since, sort="created"))) == [
         "m-20261027-capacity-planning",
+        "m-20261027-ledger-review",
         "t-20261027-1",
     ]
 

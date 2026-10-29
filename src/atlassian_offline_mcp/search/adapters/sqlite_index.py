@@ -104,7 +104,8 @@ CREATE TABLE pieces (
   key TEXT NOT NULL, vector BLOB NOT NULL
 );
 """
-# The documents that pass a search's filters, as a JSON list of rowids.
+# The documents that pass a search's filters, as a JSON list of rowids. A person is
+# given by their id, in any role or in the role of the filter.
 KEPT = """
 SELECT json_group_array(d.rowid) FROM documents d
 WHERE (:source IS NULL OR d.source = :source)
@@ -114,14 +115,16 @@ WHERE (:source IS NULL OR d.source = :source)
   AND (:label IS NULL
        OR EXISTS (SELECT 1 FROM labels l WHERE l.document = d.rowid AND l.label = :label))
   AND (:issue_type IS NULL OR d.issue_type = :issue_type)
+  AND (:person IS NULL OR d.rowid IN (SELECT p.document FROM people p WHERE p.person = :person))
   AND (:author IS NULL OR d.rowid IN
-       (SELECT p.document FROM people p WHERE p.role = 'author' AND p.name = :author))
+       (SELECT p.document FROM people p WHERE p.role = 'author' AND p.person = :author))
   AND (:creator IS NULL OR d.rowid IN
-       (SELECT p.document FROM people p WHERE p.role = 'creator' AND p.name = :creator))
+       (SELECT p.document FROM people p WHERE p.role = 'creator' AND p.person = :creator))
   AND (:assignee IS NULL OR d.rowid IN
-       (SELECT p.document FROM people p WHERE p.role = 'assignee' AND p.name = :assignee))
+       (SELECT p.document FROM people p WHERE p.role = 'assignee' AND p.person = :assignee))
   AND (:participant IS NULL OR d.rowid IN
-       (SELECT p.document FROM people p WHERE p.role = 'participant' AND p.name = :participant))
+       (SELECT p.document FROM people p
+        WHERE p.role = 'participant' AND p.person = :participant))
   AND (:updated_after IS NULL OR d.updated >= :updated_after)
   AND (:updated_before IS NULL OR d.updated < :updated_before)
   AND (:created_after IS NULL OR d.created >= :created_after)
@@ -129,7 +132,7 @@ WHERE (:source IS NULL OR d.source = :source)
   AND ((:commenter IS NULL AND :commented_after IS NULL AND :commented_before IS NULL)
        OR d.rowid IN (
          SELECT p.document FROM people p WHERE p.role = 'commenter'
-           AND (:commenter IS NULL OR p.name = :commenter)
+           AND (:commenter IS NULL OR p.person = :commenter)
            AND (:commented_after IS NULL OR p.at >= :commented_after)
            AND (:commented_before IS NULL OR p.at < :commented_before)))
 """
@@ -228,6 +231,7 @@ VALUES = {
     "label": "SELECT label, count(*) FROM labels GROUP BY 1 ORDER BY 2 DESC, 1",
     "issue_type": "SELECT issue_type, count(*) FROM documents WHERE issue_type IS NOT NULL"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
+    "person": "SELECT name, count(DISTINCT document) FROM people GROUP BY 1 ORDER BY 2 DESC, 1",
     "author": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'author'"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
     "creator": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'creator'"

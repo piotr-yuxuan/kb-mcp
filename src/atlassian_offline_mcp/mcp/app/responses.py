@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
-    from atlassian_offline_mcp.search.domain.search import Entry, Passage, Summary
+    from atlassian_offline_mcp.search.domain.search import Activity, Entry, Passage, Summary
 
 BUDGET = 4_000  # estimated tokens of an answer to arguments at or below their defaults
 CEILING = 10_000  # estimated tokens of any answer
@@ -137,6 +137,21 @@ def refusal(message: str, values: Sequence[str], total: int) -> str:
     """Refuse a value, listing the valid ones, which come from the site."""
     more = f"\n({total - len(values)} more are not shown.)" if total > len(values) else ""
     return answer(message, ", ".join(short(value, LABEL) for value in values), more.strip())
+
+
+def activity(found: Activity) -> str:
+    """Say who a person is and what they did, on one line.
+
+    Their name and id, their documents by role then by source, the most first, and the
+    day of the last update of one, such as
+    ``Sam Sample, p-0123456789abcdef: author 1; jira 1; last updated 2026-10-20``.
+    """
+    roles = ", ".join(f"{role} {count}" for role, count in found.roles.items())
+    sources = ", ".join(f"{source} {count}" for source, count in found.sources.items())
+    return (
+        f"{short(found.person.name, LABEL)}, {found.person.id}: {roles}; {sources};"
+        f" last updated {found.last:%Y-%m-%d}"
+    )
 
 
 def facts(front: FrontMatter) -> str:

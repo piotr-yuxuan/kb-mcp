@@ -242,7 +242,8 @@ class Score:
 class Filters:
     """What narrows a search, each value as the index holds it; None does not narrow.
 
-    The comment dates narrow by one comment: the commenter's, when one is given.
+    A person, by their id: ``person`` in any role, each other in the role it names. The
+    comment dates narrow by one comment: the commenter's, when one is given.
     """
 
     source: str | None = None
@@ -251,6 +252,7 @@ class Filters:
     status: str | None = None
     label: str | None = None
     issue_type: str | None = None
+    person: str | None = None
     author: str | None = None
     creator: str | None = None
     assignee: str | None = None

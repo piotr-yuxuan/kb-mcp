@@ -13,7 +13,8 @@ from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
 from atlassian_offline_mcp.mirror.domain.mirror import Link, PersonRole
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from tests.answers import built, continuation, follow, parts
-from tests.mirrors import CREATED, FILLERS, LOREM, MOMENT, PEOPLE, issue, location, page
+from tests.mirrors import CREATED, FILLERS, LOREM, MOMENT, PEOPLE, PERSONS, issue, location, page
+from tests.test_people import ALEX, ALEX_EXAMPLE, ROBIN, ROBIN_ALONE, SAM_2, SAM_3, SAM_ALONE
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -361,9 +362,11 @@ def test_a_listing_by_created_date_continues_by_its_cursor(people: Library, quer
 def test_a_name_matches_whole_as_shown_and_the_value_given_first(tmp_path: Path) -> None:
     """A Hangul name is no other with the same first letters, a kana keeps its voicing.
 
-    Values compare as hits show them, spaces collapsed and composed; of several that
-    look alike, the one given exactly is kept, else the most used. A value matching
-    several but for accents alone, and none but for case, is refused.
+    Values compare as hits show them, spaces collapsed and composed; of several labels
+    that look alike, the one given exactly is kept, else the most used, and since plan
+    043 names of one key are one person, an assignee written with a no-break space the
+    one without. A value matching several but for accents alone, and none but for case,
+    is refused.
     """
     library = built(
         tmp_path,
@@ -390,8 +393,8 @@ def test_a_name_matches_whole_as_shown_and_the_value_given_first(tmp_path: Path)
             library.search("broker", filters=refused)
     kept = {
         "에이다 예시": ["PROJ-1"],
-        "Ada\u00a0 Example": ["PROJ-2"],
-        "ada example": ["PROJ-4"],
+        "Ada\u00a0 Example": ["PROJ-2", "PROJ-4"],
+        "ada example": ["PROJ-2", "PROJ-4"],
     }
     for assignee, expected in kept.items():
         assert refs(library.search(filters={"assignee": assignee}, sort="created")) == expected
@@ -651,6 +654,7 @@ def met(tmp_path: Path) -> Library:
             ],
         ),
         ("KIM (not in the HEADER)", ["m-20261027-ledger-review"]),
+        ("kim", ["m-20261027-ledger-review"]),
         ("you", ["t-20261020-1", "t-20261021-1", "t-20261027-1"]),
     ],
 )
@@ -659,7 +663,8 @@ def test_participant_narrows_to_the_documents_naming_that_person_in_any_case(
 ) -> None:
     """A meeting's participants and a transcript's speakers alike, by their whole name.
 
-    Sam Sample's page is not among them: its author is no participant.
+    Sam Sample's page is not among them: its author is no participant. Since plan 043, a
+    trailing part in brackets is no part of a name: Kim is Kim (not in the header).
     """
     filters = {"participant": name}
     assert sorted(refs(met.search(filters=filters, sort="created"))) == expected
@@ -674,8 +679,8 @@ def test_participant_narrows_to_the_documents_naming_that_person_in_any_case(
             "Sam Sample, Alex Example, Robin Example, Kim (not in the header), You, Unverified",
         ),
         (
-            {"participant": "kim"},
-            "Kim (not in the header), Sam Sample, Alex Example, Robin Example, You, Unverified",
+            {"participant": "robin"},
+            "Robin Example, Sam Sample, Alex Example, Kim (not in the header), You, Unverified",
         ),
         (
             {"participant": "a person"},
@@ -689,9 +694,9 @@ def test_a_participant_that_no_document_names_is_refused_meetings_first(
 ) -> None:
     """By the meetings naming them, then the documents: You never leads, nor Unverified.
 
-    A name matches whole, so Kim alone is not Kim (not in the header), listed first as the
-    name that holds it. A Person, the fillers' author, is no participant, nor is a
-    participant an author.
+    A name matches whole, so Robin alone is not Robin Example, listed first as the name
+    that holds it. A Person, the fillers' author, is no participant, nor is a participant
+    an author.
     """
     with pytest.raises(UnanswerableError) as refused:
         met.search("lorem", filters=filters)
@@ -730,6 +735,124 @@ def test_read_names_ten_links_of_a_relation_whole_then_how_many_more(tmp_path: P
     read = parts(built(tmp_path, [(front, None)]).read("t-20261027-1"))[1]
     assert f"\nsummary: {'; '.join(meetings[:10])}; 2 more\n" in read
     assert "\ntranscript:" not in read
+
+
+# Plan 043's persons, over the mirror of tests.mirrors.PERSONS: Robin Example's account,
+# written Robin Sample on its newest document, wrote a page, created an issue and
+# commented twice on another, and attended three meetings, the review's transcript
+# naming Robin, who speaks there.
+ROBIN_DOCUMENTS = [
+    "300001",
+    "PAY-1",
+    "PAY-2",
+    "m-20261020-planning",
+    "m-20261020-review",
+    "m-20261020-stand-up",
+    "t-20261020-1",
+]
+
+
+@pytest.fixture
+def persons(tmp_path: Path) -> Library:
+    """Serve the documents of PERSONS, beside the fillers, joined without aliases."""
+    return built(tmp_path, [(front, None) for front in PERSONS])
+
+
+@pytest.mark.parametrize("value", ["robin example", "Robin Sample", ROBIN])
+def test_a_person_is_found_in_any_role_by_any_of_their_names_or_their_id(
+    persons: Library, value: str
+) -> None:
+    """Plan 043, criterion 6: Robin's page, issues and meetings, of three sources, alike.
+
+    With words or without.
+    """
+    filters = {"person": value}
+    assert sorted(refs(persons.search(filters=filters, sort="created"))) == ROBIN_DOCUMENTS
+    assert sorted(refs(persons.search("lorem", filters=filters))) == ROBIN_DOCUMENTS
+
+
+def test_a_name_of_several_persons_is_refused_listing_each_by_id(persons: Library) -> None:
+    """Without aliases, Sam Sample is two accounts and the stand-up's name alone.
+
+    Each by name, id, documents by role then source, and the last day one was updated;
+    the id of one keeps that person's documents alone.
+    """
+    with pytest.raises(UnanswerableError) as refused:
+        persons.search("lorem", filters={"person": "Sam Sample"})
+    header, block, _ = parts(str(refused.value))
+    each = {
+        SAM_2: f"Sam Sample, {SAM_2}: author 1; jira 1; last updated 2026-10-21",
+        SAM_3: f"Sam Sample, {SAM_3}: author 1; jira 1; last updated 2026-10-20",
+        SAM_ALONE: f"Sam Sample, {SAM_ALONE}: participant 2; worklog 2; last updated 2026-10-20",
+    }
+    assert header.strip() == 'person: "Sam Sample" names 3 people; give the id of one:'
+    assert block.splitlines() == [each[person] for person in sorted(each)]
+    assert refs(persons.search(filters={"person": SAM_3}, sort="created")) == ["PAY-2"]
+    alone = sorted(refs(persons.search(filters={"person": SAM_ALONE}, sort="created")))
+    assert alone == ["m-20261020-stand-up", "t-20261020-3"]
+
+
+@pytest.mark.parametrize(
+    ("filters", "expected"),
+    [
+        ({"creator": "Robin Sample"}, ["PAY-1"]),
+        ({"creator": "robin example"}, ["PAY-1"]),
+        ({"commenter": "Robin Sample"}, ["PAY-2"]),
+        ({"author": ROBIN}, ["300001"]),
+        (
+            {"participant": "Alex Example"},
+            ["m-20261020-review", "m-20261020-stand-up", "t-20261020-1"],
+        ),
+        ({"person": ALEX}, ["t-20261021-1", "t-20261021-2"]),
+    ],
+)
+def test_each_filter_of_a_role_keeps_its_person_under_any_of_their_names(
+    persons: Library, filters: dict[str, str], expected: list[str]
+) -> None:
+    """Robin created PAY-1 as Robin Sample, and commented on PAY-2 as Robin Example.
+
+    Alex Example (not in the header) is the stand-up's Alex Example, and Alex the
+    review's, by its transcript; Alex in the two unlinked transcripts, a person apart.
+    """
+    assert sorted(refs(persons.search(filters=filters, sort="created"))) == expected
+
+
+@pytest.mark.parametrize(
+    ("filters", "several"),
+    [
+        ({"author": "Sam Sample"}, [SAM_2, SAM_3]),
+        ({"participant": "robin"}, [ROBIN, ROBIN_ALONE]),
+        ({"person": "Alex"}, [ALEX, ALEX_EXAMPLE]),
+    ],
+)
+def test_a_role_s_name_is_refused_when_several_persons_hold_it_there(
+    persons: Library, filters: dict[str, str], several: list[str]
+) -> None:
+    """Only those with a document in the role: the stand-up's Sam Sample wrote nothing.
+
+    The review's Robin is Robin Example's account, the planning's a person apart; the
+    review's Alex is Alex Example, the unlinked transcripts' another. By id, in order.
+    """
+    with pytest.raises(UnanswerableError) as refused:
+        persons.search(filters=filters, sort="created")
+    header, block, _ = parts(str(refused.value))
+    assert header.startswith(f"{next(iter(filters))}: ")
+    assert [line.split(", ")[1].partition(":")[0] for line in block.splitlines()] == several
+
+
+@pytest.mark.parametrize(
+    "filters",
+    [{"author": "Alex Example"}, {"creator": SAM_3}, {"person": "p-0123456789abcdef"}],
+)
+def test_a_person_without_a_document_in_the_role_is_refused_with_its_names(
+    persons: Library, filters: dict[str, str]
+) -> None:
+    """As a name that no document has: Alex Example wrote nothing, PAY-2's author created none.
+
+    An id that no person has, likewise.
+    """
+    with pytest.raises(UnanswerableError, match=r"^\S+: no document has "):
+        persons.search(filters=filters, sort="created")
 
 
 @pytest.mark.parametrize(

@@ -18,7 +18,9 @@ from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, built, continuation, estimate, follow, parts
 from tests.endpoint import connector, tiny
-from tests.mirrors import MOMENT, PEOPLE, fillers, issue, page, write
+from tests.mirrors import MOMENT, PEOPLE, PERSONS, fillers, issue, page, write
+from tests.test_people import ROBIN
+from tests.test_tools import ROBIN_DOCUMENTS
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -237,6 +239,7 @@ def test_an_issue_key_in_the_question_puts_its_issue_first(words: Library) -> No
     [
         ({"spaec": "ENG"}, "filters: no spaec"),
         ({"space": "NOPE"}, "space: no document has"),
+        ({"person": "nobody"}, "person: no document has"),
         ({"updated_after": "yesterday"}, "updated_after: an ISO 8601 date"),
     ],
 )
@@ -275,6 +278,14 @@ def test_people_and_created_dates_narrow_as_search_s_do(
     people = built(tmp_path, [(front, None) for front in PEOPLE])
     found = passages(people.ask("which broker?", filters=filters))
     assert sorted(each["ref"] for each in found) == expected
+
+
+@pytest.mark.parametrize("value", ["robin example", "Robin Sample", ROBIN])
+def test_a_person_narrows_the_passages_as_search_s_filter_does(tmp_path: Path, value: str) -> None:
+    """Plan 043, criterion 6: Robin's documents of three sources, by any name or the id."""
+    persons = built(tmp_path, [(front, None) for front in PERSONS])
+    found = passages(persons.ask("lorem ipsum?", filters={"person": value}))
+    assert sorted(each["ref"] for each in found) == ROBIN_DOCUMENTS
 
 
 def test_a_passage_s_first_line_ends_with_who_and_when(tmp_path: Path) -> None:

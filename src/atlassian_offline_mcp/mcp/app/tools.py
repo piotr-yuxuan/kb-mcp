@@ -28,6 +28,7 @@ from atlassian_offline_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.meaning import Nearest
+from atlassian_offline_mcp.search.domain import people
 from atlassian_offline_mcp.search.domain.chunking import CHUNKERS, UNIT, around
 from atlassian_offline_mcp.search.domain.reranking import (
     BODY,
@@ -90,6 +91,7 @@ class SearchFilters(TypedDict, total=False):
     """What narrows a search. Values match without regard to case; dates are ISO 8601.
 
     source worklog: the user's entries (notes, AI summaries) and transcripts (verbatim).
+    person: in any role, by any of their names or their id.
     author: an issue's reporter, a page's creator; creator: an issue's.
     commented_*: by commenter if given; _after included, _before excluded.
     participant: a meeting's, or a transcript's speaker.
@@ -101,6 +103,7 @@ class SearchFilters(TypedDict, total=False):
     status: str
     label: str
     issue_type: str
+    person: str
     author: str
     creator: str
     assignee: str
@@ -342,18 +345,57 @@ def checked(filters: SearchFilters | None) -> dict[str, str]:
 
 def narrowed(reader: Reader, given: Mapping[str, str]) -> Filters:
     """Give the filters as the index holds their values, refusing one that no document has."""
-    names = (
-        *("source", "space", "project", "status", "label", "issue_type"),
-        *("author", "creator", "assignee", "commenter", "participant"),
-    )
+    names = ("source", "space", "project", "status", "label", "issue_type")
     dates = (
         *("updated_after", "updated_before", "created_after", "created_before"),
         *("commented_after", "commented_before"),
     )
     return Filters(
         **{name: canonical(reader, name, given.get(name)) for name in names},
+        **{name: who(reader, name, given.get(name)) for name in PERSON_FILTERS},
         **{name: instant(name, given.get(name)) for name in dates},
     )
+
+
+# Each filter that names a person, and the role it keeps them in: person, any.
+PERSON_FILTERS = {
+    "person": None,
+    "author": "author",
+    "creator": "creator",
+    "assignee": "assignee",
+    "commenter": "commenter",
+    "participant": "participant",
+}
+
+
+def who(reader: Reader, name: str, value: str | None) -> str | None:
+    """Find the person whom a filter names, by their id or any name that a source writes.
+
+    Of the persons with a document in the filter's role, in PERSON_FILTERS, the one of
+    that id, else those holding a name of the value's key (``people.name_key``): one is
+    taken. Refuse a value that none holds there, listing the role's names: those whose
+    key holds the value's first, the most used first; and one that several hold, listing
+    each in order of id, by name, id, documents by role and by source and the last
+    update, so that the agent gives one's id.
+    """
+    if value is None:
+        return None
+    role, wanted = PERSON_FILTERS[name], people.name_key(value)
+    ids = [value] if people.PERSON_ID.fullmatch(value) else reader.persons(wanted)
+    found = [
+        each for each in map(reader.person, ids) if each and (role is None or role in each.roles)
+    ]
+    if len(found) == 1:
+        return found[0].person.id
+    quoted = json.dumps(value, ensure_ascii=False)
+    if found:
+        message = f"{name}: {quoted} names {len(found)} people; give the id of one:"
+        listed = "\n".join(responses.activity(each) for each in found)
+        raise UnanswerableError(responses.answer(message, listed))
+    message = f"{name}: no document has {quoted}; the valid values:"
+    valid = [candidate for candidate, _ in reader.values(name)]
+    listed = sorted(valid, key=lambda each: wanted not in people.name_key(each))
+    raise UnanswerableError(responses.refusal(message, listed[:VALUES_SHOWN], len(valid)))
 
 
 def bounded(**values: tuple[str | None, int]) -> None:
