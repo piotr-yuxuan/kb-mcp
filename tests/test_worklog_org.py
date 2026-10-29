@@ -1256,6 +1256,28 @@ def test_days_meetings_and_entries_take_the_tags_of_the_headings_above_them() ->
     ]
 
 
+def test_a_day_takes_the_labels_of_each_of_its_headings_each_from_its_file() -> None:
+    """Each heading's tags and its file's #+FILETAGS, todo.org first, ARCHIVE once archived.
+
+    A meeting archived alone takes the archive file's, as org gives a heading its file's.
+    """
+    found, _ = journal(
+        todo("#+FILETAGS: :work:\n* Entries\n** <2026-10-28 Wed> :offsite:\n"),
+        archived(
+            "#+FILETAGS: :old:\n* <2026-10-28 Wed> :late:\n"
+            ":PROPERTIES:\n:ARCHIVE_OLPATH: Entries\n:END:\n"
+            "* Weekly sync\n"
+            ":PROPERTIES:\n:PARTICIPANTS: Sam\n:ARCHIVE_OLPATH: Entries/<2026-10-28 Wed>\n:END:\n"
+        ),
+        archives=True,
+        transcripts=(),
+    )
+    assert [(each.type, each.labels) for each in found] == [
+        ("day", ("offsite", "work", "late", "old", "ARCHIVE")),
+        ("meeting", ("old", "ARCHIVE")),
+    ]
+
+
 def test_same_titled_meetings_are_numbered_by_their_transcripts_starts() -> None:
     """The meeting without a transcript starts at its day, first; then by each transcript's."""
     lines = ["* Entries", "** <2026-10-27 Tue>"]

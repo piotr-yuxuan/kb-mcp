@@ -178,6 +178,19 @@ class Part:
         )
 
     @property
+    def labels(self) -> list[str]:
+        """Return its labels: the tags above it, its own, its file's, then ARCHIVE if archived.
+
+        As org gives a heading the tags of the headings above it and of ``#+FILETAGS``.
+        """
+        return [
+            *self.inherited,
+            *self.subtree.heading.tags,
+            *self.parsed.filetags,
+            *([org.ARCHIVE] if self.archived else []),
+        ]
+
+    @property
     def children(self) -> list[Part]:
         """Return its children, below its path and title, archived when it is, given its tags."""
         return [
@@ -350,19 +363,13 @@ def journal(
         title = heading.title
         base = digest(properties.get("ID") or (f"{title}\n{created}" if created else title))
         taken[base] += 1
-        labels = [
-            *part.inherited,
-            *heading.tags,
-            *part.parsed.filetags,
-            *([org.ARCHIVE] if part.archived else []),
-        ]
         found.append(
             Document(
                 type=ENTRY,
                 id=f"e-{base}" if taken[base] == 1 else f"e-{base}-{taken[base]}",
                 title=title,
                 status=heading.keyword or CURRENT,
-                labels=tuple(dict.fromkeys(labels)),
+                labels=tuple(dict.fromkeys(part.labels)),
                 breadcrumb=(part.source.path.name, *part.path),
                 people=(),
                 links=(),
@@ -397,9 +404,9 @@ def days_and_meetings(
 
     A meeting links to the transcript whose file its ``:MEETING:`` names, from the folder
     of the file that holds it, and starts when that transcript starts on the meeting's
-    day, else at its day; its id is as ``meeting_ids`` gives it. Labels: the tags of its
-    headings and of those above them, ``#+FILETAGS`` and ARCHIVE when it is archived; a
-    day is archived when one of its headings is, or it has none.
+    day, else at its day; its id is as ``meeting_ids`` gives it. Labels: a meeting's, as
+    ``Part.labels`` gives them; a day's, those of each of its headings, else, when it has
+    none, its first part's file's ``#+FILETAGS`` and ARCHIVE.
 
     Also returned, in the order of the meetings, each whose ``:MEETING:`` links no
     transcript: by the file that it names, from the work log's folder, when it is a link
@@ -468,19 +475,19 @@ def days_and_meetings(
             if each.link and each.transcript is None
         )
         headings = day.headings
-        archived = not headings or any(each.archived for each in headings)
-        tags = [tag for each in headings for tag in (*each.inherited, *each.subtree.heading.tags)]
+        # Each heading's labels; a day of archived pieces alone is archived.
+        labels = (
+            [label for each in headings for label in each.labels]
+            if headings
+            else [*day.first.parsed.filetags, org.ARCHIVE]
+        )
         found.append(
             Document(
                 type=DAY_TYPE,
                 id=f"d-{date:%Y%m%d}",
                 title=day.title,
                 status=(headings[0].subtree.heading.keyword if headings else None) or CURRENT,
-                labels=tuple(
-                    dict.fromkeys(
-                        [*tags, *day.first.parsed.filetags, *([org.ARCHIVE] if archived else [])]
-                    )
-                ),
+                labels=tuple(dict.fromkeys(labels)),
                 breadcrumb=day.breadcrumb,
                 people=(),
                 links=(),
@@ -498,19 +505,13 @@ def days_and_meetings(
         for each, identifier in zip(day.meetings, ids, strict=True):
             meeting, transcript = each.part, each.transcript
             heading = meeting.subtree.heading
-            labels = [
-                *meeting.inherited,
-                *heading.tags,
-                *meeting.parsed.filetags,
-                *([org.ARCHIVE] if meeting.archived else []),
-            ]
             found.append(
                 Document(
                     type=MEETING_TYPE,
                     id=identifier,
                     title=heading.title,
                     status=heading.keyword or CURRENT,
-                    labels=tuple(dict.fromkeys(labels)),
+                    labels=tuple(dict.fromkeys(meeting.labels)),
                     breadcrumb=(meeting.source.path.name, *meeting.path),
                     people=participants(meeting.subtree.properties.get(NAMED, "")),
                     links=() if transcript is None else ((TRANSCRIBED, transcript.id),),
