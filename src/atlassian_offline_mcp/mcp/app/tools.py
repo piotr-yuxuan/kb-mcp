@@ -373,8 +373,11 @@ def who(reader: Reader, name: str, value: str | None) -> str | None:
 
     Of the persons with a document in the filter's role, in PERSON_FILTERS, the one of
     that id, else those holding a name of the value's key (``people.name_key``): one is
-    taken. Refuse a value that none holds there, listing the role's names: those whose
-    key holds the value's first, the most used first; and one that several hold, listing
+    taken, as is, of several, the one alone holding a name written as the value is,
+    annotation included (``people.written_key``), such as an account named
+    "Robin (Ops)" beside one named "Robin (Sales)". Refuse a value that none holds there,
+    listing the role's names: those whose key holds the value's first, the most used
+    first; and one that several hold, listing
     ``responses.NAMES`` of them at most, those of the most documents first, then by id,
     each by name, id, documents by role and by source and the last update, so that the
     agent gives one's id, then how many more.
@@ -386,8 +389,14 @@ def who(reader: Reader, name: str, value: str | None) -> str | None:
     found = [
         each for each in map(reader.person, ids) if each and (role is None or role in each.roles)
     ]
-    if len(found) == 1:
-        return found[0].person.id
+    written = people.written_key(value)
+    exact = [
+        each
+        for each in found
+        if written in {people.written_key(spelling.name) for spelling in each.person.names}
+    ]
+    if len(found) == 1 or len(exact) == 1:
+        return (exact or found)[0].person.id
     quoted = json.dumps(value, ensure_ascii=False)
     if found:
         message = f"{name}: {quoted} names {len(found)} people; give the id of one:"

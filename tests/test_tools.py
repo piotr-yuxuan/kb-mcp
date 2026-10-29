@@ -861,6 +861,29 @@ def test_a_role_s_name_is_refused_when_several_persons_hold_it_there(
     assert [line.split(", ")[1].partition(":")[0] for line in block.splitlines()] == several
 
 
+def test_a_name_written_as_one_of_several_persons_writes_it_keeps_that_person(
+    tmp_path: Path,
+) -> None:
+    """Accounts Robin (Ops) and Robin (Sales), whose names share a key, each created one.
+
+    The name as one of them is written, its annotation's spaces aside, keeps its issue,
+    as in plan 042; Robin alone, which could be either, is refused naming both.
+    """
+    ops = PersonRole(role="creator", name="Robin (Ops)", account="acct-0005")
+    sales = PersonRole(role="creator", name="Robin (Sales)", account="acct-0006")
+    library = built(
+        tmp_path,
+        [
+            (issue("PAY-1", "Ledger export", people=(ops,)), None),
+            (issue("PAY-2", "Ledger rounding", people=(sales,)), None),
+        ],
+    )
+    for value, expected in [("Robin (Ops)", "PAY-1"), ("robin(sales )", "PAY-2")]:
+        assert refs(library.search(filters={"creator": value}, sort="created")) == [expected]
+    with pytest.raises(UnanswerableError, match=r'^creator: "Robin" names 2 people;'):
+        library.search(filters={"creator": "Robin"}, sort="created")
+
+
 @pytest.mark.parametrize(
     "filters",
     [{"author": "Alex Example"}, {"creator": SAM_3}, {"person": "p-0123456789abcdef"}],
