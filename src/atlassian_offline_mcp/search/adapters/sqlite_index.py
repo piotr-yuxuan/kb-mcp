@@ -26,7 +26,9 @@ import numpy as np
 from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
 from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 from atlassian_offline_mcp.search.adapters import vector_store
+from atlassian_offline_mcp.search.domain import people
 from atlassian_offline_mcp.search.domain.search import (
+    Activity,
     Embedded,
     Entry,
     Filters,
@@ -37,7 +39,7 @@ from atlassian_offline_mcp.search.domain.search import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable, Iterator, Mapping
 
     from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.search.domain.search import Section, Sort
@@ -47,8 +49,9 @@ BUILDING = ".index-"
 # Why a link among indexes is not followed: a cycle of them would not end.
 LINK = "a link, which is not followed"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id; 4 from plan 041, with
-# people in place of the author and the assignee; 5 from plan 042, with links.
-SCHEMA = "5"
+# people in place of the author and the assignee; 5 from plan 042, with links; 6 from
+# plan 043, with persons.
+SCHEMA = "6"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -73,9 +76,16 @@ CREATE TABLE documents (
 CREATE INDEX documents_key ON documents (key);
 CREATE TABLE labels (document INTEGER NOT NULL, label TEXT NOT NULL);
 CREATE TABLE people (
-  document INTEGER NOT NULL, role TEXT NOT NULL, name TEXT NOT NULL, account TEXT, at TEXT
+  document INTEGER NOT NULL, role TEXT NOT NULL, name TEXT NOT NULL, account TEXT, at TEXT,
+  person TEXT
 );
 CREATE INDEX people_role_name ON people (role, name);
+CREATE INDEX people_person_role ON people (person, role);
+CREATE TABLE persons (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE person_names (
+  person TEXT NOT NULL, name TEXT NOT NULL, key TEXT NOT NULL, joined TEXT NOT NULL
+);
+CREATE INDEX person_names_key ON person_names (key);
 CREATE TABLE sections (
   rowid INTEGER PRIMARY KEY,
   document INTEGER NOT NULL, number INTEGER NOT NULL, start INTEGER NOT NULL,
@@ -186,6 +196,27 @@ ORDER BY s.number
 """
 # What ``reading`` checks before it reads an index.
 META = "SELECT name, value FROM meta WHERE name IN ('schema', 'chunking')"
+# What the join reads: each row of people, with when its document was updated; and each
+# transcript's meetings, as its summary links name them, by rowid.
+PEOPLE_ROWS = """
+SELECT p.rowid, p.document, p.role, p.name, p.account, d.updated
+FROM people p JOIN documents d ON d.rowid = p.document
+"""
+SUMMARIES = """
+SELECT t.rowid, m.rowid FROM documents t, json_each(t.links) l
+JOIN documents m ON m.source = t.source AND m.id = json_extract(l.value, '$.ref')
+WHERE json_extract(l.value, '$.relation') = 'summary'
+"""
+# A person's documents per role, then per source with the newest update, the most first.
+PERSON_ROLES = """
+SELECT role, count(DISTINCT document) FROM people WHERE person = :person
+GROUP BY 1 ORDER BY 2 DESC, 1
+"""
+PERSON_SOURCES = """
+SELECT d.source, count(DISTINCT d.rowid), max(d.updated)
+FROM people p JOIN documents d ON d.rowid = p.document WHERE p.person = :person
+GROUP BY 1 ORDER BY 2 DESC, 1
+"""
 # Each value that a filter can take, with how many documents have it, the most used first.
 VALUES = {
     "source": "SELECT source, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
@@ -335,6 +366,46 @@ class Writer:
     def skip(self) -> None:
         """Count a file of the mirror that could not be indexed."""
         self.skipped += 1
+
+    def join(
+        self, aliases: Mapping[str, str]
+    ) -> tuple[int, tuple[people.Ambiguity, ...], tuple[people.Alias, ...]]:
+        """Join the people of the documents added into persons, as ``people.joined`` rules.
+
+        Once the last document is added: every row of ``people`` is given its person, and
+        ``persons`` and ``person_names`` hold each person and each of its spellings, with
+        how it joined. A transcript's meetings are those that its ``summary`` links name.
+        ``aliases`` gives each alias's name and target, as the alias file's reader checks
+        them. Give back how many persons there are, and what the join left apart: the
+        names that could be several persons, and the aliases that changed nothing.
+        """
+        rows = {
+            rowid: people.Row(document, role, name, account, datetime.fromisoformat(updated))
+            for rowid, document, role, name, account, updated in self._connection.execute(
+                PEOPLE_ROWS
+            )
+        }
+        meetings: dict[int, set[int]] = {}
+        for transcript, meeting in self._connection.execute(SUMMARIES):
+            meetings.setdefault(transcript, set()).add(meeting)
+        found = people.joined(rows.values(), meetings, aliases)
+        self._connection.executemany(
+            "UPDATE people SET person = ? WHERE rowid = ?",
+            [(found.of[row], rowid) for rowid, row in rows.items()],
+        )
+        self._connection.executemany(
+            "INSERT INTO persons (id, name) VALUES (?, ?)",
+            [(person.id, person.name) for person in found.persons],
+        )
+        self._connection.executemany(
+            "INSERT INTO person_names (person, name, key, joined) VALUES (?, ?, ?, ?)",
+            [
+                (person.id, spelling.name, spelling.key, spelling.how)
+                for person in found.persons
+                for spelling in person.names
+            ],
+        )
+        return len(found.persons), found.ambiguous, found.unused
 
 
 def indexes_in(folder: Path) -> list[Path]:
@@ -554,6 +625,37 @@ class Reader:
     def values(self, name: str) -> list[tuple[str, int]]:
         """Give each value that a filter or count can take, the most used first."""
         return [(row[0], row[1]) for row in self._connection.execute(VALUES[name])]
+
+    def persons(self, key: str) -> list[str]:
+        """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted."""
+        rows = self._connection.execute(
+            "SELECT DISTINCT person FROM person_names WHERE key = ? ORDER BY person", (key,)
+        )
+        return [row[0] for row in rows]
+
+    def person(self, person: str) -> Activity | None:
+        """Give the person of this id, with their documents by role and by source; else None.
+
+        Their spellings in the order that ``people.Person`` has them.
+        """
+        found = self._connection.execute("SELECT name FROM persons WHERE id = ?", (person,))
+        name = found.fetchone()
+        if name is None:
+            return None
+        rows = self._connection.execute(
+            "SELECT name, key, joined FROM person_names WHERE person = ?"
+            " ORDER BY name, key, joined",
+            (person,),
+        )
+        spellings = tuple(people.Spelling(*row) for row in rows)
+        roles = self._connection.execute(PERSON_ROLES, {"person": person})
+        sources = self._connection.execute(PERSON_SOURCES, {"person": person}).fetchall()
+        return Activity(
+            person=people.Person(person, name[0], spellings),
+            roles={row[0]: row[1] for row in roles},
+            sources={row[0]: row[1] for row in sources},
+            last=max(datetime.fromisoformat(row[2]) for row in sources),
+        )
 
     def built_at(self) -> datetime:
         """Say when the index was built."""

@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
     from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+    from atlassian_offline_mcp.search.domain.people import Person
 
 WORD = re.compile(r"[^\W_]+")
 MAX_WORDS = 10
@@ -296,6 +297,19 @@ class Summary:
     model: str | None = None  # the model of the vectors, if any
     pieces: int = 0
     chunking: Chunking | None = None  # how the pieces were cut, if there are vectors
+
+
+@dataclass(frozen=True)
+class Activity:
+    """A person as the index holds them, with their documents by role and by source.
+
+    A document counts once in a role, a commenter's however many their comments.
+    """
+
+    person: Person
+    roles: dict[str, int]  # documents per role, the most first, ties by role
+    sources: dict[str, int]  # documents per source, likewise
+    last: datetime  # when the most recently updated of their documents was
 
 
 @dataclass(frozen=True)

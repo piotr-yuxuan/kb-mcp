@@ -15,7 +15,7 @@ given back.
 | Event | Level | Fields | When |
 |---|---|---|---|
 | `index.document` | debug | `path`, `type`, `sections` | A file of the mirror is indexed: its path, its document's type, its sections |
-| `index.built` | info | `documents`, `sections`, `skipped`, `pieces`, `embedded` | The index is complete: what it holds, the files skipped, the pieces by meaning, the texts embedded now |
+| `index.built` | info | `documents`, `sections`, `skipped`, `pieces`, `embedded`, `people` | The index is complete: what it holds, the files skipped, the pieces by meaning, the texts embedded now, the persons that the documents' people make |
 | `index.file_skipped` | warning | `path`, `reason` | A file cannot be read, its front matter is refused, or its document is there already: exit 1 |
 | `index.piece_refused` | warning | `path` | The endpoint refuses a piece of this document, left without a vector: exit 1 |
 | `index.lacks_files` | warning | `count` | How many files the index lacks |

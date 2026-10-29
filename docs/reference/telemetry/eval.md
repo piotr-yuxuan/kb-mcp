@@ -17,7 +17,7 @@ one that waits past 60 s is `eval.not_evaluated`.
 | `eval.refused` | error | `reason` | The golden file is refused, by the field at fault: exit 2 |
 | `eval.not_evaluated` | error | `reason` | A model fails, or a mode by meaning fell back to words, which would measure words twice: exit 1 |
 | `index.document` | debug | `path`, `type`, `sections` | A file of the mirror is indexed for the model |
-| `index.built` | info | `documents`, `sections`, `skipped`, `pieces`, `embedded` | The model's index is complete |
+| `index.built` | info | `documents`, `sections`, `skipped`, `pieces`, `embedded`, `people` | The model's index is complete, its people joined without aliases |
 | `search.fallback` | warning | `mode`, `reason` | A search by meaning is ranked by words alone, which stops the evaluation |
 | `http.get` | debug | `url`, `status`, `error`, `seconds` | Each request for the endpoint's list of models |
 | `http.post` | debug | `url`, `status`, `error`, `seconds` | Each request for embeddings |
