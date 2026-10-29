@@ -53,7 +53,7 @@ BY_HAND = (
     "- uv tool uninstall atlassian-offline-mcp, then uv tool install --force <checkout>",
     "- Claude Code: claude mcp remove --scope user atlassian-offline-mcp, then",
     "  claude mcp add --scope user --transport stdio kb-mcp -- kb-mcp, with the arguments",
-    "  it was added with, such as --allow-remote-embeddings; in ~/.claude/settings.json",
+    "  it was added with, such as serve --allow-remote-embeddings; in ~/.claude/settings.json",
     "  and each project's .claude/settings.local.json, mcp__atlassian-offline-mcp__*",
     "  renamed mcp__kb-mcp__*, and the data's docs/ path moved in additionalDirectories",
     "  and in the Edit deny rule",

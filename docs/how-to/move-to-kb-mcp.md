@@ -30,9 +30,10 @@ former name left in what it would use:
   clone, is never taken for the data;
 - a variable named `ATLASSIAN_OFFLINE_MCP_…`, in any case, set and not empty, whose new
   name, `KB_MCP_…`, is not set;
-- a setting whose path holds a folder or a file named after the former name, such as
-  `data_dir = "~/atlassian-offline-mcp"`, or a `--config` naming such a file; a site or
-  an e-mail is never judged.
+- a setting whose path holds a folder or a file whose name begins with the former name,
+  such as `data_dir = "~/atlassian-offline-mcp"`, or a `--config` naming a file in such
+  a folder, or such a file; a data directory given through a link is judged where it
+  leads; a site or an e-mail is never judged.
 
 Where a former place and its new one both exist, the new one is used and nothing stops.
 A run given `--config` and `--data-dir` elsewhere uses neither former place. `--help`,
@@ -60,7 +61,7 @@ Then, by hand, as docs/how-to/move-to-kb-mcp.md says:
 - uv tool uninstall atlassian-offline-mcp, then uv tool install --force <checkout>
 - Claude Code: claude mcp remove --scope user atlassian-offline-mcp, then
   claude mcp add --scope user --transport stdio kb-mcp -- kb-mcp, with the arguments
-  it was added with, such as --allow-remote-embeddings; in ~/.claude/settings.json
+  it was added with, such as serve --allow-remote-embeddings; in ~/.claude/settings.json
   and each project's .claude/settings.local.json, mcp__atlassian-offline-mcp__*
   renamed mcp__kb-mcp__*, and the data's docs/ path moved in additionalDirectories
   and in the Edit deny rule
@@ -79,12 +80,14 @@ Variables are named, and settings with their layer, never with their values.
 
 ## 3. Move the files
 
-Run the block that `check` printed, from `# Move the files:` to the blank line: it
-holds only the moves that your machine needs, each to a place that is missing. A
-`~/kb-mcp` that is already a link is not missing: the run uses where it leads, and
-nothing is moved; remove a link that leads nowhere first. The data directory's files hold no path of their own: the index, the
-vectors, the conversions, the raw store, the sign-in and the aliases keep working where
-they are moved, and the next run rebuilds and converts nothing.
+Run the block that `check` printed, from `# Move the files:` to the blank line: it holds
+only the moves that your machine needs, each to a place that is missing. A `~/kb-mcp`
+that is already a link is not missing: the run uses where it leads, and nothing is
+moved; remove a link that leads nowhere, then run `check` again. Once the settings file
+is moved, its former folder, `~/.config/atlassian-offline-mcp`, may be removed. The data
+directory's files hold no path of their own: the index, the vectors, the conversions,
+the raw store, the sign-in and the aliases keep working where they are moved, and the
+next run rebuilds and converts nothing.
 
 ## 4. Rename the variables and the settings
 
@@ -148,4 +151,4 @@ was.
 kb-mcp check
 ```
 
-It exits 0 once nothing of the former name is left in what it uses.
+It exits 0 once none of what step 2 lists is left in what it uses.
