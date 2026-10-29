@@ -75,6 +75,15 @@ def name_key(name: str) -> str:
     return ANNOTATION.sub("", written_key(name))
 
 
+def first_word(name: str) -> str:
+    """Give the first word of a name's key: a speaker of that word may be its person.
+
+    Rule 4 joins such a speaker within its meeting; elsewhere, an answer shows them as
+    perhaps the same.
+    """
+    return name_key(name).partition(" ")[0]
+
+
 def person_id(anchor: str, value: str) -> str:
     """Give the id of the person that an account id, or a name's key, anchors.
 
@@ -292,7 +301,7 @@ def by_meeting(row: Row, joining: Joining) -> Answer:
         joining.persons[other]
         for meeting in joining.meetings.get(row.document, ())
         for other in joining.rows.get(meeting, ())
-        if name_key(other.name).partition(" ")[0] == key
+        if first_word(other.name) == key
     }
     if len(persons) > 1:
         return Ambiguity(row.name, frozenset(persons))

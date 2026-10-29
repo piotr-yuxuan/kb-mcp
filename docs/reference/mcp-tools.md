@@ -53,9 +53,10 @@ creator 3, commenter 2; jira 4; last updated 2026-10-21.`; a line of their names
 sources write them, by how each joined (by its account, by an alias, by name, or as a
 speaker, by the meeting of each transcript), ten at most, then how many more; and a
 line for each person by name alone who is perhaps the same, not joined, a one-word
-name that begins one of theirs and that no account is named by, by id, with the line
-of `aliases.toml` that would join them, ten at most. Each name is cut at 60 characters. Each hit's second line then ends
-with that person's roles there, in the order of the roles, a commenter's with their
+name that begins one of theirs, that no account is named by and whose names are that
+one person, which no annotation parts, by id, with the line of `aliases.toml` that would
+join them, ten at most. Each name is cut at 60 characters. Each hit's second line then
+ends with that person's roles there, in the order of the roles, a commenter's with their
 comments' count and the day of the last, such as
 `Sam Sample: creator, commenter 2 (last 2026-10-21)`. Other filters of people add
 neither.

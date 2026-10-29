@@ -959,6 +959,28 @@ def test_a_one_word_name_of_an_account_is_never_shown_as_perhaps_the_same(
     assert sorted(refs(alone)) == ["t-20261020-1", "t-20261020-2"]
 
 
+def test_no_alias_is_suggested_that_would_join_persons_kept_apart(tmp_path: Path) -> None:
+    """Two meetings name Robin (Ops) and Robin (Sales), whom their annotations keep apart.
+
+    An alias of the unlinked transcript's Robin would join both to Robin Example too:
+    the answer narrowed to Robin Example suggests none.
+    """
+    robin = PersonRole(role="author", name="Robin Example", account="acct-0001")
+    library = built(
+        tmp_path,
+        [
+            (page("300001", "Ledger runbook", people=(robin,)), None),
+            (worklog("meeting", "m-20261022-ops", "Ops sync", "Robin (Ops)"), None),
+            (worklog("meeting", "m-20261022-sales", "Sales sync", "Robin (Sales)"), None),
+            (worklog("transcript", "t-20261022-1", "Pairing", "Robin"), None),
+        ],
+    )
+    block = parts(library.search(filters={"person": "Robin Example"}, sort="updated"))[1]
+    header = block.partition("\n\n")[0]
+    assert header.startswith("Person: Robin Example, ")
+    assert not [line for line in header.splitlines() if line.startswith("Perhaps the same")]
+
+
 def test_a_person_s_roles_on_a_hit_come_in_the_order_of_the_roles(commented: Library) -> None:
     """A Person wrote PROJ-1, is assigned it and commented three times; created PROJ-4."""
     filters = {"person": "a person", "source": "jira"}

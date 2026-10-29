@@ -432,10 +432,10 @@ joined ([`person`](../../src/atlassian_offline_mcp/mcp/app/responses.py)).
   alone, until an alias names one by id. An alias compares names by their key, so it
   joins `Alex (Ops)` and `Alex (Sales)` alike and can tell them apart from nobody; one
   of a word that an account is named by takes that name from the account too, and no
-  answer suggests it. The join is whole at each build: on a synthetic index of 20,000
-  issues of 40 accounts and 2,000 meetings with their transcripts, 148,000 rows of
-  people and 2,000 links, it took 1.4 s on this laptop, the meetings of the transcripts
-  read in 9 ms by their source and id
+  answer suggests it, nor one of a word whose names annotations keep apart. The join is
+  whole at each build: on a synthetic index of 20,000 issues of 40 accounts and 2,000
+  meetings with their transcripts, 148,000 rows of people and 2,000 links, it took 1.4 s
+  on this laptop, the meetings of the transcripts read in 9 ms by their source and id
   ([`SUMMARIES`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)),
   where a search of a source's documents for each of them took 28 s. The files hold no
   person, so another engine sees names

@@ -415,21 +415,24 @@ def about(reader: Reader, filters: Filters, paths: Sequence[str]) -> tuple[str, 
     """Write the person that ``person`` narrows to, and their roles on each document shown.
 
     The person as ``responses.person`` writes them, then a blank line, with those perhaps
-    the same: the persons by name alone of one word, the first of one of their names,
-    but a word that an account is named by, from which an alias of it would take the
-    name; and their roles by path, as ``responses.roles`` says them. Nothing without
-    that filter.
+    the same: of each ``people.first_word`` of their names, the one other person whose
+    names of that key joined by name, whom an alias of the word would join to them; none
+    where an account is named by the word, from which the alias would take the name, or
+    where those names are several persons, which annotations keep apart and the alias
+    would join too. Then their roles by path, as ``responses.roles`` says them. Nothing
+    without that filter.
     """
     if filters.person is None:
         return "", {}
     found = reader.person(filters.person)
-    words = sorted({spelling.key.partition(" ")[0] for spelling in found.person.names})
-    alike = [
-        reader.person(people.person_id(people.NAME, word))
+    words = sorted({people.first_word(spelling.name) for spelling in found.person.names})
+    moved = [
+        reader.persons(word, people.NAME)
         for word in words
         if not reader.persons(word, people.ACCOUNT)
     ]
-    others = [each.person for each in alike if each and each.person.id != filters.person]
+    alike = [reader.person(ids[0]) for ids in moved if len(ids) == 1 and ids[0] != filters.person]
+    others = [each.person for each in alike if each]
     held = reader.roles(filters.person, paths)
     roles = {path: responses.roles(found.person.name, each) for path, each in held.items()}
     return f"{responses.person(found, others)}\n\n", roles

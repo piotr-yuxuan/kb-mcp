@@ -172,7 +172,8 @@ anywhere, takes the speaker from that person
 whole mirror, a new colleague of the same first name would move the old one's meetings
 without a word. Outside it, an answer narrowed to a person shows a one-word name alone
 as perhaps the same, with the alias that would join them, unless an account is named
-by that word, from which the alias would take it too
+by that word, from which the alias would take it too, or annotations keep that word's
+names apart, which the alias would join as well
 ([`about`](../../src/atlassian_offline_mcp/mcp/app/tools.py)). The aliases are a file
 that the user writes in the data directory, `aliases.toml`, read at each build
 ([`read_aliases`](../../src/atlassian_offline_mcp/search/adapters/aliases.py)), rather
