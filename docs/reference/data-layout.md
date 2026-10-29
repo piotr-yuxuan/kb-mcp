@@ -696,13 +696,16 @@ them. The same rows in any order give the same persons.
 A person's id is `p-` and the first 16 hex digits of the SHA-256 of `account`, a line
 feed and the account id, or of `name`, a line feed and the key by which the join
 compares the name (`search.domain.people.person_id`): stable while what anchors the
-person stays. A person is served by a name: an account's, the name on its most recently
-updated document; a person by name alone's, the target of the first alias that made it,
-when that is a name, else its most frequent spelling; ties go to the first row in the
-join's order, by document, role, name and account, the rows of transcripts that link
-meetings last, so that their meetings' persons are known. The join reads the links of
-transcripts to meetings alone, and refuses a document that links to meetings and is a
-transcript's meeting itself, as a programming error.
+person stays. A second note on a name, which parts its annotated spellings, anchors
+each of them anew: the bare name keeps the id, and an alias to it, or an id that an
+agent kept, names fewer documents, as the build warns of that name. A person is served
+by a name: an account's, the name on its most recently updated document; a person by
+name alone's, the target of the first alias that made it, when that is a name, else
+its most frequent spelling; ties go to the first row in the join's order, by document,
+role, name and account, the rows of transcripts that link meetings last, so that their
+meetings' persons are known. The join reads the links of transcripts to meetings
+alone, and refuses a document that links to meetings and is a transcript's meeting
+itself, as a programming error.
 
 | Table or column | Holds |
 |---|---|

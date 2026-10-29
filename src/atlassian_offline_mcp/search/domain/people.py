@@ -91,7 +91,9 @@ def person_id(anchor: str, value: str) -> str:
     ``anchor`` is ACCOUNT or NAME. The id is ``p-`` and the first 16 hex digits of the
     SHA-256 of the anchor, a line feed and the value: an opaque handle, stable while what
     anchors the person stays, so that no account id is served. It protects nothing:
-    hashing a known account id finds it again.
+    hashing a known account id finds it again. A second note on a name, which parts its
+    annotated spellings by ``Joining.key``, anchors each of them anew; the bare name
+    keeps the id, which then names fewer documents.
     """
     return "p-" + hashlib.sha256(f"{anchor}\n{value}".encode()).hexdigest()[:16]
 

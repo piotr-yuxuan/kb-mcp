@@ -393,6 +393,28 @@ def test_two_notes_of_an_account_s_name_part_it_from_the_account_and_are_reporte
     assert (aliased.ambiguous, aliased.unused) == ((), ())
 
 
+def test_a_second_note_leaves_the_id_of_a_name_with_its_bare_spelling() -> None:
+    """Kim and Kim (not in the header) are one person, whose id an alias of Kimmy names.
+
+    Once a meeting writes Kim (late), the two notes part the annotated names from it: the
+    id stays the bare Kim's, and the alias still joins Kimmy there, to fewer documents;
+    the name is reported.
+    """
+    kim = anchored("name\nkim")
+    rows = (
+        named(STAND_UP, "Kim"),
+        named(REVIEW, "Kim (not in the header)"),
+        named(UNLINKED, "Kimmy"),
+    )
+    assert set(joined(rows, {}, {"Kimmy": kim}).of.values()) == {kim}
+    late = named(PLANNING, "Kim (late)")
+    after = joined((*rows, late), {}, {"Kimmy": kim})
+    noted, noted_late = anchored("name\nkim (not in the header)"), anchored("name\nkim (late)")
+    assert after.of == {rows[0]: kim, rows[1]: noted, rows[2]: kim, late: noted_late}
+    assert after.unused == ()
+    assert [ambiguity.name for ambiguity in after.ambiguous] == ["Kim (not in the header)"]
+
+
 def test_a_name_written_as_one_account_s_annotated_name_joins_that_account() -> None:
     """Accounts Robin (Ops) and Robin (Sales): the meeting's Robin (Ops) is the first.
 
