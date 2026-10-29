@@ -678,14 +678,16 @@ Unicode NFKD without the combining marks of U+0300 to U+036F, casefolded again, 
 runs of white space made one space, trimmed, and a trailing part in brackets dropped
 when a name comes before it: `Hélène  Example` and `helene example` share one, and
 `Kim (not in the header)` has `kim`. The join keeps that part, though
-(`search.domain.people.Joining.key`), for the names without an account of a key that
-two parts or more tell apart, as the user wrote them: `Alex (Ops)` and `Alex (Sales)`
-are two persons, and a bare `Alex` is neither. A name that rule 3 finds among several
-accounts, or among persons other than its meeting's, or rule 4 among several persons,
-is ambiguous: it joins none of them, goes by rule 5, and the build warns of it, as
-`index.person_ambiguous` ([index's telemetry](telemetry/index.md)); two accounts of one
-name are no warning, as no alias changes them. The same rows in any order give the
-same persons.
+(`search.domain.people.Joining.key`), however it is spaced, for the names of a key that
+two parts or more tell apart, as a site or the user wrote them: `Alex (Ops)` and
+`Alex (Sales)` are two persons, and a bare `Alex` is neither; a meeting's `Robin (Ops)`
+is the account named `Robin (Ops)`, not one named `Robin (Sales)`, and a bare `Robin`
+could be either, so that rule 3 finds it among several accounts. A name that rule 3
+finds among several accounts, or among persons other than its meeting's, or rule 4 among
+several persons, is ambiguous: it joins none of them, goes by rule 5, and the build
+warns of it, as `index.person_ambiguous` ([index's telemetry](telemetry/index.md)); two
+accounts of one name are no warning, as no alias changes them. The same rows in any
+order give the same persons.
 
 A person's id is `p-` and the first 16 hex digits of the SHA-256 of `account`, a line
 feed and the account id, or of `name`, a line feed and the key by which the join

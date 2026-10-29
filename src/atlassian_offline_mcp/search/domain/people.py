@@ -15,8 +15,8 @@ each row a person, by the first of these rules that answers:
 A name that could be several persons, by rule 3 or 4, or a speaker whom they give
 different persons, is ambiguous: it is reported, never given to one of them, and goes
 by rule 5. Every rule compares names by their
-key, which keeps an annotation that tells two names of the work log apart. Nothing here
-reads the index or the alias file.
+key, which keeps an annotation that tells two names apart. Nothing here reads the
+index or the alias file.
 """
 
 from __future__ import annotations
@@ -164,9 +164,9 @@ class Joining:
     """What the rules read, and the person of each row joined so far.
 
     The names of the accounts, the aliases, each transcript's meetings and each
-    document's rows. Names compare by ``key``: by their key, but for the names without
-    an account of a key written with two annotations or more, such as "Alex (Ops)" and
-    "Alex (Sales)", which the user wrote apart, and which then keep them.
+    document's rows. Names compare by ``key``: by their key, but for the names of a key
+    written with two annotations or more, by a source or the user, such as "Alex (Ops)"
+    and "Alex (Sales)", which were written apart, and which then keep them.
     """
 
     def __init__(
@@ -193,13 +193,15 @@ class Joining:
             written = written_key(row.name)
             account = None if row.account is None else person_id(ACCOUNT, row.account)
             spelt.setdefault(ANNOTATION.sub("", written), set()).add((written, account))
-        # The name keys that names without an account write with two annotations or more.
+        # The name keys that names, of an account or not, write with two annotations or more.
         self.split = {
             key
             for key, names in spelt.items()
-            if len({written for written, account in names if account is None} - {key}) > 1
+            if len({written for written, _ in names} - {key}) > 1
         }
-        self.accounts: dict[str, set[str]] = {}  # each ``key``'s accounts' persons
+        # Each ``key``'s accounts' persons, and each name key's: a bare name could be any
+        # account of its key, an annotated one is the account of its annotation.
+        self.accounts: dict[str, set[str]] = {}
         self.held: set[str] = set()  # the ``key`` of each name without an account
         for key, names in spelt.items():
             for written, account in names:
@@ -207,7 +209,8 @@ class Joining:
                 if account is None:
                     self.held.add(compared)
                 else:
-                    self.accounts.setdefault(compared, set()).add(account)
+                    for each in {key, compared}:
+                        self.accounts.setdefault(each, set()).add(account)
         self.aliases: dict[str, Alias] = {}
         for name, target in aliases.items():
             if PERSON_ID.fullmatch(target):
@@ -223,7 +226,7 @@ class Joining:
         """Give the key by which the join compares a name, and a name alone's id hashes.
 
         Its key, but its written key, annotation kept, where two annotations or more
-        tell apart names without an account of that key.
+        tell apart names of that key.
         """
         written = written_key(name)
         key = ANNOTATION.sub("", written)
@@ -232,7 +235,8 @@ class Joining:
     def account(self, name: str) -> Answer:
         """Find the person of the one account with a name of this name's ``key``.
 
-        A name of several accounts' key is ambiguous; one of none, None.
+        A name of several accounts' key is ambiguous, as is a bare name whose key's
+        accounts annotations tell apart; one of none, None.
         """
         persons = self.accounts.get(self.key(name), set())
         if len(persons) > 1:

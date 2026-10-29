@@ -339,6 +339,39 @@ def test_names_that_two_annotations_tell_apart_stay_apart() -> None:
     )
 
 
+def test_a_name_written_as_one_account_s_annotated_name_joins_that_account() -> None:
+    """Accounts Robin (Ops) and Robin (Sales): the meeting's Robin (Ops) is the first.
+
+    The site wrote the two names apart, as the user would have; a bare Robin could be
+    either, is reported, and joins neither.
+    """
+    ops, sales = anchored("account\nacct-0005"), anchored("account\nacct-0006")
+    rows = (
+        Row(5, "creator", "Robin (Ops)", "acct-0005", day(20)),
+        Row(6, "creator", "Robin (Sales)", "acct-0006", day(20)),
+        named(STAND_UP, "robin  (OPS)"),
+        named(REVIEW, "Robin"),
+    )
+    result = joined(rows, {}, {})
+    assert result.of == {rows[0]: ops, rows[1]: sales, rows[2]: ops, rows[3]: ROBIN_ALONE}
+    assert result.ambiguous == (Ambiguity("Robin", frozenset({ops, sales})),)
+
+
+def test_a_name_annotated_otherwise_than_its_one_account_joins_no_account() -> None:
+    """The meeting's Robin Example (Ops) is not the account Robin Example (Sales).
+
+    Two annotations of one name tell its persons apart, whoever wrote each: a name that
+    could be two people is not joined by a guess.
+    """
+    rows = (
+        Row(5, "creator", "Robin Example (Sales)", "acct-0007", day(20)),
+        named(STAND_UP, "Robin Example (Ops)"),
+    )
+    result = joined(rows, {}, {})
+    assert result.of[rows[1]] == anchored("name\nrobin example (ops)")
+    assert result.ambiguous == ()
+
+
 def test_an_account_named_on_two_documents_of_one_date_takes_the_first() -> None:
     """Ties between an account's newest documents go to the first row in order."""
     rows = (
