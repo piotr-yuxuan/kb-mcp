@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.search.adapters.model_api import Endpoint
 
+# The texts' unit vectors, one row each.
 type Vectors = NDArray[np.float32]
 # The environment variable that holds the endpoint's API key, if it needs one.
 KEY_VARIABLE = "KB_MCP_EMBEDDING_API_KEY"
