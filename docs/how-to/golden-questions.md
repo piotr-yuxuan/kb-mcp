@@ -20,7 +20,7 @@ read as numbers:
 Then run:
 
 ```bash
-atlassian-offline-mcp eval ~/atlassian-offline-mcp/eval/golden.yaml
+kb-mcp eval ~/kb-mcp/eval/golden.yaml
 ```
 
 It builds an index per model and chunking under `<data>/eval/indexes/`, embedding only
@@ -56,7 +56,7 @@ on the sandbox. The numbers, never the questions, go to `<data>/eval/results/`.
 endpoint; `--chunking` names chunkings, every one by default:
 
 ```bash
-atlassian-offline-mcp eval ~/atlassian-offline-mcp/eval/golden.yaml --chunking sections --chunking windows
+kb-mcp eval ~/kb-mcp/eval/golden.yaml --chunking sections --chunking windows
 ```
 
 `--summary detailed` gives every group and every test. [Evaluating

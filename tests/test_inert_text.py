@@ -9,7 +9,7 @@ from itertools import product
 from rich.console import Console
 from rich.text import Text
 
-from atlassian_offline_mcp.observability.domain.inert_text import printable
+from kb_mcp.observability.domain.inert_text import printable
 
 # Criterion 6's title: an escape sequence, a bell, a right-to-left override and markup.
 TITLE = "Release \x1b[31mnotes\x07 \N{RIGHT-TO-LEFT OVERRIDE}plan [red]draft"

@@ -1,6 +1,6 @@
 # Instructions for coding agents
 
-atlassian-offline-mcp keeps an offline mirror of Confluence and Jira Cloud content
+kb-mcp keeps an offline mirror of Confluence and Jira Cloud content
 and serves it to coding agents through a local MCP server. The repository is meant to
 become public: never commit an employer's name, a site URL other than the sandbox's,
 identifiers or content. Fixtures come only from the sandbox site.
@@ -42,10 +42,10 @@ command mapping the names to the program's variables as
 [the how-to](docs/how-to/api-token-with-sops.md) does, such as, from a worktree:
 
 ```bash
-sops exec-env <primary-checkout>/atlassian-test-credientials.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" \
-  ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" \
-  ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" \
-  uv run atlassian-offline-mcp download --yes --config <scratch>/none.toml \
+sops exec-env <primary-checkout>/atlassian-test-credientials.sops.json 'KB_MCP_SITE="$ATLASSIAN_SITE" \
+  KB_MCP_EMAIL="$ATLASSIAN_EMAIL" \
+  KB_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" \
+  uv run kb-mcp download --yes --config <scratch>/none.toml \
   --data-dir <scratch>/data --space MFS --project PRB --since 7d'
 ```
 

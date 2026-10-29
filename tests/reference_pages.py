@@ -23,18 +23,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, override
 from unittest.mock import patch
 
-from atlassian_offline_mcp.cli.domain.command import PROGRAM
-from atlassian_offline_mcp.cli.main import parser
-from atlassian_offline_mcp.config.adapters.settings_file import SETTINGS_PATH
-from atlassian_offline_mcp.config.domain.settings import (
+from kb_mcp.cli.domain.command import PROGRAM
+from kb_mcp.cli.main import parser
+from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
+from kb_mcp.config.domain.settings import (
     NESTING,
     PREFIX,
     SETTING_PATHS,
     Settings,
     variable,
 )
-from atlassian_offline_mcp.kernel.exit_status import MEANINGS
-from atlassian_offline_mcp.observability.adapters.logs import default_log_folder
+from kb_mcp.kernel.exit_status import MEANINGS
+from kb_mcp.observability.adapters.logs import default_log_folder
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -111,11 +111,11 @@ What the command says with `--help`, then each of its subcommands, and each step
 as the parser declares them; then the exit statuses. This page is generated from the
 code by `{REGENERATE}`, and `tests/test_reference.py` fails
 while it differs: change a subcommand's declaration in
-[`cli/options/`](../../src/atlassian_offline_mcp/cli/options/), then run that command;
+[`cli/options/`](../../src/kb_mcp/cli/options/), then run that command;
 never edit the page.
 
 With no arguments, the command serves MCP on stdio, as `serve` does: that is how agents
-start it ([`main`](../../src/atlassian_offline_mcp/cli/main.py)). A flag that overrides
+start it ([`main`](../../src/kb_mcp/cli/main.py)). A flag that overrides
 a setting does so for its run alone, the strongest of the layers that
 [the settings](settings.md) describe. Help is shown here 88 columns wide and without
 colour; `~` stands for the home directory, and `<log directory>` for the platform's
@@ -125,7 +125,7 @@ folder of logs.
 ## Exit statuses
 
 Every command ends with one of these statuses, which
-[`MEANINGS`](../../src/atlassian_offline_mcp/kernel/exit_status.py) defines once, for
+[`MEANINGS`](../../src/kb_mcp/kernel/exit_status.py) defines once, for
 `--help` and for this page.
 
 | Status | Meaning |
@@ -186,7 +186,7 @@ def settings() -> str:
 Every setting of the command: how each is named, which layer wins, then a row per
 setting; then the variables that a run reads besides. This page is generated from the
 settings' model,
-[`Settings`](../../src/atlassian_offline_mcp/config/domain/settings.py),
+[`Settings`](../../src/kb_mcp/config/domain/settings.py),
 by `{REGENERATE}`, and `tests/test_reference.py` fails while
 it differs: change a setting's `Field` and its description, then run that command;
 never edit the page.
@@ -196,7 +196,7 @@ never edit the page.
 A run takes each setting from the strongest layer that gives it. From the weakest: its
 default; the settings file; the environment; the flags of the run. A stronger layer's
 value replaces a weaker one's whole, a list included, as
-[`settings_of`](../../src/atlassian_offline_mcp/config/domain/settings.py) merges them;
+[`settings_of`](../../src/kb_mcp/config/domain/settings.py) merges them;
 `check --summary detailed` names the layer that gave each setting.
 
 - **The settings file** is TOML: `{SETTINGS_PATH}`, unless
@@ -226,7 +226,7 @@ A path that starts with `~` starts in the home directory.
 {"".join(f"| `{name}` | {effect} |\n" for name, effect in OTHER_VARIABLES.items())}
 A run takes every other `OTEL_` variable out of its environment as it starts, before
 OpenTelemetry reads any
-([`READ`](../../src/atlassian_offline_mcp/observability/__init__.py)); the reference of
+([`READ`](../../src/kb_mcp/observability/__init__.py)); the reference of
 [telemetry](telemetry/README.md#settings-and-variables) says why.
 
 The libraries that a run uses read variables of their own, which no test finds; these

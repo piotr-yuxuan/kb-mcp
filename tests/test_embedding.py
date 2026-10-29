@@ -21,16 +21,16 @@ import httpx
 import numpy as np
 import pytest
 
-from atlassian_offline_mcp.cli.commands._embedding import open_endpoint
-from atlassian_offline_mcp.cli.main import main, parser
-from atlassian_offline_mcp.config.domain.settings import (
+from kb_mcp.cli.commands._embedding import open_endpoint
+from kb_mcp.cli.main import main, parser
+from kb_mcp.config.domain.settings import (
     DEFAULT_EMBEDDING_URL,
     Settings,
     SettingsError,
 )
-from atlassian_offline_mcp.kernel.endpoint import EMBEDDINGS, Service
-from atlassian_offline_mcp.search.adapters import embedding
-from atlassian_offline_mcp.search.adapters.embedding import (
+from kb_mcp.kernel.endpoint import EMBEDDINGS, Service
+from kb_mcp.search.adapters import embedding
+from kb_mcp.search.adapters.embedding import (
     BATCH,
     DOCUMENTS,
     SINGLE,
@@ -42,7 +42,7 @@ from atlassian_offline_mcp.search.adapters.embedding import (
     embed,
     embeddings,
 )
-from atlassian_offline_mcp.search.adapters.model_api import (
+from kb_mcp.search.adapters.model_api import (
     MAX_ANSWER_BYTES,
     Bounds,
     Endpoint,
@@ -90,7 +90,7 @@ ATTEMPTED = 3
 # Words, and so tokens of the endpoint that counts a token a word, in each text embedded.
 WORDS = 3
 # A model pulled in a local Ollama, for the opt-in test.
-LIVE = os.environ.get("ATLASSIAN_OFFLINE_MCP_LIVE_MODEL")
+LIVE = os.environ.get("KB_MCP_LIVE_MODEL")
 
 
 def answering(embeddings: Callable[[httpx.Request], httpx.Response]) -> Endpoint:
@@ -841,7 +841,7 @@ def test_proxies_are_ignored_on_this_machine(
     assert "its prefixes known" in capsys.readouterr().out
 
 
-@pytest.mark.skipif(LIVE is None, reason="set ATLASSIAN_OFFLINE_MCP_LIVE_MODEL to a pulled model")
+@pytest.mark.skipif(LIVE is None, reason="set KB_MCP_LIVE_MODEL to a pulled model")
 def test_a_model_in_a_local_ollama_embeds_by_meaning() -> None:
     """Unit vectors; a paraphrase nearer than another topic; a digest, the same twice."""
     model = str(LIVE)

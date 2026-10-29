@@ -18,9 +18,9 @@ from mcp.client.stdio import StdioServerParameters
 from mcp.shared.exceptions import MCPError
 from mcp_types import TextContent
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.mcp.app.tools import Library
-from atlassian_offline_mcp.search.app.indexing import build_index
+from kb_mcp.cli.main import main
+from kb_mcp.mcp.app.tools import Library
+from kb_mcp.search.app.indexing import build_index
 from tests.answers import estimate
 from tests.mirrors import MOMENT, fillers, issue, page, write
 
@@ -45,8 +45,8 @@ NAMES_ASK = re.compile(r"\bask\b")
 def home(tmp_path: Path) -> Path:
     """Make a scratch home whose settings name a data directory with an index by words."""
     home, data = tmp_path / "home", tmp_path / "data"
-    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
-    settings = home / ".config" / "atlassian-offline-mcp" / "config.toml"
+    (home / ".config" / "kb-mcp").mkdir(parents=True)
+    settings = home / ".config" / "kb-mcp" / "config.toml"
     settings.write_text(f"data_dir = {json.dumps(str(data))}\n", encoding="utf-8")
     fillers(data / "docs")
     write(data / "docs", page("196845", "Kafka retention", space="ENG"))
@@ -65,7 +65,7 @@ def seen(home: Path, *options: str) -> Seen:
     async def session() -> None:
         command = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "atlassian_offline_mcp", "serve", *options],
+            args=["-m", "kb_mcp", "serve", *options],
             env={"HOME": str(home)},
         )
         async with Client(command) as client:
@@ -83,7 +83,7 @@ def prompted(home: Path, name: str, arguments: dict[str, str]) -> GetPromptResul
 
     async def session() -> None:
         command = StdioServerParameters(
-            command=sys.executable, args=["-m", "atlassian_offline_mcp"], env={"HOME": str(home)}
+            command=sys.executable, args=["-m", "kb_mcp"], env={"HOME": str(home)}
         )
         async with Client(command) as client:
             try:

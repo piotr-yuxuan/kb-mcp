@@ -13,11 +13,11 @@ path = "~/todo"   # absolute or under ~
 archives = true   # false leaves out todo.org_archive, the archive/ folders and ARCHIVE subtrees
 ```
 
-Or by variable: `ATLASSIAN_OFFLINE_MCP_SOURCES__WORKLOG__PATH` and
-`ATLASSIAN_OFFLINE_MCP_SOURCES__WORKLOG__ARCHIVES`. Check it with:
+Or by variable: `KB_MCP_SOURCES__WORKLOG__PATH` and
+`KB_MCP_SOURCES__WORKLOG__ARCHIVES`. Check it with:
 
 ```bash
-atlassian-offline-mcp check
+kb-mcp check
 ```
 
 ## 2. What is read
@@ -135,7 +135,7 @@ copy's may.
 ## 4. Mirror it
 
 ```bash
-atlassian-offline-mcp sync --include worklog
+kb-mcp sync --include worklog
 ```
 
 The files go to `<data>/docs/worklog/`: `entries/` and `transcripts/` as
@@ -281,7 +281,7 @@ joined to neither. To see what stays apart:
   line that would join it.
 
 Then write `aliases.toml` in the data directory,
-`~/atlassian-offline-mcp/aliases.toml` by default: a line per name as a source writes
+`~/kb-mcp/aliases.toml` by default: a line per name as a source writes
 it, then the person it means, by a name, or by the id that an answer gives where a name
 is several people's:
 
@@ -295,7 +295,7 @@ is several people's:
 Rebuild the index, which embeds nothing new:
 
 ```bash
-atlassian-offline-mcp index
+kb-mcp index
 ```
 
 - An alias joins names without an account alone: an account's names are the site's.

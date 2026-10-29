@@ -19,11 +19,11 @@ from typing import TYPE_CHECKING, override
 import argcomplete
 import pytest
 
-from atlassian_offline_mcp.cli import commands, options
-from atlassian_offline_mcp.cli.main import main, parser
-from atlassian_offline_mcp.config.domain.settings import SETTING_PATHS
-from atlassian_offline_mcp.kernel.exit_status import MEANINGS, ExitStatus
-from atlassian_offline_mcp.kernel.output import Output
+from kb_mcp.cli import commands, options
+from kb_mcp.cli.main import main, parser
+from kb_mcp.config.domain.settings import SETTING_PATHS
+from kb_mcp.kernel.exit_status import MEANINGS, ExitStatus
+from kb_mcp.kernel.output import Output
 from tests.endpoint import nothing_listening
 from tests.test_observed import said as said_on
 from tests.test_question import read_until
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.kernel.output import Level
+    from kb_mcp.kernel.output import Level
 
 ROOT = Path(__file__).parents[1]
 # The exit status for what is refused before acting: options, and settings, an unsafe data
@@ -65,8 +65,8 @@ RUNS_PACKAGES = frozenset(
 DECLARED = """
 from pathlib import Path
 
-from atlassian_offline_mcp.cli.domain.command import Command
-from atlassian_offline_mcp.cli.options._common import add_output_options
+from kb_mcp.cli.domain.command import Command
+from kb_mcp.cli.options._common import add_output_options
 
 def register(subparsers):
     parser = subparsers.add_parser("extra", help="a command added by a module pair")
@@ -118,8 +118,8 @@ WRITING = {"download", "eval", "eval-agents", "eval-rerank", "index", "login", "
 # The subcommands that take --dry-run, by plans 015 and 017.
 DRY_RUN = {"download", "sync"}
 SECRETS = {
-    "ATLASSIAN_OFFLINE_MCP_API_TOKEN": "token-sentinel-4d1c",
-    "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY": "key-sentinel-9a7e",
+    "KB_MCP_API_TOKEN": "token-sentinel-4d1c",
+    "KB_MCP_EMBEDDING_API_KEY": "key-sentinel-9a7e",
 }
 
 
@@ -244,7 +244,7 @@ def test_the_version_is_the_project_s(capsys: CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as stopped:
         main(["--version"])
     assert stopped.value.code == 0
-    assert capsys.readouterr().out == f"atlassian-offline-mcp {project['version']}\n"
+    assert capsys.readouterr().out == f"kb-mcp {project['version']}\n"
 
 
 def test_the_help_says_who_asks_and_what_each_exit_status_means() -> None:
@@ -275,7 +275,7 @@ def test_the_help_on_a_terminal_has_no_colour_under_no_color(
     """
     controller, terminal = pty.openpty()
     with subprocess.Popen(
-        [sys.executable, "-m", "atlassian_offline_mcp", "--help"],
+        [sys.executable, "-m", "kb_mcp", "--help"],
         stdin=subprocess.DEVNULL,
         stdout=terminal,
         stderr=terminal,
@@ -300,7 +300,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
     ``sys.modules``.
     """
     environment = {"HOME": str(home), "PATH": os.environ["PATH"]}
-    typed = "atlassian-offline-mcp download --sp"
+    typed = "kb-mcp download --sp"
     completing = {
         "_ARGCOMPLETE": "1",
         "COMP_LINE": typed,
@@ -312,7 +312,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
     children = (
         (
             subprocess.run(
-                [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "--version"],
+                [sys.executable, "-X", "importtime", "-m", "kb_mcp", "--version"],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
@@ -324,7 +324,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
         ),
         (
             subprocess.run(
-                [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "--help"],
+                [sys.executable, "-X", "importtime", "-m", "kb_mcp", "--help"],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
@@ -341,7 +341,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
                     "-X",
                     "importtime",
                     "-m",
-                    "atlassian_offline_mcp",
+                    "kb_mcp",
                     "download",
                     "--help",
                 ],
@@ -356,7 +356,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
         ),
         (
             subprocess.run(
-                [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp"],
+                [sys.executable, "-X", "importtime", "-m", "kb_mcp"],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
@@ -368,7 +368,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
         ),
         (
             subprocess.run(
-                [sys.executable, "-X", "importtime", "-m", "atlassian_offline_mcp", "completion"],
+                [sys.executable, "-X", "importtime", "-m", "kb_mcp", "completion"],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
@@ -388,7 +388,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
             if line.startswith("import time:")
         }
         imported |= {module.split(".")[0] for module in imported}
-        assert {"argparse", "atlassian_offline_mcp"} <= imported
+        assert {"argparse", "kb_mcp"} <= imported
         assert not imported & refused
 
 
@@ -402,7 +402,7 @@ def test_the_shell_completes_the_command_line(home: Path, line: str, offered: se
     That is argcomplete's protocol: the line and the cursor in the environment, the
     completions, separated by vertical tabs, in the file it names.
     """
-    typed = f"atlassian-offline-mcp {line}"
+    typed = f"kb-mcp {line}"
     environment = {
         "HOME": str(home),
         "PATH": os.environ["PATH"],
@@ -412,7 +412,7 @@ def test_the_shell_completes_the_command_line(home: Path, line: str, offered: se
         "_ARGCOMPLETE_STDOUT_FILENAME": str(home / "completions"),
     }
     child = subprocess.run(
-        [sys.executable, "-m", "atlassian_offline_mcp"],
+        [sys.executable, "-m", "kb_mcp"],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
@@ -429,10 +429,10 @@ def test_completion_prints_the_shell_code_whatever_the_settings(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
     """``completion`` prints argcomplete's code for bash and zsh, and reads no settings."""
-    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
-    (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text("site = ", "utf-8")
+    (home / ".config" / "kb-mcp").mkdir(parents=True)
+    (home / ".config" / "kb-mcp" / "config.toml").write_text("site = ", "utf-8")
     assert main(["completion"]) == 0
-    assert capsys.readouterr().out == argcomplete.shellcode(["atlassian-offline-mcp"])
+    assert capsys.readouterr().out == argcomplete.shellcode(["kb-mcp"])
 
 
 def test_completion_is_not_observed_and_writes_no_script_with_q(
@@ -445,7 +445,7 @@ def test_completion_is_not_observed_and_writes_no_script_with_q(
     """
     for level in (["-v"], ["-vv"], ["--log-level", "debug"]):
         assert main(["completion", *level]) == 0
-        assert capsys.readouterr() == (argcomplete.shellcode(["atlassian-offline-mcp"]), "")
+        assert capsys.readouterr() == (argcomplete.shellcode(["kb-mcp"]), "")
     assert main(["completion", "-q"]) == 0
     assert capsys.readouterr() == ("", "")
 
@@ -552,8 +552,8 @@ def test_check_as_json_gives_settings_layers_and_ignored_values_secrets_masked(
     )
     for name, value in SECRETS.items():
         monkeypatch.setenv(name, value)
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "https://variable.example.invalid")
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SPACES", '["X"]')
+    monkeypatch.setenv("KB_MCP_SITE", "https://variable.example.invalid")
+    monkeypatch.setenv("KB_MCP_SPACES", '["X"]')
     for summary in ("short", "detailed"):
         options = ["--config", str(config), "--summary", summary, "--format", "json"]
         assert main(["check", *options]) == 0
@@ -562,22 +562,22 @@ def test_check_as_json_gives_settings_layers_and_ignored_values_secrets_masked(
         document = json.loads(out)
         settings = document["settings"]
         assert settings["site"] == "https://variable.example.invalid"
-        assert settings["data_dir"] == str((home / "atlassian-offline-mcp").resolve())
+        assert settings["data_dir"] == str((home / "kb-mcp").resolve())
         assert settings["sources"]["confluence"]["spaces"] == ["ENG"]
         assert settings["api_token"]
         assert settings["embedding_api_key"]
         assert document["layers"] == {
-            "site": "ATLASSIAN_OFFLINE_MCP_SITE",
+            "site": "KB_MCP_SITE",
             "sources.confluence.spaces": "config.toml",
-            "api_token": "ATLASSIAN_OFFLINE_MCP_API_TOKEN",
-            "embedding_api_key": "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY",
+            "api_token": "KB_MCP_API_TOKEN",
+            "embedding_api_key": "KB_MCP_EMBEDDING_API_KEY",
         }
         assert sorted(document["ignored"], key=lambda ignored: ignored["layer"]) == [
-            {"setting": None, "layer": "ATLASSIAN_OFFLINE_MCP_SPACES", "why": "names no setting"},
+            {"setting": None, "layer": "KB_MCP_SPACES", "why": "names no setting"},
             {
                 "setting": "site",
                 "layer": "config.toml",
-                "why": "replaced by ATLASSIAN_OFFLINE_MCP_SITE",
+                "why": "replaced by KB_MCP_SITE",
             },
         ]
 
@@ -593,7 +593,7 @@ def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture
     out = capsys.readouterr().out
     assert out == "site: https://example.atlassian.net\nsources.confluence.spaces: ENG\n"
     assert main(["check", "--config", str(config), "--summary", "detailed"]) == 0
-    data = (home / "atlassian-offline-mcp").resolve()
+    data = (home / "kb-mcp").resolve()
     assert f"data_dir: {data} [default]\n" in capsys.readouterr().out
 
 
@@ -603,7 +603,7 @@ def test_check_in_short_shows_each_setting_given_and_its_value(
     """From any layer, by its path; a secret said to be set; the settings at defaults left out."""
     config = home / "config.toml"
     config.write_text('site = "https://file.example.invalid"\nsearch_mode = "semantic"\n', "utf-8")
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES", '["ENG", "OPS"]')
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SPACES", '["ENG", "OPS"]')
     for name, value in SECRETS.items():
         monkeypatch.setenv(name, value)
     assert main(["check", "--config", str(config), "--data-dir", "~/from-flag"]) == 0
@@ -627,8 +627,8 @@ def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
     assert out == (
         "site: (not set) [default]\n"
         "email: (not set) [default]\n"
-        "api_token: set [ATLASSIAN_OFFLINE_MCP_API_TOKEN]\n"
-        f"data_dir: {(home / 'atlassian-offline-mcp').resolve()} [default]\n"
+        "api_token: set [KB_MCP_API_TOKEN]\n"
+        f"data_dir: {(home / 'kb-mcp').resolve()} [default]\n"
         "model: qwen3-embedding:0.6b [default]\n"
         "search_mode: hybrid [default]\n"
         "chunking: windows [default]\n"
@@ -690,10 +690,10 @@ def test_check_names_the_layer_of_a_refused_data_directory(
     assert main(["check", "--config", str(config)]) == BAD_SETTINGS
     assert "data_dir (config.toml): under a Dropbox folder" in capsys.readouterr().err
 
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_DATA_DIR", "~/Documents/from-variable")
+    monkeypatch.setenv("KB_MCP_DATA_DIR", "~/Documents/from-variable")
     assert main(["check", "--config", str(config)]) == BAD_SETTINGS
     error = capsys.readouterr().err
-    assert "data_dir (ATLASSIAN_OFFLINE_MCP_DATA_DIR): under ~/Documents" in error
+    assert "data_dir (KB_MCP_DATA_DIR): under ~/Documents" in error
 
 
 @pytest.mark.parametrize("name", ["check", "index"])
@@ -725,11 +725,11 @@ def test_check_and_index_refuse_a_log_folder_that_could_leave_the_machine(
     assert said_on(error) == [("error", "settings.refused")]
     assert f"logs.dir (config.toml): {reason}" in error
 
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_LOGS__DIR", folder)
+    monkeypatch.setenv("KB_MCP_LOGS__DIR", folder)
     assert main([name, "--config", str(home / "none.toml")]) == BAD_SETTINGS
     error = capsys.readouterr().err
     assert said_on(error) == [("error", "settings.refused")]
-    assert f"logs.dir (ATLASSIAN_OFFLINE_MCP_LOGS__DIR): {reason}" in error
+    assert f"logs.dir (KB_MCP_LOGS__DIR): {reason}" in error
     assert not (home / folder.removeprefix("~/")).exists()
     assert not user_log_folder(home.resolve()).exists()
 
@@ -854,11 +854,11 @@ def test_check_refuses_a_list_variable_not_in_json_by_its_name(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """A list from the environment is JSON: the variable is named, never what it holds."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", "PLAT,PRB")
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", "PLAT,PRB")
     assert main(["check", "--config", str(home / "none.toml")]) == BAD_SETTINGS
     error = capsys.readouterr().err
     assert said_on(error) == [("error", "settings.refused")]
-    assert "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS" in error
+    assert "KB_MCP_SOURCES__JIRA__PROJECTS" in error
     assert "PLAT" not in error
 
 
@@ -878,16 +878,16 @@ def test_check_runs_with_variables_that_name_no_setting_or_are_empty(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """A misspelt, a former or an empty variable is ignored, not refused, and said on stderr."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS", '["X"]')
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SPACES", '["X"]')
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "")
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJETS", '["X"]')
+    monkeypatch.setenv("KB_MCP_SPACES", '["X"]')
+    monkeypatch.setenv("KB_MCP_SITE", "")
     assert main(["check", "--config", str(home / "none.toml"), "--summary", "detailed"]) == 0
     out, err = capsys.readouterr()
     assert "site: (not set) [default]\n" in out
     assert sorted(err.splitlines()) == [
-        "ignored: ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS: names no setting",
-        "ignored: ATLASSIAN_OFFLINE_MCP_SPACES: names no setting",
-        "ignored: site (ATLASSIAN_OFFLINE_MCP_SITE): empty",
+        "ignored: KB_MCP_SOURCES__JIRA__PROJETS: names no setting",
+        "ignored: KB_MCP_SPACES: names no setting",
+        "ignored: site (KB_MCP_SITE): empty",
     ]
 
 
@@ -909,14 +909,12 @@ def test_an_empty_table_in_a_variable_replaces_each_setting_under_it(
     """Each is the variable's, at its default, and the file's value is said to be replaced."""
     config = home / "config.toml"
     config.write_text('[sources.jira]\nprojects = ["PLAT"]\n', "utf-8")
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES", "{}")
+    monkeypatch.setenv("KB_MCP_SOURCES", "{}")
     assert main(["check", "--config", str(config), "--summary", "detailed"]) == 0
     out, err = capsys.readouterr()
-    assert "sources.confluence.spaces: (none) [ATLASSIAN_OFFLINE_MCP_SOURCES]\n" in out
-    assert "sources.jira.projects: (none) [ATLASSIAN_OFFLINE_MCP_SOURCES]\n" in out
-    assert err == (
-        "ignored: sources.jira.projects (config.toml): replaced by ATLASSIAN_OFFLINE_MCP_SOURCES\n"
-    )
+    assert "sources.confluence.spaces: (none) [KB_MCP_SOURCES]\n" in out
+    assert "sources.jira.projects: (none) [KB_MCP_SOURCES]\n" in out
+    assert err == ("ignored: sources.jira.projects (config.toml): replaced by KB_MCP_SOURCES\n")
 
 
 def test_a_settings_file_named_default_is_a_layer_as_any_other(
@@ -927,11 +925,11 @@ def test_a_settings_file_named_default_is_a_layer_as_any_other(
     config.write_text('site = "https://file.example.invalid"\n', "utf-8")
     assert main(["check", "--config", str(config)]) == 0
     assert capsys.readouterr().out == "site: https://file.example.invalid\n"
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "https://variable.example.invalid")
+    monkeypatch.setenv("KB_MCP_SITE", "https://variable.example.invalid")
     assert main(["check", "--config", str(config)]) == 0
     out, err = capsys.readouterr()
     assert out == "site: https://variable.example.invalid\n"
-    assert err == "ignored: site (default): replaced by ATLASSIAN_OFFLINE_MCP_SITE\n"
+    assert err == "ignored: site (default): replaced by KB_MCP_SITE\n"
 
 
 def test_check_refuses_a_file_that_is_not_toml(home: Path, capsys: CaptureFixture[str]) -> None:
@@ -947,8 +945,8 @@ def test_check_refuses_a_part_of_the_data_directory_that_leads_elsewhere(
 ) -> None:
     """A link from <data>/docs into a synchronised folder is refused, naming docs."""
     (home / "Dropbox" / "shared").mkdir(parents=True)
-    (home / "atlassian-offline-mcp").mkdir()
-    (home / "atlassian-offline-mcp" / "docs").symlink_to(home / "Dropbox" / "shared")
+    (home / "kb-mcp").mkdir()
+    (home / "kb-mcp" / "docs").symlink_to(home / "Dropbox" / "shared")
     assert main(["check", "--config", str(home / "none.toml")]) == BAD_SETTINGS
     assert "data_dir (default): docs: under a Dropbox folder" in capsys.readouterr().err
 
@@ -958,8 +956,8 @@ def test_check_refuses_a_raw_store_that_leads_into_a_git_tree(
 ) -> None:
     """A link from <data>/raw into a working tree is refused, naming raw."""
     (home / "project" / ".git").mkdir(parents=True)
-    (home / "atlassian-offline-mcp").mkdir()
-    (home / "atlassian-offline-mcp" / "raw").symlink_to(home / "project")
+    (home / "kb-mcp").mkdir()
+    (home / "kb-mcp" / "raw").symlink_to(home / "project")
     assert main(["check", "--config", str(home / "none.toml")]) == BAD_SETTINGS
     assert "data_dir (default): raw: inside the git working tree" in capsys.readouterr().err
 
@@ -985,7 +983,7 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
     out, err = capsys.readouterr()
     assert err == ""
     assert "site: (not set) [default]\n" in out
-    assert f"data_dir: {(home / 'atlassian-offline-mcp').resolve()} [default]\n" in out
+    assert f"data_dir: {(home / 'kb-mcp').resolve()} [default]\n" in out
     assert "sources.confluence.spaces: (none) [default]\n" in out
     assert "sources.jira.projects: (none) [default]\n" in out
 
@@ -1003,30 +1001,30 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
     assert "sources.confluence.spaces: ENG [config.toml]\n" in out
     assert "sources.jira.projects: PLAT [config.toml]\n" in out
 
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "https://variable.example.invalid")
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_DATA_DIR", "~/from-variable")
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES", '["OPS"]')
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB", "PAY"]')
+    monkeypatch.setenv("KB_MCP_SITE", "https://variable.example.invalid")
+    monkeypatch.setenv("KB_MCP_DATA_DIR", "~/from-variable")
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SPACES", '["OPS"]')
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB", "PAY"]')
     assert main(["check", "--config", str(config), *detailed]) == 0
     out, err = capsys.readouterr()
     assert sorted(err.splitlines()) == [
-        "ignored: data_dir (config.toml): replaced by ATLASSIAN_OFFLINE_MCP_DATA_DIR",
-        "ignored: site (config.toml): replaced by ATLASSIAN_OFFLINE_MCP_SITE",
+        "ignored: data_dir (config.toml): replaced by KB_MCP_DATA_DIR",
+        "ignored: site (config.toml): replaced by KB_MCP_SITE",
         (
             "ignored: sources.confluence.spaces (config.toml):"
-            " replaced by ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES"
+            " replaced by KB_MCP_SOURCES__CONFLUENCE__SPACES"
         ),
         (
             "ignored: sources.jira.projects (config.toml):"
-            " replaced by ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS"
+            " replaced by KB_MCP_SOURCES__JIRA__PROJECTS"
         ),
     ]
-    assert "site: https://variable.example.invalid [ATLASSIAN_OFFLINE_MCP_SITE]\n" in out
+    assert "site: https://variable.example.invalid [KB_MCP_SITE]\n" in out
     data = (home / "from-variable").resolve()
-    assert f"data_dir: {data} [ATLASSIAN_OFFLINE_MCP_DATA_DIR]\n" in out
-    spaces = "sources.confluence.spaces: OPS [ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES]"
+    assert f"data_dir: {data} [KB_MCP_DATA_DIR]\n" in out
+    spaces = "sources.confluence.spaces: OPS [KB_MCP_SOURCES__CONFLUENCE__SPACES]"
     assert f"{spaces}\n" in out
-    projects = "sources.jira.projects: PRB, PAY [ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS]"
+    projects = "sources.jira.projects: PRB, PAY [KB_MCP_SOURCES__JIRA__PROJECTS]"
     assert f"{projects}\n" in out
 
     flag = ["--site", "https://flag.example.invalid", "--data-dir", "~/from-flag"]
@@ -1034,8 +1032,8 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
     out, err = capsys.readouterr()
     assert "site: https://flag.example.invalid [--site]\n" in out
     assert f"data_dir: {(home / 'from-flag').resolve()} [--data-dir]\n" in out
-    assert "ignored: site (ATLASSIAN_OFFLINE_MCP_SITE): replaced by --site\n" in err
-    assert "ignored: data_dir (ATLASSIAN_OFFLINE_MCP_DATA_DIR): replaced by --data-dir\n" in err
+    assert "ignored: site (KB_MCP_SITE): replaced by --site\n" in err
+    assert "ignored: data_dir (KB_MCP_DATA_DIR): replaced by --data-dir\n" in err
 
 
 def test_check_reads_no_generic_atlassian_name(
@@ -1172,9 +1170,9 @@ def test_help_version_completions_and_completion_write_no_log_file(
         assert stopped.value.code == 0
     assert main(["completion"]) == 0
     capsys.readouterr()
-    typed = "atlassian-offline-mcp check --"
+    typed = "kb-mcp check --"
     child = subprocess.run(
-        [sys.executable, "-m", "atlassian_offline_mcp"],
+        [sys.executable, "-m", "kb_mcp"],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
@@ -1324,7 +1322,7 @@ def test_stderr_on_a_terminal_is_coloured_unless_no_color(
         [
             sys.executable,
             "-m",
-            "atlassian_offline_mcp",
+            "kb_mcp",
             "check",
             "-v",
             "--site",

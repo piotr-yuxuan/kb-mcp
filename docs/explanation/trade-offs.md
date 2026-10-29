@@ -1,6 +1,6 @@
 # Trade-offs
 
-Each decision that shapes atlassian-offline-mcp, as one section: what was decided, why,
+Each decision that shapes kb-mcp, as one section: what was decided, why,
 what it costs, the alternative rejected, and the plan that settled it, whose record in
 [`docs/work/changelog/`](../work/changelog/) holds the full reasoning and the measures.
 [The internals](internals.md) say how the parts work together; this page says why they
@@ -10,8 +10,8 @@ so that the next person to weigh it knows what was paid.
 ## Reads only
 
 Every request to the site is a GET, and nothing is ever written to Confluence or Jira.
-[`Site`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py), the one
-port for the session and the token, builds no other request ([`Site.once`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/http.py)),
+[`Site`](../../src/kb_mcp/sources/atlassian/adapters/http.py), the one
+port for the session and the token, builds no other request ([`Site.once`](../../src/kb_mcp/sources/atlassian/adapters/http.py)),
 and the server's tools are read-only too.
 
 - **Why.** A mirror needs nothing more, and a program that only reads can do the site no
@@ -26,14 +26,14 @@ and the server's tools are read-only too.
 
 The mirror changes only when someone runs `sync`, which downloads and mirrors the site,
 mirrors the work log, then rebuilds the index
-([`sync`](../../src/atlassian_offline_mcp/cli/app/sync.py)), or its stages one at a time:
+([`sync`](../../src/kb_mcp/cli/app/sync.py)), or its stages one at a time:
 `download`, `mirror`, `index`. Nothing runs on a schedule, and the server never fetches
 from the site.
 
 - **Why.** The user chooses when the site is read, and is there when a session has
   expired: through single sign-on, only a person can sign in again. Coverage makes a run
   by hand cheap: without `--since`, a run fetches what changed since each target's last
-  fetch ([`window`](../../src/atlassian_offline_mcp/sources/atlassian/domain/coverage.py)),
+  fetch ([`window`](../../src/kb_mcp/sources/atlassian/domain/coverage.py)),
   so nobody keeps track of when the last run was, and a target never fetched takes its
   last 7 days rather than refusing the run. A project's search starts a day before its
   covered end, which stops at its first document not stored whole, so that what failed
@@ -66,7 +66,7 @@ from the site.
 ## Cookies and API tokens
 
 A run signs in by the session saved from the user's own browser, or by an API token with
-its account's email: [`sign_in`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/sign_in.py)
+its account's email: [`sign_in`](../../src/kb_mcp/sources/atlassian/adapters/sign_in.py)
 takes the token when one is set, else the session.
 
 - **Why.** On a managed network, single sign-on in the user's own browser is the route. Chrome opens
@@ -92,32 +92,32 @@ takes the token when one is set, else the session.
 ## Raw first
 
 `download` keeps each response exactly as received, in the raw store
-([`RawStore`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py));
+([`RawStore`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py));
 the mirror, the index and the vectors are all derived from it, offline.
 
 - **Why.** The site's responses and HTML "can and will unexpectedly change", in the
   maintainer's words. A response that a change breaks is still stored
-  ([`Download.keep`](../../src/atlassian_offline_mcp/sources/atlassian/app/download.py)
+  ([`Download.keep`](../../src/kb_mcp/sources/atlassian/app/download.py)
   stores a snapshot that its adapter refuses), and once the adapter is fixed, `mirror`
   reads it again without fetching anything. A fix to the conversion is a rebuild, never
   a download.
 - **Cost.** Disk: every revision fetched stays as received, a page with both its bodies,
   storage and view, and each attached file once, by its digest. A snapshot's responses are
   never rewritten, and no snapshot is removed; its record gains the files that a later run
-  fetches ([`RawStore.add_blobs`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/raw_store.py)).
+  fetches ([`RawStore.add_blobs`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)).
 - **Rejected.** Converting while downloading, which would fetch everything again after
   each fix of the conversion.
 - **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions).
 
 ## Strict reading, a module per representation
 
-Only [the Confluence adapter](../../src/atlassian_offline_mcp/sources/atlassian/adapters/confluence_v2.py)
-and [the Jira adapter](../../src/atlassian_offline_mcp/sources/atlassian/adapters/jira_v3.py)
+Only [the Confluence adapter](../../src/kb_mcp/sources/atlassian/adapters/confluence_v2.py)
+and [the Jira adapter](../../src/kb_mcp/sources/atlassian/adapters/jira_v3.py)
 know the JSON of their APIs, and only
-[`normalise`](../../src/atlassian_offline_mcp/mirror/adapters/site_html.py)'s module
+[`normalise`](../../src/kb_mcp/mirror/adapters/site_html.py)'s module
 knows the site's HTML. Adapters read through
-[`Fields`](../../src/atlassian_offline_mcp/kernel/fields.py), which requires every field
-and raises [`RepresentationError`](../../src/atlassian_offline_mcp/kernel/fields.py)
+[`Fields`](../../src/kb_mcp/kernel/fields.py), which requires every field
+and raises [`RepresentationError`](../../src/kb_mcp/kernel/fields.py)
 naming its path, never its value.
 
 - **Why.** When the site changes, the failure says where
@@ -139,7 +139,7 @@ The mirror is a folder of Markdown files, one per document with its front matter
 `<data>/docs/`; the MCP server searches and reads an index built from those files alone.
 
 - **Why.** Rendered HTML is a poor input for a language model, and pandoc
-  ([`Pandoc.markdown`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py)) writes
+  ([`Pandoc.markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py)) writes
   the site's HTML as GitHub's Markdown. Files serve agents that prefer to search and read
   files, and any other tool; the server adds ranking, budgets and citations. As the index
   reads the files alone, the two never disagree.
@@ -155,10 +155,10 @@ The mirror is a folder of Markdown files, one per document with its front matter
 
 `mirror` keeps each conversion that pandoc makes in `<data>/conversions.sqlite`, under
 the SHA-256 of pandoc's version line, its arguments and the HTML it was given
-([`Conversions.markdown`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)),
+([`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)),
 so that a run converts only the HTML that it has not converted before. Once its files
 are written, a run deletes the conversions that it did not use
-([`Conversions.prune`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)).
+([`Conversions.prune`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 Every run still reads the store and builds every document's HTML.
 
 - **Why.** Pandoc was most of a mirror's time, one process a document whether it had
@@ -167,7 +167,7 @@ Every run still reads the store and builds every document's HTML.
   a cache, wary that "cache invalidation is hard". Keyed by the whole of pandoc's input,
   this one has nothing to invalidate: with `--sandbox`, pandoc reads its standard input
   alone, and its version and arguments are in the key
-  ([`Pandoc.html_converter`](../../src/atlassian_offline_mcp/mirror/adapters/pandoc.py));
+  ([`Pandoc.html_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py));
   what else a file depends on, a link made relative, a user's name, the site, is inside
   the HTML that each run builds afresh, or in the front matter, which pandoc never
   reads. On that store, a mirror with nothing changed took 2.3 seconds, against 31.2
@@ -181,7 +181,7 @@ Every run still reads the store and builds every document's HTML.
   the same version line, such as another package of one release: delete the file, which
   costs one conversion of everything and downloads nothing. A damaged file costs the
   same, as the run replaces it, says so, and converts everything
-  ([`opened`](../../src/atlassian_offline_mcp/mirror/adapters/conversions.py)). The
+  ([`opened`](../../src/kb_mcp/mirror/adapters/conversions.py)). The
   check that finds it sees the file's structure, each index against its table, not the
   text of each row: a row damaged in place would be given as it is, which deleting the
   file mends.
@@ -200,21 +200,21 @@ Every run still reads the store and builds every document's HTML.
 
 A document's front matter names its people under one key, `people`, one entry per
 person and role, in place of the keys `author` and `assignee` that Atlassian shaped
-([`FrontMatter.people`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)). An
+([`FrontMatter.people`](../../src/kb_mcp/mirror/domain/mirror.py)). An
 entry gives the role, one of a closed set
-([`ROLES`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)), the name as the
+([`ROLES`](../../src/kb_mcp/mirror/domain/mirror.py)), the name as the
 source gives it, the account id when the source has one, and a commenter's comment
-times ([`PersonRole`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)). Each
+times ([`PersonRole`](../../src/kb_mcp/mirror/domain/mirror.py)). Each
 entry is one line of the file
-([`Dumper`](../../src/atlassian_offline_mcp/mirror/adapters/markdown.py)), read
-strictly ([`load`](../../src/atlassian_offline_mcp/mirror/adapters/markdown.py)), as
+([`Dumper`](../../src/kb_mcp/mirror/adapters/markdown.py)), read
+strictly ([`load`](../../src/kb_mcp/mirror/adapters/markdown.py)), as
 [the data layout](../reference/data-layout.md#people) gives it. Names are kept as
 written, never normalised, merged or masked
-([`Catalogue.name`](../../src/atlassian_offline_mcp/mirror/domain/catalogue.py)).
+([`Catalogue.name`](../../src/kb_mcp/mirror/domain/catalogue.py)).
 `FrontMatter.author` and `FrontMatter.assignee` name the one person of each role
-([`FrontMatter.author`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)), so
+([`FrontMatter.author`](../../src/kb_mcp/mirror/domain/mirror.py)), so
 that what read the two keys, a hit's line among them
-([`facts`](../../src/atlassian_offline_mcp/mcp/app/responses.py)), reads on.
+([`facts`](../../src/kb_mcp/mcp/app/responses.py)), reads on.
 
 - **Why.** Jira's creator and an issue's commenters had no key, and the maintainer's
   feedback asked for the creator among the filters, and for the comments' authors with
@@ -222,29 +222,29 @@ that what read the two keys, a hit's line among them
   comments. A key for each would have changed every file and the index's schema, and
   each later role another time. Read by role, one key serves every source alike, and
   the filters `author`, `creator`, `assignee` and `commenter` read one table
-  ([`KEPT`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)). The
+  ([`KEPT`](../../src/kb_mcp/search/adapters/sqlite_index.py)). The
   creator cost no request: each stored `issue.json` holds every field of the issue
-  ([`issue`](../../src/atlassian_offline_mcp/sources/atlassian/adapters/jira_v3.py)).
+  ([`issue`](../../src/kb_mcp/sources/atlassian/adapters/jira_v3.py)).
   Account ids are in the files, because the index is rebuilt from the files alone
-  ([`entry`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), and
+  ([`entry`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and
   because a name alone cannot be told from the account id written when no name is
   known; one account id also ties together a colleague renamed between two fetches.
 - **Cost.** One rewrite: every file of the mirror is written again once, and the index
   rebuilt once, at schema 4
-  ([`SCHEMA`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), which
+  ([`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py)), which
   embeds nothing new; until then, the server refuses the old index, naming `sync`, or
   `mirror` then `index` where no source is configured, which write the files again
   before they rebuild the index, where `index` alone would skip every file of the old
   format
-  ([`reading`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)). Each
+  ([`reading`](../../src/kb_mcp/search/adapters/sqlite_index.py)). Each
   evaluation's index built before then holds every prune back, the vector store growing
   meanwhile, until `eval` rebuilds it, for each model and chunking still wanted, or
   `<data>/eval/indexes/` is deleted
-  ([`prune`](../../src/atlassian_offline_mcp/search/app/pruning.py)). A program that
+  ([`prune`](../../src/kb_mcp/search/app/pruning.py)). A program that
   read `author:` in the files reads `people`. Each person is in the index
   twice, as each label is: in the JSON from which a row gives its front matter back, and
   in the table that the filters read, both written by
-  [`Writer.add`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py). An
+  [`Writer.add`](../../src/kb_mcp/search/adapters/sqlite_index.py). An
   issue's file has a line per commenter, not per comment. The four new filters add
   about 130 estimated tokens to what every request carries, the instructions and the
   tool listing, whose budget rose from 2,300 to 2,400, as [the
@@ -271,32 +271,32 @@ that what read the two keys, a hit's line among them
 
 The work log's journal, a top-level heading with a day among its children, whatever its
 title, is no longer one entry: each day is a document, and each meeting of a day
-([`journal`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+([`journal`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
 Both are found by their shape alone. A day is a heading at level 1 or 2 titled by one
 active timestamp of a date alone, such as `<2026-10-28 Wed>`
-([`date_title`](../../src/atlassian_offline_mcp/sources/worklog/domain/org.py),
-[`Part.day`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py));
+([`date_title`](../../src/kb_mcp/sources/worklog/domain/org.py),
+[`Part.day`](../../src/kb_mcp/sources/worklog/domain/worklog.py));
 a meeting, a child of a day with `:MEETING:` or `:PARTICIPANTS:` in its drawer
-([`Part.meeting`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+([`Part.meeting`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
 A heading that org archived joins the day, or the meeting, that its `:ARCHIVE_OLPATH:`
 names, and every part of one date makes one day
-([`days_and_meetings`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+([`days_and_meetings`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
 A day's id is `d-` and its date; a meeting's, `m-`, its day's date and its title's
 slug, numbered by start time where two share one
-([`meeting_ids`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+([`meeting_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
 A meeting names its participants as its `:PARTICIPANTS:` writes them
-([`participants`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
+([`participants`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
 and a transcript its speakers
-([`speakers`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py));
+([`speakers`](../../src/kb_mcp/sources/worklog/domain/worklog.py));
 a meeting links the transcript whose file its `:MEETING:` names
-([`link_target`](../../src/atlassian_offline_mcp/sources/worklog/domain/org.py)),
+([`link_target`](../../src/kb_mcp/sources/worklog/domain/org.py)),
 which links it back
-([`linked_back`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)).
+([`linked_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
 A day, a meeting and a transcript are dated by when they happened
-([`start`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py),
-[`Document.dates`](../../src/atlassian_offline_mcp/sources/worklog/domain/worklog.py)),
+([`start`](../../src/kb_mcp/sources/worklog/domain/worklog.py),
+[`Document.dates`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
 afresh at each run
-([`mirror_worklog`](../../src/atlassian_offline_mcp/mirror/app/worklog.py)).
+([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)).
 
 - **Why.** The journal was one entry of about 2 MB: a hit in any meeting named the
   whole journal, its meetings named nobody, a transcript was created at midnight,
@@ -313,7 +313,7 @@ afresh at each run
   cannot compute the reverse ([the data layout](../reference/data-layout.md#links)).
   With 040's created range, the meetings that someone attended this week are two
   filters, `participant` and `created_after`
-  ([`KEPT`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)).
+  ([`KEPT`](../../src/kb_mcp/search/adapters/sqlite_index.py)).
 - **Cost.** A meeting renamed takes a new id, as an entry without `:ID:` does. Two
   meetings of one day and one slug, such as two of one title, or `Réunion d'équipe` and
   `Reunion d'equipe`, swap ids when the order of their starts changes, or, neither with
@@ -327,7 +327,7 @@ afresh at each run
   it, so that a search for that title misses those notes. An archived heading joins its
   meeting by the meeting's title as org writes it in `:ARCHIVE_OLPATH:`, whose `/` org
   does not escape
-  ([`Heading.outline_title`](../../src/atlassian_offline_mcp/sources/worklog/domain/org.py)):
+  ([`Heading.outline_title`](../../src/kb_mcp/sources/worklog/domain/org.py)):
   the longest title of the day that begins the path wins, but the day keeps a piece of
   one of two meetings of that title, which the path names alike; a title holding `//`,
   or beginning or ending with `/`, or one whose keyword `todo.org` does not declare,
@@ -343,7 +343,7 @@ afresh at each run
   every day, meeting and dated transcript are found again at each run, and a file
   whose own changed is written again, unconverted. One rebuild, with plan 041's: the
   index at schema 5
-  ([`SCHEMA`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)),
+  ([`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
   a column `links` in `documents`; the journal's text embedded again, as days and
   meetings; transcripts named with a blank, and undated ones, given new ids once; a
   bookmark to the journal's `e-` id broken. Every request carries 77 more estimated
@@ -353,7 +353,7 @@ afresh at each run
   matter at its largest, twelve participants and twelve refs per relation, each of the
   longest, reads in 3,463 of `read`'s 4,000 with the smallest slice
   ([the tests](../../tests/test_budgets.py)): `participant` is the work log's role
-  alone ([`WORKLOG_ROLES`](../../src/atlassian_offline_mcp/mirror/domain/mirror.py)),
+  alone ([`WORKLOG_ROLES`](../../src/kb_mcp/mirror/domain/mirror.py)),
   since an issue with every other role and twelve participants would read 5,702, and
   an issue with those links 4,318, so backlinks for issue keys will need a budget of
   their own.
@@ -375,36 +375,36 @@ afresh at each run
 ## Persons joined by account, then exact name
 
 Each build of the index joins the names of every source into persons
-([`joined`](../../src/atlassian_offline_mcp/search/domain/people.py)). An account is a
+([`joined`](../../src/kb_mcp/search/domain/people.py)). An account is a
 person under each of its names, and two accounts are never one. A name without an
 account goes, by the first rule that answers
-([`RULES`](../../src/atlassian_offline_mcp/search/domain/people.py)), to the person
+([`RULES`](../../src/kb_mcp/search/domain/people.py)), to the person
 that the user's alias names
-([`by_alias`](../../src/atlassian_offline_mcp/search/domain/people.py)); to the one
+([`by_alias`](../../src/kb_mcp/search/domain/people.py)); to the one
 account with a name of its key
-([`by_name`](../../src/atlassian_offline_mcp/search/domain/people.py)); for a
+([`by_name`](../../src/kb_mcp/search/domain/people.py)); for a
 transcript's speaker, to the one participant of the meetings that the transcript links
 to whose name's first word is the speaker's, whole
-([`by_meeting`](../../src/atlassian_offline_mcp/search/domain/people.py)); else it is
+([`by_meeting`](../../src/kb_mcp/search/domain/people.py)); else it is
 a person by name alone, shared by every name of its key. Names compare by a key, without
 case, accents, runs of spaces or a trailing part in brackets
-([`name_key`](../../src/atlassian_offline_mcp/search/domain/people.py)), but for the
+([`name_key`](../../src/kb_mcp/search/domain/people.py)), but for the
 parts that tell two names of one key apart
-([`Joining.key`](../../src/atlassian_offline_mcp/search/domain/people.py)). A name that
+([`Joining.key`](../../src/kb_mcp/search/domain/people.py)). A name that
 could be several persons joins none of them, a speaker whose meeting names another
 than the one account of its name among them, and the build warns of it, as of an alias
 that changes nothing
-([`index_mirror`](../../src/atlassian_offline_mcp/search/app/indexing.py)). The
+([`index_mirror`](../../src/kb_mcp/search/app/indexing.py)). The
 aliases are a file of the data directory, `aliases.toml`, read at each build
-([`read_aliases`](../../src/atlassian_offline_mcp/search/adapters/aliases.py)). The
+([`read_aliases`](../../src/kb_mcp/search/adapters/aliases.py)). The
 index holds the persons, each with an id, `p-` and a digest of its account id or its
-name's key ([`person_id`](../../src/atlassian_offline_mcp/search/domain/people.py)),
+name's key ([`person_id`](../../src/kb_mcp/search/domain/people.py)),
 in tables rebuilt with it
-([`Writer.join`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)).
+([`Writer.join`](../../src/kb_mcp/search/adapters/sqlite_index.py)).
 A filter `person`, and those of the five roles, keep a person's documents under any of
-their names or their id ([`who`](../../src/atlassian_offline_mcp/mcp/app/tools.py)),
+their names or their id ([`who`](../../src/kb_mcp/mcp/app/tools.py)),
 and an answer narrowed by `person` opens with who they are, their names and how each
-joined ([`person`](../../src/atlassian_offline_mcp/mcp/app/responses.py)).
+joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
 
 - **Why.** The maintainer's feedback asked for one person across sources, their Jira
   account, their transcript speaker name and `:PARTICIPANTS:`, and for one query giving
@@ -421,13 +421,13 @@ joined ([`person`](../../src/atlassian_offline_mcp/mcp/app/responses.py)).
   and dates ([the MCP surface](mcp-surface.md)). Persons are joined whole at each
   build, since one account fetched late can make a work-log name ambiguous. The aliases
   are a file, since a setting cannot hold a free mapping of names
-  ([`kind_of`](../../src/atlassian_offline_mcp/config/domain/settings.py)), and a file
+  ([`kind_of`](../../src/kb_mcp/config/domain/settings.py)), and a file
   adds no setting to log, layer or document.
 - **Cost.** A first name outside a linked meeting, a nickname, a caption tool's `You`,
   or a colleague written two ways in the work log alone stays apart until the user
   writes an alias; an answer by `person` shows a one-word name alone as perhaps the
   same, with the alias's line that would join it
-  ([`about`](../../src/atlassian_offline_mcp/mcp/app/tools.py)). Two accounts of one
+  ([`about`](../../src/kb_mcp/mcp/app/tools.py)). Two accounts of one
   name stay two, and a name without an account that matches both is a person by name
   alone, until an alias names one by id. An alias compares names by their key, so it
   joins `Alex (Ops)` and `Alex (Sales)` alike and can tell them apart from nobody; one
@@ -436,13 +436,13 @@ joined ([`person`](../../src/atlassian_offline_mcp/mcp/app/responses.py)).
   whole at each build: on a synthetic index of 20,000 issues of 40 accounts and 2,000
   meetings with their transcripts, 148,000 rows of people and 2,000 links, it took 1.4 s
   on this laptop, the meetings of the transcripts read in 9 ms by their source and id
-  ([`SUMMARIES`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)),
+  ([`SUMMARIES`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
   where a search of a source's documents for each of them took 28 s. The files hold no
   person, so another engine sees names
   ([the how-to](../how-to/other-search-engines.md#what-another-engine-does-not-get)).
   A person's id is an opaque handle that protects nothing: hashing a known account id
   finds it again. One rebuild, at schema 6
-  ([`SCHEMA`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), which
+  ([`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py)), which
   embeds nothing new, no piece's text holding a person. Every request carries 58 more
   estimated tokens, the filter in the schemas of `search` and `ask`: 2,529, within a
   standing budget raised from 2,500 to 2,600, as
@@ -470,9 +470,9 @@ Words are indexed by SQLite's full-text engine, FTS5, in one file,
 
 - **Why.** It comes with Python's standard library and needs no server. A build writes
   a new file aside and renames it into place
-  ([`building`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), and the
+  ([`building`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and the
   server opens it read-only for each call
-  ([`reading`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), so a new
+  ([`reading`](../../src/kb_mcp/search/adapters/sqlite_index.py)), so a new
   build is served from the next call without a restart.
 - **Cost.** No stemming: `deploy` does not find `deployment`. The weights are set by
   hand, and every `index` reads the whole mirror again.
@@ -488,7 +488,7 @@ The filters of `search` and `ask`, the created range among them, are conditions 
 `documents` table, which no index of SQLite's covers, and those by person on the table
 `people`, by the person's id, indexed by person and role, and by role and name: one
 scan per call lists the documents that pass
-([`KEPT`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)). The
+([`KEPT`](../../src/kb_mcp/search/adapters/sqlite_index.py)). The
 full-text match is still read whole and scored, and a join then drops the documents
 outside that list. A sort by a date scores every match.
 
@@ -500,7 +500,7 @@ outside that list. A sort by a date scores every match.
   ([persons joined by account, then exact name](#persons-joined-by-account-then-exact-name)).
 - **Cost.** The scan reads every row, about 2 ms for 20,000 documents. A filter by
   person first finds the persons of the name's key, then counts their documents by
-  role and by source ([`who`](../../src/atlassian_offline_mcp/mcp/app/tools.py)):
+  role and by source ([`who`](../../src/kb_mcp/mcp/app/tools.py)):
   measured by plan 043 on 20,000 issues and 140,000 rows of people, 80,000 of them
   comments, the median of 31 calls, 8 ms in any role, where 042's count of every name
   of the role took 24 for an author and 35 for a commenter. Its match then reads
@@ -529,7 +529,7 @@ outside that list. A sort by a date scores every match.
 
 By default, `search` and `ask` rank by words and by meaning, each apart, then fuse the
 two rankings by reciprocal rank: each list gives a document 1 / (60 + its rank)
-([`fuse`](../../src/atlassian_offline_mcp/search/domain/search.py)). `eval` measures every
+([`fuse`](../../src/kb_mcp/search/domain/search.py)). `eval` measures every
 mode and chunking on golden questions, whose answers are known.
 
 - **Why.** Words find identifiers and exact terms; meaning finds a question asked in
@@ -560,7 +560,7 @@ mode and chunking on golden questions, whose answers are known.
 ## Embeddings by any OpenAI-compatible API, not in process
 
 No model runs in this program:
-[`connect`](../../src/atlassian_offline_mcp/search/adapters/embedding.py) reaches a model
+[`connect`](../../src/kb_mcp/search/adapters/embedding.py) reaches a model
 behind an OpenAI-compatible `/v1/embeddings` endpoint, by default Ollama on this machine,
 which is only the example: any such server works.
 
@@ -570,11 +570,11 @@ which is only the example: any such server works.
   server are the user's to choose.
 - **Cost.** One more program to install and keep running. Ollama lists the digest of
   each model, which its fingerprint holds
-  ([`ApiEmbedder.fingerprint`](../../src/atlassian_offline_mcp/search/adapters/embedding.py)),
+  ([`ApiEmbedder.fingerprint`](../../src/kb_mcp/search/adapters/embedding.py)),
   so new weights call for new vectors; another server lists none, and vectors then
   follow the model's name alone. The text sent is the company's content: an address
   that is not a literal one of this machine needs `--allow-remote-embeddings` on every
-  run, and https ([`refused_endpoint`](../../src/atlassian_offline_mcp/kernel/endpoint.py)).
+  run, and https ([`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py)).
 - **Rejected.** Models in process with onnxruntime, from pinned files, as plan 011 built
   them; Ollama's own `/api/embed`, which other servers do not offer; a setting that
   allows a remote endpoint, which would allow it on every run without a word.
@@ -586,7 +586,7 @@ which is only the example: any such server works.
 `search` and `ask` can send their first documents, after those that a query names, to a
 cross-encoder that a server on this machine runs, llama.cpp's `llama-server` by
 default, and show them in the order of its scores
-([`rerank`](../../src/atlassian_offline_mcp/search/adapters/reranking.py)). It is off
+([`rerank`](../../src/kb_mcp/search/adapters/reranking.py)). It is off
 by default.
 
 - **Why.** A model that reads the question with each document is the strongest known
@@ -615,11 +615,11 @@ by default.
 
 An answer of the server stays within a budget of estimated tokens, 4,000 for arguments
 at or below their defaults and 10,000 at most
-([`BUDGET`](../../src/atlassian_offline_mcp/mcp/app/responses.py),
-[`CEILING`](../../src/atlassian_offline_mcp/mcp/app/responses.py)); one that is cut ends
+([`BUDGET`](../../src/kb_mcp/mcp/app/responses.py),
+[`CEILING`](../../src/kb_mcp/mcp/app/responses.py)); one that is cut ends
 with the call that continues it; and everything copied from the site stands inside one
 block marked as untrusted reference data
-([`answer`](../../src/atlassian_offline_mcp/mcp/app/responses.py)).
+([`answer`](../../src/kb_mcp/mcp/app/responses.py)).
 
 - **Why.** An agent's context is small, and shared with its task: an answer that floods
   it crowds out the rest. A page is written by anyone with access to it, and an
@@ -639,7 +639,7 @@ block marked as untrusted reference data
 
 The command line is the standard library's argparse, completed in bash and zsh by
 argcomplete. Each subcommand is declared apart from its run, so that `--help` and a
-completion import no run's packages: [`parser`](../../src/atlassian_offline_mcp/cli/main.py)
+completion import no run's packages: [`parser`](../../src/kb_mcp/cli/main.py)
 registers every declaration, and imports a run only once the arguments are parsed.
 
 - **Why.** The maintainer's choice: argparse needs no dependency, and argcomplete
@@ -656,10 +656,10 @@ registers every declaration, and imports a run only once the arguments are parse
 ## File, then environment, then flags
 
 Settings come from one model,
-[`Settings`](../../src/atlassian_offline_mcp/config/domain/settings.py), fed by three
+[`Settings`](../../src/kb_mcp/config/domain/settings.py), fed by three
 layers, each stronger than the last: the settings file, the environment (the prefix
-`ATLASSIAN_OFFLINE_MCP_`, `__` for nesting) and the flags.
-[`load_settings`](../../src/atlassian_offline_mcp/config/app/settings.py) reads each layer,
+`KB_MCP_`, `__` for nesting) and the flags.
+[`load_settings`](../../src/kb_mcp/config/app/settings.py) reads each layer,
 merges them and keeps each value's layer.
 
 - **Why.** The Unix convention: the file holds what stays, the environment what a
@@ -698,9 +698,9 @@ only once an endpoint is set, and only to this machine.
 The data directory and the log folder are refused under a synchronised folder (iCloud,
 `~/Library/CloudStorage`, Dropbox, OneDrive, Google Drive, `~/Desktop`, `~/Documents`)
 or inside a git working tree
-([`unsafe_location`](../../src/atlassian_offline_mcp/config/domain/settings.py)); a
+([`unsafe_location`](../../src/kb_mcp/config/domain/settings.py)); a
 command then stops with
-[`UnsafeDataDirError`](../../src/atlassian_offline_mcp/config/app/settings.py) before
+[`UnsafeDataDirError`](../../src/kb_mcp/config/app/settings.py) before
 anything is written.
 
 - **Why.** The mirror is the company's content. A synchronised folder would copy it off

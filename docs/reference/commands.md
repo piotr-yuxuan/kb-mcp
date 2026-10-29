@@ -4,22 +4,22 @@ What the command says with `--help`, then each of its subcommands, and each step
 as the parser declares them; then the exit statuses. This page is generated from the
 code by `uv run python -m tests.reference_pages`, and `tests/test_reference.py` fails
 while it differs: change a subcommand's declaration in
-[`cli/options/`](../../src/atlassian_offline_mcp/cli/options/), then run that command;
+[`cli/options/`](../../src/kb_mcp/cli/options/), then run that command;
 never edit the page.
 
 With no arguments, the command serves MCP on stdio, as `serve` does: that is how agents
-start it ([`main`](../../src/atlassian_offline_mcp/cli/main.py)). A flag that overrides
+start it ([`main`](../../src/kb_mcp/cli/main.py)). A flag that overrides
 a setting does so for its run alone, the strongest of the layers that
 [the settings](settings.md) describe. Help is shown here 88 columns wide and without
 colour; `~` stands for the home directory, and `<log directory>` for the platform's
 folder of logs.
 
-## `atlassian-offline-mcp`
+## `kb-mcp`
 
 ```text
-usage: atlassian-offline-mcp [-h] [--version] command ...
+usage: kb-mcp [-h] [--version] command ...
 
-An offline mirror of Confluence and Jira Cloud, served over MCP.
+Knowledge base MCP: an offline mirror of Confluence and Jira Cloud, served over MCP.
 
 positional arguments:
   command
@@ -59,10 +59,9 @@ by Ctrl-C.
 ## `check`
 
 ```text
-usage: atlassian-offline-mcp check [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                   [--site SITE] [-q | -v |
-                                   --log-level {debug,info,warning,error}]
-                                   [--format {text,json}] [--summary {short,detailed}]
+usage: kb-mcp check [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
+                    -v | --log-level {debug,info,warning,error}]
+                    [--format {text,json}] [--summary {short,detailed}]
 
 options:
   -h, --help            show this help message and exit
@@ -84,11 +83,10 @@ one gave; ignored, each value ignored, with its setting, layer and why.
 ## `completion`
 
 ```text
-usage: atlassian-offline-mcp completion [-h] [-q | -v |
-                                        --log-level {debug,info,warning,error}]
+usage: kb-mcp completion [-h] [-q | -v | --log-level {debug,info,warning,error}]
 
-Print the code that completes the command in bash and zsh. Add eval "$(atlassian-
-offline-mcp completion)" to ~/.bashrc, or to ~/.zshrc after compinit.
+Print the code that completes the command in bash and zsh. Add eval "$(kb-mcp
+completion)" to ~/.bashrc, or to ~/.zshrc after compinit.
 
 options:
   -h, --help            show this help message and exit
@@ -101,11 +99,9 @@ options:
 ## `doctor`
 
 ```text
-usage: atlassian-offline-mcp doctor [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                    [--site SITE] [-q | -v |
-                                    --log-level {debug,info,warning,error}]
-                                    [--format {text,json}]
-                                    [--summary {short,detailed}]
+usage: kb-mcp doctor [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
+                     -v | --log-level {debug,info,warning,error}]
+                     [--format {text,json}] [--summary {short,detailed}]
 
 options:
   -h, --help            show this help message and exit
@@ -127,14 +123,11 @@ state: well, failed, or sign in.
 ## `download`
 
 ```text
-usage: atlassian-offline-mcp download [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                      [--site SITE] [-q | -v |
-                                      --log-level {debug,info,warning,error}]
-                                      [--format {text,json}]
-                                      [--summary {short,detailed}] [-y]
-                                      [--space SPACE] [--project PROJECT]
-                                      [--since SINCE] [--until UNTIL]
-                                      [--max-file-mb MAX_FILE_MB] [--dry-run]
+usage: kb-mcp download [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE]
+                       [-q | -v | --log-level {debug,info,warning,error}]
+                       [--format {text,json}] [--summary {short,detailed}] [-y]
+                       [--space SPACE] [--project PROJECT] [--since SINCE]
+                       [--until UNTIL] [--max-file-mb MAX_FILE_MB] [--dry-run]
 
 options:
   -h, --help            show this help message and exit
@@ -167,13 +160,12 @@ at a failure, held, or null when not written; dry_run, whether the run only plan
 ## `eval`
 
 ```text
-usage: atlassian-offline-mcp eval [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                  [--site SITE] [-q | -v |
-                                  --log-level {debug,info,warning,error}]
-                                  [--format {text,json}] [--summary {short,detailed}]
-                                  [-y] [--allow-remote-embeddings] [--model MODEL]
-                                  [--chunking {sections,windows,section-paths,small-to-big}]
-                                  golden
+usage: kb-mcp eval [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
+                   -v | --log-level {debug,info,warning,error}] [--format {text,json}]
+                   [--summary {short,detailed}] [-y] [--allow-remote-embeddings]
+                   [--model MODEL]
+                   [--chunking {sections,windows,section-paths,small-to-big}]
+                   golden
 
 positional arguments:
   golden                a YAML file of golden questions
@@ -207,11 +199,9 @@ chunking by the rule; results, the file that keeps them.
 ## `eval-agents`
 
 ```text
-usage: atlassian-offline-mcp eval-agents [-h] [-q | -v |
-                                         --log-level {debug,info,warning,error}]
-                                         [--format {text,json}]
-                                         [--summary {short,detailed}]
-                                         step ...
+usage: kb-mcp eval-agents [-h] [-q | -v | --log-level {debug,info,warning,error}]
+                          [--format {text,json}] [--summary {short,detailed}]
+                          step ...
 
 positional arguments:
   step
@@ -238,13 +228,11 @@ verdict on ask and the runs counted.
 ## `eval-agents prepare`
 
 ```text
-usage: atlassian-offline-mcp eval-agents prepare [-h] [--config CONFIG]
-                                                 [--data-dir DATA_DIR] [--site SITE]
-                                                 [-y] [--allow-remote-embeddings]
-                                                 --out OUT --model {haiku,sonnet}
-                                                 [--sample SAMPLE] [--seed SEED]
-                                                 [--dry-run]
-                                                 golden
+usage: kb-mcp eval-agents prepare [-h] [--config CONFIG] [--data-dir DATA_DIR]
+                                  [--site SITE] [-y] [--allow-remote-embeddings]
+                                  --out OUT --model {haiku,sonnet} [--sample SAMPLE]
+                                  [--seed SEED] [--dry-run]
+                                  golden
 
 positional arguments:
   golden                a YAML file of golden questions
@@ -269,9 +257,9 @@ options:
 ## `eval-agents call`
 
 ```text
-usage: atlassian-offline-mcp eval-agents call [-h] [--config CONFIG]
-                                              [--data-dir DATA_DIR] [--site SITE]
-                                              directory run tool arguments
+usage: kb-mcp eval-agents call [-h] [--config CONFIG] [--data-dir DATA_DIR]
+                               [--site SITE]
+                               directory run tool arguments
 
 positional arguments:
   directory            the runs' directory
@@ -289,9 +277,9 @@ options:
 ## `eval-agents answer`
 
 ```text
-usage: atlassian-offline-mcp eval-agents answer [-h] [--config CONFIG]
-                                                [--data-dir DATA_DIR] [--site SITE]
-                                                directory run answer
+usage: kb-mcp eval-agents answer [-h] [--config CONFIG] [--data-dir DATA_DIR]
+                                 [--site SITE]
+                                 directory run answer
 
 positional arguments:
   directory            the runs' directory
@@ -308,10 +296,9 @@ options:
 ## `eval-agents grade`
 
 ```text
-usage: atlassian-offline-mcp eval-agents grade [-h] [--config CONFIG]
-                                               [--data-dir DATA_DIR] [--site SITE]
-                                               [-y]
-                                               directory
+usage: kb-mcp eval-agents grade [-h] [--config CONFIG] [--data-dir DATA_DIR]
+                                [--site SITE] [-y]
+                                directory
 
 positional arguments:
   directory            the runs' directory
@@ -327,14 +314,12 @@ options:
 ## `eval-rerank`
 
 ```text
-usage: atlassian-offline-mcp eval-rerank [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                         [--site SITE] [-q | -v |
-                                         --log-level {debug,info,warning,error}]
-                                         [--format {text,json}]
-                                         [--summary {short,detailed}] [-y]
-                                         [--allow-remote-embeddings] [--depth DEPTH]
-                                         [--sample SAMPLE] [--seed SEED]
-                                         golden
+usage: kb-mcp eval-rerank [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE]
+                          [-q | -v | --log-level {debug,info,warning,error}]
+                          [--format {text,json}] [--summary {short,detailed}] [-y]
+                          [--allow-remote-embeddings] [--depth DEPTH]
+                          [--sample SAMPLE] [--seed SEED]
+                          golden
 
 positional arguments:
   golden                a YAML file of golden questions
@@ -368,11 +353,10 @@ verdicts and default depth; results, the file that keeps them.
 ## `index`
 
 ```text
-usage: atlassian-offline-mcp index [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                   [--site SITE] [-q | -v |
-                                   --log-level {debug,info,warning,error}]
-                                   [--format {text,json}] [--summary {short,detailed}]
-                                   [-y] [--allow-remote-embeddings]
+usage: kb-mcp index [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
+                    -v | --log-level {debug,info,warning,error}]
+                    [--format {text,json}] [--summary {short,detailed}] [-y]
+                    [--allow-remote-embeddings]
 
 options:
   -h, --help            show this help message and exit
@@ -401,11 +385,10 @@ alone.
 ## `login`
 
 ```text
-usage: atlassian-offline-mcp login [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                   [--site SITE] [-q | -v |
-                                   --log-level {debug,info,warning,error}]
-                                   [--format {text,json}] [--summary {short,detailed}]
-                                   [-y] [--chrome CHROME] [--keep-extensions]
+usage: kb-mcp login [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
+                    -v | --log-level {debug,info,warning,error}]
+                    [--format {text,json}] [--summary {short,detailed}] [-y]
+                    [--chrome CHROME] [--keep-extensions]
 
 options:
   -h, --help            show this help message and exit
@@ -430,11 +413,9 @@ session.
 ## `mirror`
 
 ```text
-usage: atlassian-offline-mcp mirror [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                    [--site SITE] [-q | -v |
-                                    --log-level {debug,info,warning,error}]
-                                    [--format {text,json}]
-                                    [--summary {short,detailed}] [-y]
+usage: kb-mcp mirror [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
+                     -v | --log-level {debug,info,warning,error}]
+                     [--format {text,json}] [--summary {short,detailed}] [-y]
 
 options:
   -h, --help            show this help message and exit
@@ -459,12 +440,11 @@ the mirror does not show, by name; problems, each by its place and why.
 ## `model`
 
 ```text
-usage: atlassian-offline-mcp model [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                   [--site SITE] [-q | -v |
-                                   --log-level {debug,info,warning,error}]
-                                   [--format {text,json}] [--summary {short,detailed}]
-                                   [--allow-remote-embeddings]
-                                   {check} [name]
+usage: kb-mcp model [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
+                    -v | --log-level {debug,info,warning,error}]
+                    [--format {text,json}] [--summary {short,detailed}]
+                    [--allow-remote-embeddings]
+                    {check} [name]
 
 positional arguments:
   {check}
@@ -493,12 +473,10 @@ model's, empty when the endpoint reports none.
 ## `reranker`
 
 ```text
-usage: atlassian-offline-mcp reranker [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                      [--site SITE] [-q | -v |
-                                      --log-level {debug,info,warning,error}]
-                                      [--format {text,json}]
-                                      [--summary {short,detailed}]
-                                      {check} [name]
+usage: kb-mcp reranker [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE]
+                       [-q | -v | --log-level {debug,info,warning,error}]
+                       [--format {text,json}] [--summary {short,detailed}]
+                       {check} [name]
 
 positional arguments:
   {check}
@@ -525,12 +503,10 @@ rerank.depth texts as long as a search sends, timed.
 ## `serve`
 
 ```text
-usage: atlassian-offline-mcp serve [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                   [--site SITE] [-q | -v |
-                                   --log-level {debug,info,warning,error}]
-                                   [--allow-remote-embeddings]
-                                   [--tools ask,search,read,browse,status] [--rerank |
-                                   --no-rerank]
+usage: kb-mcp serve [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
+                    -v | --log-level {debug,info,warning,error}]
+                    [--allow-remote-embeddings]
+                    [--tools ask,search,read,browse,status] [--rerank | --no-rerank]
 
 options:
   -h, --help            show this help message and exit
@@ -553,14 +529,13 @@ options:
 ## `sync`
 
 ```text
-usage: atlassian-offline-mcp sync [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                  [--site SITE] [-q | -v |
-                                  --log-level {debug,info,warning,error}]
-                                  [--format {text,json}] [--summary {short,detailed}]
-                                  [-y] [--include {confluence,jira,worklog} |
-                                  --exclude {confluence,jira,worklog}] [--since SINCE]
-                                  [--until UNTIL] [--max-file-mb MAX_FILE_MB]
-                                  [--allow-remote-embeddings] [--dry-run]
+usage: kb-mcp sync [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
+                   -v | --log-level {debug,info,warning,error}] [--format {text,json}]
+                   [--summary {short,detailed}] [-y]
+                   [--include {confluence,jira,worklog} |
+                   --exclude {confluence,jira,worklog}] [--since SINCE]
+                   [--until UNTIL] [--max-file-mb MAX_FILE_MB]
+                   [--allow-remote-embeddings] [--dry-run]
 
 options:
   -h, --help            show this help message and exit
@@ -598,7 +573,7 @@ not run) and its result, as its own command gives it.
 ## Exit statuses
 
 Every command ends with one of these statuses, which
-[`MEANINGS`](../../src/atlassian_offline_mcp/kernel/exit_status.py) defines once, for
+[`MEANINGS`](../../src/kb_mcp/kernel/exit_status.py) defines once, for
 `--help` and for this page.
 
 | Status | Meaning |

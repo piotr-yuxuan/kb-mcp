@@ -13,25 +13,25 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from atlassian_offline_mcp.cli.commands.reranker import (
+from kb_mcp.cli.commands.reranker import (
     ANSWER,
     PROBE,
     UNRELATED,
     Checked,
     text,
 )
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import Rerank, Settings, SettingsError
-from atlassian_offline_mcp.kernel.endpoint import RERANKING
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.kernel.reranking import (
+from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import Rerank, Settings, SettingsError
+from kb_mcp.kernel.endpoint import RERANKING
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.reranking import (
     BOUND_S,
     LONGEST_QUERY,
     LONGEST_TEXT,
     MOST_TEXTS,
 )
-from atlassian_offline_mcp.search.adapters.model_api import Bounds, endpoint
-from atlassian_offline_mcp.search.adapters.reranking import (
+from kb_mcp.search.adapters.model_api import Bounds, endpoint
+from kb_mcp.search.adapters.reranking import (
     EVALUATION,
     SEARCH,
     RerankError,
@@ -59,7 +59,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.search.adapters.model_api import Endpoint
+    from kb_mcp.search.adapters.model_api import Endpoint
     from tests.conftest import InMemory
 
 QUERY = "how do I roll back a release"
@@ -80,7 +80,7 @@ HTTPX_DEFAULT_S = 5.0
 # Text that an answer may echo, and that no message may hold.
 ECHO = "the query, echoed"
 # A model served by a local llama-server on the default address, for the opt-in test.
-LIVE = os.environ.get("ATLASSIAN_OFFLINE_MCP_LIVE_RERANKER")
+LIVE = os.environ.get("KB_MCP_LIVE_RERANKER")
 
 
 def answering(handle: Callable[[httpx.Request], httpx.Response]) -> Endpoint:
@@ -346,7 +346,7 @@ def test_the_reranking_server_must_be_on_this_machine() -> None:
     )
 
 
-@pytest.mark.skipif(LIVE is None, reason="set ATLASSIAN_OFFLINE_MCP_LIVE_RERANKER to a model")
+@pytest.mark.skipif(LIVE is None, reason="set KB_MCP_LIVE_RERANKER to a model")
 def test_a_reranker_served_on_this_machine_ranks_the_answer_first() -> None:
     """A real llama-server: the passage that answers scores above one that does not."""
     REACHABLE.add(httpx.URL(RERANK_URL).port or 0)
@@ -390,7 +390,7 @@ def test_unusable_rerank_settings_are_refused_by_name_with_no_flag_offered(
 
 def test_the_variable_overrides_the_file(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """The environment is stronger than the settings file, as for every setting."""
-    variable, stronger = "ATLASSIAN_OFFLINE_MCP_RERANK__DEPTH", 20
+    variable, stronger = "KB_MCP_RERANK__DEPTH", 20
     monkeypatch.setenv(variable, str(stronger))
     loaded = loaded_from(tmp_path, "[rerank]\ndepth = 10\n")
     assert loaded.settings.rerank.depth == stronger

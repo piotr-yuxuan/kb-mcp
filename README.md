@@ -1,10 +1,10 @@
-# atlassian-offline-mcp
+# kb-mcp
 
-An offline mirror of Confluence and Jira Cloud, and of your work log, kept on your own
-machine and served to coding agents (Claude Code, VS Code Copilot) through a local MCP
-server. It reads what you can already see on the site, through the REST APIs and your
-own signed-in browser session or an API token, and never writes to the site; the work
-log, a folder of org files, it reads in place.
+Knowledge base MCP: an offline mirror of Confluence and Jira Cloud, and of your work
+log, kept on your own machine and served to coding agents (Claude Code, VS Code Copilot)
+through a local MCP server. It reads what you can already see on the site, through the
+REST APIs and your own signed-in browser session or an API token, and never writes to
+the site; the work log, a folder of org files, it reads in place.
 
 Work in progress: [the roadmap](docs/work/README.md) says what each plan to come delivers;
 [the changelog](docs/work/changelog/) keeps the record of each plan done.
@@ -26,12 +26,12 @@ Work in progress: [the roadmap](docs/work/README.md) says what each plan to come
 From a clone of this repository, uv runs it without installing it:
 
 ```bash
-uv run atlassian-offline-mcp --help
+uv run kb-mcp --help
 ```
 
-Settings live in `~/.config/atlassian-offline-mcp/config.toml`, and each can also come
-from a variable `ATLASSIAN_OFFLINE_MCP_…` or, for some, a flag, the flag winning;
-`atlassian-offline-mcp check --summary detailed` shows each one, where it came from, and
+Settings live in `~/.config/kb-mcp/config.toml`, and each can also come
+from a variable `KB_MCP_…` or, for some, a flag, the flag winning;
+`kb-mcp check --summary detailed` shows each one, where it came from, and
 validates them and the data directory. A command that writes under the data directory
 says what it will do and asks first, unless given `--yes`.
 
@@ -42,5 +42,7 @@ says what it will do and asks first, unless given `--yes`.
   mirror.
 - [Your first change](docs/tutorials/first-change.md), a tutorial for contributors: the
   checks, then a subcommand written test first.
+- [Move to kb-mcp](docs/how-to/move-to-kb-mcp.md), for a machine set up under the
+  program's former name: what a run finds of it, and the steps to move it.
 - [The map](docs/README.md) of every page, sorted by what you need from it: the
   tutorials, how-to guides, reference and explanation.

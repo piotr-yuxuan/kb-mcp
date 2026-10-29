@@ -12,17 +12,17 @@ import pytest
 from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.cli.commands import download as download_command
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import Settings
-from atlassian_offline_mcp.kernel.content import Page
-from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
-from atlassian_offline_mcp.sources.atlassian.adapters import http
-from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, Stored
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
-from atlassian_offline_mcp.sources.atlassian.app.download import Targets, download, plan
-from atlassian_offline_mcp.sources.atlassian.domain.coverage import Coverage, Target, Window
-from atlassian_offline_mcp.sources.atlassian.domain.period import EPOCH, Period, PeriodError
+from kb_mcp.cli.commands import download as download_command
+from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import Settings
+from kb_mcp.kernel.content import Page
+from kb_mcp.mirror.adapters.pandoc import PandocFailedError
+from kb_mcp.sources.atlassian.adapters import http
+from kb_mcp.sources.atlassian.adapters.raw_store import RawStore, Stored
+from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.app.download import Targets, download, plan
+from kb_mcp.sources.atlassian.domain.coverage import Coverage, Target, Window
+from kb_mcp.sources.atlassian.domain.period import EPOCH, Period, PeriodError
 from tests.mirrors import mirrored
 from tests.samples import v2_page, v2_space
 from tests.test_download import (
@@ -333,7 +333,7 @@ def test_a_page_on_its_way_is_probed_before_one_newly_absent(
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
     gone = RefreshSite(listing=without("1002"), gone={"1002"})
     run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND)
-    monkeypatch.setattr("atlassian_offline_mcp.sources.atlassian.app.download.MAX_PROBES", 1)
+    monkeypatch.setattr("kb_mcp.sources.atlassian.app.download.MAX_PROBES", 1)
     both = RefreshSite(listing={"1003": PAGES["1003"]}, gone={"1001", "1002"})
     run(chosen, monkeypatch, both, catch_up(["MFS"], []), SECOND + timedelta(days=1))
     stones = RawStore(chosen.raw).tombstones()
@@ -470,7 +470,7 @@ def test_a_corrupt_coverage_record_is_refused_by_the_command(
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
-    data = (home / "atlassian-offline-mcp").resolve()
+    data = (home / "kb-mcp").resolve()
     (data / "raw").mkdir(parents=True)
     (data / "raw" / "coverage.json").write_text("[{}]", "utf-8")
     options = [

@@ -18,7 +18,7 @@ SNIPPETS = {
     page: [json.loads(code) for code in re.findall(r"```json\n(.*?)```", text, re.DOTALL)]
     for page, text in TEXTS.items()
 }
-SERVER = "atlassian-offline-mcp"  # the name each client knows the server by
+SERVER = "kb-mcp"  # the name each client knows the server by
 
 
 def test_every_registration_starts_the_console_script() -> None:

@@ -22,12 +22,12 @@ import pytest
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.evaluation.adapters.mcp_client import Answered
-from atlassian_offline_mcp.evaluation.app import agents
-from atlassian_offline_mcp.mcp.app.tools import Library
-from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
-from atlassian_offline_mcp.search.app.meaning import Meaning
+from kb_mcp.cli.main import main
+from kb_mcp.evaluation.adapters.mcp_client import Answered
+from kb_mcp.evaluation.app import agents
+from kb_mcp.mcp.app.tools import Library
+from kb_mcp.search.app.indexing import Embedding, build_index
+from kb_mcp.search.app.meaning import Meaning
 from tests.answers import estimate, parts
 from tests.endpoint import Scripted, connector, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
@@ -76,7 +76,7 @@ VALID = {"found": True, "answer": "Seven days.", "sources": ["196845"]}
 # A call as the bridge logs it.
 LOGGED = '{"tool": "search", "arguments": {}, "tokens": 9, "seconds": 1.0, "status": "answered"}\n'
 # The command line of eval-agents, as a prompt names it.
-PROGRAM = [sys.executable, "-m", "atlassian_offline_mcp", "eval-agents"]
+PROGRAM = [sys.executable, "-m", "kb_mcp", "eval-agents"]
 
 
 @dataclass(frozen=True)
@@ -100,7 +100,7 @@ def world(
     that what the world holds is what the runs wrote of their own.
     """
     home, data = tmp_path / "home", tmp_path / "data"
-    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
+    (home / ".config" / "kb-mcp").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
     docs = data / "docs"
     fillers(docs)
@@ -113,7 +113,7 @@ def world(
     golden.write_text(GOLDEN, encoding="utf-8")
     logs = tmp_path_factory.mktemp("logs")
     with serving(Scripted()) as url:
-        (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text(
+        (home / ".config" / "kb-mcp" / "config.toml").write_text(
             f'data_dir = {json.dumps(str(data))}\nmodel = "tiny"\nsearch_mode = "hybrid"\n'
             f"embedding_url = {json.dumps(url)}\n"
             f"[logs]\ndir = {json.dumps(str(logs))}\n"
@@ -317,7 +317,7 @@ def test_two_calls_at_once_at_the_twelfth_give_one_answer(world: World) -> None:
     calling = [
         sys.executable,
         "-m",
-        "atlassian_offline_mcp",
+        "kb_mcp",
         *bridged(out, run, "search", {"query": "kafka"}),
     ]
     statuses: list[int] = []
@@ -622,7 +622,7 @@ def test_each_call_starts_the_server_that_prepare_named(
     monkeypatch.setattr(agents, "called", recorded)
     run = runs_of(out)[0]
     assert main(bridged(out, run["id"], "search", {"query": "kafka"})) == 0
-    config = str((world.home / ".config" / "atlassian-offline-mcp" / "config.toml").absolute())
+    config = str((world.home / ".config" / "kb-mcp" / "config.toml").absolute())
     serve = [*PROGRAM[:3], "serve", "--config", config, *options]
     assert started == [[*serve, "--tools", ",".join(run["tools"])]]
 
@@ -756,21 +756,23 @@ def test_calls_and_runs_are_measured_as_the_call_logs_and_the_results_say(
         surface: json.loads((out / "calls" / f"{run}.jsonl").read_text("utf-8"))
         for surface, run in (("A", a), ("B", b))
     }
-    called = points("aom.eval.agent.calls", "aom.surface", "gen_ai.tool.name", "aom.status")
+    called = points(
+        "kb_mcp.eval.agent.calls", "kb_mcp.surface", "gen_ai.tool.name", "kb_mcp.status"
+    )
     assert {key: point.value for key, point in called.items()} == {
         ("B", "ask", "answered"): 1,
         ("A", "search", "refused"): 1,
     }
     by_tool = {("B", "ask"): lines["B"], ("A", "search"): lines["A"]}
-    tokens = points("aom.eval.agent.tokens", "aom.surface", "gen_ai.tool.name")
+    tokens = points("kb_mcp.eval.agent.tokens", "kb_mcp.surface", "gen_ai.tool.name")
     assert {key: point.sum for key, point in tokens.items()} == {
         key: line["tokens"] for key, line in by_tool.items()
     }
-    seconds = points("aom.eval.agent.call.duration", "aom.surface", "gen_ai.tool.name")
+    seconds = points("kb_mcp.eval.agent.call.duration", "kb_mcp.surface", "gen_ai.tool.name")
     assert {key: point.sum for key, point in seconds.items()} == pytest.approx(
         {key: line["seconds"] for key, line in by_tool.items()}
     )
-    judged = points("aom.eval.agent.runs", "aom.surface", "aom.outcome")
+    judged = points("kb_mcp.eval.agent.runs", "kb_mcp.surface", "kb_mcp.outcome")
     assert {key: point.value for key, point in judged.items()} == {
         ("A", "failure"): 1,
         ("B", "success"): 1,

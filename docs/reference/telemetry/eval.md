@@ -26,7 +26,7 @@ one that waits past 60 s is `eval.not_evaluated`.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `eval.model` | internal | `gen_ai.request.model`, `aom.chunking` | A target, a model and a chunking: its index built, then every question ranked and answered in every mode |
+| `eval.model` | internal | `gen_ai.request.model`, `kb_mcp.chunking` | A target, a model and a chunking: its index built, then every question ranked and answered in every mode |
 | `index.files` | internal | | The mirror's files read and indexed by words |
 | `index.join` | internal | | The documents' people joined into persons, once the files are read |
 | `index.embed` | internal | | The pieces by meaning: their vectors read from the vector store, or embedded |
@@ -40,11 +40,11 @@ one that waits past 60 s is `eval.not_evaluated`.
 
 | Instrument | Kind | Unit | Attributes | What |
 |---|---|---|---|---|
-| `aom.eval.question.duration` | histogram | `s` | `aom.chunking`, `aom.mode` | How long each question took to rank |
-| `aom.eval.score` | gauge | `1` | `gen_ai.request.model`, `aom.chunking`, `aom.mode`, `aom.measure` | Each mode's measure on all the questions: `recall@10`, `mrr@10`, `ndcg@10`, `success@1`, `found@ask` and `evidence@ask`; Section@10, which a golden file without evidence lacks, is in the results file alone, as is Evidence@ask without evidence |
-| `aom.index.files` | counter | `{file}` | `aom.outcome` | The mirror's files, `indexed` or `skipped` |
-| `aom.index.pieces` | counter | `{piece}` | `aom.outcome` | The pieces by meaning, `indexed` with a vector or `refused` one |
-| `aom.serve.fallbacks` | counter | `{fallback}` | `aom.mode` | A search by meaning ranked by words alone, as a server counts it |
+| `kb_mcp.eval.question.duration` | histogram | `s` | `kb_mcp.chunking`, `kb_mcp.mode` | How long each question took to rank |
+| `kb_mcp.eval.score` | gauge | `1` | `gen_ai.request.model`, `kb_mcp.chunking`, `kb_mcp.mode`, `kb_mcp.measure` | Each mode's measure on all the questions: `recall@10`, `mrr@10`, `ndcg@10`, `success@1`, `found@ask` and `evidence@ask`; Section@10, which a golden file without evidence lacks, is in the results file alone, as is Evidence@ask without evidence |
+| `kb_mcp.index.files` | counter | `{file}` | `kb_mcp.outcome` | The mirror's files, `indexed` or `skipped` |
+| `kb_mcp.index.pieces` | counter | `{piece}` | `kb_mcp.outcome` | The pieces by meaning, `indexed` with a vector or `refused` one |
+| `kb_mcp.serve.fallbacks` | counter | `{fallback}` | `kb_mcp.mode` | A search by meaning ranked by words alone, as a server counts it |
 | `gen_ai.client.operation.duration` | histogram | `s` | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type` | Each embedding, its attempts and waits included, by the GenAI conventions |
 | `gen_ai.client.token.usage` | histogram | `{token}` | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `gen_ai.token.type` | The tokens that each embedding's answer counted, `input` by type, when the endpoint counts them, by the GenAI conventions |
 | `http.client.request.duration` | histogram | `s` | `http.request.method`, `server.address`, `server.port`, `http.response.status_code`, `error.type` | Each request, by the HTTP conventions |

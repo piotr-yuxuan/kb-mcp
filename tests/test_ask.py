@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING
 import pytest
 from opentelemetry import trace
 
-from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
-from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
-from atlassian_offline_mcp.search.app.meaning import Meaning
+from kb_mcp.mcp.app.tools import Library, UnanswerableError
+from kb_mcp.search.app.indexing import Embedding, build_index
+from kb_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, built, continuation, estimate, follow, parts
 from tests.endpoint import connector, tiny
 from tests.mirrors import MOMENT, PEOPLE, PERSONS, fillers, issue, page, write
@@ -27,8 +27,8 @@ if TYPE_CHECKING:
 
     from _pytest.tempdir import TempPathFactory
 
-    from atlassian_offline_mcp.kernel.chunking import Chunking
-    from atlassian_offline_mcp.mcp.app.tools import SearchFilters
+    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.mcp.app.tools import SearchFilters
     from tests.conftest import InMemory
 
 # A passage's two lines about it, then its text, which runs to the next passage.
@@ -337,7 +337,9 @@ def call_s_span(library: Library, question: str, telemetry: InMemory) -> dict[st
     (span,) = (
         each for each in telemetry.spans.get_finished_spans() if each.name == "tools/call ask"
     )
-    return {key: value for key, value in (span.attributes or {}).items() if key.startswith("aom.")}
+    return {
+        key: value for key, value in (span.attributes or {}).items() if key.startswith("kb_mcp.")
+    }
 
 
 def test_the_call_s_span_says_the_mode_the_documents_found_and_the_passages_quoted(
@@ -347,11 +349,11 @@ def test_the_call_s_span_says_the_mode_the_documents_found_and_the_passages_quot
     shown = len(passages(words.ask("gamma notes")))
     said = call_s_span(words, "gamma notes", telemetry)
     assert said == {
-        "aom.mode": "lexical",
-        "aom.hits": ENOUGH,
-        "aom.fallback": False,
-        "aom.reranked": False,
-        "aom.passages": shown,
+        "kb_mcp.mode": "lexical",
+        "kb_mcp.hits": ENOUGH,
+        "kb_mcp.fallback": False,
+        "kb_mcp.reranked": False,
+        "kb_mcp.passages": shown,
     }
     assert 0 < shown < ASK_DOCUMENTS
 
@@ -366,7 +368,7 @@ def test_the_call_s_span_says_that_words_stood_in_for_meaning(
     build_index(docs, tmp_path / "index.sqlite", MOMENT)
     library = Library(tmp_path / "index.sqlite", docs, Meaning(connector()), "hybrid")
     said = call_s_span(library, "kafka retention", telemetry)
-    assert (said["aom.mode"], said["aom.fallback"]) == ("hybrid", True)
+    assert (said["kb_mcp.mode"], said["kb_mcp.fallback"]) == ("hybrid", True)
 
 
 def by_meaning(

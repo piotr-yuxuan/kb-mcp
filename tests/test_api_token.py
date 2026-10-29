@@ -17,10 +17,10 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from atlassian_offline_mcp.cli.commands import login as login_command
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.sources.atlassian.adapters import http
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.cli.commands import login as login_command
+from kb_mcp.cli.main import main
+from kb_mcp.sources.atlassian.adapters import http
+from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.endpoint import Scripted, serving
 from tests.test_cli import logged_as, the_log_file
 from tests.test_download import SITE, FakeSite
@@ -33,13 +33,13 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-EMAIL = "ATLASSIAN_OFFLINE_MCP_EMAIL"
-CREDENTIAL = "ATLASSIAN_OFFLINE_MCP_API_TOKEN"
+EMAIL = "KB_MCP_EMAIL"
+CREDENTIAL = "KB_MCP_API_TOKEN"
 ADDRESS = "someone@example.invalid"
 SENTINEL = "token-sentinel-4d1c"
 ENCODED = base64.b64encode(f"{ADDRESS}:{SENTINEL}".encode()).decode()
 AUTHORISATION = f"Basic {ENCODED}"
-KEY = "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY"
+KEY = "KB_MCP_EMBEDDING_API_KEY"
 KEY_SENTINEL = "key-sentinel-9a7e"
 HOST = httpx.URL(SITE).host
 REFUSED = 2
@@ -107,7 +107,7 @@ def test_the_token_goes_to_the_site_s_host_alone(home: Path, monkeypatch: Monkey
     assert {request.url.host for request in elsewhere} == {"api.media.atlassian.com"}
     assert all(request.headers.get("authorization") == AUTHORISATION for request in on_site)
     assert not any("authorization" in request.headers for request in elsewhere)
-    assert not (home / "atlassian-offline-mcp" / "session").exists()
+    assert not (home / "kb-mcp" / "session").exists()
 
 
 @pytest.mark.parametrize("dry_run", [[], ["--dry-run"]])
@@ -115,7 +115,7 @@ def test_a_run_with_the_token_leaves_a_saved_session_as_it_was(
     home: Path, monkeypatch: MonkeyPatch, dry_run: list[str]
 ) -> None:
     """Its cookies are neither sent nor written back, and its folder is unchanged."""
-    session = home / "atlassian-offline-mcp" / "session"
+    session = home / "kb-mcp" / "session"
     write_cookies(session / COOKIES, [{"name": "kept", "value": "v", "domain": HOST}])
     before = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in session.rglob("*")}
     sent = served(monkeypatch, FakeSite(set_cookies=["renewed=w; Path=/"]).handle)
@@ -243,9 +243,9 @@ def test_a_download_shows_no_secret_nor_writes_one_in_its_report(
     served(monkeypatch, answer)
     main(download(home, *more))
     out, err = capsys.readouterr()
-    assert "atlassian-offline-mcp download" in err
+    assert "kb-mcp download" in err
     assert shown(out + err) == []
-    reports = list((home / "atlassian-offline-mcp" / "runs").glob("*.json"))
+    reports = list((home / "kb-mcp" / "runs").glob("*.json"))
     assert all(shown(report.read_text("utf-8")) == [] for report in reports)
 
 
@@ -254,11 +254,11 @@ def test_refused_settings_show_no_secret(
 ) -> None:
     """A refusal names the setting and its layer, whatever the secrets set."""
     monkeypatch.setenv(KEY, KEY_SENTINEL)
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_DATA_DIR", "relative")
+    monkeypatch.setenv("KB_MCP_DATA_DIR", "relative")
     assert main(download(home)) == REFUSED
     out, err = capsys.readouterr()
     assert said(err) == [("error", "settings.refused")]
-    assert "data_dir (ATLASSIAN_OFFLINE_MCP_DATA_DIR): " in err
+    assert "data_dir (KB_MCP_DATA_DIR): " in err
     assert shown(out + err) == []
 
 
@@ -271,10 +271,10 @@ def test_an_index_that_fails_to_embed_shows_no_key(
     """
     (home / "data" / "docs").mkdir(parents=True)
     monkeypatch.setenv(KEY, KEY_SENTINEL)
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "hybrid")
+    monkeypatch.setenv("KB_MCP_SEARCH_MODE", "hybrid")
     options = ["--yes", "--config", str(home / "none.toml"), "--data-dir", str(home / "data")]
     with serving(Scripted(models={})) as url:
-        monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL", url)
+        monkeypatch.setenv("KB_MCP_EMBEDDING_URL", url)
         assert main(["index", *options, "--summary", "detailed"]) == 1
     out, err = capsys.readouterr()
     assert "embedding_api_key: set" in err

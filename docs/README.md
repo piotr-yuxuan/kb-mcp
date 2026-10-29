@@ -1,6 +1,6 @@
 # Documentation
 
-The pages of atlassian-offline-mcp, sorted as [Diataxis](https://diataxis.fr/) sorts
+The pages of kb-mcp, sorted as [Diataxis](https://diataxis.fr/) sorts
 documentation: by what you need from a page at the moment you open it. A tutorial is a
 lesson, followed step by step to learn by doing; a how-to guide leads you to a goal you
 already have; reference gives the facts to look up as you work; explanation says why
@@ -20,6 +20,8 @@ the command and those who change its code, unless it is marked for contributors.
 
 - [Mirror the site on a managed machine](how-to/sso-machine.md): the settings, the sign-in
   in your browser and a first download, on the user's machine.
+- [Move to kb-mcp](how-to/move-to-kb-mcp.md): a machine set up under the program's former
+  name moved, its settings, data and variables, and what other programs keep of it.
 - [Bring every source up to date](how-to/sync.md): `sync`, which downloads and mirrors
   each source that the settings name, then rebuilds the index, in one command.
 - [Mirror the work log](how-to/work-log.md): a folder of org files mirrored as Markdown

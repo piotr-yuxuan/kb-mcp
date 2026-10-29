@@ -19,15 +19,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.cli.commands import login as login_command
-from atlassian_offline_mcp.cli.commands import model as model_command
-from atlassian_offline_mcp.cli.commands._shared import enter
-from atlassian_offline_mcp.cli.domain.command_line import command_line
-from atlassian_offline_mcp.cli.domain.summary import values_of
-from atlassian_offline_mcp.cli.main import main, parser
-from atlassian_offline_mcp.cli.options.index import by_words_alone
-from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL
-from atlassian_offline_mcp.observability.app.observed import early
+from kb_mcp.cli.commands import login as login_command
+from kb_mcp.cli.commands import model as model_command
+from kb_mcp.cli.commands._shared import enter
+from kb_mcp.cli.domain.command_line import command_line
+from kb_mcp.cli.domain.summary import values_of
+from kb_mcp.cli.main import main, parser
+from kb_mcp.cli.options.index import by_words_alone
+from kb_mcp.config.domain.settings import DEFAULT_MODEL
+from kb_mcp.observability.app.observed import early
 from tests.endpoint import nothing_listening
 from tests.test_settings import user_log_folder
 
@@ -38,15 +38,15 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.domain.settings import Loaded
 
 SITE = "https://sandbox.example.invalid"
 # The variables of the email, the API token and the embedding endpoint's key.
-EMAIL = "ATLASSIAN_OFFLINE_MCP_EMAIL"
-CREDENTIAL = "ATLASSIAN_OFFLINE_MCP_API_TOKEN"
-KEY = "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY"
+EMAIL = "KB_MCP_EMAIL"
+CREDENTIAL = "KB_MCP_API_TOKEN"
+KEY = "KB_MCP_EMBEDDING_API_KEY"
 SECRETS = {CREDENTIAL: "token-sentinel-4d1c", KEY: "key-sentinel-9a7e"}
-UNKNOWN = "ATLASSIAN_OFFLINE_MCP_UNKNOWN"
+UNKNOWN = "KB_MCP_UNKNOWN"
 WAIT = 30  # seconds for the server to answer and stop
 # The modules that run the commands that write, by plan 015.
 WRITING = ("download", "evaluate", "index", "login", "mirror")
@@ -82,9 +82,7 @@ def runs(monkeypatch: MonkeyPatch) -> list[tuple[argparse.Namespace, Loaded]]:
         return 0, None
 
     for module in WRITING:
-        monkeypatch.setattr(
-            importlib.import_module(f"atlassian_offline_mcp.cli.commands.{module}"), "run", run
-        )
+        monkeypatch.setattr(importlib.import_module(f"kb_mcp.cli.commands.{module}"), "run", run)
     return recorded
 
 
@@ -156,7 +154,7 @@ def test_a_download_s_summary_says_how_it_signs_in(
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--space", "ENG"]
     assert main(["download", *options]) == 0
     err = capsys.readouterr().err
-    assert f"\n  sign-in: {sign_in}\n" in err.split("atlassian-offline-mcp download")[0]
+    assert f"\n  sign-in: {sign_in}\n" in err.split("kb-mcp download")[0]
     assert not any(secret in err for secret in SECRETS.values())
 
 
@@ -175,7 +173,7 @@ def test_a_download_s_summary_says_where_its_windows_start(
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--space", "ENG"]
     assert main(["download", *options, *given]) == 0
     err = capsys.readouterr().err
-    assert f"\n  {rule}\n" in err.split("atlassian-offline-mcp download")[0]
+    assert f"\n  {rule}\n" in err.split("kb-mcp download")[0]
 
 
 def test_an_index_by_words_alone_ignores_the_model_and_the_endpoint_given(
@@ -245,9 +243,9 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
     err = capsys.readouterr().err
     assert f"\n  model: {DEFAULT_MODEL} (not applied: replaced by --model)\n" in err
     assert "ignored: " not in err
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "lexical")
+    monkeypatch.setenv("KB_MCP_SEARCH_MODE", "lexical")
     assert main(["index", "--yes", "--config", none]) == 0
-    summary = capsys.readouterr().err.split("atlassian-offline-mcp index")[0]
+    summary = capsys.readouterr().err.split("kb-mcp index")[0]
     marked = [
         line.strip().partition(": ")[0]
         for line in summary.splitlines()
@@ -308,11 +306,11 @@ def test_serve_says_what_it_ignores_on_stderr_and_answers_its_first_line(home: P
     environment = {
         "HOME": str(home),
         "PATH": os.environ["PATH"],
-        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": str(home / "data"),
+        "KB_MCP_DATA_DIR": str(home / "data"),
         UNKNOWN: "1",
     }
     with subprocess.Popen(
-        [sys.executable, "-m", "atlassian_offline_mcp", "serve"],
+        [sys.executable, "-m", "kb_mcp", "serve"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -350,7 +348,7 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     data = (home / "data").resolve()
     options = ["mirror", "--yes", "--config", str(config), "--data-dir", str(data)]
     command = (
-        "atlassian-offline-mcp mirror \\\n"
+        "kb-mcp mirror \\\n"
         f"  --config {shlex.quote(str(config))} \\\n"
         f"  --data-dir {shlex.quote(str(data))} \\\n"
         f"  --site {SITE}\n"
@@ -398,7 +396,7 @@ def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
     assert main([*options, "--summary", "detailed"]) == 0
     said = capsys.readouterr().err
     assert "ignored" not in said
-    listed = said.split(f"atlassian-offline-mcp {command} \\\n")[0].splitlines()
+    listed = said.split(f"kb-mcp {command} \\\n")[0].splitlines()
     # A setting's line ends with its layer; the command's own lines, if any, follow.
     assert [line for line in listed if line.endswith("]")][-2:] == [
         f"  logs.dir: {logs} [config.toml]",
@@ -411,9 +409,7 @@ def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
     assert "telemetry.endpoint" not in said
 
 
-@pytest.mark.parametrize(
-    "variable", ["OTEL_EXPORTER_OTLP_ENDPOINT", "ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT"]
-)
+@pytest.mark.parametrize("variable", ["OTEL_EXPORTER_OTLP_ENDPOINT", "KB_MCP_TELEMETRY__ENDPOINT"])
 @pytest.mark.parametrize("command", [["index", "--yes"], ["check"]], ids=["index", "check"])
 @pytest.mark.usefixtures("runs")
 def test_every_command_says_that_telemetry_is_on_and_what_turned_it_on(
@@ -458,7 +454,7 @@ def test_the_level_error_leaves_out_the_values_ignored_alone(
     assert main(options) == 0
     said = capsys.readouterr().err
     assert said.startswith("index, with these settings:\n")
-    assert "atlassian-offline-mcp index \\\n" in said
+    assert "kb-mcp index \\\n" in said
     assert warning in said
     assert main([*options, "--log-level", "error"]) == 0
     assert capsys.readouterr().err == said.replace(warning, "")
@@ -482,9 +478,9 @@ def test_a_command_s_described_lines_end_its_summary(
     arguments.command = dataclasses.replace(arguments.command, described=described)
     with early():
         assert enter(arguments, given) == 0
-    summary = capsys.readouterr().err.split("atlassian-offline-mcp mirror")[0]
+    summary = capsys.readouterr().err.split("kb-mcp mirror")[0]
     assert summary.endswith(
-        f"  data_dir: {(home / 'atlassian-offline-mcp').resolve()}\n  mirrors {SITE}\n  as mirror\n"
+        f"  data_dir: {(home / 'kb-mcp').resolve()}\n  mirrors {SITE}\n  as mirror\n"
     )
     assert len(runs) == 1
 
@@ -498,12 +494,12 @@ def test_the_command_to_copy_is_preceded_by_an_empty_list_that_no_flag_can_say(
     """A variable emptied the file's projects: the command, run again, would read the file."""
     config = home / "config.toml"
     config.write_text('[sources.jira]\nprojects = ["PLAT"]\n', "utf-8")
-    variable = "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS"
+    variable = "KB_MCP_SOURCES__JIRA__PROJECTS"
     monkeypatch.setenv(variable, "[]")
     options = ["--yes", "--config", str(config), "--site", SITE, "--space", "ENG"]
     assert main(["download", *options]) == 0
     err = capsys.readouterr().err
-    said, _, copied = err.partition("atlassian-offline-mcp download")
+    said, _, copied = err.partition("kb-mcp download")
     assert said.endswith(
         f"not in the command: sources.jira.projects ({variable}): empty, which --project"
         " cannot say\n"
@@ -520,10 +516,10 @@ EMPTY_TABLE = '[sources.jira]\n# projects = ["PLAT"]\n'
 @pytest.mark.parametrize(
     "layers",
     [
-        ("", {"ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS": "[]"}, []),
+        ("", {"KB_MCP_SOURCES__JIRA__PROJECTS": "[]"}, []),
         ("[sources.jira]\nprojects = []\n", {}, []),
         (EMPTY_TABLE, {}, []),
-        (EMPTY_TABLE, {"ATLASSIAN_OFFLINE_MCP_SOURCES": "{}"}, []),
+        (EMPTY_TABLE, {"KB_MCP_SOURCES": "{}"}, []),
         (EMPTY_TABLE, {}, ["--project", "PRB"]),
     ],
 )
@@ -564,11 +560,11 @@ def test_the_command_to_copy_is_followed_by_the_settings_that_no_flag_sets(
     options = ["index", "--yes", "--config", str(home / "none.toml")]
     assert main(options) == 0
     assert "not in the command" not in capsys.readouterr().err
-    mode, model = "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "ATLASSIAN_OFFLINE_MCP_MODEL"
+    mode, model = "KB_MCP_SEARCH_MODE", "KB_MCP_MODEL"
     monkeypatch.setenv(mode, "semantic")
     monkeypatch.setenv(model, "foo")
     assert main(options) == 0
-    command = f"atlassian-offline-mcp index \\\n  --config {shlex.quote(str(home / 'none.toml'))}\n"
+    command = f"kb-mcp index \\\n  --config {shlex.quote(str(home / 'none.toml'))}\n"
     _, found, after = capsys.readouterr().err.partition(command)
     assert found
     assert [line.rpartition(": ")[0] for line in after.splitlines()] == [
@@ -616,7 +612,7 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
         f'site = "{SITE}"\nmodel = "tiny"\n[sources.jira]\nprojects = ["PRB"]\n', "utf-8"
     )
     given = {
-        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": "~/from-variable",
+        "KB_MCP_DATA_DIR": "~/from-variable",
         EMAIL: "someone@example.invalid",
         **SECRETS,
     }
@@ -638,7 +634,7 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     assert "someone@example.invalid" not in copied.command
     # The shell removes a backslash and the newline after it, then splits as shlex does.
     argv = shlex.split(copied.command.replace("\\\n", ""))
-    assert argv[:2] == ["atlassian-offline-mcp", name]
+    assert argv[:2] == ["kb-mcp", name]
     assert not EXCLUDED & set(argv)
     config.unlink()
     for variable in given:
@@ -678,7 +674,7 @@ def test_the_command_to_copy_carries_each_path_absolute(
     given = [item for option, path in paths.items() for item in (option, path)]
     assert main(["login", "--yes", "--site", SITE, *given]) == 0
     err = capsys.readouterr().err
-    argv = shlex.split(err[err.index("atlassian-offline-mcp login") :].replace("\\\n", ""))
+    argv = shlex.split(err[err.index("kb-mcp login") :].replace("\\\n", ""))
     assert {option: argv[argv.index(option) + 1] for option in paths} == {
         option: str(home.absolute() / path) for option, path in paths.items()
     }

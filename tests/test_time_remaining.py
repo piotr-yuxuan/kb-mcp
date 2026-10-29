@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from atlassian_offline_mcp.observability.domain.time_remaining import remaining
+from kb_mcp.observability.domain.time_remaining import remaining
 
 
 @pytest.mark.parametrize(

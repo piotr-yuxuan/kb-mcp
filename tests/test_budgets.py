@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.mcp.app.responses import LABELS as REFS
-from atlassian_offline_mcp.mcp.app.responses import NAMES, cut
-from atlassian_offline_mcp.mcp.app.responses import page as fitted
-from atlassian_offline_mcp.mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
-from atlassian_offline_mcp.mirror.domain.mirror import (
+from kb_mcp.mcp.app.responses import LABELS as REFS
+from kb_mcp.mcp.app.responses import NAMES, cut
+from kb_mcp.mcp.app.responses import page as fitted
+from kb_mcp.mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
+from kb_mcp.mirror.domain.mirror import (
     RELATIONS,
     ROLES,
     SOLE,
@@ -20,8 +20,8 @@ from atlassian_offline_mcp.mirror.domain.mirror import (
     Link,
     PersonRole,
 )
-from atlassian_offline_mcp.search.adapters.model_api import ModelError
-from atlassian_offline_mcp.search.app.meaning import Meaning
+from kb_mcp.search.adapters.model_api import ModelError
+from kb_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
 from tests.endpoint import connector
 from tests.mirrors import MOMENT, issue, page, worklog_document
@@ -32,8 +32,8 @@ if TYPE_CHECKING:
 
     from _pytest.tempdir import TempPathFactory
 
-    from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
-    from atlassian_offline_mcp.search.adapters.embedding import Embedder
+    from kb_mcp.mirror.domain.mirror import FrontMatter
+    from kb_mcp.search.adapters.embedding import Embedder
 
 SIZE = 300_000
 # The documents a search by meaning gives at most, as the plan says.

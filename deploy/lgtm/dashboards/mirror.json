@@ -1,9 +1,9 @@
 {
-  "uid": "aom-mirror",
+  "uid": "kb-mcp-mirror",
   "title": "mirror",
   "description": "The mirror runs in the time range: the documents they wrote, and how long each took.",
   "tags": [
-    "atlassian-offline-mcp"
+    "kb-mcp"
   ],
   "editable": false,
   "graphTooltip": 1,
@@ -43,7 +43,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"mirror\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"mirror\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -88,7 +88,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_sum{job=\"atlassian-offline-mcp\", aom_command=\"mirror\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_run_duration_seconds_sum{job=\"kb-mcp\", kb_mcp_command=\"mirror\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -133,7 +133,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(aom_mirror_conversion_duration_seconds_bucket{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"mirror\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(kb_mcp_mirror_conversion_duration_seconds_bucket{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"mirror\"}[$__range])))",
           "instant": true,
           "range": false
         }
@@ -178,7 +178,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\", aom_outcome=\"failed\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"mirror\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_mirror_documents_total{job=\"kb-mcp\", kb_mcp_outcome=\"failed\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"mirror\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -223,10 +223,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_outcome) (last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"mirror\"}[$__range]))",
+          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_mirror_documents_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"mirror\"}[$__range]))",
           "instant": true,
           "range": false,
-          "legendFormat": "{{aom_outcome}}"
+          "legendFormat": "{{kb_mcp_outcome}}"
         }
       ],
       "fieldConfig": {
@@ -269,7 +269,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"atlassian-offline-mcp\"} | command=\"mirror\" | severity_number >= 13",
+          "expr": "{service_name=\"kb-mcp\"} | command=\"mirror\" | severity_number >= 13",
           "queryType": "range"
         }
       ],
@@ -303,7 +303,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"atlassian-offline-mcp\" && span.aom.command = \"mirror\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && span.kb_mcp.command = \"mirror\" }",
           "limit": 20,
           "tableType": "traces"
         }

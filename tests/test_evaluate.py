@@ -15,10 +15,10 @@ import pytest
 import yaml
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import Settings
-from atlassian_offline_mcp.evaluation.app import evaluation
-from atlassian_offline_mcp.evaluation.app.evaluation import (
+from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import Settings
+from kb_mcp.evaluation.app import evaluation
+from kb_mcp.evaluation.app.evaluation import (
     ASK_HEADER,
     HEADER,
     EvaluationError,
@@ -29,13 +29,13 @@ from atlassian_offline_mcp.evaluation.app.evaluation import (
     record,
     table,
 )
-from atlassian_offline_mcp.evaluation.domain.evaluation import Question, Quoted, holm
-from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
-from atlassian_offline_mcp.mcp.app.tools import Library
-from atlassian_offline_mcp.search.adapters.model_api import ModelError
-from atlassian_offline_mcp.search.adapters.sqlite_index import reading
-from atlassian_offline_mcp.search.app.indexing import build_index
-from atlassian_offline_mcp.search.app.meaning import Meaning
+from kb_mcp.evaluation.domain.evaluation import Question, Quoted, holm
+from kb_mcp.kernel.chunking import CHUNKINGS
+from kb_mcp.mcp.app.tools import Library
+from kb_mcp.search.adapters.model_api import ModelError
+from kb_mcp.search.adapters.sqlite_index import reading
+from kb_mcp.search.app.indexing import build_index
+from kb_mcp.search.app.meaning import Meaning
 from tests.endpoint import DIGEST, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.test_cli import logged_as
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.search.adapters.embedding import Embedder
+    from kb_mcp.search.adapters.embedding import Embedder
     from tests.conftest import InMemory
 
 GOLDEN = """
@@ -565,9 +565,10 @@ def test_each_target_s_scores_are_measured_by_its_chunking_ask_s_among_them(
     runs = evaluate(settings, golden(data), targets, ticking(), MOMENT)
     points = {
         tuple(
-            str(point.attributes[key]) for key in ("aom.chunking", "aom.mode", "aom.measure")
+            str(point.attributes[key])
+            for key in ("kb_mcp.chunking", "kb_mcp.mode", "kb_mcp.measure")
         ): point.value
-        for point in telemetry.measured()["aom.eval.score"].data.data_points
+        for point in telemetry.measured()["kb_mcp.eval.score"].data.data_points
         if point.attributes
     }
     expected = {
@@ -600,10 +601,13 @@ def test_each_target_s_span_events_and_question_times_name_its_chunking(
         for mode in ("lexical", "semantic", "hybrid")
     }
     spans = [span for span in telemetry.spans.get_finished_spans() if span.name == "eval.model"]
-    assert [(span.attributes or {})["aom.chunking"] for span in spans] == ["sections", "windows"]
+    assert [(span.attributes or {})["kb_mcp.chunking"] for span in spans] == ["sections", "windows"]
     timed = {
-        (str(point.attributes["aom.chunking"]), str(point.attributes["aom.mode"])): point.count
-        for point in telemetry.measured()["aom.eval.question.duration"].data.data_points
+        (
+            str(point.attributes["kb_mcp.chunking"]),
+            str(point.attributes["kb_mcp.mode"]),
+        ): point.count
+        for point in telemetry.measured()["kb_mcp.eval.question.duration"].data.data_points
         if point.attributes
     }
     assert timed == every
@@ -625,7 +629,7 @@ def test_without_evidence_found_at_ask_is_measured_and_evidence_at_ask_is_not(
         Settings(data_dir=data, model="tiny"), golden(data, without), targets, ticking(), MOMENT
     )
     measures = {
-        (point.attributes or {})["aom.measure"]
-        for point in telemetry.measured()["aom.eval.score"].data.data_points
+        (point.attributes or {})["kb_mcp.measure"]
+        for point in telemetry.measured()["kb_mcp.eval.score"].data.data_points
     }
     assert measures == {"recall@10", "mrr@10", "ndcg@10", "success@1", "found@ask"}

@@ -16,19 +16,19 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.mirror.domain.mirror import Link, PersonRole
-from atlassian_offline_mcp.search.adapters import sqlite_index
-from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
-from atlassian_offline_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
-from atlassian_offline_mcp.search.domain.people import (
+from kb_mcp.cli.main import main
+from kb_mcp.mirror.domain.mirror import Link, PersonRole
+from kb_mcp.search.adapters import sqlite_index
+from kb_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
+from kb_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
+from kb_mcp.search.domain.people import (
     UNHELD,
     Ambiguity,
     Outcome,
     Person,
     Spelling,
 )
-from atlassian_offline_mcp.search.domain.search import Filters
+from kb_mcp.search.domain.search import Filters
 from tests.endpoint import nothing_listening, tiny
 from tests.mirrors import (
     CREATED,
@@ -64,7 +64,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.search.domain.search import Sort
+    from kb_mcp.search.domain.search import Sort
 
 BAD_SETTINGS = 2
 SKIPPED = 3
@@ -377,7 +377,7 @@ def test_reading_opens_read_only(data: Path, monkeypatch: MonkeyPatch) -> None:
 def test_no_index_or_another_file_is_unavailable(data: Path) -> None:
     """A missing index, or a file that is not one, names the command that builds it."""
     with (
-        pytest.raises(UnavailableIndexError, match=r"^no index at .*atlassian-offline-mcp index"),
+        pytest.raises(UnavailableIndexError, match=r"^no index at .*kb-mcp index"),
         reading(data / "index.sqlite"),
     ):
         pass
@@ -842,8 +842,8 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     refused = pytest.raises(
         UnavailableIndexError,
         match=(
-            "rebuild it with `atlassian-offline-mcp sync`, or, where no source is configured,"
-            " `atlassian-offline-mcp mirror` then `atlassian-offline-mcp index`, which write"
+            "rebuild it with `kb-mcp sync`, or, where no source is configured,"
+            " `kb-mcp mirror` then `kb-mcp index`, which write"
         ),
     )
     with refused, reading(data / "index.sqlite"):
@@ -856,8 +856,8 @@ def child_environment(data: Path) -> dict[str, str]:
         "HOME": str(data.parent / "home"),
         "PATH": os.environ["PATH"],
         "COLUMNS": "200",
-        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": str(data),
-        "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "lexical",
+        "KB_MCP_DATA_DIR": str(data),
+        "KB_MCP_SEARCH_MODE": "lexical",
     }
 
 
@@ -879,7 +879,7 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     """
     fillers(data / "docs")
     piped = subprocess.run(
-        [sys.executable, "-m", "atlassian_offline_mcp", "index", "--yes", "--format", "json"],
+        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--format", "json"],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         env=child_environment(data),
@@ -893,7 +893,7 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     assert (last["task"], last["done"], last["total"]) == ("files", FILLERS, FILLERS)
     controller, terminal = pty.openpty()
     with subprocess.Popen(
-        [sys.executable, "-m", "atlassian_offline_mcp", "index", "--yes", "--format", "json"],
+        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--format", "json"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=terminal,
@@ -908,7 +908,7 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     assert re.search(rf"files [━╸╺ ]+ {FILLERS}/{FILLERS} {clock} {clock} ", shown)
     controller, terminal = pty.openpty()
     with subprocess.Popen(
-        [sys.executable, "-m", "atlassian_offline_mcp", "index", "--yes", "--format", "json", "-q"],
+        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--format", "json", "-q"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=terminal,

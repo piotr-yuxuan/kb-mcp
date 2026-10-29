@@ -38,14 +38,14 @@ Set the endpoint in the settings file:
 endpoint = "http://127.0.0.1:4318"
 ```
 
-or for one run, in its environment, `ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT`, or
+or for one run, in its environment, `KB_MCP_TELEMETRY__ENDPOINT`, or
 `OTEL_EXPORTER_OTLP_ENDPOINT`, which other programs read too and the settings file
 outweighs. The endpoint is plain http to a literal address of this machine, with a
 port and no path: `localhost` is refused, since a name could lead elsewhere. `check`
 shows the endpoint that a run would use, and its layer:
 
 ```bash
-atlassian-offline-mcp check --summary detailed
+kb-mcp check --summary detailed
 ```
 
 Every command says on stderr, before it acts, that telemetry is on, where to, and which
@@ -67,7 +67,7 @@ whatever sets the endpoint.
 
 ## 3. Read the dashboards
 
-Under Dashboards, the folder `atlassian-offline-mcp` holds an overview and one
+Under Dashboards, the folder `kb-mcp` holds an overview and one
 dashboard each for `download`, `mirror`, `index`, `serve`, `eval`, `eval-agents` and
 `sync`, read-only, from `deploy/lgtm/dashboards/`:
 
@@ -104,13 +104,13 @@ too. In Explore, choose the source `tempo` and TraceQL; for instance:
 
 | To find | TraceQL |
 |---|---|
-| The runs of a command | `{ resource.service.name = "atlassian-offline-mcp" && span.aom.command = "download" }` |
-| The runs that failed | `{ span.aom.exit_status != 0 }` |
+| The runs of a command | `{ resource.service.name = "kb-mcp" && span.kb_mcp.command = "download" }` |
+| The runs that failed | `{ span.kb_mcp.exit_status != 0 }` |
 | One run, by the `run` of its log file | `{ resource.service.instance.id = "<run>" }` |
-| The issues that a download fetched | `{ name = "download.document" && span.aom.document.kind = "jira issues" }` |
+| The issues that a download fetched | `{ name = "download.document" && span.kb_mcp.document.kind = "jira issues" }` |
 | The requests refused or failed | `{ span.http.response.status_code >= 400 }` |
 | The slow requests and embeddings | `{ kind = client && duration > 500ms }` |
-| The searches that fell back to words | `{ span.mcp.method.name = "tools/call" && span.aom.fallback = true }` |
+| The searches that fell back to words | `{ span.mcp.method.name = "tools/call" && span.kb_mcp.fallback = true }` |
 | Anything that failed | `{ status = error }` |
 
 The spans, their attributes and the instruments are listed in
@@ -126,7 +126,7 @@ error, and each panel but those of failures must have data; Loki must hold the r
 records; another host name must be turned away:
 
 ```bash
-ATLASSIAN_OFFLINE_MCP_GRAFANA=http://127.0.0.1:3000 uv run pytest tests/test_grafana.py
+KB_MCP_GRAFANA=http://127.0.0.1:3000 uv run pytest tests/test_grafana.py
 ```
 
 `serve`'s panels are rates, which need two exports within their interval, a minute:

@@ -1,9 +1,9 @@
 {
-  "uid": "aom-serve",
+  "uid": "kb-mcp-serve",
   "title": "serve",
   "description": "The server's tool calls, per second, while it serves.",
   "tags": [
-    "atlassian-offline-mcp"
+    "kb-mcp"
   ],
   "editable": false,
   "graphTooltip": 1,
@@ -43,7 +43,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (gen_ai_tool_name) (rate(mcp_server_operation_duration_seconds_count{job=\"atlassian-offline-mcp\", mcp_method_name=\"tools/call\"}[$__rate_interval]))",
+          "expr": "sum by (gen_ai_tool_name) (rate(mcp_server_operation_duration_seconds_count{job=\"kb-mcp\", mcp_method_name=\"tools/call\"}[$__rate_interval]))",
           "instant": false,
           "range": true,
           "legendFormat": "{{gen_ai_tool_name}}"
@@ -84,7 +84,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(mcp_server_operation_duration_seconds_bucket{job=\"atlassian-offline-mcp\", mcp_method_name=\"tools/call\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(mcp_server_operation_duration_seconds_bucket{job=\"kb-mcp\", mcp_method_name=\"tools/call\"}[$__rate_interval])))",
           "instant": false,
           "range": true,
           "legendFormat": "{{gen_ai_tool_name}}"
@@ -125,7 +125,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(aom_serve_answer_size_bytes_bucket{job=\"atlassian-offline-mcp\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(kb_mcp_serve_answer_size_bytes_bucket{job=\"kb-mcp\"}[$__rate_interval])))",
           "instant": false,
           "range": true,
           "legendFormat": "{{gen_ai_tool_name}}"
@@ -166,7 +166,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(aom_serve_fallbacks_total{job=\"atlassian-offline-mcp\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"atlassian-offline-mcp\"})",
+          "expr": "sum(rate(kb_mcp_serve_fallbacks_total{job=\"kb-mcp\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"kb-mcp\"})",
           "instant": false,
           "range": true,
           "legendFormat": "fallbacks"
@@ -207,7 +207,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_duration_seconds_bucket{job=\"atlassian-offline-mcp\", gen_ai_operation_name=\"embeddings\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"atlassian-offline-mcp\"}))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_duration_seconds_bucket{job=\"kb-mcp\", gen_ai_operation_name=\"embeddings\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"kb-mcp\"}))",
           "instant": false,
           "range": true,
           "legendFormat": "embedding"
@@ -248,7 +248,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (gen_ai_tool_name, error_type) (rate(mcp_server_operation_duration_seconds_count{job=\"atlassian-offline-mcp\", error_type!=\"\"}[$__rate_interval]))",
+          "expr": "sum by (gen_ai_tool_name, error_type) (rate(mcp_server_operation_duration_seconds_count{job=\"kb-mcp\", error_type!=\"\"}[$__rate_interval]))",
           "instant": false,
           "range": true,
           "legendFormat": "{{gen_ai_tool_name}}: {{error_type}}"
@@ -289,7 +289,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"atlassian-offline-mcp\"} | command=\"serve\" | severity_number >= 13",
+          "expr": "{service_name=\"kb-mcp\"} | command=\"serve\" | severity_number >= 13",
           "queryType": "range"
         }
       ],
@@ -323,7 +323,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"atlassian-offline-mcp\" && span.mcp.method.name = \"tools/call\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && span.mcp.method.name = \"tools/call\" }",
           "limit": 20,
           "tableType": "traces"
         }
@@ -350,7 +350,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_duration_seconds_bucket{job=\"atlassian-offline-mcp\", gen_ai_operation_name=\"rerank\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"atlassian-offline-mcp\"}))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_operation_duration_seconds_bucket{job=\"kb-mcp\", gen_ai_operation_name=\"rerank\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"kb-mcp\"}))",
           "instant": false,
           "range": true,
           "legendFormat": "reranking"
@@ -391,10 +391,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_rerank_fallback) (rate(aom_rerank_fallbacks_total{job=\"atlassian-offline-mcp\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"atlassian-offline-mcp\"})",
+          "expr": "sum by (kb_mcp_rerank_fallback) (rate(kb_mcp_rerank_fallbacks_total{job=\"kb-mcp\"}[$__rate_interval]) and on (instance) mcp_server_operation_duration_seconds_count{job=\"kb-mcp\"})",
           "instant": false,
           "range": true,
-          "legendFormat": "{{aom_rerank_fallback}}"
+          "legendFormat": "{{kb_mcp_rerank_fallback}}"
         }
       ],
       "fieldConfig": {

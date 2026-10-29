@@ -25,29 +25,29 @@ import pytest
 from pydantic_core import to_json
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.cli.app import sync as sync_app
-from atlassian_offline_mcp.cli.app.sync import Atlassian, Context, Index, Row, Worklog, sync
-from atlassian_offline_mcp.cli.domain.sync import SOURCES, chosen
-from atlassian_offline_mcp.cli.main import main, parser
-from atlassian_offline_mcp.cli.options.sync import refused
-from atlassian_offline_mcp.config.domain.settings import DEFAULT_MODEL, Settings
-from atlassian_offline_mcp.kernel.content import SOURCE_NAMES
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.mirror.adapters import pandoc as pandoc_adapter
-from atlassian_offline_mcp.mirror.adapters.mirror_files import Changes
-from atlassian_offline_mcp.mirror.adapters.pandoc import (
+from kb_mcp.cli.app import sync as sync_app
+from kb_mcp.cli.app.sync import Atlassian, Context, Index, Row, Worklog, sync
+from kb_mcp.cli.domain.sync import SOURCES, chosen
+from kb_mcp.cli.main import main, parser
+from kb_mcp.cli.options.sync import refused
+from kb_mcp.config.domain.settings import DEFAULT_MODEL, Settings
+from kb_mcp.kernel.content import SOURCE_NAMES
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.mirror.adapters import pandoc as pandoc_adapter
+from kb_mcp.mirror.adapters.mirror_files import Changes
+from kb_mcp.mirror.adapters.pandoc import (
     Pandoc,
     PandocFailedError,
     PandocMissingError,
 )
-from atlassian_offline_mcp.mirror.app import mirror as mirror_app
-from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
-from atlassian_offline_mcp.search.app.indexing import Indexing
-from atlassian_offline_mcp.sources.atlassian.adapters import http
-from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore, StoreBusyError
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
-from atlassian_offline_mcp.sources.atlassian.app.download import Outcome, Report, Targets
-from atlassian_offline_mcp.sources.atlassian.domain.coverage import Target
+from kb_mcp.mirror.app import mirror as mirror_app
+from kb_mcp.search.adapters import sqlite_index, vector_store
+from kb_mcp.search.app.indexing import Indexing
+from kb_mcp.sources.atlassian.adapters import http
+from kb_mcp.sources.atlassian.adapters.raw_store import RawStore, StoreBusyError
+from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.app.download import Outcome, Report, Targets
+from kb_mcp.sources.atlassian.domain.coverage import Target
 from tests.endpoint import DIGEST, Scripted, scripted, serving
 from tests.mirrors import fillers
 from tests.reference import Emitted, documented, pattern, undocumented
@@ -140,7 +140,7 @@ def worklog(tmp_path: Path) -> Path:
 @pytest.fixture(autouse=True)
 def words_alone(monkeypatch: MonkeyPatch) -> None:
     """Search by words alone, so that the index that sync builds calls no endpoint."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "lexical")
+    monkeypatch.setenv("KB_MCP_SEARCH_MODE", "lexical")
 
 
 def settings_file(home: Path, worklog: Path | None, *, atlassian: bool = False) -> Path:
@@ -195,7 +195,7 @@ def test_the_work_log_alone_says_the_period_it_ignores_and_a_dry_run_writes_noth
 
     No setting is given by variable either: a dry run would say the mode ignored.
     """
-    monkeypatch.delenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE")
+    monkeypatch.delenv("KB_MCP_SEARCH_MODE")
     config = settings_file(home, worklog)
     before = snapshot(worklog)
     assert main(command(home, config, "--include", "worklog", "--since", "7d", "--dry-run")) == 0
@@ -540,7 +540,7 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     assert [each["outcome"] for each in logged_as(logged, "sync.step")] == ["failed"]
     spans = telemetry.spans.get_finished_spans()
     (row,) = [span for span in spans if span.name == "sync.step"]
-    assert row.attributes["aom.outcome"] == "failed"
+    assert row.attributes["kb_mcp.outcome"] == "failed"
     assert by_kind_and_outcome(telemetry.measured()).get(("entry", "failed")) == 1
     assert gone.exists()
     todo.write_text(todo.read_text("utf-8").replace("Drafted, failing, on", "Drafted on"), "utf-8")
@@ -805,7 +805,7 @@ def test_an_endpoint_elsewhere_is_refused_before_any_step(
     capsys: CaptureFixture[str],
 ) -> None:
     """By meaning, an endpoint off this machine without --allow-remote-embeddings: exit 2."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "hybrid")
+    monkeypatch.setenv("KB_MCP_SEARCH_MODE", "hybrid")
     config = settings_file(home, worklog, atlassian=True)
     remote = 'embedding_url = "https://embeddings.example/v1"\n'
     config.write_text(remote + config.read_text("utf-8"), "utf-8")
@@ -836,10 +836,10 @@ def test_an_index_not_built_fails_its_row_and_keeps_the_others(
     home: Path, worklog: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The endpoint lacks the model: the work log done, the index failed, exit 1, said."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "hybrid")
+    monkeypatch.setenv("KB_MCP_SEARCH_MODE", "hybrid")
     config = settings_file(home, worklog)
     with serving(Scripted(models={})) as url:
-        monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL", url)
+        monkeypatch.setenv("KB_MCP_EMBEDDING_URL", url)
         status = main(command(home, config, "--yes", "--format", "json"))
     rows = json.loads(capsys.readouterr().out)["steps"]
     assert status == ExitStatus.FAILED
@@ -950,7 +950,7 @@ def test_with_a_site_source_an_email_without_a_token_alone_is_not_applied(
     home: Path, signed_in: FakeSite, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The site is used; the email, without its token, signs nothing in."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMAIL", "someone@example.invalid")
+    monkeypatch.setenv("KB_MCP_EMAIL", "someone@example.invalid")
     config = settings_file(home, None, atlassian=True)
     assert main(command(home, config, "--dry-run", "--since", "2026-10-02")) == ExitStatus.OK
     said = capsys.readouterr().err
@@ -963,14 +963,14 @@ def test_without_a_site_source_the_sign_in_s_settings_are_not_applied(
     home: Path, worklog: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The email and the token, given, are said ignored, by their variables."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMAIL", "someone@example.invalid")
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_API_TOKEN", "token-sentinel-7f2b")
+    monkeypatch.setenv("KB_MCP_EMAIL", "someone@example.invalid")
+    monkeypatch.setenv("KB_MCP_API_TOKEN", "token-sentinel-7f2b")
     config = settings_file(home, worklog)
     assert main(command(home, config, "--dry-run")) == ExitStatus.OK
     said = capsys.readouterr().err
     for setting, variable in (
-        ("email", "ATLASSIAN_OFFLINE_MCP_EMAIL"),
-        ("api_token", "ATLASSIAN_OFFLINE_MCP_API_TOKEN"),
+        ("email", "KB_MCP_EMAIL"),
+        ("api_token", "KB_MCP_API_TOKEN"),
     ):
         assert f"ignored: {setting} ({variable}): no Atlassian source in this sync\n" in said
     assert "token-sentinel-7f2b" not in said
@@ -1022,12 +1022,12 @@ def test_what_sync_records_is_what_its_page_says(
     the default model; by words alone, it does not. Either way, the index is built.
     """
     if mode is None:
-        monkeypatch.delenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE")
+        monkeypatch.delenv("KB_MCP_SEARCH_MODE")
     config = settings_file(home, worklog, atlassian=True)
     period = ("--since", "2026-10-02")
     emitted = Emitted()
     with serving(Scripted(models={DEFAULT_MODEL: DIGEST})) as url:
-        monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL", url)
+        monkeypatch.setenv("KB_MCP_EMBEDDING_URL", url)
         with emitted.gathering(telemetry, "sync"):
             assert main(command(home, config, "--yes", "-vv", *period)) == ExitStatus.FAILED
         with emitted.gathering(telemetry, "sync"):
@@ -1106,9 +1106,9 @@ def missing() -> Pandoc:
 def by_kind_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, object], object]:
     """Give the work log's documents counted, by kind and outcome."""
     return {
-        (point.attributes["aom.kind"], point.attributes["aom.outcome"]): point.value
-        for point in measured["aom.mirror.documents"].data.data_points
-        if point.attributes and "aom.kind" in point.attributes
+        (point.attributes["kb_mcp.kind"], point.attributes["kb_mcp.outcome"]): point.value
+        for point in measured["kb_mcp.mirror.documents"].data.data_points
+        if point.attributes and "kb_mcp.kind" in point.attributes
     }
 
 
@@ -1133,13 +1133,13 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
     assert by_kind_and_outcome(second) == {
         (kind, "kept"): count for kind, count in WORKLOG_KINDS.items()
     }
-    timed = first["aom.mirror.conversion.duration"].data.data_points
-    assert {point.attributes["aom.kind"]: point.count for point in timed} == WORKLOG_KINDS
-    assert "aom.mirror.conversion.duration" not in second
-    rows = {span.attributes["aom.step"]: span for span in spans if span.name == "sync.step"}
+    timed = first["kb_mcp.mirror.conversion.duration"].data.data_points
+    assert {point.attributes["kb_mcp.kind"]: point.count for point in timed} == WORKLOG_KINDS
+    assert "kb_mcp.mirror.conversion.duration" not in second
+    rows = {span.attributes["kb_mcp.step"]: span for span in spans if span.name == "sync.step"}
     assert list(rows) == ["worklog", "index"]
     row = rows["worklog"]
-    assert row.attributes["aom.outcome"] == "done"
+    assert row.attributes["kb_mcp.outcome"] == "done"
     (root,) = [span for span in spans if span.name == "sync"]
     assert row.parent is not None
     assert row.parent.span_id == root.context.span_id

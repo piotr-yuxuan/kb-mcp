@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.kernel.fields import RepresentationError
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import (
+from kb_mcp.kernel.fields import RepresentationError
+from kb_mcp.sources.atlassian.adapters.session_file import (
     read_cookies,
     write_cookies,
 )

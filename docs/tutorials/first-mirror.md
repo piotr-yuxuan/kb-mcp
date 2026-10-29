@@ -22,30 +22,30 @@ your output shows other numbers, dates or paths, that is your site, not a fault.
 Clone the repository, then install the command from it:
 
 ```bash
-git clone https://github.com/piotr-yuxuan/atlassian-offline-mcp.git ~/src/atlassian-offline-mcp
+git clone https://github.com/piotr-yuxuan/kb-mcp.git ~/src/kb-mcp
 ```
 
 ```bash
-uv tool install ~/src/atlassian-offline-mcp
+uv tool install ~/src/kb-mcp
 ```
 
 uv lists the packages it installs, and ends with:
 
 ```text
-Installed 1 executable: atlassian-offline-mcp
+Installed 1 executable: kb-mcp
 ```
 
 If uv warns that the folder of its executables is not on your `PATH`, run `uv tool
 update-shell` and open a new terminal. Then check that your shell finds the command:
 
 ```bash
-atlassian-offline-mcp --version
+kb-mcp --version
 ```
 
 You should see:
 
 ```text
-atlassian-offline-mcp 0.1.0
+kb-mcp 0.1.0
 ```
 
 ## 2. Pull the embedding model
@@ -67,7 +67,7 @@ success
 Check that the command reaches it:
 
 ```bash
-atlassian-offline-mcp model check
+kb-mcp model check
 ```
 
 You should see the model's dimensions, its endpoint and its digest, which names the
@@ -82,10 +82,10 @@ qwen3-embedding:0.6b: 1024 dimensions, from http://127.0.0.1:11434/v1; digest <d
 The settings live in one file. Make its folder:
 
 ```bash
-mkdir -p ~/.config/atlassian-offline-mcp
+mkdir -p ~/.config/kb-mcp
 ```
 
-Then create `~/.config/atlassian-offline-mcp/config.toml` in your editor, with your site
+Then create `~/.config/kb-mcp/config.toml` in your editor, with your site
 and your space:
 
 ```toml
@@ -98,7 +98,7 @@ spaces = ["<KEY>"]
 Check the settings:
 
 ```bash
-atlassian-offline-mcp check
+kb-mcp check
 ```
 
 You should see the two settings that the file gives:
@@ -109,14 +109,14 @@ sources.confluence.spaces: <KEY>
 ```
 
 Every other setting keeps its default. The data, the mirror included, go to
-`~/atlassian-offline-mcp`.
+`~/kb-mcp`.
 
 ## 4. Sign in
 
 The command reads the site as you, with a session that you open once in Chrome:
 
 ```bash
-atlassian-offline-mcp login
+kb-mcp login
 ```
 
 Before it acts, it says what it will do: each setting that it reads, then the same
@@ -143,7 +143,7 @@ all` takes the whole space. First, a dry run, which reads the site, says what it
 fetch, and writes nothing:
 
 ```bash
-atlassian-offline-mcp sync --dry-run --since all
+kb-mcp sync --dry-run --since all
 ```
 
 It starts with each setting that it reads, defaults included (the model, the search
@@ -172,7 +172,7 @@ index: not run
 Now the run itself:
 
 ```bash
-atlassian-offline-mcp sync --since all
+kb-mcp sync --since all
 ```
 
 It starts as the dry run did:
@@ -212,7 +212,7 @@ is to diagnose and fix, parked for now
 Look at what it wrote:
 
 ```bash
-ls ~/atlassian-offline-mcp/docs/confluence/<KEY>
+ls ~/kb-mcp/docs/confluence/<KEY>
 ```
 
 A Markdown file per page, named by the page's id and its title, and `_tree.md`, the
@@ -225,7 +225,7 @@ fetched it.
 Register the command as an MCP server, for every project:
 
 ```bash
-claude mcp add --scope user --transport stdio atlassian-offline-mcp -- atlassian-offline-mcp
+claude mcp add --scope user --transport stdio kb-mcp -- kb-mcp
 ```
 
 Claude Code starts it when a session starts. Then, so that no prompt interrupts a
@@ -236,11 +236,11 @@ file holds, if it exists:
 {
   "permissions": {
     "allow": [
-      "mcp__atlassian-offline-mcp__ask",
-      "mcp__atlassian-offline-mcp__search",
-      "mcp__atlassian-offline-mcp__read",
-      "mcp__atlassian-offline-mcp__browse",
-      "mcp__atlassian-offline-mcp__status"
+      "mcp__kb-mcp__ask",
+      "mcp__kb-mcp__search",
+      "mcp__kb-mcp__read",
+      "mcp__kb-mcp__browse",
+      "mcp__kb-mcp__status"
     ]
   }
 }

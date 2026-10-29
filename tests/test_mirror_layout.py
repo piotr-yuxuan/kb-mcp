@@ -7,9 +7,9 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from atlassian_offline_mcp.kernel.content import BlogPost, Issue, Page
-from atlassian_offline_mcp.kernel.slug import slug
-from atlassian_offline_mcp.mirror.domain.mirror_layout import (
+from kb_mcp.kernel.content import BlogPost, Issue, Page
+from kb_mcp.kernel.slug import slug
+from kb_mcp.mirror.domain.mirror_layout import (
     asset_path,
     confluence_path,
     document_html,

@@ -1,7 +1,7 @@
 [project]
-name = "atlassian-offline-mcp"
+name = "kb-mcp"
 version = "0.1.0"
-description = "An offline mirror of Confluence and Jira Cloud, served to coding agents over MCP."
+description = "Knowledge base MCP: an offline mirror of Confluence and Jira Cloud, served to coding agents over MCP."
 readme = "README.md"
 requires-python = ">=3.14"
 # Declared together for plans 004 to 006, so that their parallel branches never
@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.scripts]
-atlassian-offline-mcp = "atlassian_offline_mcp.cli.main:main"
+kb-mcp = "kb_mcp.cli.main:main"
 
 [dependency-groups]
 dev = [
@@ -51,13 +51,13 @@ build-backend = "uv_build"
 testpaths = ["tests", "spikes"]
 
 [tool.importlinter]
-root_package = "atlassian_offline_mcp"
+root_package = "kb_mcp"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "Contexts use those below them, never those above"
 type = "layers"
-containers = ["atlassian_offline_mcp"]
+containers = ["kb_mcp"]
 layers = [
   "cli",
   "evaluation",
@@ -76,14 +76,14 @@ exhaustive_ignores = ["__main__"]
 name = "Within each context: entry, commands, options, use cases, effects, pure rules"
 type = "layers"
 containers = [
-  "atlassian_offline_mcp.cli",
-  "atlassian_offline_mcp.evaluation",
-  "atlassian_offline_mcp.mcp",
-  "atlassian_offline_mcp.search",
-  "atlassian_offline_mcp.mirror",
-  "atlassian_offline_mcp.sources.*",
-  "atlassian_offline_mcp.config",
-  "atlassian_offline_mcp.observability",
+  "kb_mcp.cli",
+  "kb_mcp.evaluation",
+  "kb_mcp.mcp",
+  "kb_mcp.search",
+  "kb_mcp.mirror",
+  "kb_mcp.sources.*",
+  "kb_mcp.config",
+  "kb_mcp.observability",
 ]
 layers = ["(main)", "(commands)", "(options)", "(app)", "(adapters)", "(domain)"]
 exhaustive = true
@@ -91,10 +91,10 @@ exhaustive = true
 [[tool.importlinter.contracts]]
 name = "Pure rules, in any context, use no effect and no use case"
 type = "forbidden"
-source_modules = ["atlassian_offline_mcp.kernel", "atlassian_offline_mcp.**.domain"]
+source_modules = ["kb_mcp.kernel", "kb_mcp.**.domain"]
 forbidden_modules = [
-  "atlassian_offline_mcp.**.adapters",
-  "atlassian_offline_mcp.**.app",
+  "kb_mcp.**.adapters",
+  "kb_mcp.**.app",
   "opentelemetry",
   "rich",
   "structlog",
@@ -103,34 +103,34 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 name = "Effects, in any context, use no use case"
 type = "forbidden"
-source_modules = ["atlassian_offline_mcp.**.adapters"]
-forbidden_modules = ["atlassian_offline_mcp.**.app"]
+source_modules = ["kb_mcp.**.adapters"]
+forbidden_modules = ["kb_mcp.**.app"]
 
 [[tool.importlinter.contracts]]
 name = "Search, the server and the evaluation read the mirror, never a source"
 type = "forbidden"
 source_modules = [
-  "atlassian_offline_mcp.search",
-  "atlassian_offline_mcp.mcp",
-  "atlassian_offline_mcp.evaluation",
-  "atlassian_offline_mcp.cli.commands.serve",
-  "atlassian_offline_mcp.cli.commands.index",
-  "atlassian_offline_mcp.cli.commands.evaluate",
-  "atlassian_offline_mcp.cli.commands.model",
+  "kb_mcp.search",
+  "kb_mcp.mcp",
+  "kb_mcp.evaluation",
+  "kb_mcp.cli.commands.serve",
+  "kb_mcp.cli.commands.index",
+  "kb_mcp.cli.commands.evaluate",
+  "kb_mcp.cli.commands.model",
 ]
-forbidden_modules = ["atlassian_offline_mcp.sources"]
+forbidden_modules = ["kb_mcp.sources"]
 
 [[tool.importlinter.contracts]]
 name = "Use cases and commands reach the network through effects only"
 type = "forbidden"
-source_modules = ["atlassian_offline_mcp.**.app", "atlassian_offline_mcp.cli.commands"]
+source_modules = ["kb_mcp.**.app", "kb_mcp.cli.commands"]
 forbidden_modules = ["httpx"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "Declaring the command imports none of the packages that runs need"
 type = "forbidden"
-source_modules = ["atlassian_offline_mcp.cli.main", "atlassian_offline_mcp.cli.options"]
+source_modules = ["kb_mcp.cli.main", "kb_mcp.cli.options"]
 forbidden_modules = [
   "httpx",
   "lxml",
@@ -152,13 +152,13 @@ forbidden_modules = [
 name = "Only observability and the command use Rich and requests, never progress"
 type = "forbidden"
 source_modules = [
-  "atlassian_offline_mcp.observability.adapters.progress",
-  "atlassian_offline_mcp.evaluation",
-  "atlassian_offline_mcp.mcp",
-  "atlassian_offline_mcp.search",
-  "atlassian_offline_mcp.mirror",
-  "atlassian_offline_mcp.sources",
-  "atlassian_offline_mcp.config",
-  "atlassian_offline_mcp.kernel",
+  "kb_mcp.observability.adapters.progress",
+  "kb_mcp.evaluation",
+  "kb_mcp.mcp",
+  "kb_mcp.search",
+  "kb_mcp.mirror",
+  "kb_mcp.sources",
+  "kb_mcp.config",
+  "kb_mcp.kernel",
 ]
 forbidden_modules = ["requests", "rich"]

@@ -25,10 +25,10 @@ from typing import TYPE_CHECKING
 import pytest
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.mirror.adapters.markdown import load
-from atlassian_offline_mcp.mirror.adapters.mirror_files import owned, sync
-from atlassian_offline_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
-from atlassian_offline_mcp.mirror.app.worklog import (
+from kb_mcp.mirror.adapters.markdown import load
+from kb_mcp.mirror.adapters.mirror_files import owned, sync
+from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
+from kb_mcp.mirror.app.worklog import (
     Outcome,
     Planned,
     mirror_worklog,
@@ -38,7 +38,7 @@ from atlassian_offline_mcp.mirror.app.worklog import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+    from kb_mcp.mirror.domain.mirror import FrontMatter
 
 FIXTURE = Path(__file__).parent / "fixtures" / "worklog"
 # The fixture's time: in every zone from UTC-12 to UTC+14, its wall clock falls between

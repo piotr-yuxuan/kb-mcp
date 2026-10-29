@@ -6,14 +6,14 @@ read-only, for agents that prefer files.
 
 ## Before you start
 
-- The command is installed, so that `atlassian-offline-mcp` is on your `PATH`, for
+- The command is installed, so that `kb-mcp` is on your `PATH`, for
   instance with `uv tool install <path of this repository>`.
 - The mirror is built, and so is its index: `sync` builds both, from Confluence, Jira
   and the work log alike ([bring every source up to date](sync.md)); or `mirror`, from
   Confluence and Jira, then:
 
   ```bash
-  atlassian-offline-mcp index
+  kb-mcp index
   ```
 
   By default `index` embeds the mirror with a model that Ollama serves, so set that up
@@ -28,8 +28,8 @@ read-only, for agents that prefer files.
   to the embedding endpoint, when it searches by meaning, and to the reranking server,
   when it reranks, both on this machine (below). It
   takes its settings, the data directory included, from
-  `~/.config/atlassian-offline-mcp/config.toml` and the variables
-  `ATLASSIAN_OFFLINE_MCP_…`; `<data>` is `~/atlassian-offline-mcp` unless they say
+  `~/.config/kb-mcp/config.toml` and the variables
+  `KB_MCP_…`; `<data>` is `~/kb-mcp` unless they say
   otherwise. It never asks, since its stdin is the protocol's, and says on stderr which
   values it ignores.
 
@@ -76,7 +76,7 @@ once; `search` stays to navigate. `serve --tools search,read,browse,status` serv
 four tools of plan 006 alone, without `ask`.
 
 The server also offers three prompts, which Claude Code shows as slash commands
-(`/mcp__atlassian-offline-mcp__brief`): `brief REF` summarises one document, `changes
+(`/mcp__kb-mcp__brief`): `brief REF` summarises one document, `changes
 space:KEY 2026-10-01` what changed in a space or a project since a date, and `overview
 project:KEY` how one is organised and what to read first. [The
 reference](../reference/mcp-tools.md) lists each tool and prompt.
@@ -88,7 +88,7 @@ reference](../reference/mcp-tools.md) lists each tool and prompt.
 For every project, at user scope:
 
 ```bash
-claude mcp add --scope user --transport stdio atlassian-offline-mcp -- atlassian-offline-mcp
+claude mcp add --scope user --transport stdio kb-mcp -- kb-mcp
 ```
 
 Or for one project, in its `.mcp.json` (Claude Code asks once before it starts a
@@ -97,9 +97,9 @@ project's server):
 ```json
 {
   "mcpServers": {
-    "atlassian-offline-mcp": {
+    "kb-mcp": {
       "type": "stdio",
-      "command": "atlassian-offline-mcp",
+      "command": "kb-mcp",
       "args": [],
       "env": {}
     }
@@ -108,7 +108,7 @@ project's server):
 ```
 
 If Claude Code does not find the command, give its absolute path, as `which
-atlassian-offline-mcp` prints it.
+kb-mcp` prints it.
 
 ### Allow the five tools
 
@@ -119,17 +119,17 @@ allow each of the five by name, so that no prompt interrupts a search:
 {
   "permissions": {
     "allow": [
-      "mcp__atlassian-offline-mcp__ask",
-      "mcp__atlassian-offline-mcp__search",
-      "mcp__atlassian-offline-mcp__read",
-      "mcp__atlassian-offline-mcp__browse",
-      "mcp__atlassian-offline-mcp__status"
+      "mcp__kb-mcp__ask",
+      "mcp__kb-mcp__search",
+      "mcp__kb-mcp__read",
+      "mcp__kb-mcp__browse",
+      "mcp__kb-mcp__status"
     ]
   }
 }
 ```
 
-The wildcard `mcp__atlassian-offline-mcp__*` would also allow any tool a later version
+The wildcard `mcp__kb-mcp__*` would also allow any tool a later version
 adds; the list keeps to these five. `/permissions` shows each rule and where it comes
 from.
 
@@ -142,8 +142,8 @@ checked, so use `Edit`. A path beginning with `~/` is under your home directory:
 ```json
 {
   "permissions": {
-    "additionalDirectories": ["/Users/<you>/atlassian-offline-mcp/docs"],
-    "deny": ["Edit(~/atlassian-offline-mcp/docs/**)"]
+    "additionalDirectories": ["/Users/<you>/kb-mcp/docs"],
+    "deny": ["Edit(~/kb-mcp/docs/**)"]
   }
 }
 ```
@@ -152,7 +152,7 @@ Reading inside an additional directory needs no allow rule. Deny rules hold in e
 permission mode, but they bind Claude Code's own tools and the file commands it
 recognises in Bash, not every program a command may start; for a guarantee from the
 operating system, see Claude Code's sandboxing. For one session only, `claude --add-dir
-~/atlassian-offline-mcp/docs` does the same as the setting.
+~/kb-mcp/docs` does the same as the setting.
 
 ## VS Code Copilot
 
@@ -164,9 +164,9 @@ workspace's `.vscode/mcp.json`:
 ```json
 {
   "servers": {
-    "atlassian-offline-mcp": {
+    "kb-mcp": {
       "type": "stdio",
-      "command": "atlassian-offline-mcp",
+      "command": "kb-mcp",
       "args": []
     }
   }
@@ -175,7 +175,7 @@ workspace's `.vscode/mcp.json`:
 
 ### Allow the five tools
 
-Run "Chat: Manage Tool Approval" from the Command Palette, open `atlassian-offline-mcp`,
+Run "Chat: Manage Tool Approval" from the Command Palette, open `kb-mcp`,
 and pre-approve `ask`, `search`, `read`, `browse` and `status`, or all of the server's tools
 with its own box. The first time a tool asks, its dialog also offers to allow it always.
 "Chat: Reset Tool Confirmations" withdraws every approval. Leave the global
@@ -189,12 +189,12 @@ alone.
 Add `<data>/docs/` to the workspace (File, Add Folder to Workspace), then make it
 read-only in the editor and keep every edit there behind a confirmation, in your user
 settings. The globs are absolute: VS Code reads a relative one from each workspace
-folder, where `atlassian-offline-mcp/docs` is not part of the files' paths.
+folder, where `kb-mcp/docs` is not part of the files' paths.
 
 ```json
 {
-  "files.readonlyInclude": {"/Users/<you>/atlassian-offline-mcp/docs/**": true},
-  "chat.tools.edits.autoApprove": {"/Users/<you>/atlassian-offline-mcp/docs/**": false}
+  "files.readonlyInclude": {"/Users/<you>/kb-mcp/docs/**": true},
+  "chat.tools.edits.autoApprove": {"/Users/<you>/kb-mcp/docs/**": false}
 }
 ```
 

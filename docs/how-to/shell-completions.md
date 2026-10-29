@@ -1,6 +1,6 @@
 # Shell completions
 
-How to have bash or zsh complete `atlassian-offline-mcp`'s subcommands, options and
+How to have bash or zsh complete `kb-mcp`'s subcommands, options and
 their values when you press Tab.
 
 ## 1. Put the command on your PATH
@@ -14,21 +14,21 @@ uv tool install --force .
 
 uv puts the command in its tools' folder, `~/.local/bin` unless `uv tool dir --bin`
 says otherwise. If your shell does not find it there, `uv tool update-shell` adds that
-folder to your `PATH`, from the next shell on. `command -v atlassian-offline-mcp` says
+folder to your `PATH`, from the next shell on. `command -v kb-mcp` says
 where it is. After an upgrade, the same `uv tool install --force .` replaces it.
 
 ## 2. Load the completion
 
-`atlassian-offline-mcp completion` prints the code that completes the command, one
+`kb-mcp completion` prints the code that completes the command, one
 script for both shells. Write it once where your shell loads completions when first
 needed, and again after each upgrade. In bash, with bash-completion:
 
 ```bash
 mkdir -p ~/.local/share/bash-completion/completions
-atlassian-offline-mcp completion > ~/.local/share/bash-completion/completions/atlassian-offline-mcp
+kb-mcp completion > ~/.local/share/bash-completion/completions/kb-mcp
 ```
 
-In zsh, write it to a file named `_atlassian-offline-mcp` in a folder of `$fpath`,
+In zsh, write it to a file named `_kb-mcp` in a folder of `$fpath`,
 before `compinit` runs. Then open a new shell.
 
 Or load it at each start of a shell, which is simpler, but runs the command each time,
@@ -36,14 +36,14 @@ for about as long as `--help`, some 60 ms: it reads no settings and logs nothing
 bash, add this line to `~/.bashrc`:
 
 ```bash
-eval "$(atlassian-offline-mcp completion)"
+eval "$(kb-mcp completion)"
 ```
 
 In zsh, add it to `~/.zshrc` after `compinit`, which starts zsh's completion system:
 
 ```zsh
 autoload -Uz compinit && compinit
-eval "$(atlassian-offline-mcp completion)"
+eval "$(kb-mcp completion)"
 ```
 
 argcomplete's own `register-python-argcomplete` and its global completion are not

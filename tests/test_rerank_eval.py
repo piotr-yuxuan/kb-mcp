@@ -7,22 +7,22 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.evaluation.app import reranked as measuring
-from atlassian_offline_mcp.evaluation.app.evaluation import read_golden
-from atlassian_offline_mcp.evaluation.app.reranked import Counted
-from atlassian_offline_mcp.evaluation.domain import reranking as bar
-from atlassian_offline_mcp.evaluation.domain.reranking import (
+from kb_mcp.cli.main import main
+from kb_mcp.evaluation.app import reranked as measuring
+from kb_mcp.evaluation.app.evaluation import read_golden
+from kb_mcp.evaluation.app.reranked import Counted
+from kb_mcp.evaluation.domain import reranking as bar
+from kb_mcp.evaluation.domain.reranking import (
     Decision,
     Depthed,
     Verdict,
     default_reranking,
 )
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.kernel.reranking import BAR_DEPTHS
-from atlassian_offline_mcp.mcp.app.tools import Library
-from atlassian_offline_mcp.search.adapters.reranking import Reranked
-from atlassian_offline_mcp.search.app.meaning import Meaning
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.reranking import BAR_DEPTHS
+from kb_mcp.mcp.app.tools import Library
+from kb_mcp.search.adapters.reranking import Reranked
+from kb_mcp.search.app.meaning import Meaning
 from tests.endpoint import Reranks, Scripted, connector, serving
 from tests.reference import Emitted, undocumented
 from tests.test_evaluate import GOLDEN, data

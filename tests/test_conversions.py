@@ -20,8 +20,8 @@ from typing import TYPE_CHECKING
 import pytest
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.mirror.adapters import conversions
-from atlassian_offline_mcp.mirror.adapters.pandoc import PandocFailedError
+from kb_mcp.mirror.adapters import conversions
+from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from tests.test_pruning import events_named
 
 if TYPE_CHECKING:

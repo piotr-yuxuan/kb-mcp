@@ -234,11 +234,11 @@ def test_a_command_s_dashboard_charts_what_others_record_too_for_its_own_runs(
 ) -> None:
     """A query of an instrument that another command records too keeps to its runs.
 
-    Each selector of such an instrument names the command, ``aom_command``; or the query
+    Each selector of such an instrument names the command, ``kb_mcp_command``; or the query
     keeps its series, by ``and on (instance)``, to the runs of a series that names the
     command or that no other command records, as ``serve``'s keep to the runs that
     served a call. Else an ``eval`` run's pieces, which it indexes, would count as an
-    ``index`` run's, and with ``aom.run.duration``, which every command records, every
+    ``index`` run's, and with ``kb_mcp.run.duration``, which every command records, every
     run would count as the command's.
     """
     every = documented(README).instruments
@@ -248,7 +248,7 @@ def test_a_command_s_dashboard_charts_what_others_record_too_for_its_own_runs(
     )
     shared = series({name: own[name] for name in own.keys() & others})
     alone = series({name: own[name] for name in own.keys() - others})
-    kept = f'aom_command="{command}"'
+    kept = f'kb_mcp_command="{command}"'
     for query, metrics in prometheus_queries(DASHBOARDS / f"{command}.json"):
         _, joined, right = query.partition(" and on (instance) ")
         selected = [re.findall(rf"\b{name}\b(\{{[^}}]*\}})?", query) for name in metrics & shared]

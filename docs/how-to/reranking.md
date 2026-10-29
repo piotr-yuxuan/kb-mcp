@@ -87,7 +87,7 @@ llama-server -m ~/.local/share/llama.cpp/qwen3-reranker-0.6b-q8_0.gguf --reranki
 ## Check it
 
 ```bash
-atlassian-offline-mcp reranker check
+kb-mcp reranker check
 ```
 
 It scores a question against a passage that answers it and one that does not, then
@@ -123,12 +123,12 @@ To turn it on, in the settings file:
 enabled = true
 ```
 
-Or `ATLASSIAN_OFFLINE_MCP_RERANK__ENABLED=true` in the server's environment, or
+Or `KB_MCP_RERANK__ENABLED=true` in the server's environment, or
 `--rerank` on the command that starts the server, which wins over both, as `--no-rerank`
 does to turn it off:
 
 ```bash
-atlassian-offline-mcp serve --rerank
+kb-mcp serve --rerank
 ```
 
 The MCP server reads the setting when it starts: restart your agent's server after a
@@ -169,11 +169,11 @@ embedding model and the reranking server running. Check both servers first; each
 says what to run when one does not answer:
 
 ```bash
-atlassian-offline-mcp model check
+kb-mcp model check
 ```
 
 ```bash
-atlassian-offline-mcp reranker check
+kb-mcp reranker check
 ```
 
 Each measure is then one command, which asks before it runs (`--yes` runs it at once,
@@ -192,7 +192,7 @@ After changing the model, the server, its version or `rerank.depth`, to see whet
 reranking still helps and how long it takes here:
 
 ```bash
-atlassian-offline-mcp eval-rerank ~/atlassian-offline-mcp/eval/golden.yaml --depth 30 --sample 20
+kb-mcp eval-rerank ~/kb-mcp/eval/golden.yaml --depth 30 --sample 20
 ```
 
 It asks 20 questions, chosen by a fixed seed (`--seed` chooses another sample): each
@@ -224,7 +224,7 @@ measure applies the bar.
 To decide, on this machine, whether to turn reranking on, and at which depth:
 
 ```bash
-atlassian-offline-mcp eval-rerank ~/atlassian-offline-mcp/eval/golden.yaml
+kb-mcp eval-rerank ~/kb-mcp/eval/golden.yaml
 ```
 
 Every question, not reranked, then reranked at depths 10, 20, 30 and 50, 110 texts
@@ -268,11 +268,11 @@ and nothing of the corpus leaves the Mac.
    both; each check says what to run when its server does not answer:
 
    ```bash
-   atlassian-offline-mcp model check
+   kb-mcp model check
    ```
 
    ```bash
-   atlassian-offline-mcp reranker check
+   kb-mcp reranker check
    ```
 
    The second line of `reranker check` times one search's request: past 5 seconds,
@@ -283,14 +283,14 @@ and nothing of the corpus leaves the Mac.
    and names as often as sentences, each with the documents that answer it. Put the
    group `identifier` on the questions that name a thing, such as an issue key, and
    `keyword` on those of a few words: the bar's second clause reads those two groups.
-   Keep the file in `<data>/eval/`, here `~/atlassian-offline-mcp/eval/golden.yaml`,
+   Keep the file in `<data>/eval/`, here `~/kb-mcp/eval/golden.yaml`,
    never in a repository: it holds your company's content. Thirty questions show only
    large differences; a hundred or more are needed to see 0.05 of MRR@10.
 
 3. **The short run**, a few minutes: one depth, on a sample of 20 questions.
 
    ```bash
-   atlassian-offline-mcp eval-rerank ~/atlassian-offline-mcp/eval/golden.yaml --depth 30 --sample 20 --summary detailed
+   kb-mcp eval-rerank ~/kb-mcp/eval/golden.yaml --depth 30 --sample 20 --summary detailed
    ```
 
    It asks before it runs. The first run builds its own index of the mirror under
@@ -304,7 +304,7 @@ and nothing of the corpus leaves the Mac.
 4. **The long run**, the bar's verdict: every question, at depths 10, 20, 30 and 50.
 
    ```bash
-   atlassian-offline-mcp eval-rerank ~/atlassian-offline-mcp/eval/golden.yaml --summary detailed
+   kb-mcp eval-rerank ~/kb-mcp/eval/golden.yaml --summary detailed
    ```
 
    110 texts a question: about 6 to 10 minutes for 30 questions by the estimate, 20 to
@@ -330,7 +330,7 @@ and nothing of the corpus leaves the Mac.
    says how to read it; for the default chunking alone, on the Mac:
 
    ```bash
-   atlassian-offline-mcp eval ~/atlassian-offline-mcp/eval/golden.yaml --chunking windows --summary detailed
+   kb-mcp eval ~/kb-mcp/eval/golden.yaml --chunking windows --summary detailed
    ```
 
 6. **What to send back.** The results files under `<data>/eval/results/`, the

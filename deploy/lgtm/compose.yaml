@@ -28,5 +28,5 @@ services:
       PYROSCOPE_EXTRA_ARGS: "-usage-stats.enabled=false"
     volumes:
       # The dashboards' provider, and their folder whole, so that a new one needs no line.
-      - ./dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/atlassian-offline-mcp.yaml:ro
-      - ./dashboards:/otel-lgtm/grafana/conf/provisioning/dashboards/atlassian-offline-mcp:ro
+      - ./dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/kb-mcp.yaml:ro
+      - ./dashboards:/otel-lgtm/grafana/conf/provisioning/dashboards/kb-mcp:ro

@@ -20,17 +20,17 @@ import pytest
 from opentelemetry.trace import SpanKind, StatusCode
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.kernel.endpoint import EMBEDDINGS
-from atlassian_offline_mcp.search.adapters.embedding import (
+from kb_mcp.kernel.endpoint import EMBEDDINGS
+from kb_mcp.search.adapters.embedding import (
     DOCUMENTS,
     SINGLE,
     RefusedError,
     connect,
     embed,
 )
-from atlassian_offline_mcp.search.adapters.model_api import endpoint
-from atlassian_offline_mcp.sources.atlassian.adapters import http
-from atlassian_offline_mcp.sources.atlassian.adapters.http import (
+from kb_mcp.search.adapters.model_api import endpoint
+from kb_mcp.sources.atlassian.adapters import http
+from kb_mcp.sources.atlassian.adapters.http import (
     RETRIES,
     Request,
     Site,
@@ -331,7 +331,7 @@ def test_an_embedding_that_fails_is_an_error_typed_as_its_exception(telemetry: I
     with opened, pytest.raises(RefusedError):
         embed(opened, "tiny", ["undo"], SINGLE)
     refused, embedding = telemetry.spans.get_finished_spans()
-    failed = "atlassian_offline_mcp.search.adapters.embedding.RefusedError"
+    failed = "kb_mcp.search.adapters.embedding.RefusedError"
     assert dict(embedding.attributes or {}) == {**EMBEDDING, "error.type": failed}
     assert embedding.status.status_code == StatusCode.ERROR
     assert dict(refused.attributes or {})["error.type"] == "400"

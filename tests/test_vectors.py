@@ -13,14 +13,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
-from atlassian_offline_mcp.mcp.app import responses
-from atlassian_offline_mcp.search.adapters import vector_store
-from atlassian_offline_mcp.search.adapters.model_api import ModelError
-from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
-from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
-from atlassian_offline_mcp.search.domain.search import Embedded
+from kb_mcp.cli.main import main
+from kb_mcp.kernel.chunking import CHUNKINGS
+from kb_mcp.mcp.app import responses
+from kb_mcp.search.adapters import vector_store
+from kb_mcp.search.adapters.model_api import ModelError
+from kb_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
+from kb_mcp.search.app.indexing import Embedding, build_index
+from kb_mcp.search.domain.search import Embedded
 from tests.endpoint import DIMENSIONS, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, fillers, page, write
 from tests.test_cli import logged_as
@@ -33,8 +33,8 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from numpy.typing import NDArray
 
-    from atlassian_offline_mcp.kernel.chunking import Chunking
-    from atlassian_offline_mcp.search.adapters.embedding import ApiEmbedder
+    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.search.adapters.embedding import ApiEmbedder
 
 BODY = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
 FILLER_PAGES = 5
@@ -251,7 +251,7 @@ def test_a_piece_the_model_refuses_is_named_and_asked_again(
     The piece's document is named by the warning index.piece_refused, in the log file too.
     Cut by sections, a piece a section, so that the piece refused is one section's.
     """
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_CHUNKING", "sections")
+    monkeypatch.setenv("KB_MCP_CHUNKING", "sections")
     refused = "Rollback\nRelease\nThe deploy of the seller service."
     answers = Scripted(refused={refused})
     with serving(answers) as url:
@@ -395,8 +395,8 @@ def test_a_chunking_that_the_kernel_does_not_name_is_refused(
 def test_the_environment_s_chunking_replaces_the_file_s(
     data: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """``ATLASSIAN_OFFLINE_MCP_CHUNKING`` is stronger than the file, and the index says so."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_CHUNKING", "small-to-big")
+    """``KB_MCP_CHUNKING`` is stronger than the file, and the index says so."""
+    monkeypatch.setenv("KB_MCP_CHUNKING", "small-to-big")
     with serving(Scripted()) as url:
         options = config(data, "tiny", url)
         settings = Path(options[1])
@@ -419,7 +419,7 @@ def test_an_index_cut_by_a_chunking_this_version_lacks_is_refused(data: Path) ->
         connection.commit()
     refused = pytest.raises(
         UnavailableIndexError,
-        match=r"this version reads: rebuild it with `atlassian-offline-mcp index`$",
+        match=r"this version reads: rebuild it with `kb-mcp index`$",
     )
     with refused, reading(data / "index.sqlite"):
         pass

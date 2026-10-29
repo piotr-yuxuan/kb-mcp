@@ -7,7 +7,7 @@ fixed.
 
 ## The data directory
 
-`<data>` is the setting `data_dir`, by default `~/atlassian-offline-mcp`. It is never
+`<data>` is the setting `data_dir`, by default `~/kb-mcp`. It is never
 under a synchronised folder (iCloud, `~/Library/CloudStorage`, Dropbox, OneDrive, Google
 Drive, `~/Desktop`, `~/Documents`) and never inside a git working tree. Settings come
 from `config.app.settings.load_settings`, which merges the settings file, the
@@ -39,8 +39,8 @@ No code builds these paths otherwise.
 Outside the data directory, each run but `completion`'s, unless it is refused or
 declined before it starts, writes one file of JSON lines into the setting `logs.dir`,
 by default the user's log folder as platformdirs places it:
-`~/Library/Logs/atlassian-offline-mcp` on macOS,
-`$XDG_STATE_HOME/atlassian-offline-mcp/log` on Linux. `load_settings` resolves and
+`~/Library/Logs/kb-mcp` on macOS,
+`$XDG_STATE_HOME/kb-mcp/log` on Linux. `load_settings` resolves and
 judges it as it does the data directory, and names `logs.dir` when it refuses it.
 `observability.adapters.logs.log_file` alone writes there: one file a run,
 `<command>-<start>-<pid>.jsonl`, 0600, in a folder that it makes 0700, and it removes

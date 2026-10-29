@@ -25,12 +25,12 @@ from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
 from opentelemetry.sdk.trace import TracerProvider
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.observability.adapters.logs import SDK
-from atlassian_offline_mcp.observability.adapters.telemetry import Exported
-from atlassian_offline_mcp.observability.app.observed import early
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.cli.main import main
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.observability.adapters.logs import SDK
+from kb_mcp.observability.adapters.telemetry import Exported
+from kb_mcp.observability.app.observed import early
+from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.collector import LOGS, METRICS, TRACES, Collector, attributes, collecting, plain
 from tests.endpoint import nothing_listening
 from tests.test_api_token import (
@@ -61,7 +61,7 @@ if TYPE_CHECKING:
     from tests.conftest import InMemory
 
 ROOT = Path(__file__).parents[1]
-PROGRAM = "atlassian-offline-mcp"
+PROGRAM = "kb-mcp"
 VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]["version"]
 # The limit that telemetry has at a run's end, as plan 016 injects it for the bounded exit,
 # and the time that a run then takes at most, when the endpoint refuses and when it
@@ -247,7 +247,7 @@ def test_no_secret_reaches_the_files_stderr_or_telemetry_at_debug(
             token.setenv(EMAIL, ADDRESS)
             token.setenv(CREDENTIAL, SENTINEL)
             assert main(download(tmp_path, "-vv")) == SIGN_IN_NEEDED
-        session = tmp_path / "atlassian-offline-mcp" / "session" / COOKIES
+        session = tmp_path / "kb-mcp" / "session" / COOKIES
         write_cookies(session, [{"name": "tenant.session.token", "value": COOKIE, "domain": HOST}])
         assert main(download(tmp_path, "-vv")) == ExitStatus.FAILED
     finally:
@@ -383,16 +383,16 @@ def test_a_run_is_one_trace_whose_root_holds_its_records_and_says_its_command_an
     (root,) = collector.spans()
     assert (root.name, root.parent_span_id) == ("check", b"")
     assert attributes(root.attributes) == {
-        "aom.command": "check",
-        "aom.dry_run": False,
-        "aom.exit_status": 0,
+        "kb_mcp.command": "check",
+        "kb_mcp.dry_run": False,
+        "kb_mcp.exit_status": 0,
     }
     for _, record in collector.records():
         assert (record.trace_id, record.span_id) == (root.trace_id, root.span_id)
-    (duration,) = (metric for metric in collector.metrics() if metric.name == "aom.run.duration")
+    (duration,) = (metric for metric in collector.metrics() if metric.name == "kb_mcp.run.duration")
     assert duration.unit == "s"
     (point,) = duration.histogram.data_points
-    assert attributes(point.attributes) == {"aom.command": "check", "aom.exit_status": 0}
+    assert attributes(point.attributes) == {"kb_mcp.command": "check", "kb_mcp.exit_status": 0}
     assert point.count == 1
 
 
@@ -424,9 +424,9 @@ def test_a_download_s_root_says_whether_it_is_a_dry_run(
     assert ran.status == ExitStatus.REFUSED
     (root,) = collector.spans()
     assert attributes(root.attributes) == {
-        "aom.command": "download",
-        "aom.dry_run": dry,
-        "aom.exit_status": ExitStatus.REFUSED,
+        "kb_mcp.command": "download",
+        "kb_mcp.dry_run": dry,
+        "kb_mcp.exit_status": ExitStatus.REFUSED,
     }
 
 
@@ -444,9 +444,9 @@ def test_serve_is_no_trace_of_its_own(tmp_path: Path) -> None:
     records = [record for _, record in collector.records()]
     assert [plain(record.body) for record in records] == ["run.start", "run.end"]
     assert all(record.trace_id == b"" for record in records)
-    (duration,) = (metric for metric in collector.metrics() if metric.name == "aom.run.duration")
+    (duration,) = (metric for metric in collector.metrics() if metric.name == "kb_mcp.run.duration")
     (point,) = duration.histogram.data_points
-    assert attributes(point.attributes) == {"aom.command": "serve", "aom.exit_status": 0}
+    assert attributes(point.attributes) == {"kb_mcp.command": "serve", "kb_mcp.exit_status": 0}
 
 
 def test_an_endpoint_that_refuses_ends_check_in_bounded_time_with_one_warning(

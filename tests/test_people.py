@@ -20,9 +20,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.search.adapters.aliases import AliasFileError, read_aliases
-from atlassian_offline_mcp.search.domain.people import (
+from kb_mcp.cli.main import main
+from kb_mcp.search.adapters.aliases import AliasFileError, read_aliases
+from kb_mcp.search.domain.people import (
     NOBODY,
     SEVERAL,
     UNHELD,

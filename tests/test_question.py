@@ -19,10 +19,10 @@ from typing import TYPE_CHECKING, override
 
 import pytest
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import Settings
-from atlassian_offline_mcp.sources.atlassian.adapters import http
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import Settings
+from kb_mcp.sources.atlassian.adapters import http
+from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.endpoint import Scripted, serving
 from tests.test_download import SITE, FakeSite
 from tests.test_observed import said as said_on
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.domain.settings import Loaded
 
 DECLINED = 1
 REFUSED = 2
@@ -54,15 +54,15 @@ WRITING = {
     "sync": ([], "sync"),
 }
 # The work log's folder, which every test's environment names, so that sync has a source.
-WORKLOG_PATH = "ATLASSIAN_OFFLINE_MCP_SOURCES__WORKLOG__PATH"
+WORKLOG_PATH = "KB_MCP_SOURCES__WORKLOG__PATH"
 # Jira's projects, so that sync has an Atlassian source too.
-PROJECTS = {"ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS": '["PRB"]'}
+PROJECTS = {"KB_MCP_SOURCES__JIRA__PROJECTS": '["PRB"]'}
 # An embedding endpoint off this machine, over https and over http.
-ELSEWHERE = {"ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": "https://embeddings.example/v1"}
-IN_CLEAR = {"ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": "http://embeddings.example/v1"}
-BY_MEANING = {"ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "hybrid"}
+ELSEWHERE = {"KB_MCP_EMBEDDING_URL": "https://embeddings.example/v1"}
+IN_CLEAR = {"KB_MCP_EMBEDDING_URL": "http://embeddings.example/v1"}
+BY_MEANING = {"KB_MCP_SEARCH_MODE": "hybrid"}
 # An API token, which signs in with its account's email, given without it.
-WITHOUT_EMAIL = {"ATLASSIAN_OFFLINE_MCP_API_TOKEN": "token-sentinel-4d1c"}
+WITHOUT_EMAIL = {"KB_MCP_API_TOKEN": "token-sentinel-4d1c"}
 # What plan 015 refuses without the network, before anything is asked: a command that
 # writes and its arguments, the variables set, and what the refusal names.
 REFUSED_FIRST = [
@@ -132,9 +132,7 @@ def runs(monkeypatch: MonkeyPatch) -> list[tuple[argparse.Namespace, Loaded]]:
         return 0, None
 
     for _, module in WRITING.values():
-        monkeypatch.setattr(
-            importlib.import_module(f"atlassian_offline_mcp.cli.commands.{module}"), "run", run
-        )
+        monkeypatch.setattr(importlib.import_module(f"kb_mcp.cli.commands.{module}"), "run", run)
     return recorded
 
 
@@ -170,7 +168,7 @@ def test_on_terminals_yes_lets_the_run_go_on(
     said = stderr.getvalue()
     assert said.startswith("mirror, with these settings:\n")
     assert said.endswith(QUESTION)
-    assert f"atlassian-offline-mcp mirror \\\n  --config {home / 'none.toml'}" in said
+    assert f"kb-mcp mirror \\\n  --config {home / 'none.toml'}" in said
 
 
 @pytest.mark.parametrize("answer", ["n\n", "\n", "yess\n", ""])
@@ -275,7 +273,7 @@ def test_yes_or_a_dry_run_runs_without_reading_stdin(
     assert main(command_line(home, name, skip)) == 0
     said = stderr.getvalue()
     assert said.startswith(f"{name}, with these settings:\n")
-    assert f"atlassian-offline-mcp {name} \\\n" in said
+    assert f"kb-mcp {name} \\\n" in said
     assert QUESTION not in said
     assert main(command_line(home, name, skip, "-q")) == 0
     assert stderr.getvalue() == said
@@ -294,11 +292,11 @@ def test_a_yes_variable_skips_nothing_and_is_said_to_be_ignored(
 
     Before a question, the values ignored are said at any level.
     """
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_YES", "1")
+    monkeypatch.setenv("KB_MCP_YES", "1")
     asked = Terminal()
     given(monkeypatch, Terminal("n\n"), asked)
     assert main(command_line(home, "mirror", *level)) == DECLINED
-    assert "ignored: ATLASSIAN_OFFLINE_MCP_YES: names no setting\n" in asked.getvalue()
+    assert "ignored: KB_MCP_YES: names no setting\n" in asked.getvalue()
     assert QUESTION in asked.getvalue()
     given(monkeypatch, io.StringIO(), io.StringIO())
     assert main(command_line(home, "mirror")) == REFUSED
@@ -323,7 +321,7 @@ def test_a_download_declined_or_refused_asks_the_site_nothing(
     home: Path, monkeypatch: MonkeyPatch, *, terminal: bool
 ) -> None:
     """Nothing is spent before the question: no request, no file, the session as it was."""
-    chosen = Settings(site=SITE, data_dir=(home / "atlassian-offline-mcp").resolve())
+    chosen = Settings(site=SITE, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
@@ -434,14 +432,14 @@ def test_on_a_pseudo_terminal_no_leaves_the_data_then_yes_builds_the_index(home:
     environment = {
         "HOME": str(home),
         "PATH": os.environ["PATH"],
-        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": str(data),
-        "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "lexical",
+        "KB_MCP_DATA_DIR": str(data),
+        "KB_MCP_SEARCH_MODE": "lexical",
     }
     outcomes = []
     for answer in (b"n\n", b"y\n"):
         controller, terminal = pty.openpty()
         with subprocess.Popen(
-            [sys.executable, "-m", "atlassian_offline_mcp", "index"],
+            [sys.executable, "-m", "kb_mcp", "index"],
             stdin=terminal,
             stdout=subprocess.PIPE,
             stderr=terminal,

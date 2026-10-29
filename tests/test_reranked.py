@@ -11,15 +11,15 @@ import pytest
 from mcp.client.stdio import StdioServerParameters
 from opentelemetry import trace
 
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.kernel.reranking import LONGEST_TEXT, MOST_TEXTS
-from atlassian_offline_mcp.mcp.app import responses
-from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
-from atlassian_offline_mcp.search.adapters.reranking import Reranked, RerankError
-from atlassian_offline_mcp.search.app.indexing import build_index
-from atlassian_offline_mcp.search.app.reranking import Reranking
-from atlassian_offline_mcp.search.domain.reranking import PLACES, split_order, written
+from kb_mcp.cli.main import main
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.reranking import LONGEST_TEXT, MOST_TEXTS
+from kb_mcp.mcp.app import responses
+from kb_mcp.mcp.app.tools import Library, UnanswerableError
+from kb_mcp.search.adapters.reranking import Reranked, RerankError
+from kb_mcp.search.app.indexing import build_index
+from kb_mcp.search.app.reranking import Reranking
+from kb_mcp.search.domain.reranking import PLACES, split_order, written
 from tests.answers import built, continuation, follow, parts
 from tests.endpoint import Reranks, nothing_listening, relevance, serving
 from tests.mirrors import MOMENT, fillers, issue, page, write
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from _pytest.tempdir import TempPathFactory
 
-    from atlassian_offline_mcp.search.domain.search import Sort
+    from kb_mcp.search.domain.search import Sort
     from tests.conftest import InMemory
 
 QUERY = "release rollback"
@@ -201,14 +201,14 @@ def test_a_refusal_is_the_request_s_and_the_next_search_asks_again(root: Path) -
 
 
 def reranked_said(telemetry: InMemory, tool: str, call: Callable[[], str]) -> object:
-    """Call a tool within its call's span, as the SDK opens one; give its ``aom.reranked``."""
+    """Call a tool within its call's span, as the SDK opens one; give its ``kb_mcp.reranked``."""
     telemetry.spans.clear()
     with trace.get_tracer(__name__).start_as_current_span(f"tools/call {tool}"):
         call()
     (span,) = (
         each for each in telemetry.spans.get_finished_spans() if each.name == f"tools/call {tool}"
     )
-    return (span.attributes or {}).get("aom.reranked")
+    return (span.attributes or {}).get("kb_mcp.reranked")
 
 
 def test_the_call_s_span_says_reranked_and_the_counter_why_not(
@@ -227,8 +227,8 @@ def test_the_call_s_span_says_reranked_and_the_counter_why_not(
     searched = [reranked_said(telemetry, "search", lambda: served.search(QUERY)) for _ in "ab"]
     assert searched == [False, False]
     counted = {
-        point.attributes["aom.rerank.fallback"]: point.value
-        for point in telemetry.measured()["aom.rerank.fallbacks"].data.data_points
+        point.attributes["kb_mcp.rerank.fallback"]: point.value
+        for point in telemetry.measured()["kb_mcp.rerank.fallbacks"].data.data_points
         if point.attributes
     }
     assert counted == {"unanswered": 1, "quiet": 1}
@@ -347,13 +347,13 @@ STDIO = (
 def stdio_root(tmp_path: Path, rerank: str) -> tuple[Path, Path]:
     """Index four pages by words; give a scratch home, whose settings hold ``rerank``."""
     home, data = tmp_path / "home", tmp_path / "data"
-    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
+    (home / ".config" / "kb-mcp").mkdir(parents=True)
     fillers(data / "docs")
     for number, text in enumerate(STDIO):
         write(data / "docs", page(str(920000 + number), f"Stdio {number}"), text)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     settings = f'data_dir = {json.dumps(str(data))}\nsearch_mode = "lexical"\n[rerank]\n{rerank}'
-    (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text(settings, "utf-8")
+    (home / ".config" / "kb-mcp" / "config.toml").write_text(settings, "utf-8")
     return home, data
 
 

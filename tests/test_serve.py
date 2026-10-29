@@ -19,10 +19,10 @@ from mcp.shared.message import SessionMessage
 from mcp_types import JSONRPCError, JSONRPCResponse, TextContent, jsonrpc_message_adapter
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.cli.commands.serve import served
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
-from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
+from kb_mcp.cli.commands.serve import served
+from kb_mcp.cli.main import main
+from kb_mcp.mcp.app.tools import UnanswerableError
+from kb_mcp.search.app.indexing import Embedding, build_index
 from tests.answers import TOOLS, estimate, parts
 from tests.collector import Collector, attributes, collecting
 from tests.endpoint import Scripted, serving, tiny
@@ -57,8 +57,8 @@ def guard(event, arguments):
     sys.stderr.write(f"network: {event}\\n")
     os._exit(3)
 sys.addaudithook(guard)
-sys.argv = ["atlassian-offline-mcp"]
-runpy.run_module("atlassian_offline_mcp", run_name="__main__", alter_sys=True)
+sys.argv = ["kb-mcp"]
+runpy.run_module("kb_mcp", run_name="__main__", alter_sys=True)
 """
 ROOT = Path(__file__).parents[1]
 
@@ -71,8 +71,8 @@ def home(tmp_path: Path) -> Path:
     append keys of the file's top level.
     """
     home, data = tmp_path / "home", tmp_path / "data"
-    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
-    settings = home / ".config" / "atlassian-offline-mcp" / "config.toml"
+    (home / ".config" / "kb-mcp").mkdir(parents=True)
+    settings = home / ".config" / "kb-mcp" / "config.toml"
     settings.write_text(
         f"data_dir = {json.dumps(str(data))}\nrerank.enabled = false\n", encoding="utf-8"
     )
@@ -93,7 +93,7 @@ def test_a_client_calls_every_tool_over_stdio(home: Path) -> None:
 
     async def session() -> None:
         command = StdioServerParameters(
-            command=sys.executable, args=["-m", "atlassian_offline_mcp"], env={"HOME": str(home)}
+            command=sys.executable, args=["-m", "kb_mcp"], env={"HOME": str(home)}
         )
         async with Client(command, message_handler=handle) as client:
             instructions = client.instructions or ""
@@ -138,6 +138,21 @@ def test_a_client_calls_every_tool_over_stdio(home: Path) -> None:
 
     anyio.run(session)
     assert faults == []
+
+
+def test_the_server_gives_clients_its_name_and_people_its_title(home: Path) -> None:
+    """``serverInfo`` names the server ``kb-mcp``, which clients key, and titles it for people."""
+
+    async def session() -> None:
+        command = StdioServerParameters(
+            command=sys.executable, args=["-m", "kb_mcp"], env={"HOME": str(home)}
+        )
+        async with Client(command) as client:
+            info = client.server_info
+            assert info is not None
+            assert (info.name, info.title) == ("kb-mcp", "Knowledge base MCP")
+
+    anyio.run(session)
 
 
 def talk(
@@ -225,7 +240,7 @@ def test_at_debug_stdout_holds_the_protocol_and_the_collector_a_search_s_spans(
     ``search.lexical`` as its child; and the count of fallbacks, 0 from the start. The
     server may reach the collector's port alone, and searches the index by words alone.
     """
-    settings = home / ".config" / "atlassian-offline-mcp" / "config.toml"
+    settings = home / ".config" / "kb-mcp" / "config.toml"
     collector = Collector()
     with collecting(collector) as endpoint:
         with settings.open("a", encoding="utf-8") as appended:
@@ -271,13 +286,13 @@ def test_at_debug_stdout_holds_the_protocol_and_the_collector_a_search_s_spans(
     (lexical,) = (span for span in spans if span.name == "search.lexical")
     assert (lexical.trace_id, lexical.parent_span_id) == (call.trace_id, call.span_id)
     call_says = attributes(call.attributes)
-    assert {key: call_says[key] for key in ("aom.mode", "aom.hits", "aom.fallback")} == {
-        "aom.mode": "lexical",
-        "aom.hits": 2,
-        "aom.fallback": False,
+    assert {key: call_says[key] for key in ("kb_mcp.mode", "kb_mcp.hits", "kb_mcp.fallback")} == {
+        "kb_mcp.mode": "lexical",
+        "kb_mcp.hits": 2,
+        "kb_mcp.fallback": False,
     }
     metrics = {metric.name: metric for metric in collector.metrics()}
-    fallbacks = metrics["aom.serve.fallbacks"].sum.data_points
+    fallbacks = metrics["kb_mcp.serve.fallbacks"].sum.data_points
     assert [point.as_int for point in fallbacks] == [0]
 
 
@@ -326,8 +341,8 @@ def test_a_hybrid_search_answers_by_meaning_over_stdio_offline(tmp_path: Path) -
     stopped, the next server answers by words and says why.
     """
     home, data = tmp_path / "home", tmp_path / "data"
-    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
-    settings = home / ".config" / "atlassian-offline-mcp" / "config.toml"
+    (home / ".config" / "kb-mcp").mkdir(parents=True)
+    settings = home / ".config" / "kb-mcp" / "config.toml"
     fillers(data / "docs")
     write(data / "docs", page("4002", "Holiday canteen"), "Leave for a meal.\n")
     build_index(data / "docs", data / "index.sqlite", MOMENT, Embedding(tiny(), data / "v.db"))
@@ -378,7 +393,7 @@ def test_an_endpoint_elsewhere_stops_a_server_by_meaning(
 
 def test_an_endpoint_elsewhere_is_no_matter_to_a_server_by_words(home: Path) -> None:
     """By words alone the endpoint is never opened: the server starts and answers."""
-    settings = home / ".config" / "atlassian-offline-mcp" / "config.toml"
+    settings = home / ".config" / "kb-mcp" / "config.toml"
     with settings.open("a", encoding="utf-8") as appended:
         appended.write('search_mode = "lexical"\nembedding_url = "https://embeddings.example/v1"\n')
 

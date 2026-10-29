@@ -16,13 +16,13 @@ OpenAI-compatible API, and the index built by meaning ([embeddings](embeddings.m
 else `ask` answers by words and says so in its answer. Neither `calls/` nor
 `results.json` keeps that, but
 the server's own log file does, `serve-<start>-<pid>.jsonl` in `logs.dir`, by the
-warning `search.fallback`, and with telemetry on the counter `aom.serve.fallbacks`
+warning `search.fallback`, and with telemetry on the counter `kb_mcp.serve.fallbacks`
 counts it ([serve](../reference/telemetry/serve.md)). Run `model check` before the runs,
 and look for `search.fallback` in those files after them. `search_mode = "lexical"`
 measures words alone. Reranking is off by default; with `enabled = true` under
 `[rerank]`, the reranking server must be running ([reranking](reranking.md)), else
 answers keep their order and say "Not reranked", which the warning `rerank.fallback`
-and the counter `aom.rerank.fallbacks` record: run `reranker check` before the runs
+and the counter `kb_mcp.rerank.fallbacks` record: run `reranker check` before the runs
 too.
 
 ## Prepare the runs
@@ -30,7 +30,7 @@ too.
 The pilot first, of six questions, twelve runs:
 
 ```bash
-atlassian-offline-mcp eval-agents prepare golden.yaml --out pilot --model haiku --sample 6
+kb-mcp eval-agents prepare golden.yaml --out pilot --model haiku --sample 6
 ```
 
 `prepare` says the runs, their bound (12 calls of 60 seconds each, at most) and what
@@ -73,7 +73,7 @@ when it reports them; leave them out otherwise. Three failures in a row stop the
 ## Grade after each batch
 
 ```bash
-atlassian-offline-mcp eval-agents grade pilot --yes
+kb-mcp eval-agents grade pilot --yes
 ```
 
 `grade` reads the call logs, the answers and the harness files, refuses one not as its
@@ -91,7 +91,7 @@ adds each run. It exits 1 when the runs spent past twice their estimates: stop, 
 the estimates from what was spent.
 
 ```bash
-atlassian-offline-mcp eval-agents --format json grade pilot --yes
+kb-mcp eval-agents --format json grade pilot --yes
 ```
 
 ## After the pilot
@@ -101,11 +101,11 @@ handed over and model tokens, then prepare the runs that decide, each model in i
 directory:
 
 ```bash
-atlassian-offline-mcp eval-agents prepare golden.yaml --out haiku-runs --model haiku --sample 25
+kb-mcp eval-agents prepare golden.yaml --out haiku-runs --model haiku --sample 25
 ```
 
 ```bash
-atlassian-offline-mcp eval-agents prepare golden.yaml --out sonnet-runs --model sonnet --sample 5
+kb-mcp eval-agents prepare golden.yaml --out sonnet-runs --model sonnet --sample 5
 ```
 
 Haiku's 50 runs decide by the rule; Sonnet's 10 show the direction for a stronger agent,

@@ -17,12 +17,12 @@ anywhere; only the data directory must stay out of synchronised folders):
 uv tool install --force .
 ```
 
-Or run it from the checkout with `uv run atlassian-offline-mcp …` instead. To complete
+Or run it from the checkout with `uv run kb-mcp …` instead. To complete
 its subcommands and options with Tab, see [shell completions](shell-completions.md).
 
 ## 2. Settings
 
-Create `~/.config/atlassian-offline-mcp/config.toml`:
+Create `~/.config/kb-mcp/config.toml`:
 
 ```toml
 site = "https://<your-site>.atlassian.net"
@@ -38,20 +38,20 @@ projects = ["PLAT"]
 `spaces` and `projects` belong to their sources' tables: at the top of the file, where
 they were before, they are refused, and the message names their table.
 
-Each setting can also come from a variable, `ATLASSIAN_OFFLINE_MCP_` then its path in
-capitals joined by `__`, a list or a table in JSON (`ATLASSIAN_OFFLINE_MCP_SITE`,
-`ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS='["PLAT"]'`), and some from a flag
+Each setting can also come from a variable, `KB_MCP_` then its path in
+capitals joined by `__`, a list or a table in JSON (`KB_MCP_SITE`,
+`KB_MCP_SOURCES__JIRA__PROJECTS='["PLAT"]'`), and some from a flag
 (`--site`, `--data-dir`, `--space`, `--project`). A flag wins over a variable, which
 wins over the file, and a list replaces a weaker one whole. Each command says on stderr
 which values it ignores: one replaced, a variable that names no setting, or one the
 command does not use.
 
-The data goes to `~/atlassian-offline-mcp` unless `data_dir` says otherwise; the command
+The data goes to `~/kb-mcp` unless `data_dir` says otherwise; the command
 refuses a folder under iCloud, `~/Library/CloudStorage`, Dropbox, OneDrive, Google Drive,
 `~/Desktop`, `~/Documents`, or inside a git working tree. Check it all with:
 
 ```bash
-atlassian-offline-mcp check --summary detailed
+kb-mcp check --summary detailed
 ```
 
 It shows every setting, its value and where it came from: the file, a variable, a flag,
@@ -61,7 +61,7 @@ flag gave.
 ## 3. Doctor
 
 ```bash
-atlassian-offline-mcp doctor
+kb-mcp doctor
 ```
 
 It says where pandoc is (needed later by the mirror), whether the public CAs verify the
@@ -72,16 +72,16 @@ token.
 ## 4. Sign in
 
 ```bash
-atlassian-offline-mcp login
+kb-mcp login
 ```
 
 Like every command that writes under the data directory, it first says what it will do,
 then asks `Proceed? [y/N]`: answer `y`.
 
 Chrome opens on the site with a profile of its own (under
-`~/atlassian-offline-mcp/session/`). Sign in as usual; the window closes once Jira or
+`~/kb-mcp/session/`). Sign in as usual; the window closes once Jira or
 Confluence answers with your account. The session's cookies are kept in
-`~/atlassian-offline-mcp/session/cookies.json`, readable by you alone. If the sign-in
+`~/kb-mcp/session/cookies.json`, readable by you alone. If the sign-in
 needs a browser extension, add `--keep-extensions`; if Playwright does not find Chrome,
 add `--chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`.
 
@@ -91,7 +91,7 @@ sops](api-token-with-sops.md).
 ## 5. Download
 
 ```bash
-atlassian-offline-mcp download --space ENG --space OPS --project PLAT --since 7d
+kb-mcp download --space ENG --space OPS --project PLAT --since 7d
 ```
 
 `--since` takes a length before now (`12h`, `7d`, `2w`, `6mo`, `1y`), an ISO date
@@ -113,10 +113,10 @@ as a script needs: where no terminal can answer, the command is refused without 
 `--dry-run` lists and decides as a run would, then says what it would fetch, and
 fetches nothing; it does not ask.
 
-The counts are printed and saved in `~/atlassian-offline-mcp/runs/`. The exit status is
+The counts are printed and saved in `~/kb-mcp/runs/`. The exit status is
 0 when all went well, 1 when something failed (a space key that finds nothing is named
 on stderr) or you answered no, 2 for refused settings or options, or no terminal to ask
-on, 3 when you must sign in again, 130 when stopped by Ctrl-C. `atlassian-offline-mcp
+on, 3 when you must sign in again, 130 when stopped by Ctrl-C. `kb-mcp
 --help` lists them. Running the same command again without `--since` fetches only what
 changed since each target's last fetch, and asks again for what failed; the counts then
 say how many documents are new or changed, apart from how many are listed.
@@ -124,7 +124,7 @@ say how many documents are new or changed, apart from how many are listed.
 ## End the session
 
 The session that `login` saved signs in as you, from this machine or from any copy of
-`~/atlassian-offline-mcp/session/`, until it expires. End it when you leave the machine,
+`~/kb-mcp/session/`, until it expires. End it when you leave the machine,
 or as soon as that folder may have been copied:
 
 1. On [your Atlassian account's security page][security], view and manage your recent
@@ -136,7 +136,7 @@ or as soon as that folder may have been copied:
    profile:
 
    ```bash
-   rm -r ~/atlassian-offline-mcp/session
+   rm -r ~/kb-mcp/session
    ```
 
 A run signed in by the session then stops at once with exit status 3, and says to run
@@ -149,7 +149,7 @@ session that they held: only the first step does.
 
 ## What can come back to the personal laptop
 
-The run reports in `~/atlassian-offline-mcp/runs/` hold counts and the paths of fields
+The run reports in `~/kb-mcp/runs/` hold counts and the paths of fields
 that a response no longer had, never titles, keys, names or content. They are what to
 bring back if something needs fixing. Nothing under `raw/` or `session/` ever leaves
 the user's machine.

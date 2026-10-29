@@ -11,6 +11,13 @@ A change to an event, a span or an instrument changes its page in the same commi
 tests run each command on the scripted site and endpoint, and compare what it records
 with its page and this one, finding the pages in this folder.
 
+The program's own attributes and instruments are named under `kb_mcp.`, as
+OpenTelemetry's [naming](https://opentelemetry.io/docs/specs/semconv/general/naming/)
+advises for an application's own names: its name as Python writes it, since `kb` alone
+also reads as kilobyte, which a size in bytes would make misleading. Prometheus writes
+the dots as underscores: `kb_mcp_run_duration_seconds`. Spans and events are named after
+what they record, such as `sync.step`.
+
 ## The log file
 
 Each run, once its settings are read, unless it is then refused or declined, writes one
@@ -20,8 +27,8 @@ such as `download-20261022T210509Z-4242.jsonl`; a step's command names its file,
 `completion`, which reads no settings, write none.
 
 - **Where.** `logs.dir`, by default the user's log folder as platformdirs places it:
-  `~/Library/Logs/atlassian-offline-mcp` on macOS,
-  `$XDG_STATE_HOME/atlassian-offline-mcp/log` on Linux, `~/.local/state` without the
+  `~/Library/Logs/kb-mcp` on macOS,
+  `$XDG_STATE_HOME/kb-mcp/log` on Linux, `~/.local/state` without the
   variable. The folder passes the data directory's guard: under a synchronised folder
   or in a git working tree, the run exits 2, naming `logs.dir`.
 - **Who reads it.** The folder, when the run makes it, is 0700, and each file 0600: it
@@ -79,7 +86,7 @@ fields as `key=value`, by name, a value with spaces in quotes; a traceback follo
 line of `run.failed`:
 
 ```
-2026-10-22T21:05:09.123456Z [warning  ] search.fallback                [atlassian_offline_mcp.mcp.app.tools] mode=hybrid reason=...
+2026-10-22T21:05:09.123456Z [warning  ] search.fallback                [kb_mcp.mcp.app.tools] mode=hybrid reason=...
 ```
 
 On a terminal, unless `-q`, the tasks of a run are bars, with what is done of how much,
@@ -91,8 +98,8 @@ the time spent, the time left and the item at hand; `serve` has none. Each task 
 
 | Setting | Variable | Rule |
 |---|---|---|
-| `logs.dir` | `ATLASSIAN_OFFLINE_MCP_LOGS__DIR` | A folder, `~` the home directory; the data directory's guard; by default the user's log folder |
-| `telemetry.endpoint` | `ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT` | `http://<address>:<port>`, a literal address of this machine, no path, such as `http://127.0.0.1:4318`; else the run exits 2. Unset: telemetry off |
+| `logs.dir` | `KB_MCP_LOGS__DIR` | A folder, `~` the home directory; the data directory's guard; by default the user's log folder |
+| `telemetry.endpoint` | `KB_MCP_TELEMETRY__ENDPOINT` | `http://<address>:<port>`, a literal address of this machine, no path, such as `http://127.0.0.1:4318`; else the run exits 2. Unset: telemetry off |
 
 | Variable | Effect |
 |---|---|
@@ -118,7 +125,7 @@ its own environment, says when `OTEL_EXPORTER_OTLP_ENDPOINT`, set there for anot
 program, turns it on. `run.start` names the endpoint and its layer too, at INFO.
 Traces, metrics and the records from INFO go to the endpoint by OTLP over HTTP, in
 protobuf, to `/v1/traces`, `/v1/metrics` and `/v1/logs`, under the resource
-`service.name` `atlassian-offline-mcp`, `service.version` the program's version and
+`service.name` `kb-mcp`, `service.version` the program's version and
 `service.instance.id` the run's id. Spans go in batches, metrics every 15 seconds and at
 the end. An exported record has the event as its body, the event's fields as its
 attributes with `command`, and the ids of the span it was logged in. No trace context is
@@ -145,7 +152,7 @@ What any command may log.
 | `run.interrupted` | warning | `seconds` | Ctrl-C stopped the run, which exits 130 |
 | `run.failed` | error | `seconds` | An exception stopped the run, which exits 1; the traceback follows |
 | `run.refused` | error | `reason` | The command refuses its arguments or the settings, before the run: exit 2. On stderr alone |
-| `settings.refused` | error | `reason` | The settings break a rule, before the run: exit 2. On stderr alone |
+| `settings.refused` | error | `reason` | The settings break a rule, before the run: exit 2. On stderr alone; when the program's former name left settings, data or variables, the steps to move them follow, as [move to kb-mcp](../../how-to/move-to-kb-mcp.md) says |
 | `progress` | info | `task`, `done`, `total`, `remaining` | A task's heartbeat, every 10 s at most, and at its end; `remaining` in whole seconds |
 | `log.unwritable` | warning | `folder`, `reason` | The log folder cannot be written: no file, or nothing more in it |
 | `log.capped` | warning | | The file reached its cap: nothing more is written to it |
@@ -156,10 +163,10 @@ What any command may log.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `<command>` | internal | `aom.command`, `aom.dry_run`, `aom.exit_status` | The root of a run's trace, named after its command, holding `run.start` and `run.end`; `serve` and `completion` have none |
+| `<command>` | internal | `kb_mcp.command`, `kb_mcp.dry_run`, `kb_mcp.exit_status` | The root of a run's trace, named after its command, holding `run.start` and `run.end`; `serve` and `completion` have none |
 
 ## Instruments
 
 | Instrument | Kind | Unit | Attributes | What |
 |---|---|---|---|---|
-| `aom.run.duration` | histogram | `s` | `aom.command`, `aom.exit_status` | How long a run lasted, `serve`'s included, `completion`'s not |
+| `kb_mcp.run.duration` | histogram | `s` | `kb_mcp.command`, `kb_mcp.exit_status` | How long a run lasted, `serve`'s included, `completion`'s not |

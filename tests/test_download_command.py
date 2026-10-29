@@ -12,14 +12,14 @@ import pytest
 from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
-from atlassian_offline_mcp.cli.commands import download as download_command
-from atlassian_offline_mcp.cli.main import main
-from atlassian_offline_mcp.config.domain.settings import Settings
-from atlassian_offline_mcp.kernel.exit_status import ExitStatus
-from atlassian_offline_mcp.sources.atlassian.adapters import http
-from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
-from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
-from atlassian_offline_mcp.sources.atlassian.app.download import (
+from kb_mcp.cli.commands import download as download_command
+from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import Settings
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.sources.atlassian.adapters import http
+from kb_mcp.sources.atlassian.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.app.download import (
     Outcome,
     Report,
     Targets,
@@ -65,7 +65,7 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> list[str]:
     Its space and project changed since 2 October: two pages, a blog post and an issue,
     with three files to keep, of which one fails, and a video, which is not kept.
     """
-    chosen = Settings(site=SITE, data_dir=(home / "atlassian-offline-mcp").resolve())
+    chosen = Settings(site=SITE, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     return command(
@@ -220,9 +220,9 @@ def test_without_a_session_the_user_is_told_to_sign_in(
     assert main(command(home, "--site", SITE, "--space", "MFS", "--since", "7d")) == SIGN_IN_NEEDED
     err = capsys.readouterr().err
     assert ("error", "download.sign_in_needed") in said(err)
-    assert "run atlassian-offline-mcp login" in err
+    assert "run kb-mcp login" in err
     (needed,) = logged_as(home, "download.sign_in_needed")
-    assert (needed["level"], needed["hint"]) == ("error", "run atlassian-offline-mcp login")
+    assert (needed["level"], needed["hint"]) == ("error", "run kb-mcp login")
 
 
 def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
@@ -232,7 +232,7 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
 
     It is the warning download.target_failed, which the run's log file holds too.
     """
-    chosen = Settings(site=SITE, data_dir=(home / "atlassian-offline-mcp").resolve())
+    chosen = Settings(site=SITE, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite(spaces=[])
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
@@ -260,7 +260,7 @@ def test_ctrl_c_exits_130_and_says_where_the_counts_are(
     monkeypatch.setattr(download_command, "download", interrupted)
     options = ("--site", SITE, "--space", "MFS", "--since", "7d")
     assert main(command(home, *options)) == INTERRUPTED
-    runs = str(Settings(data_dir=(home / "atlassian-offline-mcp").resolve()).runs)
+    runs = str(Settings(data_dir=(home / "kb-mcp").resolve()).runs)
     err = capsys.readouterr().err
     assert ("warning", "download.interrupted") in said(err)
     assert runs in err
@@ -272,7 +272,7 @@ def test_a_busy_store_exits_1_with_its_reason(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Another run writing the store: the user is told to wait for it, by an error."""
-    chosen = Settings(site=SITE, data_dir=(home / "atlassian-offline-mcp").resolve())
+    chosen = Settings(site=SITE, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     options = ("--site", SITE, "--space", "MFS", "--since", "7d")

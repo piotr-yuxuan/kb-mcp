@@ -39,7 +39,7 @@ the documents' people into persons through it.
 | `index.files` | internal | | The mirror's files read and indexed by words |
 | `index.join` | internal | | The documents' people joined into persons, once the files are read |
 | `index.embed` | internal | | The pieces by meaning: their vectors read from the vector store, or embedded |
-| `index.prune` | internal | `aom.outcome`, `aom.deleted` | The prune of the vector store, once the index is in place: `pruned`, `deferred`, `held back` or `failed`, and the vectors deleted |
+| `index.prune` | internal | `kb_mcp.outcome`, `kb_mcp.deleted` | The prune of the vector store, once the index is in place: `pruned`, `deferred`, `held back` or `failed`, and the vectors deleted |
 | `embeddings <model>` | client | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type`, `gen_ai.usage.input_tokens` | An embedding by the GenAI conventions, its attempts included, and the tokens that the endpoint counted, if it did; the provider `openai`, the API spoken |
 | `GET` | client | `http.request.method`, `server.address`, `server.port`, `url.full`, `http.response.status_code`, `error.type` | The endpoint's list of models, by the HTTP conventions |
 | `POST` | client | `http.request.method`, `server.address`, `server.port`, `url.full`, `http.response.status_code`, `error.type` | Each attempt at an embedding, by the HTTP conventions |
@@ -51,7 +51,7 @@ the documents' people into persons through it.
 | `http.client.request.duration` | histogram | `s` | `http.request.method`, `server.address`, `server.port`, `http.response.status_code`, `error.type` | Each request, by the HTTP conventions |
 | `gen_ai.client.operation.duration` | histogram | `s` | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type` | Each embedding, its attempts and waits included, by the GenAI conventions |
 | `gen_ai.client.token.usage` | histogram | `{token}` | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `gen_ai.token.type` | The tokens that each embedding's answer counted, `input` by type, when the endpoint counts them, by the GenAI conventions |
-| `aom.index.files` | counter | `{file}` | `aom.outcome` | The mirror's files, `indexed` or `skipped` |
-| `aom.index.pieces` | counter | `{piece}` | `aom.outcome` | The pieces by meaning, `indexed` with a vector or `refused` one |
-| `aom.vectors` | counter | `{vector}` | `aom.outcome` | The vector store's vectors at a prune, `kept` or `pruned` |
-| `aom.vectors.bytes` | gauge | `By` | | The vector store's size after a prune, its WAL aside |
+| `kb_mcp.index.files` | counter | `{file}` | `kb_mcp.outcome` | The mirror's files, `indexed` or `skipped` |
+| `kb_mcp.index.pieces` | counter | `{piece}` | `kb_mcp.outcome` | The pieces by meaning, `indexed` with a vector or `refused` one |
+| `kb_mcp.vectors` | counter | `{vector}` | `kb_mcp.outcome` | The vector store's vectors at a prune, `kept` or `pruned` |
+| `kb_mcp.vectors.bytes` | gauge | `By` | | The vector store's size after a prune, its WAL aside |

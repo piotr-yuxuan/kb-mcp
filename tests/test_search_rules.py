@@ -6,8 +6,8 @@ from datetime import timedelta
 
 import pytest
 
-from atlassian_offline_mcp.search.domain.chunking import passages, pieces
-from atlassian_offline_mcp.search.domain.search import (
+from kb_mcp.search.domain.chunking import passages, pieces
+from kb_mcp.search.domain.search import (
     MAX_WORDS,
     Score,
     Sort,
