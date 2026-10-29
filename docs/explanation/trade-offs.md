@@ -458,7 +458,7 @@ joined ([`person`](../../src/atlassian_offline_mcp/mcp/app/responses.py)).
   aliases as a setting, a new kind of setting through the layers and the generated
   reference, logged by every run. Person documents under `<data>/docs/`, which other
   engines would read: a new type, folder and owner of files, left to a later plan.
-- **Settled** by [plan 043](../work/plans/043-person-index.md#how-names-become-persons),
+- **Settled** by [plan 043](../work/changelog/043-person-index.md#how-names-become-persons),
   on the maintainer's feedback, its questions answered by their defaults when the
   maintainer approved it.
 
@@ -523,7 +523,7 @@ outside that list. A sort by a date scores every match.
   as plan 041 measured them.
 - **Settled** by [plan
   040](../work/changelog/040-jira-filters-and-sort.md#what-a-date-range-and-a-sort-cost-in-sqlite),
-  and for persons by [plan 043](../work/plans/043-person-index.md#where-persons-live-the-index).
+  and for persons by [plan 043](../work/changelog/043-person-index.md#where-persons-live-the-index).
 
 ## Hybrid ranking, measured by `eval`
 
