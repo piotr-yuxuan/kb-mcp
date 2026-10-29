@@ -224,10 +224,10 @@ def facts(front: FrontMatter) -> str:
     return " | ".join(part for part in shown if part)
 
 
-def hit(number: int, entry: Entry, passage: Passage, opening: str, held: str | None = None) -> str:
+def hit(number: int, entry: Entry, passage: Passage, opening: str, held: str | None) -> str:
     """Write one hit of a search: what and where it is, its best section and a snippet.
 
-    ``held``, if given, ends the line of who and when: a person's roles there, as
+    ``held``, unless None, ends the line of who and when: a person's roles there, as
     ``roles`` says them.
     """
     front = entry.front
@@ -248,9 +248,7 @@ def hit(number: int, entry: Entry, passage: Passage, opening: str, held: str | N
     return "\n".join(lines)
 
 
-def excerpt(
-    number: int, entry: Entry, passage: Passage, opening: str, held: str | None = None
-) -> str:
+def excerpt(number: int, entry: Entry, passage: Passage, opening: str, held: str | None) -> str:
     """Write one passage that ask quotes: what and where it is, then its text, verbatim.
 
     ``passage`` holds the text whole, where a search's holds a snippet; ``held`` ends the
