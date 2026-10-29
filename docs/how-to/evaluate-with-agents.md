@@ -30,7 +30,7 @@ too.
 The pilot first, of six questions, twelve runs:
 
 ```bash
-atlassian-offline-mcp eval-agents prepare golden.yaml --out pilot --model haiku --sample 6
+kb-mcp eval-agents prepare golden.yaml --out pilot --model haiku --sample 6
 ```
 
 `prepare` says the runs, their bound (12 calls of 60 seconds each, at most) and what
@@ -73,7 +73,7 @@ when it reports them; leave them out otherwise. Three failures in a row stop the
 ## Grade after each batch
 
 ```bash
-atlassian-offline-mcp eval-agents grade pilot --yes
+kb-mcp eval-agents grade pilot --yes
 ```
 
 `grade` reads the call logs, the answers and the harness files, refuses one not as its
@@ -91,7 +91,7 @@ adds each run. It exits 1 when the runs spent past twice their estimates: stop, 
 the estimates from what was spent.
 
 ```bash
-atlassian-offline-mcp eval-agents --format json grade pilot --yes
+kb-mcp eval-agents --format json grade pilot --yes
 ```
 
 ## After the pilot
@@ -101,11 +101,11 @@ handed over and model tokens, then prepare the runs that decide, each model in i
 directory:
 
 ```bash
-atlassian-offline-mcp eval-agents prepare golden.yaml --out haiku-runs --model haiku --sample 25
+kb-mcp eval-agents prepare golden.yaml --out haiku-runs --model haiku --sample 25
 ```
 
 ```bash
-atlassian-offline-mcp eval-agents prepare golden.yaml --out sonnet-runs --model sonnet --sample 5
+kb-mcp eval-agents prepare golden.yaml --out sonnet-runs --model sonnet --sample 5
 ```
 
 Haiku's 50 runs decide by the rule; Sonnet's 10 show the direction for a stronger agent,

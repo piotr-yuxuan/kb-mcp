@@ -20,11 +20,11 @@ shows other numbers, that is your clone's state, not a fault.
 Clone the repository, unless your first mirror cloned it already, and go into it:
 
 ```bash
-git clone https://github.com/piotr-yuxuan/atlassian-offline-mcp.git ~/src/atlassian-offline-mcp
+git clone https://github.com/piotr-yuxuan/kb-mcp.git ~/src/kb-mcp
 ```
 
 ```bash
-cd ~/src/atlassian-offline-mcp
+cd ~/src/kb-mcp
 ```
 
 Every command from here on runs in that folder. Install the command and the tools that
@@ -269,7 +269,7 @@ What the run returns, the entry of every subcommand writes, as text or as JSON
 ([`enter`](../../src/kb_mcp/cli/commands/_shared.py)). Run it:
 
 ```console
-$ uv run atlassian-offline-mcp count
+$ uv run kb-mcp count
 confluence: 13
 jira: 0
 worklog: 0
@@ -278,7 +278,7 @@ worklog: 0
 These are the counts of your first mirror; without a mirror, each is 0. And as JSON:
 
 ```console
-$ uv run atlassian-offline-mcp count --format json
+$ uv run kb-mcp count --format json
 {
   "confluence": 13,
   "jira": 0,

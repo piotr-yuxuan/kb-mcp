@@ -1,6 +1,6 @@
 # The MCP server's tools and prompts
 
-`atlassian-offline-mcp serve`, or the command with no arguments, serves these over stdio.
+`kb-mcp serve`, or the command with no arguments, serves these over stdio.
 Every tool is read-only and answers in text, never in structured content: compact
 Markdown within a budget of estimated tokens, 4,000 for arguments at or below their
 defaults and 10,000 at most, where an estimated token is three ASCII characters or one

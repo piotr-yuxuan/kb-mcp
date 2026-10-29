@@ -3,7 +3,7 @@
   "title": "sync",
   "description": "The sync runs in the time range: how they ended, what each step counted (the download's documents and files, the mirror's documents, the work log's by kind), the work log's conversion time, then the warnings and errors, the runs and their steps.",
   "tags": [
-    "atlassian-offline-mcp"
+    "kb-mcp"
   ],
   "editable": false,
   "graphTooltip": 1,
@@ -61,7 +61,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "expr": "sum(last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"sync\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -106,7 +106,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_sum{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "expr": "sum(last_over_time(aom_run_duration_seconds_sum{job=\"kb-mcp\", aom_command=\"sync\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -151,7 +151,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(aom_mirror_conversion_duration_seconds_bucket{job=\"atlassian-offline-mcp\", aom_kind!=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(aom_mirror_conversion_duration_seconds_bucket{job=\"kb-mcp\", aom_kind!=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"sync\"}[$__range])))",
           "instant": true,
           "range": false
         }
@@ -196,7 +196,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\", aom_kind!=\"\", aom_outcome=\"failed\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "expr": "sum(last_over_time(aom_mirror_documents_total{job=\"kb-mcp\", aom_kind!=\"\", aom_outcome=\"failed\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"sync\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -241,7 +241,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_exit_status) (last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "expr": "sum by (aom_exit_status) (last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"sync\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_exit_status}}"
@@ -287,7 +287,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_kind, aom_outcome) (last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\", aom_kind!=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "expr": "sum by (aom_kind, aom_outcome) (last_over_time(aom_mirror_documents_total{job=\"kb-mcp\", aom_kind!=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"sync\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_kind}} {{aom_outcome}}"
@@ -333,7 +333,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_outcome) (last_over_time(aom_download_documents_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "expr": "sum by (aom_outcome) (last_over_time(aom_download_documents_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"sync\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_outcome}}"
@@ -379,7 +379,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_outcome) (last_over_time(aom_download_files_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "expr": "sum by (aom_outcome) (last_over_time(aom_download_files_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"sync\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_outcome}}"
@@ -425,7 +425,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_outcome) (last_over_time(aom_mirror_documents_total{job=\"atlassian-offline-mcp\", aom_kind=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "expr": "sum by (aom_outcome) (last_over_time(aom_mirror_documents_total{job=\"kb-mcp\", aom_kind=\"\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"sync\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_outcome}}"
@@ -471,7 +471,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_outcome) (last_over_time(aom_index_files_total{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"sync\"}[$__range]))",
+          "expr": "sum by (aom_outcome) (last_over_time(aom_index_files_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"sync\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_outcome}}"
@@ -506,7 +506,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"atlassian-offline-mcp\"} | command=\"sync\" | severity_number >= 13",
+          "expr": "{service_name=\"kb-mcp\"} | command=\"sync\" | severity_number >= 13",
           "queryType": "range"
         }
       ]
@@ -533,7 +533,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"atlassian-offline-mcp\" && span.aom.command = \"sync\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && span.aom.command = \"sync\" }",
           "limit": 20,
           "tableType": "traces"
         }
@@ -561,7 +561,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"atlassian-offline-mcp\" && name = \"sync.step\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && name = \"sync.step\" }",
           "limit": 20,
           "tableType": "spans"
         }

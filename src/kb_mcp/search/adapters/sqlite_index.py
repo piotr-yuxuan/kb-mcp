@@ -815,7 +815,7 @@ def reading(path: Path) -> Iterator[Reader]:
     try:
         connection = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
     except sqlite3.OperationalError:
-        message = f"no index at {path}: build it with `atlassian-offline-mcp index`"
+        message = f"no index at {path}: build it with `kb-mcp index`"
         raise UnavailableIndexError(message) from None
     try:
         connection.row_factory = sqlite3.Row
@@ -825,14 +825,14 @@ def reading(path: Path) -> Iterator[Reader]:
             meta = {}
         if meta.get("schema") != SCHEMA:
             message = (
-                f"{unread} `atlassian-offline-mcp sync`, or, where no source is configured,"
-                " `atlassian-offline-mcp mirror` then `atlassian-offline-mcp index`, which"
+                f"{unread} `kb-mcp sync`, or, where no source is configured,"
+                " `kb-mcp mirror` then `kb-mcp index`, which"
                 " write the mirror again first"
             )
             raise UnavailableIndexError(message)
         # A chunking that this version lacks would be cut as no table says.
         if meta.get("chunking", "") not in {"", *CHUNKINGS}:
-            message = f"{unread} `atlassian-offline-mcp index`"
+            message = f"{unread} `kb-mcp index`"
             raise UnavailableIndexError(message)
         yield Reader(connection)
     finally:

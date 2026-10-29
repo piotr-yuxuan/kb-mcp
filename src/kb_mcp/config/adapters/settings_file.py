@@ -5,7 +5,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-SETTINGS_PATH = Path("~/.config/atlassian-offline-mcp/config.toml")
+SETTINGS_PATH = Path("~/.config/kb-mcp/config.toml")
 
 
 def read_settings_file(path: Path) -> dict[str, object]:

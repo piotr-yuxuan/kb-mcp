@@ -3,7 +3,7 @@
   "title": "eval",
   "description": "The eval runs in the time range: their scores by chunking and mode, and how long questions took.",
   "tags": [
-    "atlassian-offline-mcp"
+    "kb-mcp"
   ],
   "editable": false,
   "graphTooltip": 1,
@@ -43,7 +43,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"eval\"}[$__range]))",
+          "expr": "sum(last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"eval\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -88,7 +88,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_sum{job=\"atlassian-offline-mcp\", aom_command=\"eval\"}[$__range]))",
+          "expr": "sum(last_over_time(aom_run_duration_seconds_sum{job=\"kb-mcp\", aom_command=\"eval\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -133,7 +133,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(gen_ai_client_operation_duration_seconds_bucket{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"eval\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(gen_ai_client_operation_duration_seconds_bucket{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"eval\"}[$__range])))",
           "instant": true,
           "range": false
         }
@@ -178,7 +178,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(gen_ai_client_operation_duration_seconds_count{job=\"atlassian-offline-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"eval\"}[$__range]))",
+          "expr": "sum(last_over_time(gen_ai_client_operation_duration_seconds_count{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"eval\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -223,7 +223,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "avg by (aom_chunking, aom_mode, aom_measure) (last_over_time(aom_eval_score_ratio{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "avg by (aom_chunking, aom_mode, aom_measure) (last_over_time(aom_eval_score_ratio{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_chunking}}, {{aom_mode}}, {{aom_measure}}"
@@ -272,7 +272,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, aom_chunking, aom_mode) (last_over_time(aom_eval_question_duration_seconds_bucket{job=\"atlassian-offline-mcp\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le, aom_chunking, aom_mode) (last_over_time(aom_eval_question_duration_seconds_bucket{job=\"kb-mcp\"}[$__range])))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_chunking}}, {{aom_mode}}"
@@ -318,7 +318,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"atlassian-offline-mcp\"} | command=\"eval\" | severity_number >= 13",
+          "expr": "{service_name=\"kb-mcp\"} | command=\"eval\" | severity_number >= 13",
           "queryType": "range"
         }
       ],
@@ -352,7 +352,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"atlassian-offline-mcp\" && span.aom.command = \"eval\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && span.aom.command = \"eval\" }",
           "limit": 20,
           "tableType": "traces"
         }

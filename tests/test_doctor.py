@@ -59,7 +59,7 @@ def test_without_a_saved_session_the_doctor_exits_3(
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
     options = ["doctor", "--config", str(tmp_path / "none.toml"), "--site", SITE]
     assert main(options) == NOT_SIGNED_IN
-    assert "sign-in: no session saved: run atlassian-offline-mcp login" in capsys.readouterr().out
+    assert "sign-in: no session saved: run kb-mcp login" in capsys.readouterr().out
     assert states(doctor(Settings(site=SITE, data_dir=tmp_path / "data")))["sign-in"] == SIGN_IN
 
 

@@ -45,8 +45,8 @@ NAMES_ASK = re.compile(r"\bask\b")
 def home(tmp_path: Path) -> Path:
     """Make a scratch home whose settings name a data directory with an index by words."""
     home, data = tmp_path / "home", tmp_path / "data"
-    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
-    settings = home / ".config" / "atlassian-offline-mcp" / "config.toml"
+    (home / ".config" / "kb-mcp").mkdir(parents=True)
+    settings = home / ".config" / "kb-mcp" / "config.toml"
     settings.write_text(f"data_dir = {json.dumps(str(data))}\n", encoding="utf-8")
     fillers(data / "docs")
     write(data / "docs", page("196845", "Kafka retention", space="ENG"))

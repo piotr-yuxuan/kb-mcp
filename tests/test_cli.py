@@ -244,7 +244,7 @@ def test_the_version_is_the_project_s(capsys: CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as stopped:
         main(["--version"])
     assert stopped.value.code == 0
-    assert capsys.readouterr().out == f"atlassian-offline-mcp {project['version']}\n"
+    assert capsys.readouterr().out == f"kb-mcp {project['version']}\n"
 
 
 def test_the_help_says_who_asks_and_what_each_exit_status_means() -> None:
@@ -300,7 +300,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
     ``sys.modules``.
     """
     environment = {"HOME": str(home), "PATH": os.environ["PATH"]}
-    typed = "atlassian-offline-mcp download --sp"
+    typed = "kb-mcp download --sp"
     completing = {
         "_ARGCOMPLETE": "1",
         "COMP_LINE": typed,
@@ -402,7 +402,7 @@ def test_the_shell_completes_the_command_line(home: Path, line: str, offered: se
     That is argcomplete's protocol: the line and the cursor in the environment, the
     completions, separated by vertical tabs, in the file it names.
     """
-    typed = f"atlassian-offline-mcp {line}"
+    typed = f"kb-mcp {line}"
     environment = {
         "HOME": str(home),
         "PATH": os.environ["PATH"],
@@ -429,10 +429,10 @@ def test_completion_prints_the_shell_code_whatever_the_settings(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
     """``completion`` prints argcomplete's code for bash and zsh, and reads no settings."""
-    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
-    (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text("site = ", "utf-8")
+    (home / ".config" / "kb-mcp").mkdir(parents=True)
+    (home / ".config" / "kb-mcp" / "config.toml").write_text("site = ", "utf-8")
     assert main(["completion"]) == 0
-    assert capsys.readouterr().out == argcomplete.shellcode(["atlassian-offline-mcp"])
+    assert capsys.readouterr().out == argcomplete.shellcode(["kb-mcp"])
 
 
 def test_completion_is_not_observed_and_writes_no_script_with_q(
@@ -445,7 +445,7 @@ def test_completion_is_not_observed_and_writes_no_script_with_q(
     """
     for level in (["-v"], ["-vv"], ["--log-level", "debug"]):
         assert main(["completion", *level]) == 0
-        assert capsys.readouterr() == (argcomplete.shellcode(["atlassian-offline-mcp"]), "")
+        assert capsys.readouterr() == (argcomplete.shellcode(["kb-mcp"]), "")
     assert main(["completion", "-q"]) == 0
     assert capsys.readouterr() == ("", "")
 
@@ -562,7 +562,7 @@ def test_check_as_json_gives_settings_layers_and_ignored_values_secrets_masked(
         document = json.loads(out)
         settings = document["settings"]
         assert settings["site"] == "https://variable.example.invalid"
-        assert settings["data_dir"] == str((home / "atlassian-offline-mcp").resolve())
+        assert settings["data_dir"] == str((home / "kb-mcp").resolve())
         assert settings["sources"]["confluence"]["spaces"] == ["ENG"]
         assert settings["api_token"]
         assert settings["embedding_api_key"]
@@ -593,7 +593,7 @@ def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture
     out = capsys.readouterr().out
     assert out == "site: https://example.atlassian.net\nsources.confluence.spaces: ENG\n"
     assert main(["check", "--config", str(config), "--summary", "detailed"]) == 0
-    data = (home / "atlassian-offline-mcp").resolve()
+    data = (home / "kb-mcp").resolve()
     assert f"data_dir: {data} [default]\n" in capsys.readouterr().out
 
 
@@ -628,7 +628,7 @@ def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
         "site: (not set) [default]\n"
         "email: (not set) [default]\n"
         "api_token: set [ATLASSIAN_OFFLINE_MCP_API_TOKEN]\n"
-        f"data_dir: {(home / 'atlassian-offline-mcp').resolve()} [default]\n"
+        f"data_dir: {(home / 'kb-mcp').resolve()} [default]\n"
         "model: qwen3-embedding:0.6b [default]\n"
         "search_mode: hybrid [default]\n"
         "chunking: windows [default]\n"
@@ -947,8 +947,8 @@ def test_check_refuses_a_part_of_the_data_directory_that_leads_elsewhere(
 ) -> None:
     """A link from <data>/docs into a synchronised folder is refused, naming docs."""
     (home / "Dropbox" / "shared").mkdir(parents=True)
-    (home / "atlassian-offline-mcp").mkdir()
-    (home / "atlassian-offline-mcp" / "docs").symlink_to(home / "Dropbox" / "shared")
+    (home / "kb-mcp").mkdir()
+    (home / "kb-mcp" / "docs").symlink_to(home / "Dropbox" / "shared")
     assert main(["check", "--config", str(home / "none.toml")]) == BAD_SETTINGS
     assert "data_dir (default): docs: under a Dropbox folder" in capsys.readouterr().err
 
@@ -958,8 +958,8 @@ def test_check_refuses_a_raw_store_that_leads_into_a_git_tree(
 ) -> None:
     """A link from <data>/raw into a working tree is refused, naming raw."""
     (home / "project" / ".git").mkdir(parents=True)
-    (home / "atlassian-offline-mcp").mkdir()
-    (home / "atlassian-offline-mcp" / "raw").symlink_to(home / "project")
+    (home / "kb-mcp").mkdir()
+    (home / "kb-mcp" / "raw").symlink_to(home / "project")
     assert main(["check", "--config", str(home / "none.toml")]) == BAD_SETTINGS
     assert "data_dir (default): raw: inside the git working tree" in capsys.readouterr().err
 
@@ -985,7 +985,7 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
     out, err = capsys.readouterr()
     assert err == ""
     assert "site: (not set) [default]\n" in out
-    assert f"data_dir: {(home / 'atlassian-offline-mcp').resolve()} [default]\n" in out
+    assert f"data_dir: {(home / 'kb-mcp').resolve()} [default]\n" in out
     assert "sources.confluence.spaces: (none) [default]\n" in out
     assert "sources.jira.projects: (none) [default]\n" in out
 
@@ -1172,7 +1172,7 @@ def test_help_version_completions_and_completion_write_no_log_file(
         assert stopped.value.code == 0
     assert main(["completion"]) == 0
     capsys.readouterr()
-    typed = "atlassian-offline-mcp check --"
+    typed = "kb-mcp check --"
     child = subprocess.run(
         [sys.executable, "-m", "kb_mcp"],
         stdin=subprocess.DEVNULL,

@@ -107,7 +107,7 @@ def test_the_token_goes_to_the_site_s_host_alone(home: Path, monkeypatch: Monkey
     assert {request.url.host for request in elsewhere} == {"api.media.atlassian.com"}
     assert all(request.headers.get("authorization") == AUTHORISATION for request in on_site)
     assert not any("authorization" in request.headers for request in elsewhere)
-    assert not (home / "atlassian-offline-mcp" / "session").exists()
+    assert not (home / "kb-mcp" / "session").exists()
 
 
 @pytest.mark.parametrize("dry_run", [[], ["--dry-run"]])
@@ -115,7 +115,7 @@ def test_a_run_with_the_token_leaves_a_saved_session_as_it_was(
     home: Path, monkeypatch: MonkeyPatch, dry_run: list[str]
 ) -> None:
     """Its cookies are neither sent nor written back, and its folder is unchanged."""
-    session = home / "atlassian-offline-mcp" / "session"
+    session = home / "kb-mcp" / "session"
     write_cookies(session / COOKIES, [{"name": "kept", "value": "v", "domain": HOST}])
     before = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in session.rglob("*")}
     sent = served(monkeypatch, FakeSite(set_cookies=["renewed=w; Path=/"]).handle)
@@ -243,9 +243,9 @@ def test_a_download_shows_no_secret_nor_writes_one_in_its_report(
     served(monkeypatch, answer)
     main(download(home, *more))
     out, err = capsys.readouterr()
-    assert "atlassian-offline-mcp download" in err
+    assert "kb-mcp download" in err
     assert shown(out + err) == []
-    reports = list((home / "atlassian-offline-mcp" / "runs").glob("*.json"))
+    reports = list((home / "kb-mcp" / "runs").glob("*.json"))
     assert all(shown(report.read_text("utf-8")) == [] for report in reports)
 
 

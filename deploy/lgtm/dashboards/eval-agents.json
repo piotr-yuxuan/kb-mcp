@@ -3,7 +3,7 @@
   "title": "eval-agents",
   "description": "The eval-agents runs in the time range: the agents' calls through the bridge by surface and tool, their tokens and time, and the runs judged by outcome.",
   "tags": [
-    "atlassian-offline-mcp"
+    "kb-mcp"
   ],
   "editable": false,
   "graphTooltip": 1,
@@ -43,7 +43,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_command=\"eval-agents\"}[$__range]))",
+          "expr": "sum(last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_command=\"eval-agents\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -88,7 +88,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_eval_agent_calls_total{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum(last_over_time(aom_eval_agent_calls_total{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -133,7 +133,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_eval_agent_calls_total{job=\"atlassian-offline-mcp\", aom_status=~\"timeout|failed\"}[$__range]))",
+          "expr": "sum(last_over_time(aom_eval_agent_calls_total{job=\"kb-mcp\", aom_status=~\"timeout|failed\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -178,7 +178,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(aom_eval_agent_tokens_sum{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum(last_over_time(aom_eval_agent_tokens_sum{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -223,7 +223,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_surface, aom_outcome) (last_over_time(aom_eval_agent_runs_total{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum by (aom_surface, aom_outcome) (last_over_time(aom_eval_agent_runs_total{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_surface}}, {{aom_outcome}}"
@@ -271,7 +271,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_surface, gen_ai_tool_name) (last_over_time(aom_eval_agent_calls_total{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum by (aom_surface, gen_ai_tool_name) (last_over_time(aom_eval_agent_calls_total{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_surface}}, {{gen_ai_tool_name}}"
@@ -319,7 +319,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_surface) (last_over_time(aom_eval_agent_tokens_sum{job=\"atlassian-offline-mcp\"}[$__range])) / sum by (aom_surface) (last_over_time(aom_eval_agent_tokens_count{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum by (aom_surface) (last_over_time(aom_eval_agent_tokens_sum{job=\"kb-mcp\"}[$__range])) / sum by (aom_surface) (last_over_time(aom_eval_agent_tokens_count{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_surface}}"
@@ -367,7 +367,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, aom_surface) (last_over_time(aom_eval_agent_call_duration_seconds_bucket{job=\"atlassian-offline-mcp\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le, aom_surface) (last_over_time(aom_eval_agent_call_duration_seconds_bucket{job=\"kb-mcp\"}[$__range])))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_surface}}"
@@ -415,7 +415,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"atlassian-offline-mcp\"} | command=\"eval-agents\" | severity_number >= 13",
+          "expr": "{service_name=\"kb-mcp\"} | command=\"eval-agents\" | severity_number >= 13",
           "queryType": "range"
         }
       ],
@@ -449,7 +449,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"atlassian-offline-mcp\" && span.aom.command = \"eval-agents\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && span.aom.command = \"eval-agents\" }",
           "limit": 20,
           "tableType": "traces"
         }

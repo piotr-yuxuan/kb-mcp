@@ -20,8 +20,8 @@ such as `download-20261022T210509Z-4242.jsonl`; a step's command names its file,
 `completion`, which reads no settings, write none.
 
 - **Where.** `logs.dir`, by default the user's log folder as platformdirs places it:
-  `~/Library/Logs/atlassian-offline-mcp` on macOS,
-  `$XDG_STATE_HOME/atlassian-offline-mcp/log` on Linux, `~/.local/state` without the
+  `~/Library/Logs/kb-mcp` on macOS,
+  `$XDG_STATE_HOME/kb-mcp/log` on Linux, `~/.local/state` without the
   variable. The folder passes the data directory's guard: under a synchronised folder
   or in a git working tree, the run exits 2, naming `logs.dir`.
 - **Who reads it.** The folder, when the run makes it, is 0700, and each file 0600: it
@@ -118,7 +118,7 @@ its own environment, says when `OTEL_EXPORTER_OTLP_ENDPOINT`, set there for anot
 program, turns it on. `run.start` names the endpoint and its layer too, at INFO.
 Traces, metrics and the records from INFO go to the endpoint by OTLP over HTTP, in
 protobuf, to `/v1/traces`, `/v1/metrics` and `/v1/logs`, under the resource
-`service.name` `atlassian-offline-mcp`, `service.version` the program's version and
+`service.name` `kb-mcp`, `service.version` the program's version and
 `service.instance.id` the run's id. Spans go in batches, metrics every 15 seconds and at
 the end. An exported record has the event as its body, the event's fields as its
 attributes with `command`, and the ids of the span it was logged in. No trace context is

@@ -67,7 +67,7 @@ def test_the_command_says_what_to_do_on_stderr_and_its_result_on_stdout(
     assert main([*options, "--format", "json"]) == 0
     out, err = capsys.readouterr()
     assert err.endswith(INSTRUCTION)
-    session = (tmp_path / "atlassian-offline-mcp" / "session").resolve()
+    session = (tmp_path / "kb-mcp" / "session").resolve()
     assert json.loads(out) == {"site": SITE, "session": str(session)}
 
 

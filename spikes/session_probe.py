@@ -1167,7 +1167,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--profile",
         type=Path,
-        default=state / "atlassian-offline-mcp" / "probe-browser",
+        default=state / "kb-mcp" / "probe-browser",
         help="the dedicated browser profile; it holds the session's cookies",
     )
     parser.add_argument("--chrome", help="Chrome's executable, where the chrome channel fails")

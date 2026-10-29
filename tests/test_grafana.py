@@ -37,7 +37,7 @@ WAIT_S = 30
 RECORDS = {
     "refId": "A",
     "datasource": {"type": "loki", "uid": "loki"},
-    "expr": 'sum(count_over_time({service_name="atlassian-offline-mcp"}[24h]))',
+    "expr": 'sum(count_over_time({service_name="kb-mcp"}[24h]))',
     "queryType": "range",
 }
 

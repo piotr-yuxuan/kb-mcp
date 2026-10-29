@@ -1383,7 +1383,7 @@ def test_no_index_is_refused_with_the_command_that_builds_it(tmp_path: Path) -> 
     """Every tool says how to build a missing index."""
     library = built(tmp_path, [])
     (tmp_path / "index.sqlite").unlink()
-    with pytest.raises(UnanswerableError, match="atlassian-offline-mcp index"):
+    with pytest.raises(UnanswerableError, match="kb-mcp index"):
         library.status()
 
 

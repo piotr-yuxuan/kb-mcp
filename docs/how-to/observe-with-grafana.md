@@ -45,7 +45,7 @@ port and no path: `localhost` is refused, since a name could lead elsewhere. `ch
 shows the endpoint that a run would use, and its layer:
 
 ```bash
-atlassian-offline-mcp check --summary detailed
+kb-mcp check --summary detailed
 ```
 
 Every command says on stderr, before it acts, that telemetry is on, where to, and which
@@ -67,7 +67,7 @@ whatever sets the endpoint.
 
 ## 3. Read the dashboards
 
-Under Dashboards, the folder `atlassian-offline-mcp` holds an overview and one
+Under Dashboards, the folder `kb-mcp` holds an overview and one
 dashboard each for `download`, `mirror`, `index`, `serve`, `eval`, `eval-agents` and
 `sync`, read-only, from `deploy/lgtm/dashboards/`:
 
@@ -104,7 +104,7 @@ too. In Explore, choose the source `tempo` and TraceQL; for instance:
 
 | To find | TraceQL |
 |---|---|
-| The runs of a command | `{ resource.service.name = "atlassian-offline-mcp" && span.aom.command = "download" }` |
+| The runs of a command | `{ resource.service.name = "kb-mcp" && span.aom.command = "download" }` |
 | The runs that failed | `{ span.aom.exit_status != 0 }` |
 | One run, by the `run` of its log file | `{ resource.service.instance.id = "<run>" }` |
 | The issues that a download fetched | `{ name = "download.document" && span.aom.document.kind = "jira issues" }` |

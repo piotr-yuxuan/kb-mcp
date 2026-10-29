@@ -1,5 +1,5 @@
 # PYTHON_ARGCOMPLETE_OK
-"""The ``atlassian-offline-mcp`` command: it declares every subcommand and runs one.
+"""The ``kb-mcp`` command: it declares every subcommand and runs one.
 
 The parser is built from ``cli.options`` alone, which is light, so that ``--help`` and
 shell completion, which runs the command at every Tab, start fast; what observes the run,
@@ -47,7 +47,7 @@ class Version(argparse.Action):
     ) -> None:
         """Print the program's name and version, and exit 0."""
         metadata = importlib.import_module("importlib.metadata")
-        sys.stdout.write(f"{parser.prog} {metadata.version('atlassian-offline-mcp')}\n")
+        sys.stdout.write(f"{parser.prog} {metadata.version('kb-mcp')}\n")
         parser.exit()
 
 

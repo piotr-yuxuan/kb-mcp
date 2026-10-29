@@ -62,7 +62,7 @@ Check the sign-in first:
 sops exec-env ~/secrets/atlassian.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" \
   ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" \
   ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" \
-  atlassian-offline-mcp doctor --summary detailed'
+  kb-mcp doctor --summary detailed'
 ```
 
 It says `sign-in: an API token`, then `confluence: signed in` and `jira: signed in`.
@@ -72,7 +72,7 @@ Then download:
 sops exec-env ~/secrets/atlassian.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" \
   ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" \
   ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" \
-  atlassian-offline-mcp download --yes --space ENG --project PLAT --since 7d'
+  kb-mcp download --yes --space ENG --project PLAT --since 7d'
 ```
 
 The single quotes keep your shell from expanding anything: sops runs the quoted text

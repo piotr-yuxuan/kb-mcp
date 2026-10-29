@@ -470,7 +470,7 @@ def test_a_corrupt_coverage_record_is_refused_by_the_command(
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
-    data = (home / "atlassian-offline-mcp").resolve()
+    data = (home / "kb-mcp").resolve()
     (data / "raw").mkdir(parents=True)
     (data / "raw" / "coverage.json").write_text("[{}]", "utf-8")
     options = [

@@ -67,7 +67,7 @@ KINDS = frozenset({"tutorials", "how-to", "reference", "explanation"})
 # A fragment naming lines, as GitHub's view of a file reads it: lines move, names stay.
 LINES = re.compile(r"L\d+(-L\d+)?")
 # The program's name as a word of its own, not part of a path or of another name.
-PROGRAM = re.compile(r"(?<![\w/.~-])atlassian-offline-mcp(?![\w/.-])")
+PROGRAM = re.compile(r"(?<![\w/.~-])kb-mcp(?![\w/.-])")
 # A line of a block of shell, with the lines that its continuations join to it.
 SHELL_LINE = re.compile(r"^(?:.*\\\n)*.*$", re.MULTILINE)
 # A word that sets a variable for the command that follows it.
@@ -339,7 +339,7 @@ def program_arguments(commands: list[list[str]]) -> list[list[str]]:
         if not any(PROGRAM.search(word) for word in command):
             continue
         match list(itertools.dropwhile(ASSIGNMENT.match, command)):
-            case ["atlassian-offline-mcp", *arguments]:
+            case ["kb-mcp", *arguments]:
                 given.append(arguments)
                 continue
             case ["uv", "run", *words]:
@@ -426,55 +426,55 @@ def test_the_check_of_documented_commands_refuses_a_prefix_of_an_option() -> Non
     ("line", "expected"),
     [
         (
-            "atlassian-offline-mcp check && atlassian-offline-mcp sync --simulate",
+            "kb-mcp check && kb-mcp sync --simulate",
             [["check"], ["sync", "--simulate"]],
         ),
-        ("cd ~&& atlassian-offline-mcp sync --simulate", [["sync", "--simulate"]]),
+        ("cd ~&& kb-mcp sync --simulate", [["sync", "--simulate"]]),
         (
-            "atlassian-offline-mcp sync --since 7d&&atlassian-offline-mcp syncs",
+            "kb-mcp sync --since 7d&&kb-mcp syncs",
             [["sync", "--since", "7d"], ["syncs"]],
         ),
-        ("atlassian-offline-mcp sync|atlassian-offline-mcp syncs", [["sync"], ["syncs"]]),
+        ("kb-mcp sync|kb-mcp syncs", [["sync"], ["syncs"]]),
         (
-            "atlassian-offline-mcp sync --format json 2>/dev/null | jq .exit_status",
+            "kb-mcp sync --format json 2>/dev/null | jq .exit_status",
             [["sync", "--format", "json"]],
         ),
         (
-            "atlassian-offline-mcp sync 2>&1 | tee x; atlassian-offline-mcp check &>check.log",
+            "kb-mcp sync 2>&1 | tee x; kb-mcp check &>check.log",
             [["sync"], ["check"]],
         ),
-        ("atlassian-offline-mcp sync >&2", [["sync"]]),
-        ("atlassian-offline-mcp sync 2>sync.log --simulate", [["sync", "--simulate"]]),
-        ("atlassian-offline-mcp sync &>sync.log --simulate", [["sync", "--simulate"]]),
-        ("atlassian-offline-mcp sync 2>&1 --simulate", [["sync", "--simulate"]]),
-        ("atlassian-offline-mcp sync > sync.log --simulate", [["sync", "--simulate"]]),
+        ("kb-mcp sync >&2", [["sync"]]),
+        ("kb-mcp sync 2>sync.log --simulate", [["sync", "--simulate"]]),
+        ("kb-mcp sync &>sync.log --simulate", [["sync", "--simulate"]]),
+        ("kb-mcp sync 2>&1 --simulate", [["sync", "--simulate"]]),
+        ("kb-mcp sync > sync.log --simulate", [["sync", "--simulate"]]),
         (
-            "atlassian-offline-mcp sync --summary detailed#x # look first, it's cheap",
+            "kb-mcp sync --summary detailed#x # look first, it's cheap",
             [["sync", "--summary", "detailed#x"]],
         ),
-        ("# atlassian-offline-mcp sync asks before it writes", []),
+        ("# kb-mcp sync asks before it writes", []),
         (
-            "atlassian-offline-mcp search '>5 minutes' ';' '#x' --simulate",
+            "kb-mcp search '>5 minutes' ';' '#x' --simulate",
             [["search", ">5 minutes", ";", "#x", "--simulate"]],
         ),
         (
-            "atlassian-offline-mcp eval --golden <missing-file>",
+            "kb-mcp eval --golden <missing-file>",
             [["eval", "--golden", "<missing-file>"]],
         ),
         (
-            "sops exec-env ~/a.sops.json 'atlassian-offline-mcp downlod --yes' 2>download.log",
+            "sops exec-env ~/a.sops.json 'kb-mcp downlod --yes' 2>download.log",
             [["downlod", "--yes"]],
         ),
         (
-            "sops exec-env ~/a.sops.json 'atlassian-offline-mcp check; atlassian-offline-mcp sync'",
+            "sops exec-env ~/a.sops.json 'kb-mcp check; kb-mcp sync'",
             [["check"], ["sync"]],
         ),
         (
-            """sops exec-env ~/a.sops.json 'A="$B" uv run atlassian-offline-mcp check' | tee x""",
+            """sops exec-env ~/a.sops.json 'A="$B" uv run kb-mcp check' | tee x""",
             [["check"]],
         ),
-        ('eval "$(atlassian-offline-mcp completion zsh)"', [["completion", "zsh"]]),
-        ("claude mcp add --scope user atlassian-offline-mcp -- atlassian-offline-mcp", [[]]),
+        ('eval "$(kb-mcp completion zsh)"', [["completion", "zsh"]]),
+        ("claude mcp add --scope user kb-mcp -- kb-mcp", [[]]),
     ],
 )
 def test_the_check_of_documented_commands_reads_a_line_as_a_shell_does(
@@ -492,14 +492,14 @@ def test_the_check_of_documented_commands_reads_a_line_as_a_shell_does(
 @pytest.mark.parametrize(
     ("line", "refusal"),
     [
-        ("time atlassian-offline-mcp sync", "names the program"),
-        ("uv run --no-sync atlassian-offline-mcp sync", "names the program"),
-        ("sops exec-env ~/a.sops.json 'time atlassian-offline-mcp sync' >x", "names the program"),
+        ("time kb-mcp sync", "names the program"),
+        ("uv run --no-sync kb-mcp sync", "names the program"),
+        ("sops exec-env ~/a.sops.json 'time kb-mcp sync' >x", "names the program"),
         (
-            "claude mcp add atlassian-offline-mcp -- ~/.local/bin/atlassian-offline-mcp serve",
+            "claude mcp add kb-mcp -- ~/.local/bin/kb-mcp serve",
             "names the program",
         ),
-        ("atlassian-offline-mcp sync --since '7d", "No closing quotation"),
+        ("kb-mcp sync --since '7d", "No closing quotation"),
     ],
 )
 def test_the_check_of_documented_commands_refuses_a_line_it_cannot_read(

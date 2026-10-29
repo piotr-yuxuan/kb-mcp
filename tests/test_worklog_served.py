@@ -48,7 +48,7 @@ def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     home, data, root = tmp_path / "home", tmp_path / "data", tmp_path / "todo"
     shutil.copytree(FIXTURE, root)
     settle(root)
-    config = home / ".config" / "atlassian-offline-mcp" / "config.toml"
+    config = home / ".config" / "kb-mcp" / "config.toml"
     config.parent.mkdir(parents=True)
     config.write_text(
         f'data_dir = {json.dumps(str(data))}\nsearch_mode = "lexical"\n'

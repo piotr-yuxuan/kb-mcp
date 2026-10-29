@@ -153,7 +153,7 @@ def build_index(
     INFO once the index is complete.
     """
     if not docs.is_dir():
-        message = f"no mirror at {docs}: build it with `atlassian-offline-mcp mirror`"
+        message = f"no mirror at {docs}: build it with `kb-mcp mirror`"
         raise MirrorMissingError(message)
     report = Report()
     model = embedding.embedder if embedding else None

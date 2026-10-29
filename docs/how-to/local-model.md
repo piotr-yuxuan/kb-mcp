@@ -3,7 +3,7 @@
 How to have a language model that runs on this machine, offline, answer from the
 mirror. Two programs work together: a server of models runs the model, Ollama or any
 other OpenAI-compatible server; an MCP host, the application you talk to, starts
-`atlassian-offline-mcp` and gives its tools to the model. Neither your questions nor the
+`kb-mcp` and gives its tools to the model. Neither your questions nor the
 mirror's text then leave the machine. Why the model below, what it costs, and what to
 choose with more memory or less, is in [local models](../explanation/local-models.md).
 
@@ -32,7 +32,7 @@ explanation](../explanation/local-models.md#with-more-memory-or-less) names othe
 
 A small model chooses better among fewer tools, and reads fewer tokens before it
 answers. `ask` gives the passages that answer a question in one call, and `read` opens a
-section that a passage cites, so serve those two, as `atlassian-offline-mcp serve
+section that a passage cites, so serve those two, as `kb-mcp serve
 --tools ask,read`. Add `search` to list what changed in a space, `browse` to walk its
 tree, `status` to say what the mirror holds; or leave `--tools` out to serve all five.
 Each host below starts the server itself: the command line goes into its settings, not
@@ -71,14 +71,14 @@ sends no telemetry.
 2. In My Models, open the model's settings and set its context length to 32768.
 3. Open `~/.lmstudio/mcp.json`: in the right-hand sidebar, the Program tab, Install,
    then Edit mcp.json. Give the command's absolute path, as `which
-   atlassian-offline-mcp` prints it, since an application started from the Dock does
+   kb-mcp` prints it, since an application started from the Dock does
    not read your shell's `PATH`:
 
    ```json
    {
      "mcpServers": {
-       "atlassian-offline-mcp": {
-         "command": "/Users/<you>/.local/bin/atlassian-offline-mcp",
+       "kb-mcp": {
+         "command": "/Users/<you>/.local/bin/kb-mcp",
          "args": ["serve", "--tools", "ask,read"]
        }
      }
@@ -102,8 +102,8 @@ only, which this one is. Write `~/.config/llama.cpp/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "atlassian-offline-mcp": {
-      "command": "atlassian-offline-mcp",
+    "kb-mcp": {
+      "command": "kb-mcp",
       "args": ["serve", "--tools", "ask,read"]
     }
   }
@@ -124,7 +124,7 @@ llama-server -hf unsloth/Qwen3.5-9B-GGUF:Q4_K_M --host 127.0.0.1 --port 8080 -c 
   thinking; leave it out to let the model think first.
 
 Open `http://127.0.0.1:8080`: the web UI lists the server's tools, named
-`atlassian-offline-mcp_ask` and `atlassian-offline-mcp_read`.
+`kb-mcp_ask` and `kb-mcp_read`.
 
 ### Ollama, for Codex and Claude Code
 
@@ -171,8 +171,8 @@ this machine. In `~/.codex/config.toml`:
 ```toml
 oss_provider = "ollama"
 
-[mcp_servers.atlassian-offline-mcp]
-command = "atlassian-offline-mcp"
+[mcp_servers.kb-mcp]
+command = "kb-mcp"
 args = ["serve", "--tools", "ask,read"]
 ```
 
@@ -222,7 +222,7 @@ If an answer seems to miss documents, `ask` says in its answer when it searched 
 words alone, and why; this says whether the embedding model answers:
 
 ```bash
-atlassian-offline-mcp model check
+kb-mcp model check
 ```
 
 ## Keep it on this machine

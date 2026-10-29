@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 # The program's name, as pyproject.toml names its script, which names its log folder.
-PROGRAM = "atlassian-offline-mcp"
+PROGRAM = "kb-mcp"
 # What an event or a library's record gets before any sink renders it, redaction last.
 SHARED = (
     structlog.stdlib.add_log_level,
@@ -125,8 +125,8 @@ def span_ids(
 def default_log_folder() -> Path:
     """Return the user's log folder for this program, as platformdirs places it.
 
-    On macOS ``~/Library/Logs/atlassian-offline-mcp``; on Linux
-    ``$XDG_STATE_HOME/atlassian-offline-mcp/log``, ``~/.local/state`` by default.
+    On macOS ``~/Library/Logs/kb-mcp``; on Linux
+    ``$XDG_STATE_HOME/kb-mcp/log``, ``~/.local/state`` by default.
     """
     return Path(platformdirs.user_log_dir(PROGRAM, appauthor=False))
 

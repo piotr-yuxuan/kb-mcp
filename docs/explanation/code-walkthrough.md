@@ -21,7 +21,7 @@ spaces = ["ENG"]
 ```
 
 ```bash
-atlassian-offline-mcp sync --since 2026-01-01
+kb-mcp sync --since 2026-01-01
 ```
 
 The space was never downloaded: without `--since`, its first run would take its last 7
@@ -33,7 +33,7 @@ keep their defaults: `search_mode` hybrid, `chunking` windows, and the model
 
 ### 1. The entry point and the parser
 
-`pyproject.toml` makes the script `atlassian-offline-mcp` call
+`pyproject.toml` makes the script `kb-mcp` call
 [`main`](../../src/kb_mcp/cli/main.py), as `__main__.py` does for
 `python -m kb_mcp`. `main` first builds the parser with
 [`parser`](../../src/kb_mcp/cli/main.py), which imports each module of

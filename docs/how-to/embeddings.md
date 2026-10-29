@@ -41,7 +41,7 @@ ollama pull qwen3-embedding:0.6b
 ```
 
 ```bash
-atlassian-offline-mcp model check
+kb-mcp model check
 ```
 
 `model check` connects to the endpoint and says the model's dimensions, its digest and
@@ -51,7 +51,7 @@ downloads a model.
 ## 3. Build the index
 
 ```bash
-atlassian-offline-mcp index
+kb-mcp index
 ```
 
 The first `index` with a model embeds every piece of the mirror and keeps the vectors in
@@ -131,13 +131,13 @@ machine: a literal loopback address, `127.0.0.1` or `[::1]`, not a name, not eve
 command is given `--allow-remote-embeddings`, on every run, and then only over https:
 
 ```bash
-atlassian-offline-mcp index --allow-remote-embeddings
+kb-mcp index --allow-remote-embeddings
 ```
 
 For the MCP server, that means registering it with the flag:
 
 ```bash
-claude mcp add --scope user --transport stdio atlassian-offline-mcp -- atlassian-offline-mcp serve --allow-remote-embeddings
+claude mcp add --scope user --transport stdio kb-mcp -- kb-mcp serve --allow-remote-embeddings
 ```
 
 A model that Ollama serves from its cloud, such as a `:cloud` tag, is refused the same

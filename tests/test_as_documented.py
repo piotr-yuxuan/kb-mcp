@@ -340,7 +340,7 @@ def test_serve_records_as_documented(tmp_path: Path) -> None:
             nothing_listening() if stopped else serving(Reranks()) as reranking,
             collecting(collector) as endpoint,
         ):
-            folder = home / ".config" / "atlassian-offline-mcp"
+            folder = home / ".config" / "kb-mcp"
             folder.mkdir(parents=True)
             (folder / "config.toml").write_text(
                 f'data_dir = {json.dumps(str(data))}\nmodel = "tiny"\nsearch_mode = "hybrid"\n'

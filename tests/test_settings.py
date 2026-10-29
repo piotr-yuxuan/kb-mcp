@@ -52,8 +52,8 @@ def user_log_folder(home: Path) -> Path:
     On Linux, without ``XDG_STATE_HOME``, as platformdirs places it.
     """
     return {
-        "darwin": home / "Library" / "Logs" / "atlassian-offline-mcp",
-        "linux": home / ".local" / "state" / "atlassian-offline-mcp" / "log",
+        "darwin": home / "Library" / "Logs" / "kb-mcp",
+        "linux": home / ".local" / "state" / "kb-mcp" / "log",
     }[sys.platform]
 
 
@@ -111,16 +111,16 @@ def test_by_default_index_cuts_windows_and_search_is_hybrid() -> None:
 
 
 def test_the_default_data_directory_is_under_the_home() -> None:
-    """With nothing set, the data lives in ~/atlassian-offline-mcp and no site is known."""
+    """With nothing set, the data lives in ~/kb-mcp and no site is known."""
     settings = from_file({})
-    assert (settings.site, settings.data_dir) == (None, HOME / "atlassian-offline-mcp")
+    assert (settings.site, settings.data_dir) == (None, HOME / "kb-mcp")
     assert (settings.sources.confluence.spaces, settings.sources.jira.projects) == ((), ())
 
 
 @pytest.mark.parametrize(
     ("given", "data_dir"),
     [
-        (None, HOME / "atlassian-offline-mcp"),
+        (None, HOME / "kb-mcp"),
         ("~", HOME),
         ("~/mirror", HOME / "mirror"),
         ("/data/mirror", Path("/data/mirror")),
@@ -960,7 +960,7 @@ def test_a_git_working_tree_is_refused() -> None:
 
 def test_a_plain_folder_under_the_home_is_accepted() -> None:
     """The default place passes."""
-    assert unsafe_location(HOME / "atlassian-offline-mcp", HOME, git_root=None) is None
+    assert unsafe_location(HOME / "kb-mcp", HOME, git_root=None) is None
 
 
 @pytest.mark.parametrize(

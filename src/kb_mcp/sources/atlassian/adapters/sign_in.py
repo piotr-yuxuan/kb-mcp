@@ -53,7 +53,7 @@ class SavedSession:
     site: str
     folder: Path
     name: str = "the session saved by login"
-    again: str = "run atlassian-offline-mcp login"
+    again: str = "run kb-mcp login"
 
     def client(self) -> httpx.Client:
         """Return a client carrying the saved cookies; raise SignInNeededError if none are."""

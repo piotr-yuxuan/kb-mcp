@@ -1,6 +1,6 @@
 # Documentation
 
-The pages of atlassian-offline-mcp, sorted as [Diataxis](https://diataxis.fr/) sorts
+The pages of kb-mcp, sorted as [Diataxis](https://diataxis.fr/) sorts
 documentation: by what you need from a page at the moment you open it. A tutorial is a
 lesson, followed step by step to learn by doing; a how-to guide leads you to a goal you
 already have; reference gives the facts to look up as you work; explanation says why

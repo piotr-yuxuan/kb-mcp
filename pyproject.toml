@@ -1,5 +1,5 @@
 [project]
-name = "atlassian-offline-mcp"
+name = "kb-mcp"
 version = "0.1.0"
 description = "An offline mirror of Confluence and Jira Cloud, served to coding agents over MCP."
 readme = "README.md"
@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.scripts]
-atlassian-offline-mcp = "kb_mcp.cli.main:main"
+kb-mcp = "kb_mcp.cli.main:main"
 
 [dependency-groups]
 dev = [
@@ -46,9 +46,6 @@ dev = [
 [build-system]
 requires = ["uv_build>=0.13,<0.14"]
 build-backend = "uv_build"
-
-[tool.uv.build-backend]
-module-name = "kb_mcp"
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "spikes"]

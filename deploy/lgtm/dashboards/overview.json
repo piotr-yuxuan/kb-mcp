@@ -1,9 +1,9 @@
 {
   "uid": "aom-overview",
   "title": "Overview",
-  "description": "Every run of atlassian-offline-mcp in the time range, by command.",
+  "description": "Every run of kb-mcp in the time range, by command.",
   "tags": [
-    "atlassian-offline-mcp"
+    "kb-mcp"
   ],
   "editable": false,
   "graphTooltip": 1,
@@ -43,7 +43,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_command) (last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum by (aom_command) (last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_command}}"
@@ -89,7 +89,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_command, aom_exit_status) (last_over_time(aom_run_duration_seconds_count{job=\"atlassian-offline-mcp\", aom_exit_status!=\"0\"}[$__range]))",
+          "expr": "sum by (aom_command, aom_exit_status) (last_over_time(aom_run_duration_seconds_count{job=\"kb-mcp\", aom_exit_status!=\"0\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_command}}, status {{aom_exit_status}}"
@@ -135,7 +135,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (aom_command) (last_over_time(aom_run_duration_seconds_sum{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum by (aom_command) (last_over_time(aom_run_duration_seconds_sum{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{aom_command}}"
@@ -181,7 +181,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (http_response_status_code) (last_over_time(http_client_request_duration_seconds_count{job=\"atlassian-offline-mcp\"}[$__range]))",
+          "expr": "sum by (http_response_status_code) (last_over_time(http_client_request_duration_seconds_count{job=\"kb-mcp\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{http_response_status_code}}"
@@ -227,7 +227,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"atlassian-offline-mcp\"} | severity_number >= 13",
+          "expr": "{service_name=\"kb-mcp\"} | severity_number >= 13",
           "queryType": "range"
         }
       ],
@@ -261,7 +261,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"atlassian-offline-mcp\" && span.aom.command =~ \".+\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && span.aom.command =~ \".+\" }",
           "limit": 20,
           "tableType": "traces"
         }

@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 
     from pydantic_settings import PydanticBaseSettingsSource
 
-DEFAULT_DATA_DIR = "~/atlassian-offline-mcp"
+DEFAULT_DATA_DIR = "~/kb-mcp"
 # The embedding model that indexes by meaning, as the endpoint names it. Chosen by plan
 # 018 from published retrieval scores: the best in English, French not needed for now.
 DEFAULT_MODEL = "qwen3-embedding:0.6b"

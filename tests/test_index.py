@@ -377,7 +377,7 @@ def test_reading_opens_read_only(data: Path, monkeypatch: MonkeyPatch) -> None:
 def test_no_index_or_another_file_is_unavailable(data: Path) -> None:
     """A missing index, or a file that is not one, names the command that builds it."""
     with (
-        pytest.raises(UnavailableIndexError, match=r"^no index at .*atlassian-offline-mcp index"),
+        pytest.raises(UnavailableIndexError, match=r"^no index at .*kb-mcp index"),
         reading(data / "index.sqlite"),
     ):
         pass
@@ -842,8 +842,8 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     refused = pytest.raises(
         UnavailableIndexError,
         match=(
-            "rebuild it with `atlassian-offline-mcp sync`, or, where no source is configured,"
-            " `atlassian-offline-mcp mirror` then `atlassian-offline-mcp index`, which write"
+            "rebuild it with `kb-mcp sync`, or, where no source is configured,"
+            " `kb-mcp mirror` then `kb-mcp index`, which write"
         ),
     )
     with refused, reading(data / "index.sqlite"):

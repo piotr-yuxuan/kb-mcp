@@ -168,7 +168,7 @@ def test_on_terminals_yes_lets_the_run_go_on(
     said = stderr.getvalue()
     assert said.startswith("mirror, with these settings:\n")
     assert said.endswith(QUESTION)
-    assert f"atlassian-offline-mcp mirror \\\n  --config {home / 'none.toml'}" in said
+    assert f"kb-mcp mirror \\\n  --config {home / 'none.toml'}" in said
 
 
 @pytest.mark.parametrize("answer", ["n\n", "\n", "yess\n", ""])
@@ -273,7 +273,7 @@ def test_yes_or_a_dry_run_runs_without_reading_stdin(
     assert main(command_line(home, name, skip)) == 0
     said = stderr.getvalue()
     assert said.startswith(f"{name}, with these settings:\n")
-    assert f"atlassian-offline-mcp {name} \\\n" in said
+    assert f"kb-mcp {name} \\\n" in said
     assert QUESTION not in said
     assert main(command_line(home, name, skip, "-q")) == 0
     assert stderr.getvalue() == said
@@ -321,7 +321,7 @@ def test_a_download_declined_or_refused_asks_the_site_nothing(
     home: Path, monkeypatch: MonkeyPatch, *, terminal: bool
 ) -> None:
     """Nothing is spent before the question: no request, no file, the session as it was."""
-    chosen = Settings(site=SITE, data_dir=(home / "atlassian-offline-mcp").resolve())
+    chosen = Settings(site=SITE, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())

@@ -100,7 +100,7 @@ def world(
     that what the world holds is what the runs wrote of their own.
     """
     home, data = tmp_path / "home", tmp_path / "data"
-    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
+    (home / ".config" / "kb-mcp").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
     docs = data / "docs"
     fillers(docs)
@@ -113,7 +113,7 @@ def world(
     golden.write_text(GOLDEN, encoding="utf-8")
     logs = tmp_path_factory.mktemp("logs")
     with serving(Scripted()) as url:
-        (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text(
+        (home / ".config" / "kb-mcp" / "config.toml").write_text(
             f'data_dir = {json.dumps(str(data))}\nmodel = "tiny"\nsearch_mode = "hybrid"\n'
             f"embedding_url = {json.dumps(url)}\n"
             f"[logs]\ndir = {json.dumps(str(logs))}\n"
@@ -622,7 +622,7 @@ def test_each_call_starts_the_server_that_prepare_named(
     monkeypatch.setattr(agents, "called", recorded)
     run = runs_of(out)[0]
     assert main(bridged(out, run["id"], "search", {"query": "kafka"})) == 0
-    config = str((world.home / ".config" / "atlassian-offline-mcp" / "config.toml").absolute())
+    config = str((world.home / ".config" / "kb-mcp" / "config.toml").absolute())
     serve = [*PROGRAM[:3], "serve", "--config", config, *options]
     assert started == [[*serve, "--tools", ",".join(run["tools"])]]
 

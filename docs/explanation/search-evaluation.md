@@ -448,7 +448,7 @@ settings are the point: leave the flag out. Two things come first:
   ```
 
   ```bash
-  uv run atlassian-offline-mcp model check --config <missing-file>
+  uv run kb-mcp model check --config <missing-file>
   ```
 
   `model check` says the model's dimensions and digest, or what to run when the
@@ -464,7 +464,7 @@ corpus's pages are in the space `QM`, its tickets in the project `ENG`, its idea
 `PRB`; plan 011's mirror also held the 13 probe pages of plan 001 in `MFS`:
 
 ```bash
-sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" uv run atlassian-offline-mcp download --yes --config <missing-file> --data-dir <data> --since 1y --space MFS --space QM --project ENG --project PRB'
+sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" uv run kb-mcp download --yes --config <missing-file> --data-dir <data> --since 1y --space MFS --space QM --project ENG --project PRB'
 ```
 
 The credentials file lies at the root of the checkout that made it, never in git
@@ -475,11 +475,11 @@ the same generic names; or skip `download` and `mirror`: copy `<data>/docs` (7 M
 from a machine that has it into the new data directory, and go on from `index`.
 
 ```bash
-uv run atlassian-offline-mcp mirror --config <missing-file> --data-dir <data>
+uv run kb-mcp mirror --config <missing-file> --data-dir <data>
 ```
 
 ```bash
-uv run atlassian-offline-mcp index --config <missing-file> --data-dir <data>
+uv run kb-mcp index --config <missing-file> --data-dir <data>
 ```
 
 `index` should report 1,474 documents (263 pages and 1,211 issues), as in plans 011 and
@@ -494,7 +494,7 @@ uv run python spikes/golden_refs.py --data <data> --out <data>/eval/sandbox.yaml
 Then measure every chunking in every mode:
 
 ```bash
-uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b
+uv run kb-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b
 ```
 
 ### Comparing chunkings and modes
@@ -509,7 +509,7 @@ the tests of each mode against words. To compare the defaults with the chunking 
 plan 019's rule kept:
 
 ```bash
-uv run atlassian-offline-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --summary detailed
+uv run kb-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --summary detailed
 ```
 
 The first run embeds each chunking's pieces that the store lacks, which took 31
@@ -580,11 +580,11 @@ the reranking server started as [the how-to](../how-to/reranking.md#start-the-se
 starts it, at its address and under its alias, which are the settings' defaults:
 
 ```bash
-uv run atlassian-offline-mcp reranker check --config <missing-file>
+uv run kb-mcp reranker check --config <missing-file>
 ```
 
 ```bash
-uv run atlassian-offline-mcp eval-rerank <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data>
+uv run kb-mcp eval-rerank <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data>
 ```
 
 It measures the defaults, hybrid search over `windows` with `qwen3-embedding:0.6b`,

@@ -30,9 +30,9 @@ DEPTH = 100
 QUIET_S = 30.0
 NO_VECTORS = (
     "the index holds no vectors; check the embedding model"
-    " (atlassian-offline-mcp model check), then run atlassian-offline-mcp index"
+    " (kb-mcp model check), then run kb-mcp index"
 )
-STALE = "{name}: the index was built with other weights of it; run atlassian-offline-mcp index"
+STALE = "{name}: the index was built with other weights of it; run kb-mcp index"
 
 
 @dataclass(frozen=True)

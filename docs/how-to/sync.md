@@ -7,7 +7,7 @@ does. It is the one command to run when the mirror and search should be current;
 
 ## 1. Name the sources
 
-Each source is configured by its table in `~/.config/atlassian-offline-mcp/config.toml`:
+Each source is configured by its table in `~/.config/kb-mcp/config.toml`:
 
 ```toml
 site = "https://<your-site>.atlassian.net"
@@ -30,7 +30,7 @@ log](work-log.md).
 ## 2. Run it
 
 ```bash
-atlassian-offline-mcp sync
+kb-mcp sync
 ```
 
 Before it acts, it writes on stderr each setting it reads, each source it takes with its
@@ -80,8 +80,8 @@ cache of pandoc's conversions that the mirror cannot use (step 1).
 ## 3. Choose among the sources
 
 ```bash
-atlassian-offline-mcp sync --include worklog
-atlassian-offline-mcp sync --exclude worklog --since 7d
+kb-mcp sync --include worklog
+kb-mcp sync --exclude worklog --since 7d
 ```
 
 `--include` takes the sources named alone, `--exclude` all but those, never both in one
@@ -95,7 +95,7 @@ worklog`), and settings that no source taken uses are said not applied, never re
 ## 4. Look before running
 
 ```bash
-atlassian-offline-mcp sync --dry-run --since 7d
+kb-mcp sync --dry-run --since 7d
 ```
 
 `--dry-run` plans the download as `download --dry-run` does, each target's window first,

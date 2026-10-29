@@ -154,7 +154,7 @@ def test_a_download_s_summary_says_how_it_signs_in(
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--space", "ENG"]
     assert main(["download", *options]) == 0
     err = capsys.readouterr().err
-    assert f"\n  sign-in: {sign_in}\n" in err.split("atlassian-offline-mcp download")[0]
+    assert f"\n  sign-in: {sign_in}\n" in err.split("kb-mcp download")[0]
     assert not any(secret in err for secret in SECRETS.values())
 
 
@@ -173,7 +173,7 @@ def test_a_download_s_summary_says_where_its_windows_start(
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--space", "ENG"]
     assert main(["download", *options, *given]) == 0
     err = capsys.readouterr().err
-    assert f"\n  {rule}\n" in err.split("atlassian-offline-mcp download")[0]
+    assert f"\n  {rule}\n" in err.split("kb-mcp download")[0]
 
 
 def test_an_index_by_words_alone_ignores_the_model_and_the_endpoint_given(
@@ -245,7 +245,7 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
     assert "ignored: " not in err
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "lexical")
     assert main(["index", "--yes", "--config", none]) == 0
-    summary = capsys.readouterr().err.split("atlassian-offline-mcp index")[0]
+    summary = capsys.readouterr().err.split("kb-mcp index")[0]
     marked = [
         line.strip().partition(": ")[0]
         for line in summary.splitlines()
@@ -348,7 +348,7 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     data = (home / "data").resolve()
     options = ["mirror", "--yes", "--config", str(config), "--data-dir", str(data)]
     command = (
-        "atlassian-offline-mcp mirror \\\n"
+        "kb-mcp mirror \\\n"
         f"  --config {shlex.quote(str(config))} \\\n"
         f"  --data-dir {shlex.quote(str(data))} \\\n"
         f"  --site {SITE}\n"
@@ -396,7 +396,7 @@ def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
     assert main([*options, "--summary", "detailed"]) == 0
     said = capsys.readouterr().err
     assert "ignored" not in said
-    listed = said.split(f"atlassian-offline-mcp {command} \\\n")[0].splitlines()
+    listed = said.split(f"kb-mcp {command} \\\n")[0].splitlines()
     # A setting's line ends with its layer; the command's own lines, if any, follow.
     assert [line for line in listed if line.endswith("]")][-2:] == [
         f"  logs.dir: {logs} [config.toml]",
@@ -456,7 +456,7 @@ def test_the_level_error_leaves_out_the_values_ignored_alone(
     assert main(options) == 0
     said = capsys.readouterr().err
     assert said.startswith("index, with these settings:\n")
-    assert "atlassian-offline-mcp index \\\n" in said
+    assert "kb-mcp index \\\n" in said
     assert warning in said
     assert main([*options, "--log-level", "error"]) == 0
     assert capsys.readouterr().err == said.replace(warning, "")
@@ -480,9 +480,9 @@ def test_a_command_s_described_lines_end_its_summary(
     arguments.command = dataclasses.replace(arguments.command, described=described)
     with early():
         assert enter(arguments, given) == 0
-    summary = capsys.readouterr().err.split("atlassian-offline-mcp mirror")[0]
+    summary = capsys.readouterr().err.split("kb-mcp mirror")[0]
     assert summary.endswith(
-        f"  data_dir: {(home / 'atlassian-offline-mcp').resolve()}\n  mirrors {SITE}\n  as mirror\n"
+        f"  data_dir: {(home / 'kb-mcp').resolve()}\n  mirrors {SITE}\n  as mirror\n"
     )
     assert len(runs) == 1
 
@@ -501,7 +501,7 @@ def test_the_command_to_copy_is_preceded_by_an_empty_list_that_no_flag_can_say(
     options = ["--yes", "--config", str(config), "--site", SITE, "--space", "ENG"]
     assert main(["download", *options]) == 0
     err = capsys.readouterr().err
-    said, _, copied = err.partition("atlassian-offline-mcp download")
+    said, _, copied = err.partition("kb-mcp download")
     assert said.endswith(
         f"not in the command: sources.jira.projects ({variable}): empty, which --project"
         " cannot say\n"
@@ -566,7 +566,7 @@ def test_the_command_to_copy_is_followed_by_the_settings_that_no_flag_sets(
     monkeypatch.setenv(mode, "semantic")
     monkeypatch.setenv(model, "foo")
     assert main(options) == 0
-    command = f"atlassian-offline-mcp index \\\n  --config {shlex.quote(str(home / 'none.toml'))}\n"
+    command = f"kb-mcp index \\\n  --config {shlex.quote(str(home / 'none.toml'))}\n"
     _, found, after = capsys.readouterr().err.partition(command)
     assert found
     assert [line.rpartition(": ")[0] for line in after.splitlines()] == [
@@ -636,7 +636,7 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     assert "someone@example.invalid" not in copied.command
     # The shell removes a backslash and the newline after it, then splits as shlex does.
     argv = shlex.split(copied.command.replace("\\\n", ""))
-    assert argv[:2] == ["atlassian-offline-mcp", name]
+    assert argv[:2] == ["kb-mcp", name]
     assert not EXCLUDED & set(argv)
     config.unlink()
     for variable in given:
@@ -676,7 +676,7 @@ def test_the_command_to_copy_carries_each_path_absolute(
     given = [item for option, path in paths.items() for item in (option, path)]
     assert main(["login", "--yes", "--site", SITE, *given]) == 0
     err = capsys.readouterr().err
-    argv = shlex.split(err[err.index("atlassian-offline-mcp login") :].replace("\\\n", ""))
+    argv = shlex.split(err[err.index("kb-mcp login") :].replace("\\\n", ""))
     assert {option: argv[argv.index(option) + 1] for option in paths} == {
         option: str(home.absolute() / path) for option, path in paths.items()
     }

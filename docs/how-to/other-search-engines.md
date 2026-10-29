@@ -19,7 +19,7 @@ differ, by how much this page does not say.
 
 - The mirror is built, by `sync` or `mirror` ([bring every source up to
   date](sync.md)); this program's index is not needed. Its files are under
-  `<data>/docs/`, `~/atlassian-offline-mcp/docs/` unless the setting `data_dir` says
+  `<data>/docs/`, `~/kb-mcp/docs/` unless the setting `data_dir` says
   otherwise.
 - Node.js 22 or later, and npm.
 - About 2.3 GB of disk for qmd's three default models, which it downloads from Hugging
@@ -39,9 +39,9 @@ release on npm.
 ## 2. Add one collection per source
 
 ```bash
-qmd collection add ~/atlassian-offline-mcp/docs/confluence --name confluence --mask '**/[!_]*.md'
-qmd collection add ~/atlassian-offline-mcp/docs/jira --name jira --mask '**/[!_]*.md'
-qmd collection add ~/atlassian-offline-mcp/docs/worklog --name worklog --mask '**/[!_]*.md'
+qmd collection add ~/kb-mcp/docs/confluence --name confluence --mask '**/[!_]*.md'
+qmd collection add ~/kb-mcp/docs/jira --name jira --mask '**/[!_]*.md'
+qmd collection add ~/kb-mcp/docs/worklog --name worklog --mask '**/[!_]*.md'
 ```
 
 - The mask leaves out each space's `_tree.md`, its navigation, which qmd would
@@ -155,7 +155,7 @@ qmd mcp --http --host 127.0.0.1 --port 8181
 ## 7. After each sync
 
 ```bash
-atlassian-offline-mcp sync
+kb-mcp sync
 qmd update
 qmd embed --timeout 0
 ```

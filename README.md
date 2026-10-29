@@ -1,4 +1,4 @@
-# atlassian-offline-mcp
+# kb-mcp
 
 An offline mirror of Confluence and Jira Cloud, and of your work log, kept on your own
 machine and served to coding agents (Claude Code, VS Code Copilot) through a local MCP
@@ -26,12 +26,12 @@ Work in progress: [the roadmap](docs/work/README.md) says what each plan to come
 From a clone of this repository, uv runs it without installing it:
 
 ```bash
-uv run atlassian-offline-mcp --help
+uv run kb-mcp --help
 ```
 
-Settings live in `~/.config/atlassian-offline-mcp/config.toml`, and each can also come
+Settings live in `~/.config/kb-mcp/config.toml`, and each can also come
 from a variable `ATLASSIAN_OFFLINE_MCP_…` or, for some, a flag, the flag winning;
-`atlassian-offline-mcp check --summary detailed` shows each one, where it came from, and
+`kb-mcp check --summary detailed` shows each one, where it came from, and
 validates them and the data directory. A command that writes under the data directory
 says what it will do and asks first, unless given `--yes`.
 

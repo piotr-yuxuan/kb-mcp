@@ -419,7 +419,7 @@ def test_an_index_cut_by_a_chunking_this_version_lacks_is_refused(data: Path) ->
         connection.commit()
     refused = pytest.raises(
         UnavailableIndexError,
-        match=r"this version reads: rebuild it with `atlassian-offline-mcp index`$",
+        match=r"this version reads: rebuild it with `kb-mcp index`$",
     )
     with refused, reading(data / "index.sqlite"):
         pass

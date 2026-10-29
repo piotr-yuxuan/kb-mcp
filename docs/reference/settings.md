@@ -16,7 +16,7 @@ value replaces a weaker one's whole, a list included, as
 [`settings_of`](../../src/kb_mcp/config/domain/settings.py) merges them;
 `check --summary detailed` names the layer that gave each setting.
 
-- **The settings file** is TOML: `~/.config/atlassian-offline-mcp/config.toml`, unless
+- **The settings file** is TOML: `~/.config/kb-mcp/config.toml`, unless
   `--config` names another; a missing file holds no settings. A key with dots, such as
   `sources.confluence.spaces`, is the key `spaces` of the table `[sources.confluence]`.
   The file may not hold a key that names no setting, nor a secret.
@@ -38,7 +38,7 @@ A path that starts with `~` starts in the home directory.
 | `site` | `ATLASSIAN_OFFLINE_MCP_SITE` | text | unset | The Atlassian site, for Confluence and Jira alike: https://\<name>.atlassian.net. |
 | `email` | `ATLASSIAN_OFFLINE_MCP_EMAIL` | text | unset | The email address of the Atlassian account that signs in. |
 | `api_token` | `ATLASSIAN_OFFLINE_MCP_API_TOKEN` | secret | unset | The Atlassian account's API token, a secret: from the environment alone. |
-| `data_dir` | `ATLASSIAN_OFFLINE_MCP_DATA_DIR` | path | `"~/atlassian-offline-mcp"` | Where the data lives, ~ being the home directory: never under a synchronised folder, nor inside a git working tree. |
+| `data_dir` | `ATLASSIAN_OFFLINE_MCP_DATA_DIR` | path | `"~/kb-mcp"` | Where the data lives, ~ being the home directory: never under a synchronised folder, nor inside a git working tree. |
 | `model` | `ATLASSIAN_OFFLINE_MCP_MODEL` | text | `"qwen3-embedding:0.6b"` | The embedding model that indexes by meaning, as the endpoint names it. |
 | `search_mode` | `ATLASSIAN_OFFLINE_MCP_SEARCH_MODE` | one of `lexical`, `semantic`, `hybrid` | `"hybrid"` | How search ranks: by words (lexical), by meaning (semantic), or both (hybrid), the default; all but lexical need the embedding endpoint. |
 | `chunking` | `ATLASSIAN_OFFLINE_MCP_CHUNKING` | one of `sections`, `windows`, `section-paths`, `small-to-big` | `"windows"` | How index cuts documents into the pieces it embeds: sections, windows, section-paths, small-to-big; search follows the index. By default windows, which ranked best on plan 019's sandbox. |

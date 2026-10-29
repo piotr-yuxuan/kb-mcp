@@ -339,13 +339,13 @@ def test_the_cap_is_256_mib() -> None:
 def test_the_default_folder_is_the_platform_s_log_folder_for_the_user(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """On macOS ~/Library/Logs/atlassian-offline-mcp, on Linux ~/.local/state's log folder."""
+    """On macOS ~/Library/Logs/kb-mcp, on Linux ~/.local/state's log folder."""
     monkeypatch.setenv("HOME", str(tmp_path))
     for variable in ("XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME"):
         monkeypatch.delenv(variable, raising=False)
     expected = {
-        "darwin": tmp_path / "Library" / "Logs" / "atlassian-offline-mcp",
-        "linux": tmp_path / ".local" / "state" / "atlassian-offline-mcp" / "log",
+        "darwin": tmp_path / "Library" / "Logs" / "kb-mcp",
+        "linux": tmp_path / ".local" / "state" / "kb-mcp" / "log",
     }
     assert default_log_folder() == expected[sys.platform]
 

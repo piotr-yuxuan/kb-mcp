@@ -347,13 +347,13 @@ STDIO = (
 def stdio_root(tmp_path: Path, rerank: str) -> tuple[Path, Path]:
     """Index four pages by words; give a scratch home, whose settings hold ``rerank``."""
     home, data = tmp_path / "home", tmp_path / "data"
-    (home / ".config" / "atlassian-offline-mcp").mkdir(parents=True)
+    (home / ".config" / "kb-mcp").mkdir(parents=True)
     fillers(data / "docs")
     for number, text in enumerate(STDIO):
         write(data / "docs", page(str(920000 + number), f"Stdio {number}"), text)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     settings = f'data_dir = {json.dumps(str(data))}\nsearch_mode = "lexical"\n[rerank]\n{rerank}'
-    (home / ".config" / "atlassian-offline-mcp" / "config.toml").write_text(settings, "utf-8")
+    (home / ".config" / "kb-mcp" / "config.toml").write_text(settings, "utf-8")
     return home, data
 
 

@@ -61,7 +61,7 @@ if TYPE_CHECKING:
     from tests.conftest import InMemory
 
 ROOT = Path(__file__).parents[1]
-PROGRAM = "atlassian-offline-mcp"
+PROGRAM = "kb-mcp"
 VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]["version"]
 # The limit that telemetry has at a run's end, as plan 016 injects it for the bounded exit,
 # and the time that a run then takes at most, when the endpoint refuses and when it
@@ -247,7 +247,7 @@ def test_no_secret_reaches_the_files_stderr_or_telemetry_at_debug(
             token.setenv(EMAIL, ADDRESS)
             token.setenv(CREDENTIAL, SENTINEL)
             assert main(download(tmp_path, "-vv")) == SIGN_IN_NEEDED
-        session = tmp_path / "atlassian-offline-mcp" / "session" / COOKIES
+        session = tmp_path / "kb-mcp" / "session" / COOKIES
         write_cookies(session, [{"name": "tenant.session.token", "value": COOKIE, "domain": HOST}])
         assert main(download(tmp_path, "-vv")) == ExitStatus.FAILED
     finally:
