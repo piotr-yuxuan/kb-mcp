@@ -90,7 +90,8 @@ A note of the day.
 - Archiving keeps all this: org writes a day archived at level 1 of `todo.org_archive`,
   and a meeting or a task archived alone with `:ARCHIVE_OLPATH:` naming its day, which
   it joins again, or its meeting. Every part of one date, `todo.org` first, makes one
-  day.
+  day. A task archived from one of two meetings of one day and title stays in the day,
+  as its path names both alike.
 
 ## 3. Keep each document in its file
 

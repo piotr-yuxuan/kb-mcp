@@ -492,7 +492,8 @@ links one.
   alone is one of its meetings; anything else joins the meeting whose title, as org
   writes it there (each link its description, else its target; filled statistics
   cookies left out; a `/` within unescaped), is the path after the day or begins it
-  before a `/`, the longest such title, if any; else the day.
+  before a `/`, the longest such title, if one meeting of the day alone has it; else
+  the day.
 - A **day** is one document per date: each of its headings, `todo.org` first, each
   meeting among their children cut to its heading line, then what joins it. Its id is
   `d-` and the date, `%Y%m%d`; its title, its first heading's, else the path's part.

@@ -324,11 +324,12 @@ afresh at each run
   for that title misses those notes. An archived heading joins its meeting by the
   meeting's title as org writes it in `:ARCHIVE_OLPATH:`, whose `/` org does not escape
   ([`Heading.outline_title`](../../src/atlassian_offline_mcp/sources/worklog/domain/org.py)):
-  the longest title of the day that begins the path wins, and a title holding `//`, or
-  beginning or ending with `/`, or one whose keyword `todo.org` does not declare, joins
-  none, its pieces staying in the day. Times are read as written, as UTC: a caption
-  tool that writes an offset from the start, `00:05`, dates its transcript at five past
-  midnight. A meeting copied with its link to another day's transcript, as a recurring
+  the longest title of the day that begins the path wins, but the day keeps a piece of
+  one of two meetings of that title, which the path names alike; a title holding `//`,
+  or beginning or ending with `/`, or one whose keyword `todo.org` does not declare,
+  joins none, its pieces staying in the day. Times are read as written, as UTC: a
+  caption tool that writes an offset from the start, `00:05`, dates its transcript at
+  five past midnight. A meeting copied with its link to another day's transcript, as a recurring
   one may be, keeps the link, so that the transcript names two meetings, but its own
   day's date. In a transcript without quote blocks, a line of prose such as
   `Decision: we wait` reads as a speaker. A meeting's names and its transcript's

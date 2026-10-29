@@ -365,9 +365,10 @@ def days_and_meetings(
     date: its headings, each meeting among their children cut to its heading line, then
     what an archived heading brings that ``:ARCHIVE_OLPATH:`` places below it: a meeting
     archived alone, its heading line; anything else that names none of its meetings
-    next, itself. A meeting is its subtree, then each archived heading whose path after
-    its day begins with the meeting's title as org writes it there, the longest such
-    title of the day. Each document begins at level 1, what joins it at level 2.
+    next, or two alike, itself. A meeting is its subtree, then each archived heading
+    whose path after its day begins with the meeting's title as org writes it there, the
+    longest such title of the day, when no other meeting of the day has it. Each
+    document begins at level 1, what joins it at level 2.
 
     A meeting links to the transcript whose file its ``:MEETING:`` names, from the folder
     of the file that holds it, and starts when that transcript starts on the meeting's
@@ -425,7 +426,10 @@ def days_and_meetings(
             if (title := meeting.part.subtree.heading.outline_title)
             and (rest == title or rest.startswith(f"{title}/"))
         ]
-        target = max(named, key=lambda each: each[0], default=(0, day.lines))[1]
+        # The path names two meetings of one title alike: neither is told, the day keeps it.
+        longest = max((length for length, _ in named), default=0)
+        chosen = [added for length, added in named if length == longest]
+        target = chosen[0] if len(chosen) == 1 else day.lines
         target.extend(org.shifted(part.subtree.lines, DAY_LEVEL))
     found: list[Document] = []
     unlinked: list[str] = []

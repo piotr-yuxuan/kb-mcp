@@ -973,6 +973,19 @@ def test_same_titled_meetings_of_one_day_are_numbered(run: Run) -> None:
     }
 
 
+def test_a_piece_archived_from_one_of_two_same_titled_meetings_stays_in_the_day(
+    run: Run,
+) -> None:
+    """Org's path names both One-to-ones alike, so neither takes it: their day holds it."""
+    archive = run.root / "todo.org_archive"
+    path = "Entries/<2026-10-26 Mon>/One-to-one/Summary"
+    task = f"* DONE Send the vendor renewal draft\n:PROPERTIES:\n{ARCHIVING.format(path)}:END:\n"
+    archive.write_text(f"{archive.read_text('utf-8')}\n{task}", "utf-8")
+    run()
+    held = [each.matter.id for each in run.files() if "vendor renewal draft" in each.body]
+    assert held == ["d-20261026"]
+
+
 @pytest.mark.parametrize(
     ("identifier", "names"),
     [
