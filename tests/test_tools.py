@@ -26,7 +26,16 @@ from tests.mirrors import (
     page,
     write,
 )
-from tests.test_people import ALEX, ALEX_EXAMPLE, ROBIN, ROBIN_ALONE, SAM_2, SAM_3, SAM_ALONE
+from tests.test_people import (
+    ALEX,
+    ALEX_EXAMPLE,
+    ROBIN,
+    ROBIN_ALONE,
+    SAM_2,
+    SAM_3,
+    SAM_ALONE,
+    anchored,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -882,6 +891,31 @@ def test_a_name_written_as_one_of_several_persons_writes_it_keeps_that_person(
         assert refs(library.search(filters={"creator": value}, sort="created")) == [expected]
     with pytest.raises(UnanswerableError, match=r'^creator: "Robin" names 2 people;'):
         library.search(filters={"creator": "Robin"}, sort="created")
+
+
+def test_a_bare_name_of_several_persons_is_refused_though_one_writes_it_so(
+    tmp_path: Path,
+) -> None:
+    """Accounts Alex (Ops) and Alex (Sales), beside the unlinked transcripts' Alex.
+
+    Alex could be any of the three, so it is refused listing each; Alex (Ops) is the
+    account that alone writes it so.
+    """
+    ops = PersonRole(role="author", name="Alex (Ops)", account="acct-0010")
+    sales = PersonRole(role="author", name="Alex (Sales)", account="acct-0011")
+    fronts = (
+        *PERSONS,
+        page("300002", "Ops runbook", people=(ops,)),
+        page("300003", "Sales runbook", people=(sales,)),
+    )
+    library = built(tmp_path, [(front, None) for front in fronts])
+    with pytest.raises(UnanswerableError) as refused:
+        library.search(filters={"person": "Alex"}, sort="created")
+    header, block, _ = parts(str(refused.value))
+    assert header.strip() == 'person: "Alex" names 3 people; give the id of one:'
+    listed = {line.split(", ")[1].partition(":")[0] for line in block.splitlines()}
+    assert listed == {ALEX, anchored("account\nacct-0010"), anchored("account\nacct-0011")}
+    assert refs(library.search(filters={"person": "Alex (Ops)"}, sort="created")) == ["300002"]
 
 
 @pytest.mark.parametrize(

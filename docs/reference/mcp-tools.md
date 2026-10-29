@@ -86,8 +86,8 @@ neither.
   the meeting of its transcript. A name matches one of a person's names whole, without
   regard to case, accents, runs of spaces or a trailing part in brackets, so that `Kim`
   is `Kim (not in the header)`, unless a second note, `Kim (late)`, parts them; of
-  several persons, the one alone holding it as written, brackets included, is taken,
-  such as `Robin (Ops)` beside `Robin (Sales)`. It keeps the documents where that person
+  several persons, a name in brackets that one alone holds as written is taken, such
+  as `Robin (Ops)` beside `Robin (Sales)`. It keeps the documents where that person
   holds the filter's role, under any of their names: when one account wrote both names,
   `{"creator": "Robin Sample"}` keeps the issues created as Robin Example too; a name
   that a hit cuts at 60 characters, `read` gives whole. A name or id that no person
@@ -96,9 +96,10 @@ neither.
   `person`, by meetings or documents other than transcripts first, so that the speakers
   that a caption tool writes, `You` and `Unverified`, never lead. A name that several
   persons hold there, such as two accounts of one name, or `Alex` beside `Alex (Ops)`
-  and `Alex (Sales)`, which brackets tell apart, is refused listing ten of them at most,
-  those of the most documents first, then in order of id, then how many more, each by
-  name, id, documents by role then by source, and the day of the last update, such as
+  and `Alex (Sales)`, which brackets tell apart, even where another person is written
+  `Alex`, is refused listing ten of them at most, those of the most documents first,
+  then in order of id, then how many more, each by name, id, documents by role then by
+  source, and the day of the last update, such as
   `Sam Sample, p-0123456789abcdef: author 1; jira 1; last updated 2026-10-20`: give the
   id of the one meant. The other values match whole, without regard to case, accents or
   runs of spaces. Of several values that match, one is kept: the one given, else one
