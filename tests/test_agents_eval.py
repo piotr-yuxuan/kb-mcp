@@ -588,7 +588,7 @@ def test_a_run_without_a_call_says_its_seconds_as_the_integer_0(
     assert main(["eval-agents", "--format", "json", "grade", str(out), "--yes"]) == 0
     printed = json.loads(capsys.readouterr().out)["outcomes"]
     kept = json.loads((out / "results.json").read_text("utf-8"))["outcomes"]
-    assert [repr(each["seconds"]) for each in (*printed, *kept)] == ["0"] * 2 * len(kept)
+    assert [repr(each["seconds"]) for each in (*printed, *kept)] == ["0"] * 4  # two runs
 
 
 def test_a_harness_file_not_as_written_exits_2_naming_run_and_field(
