@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from pydantic import Field
 from structlog.testing import capture_logs
 
 from kb_mcp.mirror.adapters.markdown import load
@@ -88,11 +89,10 @@ ARCHIVED_MEETINGS = {"Incident review", "Capacity planning"}
 DOCUMENTS = len(ENTRIES) + len(TRANSCRIPTS) + len(DAYS) + len(MEETINGS)
 
 
-@dataclass(frozen=True)
 class Counting(Pandoc):
     """Pandoc, counting its runs by their arguments, and failing on a marker if given."""
 
-    runs: list[tuple[str, ...]] = field(default_factory=list)
+    runs: list[tuple[str, ...]] = Field(default_factory=list)
     failing: str | None = None
 
     def run(self, arguments: Sequence[str], text: str) -> str:
@@ -126,14 +126,14 @@ class Run:
 
     def __call__(self, *, archives: bool = True, failing: str | None = None) -> Outcome:
         """Mirror the work log; return what the run did."""
-        pandoc = Counting(Pandoc.find().path, failing=failing)
+        pandoc = Counting(path=Pandoc.find().path, failing=failing)
         outcome = mirror_worklog(self.root, self.docs, pandoc, archives=archives)
         self.runs.append(pandoc.runs)
         return outcome
 
     def plan(self, *, archives: bool = True) -> Planned:
         """Say what mirroring would do; pandoc's runs are recorded as for a run."""
-        pandoc = Counting(Pandoc.find().path)
+        pandoc = Counting(path=Pandoc.find().path)
         planned = plan_worklog(self.root, self.docs, pandoc, archives=archives)
         self.runs.append(pandoc.runs)
         return planned

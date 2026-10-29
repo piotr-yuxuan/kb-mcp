@@ -353,7 +353,7 @@ def test_a_second_run_writes_nothing_and_a_rebuild_gives_the_same_bytes(
 
 def test_a_second_run_with_nothing_changed_runs_pandoc_on_nothing(sandbox: Sandbox) -> None:
     """Plan 039, criterion 5: each conversion of the first run is reused, no file written."""
-    pandoc = Counting(Pandoc.find().path)
+    pandoc = Counting(path=Pandoc.find().path)
     first = sandbox.run(markdown=pandoc.markdown)
     assert (first.converted, first.reused, len(pandoc.runs)) == (CONVERSIONS, 0, CONVERSIONS)
     pandoc.runs.clear()
@@ -382,7 +382,7 @@ def test_a_run_with_a_problem_keeps_the_conversion_of_what_it_could_not_read(
     The run between prunes nothing, though it converts the tree anew, without Home's
     link; the next, which reports nothing, prunes that tree alone.
     """
-    pandoc = Counting(Pandoc.find().path)
+    pandoc = Counting(path=Pandoc.find().path)
     sandbox.run(markdown=pandoc.markdown)
     view = next((sandbox.store.root / "confluence" / "pages" / "100").iterdir()) / "view.json"
     kept = view.read_bytes()
@@ -490,7 +490,7 @@ def test_a_mirror_through_a_warm_cache_writes_the_bytes_of_one_from_none(
     The mirror from no cache runs in another data folder, over a copy of the raw store.
     Through the cache, pandoc runs only on what the change touched.
     """
-    pandoc = Counting(Pandoc.find().path)
+    pandoc = Counting(path=Pandoc.find().path)
     linked.run(markdown=pandoc.markdown)
     change(linked)
     pandoc.runs.clear()
@@ -597,6 +597,16 @@ def test_a_run_with_problems_reports_them_and_removes_nothing(sandbox: Sandbox) 
     assert all(
         after[f"confluence/MFS/{name}"] == before[f"confluence/MFS/{name}"] for name in unchanged
     )
+
+
+def test_a_run_counts_each_macro_that_it_shows_as_unsupported(sandbox: Sandbox) -> None:
+    """The outcome counts, by name, the macros that the documents show as placeholders."""
+    roadmap = '<div class="conf-macro" data-macro-name="roadmap"><p>Road text</p></div>'
+    with sandbox.store.writing():
+        home = page_responses("100", "Home", 2, f"<p>Home again.</p>{roadmap}{roadmap}", [])
+        sandbox.store.put(Page, home, FETCHED, {})
+    outcome = sandbox.run()
+    assert outcome.unsupported == {"macro: roadmap": 2}
 
 
 def test_injected_titles_and_names_are_inert(sandbox: Sandbox) -> None:

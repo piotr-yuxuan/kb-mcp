@@ -16,8 +16,8 @@ import posixpath
 import time
 from collections import Counter
 from copy import replace
-from dataclasses import dataclass
 from datetime import UTC
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 import structlog
@@ -25,6 +25,7 @@ from opentelemetry import metrics, trace
 
 from kb_mcp.kernel.content import BlogPost, ConfluenceDocument, Issue, Page
 from kb_mcp.kernel.names import RefusedError
+from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.markdown import TIME, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, owned, sync
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
@@ -55,7 +56,7 @@ from kb_mcp.sources.atlassian.domain.period import EPOCH
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from datetime import datetime
-    from pathlib import Path, PurePosixPath
+    from pathlib import Path
 
     from kb_mcp.kernel.content import Folder
     from kb_mcp.mirror.adapters.conversions import Conversions
@@ -81,16 +82,14 @@ CONVERSION_DURATION = METER.create_histogram(
 )
 
 
-@dataclass(frozen=True)
-class Problem:
+class Problem(Record):
     """Something not mirrored: where it is in the store, and why, without content."""
 
     where: str
     reason: str
 
 
-@dataclass(frozen=True)
-class Outcome:
+class Outcome(Record):
     """What a run did: documents mirrored, conversions, files changed, placeholders, problems.
 
     ``converted`` counts the conversions pandoc ran, ``reused`` those the cache gave: a
@@ -105,8 +104,7 @@ class Outcome:
     problems: tuple[Problem, ...]
 
 
-@dataclass(frozen=True)
-class Placed:
+class Placed(Record):
     """A stored snapshot, and the file where its document is mirrored."""
 
     stored: Stored

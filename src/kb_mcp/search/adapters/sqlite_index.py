@@ -315,13 +315,13 @@ class Writer:
 
         Return the rowid of its first section; the others follow it.
         """
-        values = {name: getattr(front, name) for name in FrontMatter.__dataclass_fields__}
+        values = {name: getattr(front, name) for name in FrontMatter.model_fields}
         values |= {
             "labels": json.dumps(front.labels, ensure_ascii=False),
             "people": json.dumps(
-                [asdict(person) for person in front.people], ensure_ascii=False, default=moment
+                [person.model_dump() for person in front.people], ensure_ascii=False, default=moment
             ),
-            "links": json.dumps([asdict(link) for link in front.links], ensure_ascii=False),
+            "links": json.dumps([link.model_dump() for link in front.links], ensure_ascii=False),
             "breadcrumb": json.dumps(front.breadcrumb, ensure_ascii=False),
             "created": moment(front.created),
             "updated": moment(front.updated),

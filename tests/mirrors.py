@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import replace
+from copy import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 

@@ -16,18 +16,17 @@ from __future__ import annotations
 import posixpath
 import re
 from collections import Counter
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, override
+from collections.abc import Mapping
+from pathlib import PurePosixPath
+from typing import Protocol, override
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from lxml.etree import ErrorTypes, LxmlError
 from lxml.html import Element, HtmlElement, HTMLParser, document_fromstring, tostring
+from pydantic import Field, InstanceOf
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror_layout import one_line, visible
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from pathlib import PurePosixPath
 
 # The attribute of the wrapper that the site renders around a macro's output.
 MACRO = "data-macro-name"
@@ -115,8 +114,7 @@ HAS_CLASS = "contains(concat(' ', normalize-space(@class), ' '), $name)"
 DEEPEST = 6
 
 
-@dataclass(frozen=True)
-class Mirrored:
+class Mirrored(Record):
     """What a body can point to in the mirror, as paths relative to ``docs/``.
 
     A document's handle is its content id (Confluence) or its key (Jira). ``documents``
@@ -131,8 +129,7 @@ class Mirrored:
     names: Mapping[tuple[str, str], PurePosixPath | None]
 
 
-@dataclass(frozen=True)
-class Context:
+class Context(Record):
     """The document whose HTML is normalised: its handle, its file, and the mirror.
 
     ``shift`` moves every heading down by that many levels, for a comment under its own
@@ -143,7 +140,7 @@ class Context:
     here: PurePosixPath
     mirrored: Mirrored
     shift: int = 0
-    unsupported: Counter[str] = field(default_factory=Counter[str])
+    unsupported: InstanceOf[Counter[str]] = Field(default_factory=Counter[str])
 
     def relative(self, target: PurePosixPath) -> str:
         """Link a file of the mirror from this document's file."""
@@ -276,13 +273,11 @@ class AsRendered(Construct):
 AS_RENDERED = AsRendered()
 
 
-@dataclass(frozen=True)
-class Part(Construct):
+class Part(Record):
     """A macro shown by one part of its output, such as an excerpt include's content."""
 
     name: str  # the class of the part kept
 
-    @override
     def rewrite(self, element: HtmlElement, context: Context) -> None:
         """Keep the part alone, or show the macro as unsupported when it has none."""
         kept = part(element, self.name)
@@ -293,8 +288,7 @@ class Part(Construct):
         kept.drop_tag()
 
 
-@dataclass(frozen=True)
-class Panel(Construct):
+class Panel(Record):
     """A panel: a blockquote whose first line is its label in bold.
 
     The label is the panel's kind and its title, such as "Note: Heads up"; a custom
@@ -305,7 +299,6 @@ class Panel(Construct):
     body: str  # the class of the part that holds its content
     header: str  # the class of the part that holds its title, when it has one
 
-    @override
     def rewrite(self, element: HtmlElement, context: Context) -> None:
         """Make the panel a labelled blockquote."""
         body = part(element, self.body)
@@ -372,14 +365,12 @@ class Expand(Construct):
         replace(element, new("div", None, heading, content))
 
 
-@dataclass(frozen=True)
-class Computed(Construct):
+class Computed(Record):
     """A report that the site computes in the browser: named, with its query."""
 
     name: str
     query: str  # the attribute that holds the query
 
-    @override
     def rewrite(self, element: HtmlElement, context: Context) -> None:
         """Replace the report with a placeholder naming it, and its query."""
         query = next((node.get(self.query) for node in element.iter() if node.get(self.query)), "")

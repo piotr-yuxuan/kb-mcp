@@ -562,7 +562,7 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     (worklog / "transcripts/misc/a.org").unlink()
     todo = worklog / "todo.org"
     todo.write_text(todo.read_text("utf-8").replace("Drafted on", "Drafted, failing, on"), "utf-8")
-    failing = Counting(Pandoc.find().path, failing="failing")
+    failing = Counting(path=Pandoc.find().path, failing="failing")
     telemetry.spans.clear()
     telemetry.measured()
     with capture_logs() as logged:

@@ -16,16 +16,16 @@ document is counted, and each conversion timed, by its kind, as
 
 from __future__ import annotations
 
-import dataclasses
+import copy
 import time
 from collections import Counter
-from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 import structlog
 from opentelemetry import trace
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.markdown import WORKLOG, documents, dump, load
 from kb_mcp.mirror.adapters.mirror_files import Changes, sync, worklog_owned
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
@@ -41,6 +41,7 @@ from kb_mcp.sources.worklog.domain.worklog import (
     TODO,
     TODO_ARCHIVE,
     TRANSCRIPTS,
+    Document,
     journal,
     linked_back,
     revision,
@@ -53,14 +54,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kb_mcp.mirror.adapters.pandoc import Pandoc
-    from kb_mcp.sources.worklog.domain.worklog import Document, Source
+    from kb_mcp.sources.worklog.domain.worklog import Source
 
 SOURCE = "worklog"
 TRACER = trace.get_tracer(__name__)
 
 
-@dataclass(frozen=True)
-class Read:
+class Read(Record):
     """The work log's documents to write, in order, and the HTML transcripts left out.
 
     The documents are those read that draw on no file not read; ``held_back`` counts the
@@ -74,8 +74,7 @@ class Read:
     held_back: int
 
 
-@dataclass(frozen=True)
-class Outcome:
+class Outcome(Record):
     """What a run did: documents mirrored, files changed, HTML transcripts left out.
 
     Problems stop removals; warnings, such as two transcripts of one id, do not.
@@ -90,8 +89,7 @@ class Outcome:
     held_back: int
 
 
-@dataclass(frozen=True)
-class Planned:
+class Planned(Record):
     """What a run would do: documents, those to convert, files to remove, HTML left out.
 
     ``held_back`` counts the documents read that a file not read would hold back.
@@ -271,7 +269,7 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
     gone = failed - kept.keys()
     wanted: dict[PurePosixPath, bytes | Path] = {
         path: dump(
-            dataclasses.replace(
+            copy.replace(
                 matter, links=tuple(link for link in matter.links if link.ref not in gone)
             ),
             body,

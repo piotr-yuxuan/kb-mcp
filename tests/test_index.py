@@ -10,7 +10,7 @@ import sqlite3
 import subprocess
 import sys
 from contextlib import closing
-from dataclasses import replace
+from copy import replace
 from datetime import timedelta
 from typing import TYPE_CHECKING
 

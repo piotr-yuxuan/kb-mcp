@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import timedelta
-from typing import TYPE_CHECKING
+from datetime import datetime, timedelta
+from typing import Self
+
+from pydantic import model_validator
 
 from kb_mcp.kernel.names import (
     IDENTIFIER,
@@ -17,9 +18,7 @@ from kb_mcp.kernel.names import (
     RefusedError,
     require,
 )
-
-if TYPE_CHECKING:
-    from datetime import datetime
+from kb_mcp.kernel.record import Record
 
 TYPES = {
     "page": "confluence",
@@ -62,8 +61,7 @@ WORKLOG_ROLES = frozenset({PARTICIPANT})
 RELATIONS = ("transcript", "summary")
 
 
-@dataclass(frozen=True, kw_only=True)
-class PersonRole:
+class PersonRole(Record):
     """One person in one role of a document, named as the source gives the name.
 
     ``account`` is the source's account id, None when it has none; ``at`` holds a
@@ -75,7 +73,8 @@ class PersonRole:
     account: str | None = None
     at: tuple[datetime, ...] = ()
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_person_role(self) -> Self:
         """Refuse a role not in ROLES, an empty text or a line break, ``at`` off its rule.
 
         ``at`` is a commenter's alone, never empty there, its times in UTC and ascending.
@@ -95,25 +94,26 @@ class PersonRole:
         ):
             message = "at: a time not in UTC, or out of order"
             raise RefusedError(message)
+        return self
 
 
-@dataclass(frozen=True, kw_only=True)
-class Link:
+class Link(Record):
     """A link from a document to another of the mirror: the relation, and the other's ref."""
 
     relation: str
     ref: str
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_link(self) -> Self:
         """Refuse a relation not in RELATIONS, and a ref off IDENTIFIER, as ``read`` takes it."""
         if self.relation not in RELATIONS:
             message = "relation: not one of the relations"
             raise RefusedError(message)
         require(IDENTIFIER, self.ref, "ref")
+        return self
 
 
-@dataclass(frozen=True, kw_only=True)
-class FrontMatter:
+class FrontMatter(Record):
     """The front matter of one mirrored document, its fields in the order they are written.
 
     Every text is one line, so that the front matter stays a simple YAML mapping. A key
@@ -140,7 +140,8 @@ class FrontMatter:
     breadcrumb: tuple[str, ...]
     fetched_at: datetime
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_front_matter(self) -> Self:
         """Refuse what the layout's table rules out.
 
         A source and type that disagree, a key that only the other source has, an id off
@@ -199,6 +200,7 @@ class FrontMatter:
         if len(set(links)) != len(links) or any(ref in (self.id, self.key) for _, ref in links):
             message = "links: a link to the document itself, or one given twice"
             raise RefusedError(message)
+        return self
 
     @property
     def author(self) -> str | None:
