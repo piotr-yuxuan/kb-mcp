@@ -20,6 +20,8 @@ the command and those who change its code, unless it is marked for contributors.
 
 - [Mirror the site on a managed machine](how-to/sso-machine.md): the settings, the sign-in
   in your browser and a first download, on the user's machine.
+- [Move to kb-mcp](how-to/move-to-kb-mcp.md): a machine set up under the program's former
+  name moved, its settings, data and variables, and what other programs keep of it.
 - [Bring every source up to date](how-to/sync.md): `sync`, which downloads and mirrors
   each source that the settings name, then rebuilds the index, in one command.
 - [Mirror the work log](how-to/work-log.md): a folder of org files mirrored as Markdown

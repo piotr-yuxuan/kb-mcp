@@ -62,7 +62,9 @@ def parser(
     """
     program = parser_class(
         prog=PROGRAM,
-        description="An offline mirror of Confluence and Jira Cloud, served over MCP.",
+        description=(
+            "Knowledge base MCP: an offline mirror of Confluence and Jira Cloud, served over MCP."
+        ),
     )
     program.add_argument(
         "--version", action=Version, nargs=0, default=argparse.SUPPRESS, help="show the version"

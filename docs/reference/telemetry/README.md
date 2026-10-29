@@ -11,6 +11,13 @@ A change to an event, a span or an instrument changes its page in the same commi
 tests run each command on the scripted site and endpoint, and compare what it records
 with its page and this one, finding the pages in this folder.
 
+The program's own attributes and instruments are named under `kb_mcp.`, as
+OpenTelemetry's [naming](https://opentelemetry.io/docs/specs/semconv/general/naming/)
+advises for an application's own names: its name as Python writes it, since `kb` alone
+also reads as kilobyte, which a size in bytes would make misleading. Prometheus writes
+the dots as underscores: `kb_mcp_run_duration_seconds`. Spans and events are named after
+what they record, such as `sync.step`.
+
 ## The log file
 
 Each run, once its settings are read, unless it is then refused or declined, writes one
@@ -145,7 +152,7 @@ What any command may log.
 | `run.interrupted` | warning | `seconds` | Ctrl-C stopped the run, which exits 130 |
 | `run.failed` | error | `seconds` | An exception stopped the run, which exits 1; the traceback follows |
 | `run.refused` | error | `reason` | The command refuses its arguments or the settings, before the run: exit 2. On stderr alone |
-| `settings.refused` | error | `reason` | The settings break a rule, before the run: exit 2. On stderr alone |
+| `settings.refused` | error | `reason` | The settings break a rule, before the run: exit 2. On stderr alone; when the program's former name left settings, data or variables, the steps to move them follow, as [move to kb-mcp](../../how-to/move-to-kb-mcp.md) says |
 | `progress` | info | `task`, `done`, `total`, `remaining` | A task's heartbeat, every 10 s at most, and at its end; `remaining` in whole seconds |
 | `log.unwritable` | warning | `folder`, `reason` | The log folder cannot be written: no file, or nothing more in it |
 | `log.capped` | warning | | The file reached its cap: nothing more is written to it |

@@ -19,7 +19,7 @@ folder of logs.
 ```text
 usage: kb-mcp [-h] [--version] command ...
 
-An offline mirror of Confluence and Jira Cloud, served over MCP.
+Knowledge base MCP: an offline mirror of Confluence and Jira Cloud, served over MCP.
 
 positional arguments:
   command

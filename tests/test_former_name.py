@@ -24,6 +24,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
+ROOT = Path(__file__).parents[1]
 FORMER_FILE = Path(".config/atlassian-offline-mcp/config.toml")
 FORMER_DATA = Path("atlassian-offline-mcp")
 NEW_FILE = Path(".config/kb-mcp/config.toml")
@@ -199,3 +200,15 @@ def test_check_stops_before_any_log_file_and_moves_nothing(tmp_path: Path) -> No
     assert "ATLASSIAN_OFFLINE_MCP_SITE to KB_MCP_SITE" in done.stderr.splitlines()
     assert "secret" not in done.stderr
     assert files(home) == before
+
+
+def test_the_how_to_page_holds_every_line_the_stop_prints(
+    home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The page says what the stop says, for a home holding every former place."""
+    place(home, FORMER_FILE)
+    place(home, FORMER_DATA)
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", SITE)
+    page = (ROOT / "docs" / "how-to" / "move-to-kb-mcp.md").read_text(encoding="utf-8")
+    lines = set(page.splitlines())
+    assert [line for line in refusal(home).advice.splitlines() if line not in lines] == []
