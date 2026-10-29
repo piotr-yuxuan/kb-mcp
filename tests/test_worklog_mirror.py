@@ -839,7 +839,7 @@ def test_a_transcript_not_read_holds_back_meetings_and_what_links_them(run: Run)
     """A meeting's link, start and id draw on transcripts, and a transcript's links on ids.
 
     So no meeting is written, nor a document that links one; the day and the transcripts
-    that no meeting links are, as before.
+    that no meeting links are, as before. The run counts those held back.
     """
     run()
     before = {each.path: each for each in run.files()}
@@ -854,6 +854,8 @@ def test_a_transcript_not_read_holds_back_meetings_and_what_links_them(run: Run)
     held = [path for path, each in before.items() if each.matter.type == "meeting"]
     held += [path for path, each in before.items() if each.matter.links]
     assert {path: after[path] for path in held} == {path: before[path] for path in held}
+    # Of them, the documents read: all but the transcript not read.
+    assert outcome.held_back == len(set(held)) - 1
     assert "An edited note of the Tuesday" in run.by_id("d-20261027").body
     assert "one edited word only" in run.by_title("WAITING Notes").body
 

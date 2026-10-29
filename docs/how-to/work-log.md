@@ -32,8 +32,12 @@ atlassian-offline-mcp check
   Emacs's lock, autosave and backup files. A link is followed only inside the folder.
 - A file over 32 MiB, a link out of the folder, or a file that is not UTF-8 is named by
   its path, never by its content, and the run removes nothing, nor writes what draws on
-  it, until it is fixed. Past 20,000 transcripts in the two folders, the first in path
-  order are read.
+  it, until it is fixed: for a transcript, every meeting, so that an edited meeting
+  stays as it was and a new one has no file yet, though its day names it.
+  `worklog.nothing_removed` says how many documents were held back. Past 20,000
+  transcripts in the two folders, the first in path order are read and the rest are a
+  problem, so that no meeting is written: count them before a first run, with
+  `find transcripts meetings -name '*.org' | wc -l` in the folder.
 
 Keywords are those `todo.org` declares, as org reads them: put the line that your Emacs
 configuration holds in the file, such as `#+TODO: TODO WAITING | DONE`, else only `TODO`

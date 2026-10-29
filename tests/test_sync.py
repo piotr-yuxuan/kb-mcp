@@ -516,7 +516,7 @@ def test_sync_and_its_dry_run_leave_the_work_log_as_it_was(
 def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     tmp_path: Path, worklog: Path, telemetry: InMemory
 ) -> None:
-    """Until the next clean run; the logs say that nothing was removed.
+    """Until the next clean run; the logs say that nothing was removed, nor held back.
 
     The row's event and span say that it failed, and the entry is counted failed.
     """
@@ -533,7 +533,8 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     with capture_logs() as logged:
         synced = sync(context(settings, FIRST, failing), [step])
     assert (synced.steps[0].outcome, synced.exit_status) == ("failed", ExitStatus.FAILED)
-    assert logged_as(logged, "worklog.nothing_removed")
+    (kept,) = logged_as(logged, "worklog.nothing_removed")
+    assert (kept["problems"], kept["held_back"]) == (1, 0)
     assert [each["outcome"] for each in logged_as(logged, "sync.step")] == ["failed"]
     spans = telemetry.spans.get_finished_spans()
     (row,) = [span for span in spans if span.name == "sync.step"]

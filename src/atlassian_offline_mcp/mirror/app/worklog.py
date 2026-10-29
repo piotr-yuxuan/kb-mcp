@@ -63,14 +63,15 @@ TRACER = trace.get_tracer(__name__)
 class Read:
     """The work log's documents to write, in order, and the HTML transcripts left out.
 
-    The documents are those read that draw on no file not read. Problems stop removals;
-    warnings, such as two transcripts of one id, do not.
+    The documents are those read that draw on no file not read; ``held_back`` counts the
+    others. Problems stop removals; warnings, such as two transcripts of one id, do not.
     """
 
     documents: tuple[Document, ...]
     html: int
     problems: tuple[Problem, ...]
     warnings: tuple[str, ...]
+    held_back: int
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,7 @@ class Outcome:
     """What a run did: documents mirrored, files changed, HTML transcripts left out.
 
     Problems stop removals; warnings, such as two transcripts of one id, do not.
+    ``held_back`` counts the documents read that a file not read held back.
     """
 
     documents: int
@@ -85,11 +87,15 @@ class Outcome:
     html: int
     problems: tuple[Problem, ...]
     warnings: tuple[str, ...]
+    held_back: int
 
 
 @dataclass(frozen=True)
 class Planned:
-    """What a run would do: documents, those to convert, files to remove, HTML left out."""
+    """What a run would do: documents, those to convert, files to remove, HTML left out.
+
+    ``held_back`` counts the documents read that a file not read would hold back.
+    """
 
     documents: int
     to_convert: int
@@ -97,6 +103,7 @@ class Planned:
     html: int
     problems: tuple[Problem, ...]
     warnings: tuple[str, ...]
+    held_back: int
 
 
 def read_worklog(
@@ -132,7 +139,8 @@ def read_worklog(
         journaled, unlinked = journal(todo, archive, archives=archives, transcripts=named)
         unread = {each.where for each in problems}
         linked = {identifier for identifier, (matter, _) in kept.items() if matter.links}
-        documents_read = writable((*journaled, *linked_back(named, journaled)), unread, linked)
+        every = (*journaled, *linked_back(named, journaled))
+        documents_read = writable(every, unread, linked)
     log = structlog.get_logger()
     kinds = Counter(each.type for each in journaled)
     log.info(
@@ -146,7 +154,8 @@ def read_worklog(
     )
     if unlinked:
         log.warning("worklog.unlinked", meetings=len(unlinked), first=unlinked[0])
-    return Read(tuple(documents_read), listing.html, tuple(problems), tuple(warnings))
+    held_back = len(every) - len(documents_read)
+    return Read(tuple(documents_read), listing.html, tuple(problems), tuple(warnings), held_back)
 
 
 def existing(docs: Path) -> dict[str, tuple[FrontMatter, str]]:
@@ -271,7 +280,7 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
         removed=changes.removed,
         problems=len(problems),
     )
-    return Outcome(len(wanted), changes, read.html, tuple(problems), read.warnings)
+    return Outcome(len(wanted), changes, read.html, tuple(problems), read.warnings, read.held_back)
 
 
 def plan_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True) -> Planned:
@@ -302,5 +311,11 @@ def plan_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = T
         problems=len(read.problems),
     )
     return Planned(
-        len(read.documents), to_convert, to_remove, read.html, read.problems, read.warnings
+        len(read.documents),
+        to_convert,
+        to_remove,
+        read.html,
+        read.problems,
+        read.warnings,
+        read.held_back,
     )
