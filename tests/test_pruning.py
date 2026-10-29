@@ -413,6 +413,7 @@ def indexing(data: Path) -> Indexing:
         data / "index.sqlite",
         data / "vectors.sqlite",
         data / "eval" / "indexes",
+        data / "aliases.toml",
         "tiny",
         "sections",
         scripted,

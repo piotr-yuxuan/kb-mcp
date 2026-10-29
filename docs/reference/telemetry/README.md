@@ -25,7 +25,11 @@ such as `download-20261022T210509Z-4242.jsonl`; a step's command names its file,
   variable. The folder passes the data directory's guard: under a synchronised folder
   or in a git working tree, the run exits 2, naming `logs.dir`.
 - **Who reads it.** The folder, when the run makes it, is 0700, and each file 0600: it
-  holds titles, ids, paths and queries.
+  holds titles, ids, paths, queries and names of people: a name given to a filter, and
+  those that a build of the index warns of, a name that it could not give one person
+  and an alias that changed nothing ([index.md](index.md)). Those warnings show on
+  stderr too, and reach telemetry's endpoint when one is set, as titles do; the alias
+  file itself is no setting, and `run.start` does not log it.
 - **What.** One JSON object a line, every event and record from DEBUG, from `run.start`
   to the run's end.
 - **How long.** A run first removes the files of this pattern whose run started more

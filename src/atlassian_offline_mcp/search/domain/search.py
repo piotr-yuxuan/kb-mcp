@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
     from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
+    from atlassian_offline_mcp.search.domain.people import Person
 
 WORD = re.compile(r"[^\W_]+")
 MAX_WORDS = 10
@@ -241,7 +242,8 @@ class Score:
 class Filters:
     """What narrows a search, each value as the index holds it; None does not narrow.
 
-    The comment dates narrow by one comment: the commenter's, when one is given.
+    A person, by their id: ``person`` in any role, each other in the role it names. The
+    comment dates narrow by one comment: the commenter's, when one is given.
     """
 
     source: str | None = None
@@ -250,6 +252,7 @@ class Filters:
     status: str | None = None
     label: str | None = None
     issue_type: str | None = None
+    person: str | None = None
     author: str | None = None
     creator: str | None = None
     assignee: str | None = None
@@ -283,6 +286,18 @@ class Passage:
 
 
 @dataclass(frozen=True)
+class Persons:
+    """The persons that an index joined, and the names that several accounts hold."""
+
+    count: int
+    across: int  # persons with documents in more than one source
+    alone: int  # persons by name alone, of no account
+    # Each name whose key two accounts or more hold, as one of them writes it, with the
+    # persons holding that key, the most first, ties by name.
+    shared: tuple[tuple[str, int], ...]
+
+
+@dataclass(frozen=True)
 class Summary:
     """What an index holds, and when it was built."""
 
@@ -293,9 +308,23 @@ class Summary:
     projects: dict[str, int]
     sections: int
     newest_fetch: datetime | None
+    people: Persons
     model: str | None = None  # the model of the vectors, if any
     pieces: int = 0
     chunking: Chunking | None = None  # how the pieces were cut, if there are vectors
+
+
+@dataclass(frozen=True)
+class Activity:
+    """A person as the index holds them, with their documents by role and by source.
+
+    A document counts once in a role, a commenter's however many their comments.
+    """
+
+    person: Person
+    roles: dict[str, int]  # documents per role, the most first, ties by role
+    sources: dict[str, int]  # documents per source, likewise
+    last: datetime  # when the most recently updated of their documents was
 
 
 @dataclass(frozen=True)

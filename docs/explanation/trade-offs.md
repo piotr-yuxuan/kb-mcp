@@ -251,7 +251,8 @@ that what read the two keys, a hit's line among them
   tests](../../tests/test_surface.py) measure it over stdio. The names of `people` are
   not words of the index: a filter finds them, and words only where a body holds them,
   as a comment's heading does. A colleague renamed between two fetches appears under two
-  names, which no filter yet joins by the account id.
+  names in the files, which the index alone joins by the account id ([persons joined by
+  account, then exact name](#persons-joined-by-account-then-exact-name)).
 - **Rejected.** `author` and `assignee` kept beside `people`, tied by an invariant: each
   name twice in each file, for agents and other programs to read twice. A person as a
   string, such as `author: Robin Example`: shorter, and plain text to another engine,
@@ -336,8 +337,9 @@ afresh at each run
   one may be, keeps the link, so that the transcript names two meetings, but its own
   day's date. In a transcript without quote blocks, a line of prose such as
   `Decision: we wait` reads as a speaker. A meeting's names and its transcript's
-  speakers stay apart, as written: `Kim` and `Kim (not in the header)` are two names to
-  the filter, until a person index joins them. The dates and links of
+  speakers stay apart in the files, as written: the index joins them into persons,
+  `Kim` and `Kim (not in the header)` among them ([persons joined by account, then exact
+  name](#persons-joined-by-account-then-exact-name)). The dates and links of
   every day, meeting and dated transcript are found again at each run, and a file
   whose own changed is written again, unconverted. One rebuild, with plan 041's: the
   index at schema 5
@@ -370,6 +372,96 @@ afresh at each run
   the maintainer's feedback, its questions answered by their defaults when the
   maintainer approved it.
 
+## Persons joined by account, then exact name
+
+Each build of the index joins the names of every source into persons
+([`joined`](../../src/atlassian_offline_mcp/search/domain/people.py)). An account is a
+person under each of its names, and two accounts are never one. A name without an
+account goes, by the first rule that answers
+([`RULES`](../../src/atlassian_offline_mcp/search/domain/people.py)), to the person
+that the user's alias names
+([`by_alias`](../../src/atlassian_offline_mcp/search/domain/people.py)); to the one
+account with a name of its key
+([`by_name`](../../src/atlassian_offline_mcp/search/domain/people.py)); for a
+transcript's speaker, to the one participant of the meetings that the transcript links
+to whose name's first word is the speaker's, whole
+([`by_meeting`](../../src/atlassian_offline_mcp/search/domain/people.py)); else it is
+a person by name alone, shared by every name of its key. Names compare by a key, without
+case, accents, runs of spaces or a trailing part in brackets
+([`name_key`](../../src/atlassian_offline_mcp/search/domain/people.py)), but for the
+parts that tell two names of one key apart
+([`Joining.key`](../../src/atlassian_offline_mcp/search/domain/people.py)). A name that
+could be several persons joins none of them, a speaker whose meeting names another
+than the one account of its name among them, and the build warns of it, as of an alias
+that changes nothing
+([`index_mirror`](../../src/atlassian_offline_mcp/search/app/indexing.py)). The
+aliases are a file of the data directory, `aliases.toml`, read at each build
+([`read_aliases`](../../src/atlassian_offline_mcp/search/adapters/aliases.py)). The
+index holds the persons, each with an id, `p-` and a digest of its account id or its
+name's key ([`person_id`](../../src/atlassian_offline_mcp/search/domain/people.py)),
+in tables rebuilt with it
+([`Writer.join`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)).
+A filter `person`, and those of the five roles, keep a person's documents under any of
+their names or their id ([`who`](../../src/atlassian_offline_mcp/mcp/app/tools.py)),
+and an answer narrowed by `person` opens with who they are, their names and how each
+joined ([`person`](../../src/atlassian_offline_mcp/mcp/app/responses.py)).
+
+- **Why.** The maintainer's feedback asked for one person across sources, their Jira
+  account, their transcript speaker name and `:PARTICIPANTS:`, and for one query giving
+  the issues they created, were assigned and commented on, and the meetings they
+  attended. An account id is the site's identity, so it joins a renamed colleague's
+  names without doubt. An equal key joins what differs only in how it was typed, as most
+  of the work log's names do. A speaker's first name is joined within its meeting
+  alone, whose participants the user wrote for it: there, one "Sam" is one person, and
+  an alias, which the user wrote for the name anywhere, does not take the speaker from
+  them. Each join that could be wrong is reported instead of made, since an agent that
+  quotes one colleague as another misleads, where one asked to choose between two ids
+  does not. A filter rather than a tool, since tools follow kinds of question, and
+  "what has this person done" is a search narrowed, which combines with words, sources
+  and dates ([the MCP surface](mcp-surface.md)). Persons are joined whole at each
+  build, since one account fetched late can make a work-log name ambiguous. The aliases
+  are a file, since a setting cannot hold a free mapping of names
+  ([`kind_of`](../../src/atlassian_offline_mcp/config/domain/settings.py)), and a file
+  adds no setting to log, layer or document.
+- **Cost.** A first name outside a linked meeting, a nickname, a caption tool's `You`,
+  or a colleague written two ways in the work log alone stays apart until the user
+  writes an alias; an answer by `person` shows a one-word name alone as perhaps the
+  same, with the alias's line that would join it
+  ([`about`](../../src/atlassian_offline_mcp/mcp/app/tools.py)). Two accounts of one
+  name stay two, and a name without an account that matches both is a person by name
+  alone, until an alias names one by id. An alias compares names by their key, so it
+  joins `Alex (Ops)` and `Alex (Sales)` alike and can tell them apart from nobody; one
+  of a word that an account is named by takes that name from the account too, and no
+  answer suggests it, nor one of a word whose names annotations keep apart. The join is
+  whole at each build: on a synthetic index of 20,000 issues of 40 accounts and 2,000
+  meetings with their transcripts, 148,000 rows of people and 2,000 links, it took 1.4 s
+  on this laptop, the meetings of the transcripts read in 9 ms by their source and id
+  ([`SUMMARIES`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)),
+  where a search of a source's documents for each of them took 28 s. The files hold no
+  person, so another engine sees names
+  ([the how-to](../how-to/other-search-engines.md#what-another-engine-does-not-get)).
+  A person's id is an opaque handle that protects nothing: hashing a known account id
+  finds it again. One rebuild, at schema 6
+  ([`SCHEMA`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)), which
+  embeds nothing new, no piece's text holding a person. Every request carries 58 more
+  estimated tokens, the filter in the schemas of `search` and `ask`: 2,529, within a
+  standing budget raised from 2,500 to 2,600, as
+  [the tests](../../tests/test_surface.py) measure it over stdio. An answer by `person`
+  opens with 134 estimated tokens for a person of five names and one perhaps the same,
+  and its hits make room for it within the 4,000
+  ([the tests](../../tests/test_budgets.py)).
+- **Rejected.** Fuzzy matching, initials, and a first-name rule over the whole mirror:
+  each joins two people now and then, and a new colleague of an old one's first name
+  would move the old one's meetings without a word. Joining by email, which no source
+  keeps. Merging two accounts; chained aliases. A tool `person(name, since)`, about 250
+  estimated tokens on every request, which takes neither words nor other filters. The
+  aliases as a setting, a new kind of setting through the layers and the generated
+  reference, logged by every run. Person documents under `<data>/docs/`, which other
+  engines would read: a new type, folder and owner of files, left to a later plan.
+- **Settled** by [plan 043](../work/changelog/043-person-index.md#how-names-become-persons),
+  on the maintainer's feedback, its questions answered by their defaults when the
+  maintainer approved it.
+
 ## SQLite FTS5
 
 Words are indexed by SQLite's full-text engine, FTS5, in one file,
@@ -394,7 +486,8 @@ Words are indexed by SQLite's full-text engine, FTS5, in one file,
 
 The filters of `search` and `ask`, the created range among them, are conditions on the
 `documents` table, which no index of SQLite's covers, and those by person on the table
-`people`, indexed by role and name: one scan per call lists the documents that pass
+`people`, by the person's id, indexed by person and role, and by role and name: one
+scan per call lists the documents that pass
 ([`KEPT`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)). The
 full-text match is still read whole and scored, and a join then drops the documents
 outside that list. A sort by a date scores every match.
@@ -402,14 +495,22 @@ outside that list. A sort by a date scores every match.
 - **Why.** The index of schema 3 already held each column that the filters read: no
   rebuild, no change to its writer, and no setting. Schema 4 then moved the people to
   a table of their own, for another reason
-  ([people, a generic key](#people-a-generic-key)), indexed as their filters read it.
+  ([people, a generic key](#people-a-generic-key)), indexed as their filters read it,
+  and schema 6 gave each row its person
+  ([persons joined by account, then exact name](#persons-joined-by-account-then-exact-name)).
 - **Cost.** The scan reads every row, about 2 ms for 20,000 documents. A filter by
-  person first checks the name given against those of its role, counting each name's
-  documents at every call: 10 ms for an author, 42 for a commenter among 80,000
-  comments. Its match then adds a search of `people` by role and name, 8 ms for a
-  commenter: about 50 ms a call for a commenter. A comment range without `commenter`
-  checks no name, but reads the row of every comment, 80 ms for those 80,000, since the
-  table is indexed by name, not by time. FTS5 cannot use
+  person first finds the persons of the name's key, then counts their documents by
+  role and by source ([`who`](../../src/atlassian_offline_mcp/mcp/app/tools.py)):
+  measured by plan 043 on 20,000 issues and 140,000 rows of people, 80,000 of them
+  comments, the median of 31 calls, 8 ms in any role, where 042's count of every name
+  of the role took 24 for an author and 35 for a commenter. Its match then reads
+  `people` by person and role, 6 ms for an author, as before. A commenter's reads the
+  row of every comment, since its condition is shared with the comment range and the
+  index by role and name holds no person: 38 ms, where 042's match by name took 11. So
+  a call costs about 14 ms for an author, and about 46 for a commenter, as before. A
+  comment range without `commenter` checks no name, but reads the row of every comment,
+  80 ms for those 80,000 as plan 041 measured them, since the table is indexed by name,
+  not by time. FTS5 cannot use
   the list to skip anything, so a narrow filter makes a search for a common word only a
   little cheaper, 31 to 16 ms measured. A sort by a date gives up the cut at the best 5,000 documents per word, 31 ms
   for 20,000 matches before Python's own sort; with no words, SQLite sorts the documents
@@ -418,9 +519,11 @@ outside that list. A sort by a date scores every match.
   seek rather than the scan, and a walk rather than the sort, saving a few milliseconds
   at this size, for a change of the writer and the schema, and a rebuild. An index of
   `people` by role and time, which SQLite then takes for a commenter too: a comment
-  range alone in 52 ms rather than 80, a commenter's match in 77 rather than 8.
+  range alone in 52 ms rather than 80, a commenter's match by name in 77 rather than 8,
+  as plan 041 measured them.
 - **Settled** by [plan
-  040](../work/changelog/040-jira-filters-and-sort.md#what-a-date-range-and-a-sort-cost-in-sqlite).
+  040](../work/changelog/040-jira-filters-and-sort.md#what-a-date-range-and-a-sort-cost-in-sqlite),
+  and for persons by [plan 043](../work/changelog/043-person-index.md#where-persons-live-the-index).
 
 ## Hybrid ranking, measured by `eval`
 

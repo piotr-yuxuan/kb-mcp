@@ -2,8 +2,8 @@
 
 With an embedding, each piece of each section also gets its vector: from the vector
 store when it holds the piece's text, else from the model, then kept there. A piece
-whose text the model refuses has no vector, and its document is named. Reading the files
-and embedding are each a span; files and pieces are counted, as
+whose text the model refuses has no vector, and its document is named. Reading the files,
+joining persons and embedding are each a span; files and pieces are counted, as
 ``docs/reference/telemetry/index.md`` lists it. ``refresh`` is what ``index`` and
 ``sync`` run alike: ``index_mirror``'s build, which opens the endpoint, if any, then
 builds; then, for an index by meaning, the prune of the vector store to what the indexes
@@ -25,14 +25,16 @@ from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.mirror.adapters import markdown
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
+from atlassian_offline_mcp.search.adapters.aliases import AliasFileError, read_aliases
 from atlassian_offline_mcp.search.adapters.embedding import connect
 from atlassian_offline_mcp.search.adapters.model_api import ModelError
 from atlassian_offline_mcp.search.app.pruning import prune
 from atlassian_offline_mcp.search.domain.chunking import CHUNKERS
+from atlassian_offline_mcp.search.domain.people import Outcome
 from atlassian_offline_mcp.search.domain.search import Embedded, sections
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from datetime import datetime
     from pathlib import Path
 
@@ -61,7 +63,7 @@ class MirrorMissingError(Exception):
 
 @dataclass
 class Report:
-    """What a build indexed, and which files it skipped and why."""
+    """What a build indexed, which files it skipped and why, and whom it joined."""
 
     types: Counter[str] = field(default_factory=Counter)  # documents indexed per type
     sections: int = 0
@@ -70,6 +72,7 @@ class Report:
     embedded: int = 0  # texts that the model embedded, the store lacking them
     unembedded: list[str] = field(default_factory=list)  # paths with a piece refused
     characters: int = 0  # of the texts that the pieces embed, whatever the store held
+    persons: Outcome = field(default_factory=Outcome)  # that the documents' people make
 
     @property
     def whole(self) -> bool:
@@ -95,13 +98,15 @@ class Indexing:
 
     ``endpoint`` opens the embedding endpoint, as the run allows it, or is None for an
     index by words alone, which never calls it. ``evaluation_indexes`` holds the indexes
-    that eval builds, whose vectors a prune keeps.
+    that eval builds, whose vectors a prune keeps. ``aliases`` is the user's alias file,
+    which each build reads, if there is one, to join names into persons.
     """
 
     docs: Path
     index: Path
     vectors: Path
     evaluation_indexes: Path
+    aliases: Path
     model: str
     chunking: Chunking
     endpoint: Callable[[], Endpoint] | None
@@ -122,20 +127,28 @@ class Indexed:
 
 
 def build_index(
-    docs: Path, index: Path, built_at: datetime, embedding: Embedding | None = None
+    docs: Path,
+    index: Path,
+    built_at: datetime,
+    embedding: Embedding | None = None,
+    aliases: Mapping[str, str] | None = None,
 ) -> Report:
     """Index every document of the mirror at ``docs`` into a new index at ``index``.
 
     A file that cannot be read, that ``markdown.load`` refuses, or whose document is
     there already is skipped, and named in the report with a reason that holds no
-    content. The index replaces the old one only once complete. Raises ModelError when
-    the embedding fails; the old index then stays. A piece whose text the model refuses
-    is left without a vector, and its document named in the report. With an embedding,
+    content. Once the files are read, the documents' people are joined into persons,
+    through ``aliases``, the alias file's, else none, as for an evaluation's index: the
+    report counts the persons and gives what the join left apart. The index replaces
+    the old one only once complete. Raises ModelError when the embedding fails; the old
+    index then stays. A piece whose text the model refuses is left without a vector,
+    and its document named in the report. With an embedding,
     the build holds the vector store's lock shared, from before it reads the mirror until
     its index is in place, so that no prune deletes what it embeds; it waits for a prune
     in progress, and raises TimeoutError past ``vector_store.WAIT_S``. The task ``files``
     reports the files read, each by its path, then the vector store its own. The spans
-    ``index.files`` and ``index.embed`` hold reading the files and embedding the pieces;
+    ``index.files``, ``Writer.join``'s ``index.join`` and ``index.embed`` hold reading the
+    files, joining persons and embedding the pieces;
     ``index.document`` says each file indexed at DEBUG, ``index.built`` the counts at
     INFO once the index is complete.
     """
@@ -160,10 +173,9 @@ def build_index(
         files = {file.relative_to(docs).as_posix(): file for file in markdown.documents(docs)}
         with TRACER.start_as_current_span("index.files"), task("files", len(files)) as indexed:
             for path in indexed.each(files, str):
-                file = files[path]
                 try:
                     # Line endings are kept as written, so that a body reads back exactly.
-                    text = file.read_text(encoding="utf-8", newline="")
+                    text = files[path].read_text(encoding="utf-8", newline="")
                     front, body = markdown.load(text, path)
                     cut = sections(body)
                     first = writer.add(path, front, cut)
@@ -189,6 +201,7 @@ def build_index(
                 writer.skip()
                 report.skipped.append((path, reason))
                 FILES.add(1, {"aom.outcome": "skipped"})
+        report.persons = writer.join(aliases or {})
         if embedding is not None:
             with TRACER.start_as_current_span("index.embed"):
                 with vector_store.opened(embedding.store) as store:
@@ -207,6 +220,7 @@ def build_index(
         skipped=len(report.skipped),
         pieces=report.pieces,
         embedded=report.embedded,
+        people=report.persons.count,
     )
     return report
 
@@ -214,28 +228,31 @@ def build_index(
 def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
     """Build the index from the whole mirror, by words alone or with vectors too.
 
-    With an endpoint, it must answer with the model; when it does not, or there is no
-    mirror, or the index cannot be written (a file's error, or the database's operational
-    one, such as a full disk or a lock), the index in place stays, with its vectors,
-    nothing is returned, and ``index.not_built`` is an error. Each file skipped and each
-    piece that the endpoint refused is a warning, as is the count of files that the index
-    lacks.
+    The alias file is read first, before any request to the endpoint. With an endpoint,
+    it must answer with the model; when it does not, or the alias file is refused or
+    cannot be read, or there is no mirror, or the index cannot be written (a file's
+    error, or the database's operational one, such as a full disk or a lock), the index
+    in place stays, with its vectors, nothing is returned, and ``index.not_built`` is an
+    error. Each file skipped and each piece that the endpoint refused is a warning, as
+    is the count of files that the index lacks, each name that could be several persons
+    and each alias that changed nothing; the last two leave the report whole.
     """
     log = structlog.get_logger()
     opened = None if indexing.endpoint is None else indexing.endpoint()
     try:
         with opened or contextlib.nullcontext():
+            aliases = read_aliases(indexing.aliases)
             embedder = None if opened is None else connect(opened, indexing.model)
             embedding = (
                 None
                 if embedder is None
                 else Embedding(embedder, indexing.vectors, indexing.chunking)
             )
-            report = build_index(indexing.docs, indexing.index, built_at, embedding)
+            report = build_index(indexing.docs, indexing.index, built_at, embedding, aliases)
     except ModelError as error:
         structlog.get_logger().error("index.not_built", reason=str(error), hint=WORDS_ALONE)
         return None
-    except (MirrorMissingError, OSError, sqlite3.OperationalError) as error:
+    except (MirrorMissingError, AliasFileError, OSError, sqlite3.OperationalError) as error:
         structlog.get_logger().error("index.not_built", reason=str(error))
         return None
     for path, reason in report.skipped:
@@ -244,6 +261,12 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
         log.warning("index.piece_refused", path=path)
     if report.skipped:
         log.warning("index.lacks_files", count=len(report.skipped))
+    for ambiguity in report.persons.ambiguous:
+        log.warning(
+            "index.person_ambiguous", spelling=ambiguity.name, people=len(ambiguity.persons)
+        )
+    for alias in report.persons.unused:
+        log.warning("index.alias_unused", alias=alias.name, key=alias.key, reason=alias.reason)
     return Indexed(report, indexing.index, None if embedding is None else indexing.model)
 
 

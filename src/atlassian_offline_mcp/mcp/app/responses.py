@@ -15,6 +15,7 @@ from itertools import takewhile
 from typing import TYPE_CHECKING
 
 from atlassian_offline_mcp.mirror.domain.mirror import RELATIONS, ROLES
+from atlassian_offline_mcp.search.domain import people
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
-    from atlassian_offline_mcp.search.domain.search import Entry, Passage, Summary
+    from atlassian_offline_mcp.search.domain.search import Activity, Entry, Passage, Summary
 
 BUDGET = 4_000  # estimated tokens of an answer to arguments at or below their defaults
 CEILING = 10_000  # estimated tokens of any answer
@@ -30,11 +31,19 @@ FIELD = 200  # characters of a one-line field or a heading, as shown
 LABEL = 60
 LABELS = 10
 NAMES = 10  # names of one role that a read shows, then how many more
+SHARED = 5  # names of several accounts that status shows, then how many more
 SNIPPET = 300
 DEPTH = 10  # levels of indentation, at most
 # Estimated tokens kept for an answer's header and the markers of its block.
 RESERVE = 100
 SPACES = re.compile(r"\s+")
+# How each name of a person joined them, as a person's answer says it.
+JOINED = {
+    people.ACCOUNT: "by its account",
+    people.ALIAS: "by an alias",
+    people.NAME: "by name",
+    people.MEETING: "as a speaker, by the meeting of each transcript",
+}
 
 
 def tokens(text: str) -> int:
@@ -139,6 +148,62 @@ def refusal(message: str, values: Sequence[str], total: int) -> str:
     return answer(message, ", ".join(short(value, LABEL) for value in values), more.strip())
 
 
+def activity(found: Activity) -> str:
+    """Say who a person is and what they did, on one line.
+
+    Their name and id, their documents by role then by source, the most first, and the
+    day of the last update of one, such as
+    ``Sam Sample, p-0123456789abcdef: author 1; jira 1; last updated 2026-10-20``.
+    """
+    roles = ", ".join(f"{role} {count}" for role, count in found.roles.items())
+    sources = ", ".join(f"{source} {count}" for source, count in found.sources.items())
+    return (
+        f"{short(found.person.name, LABEL)}, {found.person.id}: {roles}; {sources};"
+        f" last updated {found.last:%Y-%m-%d}"
+    )
+
+
+def person(found: Activity, alike: Sequence[tuple[str, str]]) -> str:
+    """Write the person that an answer is narrowed to, before its documents, on a few lines.
+
+    Who they are and what they did, as ``activity`` says it; their names as the sources
+    write them, by how each joined, in the order of JOINED, NAMES at most, then how many
+    more; then, NAMES at most, each person by name alone who is perhaps the same, not
+    joined, given as the name that an alias would hold and their id, with the line of
+    the alias file that would join them. Each name is cut at LABEL characters, as a
+    hit's.
+    """
+    order = list(JOINED)
+    names = sorted(found.person.names, key=lambda each: order.index(each.how))
+    ways = [
+        (said, [short(each.name, LABEL) for each in names[:NAMES] if each.how == how])
+        for how, said in JOINED.items()
+    ]
+    more = f"; {len(names) - NAMES} more" if len(names) > NAMES else ""
+    written = "; ".join(f"{', '.join(spelt)} {said}" for said, spelt in ways if spelt)
+    lines = [f"Person: {activity(found)}.", f"Names: {written}{more}."]
+    lines += [
+        f"Perhaps the same, not joined: {other}; the alias"
+        f" {json.dumps(short(name, LABEL), ensure_ascii=False)}"
+        f" = {json.dumps(found.person.id)} would join them."
+        for name, other in alike[:NAMES]
+    ]
+    return "\n".join(lines)
+
+
+def roles(name: str, held: Sequence[tuple[str, int, datetime | None]]) -> str:
+    """Say a person's roles on one document, in the order of the roles.
+
+    A commenter's with their comments' count and the day of the last, such as
+    ``Sam Sample: creator, commenter 2 (last 2026-10-21)``.
+    """
+    shown = (
+        role if last is None else f"{role} {count} (last {last:%Y-%m-%d})"
+        for role, count, last in sorted(held, key=lambda each: ROLES.index(each[0]))
+    )
+    return f"{short(name, LABEL)}: {', '.join(shown)}"
+
+
 def facts(front: FrontMatter) -> str:
     """Say what a document is, who it is for and from, and when it was created.
 
@@ -159,14 +224,19 @@ def facts(front: FrontMatter) -> str:
     return " | ".join(part for part in shown if part)
 
 
-def hit(number: int, entry: Entry, passage: Passage, opening: str) -> str:
-    """Write one hit of a search: what and where it is, its best section and a snippet."""
+def hit(number: int, entry: Entry, passage: Passage, opening: str, held: str | None) -> str:
+    """Write one hit of a search: what and where it is, its best section and a snippet.
+
+    ``held``, unless None, ends the line of who and when: a person's roles there, as
+    ``roles`` says them.
+    """
     front = entry.front
     lines = [
         f"{number}. {short(front.title)}",
         (
             f"   {front.key or front.id} | {entry.path} | updated {stamp(front.updated)}"
             f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}"
+            + (f" | {held}" if held else "")
         ),
     ]
     if front.breadcrumb:
@@ -178,17 +248,18 @@ def hit(number: int, entry: Entry, passage: Passage, opening: str) -> str:
     return "\n".join(lines)
 
 
-def excerpt(number: int, entry: Entry, passage: Passage, opening: str) -> str:
+def excerpt(number: int, entry: Entry, passage: Passage, opening: str, held: str | None) -> str:
     """Write one passage that ask quotes: what and where it is, then its text, verbatim.
 
-    ``passage`` holds the text whole, where a search's holds a snippet.
+    ``passage`` holds the text whole, where a search's holds a snippet; ``held`` ends the
+    line of who and when, as a hit's.
     """
     front = entry.front
     heading = f": {short(passage.heading)}" if passage.heading else ""
     about = (
         f"{number}. {short(front.title)} | {front.key or front.id} | section"
         f" {passage.number}{heading} | updated {stamp(front.updated)}"
-        f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}"
+        f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}" + (f" | {held}" if held else "")
     )
     return f"{about}\n{short(front.url or entry.path)} | {opening}\n{passage.snippet}"
 
@@ -268,10 +339,22 @@ def tree(pairs: Sequence[tuple[tuple[str, ...], Entry]], base: int) -> list[str]
 
 
 def status(summary: Summary, docs: Path) -> str:
-    """Say what the index holds, and when it was built."""
+    """Say what the index holds, and when it was built.
+
+    Its persons on one line: how many, in more than one source, and by name alone; then
+    SHARED at most of the names of several accounts, each with the persons holding it,
+    and how many more, so that the agent knows which names to ask about by id.
+    """
 
     def counts(values: dict[str, int]) -> str:
         return ", ".join(f"{name} {count}" for name, count in values.items()) or "none"
+
+    persons = summary.people
+    shared = ", ".join(
+        f"{json.dumps(short(name, LABEL), ensure_ascii=False)} ({count})"
+        for name, count in persons.shared[:SHARED]
+    )
+    rest = len(persons.shared) - SHARED
 
     lines = [
         f"built: {stamp(summary.built_at)}",
@@ -283,6 +366,12 @@ def status(summary: Summary, docs: Path) -> str:
         ),
         f"spaces: {counts(summary.spaces)}",
         f"projects: {counts(summary.projects)}",
+        (
+            f"people: {persons.count}, {persons.across} in more than one source,"
+            f" {persons.alone} by name alone"
+            + (f"; names of several accounts: {shared}" if shared else "")
+            + (f", and {rest} more" if rest > 0 else "")
+        ),
         f"files skipped at build: {summary.skipped}",
         f"newest mirror date: {stamp(summary.newest_fetch) if summary.newest_fetch else 'none'}",
         f"mirror files: {docs}",

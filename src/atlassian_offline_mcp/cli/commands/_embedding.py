@@ -47,6 +47,7 @@ def indexing_of(arguments: argparse.Namespace, settings: Settings) -> Indexing:
         settings.index,
         settings.vectors,
         settings.evaluation_indexes,
+        settings.aliases,
         settings.model,
         settings.chunking,
         opening,

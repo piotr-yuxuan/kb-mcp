@@ -9,18 +9,39 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from atlassian_offline_mcp.mcp.app.tools import UnanswerableError
+from atlassian_offline_mcp.mcp.app.tools import Library, UnanswerableError
 from atlassian_offline_mcp.mirror.domain.mirror import Link, PersonRole
 from atlassian_offline_mcp.search.adapters import sqlite_index
+from atlassian_offline_mcp.search.app.indexing import build_index
 from tests.answers import built, continuation, follow, parts
-from tests.mirrors import CREATED, FILLERS, LOREM, MOMENT, PEOPLE, issue, location, page
+from tests.mirrors import (
+    CREATED,
+    FILLERS,
+    LOREM,
+    MOMENT,
+    PEOPLE,
+    PERSONS,
+    issue,
+    location,
+    page,
+    write,
+)
+from tests.test_people import (
+    ALEX,
+    ALEX_EXAMPLE,
+    ROBIN,
+    ROBIN_ALONE,
+    SAM_2,
+    SAM_3,
+    SAM_ALONE,
+    anchored,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
 
-    from atlassian_offline_mcp.mcp.app.tools import Library
     from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter
 
 NEWER = MOMENT + timedelta(days=1)
@@ -361,9 +382,11 @@ def test_a_listing_by_created_date_continues_by_its_cursor(people: Library, quer
 def test_a_name_matches_whole_as_shown_and_the_value_given_first(tmp_path: Path) -> None:
     """A Hangul name is no other with the same first letters, a kana keeps its voicing.
 
-    Values compare as hits show them, spaces collapsed and composed; of several that
-    look alike, the one given exactly is kept, else the most used. A value matching
-    several but for accents alone, and none but for case, is refused.
+    Values compare as hits show them, spaces collapsed and composed; of several labels
+    that look alike, the one given exactly is kept, else the most used, and since plan
+    043 names of one key are one person, an assignee written with a no-break space the
+    one without. A value matching several but for accents alone, and none but for case,
+    is refused.
     """
     library = built(
         tmp_path,
@@ -390,8 +413,8 @@ def test_a_name_matches_whole_as_shown_and_the_value_given_first(tmp_path: Path)
             library.search("broker", filters=refused)
     kept = {
         "에이다 예시": ["PROJ-1"],
-        "Ada\u00a0 Example": ["PROJ-2"],
-        "ada example": ["PROJ-4"],
+        "Ada\u00a0 Example": ["PROJ-2", "PROJ-4"],
+        "ada example": ["PROJ-2", "PROJ-4"],
     }
     for assignee, expected in kept.items():
         assert refs(library.search(filters={"assignee": assignee}, sort="created")) == expected
@@ -651,6 +674,7 @@ def met(tmp_path: Path) -> Library:
             ],
         ),
         ("KIM (not in the HEADER)", ["m-20261027-ledger-review"]),
+        ("kim", ["m-20261027-ledger-review"]),
         ("you", ["t-20261020-1", "t-20261021-1", "t-20261027-1"]),
     ],
 )
@@ -659,7 +683,8 @@ def test_participant_narrows_to_the_documents_naming_that_person_in_any_case(
 ) -> None:
     """A meeting's participants and a transcript's speakers alike, by their whole name.
 
-    Sam Sample's page is not among them: its author is no participant.
+    Sam Sample's page is not among them: its author is no participant. Since plan 043, a
+    trailing part in brackets is no part of a name: Kim is Kim (not in the header).
     """
     filters = {"participant": name}
     assert sorted(refs(met.search(filters=filters, sort="created"))) == expected
@@ -674,14 +699,21 @@ def test_participant_narrows_to_the_documents_naming_that_person_in_any_case(
             "Sam Sample, Alex Example, Robin Example, Kim (not in the header), You, Unverified",
         ),
         (
-            {"participant": "kim"},
-            "Kim (not in the header), Sam Sample, Alex Example, Robin Example, You, Unverified",
+            {"participant": "robin"},
+            "Robin Example, Sam Sample, Alex Example, Kim (not in the header), You, Unverified",
         ),
         (
             {"participant": "a person"},
             "Sam Sample, Alex Example, Robin Example, Kim (not in the header), You, Unverified",
         ),
         ({"author": "alex example"}, "A Person, Sam Sample"),
+        (
+            {"person": "nobody"},
+            (
+                "A Person, Sam Sample, Alex Example, Robin Example, Kim (not in the header),"
+                " You, Unverified"
+            ),
+        ),
     ],
 )
 def test_a_participant_that_no_document_names_is_refused_meetings_first(
@@ -689,9 +721,10 @@ def test_a_participant_that_no_document_names_is_refused_meetings_first(
 ) -> None:
     """By the meetings naming them, then the documents: You never leads, nor Unverified.
 
-    A name matches whole, so Kim alone is not Kim (not in the header), listed first as the
-    name that holds it. A Person, the fillers' author, is no participant, nor is a
-    participant an author.
+    A name matches whole, so Robin alone is not Robin Example, listed first as the name
+    that holds it. A Person, the fillers' author, is no participant, nor is a participant
+    an author. A person, of every role, comes by the documents other than transcripts
+    first, as a participant by meetings.
     """
     with pytest.raises(UnanswerableError) as refused:
         met.search("lorem", filters=filters)
@@ -730,6 +763,365 @@ def test_read_names_ten_links_of_a_relation_whole_then_how_many_more(tmp_path: P
     read = parts(built(tmp_path, [(front, None)]).read("t-20261027-1"))[1]
     assert f"\nsummary: {'; '.join(meetings[:10])}; 2 more\n" in read
     assert "\ntranscript:" not in read
+
+
+# Plan 043's persons, over the mirror of tests.mirrors.PERSONS: Robin Example's account,
+# written Robin Sample on its newest document, wrote a page, created an issue and
+# commented twice on another, and attended three meetings, the review's transcript
+# naming Robin, who speaks there.
+ROBIN_DOCUMENTS = [
+    "300001",
+    "PAY-1",
+    "PAY-2",
+    "m-20261020-planning",
+    "m-20261020-review",
+    "m-20261020-stand-up",
+    "t-20261020-1",
+]
+
+
+@pytest.fixture
+def persons(tmp_path: Path) -> Library:
+    """Serve the documents of PERSONS, beside the fillers, joined without aliases."""
+    return built(tmp_path, [(front, None) for front in PERSONS])
+
+
+@pytest.mark.parametrize("value", ["robin example", "Robin Sample", ROBIN])
+def test_a_person_is_found_in_any_role_by_any_of_their_names_or_their_id(
+    persons: Library, value: str
+) -> None:
+    """Plan 043, criterion 6: Robin's page, issues and meetings, of three sources, alike.
+
+    With words or without.
+    """
+    filters = {"person": value}
+    assert sorted(refs(persons.search(filters=filters, sort="created"))) == ROBIN_DOCUMENTS
+    assert sorted(refs(persons.search("lorem", filters=filters))) == ROBIN_DOCUMENTS
+
+
+def test_a_name_of_several_persons_is_refused_listing_each_by_id(persons: Library) -> None:
+    """Without aliases, Sam Sample is two accounts and the stand-up's name alone.
+
+    Each by name, id, documents by role then source, and the last day one was updated,
+    those of the most documents first, then by id; the id of one keeps that person's
+    documents alone.
+    """
+    with pytest.raises(UnanswerableError) as refused:
+        persons.search("lorem", filters={"person": "Sam Sample"})
+    header, block, _ = parts(str(refused.value))
+    each = {
+        SAM_2: f"Sam Sample, {SAM_2}: author 1; jira 1; last updated 2026-10-21",
+        SAM_3: f"Sam Sample, {SAM_3}: author 1; jira 1; last updated 2026-10-20",
+        SAM_ALONE: f"Sam Sample, {SAM_ALONE}: participant 2; worklog 2; last updated 2026-10-20",
+    }
+    assert header.strip() == 'person: "Sam Sample" names 3 people; give the id of one:'
+    assert block.splitlines() == [each[person] for person in (SAM_ALONE, *sorted((SAM_2, SAM_3)))]
+    assert refs(persons.search(filters={"person": SAM_3}, sort="created")) == ["PAY-2"]
+    alone = sorted(refs(persons.search(filters={"person": SAM_ALONE}, sort="created")))
+    assert alone == ["m-20261020-stand-up", "t-20261020-3"]
+
+
+@pytest.mark.parametrize(
+    ("filters", "expected"),
+    [
+        ({"creator": "Robin Sample"}, ["PAY-1"]),
+        ({"creator": "robin example"}, ["PAY-1"]),
+        ({"commenter": "Robin Sample"}, ["PAY-2"]),
+        ({"author": ROBIN}, ["300001"]),
+        (
+            {"participant": "Alex Example"},
+            ["m-20261020-review", "m-20261020-stand-up", "t-20261020-1"],
+        ),
+        ({"person": ALEX}, ["t-20261021-1", "t-20261021-2"]),
+    ],
+)
+def test_each_filter_of_a_role_keeps_its_person_under_any_of_their_names(
+    persons: Library, filters: dict[str, str], expected: list[str]
+) -> None:
+    """Robin created PAY-1 as Robin Sample, and commented on PAY-2 as Robin Example.
+
+    Alex Example (not in the header) is the stand-up's Alex Example, and Alex the
+    review's, by its transcript; Alex in the two unlinked transcripts, a person apart.
+    """
+    assert sorted(refs(persons.search(filters=filters, sort="created"))) == expected
+
+
+@pytest.mark.parametrize(
+    ("filters", "several"),
+    [
+        ({"author": "Sam Sample"}, [SAM_2, SAM_3]),
+        ({"participant": "robin"}, [ROBIN, ROBIN_ALONE]),
+        ({"person": "Alex"}, [ALEX_EXAMPLE, ALEX]),
+    ],
+)
+def test_a_role_s_name_is_refused_when_several_persons_hold_it_there(
+    persons: Library, filters: dict[str, str], several: list[str]
+) -> None:
+    """Only those with a document in the role: the stand-up's Sam Sample wrote nothing.
+
+    The review's Robin is Robin Example's account, the planning's a person apart; the
+    review's Alex is Alex Example, the unlinked transcripts' another. Those of
+    the most documents first, then by id.
+    """
+    with pytest.raises(UnanswerableError) as refused:
+        persons.search(filters=filters, sort="created")
+    header, block, _ = parts(str(refused.value))
+    assert header.startswith(f"{next(iter(filters))}: ")
+    assert [line.split(", ")[1].partition(":")[0] for line in block.splitlines()] == several
+
+
+def test_a_name_written_as_one_of_several_persons_writes_it_keeps_that_person(
+    tmp_path: Path,
+) -> None:
+    """Accounts Robin (Ops) and Robin (Sales), whose names share a key, each created one.
+
+    The name as one of them is written, its annotation's spaces aside, keeps its issue,
+    as in plan 042; Robin alone, which could be either, is refused naming both.
+    """
+    ops = PersonRole(role="creator", name="Robin (Ops)", account="acct-0005")
+    sales = PersonRole(role="creator", name="Robin (Sales)", account="acct-0006")
+    library = built(
+        tmp_path,
+        [
+            (issue("PAY-1", "Ledger export", people=(ops,)), None),
+            (issue("PAY-2", "Ledger rounding", people=(sales,)), None),
+        ],
+    )
+    for value, expected in [("Robin (Ops)", "PAY-1"), ("robin(sales )", "PAY-2")]:
+        assert refs(library.search(filters={"creator": value}, sort="created")) == [expected]
+    with pytest.raises(UnanswerableError, match=r'^creator: "Robin" names 2 people;'):
+        library.search(filters={"creator": "Robin"}, sort="created")
+
+
+def test_a_bare_name_of_several_persons_is_refused_though_one_writes_it_so(
+    tmp_path: Path,
+) -> None:
+    """Accounts Alex (Ops) and Alex (Sales), beside the unlinked transcripts' Alex.
+
+    Alex could be any of the three, so it is refused listing each; Alex (Ops) is the
+    account that alone writes it so.
+    """
+    ops = PersonRole(role="author", name="Alex (Ops)", account="acct-0010")
+    sales = PersonRole(role="author", name="Alex (Sales)", account="acct-0011")
+    fronts = (
+        *PERSONS,
+        page("300002", "Ops runbook", people=(ops,)),
+        page("300003", "Sales runbook", people=(sales,)),
+    )
+    library = built(tmp_path, [(front, None) for front in fronts])
+    with pytest.raises(UnanswerableError) as refused:
+        library.search(filters={"person": "Alex"}, sort="created")
+    header, block, _ = parts(str(refused.value))
+    assert header.strip() == 'person: "Alex" names 3 people; give the id of one:'
+    listed = {line.split(", ")[1].partition(":")[0] for line in block.splitlines()}
+    assert listed == {ALEX, anchored("account\nacct-0010"), anchored("account\nacct-0011")}
+    assert refs(library.search(filters={"person": "Alex (Ops)"}, sort="created")) == ["300002"]
+
+
+@pytest.mark.parametrize(
+    "filters",
+    [{"author": "Alex Example"}, {"creator": SAM_3}, {"person": "p-0123456789abcdef"}],
+)
+def test_a_person_without_a_document_in_the_role_is_refused_with_its_names(
+    persons: Library, filters: dict[str, str]
+) -> None:
+    """As a name that no document has: Alex Example wrote nothing, PAY-2's author created none.
+
+    An id that no person has, likewise.
+    """
+    with pytest.raises(UnanswerableError, match=r"^\S+: no document has "):
+        persons.search(filters=filters, sort="created")
+
+
+def test_a_person_s_answer_opens_with_who_they_are_and_each_hit_ends_with_their_roles(
+    persons: Library,
+) -> None:
+    """Plan 043, criterion 6, the newest first: Robin's names and how each joined.
+
+    Robin's account is named as on PAY-1, its newest document; its names are written by
+    the account, by name in the meetings, and as the review's speaker. The documents by
+    role and by source, the most first; the unlinked Robin, perhaps the same, with the
+    alias that would join them. Each hit's line of who and when ends with Robin's roles
+    there, a commenter's with the comments' count and the last day.
+    """
+    block = parts(persons.search(filters={"person": "Robin Example"}, sort="updated"))[1]
+    header, _, hits = block.partition("\n\n")
+    assert header.splitlines() == [
+        (
+            f"Person: Robin Sample, {ROBIN}: participant 4, author 1, commenter 1, creator 1;"
+            " worklog 4, jira 2, confluence 1; last updated 2026-10-21."
+        ),
+        (
+            "Names: Robin Example, Robin Sample by its account; Robin Example, robin EXAMPLE"
+            " by name; Robin as a speaker, by the meeting of each transcript."
+        ),
+        (
+            f"Perhaps the same, not joined: {ROBIN_ALONE};"
+            f' the alias "Robin" = "{ROBIN}" would join them.'
+        ),
+    ]
+    roles = {ref: facts.rpartition(" | ")[2] for ref, facts in FACTS.findall(hits)}
+    assert list(roles.items()) == [
+        ("PAY-1", "Robin Sample: creator"),
+        ("300001", "Robin Sample: author"),
+        ("PAY-2", "Robin Sample: commenter 2 (last 2026-10-20)"),
+        ("m-20261020-planning", "Robin Sample: participant"),
+        ("m-20261020-review", "Robin Sample: participant"),
+        ("m-20261020-stand-up", "Robin Sample: participant"),
+        ("t-20261020-1", "Robin Sample: participant"),
+    ]
+
+
+def test_a_one_word_name_of_an_account_is_never_shown_as_perhaps_the_same(
+    tmp_path: Path,
+) -> None:
+    """With an account named Robin, one word, the review's speaker Robin is ambiguous.
+
+    It is then a person by name alone, as is the planning's; but an alias of Robin would
+    also take the name from that account, which the unlinked transcript's Robin joins:
+    the answer narrowed to Robin Example suggests none.
+    """
+    robin = PersonRole(role="author", name="Robin", account="acct-0004")
+    library = built(
+        tmp_path,
+        [(front, None) for front in (*PERSONS, issue("PAY-3", "Ledger audit", people=(robin,)))],
+    )
+    block = parts(library.search(filters={"person": "Robin Example"}, sort="updated"))[1]
+    header = block.partition("\n\n")[0]
+    assert not [line for line in header.splitlines() if line.startswith("Perhaps the same")]
+    alone = library.search(filters={"person": ROBIN_ALONE}, sort="created")
+    assert sorted(refs(alone)) == ["t-20261020-1", "t-20261020-2"]
+
+
+# An account named Robin, one word, as the site may name a colleague.
+ROBIN_ACCOUNT = PersonRole(role="author", name="Robin", account="acct-0004")
+
+
+@pytest.mark.parametrize(
+    ("extra", "perhaps"),
+    [((), [ROBIN_ALONE]), ((issue("PAY-3", "Ledger audit", people=(ROBIN_ACCOUNT,)),), [])],
+    ids=["no account named Robin", "an account named Robin"],
+)
+def test_a_speaker_whom_an_account_holds_is_never_shown_as_perhaps_the_same(
+    tmp_path: Path, extra: tuple[FrontMatter, ...], perhaps: list[str]
+) -> None:
+    """An unlinked transcript's Robin: a name alone, or the account named Robin's by name.
+
+    A person of an account is not one by name alone, and an alias of Robin would take
+    the speaker from that account: Robin Example's answer offers Robin only without it.
+    """
+    example = PersonRole(role="author", name="Robin Example", account="acct-0001")
+    documents = (
+        page("300001", "Ledger runbook", people=(example,)),
+        worklog("transcript", "t-20261022-1", "Pairing", "Robin"),
+        *extra,
+    )
+    library = built(tmp_path, [(front, None) for front in documents])
+    block = parts(library.search(filters={"person": "Robin Example"}, sort="updated"))[1]
+    header = block.partition("\n\n")[0]
+    offered = [
+        line.removeprefix("Perhaps the same, not joined: ").partition(";")[0]
+        for line in header.splitlines()
+        if line.startswith("Perhaps the same")
+    ]
+    assert offered == perhaps
+
+
+def test_the_alias_suggested_writes_the_word_as_its_person_does(tmp_path: Path) -> None:
+    """The unlinked Robin, whom an alias by id gives three transcripts' Rob, is named Rob.
+
+    The line suggested holds Robin, its name of the word, as Robin Example's first word:
+    "Rob" is a line of the file already, and its key is another.
+    """
+    rob = [worklog("transcript", f"t-2026102{day}-9", "Chat", "Rob") for day in (2, 3, 4)]
+    for front in (*PERSONS, *rob):
+        write(tmp_path / "docs", front)
+    aliases = {"Rob": ROBIN_ALONE}
+    build_index(tmp_path / "docs", tmp_path / "index.sqlite", MOMENT, aliases=aliases)
+    library = Library(tmp_path / "index.sqlite", tmp_path / "docs")
+    alone = parts(library.search(filters={"person": ROBIN_ALONE}, sort="updated"))[1]
+    assert alone.startswith(f"Person: Rob, {ROBIN_ALONE}: ")
+    block = parts(library.search(filters={"person": ROBIN}, sort="updated"))[1]
+    header = block.partition("\n\n")[0]
+    suggested = f'the alias "Robin" = "{ROBIN}" would join them.'
+    assert [line for line in header.splitlines() if line.startswith("Perhaps")] == [
+        f"Perhaps the same, not joined: {ROBIN_ALONE}; {suggested}"
+    ]
+
+
+def test_a_one_word_name_alone_is_never_shown_as_perhaps_the_same_as_itself(
+    persons: Library,
+) -> None:
+    """Alex, of the two unlinked transcripts, is the one person of its word by name alone.
+
+    No alias joins a person to itself.
+    """
+    block = parts(persons.search(filters={"person": ALEX}, sort="updated"))[1]
+    header = block.partition("\n\n")[0]
+    assert header.startswith(f"Person: Alex, {ALEX}: ")
+    assert not [line for line in header.splitlines() if line.startswith("Perhaps the same")]
+
+
+def test_no_alias_is_suggested_that_would_join_persons_kept_apart(tmp_path: Path) -> None:
+    """Two meetings name Robin (Ops) and Robin (Sales), whom their annotations keep apart.
+
+    An alias of the unlinked transcript's Robin would join both to Robin Example too:
+    the answer narrowed to Robin Example suggests none.
+    """
+    robin = PersonRole(role="author", name="Robin Example", account="acct-0001")
+    library = built(
+        tmp_path,
+        [
+            (page("300001", "Ledger runbook", people=(robin,)), None),
+            (worklog("meeting", "m-20261022-ops", "Ops sync", "Robin (Ops)"), None),
+            (worklog("meeting", "m-20261022-sales", "Sales sync", "Robin (Sales)"), None),
+            (worklog("transcript", "t-20261022-1", "Pairing", "Robin"), None),
+        ],
+    )
+    block = parts(library.search(filters={"person": "Robin Example"}, sort="updated"))[1]
+    header = block.partition("\n\n")[0]
+    assert header.startswith("Person: Robin Example, ")
+    assert not [line for line in header.splitlines() if line.startswith("Perhaps the same")]
+
+
+def test_a_person_s_roles_on_a_hit_come_in_the_order_of_the_roles(commented: Library) -> None:
+    """A Person wrote PROJ-1, is assigned it and commented three times; created PROJ-4."""
+    filters = {"person": "a person", "source": "jira"}
+    block = parts(commented.search(filters=filters, sort="created"))[1]
+    assert {ref: facts.rpartition(" | ")[2] for ref, facts in FACTS.findall(block)} == {
+        "PROJ-1": "A Person: author, assignee, commenter 3 (last 2026-10-25)",
+        "PROJ-2": "A Person: commenter 1 (last 2026-10-18)",
+        "PROJ-3": "A Person: author",
+        "PROJ-4": "A Person: creator",
+    }
+
+
+def test_a_filter_of_a_role_adds_no_person_to_the_answer(persons: Library) -> None:
+    """The person and the roles on hits come with person alone."""
+    block = parts(persons.search(filters={"creator": "Robin Sample"}, sort="updated"))[1]
+    assert dict(FACTS.findall(block)) == {
+        "PAY-1": (
+            "Task | To Do | unassigned | author Sam Sample | creator Robin Sample"
+            " | created 2026-10-20"
+        )
+    }
+    assert not block.startswith("Person:")
+
+
+def test_no_answer_about_persons_holds_an_account_id(persons: Library) -> None:
+    """Plan 043, criterion 6: ids of persons are served, never those of accounts."""
+    answers = [
+        persons.search(filters={"person": "Robin Example"}, sort="updated"),
+        persons.search("ledger", filters={"person": SAM_2}),
+        persons.ask("ledger", filters={"person": "Robin Sample"}),
+        *(persons.read(front.key or front.id) for front in PERSONS),
+        persons.status(),
+    ]
+    for filters in ({"person": "Sam Sample"}, {"author": "Sam Sample"}, {"person": "nobody"}):
+        with pytest.raises(UnanswerableError) as refused:
+            persons.search(filters=filters, sort="updated")
+        answers.append(str(refused.value))
+    assert [answer for answer in answers if "acct-" in answer] == []
 
 
 @pytest.mark.parametrize(
@@ -924,6 +1316,67 @@ def test_status_says_what_the_index_holds(varied: Library) -> None:
     assert "documents: page 32, issue 2; sections: " in content
     assert "spaces: ENG 31, OPS 1\nprojects: PROJ 2\n" in content
     assert content.startswith("built: 2026-10-20 21:52 UTC\n")
+
+
+@pytest.mark.parametrize(
+    ("aliases", "line"),
+    [
+        (
+            {},
+            (
+                "people: 8, 1 in more than one source, 5 by name alone;"
+                ' names of several accounts: "Sam Sample" (3)'
+            ),
+        ),
+        (
+            {"Sam Sample": SAM_3},
+            (
+                "people: 7, 2 in more than one source, 4 by name alone;"
+                ' names of several accounts: "Sam Sample" (2)'
+            ),
+        ),
+    ],
+)
+def test_status_counts_the_persons_and_names_those_of_several_accounts(
+    tmp_path: Path, aliases: dict[str, str], line: str
+) -> None:
+    """Plan 043, criterion 7, over the mirror of PERSONS alone.
+
+    Robin's account alone is in three sources; five persons are names alone. Sam Sample
+    is two accounts and, without aliases, the stand-up's name alone; the alias to the
+    account of PAY-2 gives it the stand-up and its Sam too, in two sources. Robin and
+    Sam, a name of no account, are never listed.
+    """
+    for front in PERSONS:
+        write(tmp_path / "docs", front)
+    build_index(tmp_path / "docs", tmp_path / "index.sqlite", MOMENT, aliases=aliases)
+    content = parts(Library(tmp_path / "index.sqlite", tmp_path / "docs").status())[1]
+    assert f"\nprojects: PAY 2\n{line}\nfiles skipped at build: 0\n" in content
+
+
+def test_status_names_five_names_of_several_accounts_then_how_many_more(
+    tmp_path: Path,
+) -> None:
+    """Six names of two accounts each, the most held first, ties by name; one of one account.
+
+    Beside the fillers' A Person, a name alone.
+    """
+    fronts = [
+        issue(
+            f"PROJ-{number}",
+            "Broker",
+            people=(
+                PersonRole(role="author", name=f"Person {number // 2}", account=f"a-{number}"),
+            ),
+        )
+        for number in range(2, 15)
+    ]
+    library = built(tmp_path, [(front, None) for front in fronts])
+    shown = ", ".join(f'"Person {number}" (2)' for number in range(1, 6))
+    assert (
+        f"\npeople: 14, 0 in more than one source, 1 by name alone; names of several accounts:"
+        f" {shown}, and 1 more\n"
+    ) in parts(library.status())[1]
 
 
 def test_no_index_is_refused_with_the_command_that_builds_it(tmp_path: Path) -> None:

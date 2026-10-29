@@ -17,10 +17,10 @@ from atlassian_offline_mcp.kernel.content import time_revision
 from atlassian_offline_mcp.mirror.adapters import conversions
 from atlassian_offline_mcp.mirror.adapters.markdown import dump
 from atlassian_offline_mcp.mirror.app.mirror import mirror
-from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, PersonRole
+from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
     from atlassian_offline_mcp.mirror.app.mirror import Outcome
@@ -208,4 +208,86 @@ PEOPLE = (
         updated=CREATED - timedelta(days=1),
         labels=("résumé",),
     ),
+)
+
+
+def worklog_document(
+    kind: str, document_id: str, title: str, names: Sequence[str], linked: str | None = None
+) -> FrontMatter:
+    """Return the front matter of a work-log meeting or transcript, naming its participants.
+
+    ``linked`` is the id of the transcript that a meeting links to, or of the meeting
+    that a transcript is the record of, if any.
+    """
+    relation = "transcript" if kind == "meeting" else "summary"
+    return replace(
+        page(document_id, title),
+        source="worklog",
+        type=kind,
+        space=None,
+        version=None,
+        revision="0123456789abcdef",
+        people=tuple(PersonRole(role="participant", name=name) for name in names),
+        links=() if linked is None else (Link(relation=relation, ref=linked),),
+    )
+
+
+# Made-up people across three sources, as plan 043's join rules them. Robin Example's
+# account, acct-0001, writes the name Robin Sample on its newest document, PAY-1, and
+# comments twice on PAY-2; two accounts are named Sam Sample. The work log names them
+# without an account, and its transcripts by first name alone: three of them the
+# records of a meeting each, two of none. Files come in the order of their paths, so
+# the meetings before the transcripts.
+PERSONS = (
+    page(
+        "300001",
+        "Ledger runbook",
+        people=(PersonRole(role="author", name="Robin Example", account="acct-0001"),),
+    ),
+    issue(
+        "PAY-1",
+        "Ledger export",
+        updated=MOMENT + timedelta(days=1),
+        people=(
+            PersonRole(role="author", name="Sam Sample", account="acct-0002"),
+            PersonRole(role="creator", name="Robin Sample", account="acct-0001"),
+        ),
+    ),
+    issue(
+        "PAY-2",
+        "Ledger rounding",
+        people=(
+            PersonRole(role="author", name="Sam Sample", account="acct-0003"),
+            PersonRole(
+                role="commenter",
+                name="Robin Example",
+                account="acct-0001",
+                at=(MOMENT, MOMENT + timedelta(hours=1)),
+            ),
+        ),
+    ),
+    worklog_document(
+        "meeting",
+        "m-20261020-planning",
+        "Planning",
+        ("Robin Example", "Robin Other"),
+        "t-20261020-2",
+    ),
+    worklog_document(
+        "meeting", "m-20261020-review", "Review", ("Robin Example", "Alex Example"), "t-20261020-1"
+    ),
+    worklog_document(
+        "meeting",
+        "m-20261020-stand-up",
+        "Stand-up",
+        ("robin  EXAMPLE", "Sam Sample", "Alex Example (not in the header)"),
+        "t-20261020-3",
+    ),
+    worklog_document(
+        "transcript", "t-20261020-1", "Review", ("Robin", "Alex"), "m-20261020-review"
+    ),
+    worklog_document("transcript", "t-20261020-2", "Planning", ("Robin",), "m-20261020-planning"),
+    worklog_document("transcript", "t-20261020-3", "Stand-up", ("Sam",), "m-20261020-stand-up"),
+    worklog_document("transcript", "t-20261021-1", "Pairing", ("Robin", "Alex")),
+    worklog_document("transcript", "t-20261021-2", "Ledger chat", ("Alex",)),
 )

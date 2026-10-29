@@ -89,6 +89,12 @@ def test_settings_are_normalised() -> None:
     assert mirror / "models" not in parts
 
 
+def test_the_alias_file_is_in_the_data_directory() -> None:
+    """The user's aliases are <data>/aliases.toml, by plan 043, and no setting names them."""
+    assert Settings(data_dir=Path("/data/mirror")).aliases == Path("/data/mirror/aliases.toml")
+    assert not any("alias" in ".".join(path) for path in SETTING_PATHS)
+
+
 def test_the_default_embeddings_come_from_ollama_on_this_machine() -> None:
     """Ollama's own address, and the model that plan 018 chose."""
     settings = from_file({})

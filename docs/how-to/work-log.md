@@ -232,13 +232,13 @@ opens. `read` of a meeting names its participants and its transcript, such as
 `summary:`, so that an agent goes from a summary to its record in one call.
 
 `filters={"participant": "Sam Sample"}` keeps the meetings that name Sam Sample and the
-transcripts in which Sam Sample speaks, the name matched whole, given in any case, but
-one spelling at a time: when a meeting writes `sam sample` and a transcript
-`Sam Sample`, the filter keeps the spelling given exactly, else the most used, so ask
-again with the other, as `read` shows it, for the rest. `Kim` and
-`Kim (not in the header)` are two names. With `"created_after": "2026-10-26"` beside
-it, those since that day. A name that no document holds is refused with the valid
-ones, those that the most meetings name first ([the tools](../reference/mcp-tools.md)).
+transcripts in which Sam Sample speaks, under any name that joins them, such as `Sam` in
+the transcript of Sam Sample's meeting ([below](#7-join-a-speaker-to-a-colleague)); the
+name matches whole, in any case, and `Kim` matches `Kim (not in the header)`. With
+`"created_after": "2026-10-26"` beside it, those since that day. A name that no
+document holds is refused with the valid ones, those that the most meetings name first
+([the tools](../reference/mcp-tools.md)). `filters={"person": "Sam Sample"}` keeps
+Sam Sample's documents in every role, their issues and pages among them.
 
 The server tells agents what each kind is: days, meetings and entries are your notes and
 the summaries an AI wrote, a meeting linking its transcript; transcripts are the
@@ -248,3 +248,67 @@ spaces and projects, not the work log:
 `search(sort="updated", filters={"source": "worklog"})` lists its entries by their last
 change, but its days, meetings and dated transcripts by when they happened, so that an
 edit to an old meeting does not surface there and a day written ahead sorts first.
+
+## 7. Join a speaker to a colleague
+
+Each `index`, and so each `sync`, joins the names of every source into persons, so that
+one colleague is one person to an agent:
+
+- a Jira or Confluence account, under each name that the site gave it;
+- a name written in a meeting's `:PARTICIPANTS:` or by a transcript's speaker, joined to
+  the one account of that name, or else to the same name elsewhere in the work log,
+  whatever its case, accents, spaces or trailing part in brackets:
+  `Kim (not in the header)` is `Kim`, but `Alex (Ops)` and `Alex (Sales)`, which the
+  brackets tell apart, stay two, as do two notes of one name, `Kim (not in the header)`
+  and `Kim (late)`, which the build warns of;
+- a speaker of one word, such as `Sam`, joined to the one participant whose name's
+  first word it is, whole, `Sam Sample` but not `Samuel Sample`, among the meetings
+  that link its transcript.
+
+The rest stays apart: a first name in a transcript that no meeting links, a nickname,
+`You` as the caption tool writes you, and two accounts of one name. A name that could
+be two people, such as a meeting's `Sam Sample` when two accounts have that name, or a
+speaker `Sam` whose meeting names `Sam Sample` when an account is named `Sam`, is
+joined to neither. To see what stays apart:
+
+- `index` and `sync` warn of each name that could be several people,
+  `index.person_ambiguous`, and of each alias that changes nothing,
+  `index.alias_unused` ([index's telemetry](../reference/telemetry/index.md));
+- the server's `status` counts the persons, those in more than one source and those by
+  name alone, and lists the names of several accounts;
+- `search` with `filters={"person": "Sam Sample"}` opens with Sam Sample's names, how
+  each joined, and each one-word name alone that is perhaps the same person, with the
+  line that would join it.
+
+Then write `aliases.toml` in the data directory,
+`~/atlassian-offline-mcp/aliases.toml` by default: a line per name as a source writes
+it, then the person it means, by a name, or by the id that an answer gives where a name
+is several people's:
+
+```toml
+"Sam" = "Sam Sample"
+"You" = "Robin Example"
+"Alex" = "p-0123456789abcdef"
+"Kim" = "Kim"
+```
+
+Rebuild the index, which embeds nothing new:
+
+```bash
+atlassian-offline-mcp index
+```
+
+- An alias joins names without an account alone: an account's names are the site's.
+- It joins its name anywhere but a transcript's speaker whom its meeting's
+  participants give someone else: to change that, change the meeting's
+  `:PARTICIPANTS:`. Its name ignores brackets: `"Alex"` joins `Alex (Ops)` and
+  `Alex (Sales)` alike, and `"Kim" = "Kim"` joins two notes of Kim to Kim.
+- Its target is a name or a person's id, never another alias: a name that another
+  alias, or the meeting of each transcript, joins to someone else names nobody.
+- A file that breaks a rule stops the build, naming the file and the alias, and the
+  index in place stays: a file that is not UTF-8 TOML, a value that is not a string in
+  quotes, an empty name, a name or value of several lines or longer than 200
+  characters, or two names that differ by case, accents or spaces alone.
+- An alias whose name no document writes without an account, or whose target names
+  nobody or several people, changes nothing, and the build warns of it.
+- To undo an alias, delete its line and rebuild. The program never writes the file.

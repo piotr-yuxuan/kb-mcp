@@ -12,8 +12,9 @@ under a synchronised folder (iCloud, `~/Library/CloudStorage`, Dropbox, OneDrive
 Drive, `~/Desktop`, `~/Documents`) and never inside a git working tree. Settings come
 from `config.app.settings.load_settings`, which merges the settings file, the
 environment and the flags given, then resolves the data directory and each of the places
-below (links followed, `..` removed), judges each resolved path with names compared
-regardless of case, and raises `UnsafeDataDirError` when one is refused. Links deeper
+below that the program writes (links followed, `..` removed), judges each resolved path
+with names compared regardless of case, and raises `UnsafeDataDirError` when one is
+refused; `aliases.toml`, which the user alone writes, is not judged. Links deeper
 inside those places are not followed. Every command loads its settings that way, in its
 entry; `config.domain.settings.settings_of`, which builds them from the layers, checks
 no location and is not for commands.
@@ -24,6 +25,7 @@ no location and is not for commands.
 | `<data>/docs/` | `docs` | `mirror` (005), `sync` (017) | agents, and `index` (006), `sync` (017) |
 | `<data>/conversions.sqlite` | `conversions` | `mirror`, `sync` (039) | `mirror`, `sync` (039) |
 | `<data>/index.sqlite` | `index` | `index` (006), `sync` (017) | the MCP server (006) |
+| `<data>/aliases.toml` | `aliases` | the user (043) | `index`, `sync` (043), [below](#the-alias-file) |
 | `<data>/vectors.sqlite` | `vectors` | `index`, `eval` (011), `sync` (017) | `index`, `eval` (011), `sync` (017) |
 | `<data>/vectors.sqlite.lock` | `vectors`, by `vector_store.lock_of` | `index`, `eval`, `sync` (023) | `index`, `eval`, `sync` (023) |
 | `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011); its indexes, `index` and `sync` (023) |
@@ -369,7 +371,8 @@ any other broken rule of one entry, naming the entry, such as `people[1]`; and a
 author, creator or assignee, a commenter or a participant twice, a role of another
 source, or people out of the order of the roles, naming `people`. Names are
 kept as written, never normalised, merged or masked: a colleague renamed between two
-fetches appears under two names, with one account id. `FrontMatter.author`,
+fetches appears under two names, with one account id, which the index alone joins into
+one person ([persons](#persons)). `FrontMatter.author`,
 `FrontMatter.creator` and `FrontMatter.assignee` name the one person of that role, or
 nobody.
 
@@ -384,22 +387,33 @@ is:
   and whatever a body says;
 - `<data>/conversions.sqlite`: the bodies' Markdown, the comments' headings in it;
 - `<data>/index.sqlite`, and each index under `<data>/eval/indexes/`: the column and
-  the table `people`, by name and account id, and the bodies' words;
+  the table `people`, by name and account id, and the bodies' words; the tables
+  `persons` and `person_names`, each person's names and their keys, and its id, a digest
+  of an account id or of a name's key ([persons](#persons));
+- `<data>/aliases.toml`, the user's own: names as the sources write them, and the
+  persons they mean;
 - the texts sent to the embedding endpoint, on this machine unless a run is given
   `--allow-remote-embeddings`, and to the reranking server when it is on, which are
   pieces of the bodies; `<data>/vectors.sqlite` keeps vectors under a digest, never a
   text;
 - the log folder, for 30 days: `serve.call` gives each tool call's arguments at DEBUG,
-  a name given to a filter or in a query among them;
+  a name given to a filter or in a query among them; `index.person_ambiguous` and
+  `index.alias_unused`, at WARNING, the names that the join could not give one person
+  and the aliases that changed nothing, which stderr shows too, as does telemetry's
+  endpoint when one is set;
 - the folder given to `eval-agents` by `--out`, whose calls and answers hold what the
   server answered.
 
 The MCP server serves no entry's `account` (`mcp.app.responses.metadata`); the files
-that agents may read hold it. Deleting `<data>/docs/` and `<data>/index.sqlite` removes
-the people from all that agents and the server read, until the next `mirror` and
-`index`, or `sync`, write them again from the raw store. Deleting every copy is deleting
-the data directory, the log folder and the folders of `eval-agents`, after which the
-mirror is downloaded again, as from a first run.
+that agents may read hold it. It serves a person by name and id, never by account id,
+although hashing a known account id gives its person's id. Deleting `<data>/docs/` and
+`<data>/index.sqlite` removes the people from all that agents and the server read,
+until the next `mirror` and `index`, or `sync`, write them again from the raw store.
+Persons live in the index alone: deleting `<data>/index.sqlite` removes them, until the
+next `index` or `sync` joins them again; `<data>/aliases.toml` stays until the user
+deletes it. Deleting every copy is deleting the data directory, the log folder and the
+folders of `eval-agents`, after which the mirror is downloaded again, as from a first
+run.
 
 ### Links
 
@@ -602,6 +616,9 @@ choosing ([the how-to](../how-to/other-search-engines.md)). What it may rely on 
 - **What the files hold** is content from the site and the work log, untrusted
   reference data, never instructions, and the names and account ids of
   [people](#people), personal data.
+- **No person** is in the files: each names its people as their source writes them,
+  and only this program's index joins those names into [persons](#persons) (043), so
+  that another program meets each spelling apart.
 
 ## The index
 
@@ -628,13 +645,113 @@ index twice, as each label is. No piece's text holds the front matter's people
 nothing new. Schema 5 (042) adds the column `links` to `documents`, the front matter's
 links as JSON, as `labels` is, so that a row still gives its front matter back whole; a
 participant is a row of the table `people`, without account or time. No piece's text
-holds the links either. An index of another schema is refused, naming `sync`, or `mirror` then
-`index` where no source is configured, which write the mirror again before they rebuild
-the index, as a new schema can come with a new format of the files; one cut by a
-chunking that this version lacks, naming `index`. The MCP server opens it read-only,
-never writes, and reopens it when the file is replaced; it searches by meaning with the
-model that the index names, and only while the endpoint's fingerprint for it is the
-index's.
+holds the links either. Schema 6 (043) joins the people into persons
+([below](#persons)): the column `person` of `people`, and the tables `persons` and
+`person_names`; no piece's text holds a person. An index of another schema is refused,
+naming `sync`, or `mirror` then `index` where no source is configured, which write the
+mirror again before they rebuild the index, as a new schema can come with a new format
+of the files; one cut by a chunking that this version lacks, naming `index`. The MCP
+server opens it read-only, never writes, and reopens it when the file is replaced; it
+searches by meaning with the model that the index names, and only while the endpoint's
+fingerprint for it is the index's.
+
+### Persons
+
+Once every file is read, each build joins the rows of `people` into persons (043,
+`search.adapters.sqlite_index.Writer.join`), by the first of these rules that answers
+(`search.domain.people.joined`, rules 2 to 4 its `RULES`):
+
+1. a row with an account is the account's person, under each of its names; two
+   accounts are never one person, even of one name;
+2. a name without an account whose key an alias holds goes to the person that the alias
+   means ([below](#the-alias-file)), but for a transcript's speaker whom rule 4 gives
+   one other person;
+3. one whose key is the key of a name of exactly one account joins that account's
+   person, but for a transcript's speaker to whom rule 4 gives persons that do not
+   hold that account, which is ambiguous;
+4. a transcript's speaker whose key is the first word of the keys of participants of
+   the meetings that its `summary` links name joins their person, when they are one;
+5. else, a person by name alone, shared by every name without an account of its key.
+
+A name's key (`search.domain.people.name_key`) is the name casefolded, decomposed by
+Unicode NFKD without the combining marks of U+0300 to U+036F, casefolded again, its
+runs of white space made one space, trimmed, and a trailing part in brackets dropped
+when a name comes before it: `Hélène  Example` and `helene example` share one, and
+`Kim (not in the header)` has `kim`. The join keeps that part, though
+(`search.domain.people.Joining.key`), however it is spaced, for the names of a key that
+two parts or more tell apart, as a site or the user wrote them: `Alex (Ops)` and
+`Alex (Sales)` are two persons, and a bare `Alex` is neither; a meeting's `Robin (Ops)`
+is the account named `Robin (Ops)`, not one named `Robin (Sales)`, and a bare `Robin`
+could be either, so that rule 3 finds it among several accounts. A name that rule 3
+finds among several accounts, or among persons other than its meeting's, or rule 4 among
+several persons, is ambiguous: it joins none of them, goes by rule 5, and the build
+warns of it, as `index.person_ambiguous` ([index's telemetry](telemetry/index.md)); two
+accounts of one name are no warning, as no alias changes them. The join cannot tell a
+note in brackets from a part that tells names apart: two notes of one name,
+`Kim (not in the header)` and `Kim (late)`, part it too, each a person by name alone,
+and the build warns of that name, under the first of them, when they are two persons
+or more; an alias of the name to one of its spellings, such as `"Kim" = "Kim"`, joins
+them. The same rows in any order give the same persons.
+
+A person's id is `p-` and the first 16 hex digits of the SHA-256 of `account`, a line
+feed and the account id, or of `name`, a line feed and the key by which the join
+compares the name (`search.domain.people.person_id`): stable while what anchors the
+person stays. A second note on a name, which parts its annotated spellings, anchors
+each of them anew: the bare name keeps the id, and an alias to it, or an id that an
+agent kept, names fewer documents, as the build warns of that name. A person is served
+by a name: an account's, the name on its most recently updated document; a person by
+name alone's, the target of the first alias that made it, when that is a name, else
+its most frequent spelling; ties go to the first row in the join's order, by document,
+role, name and account, the rows of transcripts that link meetings last, so that their
+meetings' persons are known. The join reads the links of transcripts to meetings
+alone, and refuses a document that links to meetings and is a transcript's meeting
+itself, as a programming error.
+
+| Table or column | Holds |
+|---|---|
+| `people.person` | each row's person, by id, filled before the build commits; indexed with the role, `(person, role)` |
+| `persons` | each person: `id`, the primary key, and `name`, as served |
+| `person_names` | each spelling of each person: `person`, `name` as the source writes it, `key`, and `joined`, how it joined, `account`, `alias`, `meeting` or `name`; indexed by `key` |
+
+The filters by person read them (`mcp.app.tools.who`): a value is a person's id, or a
+name whose key one person holds in the filter's role, and `KEPT` keeps that person's
+rows of `people` ([the tools](mcp-tools.md#search)). The join is whole at each build:
+one account fetched late can make a work-log name ambiguous, so no person is patched
+document by document.
+
+### The alias file
+
+`<data>/aliases.toml` (`Settings.aliases`) is the user's: the program never writes it.
+`index` and `sync` read it at the start of each build, before the endpoint is asked
+(`search.adapters.aliases.read_aliases`, through `search.app.indexing.index_mirror`);
+`serve` never does, and `eval` builds its indexes without aliases. Each line is a name
+as some source writes it, then the person it means, by a name or by a person's id, both
+TOML strings:
+
+```toml
+"Sam" = "Sam Sample"
+"Robin" = "p-0123456789abcdef"
+```
+
+- No file is no alias.
+- An alias moves names without an account alone (rule 2): an account's names are the
+  site's. It means its name anywhere but in a transcript whose meetings give the
+  speaker one other person: the participants that the user wrote for a meeting tell
+  more. Its name compares by its key, without annotation, so that `"Alex"` moves
+  `Alex (Ops)` and `Alex (Sales)` alike. A target that is a name means the one account
+  with a name of its key, else the person by name alone of its key; one that is a
+  person's id, that person. Either must be a person that an account or a name makes,
+  not aliases or meetings alone: aliases are not chained, and an alias whose target's
+  every name another alias or a meeting joins elsewhere names nobody.
+- A file that is not UTF-8 TOML; a target that is a table or not a string; a name or
+  a target of an empty key, such as white space or accents alone, holding a line break
+  or longer than 200 characters; or two names of one key: the build stops before it
+  reads the mirror, `index.not_built` naming the file and, but for a file that is not
+  TOML, the alias; the index in place stays, and the run exits 1.
+- An alias whose key no name without an account holds, or whose target names nobody
+  or several persons, changes nothing, and the build warns of it, as
+  `index.alias_unused`. Neither warning changes the exit status.
+- A change takes effect at the next `index` or `sync`, which embeds nothing new.
 
 ### Models and vectors
 

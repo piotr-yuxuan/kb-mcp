@@ -424,6 +424,11 @@ class Settings(BaseSettings):
         return self.data_dir / "vectors.sqlite"
 
     @property
+    def aliases(self) -> Path:
+        """The aliases that the user writes and each index build reads, to join names."""
+        return self.data_dir / "aliases.toml"
+
+    @property
     def conversions(self) -> Path:
         """Pandoc's conversions so far, by their input, kept across mirrors."""
         return self.data_dir / "conversions.sqlite"

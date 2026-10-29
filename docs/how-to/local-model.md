@@ -41,7 +41,7 @@ into a terminal.
 ## 3. Give the model room for the answers
 
 A model's context holds the whole conversation: the host's instructions, the server's
-instructions and tools (2,500 estimated tokens at most), each question, and each tool's
+instructions and tools (2,600 estimated tokens at most), each question, and each tool's
 answer, 4,000 estimated tokens by default and 10,000 at most. One question that `ask`
 answers, then two `read` calls, puts about 12,000 tokens of the mirror in it.
 

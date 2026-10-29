@@ -28,6 +28,7 @@ from atlassian_offline_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from atlassian_offline_mcp.mcp.app import responses
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.meaning import Nearest
+from atlassian_offline_mcp.search.domain import people
 from atlassian_offline_mcp.search.domain.chunking import CHUNKERS, UNIT, around
 from atlassian_offline_mcp.search.domain.reranking import (
     BODY,
@@ -50,7 +51,7 @@ from atlassian_offline_mcp.search.domain.search import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterator, Mapping, Sequence
     from pathlib import Path
 
     from atlassian_offline_mcp.config.domain.settings import SearchMode as Mode
@@ -90,6 +91,7 @@ class SearchFilters(TypedDict, total=False):
     """What narrows a search. Values match without regard to case; dates are ISO 8601.
 
     source worklog: the user's entries (notes, AI summaries) and transcripts (verbatim).
+    person: in any role, by any of their names or their id.
     author: an issue's reporter, a page's creator; creator: an issue's.
     commented_*: by commenter if given; _after included, _before excluded.
     participant: a meeting's, or a transcript's speaker.
@@ -101,6 +103,7 @@ class SearchFilters(TypedDict, total=False):
     status: str
     label: str
     issue_type: str
+    person: str
     author: str
     creator: str
     assignee: str
@@ -342,18 +345,107 @@ def checked(filters: SearchFilters | None) -> dict[str, str]:
 
 def narrowed(reader: Reader, given: Mapping[str, str]) -> Filters:
     """Give the filters as the index holds their values, refusing one that no document has."""
-    names = (
-        *("source", "space", "project", "status", "label", "issue_type"),
-        *("author", "creator", "assignee", "commenter", "participant"),
-    )
+    names = ("source", "space", "project", "status", "label", "issue_type")
     dates = (
         *("updated_after", "updated_before", "created_after", "created_before"),
         *("commented_after", "commented_before"),
     )
     return Filters(
         **{name: canonical(reader, name, given.get(name)) for name in names},
+        **{name: who(reader, name, given.get(name)) for name in PERSON_FILTERS},
         **{name: instant(name, given.get(name)) for name in dates},
     )
+
+
+# Each filter that names a person, and the role it keeps them in: person, any.
+PERSON_FILTERS = {
+    "person": None,
+    "author": "author",
+    "creator": "creator",
+    "assignee": "assignee",
+    "commenter": "commenter",
+    "participant": "participant",
+}
+
+
+def who(reader: Reader, name: str, value: str | None) -> str | None:
+    """Find the person whom a filter names, by their id or any name that a source writes.
+
+    Of the persons with a document in the filter's role, in PERSON_FILTERS, the one of
+    that id, else those holding a name of the value's key (``people.name_key``): one is
+    taken, as is, of several, for a value with an annotation, the one alone holding a
+    name written as the value is, annotation included (``people.written_key``), such as
+    an account named "Robin (Ops)" beside one named "Robin (Sales)"; a bare "Robin"
+    beside them could be either, though a person by name alone writes it so. Refuse a
+    value that none holds there, listing the role's names: those whose key holds the
+    value's first, the most used first; and one that several hold, listing
+    ``responses.NAMES`` of them at most, those of the most documents first, then by id,
+    each by name, id, documents by role and by source and the last update, so that the
+    agent gives one's id, then how many more.
+    """
+    if value is None:
+        return None
+    role, wanted = PERSON_FILTERS[name], people.name_key(value)
+    ids = [value] if people.PERSON_ID.fullmatch(value) else reader.persons(wanted)
+    found = [
+        each for each in map(reader.person, ids) if each and (role is None or role in each.roles)
+    ]
+    written = people.written_key(value)
+    exact = [
+        each
+        for each in found
+        if written != wanted
+        and written in {people.written_key(spelling.name) for spelling in each.person.names}
+    ]
+    if len(found) == 1 or len(exact) == 1:
+        return (exact or found)[0].person.id
+    quoted = json.dumps(value, ensure_ascii=False)
+    if found:
+        message = f"{name}: {quoted} names {len(found)} people; give the id of one:"
+        found.sort(key=lambda each: (-sum(each.sources.values()), each.person.id))
+        listed = "\n".join(responses.activity(each) for each in found[: responses.NAMES])
+        rest = len(found) - responses.NAMES
+        more = f"({rest} more are not shown.)" if rest > 0 else ""
+        raise UnanswerableError(responses.answer(message, listed, more))
+    message = f"{name}: no document has {quoted}; the valid values:"
+    valid = [candidate for candidate, _ in reader.values(name)]
+    listed = sorted(valid, key=lambda each: wanted not in people.name_key(each))
+    raise UnanswerableError(responses.refusal(message, listed[:VALUES_SHOWN], len(valid)))
+
+
+def about(reader: Reader, filters: Filters, paths: Sequence[str]) -> tuple[str, dict[str, str]]:
+    """Write the person that ``person`` narrows to, and their roles on each document shown.
+
+    The person as ``responses.person`` writes them, then a blank line, with those perhaps
+    the same: of each ``people.first_word`` of their names, the one other person whose
+    names of that key joined by name, whom an alias of the word, written as their name
+    of that key, would join to them; none where an account is named by the word, from
+    which the alias would take the name, or where those names are several persons, which
+    annotations keep apart and the alias would join too. Then their roles by path, as
+    ``responses.roles`` says them. Nothing without that filter.
+    """
+    if filters.person is None:
+        return "", {}
+    found = reader.person(filters.person)
+    words = sorted({people.first_word(spelling.name) for spelling in found.person.names})
+    moved = [
+        (word, reader.persons(word, people.NAME))
+        for word in words
+        if not reader.persons(word, people.ACCOUNT)
+    ]
+    alike = [
+        (word, reader.person(ids[0]))
+        for word, ids in moved
+        if len(ids) == 1 and ids[0] != filters.person
+    ]
+    others = [
+        (next(each.name for each in other.person.names if each.key == word), other.person.id)
+        for word, other in alike
+        if other
+    ]
+    held = reader.roles(filters.person, paths)
+    roles = {path: responses.roles(found.person.name, each) for path, each in held.items()}
+    return f"{responses.person(found, others)}\n\n", roles
 
 
 def bounded(**values: tuple[str | None, int]) -> None:
@@ -543,11 +635,12 @@ class Library:
                 }
             )
             items = []
+            person, held = about(reader, kept, [entry.path for entry in shown])
             for number, entry in enumerate(shown, offset + 1):
                 passage = passage_of(reader, entry, ranked, planned)
                 ref = entry.front.key or entry.front.id
                 opening = responses.call(self.read, ref=ref, section=passage.number)
-                items.append(responses.hit(number, entry, passage, opening))
+                items.append(responses.hit(number, entry, passage, opening, held.get(entry.path)))
 
         def more(count: int) -> str:
             after = cursor_at(offset + count, built_at) + written(ranked.order)
@@ -555,14 +648,15 @@ class Library:
                 self.search, query=query, filters=filters, sort=sort, limit=limit, cursor=after
             )
 
-        # A note on falling back to words lengthens the header: the hits make room for it.
-        allowed = responses.budget(limit, SEARCH_LIMIT) - responses.tokens(ranked.note)
+        # A note on falling back to words lengthens the header, and a person the block's
+        # start: the hits make room for them.
+        allowed = responses.budget(limit, SEARCH_LIMIT) - responses.tokens(ranked.note + person)
         count, footer = responses.page(items, total - offset, allowed, more)
         counted = f"Documents {ranked.counted}: {total if whole else f'at least {total}'}"
         header = f"{counted}; {responses.span(offset, count, built_at)}{ranked.note}"
         if planned.dropped:
             header += f" Only the first {MAX_WORDS} words of the query were searched."
-        return responses.answer(header, "\n".join(items[:count]), footer)
+        return responses.answer(header, person + "\n".join(items[:count]), footer)
 
     def ask(
         self, question: str, filters: SearchFilters | None = None, cursor: str | None = None
@@ -607,6 +701,7 @@ class Library:
             paths = ranked.paths[offset : offset + ASK_DOCUMENTS]
             entries = {entry.path: entry for entry in reader.entries(paths=paths)}
             chosen = excerpts(reader, ranked, planned, paths)
+            person, held = about(reader, kept, paths)
         pairs = [(entries[path], passage) for path, passage in zip(paths, chosen, strict=True)]
         items = [
             responses.excerpt(
@@ -616,6 +711,7 @@ class Library:
                 responses.call(
                     self.read, ref=entry.front.key or entry.front.id, section=passage.number
                 ),
+                held.get(entry.path),
             )
             for number, (entry, passage) in enumerate(pairs, offset + 1)
         ]
@@ -624,12 +720,13 @@ class Library:
             after = cursor_at(offset + count, built_at) + written(ranked.order)
             return responses.call(self.ask, question=question, filters=filters, cursor=after)
 
-        allowed = responses.BUDGET - responses.tokens(ranked.note)
+        allowed = responses.BUDGET - responses.tokens(ranked.note + person)
         total = len(ranked.paths)
         count, footer = responses.page(items, total - offset, allowed, more)
         counted = f"Documents {ranked.counted}: {total if ranked.whole else f'at least {total}'}"
         header = f"{counted}; {responses.span(offset, count, built_at)}{ranked.note}"
-        return responses.answer(header, "\n\n".join(items[:count]), footer), pairs[:count], ranked
+        content = person + "\n\n".join(items[:count])
+        return responses.answer(header, content, footer), pairs[:count], ranked
 
     def quoted(self, question: str, mode: Mode) -> list[Shown]:
         """Give the passages of ask's first answer in a mode, for an evaluation."""

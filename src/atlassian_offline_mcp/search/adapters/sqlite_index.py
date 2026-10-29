@@ -22,33 +22,39 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
+from opentelemetry import trace
 
 from atlassian_offline_mcp.kernel.chunking import CHUNKINGS
 from atlassian_offline_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 from atlassian_offline_mcp.search.adapters import vector_store
+from atlassian_offline_mcp.search.domain import people
 from atlassian_offline_mcp.search.domain.search import (
+    Activity,
     Embedded,
     Entry,
     Filters,
     Passage,
+    Persons,
     Pieces,
     Score,
     Summary,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable, Iterator, Mapping
 
     from atlassian_offline_mcp.kernel.chunking import Chunking
     from atlassian_offline_mcp.search.domain.search import Section, Sort
 
+TRACER = trace.get_tracer(__name__)
 # What the file of a build begins with, beside its index, until it is renamed into place.
 BUILDING = ".index-"
 # Why a link among indexes is not followed: a cycle of them would not end.
 LINK = "a link, which is not followed"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id; 4 from plan 041, with
-# people in place of the author and the assignee; 5 from plan 042, with links.
-SCHEMA = "5"
+# people in place of the author and the assignee; 5 from plan 042, with links; 6 from
+# plan 043, with persons.
+SCHEMA = "6"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -73,9 +79,16 @@ CREATE TABLE documents (
 CREATE INDEX documents_key ON documents (key);
 CREATE TABLE labels (document INTEGER NOT NULL, label TEXT NOT NULL);
 CREATE TABLE people (
-  document INTEGER NOT NULL, role TEXT NOT NULL, name TEXT NOT NULL, account TEXT, at TEXT
+  document INTEGER NOT NULL, role TEXT NOT NULL, name TEXT NOT NULL, account TEXT, at TEXT,
+  person TEXT
 );
 CREATE INDEX people_role_name ON people (role, name);
+CREATE INDEX people_person_role ON people (person, role);
+CREATE TABLE persons (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE person_names (
+  person TEXT NOT NULL, name TEXT NOT NULL, key TEXT NOT NULL, joined TEXT NOT NULL
+);
+CREATE INDEX person_names_key ON person_names (key);
 CREATE TABLE sections (
   rowid INTEGER PRIMARY KEY,
   document INTEGER NOT NULL, number INTEGER NOT NULL, start INTEGER NOT NULL,
@@ -94,7 +107,8 @@ CREATE TABLE pieces (
   key TEXT NOT NULL, vector BLOB NOT NULL
 );
 """
-# The documents that pass a search's filters, as a JSON list of rowids.
+# The documents that pass a search's filters, as a JSON list of rowids. A person is
+# given by their id, in any role or in the role of the filter.
 KEPT = """
 SELECT json_group_array(d.rowid) FROM documents d
 WHERE (:source IS NULL OR d.source = :source)
@@ -104,14 +118,16 @@ WHERE (:source IS NULL OR d.source = :source)
   AND (:label IS NULL
        OR EXISTS (SELECT 1 FROM labels l WHERE l.document = d.rowid AND l.label = :label))
   AND (:issue_type IS NULL OR d.issue_type = :issue_type)
+  AND (:person IS NULL OR d.rowid IN (SELECT p.document FROM people p WHERE p.person = :person))
   AND (:author IS NULL OR d.rowid IN
-       (SELECT p.document FROM people p WHERE p.role = 'author' AND p.name = :author))
+       (SELECT p.document FROM people p WHERE p.role = 'author' AND p.person = :author))
   AND (:creator IS NULL OR d.rowid IN
-       (SELECT p.document FROM people p WHERE p.role = 'creator' AND p.name = :creator))
+       (SELECT p.document FROM people p WHERE p.role = 'creator' AND p.person = :creator))
   AND (:assignee IS NULL OR d.rowid IN
-       (SELECT p.document FROM people p WHERE p.role = 'assignee' AND p.name = :assignee))
+       (SELECT p.document FROM people p WHERE p.role = 'assignee' AND p.person = :assignee))
   AND (:participant IS NULL OR d.rowid IN
-       (SELECT p.document FROM people p WHERE p.role = 'participant' AND p.name = :participant))
+       (SELECT p.document FROM people p
+        WHERE p.role = 'participant' AND p.person = :participant))
   AND (:updated_after IS NULL OR d.updated >= :updated_after)
   AND (:updated_before IS NULL OR d.updated < :updated_before)
   AND (:created_after IS NULL OR d.created >= :created_after)
@@ -119,7 +135,7 @@ WHERE (:source IS NULL OR d.source = :source)
   AND ((:commenter IS NULL AND :commented_after IS NULL AND :commented_before IS NULL)
        OR d.rowid IN (
          SELECT p.document FROM people p WHERE p.role = 'commenter'
-           AND (:commenter IS NULL OR p.name = :commenter)
+           AND (:commenter IS NULL OR p.person = :commenter)
            AND (:commented_after IS NULL OR p.at >= :commented_after)
            AND (:commented_before IS NULL OR p.at < :commented_before)))
 """
@@ -186,6 +202,58 @@ ORDER BY s.number
 """
 # What ``reading`` checks before it reads an index.
 META = "SELECT name, value FROM meta WHERE name IN ('schema', 'chunking')"
+# What the join reads: each row of people, with when its document was updated; and each
+# transcript's meetings, as its summary links name them, by rowid. A link to anything
+# but a meeting names none, as a file edited by hand may hold. CROSS JOIN keeps SQLite's
+# order, each transcript, its links, then the meeting by its source and id, so that the
+# work grows with the links, not with the square of one source's documents.
+PEOPLE_ROWS = """
+SELECT p.rowid, p.document, p.role, p.name, p.account, d.updated
+FROM people p JOIN documents d ON d.rowid = p.document
+"""
+SUMMARIES = """
+SELECT t.rowid, m.rowid
+FROM documents t CROSS JOIN json_each(t.links) l CROSS JOIN documents m
+WHERE t.type = 'transcript' AND json_extract(l.value, '$.relation') = 'summary'
+  AND m.source = t.source AND m.id = json_extract(l.value, '$.ref') AND m.type = 'meeting'
+"""
+# A person's documents per role, then per source with the newest update, the most first.
+PERSON_ROLES = """
+SELECT role, count(DISTINCT document) FROM people WHERE person = :person
+GROUP BY 1 ORDER BY 2 DESC, 1
+"""
+PERSON_SOURCES = """
+SELECT d.source, count(DISTINCT d.rowid), max(d.updated)
+FROM people p JOIN documents d ON d.rowid = p.document WHERE p.person = :person
+GROUP BY 1 ORDER BY 2 DESC, 1
+"""
+# A person's roles on each of some documents: the rows of each, a commenter's one per
+# comment, and the time of the last comment.
+PERSON_HELD = """
+SELECT d.path, p.role, count(*), max(p.at)
+FROM people p JOIN documents d ON d.rowid = p.document
+WHERE p.person = :person AND d.path IN (SELECT value FROM json_each(:paths))
+GROUP BY 1, 2 ORDER BY 1, 2
+"""
+# What status says of persons: how many, by name alone, in more than one source; and
+# each name of two accounts or more, with the persons holding its key.
+PERSON_COUNTS = """
+SELECT count(*), count(*) FILTER (WHERE id NOT IN
+  (SELECT person FROM person_names WHERE joined = 'account'))
+FROM persons
+"""
+ACROSS = """
+SELECT count(*) FROM (
+  SELECT p.person FROM people p JOIN documents d ON d.rowid = p.document
+  GROUP BY p.person HAVING count(DISTINCT d.source) > 1
+)
+"""
+SHARED = """
+SELECT min(n.name), (SELECT count(DISTINCT m.person) FROM person_names m WHERE m.key = n.key)
+FROM person_names n WHERE n.joined = 'account'
+GROUP BY n.key HAVING count(DISTINCT n.person) > 1
+ORDER BY 2 DESC, 1
+"""
 # Each value that a filter can take, with how many documents have it, the most used first.
 VALUES = {
     "source": "SELECT source, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
@@ -197,6 +265,11 @@ VALUES = {
     "label": "SELECT label, count(*) FROM labels GROUP BY 1 ORDER BY 2 DESC, 1",
     "issue_type": "SELECT issue_type, count(*) FROM documents WHERE issue_type IS NOT NULL"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
+    # By the documents other than transcripts first, as participant's below.
+    "person": "SELECT p.name, count(DISTINCT p.document) FROM people p"
+    " JOIN documents d ON d.rowid = p.document"
+    " GROUP BY 1 ORDER BY count(DISTINCT p.document) FILTER (WHERE d.type <> 'transcript') DESC,"
+    " 2 DESC, 1",
     "author": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'author'"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
     "creator": "SELECT name, count(DISTINCT document) FROM people WHERE role = 'creator'"
@@ -335,6 +408,47 @@ class Writer:
     def skip(self) -> None:
         """Count a file of the mirror that could not be indexed."""
         self.skipped += 1
+
+    @TRACER.start_as_current_span("index.join")
+    def join(self, aliases: Mapping[str, str]) -> people.Outcome:
+        """Join the people of the documents added into persons, as ``people.joined`` rules.
+
+        Once the last document is added: every row of ``people`` is given its person, and
+        ``persons`` and ``person_names`` hold each person and each of its spellings, with
+        how it joined. A transcript's meetings are the meetings that its ``summary`` links
+        name: no other document, so that each is joined before the transcript.
+        ``aliases`` gives each alias's name and target, as the alias file's reader checks
+        them. Give back how many persons there are, and what the join left apart: the
+        names that could be several persons, and the aliases that changed nothing; each
+        row's person stays here. The span ``index.join`` holds it.
+        """
+        rows = {
+            rowid: people.Row(document, role, name, account, datetime.fromisoformat(updated))
+            for rowid, document, role, name, account, updated in self._connection.execute(
+                PEOPLE_ROWS
+            )
+        }
+        meetings: dict[int, set[int]] = {}
+        for transcript, meeting in self._connection.execute(SUMMARIES):
+            meetings.setdefault(transcript, set()).add(meeting)
+        found = people.joined(rows.values(), meetings, aliases)
+        self._connection.executemany(
+            "UPDATE people SET person = ? WHERE rowid = ?",
+            [(found.of[row], rowid) for rowid, row in rows.items()],
+        )
+        self._connection.executemany(
+            "INSERT INTO persons (id, name) VALUES (?, ?)",
+            [(person.id, person.name) for person in found.persons],
+        )
+        self._connection.executemany(
+            "INSERT INTO person_names (person, name, key, joined) VALUES (?, ?, ?, ?)",
+            [
+                (person.id, spelling.name, spelling.key, spelling.how)
+                for person in found.persons
+                for spelling in person.names
+            ],
+        )
+        return people.Outcome(len(found.persons), found.ambiguous, found.unused)
 
 
 def indexes_in(folder: Path) -> list[Path]:
@@ -555,6 +669,57 @@ class Reader:
         """Give each value that a filter or count can take, the most used first."""
         return [(row[0], row[1]) for row in self._connection.execute(VALUES[name])]
 
+    def persons(self, key: str, joined: str | None = None) -> list[str]:
+        """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted.
+
+        ``joined``, if given, keeps the names that joined so, such as ``people.ACCOUNT``.
+        """
+        rows = self._connection.execute(
+            "SELECT DISTINCT person FROM person_names"
+            " WHERE key = :key AND (:joined IS NULL OR joined = :joined) ORDER BY person",
+            {"key": key, "joined": joined},
+        )
+        return [row[0] for row in rows]
+
+    def person(self, person: str) -> Activity | None:
+        """Give the person of this id, with their documents by role and by source; else None.
+
+        Their spellings in the order that ``people.Person`` has them.
+        """
+        found = self._connection.execute("SELECT name FROM persons WHERE id = ?", (person,))
+        name = found.fetchone()
+        if name is None:
+            return None
+        rows = self._connection.execute(
+            "SELECT name, key, joined FROM person_names WHERE person = ?"
+            " ORDER BY name, key, joined",
+            (person,),
+        )
+        spellings = tuple(people.Spelling(*row) for row in rows)
+        roles = self._connection.execute(PERSON_ROLES, {"person": person})
+        sources = self._connection.execute(PERSON_SOURCES, {"person": person}).fetchall()
+        return Activity(
+            person=people.Person(person, name[0], spellings),
+            roles={row[0]: row[1] for row in roles},
+            sources={row[0]: row[1] for row in sources},
+            last=max(datetime.fromisoformat(row[2]) for row in sources),
+        )
+
+    def roles(
+        self, person: str, paths: Iterable[str]
+    ) -> dict[str, list[tuple[str, int, datetime | None]]]:
+        """Give a person's roles on each of these documents where they hold one, by path.
+
+        Each role with the count of its rows, a commenter's being their comments, and the
+        time of the last comment, None for any other role.
+        """
+        parameters = {"person": person, "paths": json.dumps(list(paths))}
+        held: dict[str, list[tuple[str, int, datetime | None]]] = {}
+        for path, role, count, at in self._connection.execute(PERSON_HELD, parameters):
+            last = None if at is None else datetime.fromisoformat(at)
+            held.setdefault(path, []).append((role, count, last))
+        return held
+
     def built_at(self) -> datetime:
         """Say when the index was built."""
         row = self._connection.execute("SELECT value FROM meta WHERE name = 'built_at'").fetchone()
@@ -618,6 +783,9 @@ class Reader:
         newest = self._connection.execute("SELECT max(fetched_at) FROM documents").fetchone()[0]
         sections = self._connection.execute("SELECT count(*) FROM sections").fetchone()[0]
         pieces = self._connection.execute("SELECT count(*) FROM pieces").fetchone()[0]
+        persons, alone = self._connection.execute(PERSON_COUNTS).fetchone()
+        across = self._connection.execute(ACROSS).fetchone()[0]
+        shared = tuple((row[0], row[1]) for row in self._connection.execute(SHARED))
         embedded = self.embedded()
         return Summary(
             built_at=self.built_at(),
@@ -627,6 +795,7 @@ class Reader:
             projects=dict(self.values("project")),
             sections=sections,
             newest_fetch=None if newest is None else datetime.fromisoformat(newest),
+            people=Persons(persons, across, alone, shared),
             model=meta["model"] or None,
             pieces=pieces,
             chunking=embedded.chunking if embedded else None,

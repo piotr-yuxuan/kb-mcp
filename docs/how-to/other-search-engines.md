@@ -172,6 +172,12 @@ What this program's MCP server adds to the files, and qmd 2.8.3 does not:
 
 - **Filters.** By source, space, project, type, status, label, dates and people: qmd
   keeps to a collection, and reads the front matter as words.
+- **Persons.** The files name each person as each source writes them: an account under
+  each name that the site gave it, a speaker by a first name. This program's index
+  joins those names into persons, by account, by exact name, a speaker by its meeting,
+  and by your `aliases.toml` ([the work log's
+  how-to](work-log.md#7-join-a-speaker-to-a-colleague)), and a filter by person keeps
+  their documents under any of their names. qmd meets each spelling apart, as a word.
 - **Budgets.** This program cuts each answer to a budget of tokens; qmd gives as many
   results as asked, and `get` a whole document unless given lines.
 - **Citations.** This program gives each hit its ref, an id or a key, its dates and

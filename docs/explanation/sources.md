@@ -134,6 +134,67 @@ the id that the path gives
 org rewrites no link when the user moves a transcript under `archive/`, and the move
 keeps its id.
 
+## One person across sources
+
+Each source names people its own way. Confluence and Jira name an account, under the
+name that the site gave when the document was fetched, so that a colleague renamed
+between two fetches is two names of one account. The work log names nobody by account:
+a meeting as its `:PARTICIPANTS:` writes them, often with an annotation, and a
+transcript as its caption tool heard its speakers, often by a first name. The files keep
+every name as written, and each build of the index joins them into persons
+([`joined`](../../src/atlassian_offline_mcp/search/domain/people.py)), so that an agent
+asks about one colleague once, whichever source named them.
+
+The join takes what the sources and the user say, and guesses nothing. An account is a
+person under each of its names, and two accounts are two persons, even of one name: the
+site says they are two. A name without an account goes, by the first rule that answers
+([`RULES`](../../src/atlassian_offline_mcp/search/domain/people.py)), to the person
+that the user's alias names; to the one account with a name of its key; for a
+transcript's speaker, to the one participant of the meetings that the transcript links
+to whose name's first word is the speaker's, whole
+([`by_meeting`](../../src/atlassian_offline_mcp/search/domain/people.py)), "Sam" to the
+stand-up's "Sam Sample", but "Rob" to no "Robin Example"; else it is a person by name
+alone, one for every name of its key. A key leaves out case, accents, runs of spaces
+and a trailing part in brackets
+([`name_key`](../../src/atlassian_offline_mcp/search/domain/people.py)), so that
+`Kim (not in the header)` is `Kim`, which plan 042 left to this join; but where two
+such parts tell names apart, `Alex (Ops)` and `Alex (Sales)`, the join keeps them
+([`Joining.key`](../../src/atlassian_offline_mcp/search/domain/people.py)), as the
+user or the site wrote them apart. It cannot tell such a part from a note, so that two
+notes of one name part it too, and the build says so. A name that could be several
+persons, the name of two accounts, a speaker whose word is two participants' first,
+or one whose meeting names another than the one account of its name, is given to none of
+them, and the build says so, for the user to settle by an alias.
+
+A speaker is joined within its meeting alone, as the user wrote that meeting's
+participants for it: there, one "Sam" is one person, and no alias, written for a name
+anywhere, takes the speaker from that person
+([`by_alias`](../../src/atlassian_offline_mcp/search/domain/people.py)). Over the
+whole mirror, a new colleague of the same first name would move the old one's meetings
+without a word. Outside it, an answer narrowed to a person shows a one-word name alone
+as perhaps the same, with the alias that would join them, unless an account is named
+by that word, from which the alias would take it too, or annotations keep that word's
+names apart, which the alias would join as well
+([`about`](../../src/atlassian_offline_mcp/mcp/app/tools.py)). The aliases are a file
+that the user writes in the data directory, `aliases.toml`, read at each build
+([`read_aliases`](../../src/atlassian_offline_mcp/search/adapters/aliases.py)), rather
+than a setting, which holds no mapping of names and is logged by every run.
+
+Persons live in the index alone, joined whole at each build
+([`Writer.join`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)):
+one account fetched late can make a name of the work log ambiguous, so persons cannot
+be patched one document at a time. The files, which other programs read, name people as
+their sources write them. A person's id, `p-` and a digest of its account id or its
+name's key ([`person_id`](../../src/atlassian_offline_mcp/search/domain/people.py)),
+lets an agent choose between two namesakes without seeing an account id; it hides
+nothing, since hashing a known account id gives it. Every filter by person then means a
+person ([`PERSON_FILTERS`](../../src/atlassian_offline_mcp/mcp/app/tools.py)): `person`
+in any role, `author`, `creator`, `assignee`, `commenter` and `participant` in theirs,
+under any of the person's names or by id
+([`who`](../../src/atlassian_offline_mcp/mcp/app/tools.py)). [The
+trade-offs](trade-offs.md#persons-joined-by-account-then-exact-name) give what this
+costs.
+
 ## Untrusted, local
 
 The work log holds the user's notes and summaries an AI wrote, its days, meetings and

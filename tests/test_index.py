@@ -21,11 +21,41 @@ from atlassian_offline_mcp.mirror.domain.mirror import Link, PersonRole
 from atlassian_offline_mcp.search.adapters import sqlite_index
 from atlassian_offline_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from atlassian_offline_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
+from atlassian_offline_mcp.search.domain.people import (
+    UNHELD,
+    Ambiguity,
+    Outcome,
+    Person,
+    Spelling,
+)
 from atlassian_offline_mcp.search.domain.search import Filters
 from tests.endpoint import nothing_listening, tiny
-from tests.mirrors import CREATED, FILLERS, MOMENT, PEOPLE, fillers, issue, location, page, write
+from tests.mirrors import (
+    CREATED,
+    FILLERS,
+    MOMENT,
+    PEOPLE,
+    PERSONS,
+    fillers,
+    issue,
+    location,
+    page,
+    worklog_document,
+    write,
+)
 from tests.test_cli import logged_as
 from tests.test_observed import CONTROL, said
+from tests.test_people import (
+    ALEX,
+    ALEX_EXAMPLE,
+    ROBIN,
+    ROBIN_ALONE,
+    ROBIN_OTHER,
+    SAM_2,
+    SAM_3,
+    SAM_ALONE,
+    anchored,
+)
 from tests.test_question import read_until
 
 if TYPE_CHECKING:
@@ -272,6 +302,7 @@ def test_a_bug_in_the_database_s_use_is_not_taken_for_a_failure_to_write(
         data / "index.sqlite",
         data / "vectors.sqlite",
         data / "eval" / "indexes",
+        data / "aliases.toml",
         "tiny",
         "sections",
         None,
@@ -381,11 +412,11 @@ def people(data: Path) -> Path:
     ("filters", "expected"),
     [
         (Filters(issue_type="Bug"), ["PROJ-1"]),
-        (Filters(author="Bo Sample"), ["196845", "PROJ-1"]),
-        (Filters(assignee="Ada Example"), ["PROJ-1", "PROJ-3"]),
+        (Filters(author=anchored("name\nbo sample")), ["196845", "PROJ-1"]),
+        (Filters(assignee=anchored("name\nada example")), ["PROJ-1", "PROJ-3"]),
         (Filters(created_after=CREATED), ["PROJ-1", "PROJ-3"]),
         (Filters(created_before=CREATED), ["196845", "PROJ-2"]),
-        (Filters(author="Ada Example", created_after=CREATED), []),
+        (Filters(author=anchored("name\nada example"), created_after=CREATED), []),
     ],
 )
 def test_people_and_the_created_range_narrow_each_list(
@@ -393,7 +424,8 @@ def test_people_and_the_created_range_narrow_each_list(
 ) -> None:
     """A listing, a search by words and a page of the newest narrow alike.
 
-    created_after keeps a document created at that moment; created_before does not.
+    A person by their id, as plan 043 gives it: these, by name alone. created_after
+    keeps a document created at that moment; created_before does not.
     """
     paths = {location(front): front.key or front.id for front in PEOPLE}
     with reading(people) as reader:
@@ -545,11 +577,258 @@ def test_links_and_participants_read_back_and_participants_are_rows_of_people(
     assert fronts == dict(zip(paths, (MEETING, TRANSCRIPT), strict=True))
 
 
-@pytest.mark.parametrize("schema", ["1", "2", "3", "4"])
+@pytest.fixture
+def persons(data: Path) -> Path:
+    """Index PERSONS, the made-up people of three sources; give the index's path."""
+    for front in PERSONS:
+        write(data / "docs", front)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    return data / "index.sqlite"
+
+
+# The persons of PERSONS, by id, each named and spelt as plan 043's rules give them by
+# hand. Robin's account is named as on PAY-1, its newest document; a name alone, by its
+# spellings' first in the order of the files, all being as frequent: the review's Alex
+# Example, the stand-up's Sam Sample.
+ROBIN_SPELT = (
+    Spelling("Robin", "robin", "meeting"),
+    Spelling("Robin Example", "robin example", "account"),
+    Spelling("Robin Example", "robin example", "name"),
+    Spelling("Robin Sample", "robin sample", "account"),
+    Spelling("robin  EXAMPLE", "robin example", "name"),
+)
+JOINED = {
+    ROBIN: ("Robin Sample", ROBIN_SPELT),
+    SAM_2: ("Sam Sample", (Spelling("Sam Sample", "sam sample", "account"),)),
+    SAM_3: ("Sam Sample", (Spelling("Sam Sample", "sam sample", "account"),)),
+    SAM_ALONE: (
+        "Sam Sample",
+        (Spelling("Sam", "sam", "meeting"), Spelling("Sam Sample", "sam sample", "name")),
+    ),
+    ALEX_EXAMPLE: (
+        "Alex Example",
+        (
+            Spelling("Alex", "alex", "meeting"),
+            Spelling("Alex Example", "alex example", "name"),
+            Spelling("Alex Example (not in the header)", "alex example", "name"),
+        ),
+    ),
+    ALEX: ("Alex", (Spelling("Alex", "alex", "name"),)),
+    ROBIN_ALONE: ("Robin", (Spelling("Robin", "robin", "name"),)),
+    ROBIN_OTHER: ("Robin Other", (Spelling("Robin Other", "robin other", "name"),)),
+}
+# The person of each document's people, by the document's key or id and the name.
+PERSON_OF = {
+    ("300001", "Robin Example"): ROBIN,
+    ("PAY-1", "Sam Sample"): SAM_2,
+    ("PAY-1", "Robin Sample"): ROBIN,
+    ("PAY-2", "Sam Sample"): SAM_3,
+    ("PAY-2", "Robin Example"): ROBIN,
+    ("m-20261020-planning", "Robin Example"): ROBIN,
+    ("m-20261020-planning", "Robin Other"): ROBIN_OTHER,
+    ("m-20261020-review", "Robin Example"): ROBIN,
+    ("m-20261020-review", "Alex Example"): ALEX_EXAMPLE,
+    ("m-20261020-stand-up", "robin  EXAMPLE"): ROBIN,
+    ("m-20261020-stand-up", "Sam Sample"): SAM_ALONE,  # of two accounts' name: none
+    ("m-20261020-stand-up", "Alex Example (not in the header)"): ALEX_EXAMPLE,
+    ("t-20261020-1", "Robin"): ROBIN,  # by the review
+    ("t-20261020-1", "Alex"): ALEX_EXAMPLE,  # by the review
+    ("t-20261020-2", "Robin"): ROBIN_ALONE,  # the planning has two Robins: none
+    ("t-20261020-3", "Sam"): SAM_ALONE,  # by the stand-up
+    ("t-20261021-1", "Robin"): ROBIN_ALONE,
+    ("t-20261021-1", "Alex"): ALEX,
+    ("t-20261021-2", "Alex"): ALEX,
+}
+
+
+def joined_rows(
+    index: Path,
+) -> tuple[list[tuple[str, ...]], list[tuple[str, ...]], dict[tuple[str, str], str]]:
+    """Read the index's persons and their names, in order, and each person of people.
+
+    The people's by their document's key or id and their name, as PERSON_OF has them.
+    """
+    with closing(sqlite3.connect(index)) as connection:
+        persons = connection.execute("SELECT id, name FROM persons ORDER BY id").fetchall()
+        names = connection.execute(
+            "SELECT person, name, key, joined FROM person_names ORDER BY 1, 2, 3, 4"
+        ).fetchall()
+        people = connection.execute(
+            "SELECT coalesce(d.key, d.id), p.name, p.person"
+            " FROM people p JOIN documents d ON d.rowid = p.document"
+        ).fetchall()
+    return persons, names, {(document, name): person for document, name, person in people}
+
+
+def test_every_row_of_people_has_its_person_as_the_rules_join_them(persons: Path) -> None:
+    """Plan 043, criteria 2 and 4, through the index: no row of people is left without one.
+
+    Each person once, with the name it is served by, and each spelling with how it joined.
+    """
+    with closing(sqlite3.connect(persons)) as connection:
+        rows = connection.execute("SELECT count(*), count(person) FROM people").fetchone()
+    assert rows == (len(PERSON_OF) + 1, len(PERSON_OF) + 1)  # a row per comment of PAY-2's
+    held, names, person_of = joined_rows(persons)
+    assert held == [(person, name) for person, (name, _) in sorted(JOINED.items())]
+    assert names == [
+        (person, spelling.name, spelling.key, spelling.how)
+        for person, (_, spellings) in sorted(JOINED.items())
+        for spelling in spellings
+    ]
+    assert person_of == PERSON_OF
+
+
+def test_the_report_counts_the_persons_and_gives_what_the_join_left_apart(data: Path) -> None:
+    """Two names could be several persons; without aliases, none is unused."""
+    for front in PERSONS:
+        write(data / "docs", front)
+    report = build_index(data / "docs", data / "index.sqlite", MOMENT)
+    assert report.persons == Outcome(
+        len(JOINED),
+        (
+            Ambiguity("Robin", frozenset({ROBIN, ROBIN_OTHER})),
+            Ambiguity("Sam Sample", frozenset({SAM_2, SAM_3})),
+        ),
+        (),
+    )
+
+
+def test_aliases_join_names_alone_and_one_that_changes_nothing_is_reported(data: Path) -> None:
+    """With the alias of Robin to Robin Example, every Robin without an account is Robin's.
+
+    The planning's Robin is no longer ambiguous, and Robin by name alone is gone; an
+    alias whose key no name holds changes nothing, and is given back.
+    """
+    for front in PERSONS:
+        write(data / "docs", front)
+    aliases = {"Robin": "Robin Example", "Jo Placeholder": "Robin Example"}
+    report = build_index(data / "docs", data / "index.sqlite", MOMENT, aliases=aliases)
+    assert report.persons.count == len(JOINED) - 1
+    assert [ambiguity.name for ambiguity in report.persons.ambiguous] == ["Sam Sample"]
+    unused = [(alias.name, alias.reason) for alias in report.persons.unused]
+    assert unused == [("Jo Placeholder", UNHELD)]
+    held, names, person_of = joined_rows(data / "index.sqlite")
+    assert ROBIN_ALONE not in {person for person, _ in held}
+    assert (ROBIN, "Robin", "robin", "alias") in names
+    assert person_of == PERSON_OF | {
+        ("t-20261020-2", "Robin"): ROBIN,
+        ("t-20261021-1", "Robin"): ROBIN,
+        ("t-20261020-1", "Robin"): ROBIN,
+    }
+
+
+def test_a_transcript_s_meeting_is_of_the_work_log_alone(data: Path) -> None:
+    """A page whose id is the review's is not the review: its Robin Third makes no Robin."""
+    for front in PERSONS:
+        write(data / "docs", front)
+    namesake = page(
+        "m-20261020-review",
+        "Review",
+        people=(PersonRole(role="author", name="Robin Third", account="acct-0004"),),
+    )
+    write(data / "docs", namesake)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    assert joined_rows(data / "index.sqlite")[2][("t-20261020-1", "Robin")] == ROBIN
+
+
+def test_a_transcript_s_summary_of_no_meeting_names_no_meeting(data: Path) -> None:
+    """Two transcripts whose summaries link each other, as a hand-edited mirror may.
+
+    Neither link names a meeting: the build completes, and their speakers are persons by
+    name alone, as in a transcript that links nothing.
+    """
+    for front in PERSONS:
+        write(data / "docs", front)
+    write(
+        data / "docs",
+        worklog_document("transcript", "t-20261022-1", "Loop", ("Alex",), "t-20261022-2"),
+    )
+    write(
+        data / "docs",
+        worklog_document("transcript", "t-20261022-2", "Loop", ("Alex",), "t-20261022-1"),
+    )
+    report = build_index(data / "docs", data / "index.sqlite", MOMENT)
+    assert report.skipped == []
+    assert joined_rows(data / "index.sqlite")[2] == PERSON_OF | {
+        ("t-20261022-1", "Alex"): ALEX,
+        ("t-20261022-2", "Alex"): ALEX,
+    }
+
+
+def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
+    persons: Path,
+) -> None:
+    """The join reads each transcript's links, then each meeting by its key.
+
+    Its work then grows with the links, where a search of a source's documents for each
+    of a source's documents grows with their square: a build of 20,000 issues took
+    tens of seconds so.
+    """
+    with closing(sqlite3.connect(persons)) as connection:
+        plan = connection.execute(f"EXPLAIN QUERY PLAN {sqlite_index.SUMMARIES}").fetchall()
+    steps = [row[3] for row in plan]
+    meeting = [step for step in steps if step.startswith(("SCAN m", "SEARCH m "))]
+    assert len(meeting) == 1
+    assert meeting[0].startswith("SEARCH m USING ")
+    assert meeting[0].endswith("(source=? AND id=?)")
+
+
+def test_a_person_is_found_by_the_key_of_any_of_its_names(persons: Path) -> None:
+    """Every person holding the key, in order; none for a key that no one holds.
+
+    Given how a name joined, those of the names that joined so alone.
+    """
+    with reading(persons) as reader:
+        assert reader.persons("sam sample") == sorted([SAM_2, SAM_3, SAM_ALONE])
+        assert reader.persons("robin") == sorted([ROBIN, ROBIN_ALONE])
+        assert reader.persons("robin example") == [ROBIN]  # of three spellings, once
+        assert reader.persons("Robin Sample") == []  # a name, not its key
+        assert reader.persons("nobody") == []
+        assert reader.persons("sam sample", "account") == sorted([SAM_2, SAM_3])
+        assert reader.persons("robin", "account") == []  # by meeting and by name alone
+
+
+def test_a_person_s_documents_are_counted_by_role_and_by_source(persons: Path) -> None:
+    """Robin: a page authored, an issue created, one commented, four meetings attended.
+
+    The most first, ties by name; the newest of them is PAY-1. An id that no person has
+    gives none.
+    """
+    with reading(persons) as reader:
+        robin = reader.person(ROBIN)
+        assert reader.person("p-0123456789abcdef") is None
+    assert robin is not None
+    assert robin.person == Person(ROBIN, "Robin Sample", ROBIN_SPELT)
+    assert list(robin.roles.items()) == [
+        ("participant", 4),
+        ("author", 1),
+        ("commenter", 1),
+        ("creator", 1),
+    ]
+    assert list(robin.sources.items()) == [("worklog", 4), ("jira", 2), ("confluence", 1)]
+    assert robin.last == MOMENT + timedelta(days=1)
+
+
+def test_a_rebuild_embeds_nothing_with_or_without_new_aliases(data: Path) -> None:
+    """Plan 043, criterion 4: persons are not embedded, so aliases that move names embed none."""
+    for front in PERSONS:
+        write(data / "docs", front)
+    embedding = Embedding(tiny(), data / "v.db")
+    first = build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
+    again = build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
+    aliased = build_index(
+        data / "docs", data / "index.sqlite", MOMENT, embedding, {"Robin": "Robin Example"}
+    )
+    assert first.embedded > 0
+    assert (again.embedded, aliased.embedded) == (0, 0)
+    assert (again.persons.count, aliased.persons.count) == (len(JOINED), len(JOINED) - 1)
+
+
+@pytest.mark.parametrize("schema", ["1", "2", "3", "4", "5"])
 def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     data: Path, schema: str
 ) -> None:
-    """An index of plan 006, or built before the build id, people or links: never half read.
+    """An index of plan 006, or built before the build id, people, links or persons.
 
     The commands named write the mirror's files before the index, as 041 changed them:
     ``sync``, which runs only the sources configured, else ``mirror`` then ``index``.

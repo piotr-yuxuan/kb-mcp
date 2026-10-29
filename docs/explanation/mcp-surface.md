@@ -14,7 +14,12 @@ build a few that each do one thing an agent needs, rather than wrap every endpoi
 to give them names and descriptions that say when to use which ([tools-post]). So `ask`
 is a tool beside `search`, not an option of it: `search` navigates and keeps its
 contract, `ask` hands over the evidence in one call. A passage mode inside `search`
-would have given it two shapes of answer and arguments idle in each.
+would have given it two shapes of answer and arguments idle in each. Tools follow kinds
+of question, so a person is a filter, plan 043's choice: "what has this person done" is
+a search narrowed to them, as one narrowed to a project is, and the filter combines
+with words, sources and dates. Its key and line cost 58 estimated tokens on every
+request, in the schemas of `search` and `ask`; a tool `person` would cost about 250,
+and take no words.
 
 **Agents choose by name and description.** Claude Code shows a server's tools to the
 model by their names and descriptions ([cc-mcp]), so each description is its method's
@@ -32,7 +37,7 @@ to the model.
 **A standing cost kept low**, a practice of this project's own. The instructions and the tool listing travel with every
 request. Older versions of Claude Code keep 2,048 characters of a server's
 instructions, so they stay within that, the key words first; with the listing, they
-stay within 2,500 estimated tokens, measured by the tests over stdio. `filters` stay on
+stay within 2,600 estimated tokens, measured by the tests over stdio. `filters` stay on
 `ask`, so that a question about one space takes one call.
 
 **Answers within a budget, and continued**, plan 006's own practice. Every answer fits 4,000 estimated tokens at

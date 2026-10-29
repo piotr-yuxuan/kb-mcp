@@ -18,7 +18,9 @@ from atlassian_offline_mcp.search.app.indexing import Embedding, build_index
 from atlassian_offline_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, built, continuation, estimate, follow, parts
 from tests.endpoint import connector, tiny
-from tests.mirrors import MOMENT, PEOPLE, fillers, issue, page, write
+from tests.mirrors import MOMENT, PEOPLE, PERSONS, fillers, issue, page, write
+from tests.test_people import ROBIN
+from tests.test_tools import ROBIN_DOCUMENTS
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -237,6 +239,7 @@ def test_an_issue_key_in_the_question_puts_its_issue_first(words: Library) -> No
     [
         ({"spaec": "ENG"}, "filters: no spaec"),
         ({"space": "NOPE"}, "space: no document has"),
+        ({"person": "nobody"}, "person: no document has"),
         ({"updated_after": "yesterday"}, "updated_after: an ISO 8601 date"),
     ],
 )
@@ -275,6 +278,30 @@ def test_people_and_created_dates_narrow_as_search_s_do(
     people = built(tmp_path, [(front, None) for front in PEOPLE])
     found = passages(people.ask("which broker?", filters=filters))
     assert sorted(each["ref"] for each in found) == expected
+
+
+@pytest.mark.parametrize("value", ["robin example", "Robin Sample", ROBIN])
+def test_a_person_narrows_the_passages_as_search_s_filter_does(tmp_path: Path, value: str) -> None:
+    """Plan 043, criterion 6: Robin's documents of three sources, by any name or the id."""
+    persons = built(tmp_path, [(front, None) for front in PERSONS])
+    found = passages(persons.ask("lorem ipsum?", filters={"person": value}))
+    assert sorted(each["ref"] for each in found) == ROBIN_DOCUMENTS
+
+
+def test_a_person_s_passages_open_as_search_s_hits_do_and_name_their_roles(
+    tmp_path: Path,
+) -> None:
+    """Plan 043: the person as search gives them, then Robin's roles ending each first line."""
+    persons = built(tmp_path, [(front, None) for front in PERSONS])
+    answer = persons.ask("ledger", filters={"person": "Robin Sample"})
+    searched = persons.search(filters={"person": "Robin Sample"}, sort="updated")
+    header = parts(searched)[1].partition("\n\n")[0]
+    assert parts(answer)[1].startswith(f"{header}\n\n1. ")
+    assert {each["ref"]: each["facts"].rpartition(" | ")[2] for each in passages(answer)} == {
+        "300001": "Robin Sample: author",
+        "PAY-1": "Robin Sample: creator",
+        "PAY-2": "Robin Sample: commenter 2 (last 2026-10-20)",
+    }
 
 
 def test_a_passage_s_first_line_ends_with_who_and_when(tmp_path: Path) -> None:
