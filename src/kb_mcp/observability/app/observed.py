@@ -12,17 +12,19 @@ import importlib
 import logging
 import secrets
 import time
+from collections.abc import Mapping
 from contextlib import ExitStack, contextmanager, nullcontext
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from importlib.metadata import version
 from typing import TYPE_CHECKING
 
 import structlog
 from opentelemetry import metrics, trace
+from pydantic import ConfigDict, Field
 from rich.console import Console
 
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters import progress
 from kb_mcp.observability.adapters.display import Bars, ConsoleLines
 from kb_mcp.observability.adapters.logs import (
@@ -33,7 +35,7 @@ from kb_mcp.observability.adapters.logs import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterator
     from pathlib import Path
 
     from kb_mcp.kernel.output import Output
@@ -49,8 +51,7 @@ RUN_DURATION = metrics.get_meter(__name__).create_histogram(
 )
 
 
-@dataclass(frozen=True)
-class Invocation:
+class Invocation(Record):
     """What a run is asked to do: its command, by name, and what ``run.start`` says of it.
 
     ``described`` holds the command line's fields, such as the arguments and the
@@ -61,15 +62,16 @@ class Invocation:
     """
 
     command: str
-    described: Mapping[str, object] = field(default_factory=dict)
+    described: Mapping[str, object] = Field(default_factory=dict)
     dry_run: bool = False
     traced: bool = True
     commands: frozenset[str] = frozenset()
 
 
-@dataclass
-class Run:
+class Run(Record):
     """A run that ``observed`` watches: its id, and the exit status its body sets before it ends."""
+
+    model_config = ConfigDict(frozen=False)
 
     id: str
     status: int = ExitStatus.OK

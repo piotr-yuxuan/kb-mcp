@@ -9,11 +9,11 @@ from __future__ import annotations
 import logging
 import sys
 import traceback
-from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, override
 
 import structlog
+from pydantic import ConfigDict
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -26,6 +26,7 @@ from rich.progress import (
 from rich.table import Column
 from rich.text import Text
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.logs import SDK, SHARED
 from kb_mcp.observability.adapters.progress import Bar, Display
 from kb_mcp.observability.domain.inert_text import printable
@@ -109,20 +110,19 @@ class Remaining(ProgressColumn):
         return Text(shown, style="progress.remaining")
 
 
-@dataclass(frozen=True)
-class TaskBar(Bar):
+class TaskBar(Record):
     """A task's line among the bars, from its start to its end."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     progress: Progress
     id: TaskID
 
-    @override
     def show(self, done: int, item: str) -> None:
         """Show the items done, and the item that the task is at, inert on one line."""
         width = self.progress.console.width
         self.progress.update(self.id, completed=done, item=printable(item, width=width))
 
-    @override
     def close(self) -> None:
         """Draw the task's line once more, then take it away, and the bars with the last."""
         self.progress.refresh()
