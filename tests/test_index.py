@@ -34,6 +34,7 @@ from tests.mirrors import (
     issue,
     location,
     page,
+    worklog_document,
     write,
 )
 from tests.test_cli import logged_as
@@ -719,6 +720,48 @@ def test_a_transcript_s_meeting_is_of_the_work_log_alone(data: Path) -> None:
     write(data / "docs", namesake)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     assert joined_rows(data / "index.sqlite")[2][("t-20261020-1", "Robin")] == ROBIN
+
+
+def test_a_transcript_s_summary_of_no_meeting_names_no_meeting(data: Path) -> None:
+    """Two transcripts whose summaries link each other, as a hand-edited mirror may.
+
+    Neither link names a meeting: the build completes, and their speakers are persons by
+    name alone, as in a transcript that links nothing.
+    """
+    for front in PERSONS:
+        write(data / "docs", front)
+    write(
+        data / "docs",
+        worklog_document("transcript", "t-20261022-1", "Loop", ("Alex",), "t-20261022-2"),
+    )
+    write(
+        data / "docs",
+        worklog_document("transcript", "t-20261022-2", "Loop", ("Alex",), "t-20261022-1"),
+    )
+    report = build_index(data / "docs", data / "index.sqlite", MOMENT)
+    assert report.skipped == []
+    assert joined_rows(data / "index.sqlite")[2] == PERSON_OF | {
+        ("t-20261022-1", "Alex"): ALEX,
+        ("t-20261022-2", "Alex"): ALEX,
+    }
+
+
+def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
+    persons: Path,
+) -> None:
+    """The join reads each transcript's links, then each meeting by its key.
+
+    Its work then grows with the links, where a search of a source's documents for each
+    of a source's documents grows with their square: a build of 20,000 issues took
+    tens of seconds so.
+    """
+    with closing(sqlite3.connect(persons)) as connection:
+        plan = connection.execute(f"EXPLAIN QUERY PLAN {sqlite_index.SUMMARIES}").fetchall()
+    steps = [row[3] for row in plan]
+    meeting = [step for step in steps if step.startswith(("SCAN m", "SEARCH m "))]
+    assert len(meeting) == 1
+    assert meeting[0].startswith("SEARCH m USING ")
+    assert meeting[0].endswith("(source=? AND id=?)")
 
 
 def test_a_person_is_found_by_the_key_of_any_of_its_names(persons: Path) -> None:

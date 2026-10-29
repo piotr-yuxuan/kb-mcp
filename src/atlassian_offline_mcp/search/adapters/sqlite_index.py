@@ -201,15 +201,19 @@ ORDER BY s.number
 # What ``reading`` checks before it reads an index.
 META = "SELECT name, value FROM meta WHERE name IN ('schema', 'chunking')"
 # What the join reads: each row of people, with when its document was updated; and each
-# transcript's meetings, as its summary links name them, by rowid.
+# transcript's meetings, as its summary links name them, by rowid. A link to anything
+# but a meeting names none, as a file edited by hand may hold. CROSS JOIN keeps SQLite's
+# order, each transcript, its links, then the meeting by its source and id, so that the
+# work grows with the links, not with the square of one source's documents.
 PEOPLE_ROWS = """
 SELECT p.rowid, p.document, p.role, p.name, p.account, d.updated
 FROM people p JOIN documents d ON d.rowid = p.document
 """
 SUMMARIES = """
-SELECT t.rowid, m.rowid FROM documents t, json_each(t.links) l
-JOIN documents m ON m.source = t.source AND m.id = json_extract(l.value, '$.ref')
-WHERE json_extract(l.value, '$.relation') = 'summary'
+SELECT t.rowid, m.rowid
+FROM documents t CROSS JOIN json_each(t.links) l CROSS JOIN documents m
+WHERE t.type = 'transcript' AND json_extract(l.value, '$.relation') = 'summary'
+  AND m.source = t.source AND m.id = json_extract(l.value, '$.ref') AND m.type = 'meeting'
 """
 # A person's documents per role, then per source with the newest update, the most first.
 PERSON_ROLES = """
@@ -406,7 +410,8 @@ class Writer:
 
         Once the last document is added: every row of ``people`` is given its person, and
         ``persons`` and ``person_names`` hold each person and each of its spellings, with
-        how it joined. A transcript's meetings are those that its ``summary`` links name.
+        how it joined. A transcript's meetings are the meetings that its ``summary`` links
+        name: no other document, so that each is joined before the transcript.
         ``aliases`` gives each alias's name and target, as the alias file's reader checks
         them. Give back how many persons there are, and what the join left apart: the
         names that could be several persons, and the aliases that changed nothing.
