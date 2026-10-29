@@ -13,7 +13,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Literal
 
 from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY, RefusedError, require
-from kb_mcp.sources.atlassian.domain.period import EPOCH, Period
+from kb_mcp.sources.atlassian.domain.period import EPOCH, FIRST_FETCH, Period
 
 # The rule of a target's key, by source.
 KEYS = {"confluence": SPACE_KEY, "jira": PROJECT_KEY}
@@ -28,8 +28,6 @@ type Reason = Literal["given", "since the last fetch", "covered start", "first f
 # and an issue saved while its search pages through moves in it. A day survives a laptop's
 # clock off after sleep; it costs no request, since the search reads whole days.
 CATCH_UP_MARGIN = timedelta(days=1)
-# How far back a target never covered starts without --since.
-FIRST_FETCH = timedelta(days=7)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -150,17 +148,4 @@ def window(
     return Window(Period(start, end), reason)
 
 
-def period_rule(*, since: bool) -> str:
-    """Say in words where a run's windows start, with --since given or not.
-
-    Said before a run, which reads no store yet: the rule, not each target's window.
-    """
-    if since:
-        return "period: from --since"
-    return (
-        "period: since each target's last fetch;"
-        f" the last {FIRST_FETCH.days} days for one never fetched"
-    )
-
-
-__all__ = ["EPOCH", "Coverage", "Extension", "Target", "Window", "period_rule", "window"]
+__all__ = ["EPOCH", "Coverage", "Extension", "Target", "Window", "window"]

@@ -22,6 +22,8 @@ EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 # The longest length of time read: a hundred years, far past the epoch, never past the
 # calendar.
 LONGEST = timedelta(days=100 * 365)
+# How far back a target never covered starts without --since.
+FIRST_FETCH = timedelta(days=7)
 
 
 class PeriodError(ValueError):
@@ -73,3 +75,16 @@ def period(since: str, until: str | None, now: datetime) -> Period:
     """Read ``--since`` and ``--until``; without ``--until`` the period ends now."""
     end = now if until is None else moment(until, now, "--until")
     return Period(moment(since, now, "--since"), end)
+
+
+def period_rule(*, since: bool) -> str:
+    """Say in words where a run's windows start, with --since given or not.
+
+    Said before a run, which reads no store yet: the rule, not each target's window.
+    """
+    if since:
+        return "period: from --since"
+    return (
+        "period: since each target's last fetch;"
+        f" the last {FIRST_FETCH.days} days for one never fetched"
+    )
