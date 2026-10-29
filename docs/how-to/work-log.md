@@ -151,9 +151,11 @@ Dates, as `created` and `updated`:
 - A day, a meeting and a transcript: when it happened. A day at its date's midnight; a
   transcript at its first turn's time, when it reads strictly as `HH:MM` or `HH:MM:SS`,
   else at its earliest timestamp on its day, else at its day's midnight; a meeting when
-  its transcript starts, else at its day's midnight. Times are read as written, as UTC,
-  as org's timestamps are: a caption tool that writes an offset from the start, `00:05`,
-  dates its transcript at five past midnight.
+  its transcript starts on the meeting's day, else at its day's midnight. A meeting
+  copied with its link to another day's transcript, as a recurring meeting may be,
+  keeps the link and its own day, and that transcript names both meetings. Times are
+  read as written, as UTC, as org's timestamps are: a caption tool that writes an
+  offset from the start, `00:05`, dates its transcript at five past midnight.
 
 A document whose text did not change is not converted again, and an entry's file keeps
 its dates, so an edit to one entry moves no other. A day's, a meeting's and a dated

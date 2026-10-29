@@ -1276,6 +1276,23 @@ def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
         assert (meeting.links, meeting.start, named) == ((), TUESDAY, [unlinked])
 
 
+def test_a_meeting_linking_another_day_s_transcript_starts_at_its_own_day() -> None:
+    """A recurring meeting's heading copied with its link: the link kept, the date its day's."""
+    (record,), _ = transcripts([transcript("2026-10-21 Wed/1.org")], archives=True)
+    record = dataclasses.replace(record, start=datetime(2026, 10, 21, 9, tzinfo=UTC))
+    text = "".join(
+        f"** {day}\n*** Weekly sync\n:PROPERTIES:\n"
+        ":MEETING: [[./transcripts/2026-10-21 Wed/1.org]]\n:END:\n"
+        for day in ("<2026-10-21 Wed>", "<2026-10-28 Wed>")
+    )
+    found, _ = journal(todo(f"* Entries\n{text}"), None, archives=True, transcripts=[record])
+    linked = (("transcript", record.id),)
+    assert [(each.id, each.start, each.links) for each in found if each.type == "meeting"] == [
+        ("m-20261021-weekly-sync", record.start, linked),
+        ("m-20261028-weekly-sync", datetime(2026, 10, 28, tzinfo=UTC), linked),
+    ]
+
+
 def test_only_a_meeting_s_link_that_reaches_nothing_is_returned_in_meetings_order() -> None:
     """Not a meeting without :MEETING:, nor one archived and left out; days in their order."""
     text = (

@@ -328,7 +328,9 @@ afresh at each run
   beginning or ending with `/`, or one whose keyword `todo.org` does not declare, joins
   none, its pieces staying in the day. Times are read as written, as UTC: a caption
   tool that writes an offset from the start, `00:05`, dates its transcript at five past
-  midnight. In a transcript without quote blocks, a line of prose such as
+  midnight. A meeting copied with its link to another day's transcript, as a recurring
+  one may be, keeps the link, so that the transcript names two meetings, but its own
+  day's date. In a transcript without quote blocks, a line of prose such as
   `Decision: we wait` reads as a speaker. A meeting's names and its transcript's
   speakers stay apart, as written: `Kim` and `Kim (not in the header)` are two names to
   the filter, until a person index joins them. The dates and links of

@@ -230,8 +230,8 @@ class Meeting:
 
     ``link`` is its ``:MEETING:`` as written; ``file``, the file that it names, from the
     work log's folder, or None; ``transcript``, that file's when read; ``start``, when
-    that transcript starts, else the day. ``added`` are the lines of the archived
-    headings that join it.
+    that transcript starts if on the meeting's day, else the day. ``added`` are the
+    lines of the archived headings that join it.
     """
 
     part: Part
@@ -254,7 +254,10 @@ class Meeting:
         file = None if target is None else part.source.path.parent / target
         transcript = None if file is None else transcripts.get(file)
         start = None if transcript is None else transcript.start
-        return cls(part, link, file, transcript, start or day)
+        # A transcript of another day, such as a recurring meeting's link copied with its
+        # heading, is linked but dates nothing: the meeting is its day's.
+        today = start is not None and start.date() == day.date()
+        return cls(part, link, file, transcript, start if today else day)
 
 
 @dataclass
@@ -367,9 +370,10 @@ def days_and_meetings(
     title of the day. Each document begins at level 1, what joins it at level 2.
 
     A meeting links to the transcript whose file its ``:MEETING:`` names, from the folder
-    of the file that holds it, and starts when that transcript starts, else at its day;
-    its id is as ``meeting_ids`` gives it. Labels: tags, ``#+FILETAGS`` and ARCHIVE when
-    it is archived; a day is archived when one of its headings is, or it has none.
+    of the file that holds it, and starts when that transcript starts on the meeting's
+    day, else at its day; its id is as ``meeting_ids`` gives it. Labels: tags,
+    ``#+FILETAGS`` and ARCHIVE when it is archived; a day is archived when one of its
+    headings is, or it has none.
 
     Also returned, in the order of the meetings, each whose ``:MEETING:`` links no
     transcript: by the file that it names, from the work log's folder, when it is a link

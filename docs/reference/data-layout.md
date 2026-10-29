@@ -547,12 +547,12 @@ problem (a file not read, a conversion that failed) removes none of its files.
   transcript's, which come from the work log as read at each run, so that a transcript
   read since dates its meeting.
 - `created` and `updated` are a day's date at midnight UTC; a meeting's start, its
-  transcript's, else its day's; a dated transcript's start, its first turn's time when
-  it reads strictly as `HH:MM` or `HH:MM:SS`, else its earliest timestamp on its day,
-  else its day at midnight, read as written in UTC; else the earliest and latest
-  timestamps of the document's lines, as written, up to its file's modification time, a
-  later one being a plan; else, without any, the modification time, `created` keeping
-  an existing file's.
+  transcript's when that is on the meeting's day, else its day's; a dated transcript's
+  start, its first turn's time when it reads strictly as `HH:MM` or `HH:MM:SS`, else
+  its earliest timestamp on its day, else its day at midnight, read as written in UTC;
+  else the earliest and latest timestamps of the document's lines, as written, up to its
+  file's modification time, a later one being a plan; else, without any, the
+  modification time, `created` keeping an existing file's.
 - The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
   and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
   file, `transcripts/archive/`, `meetings/archive/` and subtrees tagged `ARCHIVE` are
