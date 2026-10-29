@@ -151,17 +151,18 @@ site says they are two. A name without an account goes, by the first rule that a
 ([`RULES`](../../src/atlassian_offline_mcp/search/domain/people.py)), to the person
 that the user's alias names; to the one account with a name of its key; for a
 transcript's speaker, to the one participant of the meetings that the transcript links
-to whose name begins with the speaker's word
+to whose name's first word is the speaker's, whole
 ([`by_meeting`](../../src/atlassian_offline_mcp/search/domain/people.py)), "Sam" to the
-stand-up's "Sam Sample"; else it is a person by name alone, one for every name of its
-key. A key leaves out case, accents, runs of spaces and a trailing part in brackets
+stand-up's "Sam Sample", but "Rob" to no "Robin Example"; else it is a person by name
+alone, one for every name of its key. A key leaves out case, accents, runs of spaces
+and a trailing part in brackets
 ([`name_key`](../../src/atlassian_offline_mcp/search/domain/people.py)), so that
 `Kim (not in the header)` is `Kim`, which plan 042 left to this join; but where two
 such parts tell names apart, `Alex (Ops)` and `Alex (Sales)`, the join keeps them
 ([`Joining.key`](../../src/atlassian_offline_mcp/search/domain/people.py)), as the
 user or the site wrote them apart. It cannot tell such a part from a note, so that two
 notes of one name part it too, and the build says so. A name that could be several
-persons, the name of two accounts, a speaker whose word begins two participants' names,
+persons, the name of two accounts, a speaker whose word is two participants' first,
 or one whose meeting names another than the one account of its name, is given to none of
 them, and the build says so, for the user to settle by an alias.
 

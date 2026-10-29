@@ -214,8 +214,8 @@ def test_by_name_joins_a_name_to_the_one_account_of_its_key() -> None:
     assert by_name(named(STAND_UP, "Alex Example"), joining) is None
 
 
-def test_by_meeting_joins_a_speaker_to_the_one_person_its_word_begins() -> None:
-    """Rule 4 alone: a one-word speaker, the first word of its meetings' participants.
+def test_by_meeting_joins_a_speaker_to_the_one_person_whose_first_word_it_is() -> None:
+    """Rule 4 alone: a one-word speaker, the whole first word of its meetings' participants.
 
     The participants' persons are given, as the other rules would have joined them: two
     participants of one person are one; two persons make the speaker ambiguous.
@@ -240,7 +240,19 @@ def test_by_meeting_joins_a_speaker_to_the_one_person_its_word_begins() -> None:
     )
     assert by_meeting(named(UNLINKED, "Robin"), joining) is None
     assert by_meeting(named(LINKED, "Example"), joining) is None  # not a first word
+    assert by_meeting(named(LINKED, "Rob"), joining) is None  # a first word's start alone
     assert by_meeting(named(LINKED, "Alex Example"), joining) is None  # not one word
+
+
+def test_a_speaker_whose_word_only_begins_a_participant_s_is_a_name_alone() -> None:
+    """Rob, in the review's transcript, is not its Robin Example: words compare whole.
+
+    Joining them would quote one colleague as another, as plan 043 rejects.
+    """
+    rob = anchored("name\nrob")
+    result = joined((*ROWS, named(LINKED, "Rob")), LINKS, {})
+    assert result.of[named(LINKED, "Rob")] == rob
+    assert Person(rob, "Rob", (Spelling("Rob", "rob", "name"),)) in result.persons
 
 
 def test_every_name_joins_its_person_as_the_rules_say() -> None:

@@ -261,8 +261,9 @@ one colleague is one person to an agent:
   `Kim (not in the header)` is `Kim`, but `Alex (Ops)` and `Alex (Sales)`, which the
   brackets tell apart, stay two, as do two notes of one name, `Kim (not in the header)`
   and `Kim (late)`, which the build warns of;
-- a speaker of one word, such as `Sam`, joined to the one participant whose name begins
-  with it, `Sam Sample`, among the meetings that link its transcript.
+- a speaker of one word, such as `Sam`, joined to the one participant whose name's
+  first word it is, whole, `Sam Sample` but not `Samuel Sample`, among the meetings
+  that link its transcript.
 
 The rest stays apart: a first name in a transcript that no meeting links, a nickname,
 `You` as the caption tool writes you, and two accounts of one name. A name that could

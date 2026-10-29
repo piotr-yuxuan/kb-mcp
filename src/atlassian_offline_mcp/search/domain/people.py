@@ -9,7 +9,7 @@ each row a person, by the first of these rules that answers:
    for a transcript's speaker whom rule 4 gives one other person;
 3. a name of the key of exactly one account's name joins that account's person;
 4. a transcript's speaker of one word joins the one person among its meetings'
-   participants whose key begins with that word;
+   participants whose key's first word, whole, is that word;
 5. any other name is a person by name alone, shared by every name of its key.
 
 A name that could be several persons, by rule 3 or 4, or a speaker whom they give
