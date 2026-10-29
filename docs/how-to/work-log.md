@@ -103,14 +103,16 @@ an `:ID:` (`M-x org-id-get-create` adds one). Two entries of one title and neith
 property may swap files when reordered.
 
 A day's id is `d-` and its date, `d-20261027`. A meeting's is `m-`, its day's date and
-its title's slug, `m-20261027-payments-stand-up`; a second meeting of one day and title
-takes `-2`, by start time, then in order. Archiving a day or a meeting keeps its id,
-but for two meetings of one day and one title: they swap ids when the order of their
-start times changes, or, neither with a transcript, the order in which they are read,
-`todo.org` first, then the archive in the order org appended to it. So archiving the
-first alone, or the second alone and its day later, swaps them, as does giving the
-first a transcript while the second has none. A distinct title avoids it. Renaming a
-meeting gives it a new id.
+its title's slug, `m-20261027-payments-stand-up`; a second meeting of one day and slug
+takes `--2`, by start time, then in order: two dashes, which no slug holds, so that
+`Stand-up 2`, `stand-up-2`, keeps its id beside two `Stand-up`. Archiving a day or a
+meeting keeps its id, but for two meetings of one day and one slug, such as two of one
+title, or `Réunion d'équipe` and `Reunion d'equipe`: they swap ids when the order of
+their start times changes, or, neither with a transcript, the order in which they are
+read, `todo.org` first, then the archive in the order org appended to it. So archiving
+the first alone, or the second alone and its day later, swaps them, as does giving the
+first a transcript while the second has none. A title of another slug avoids it.
+Renaming a meeting gives it a new id.
 
 A transcript's id is the day that begins its folder's name (or its own) and its name:
 `transcripts/current/2026-10-20 Tue/1.org` is `t-20261020-1`, kept when the file moves
@@ -182,7 +184,7 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
   was. An entry renamed without an `:ID:` takes a new id: its old file goes and a new one
   is written.
 - A day or a meeting archived keeps its id and its file, but for the swaps of two
-  meetings of one title above. A meeting renamed takes a new id, as an entry without
+  meetings of one slug above. A meeting renamed takes a new id, as an entry without
   `:ID:` does.
 - A transcript added, removed, or moved from the path that a `:MEETING:` names changes
   the links and dates of that meeting, whose file is written again without a

@@ -48,6 +48,9 @@ TRANSCRIBED = "transcript"
 SUMMARY = "summary"
 CURRENT = "current"
 DIGITS = 16
+# What comes between a meeting's id and its number: two dashes, which no slug holds, so
+# that a numbered id is never another title's, as Stand-up 2's is stand-up-2.
+NUMBERED = "--"
 # The date that begins a folder's or a file's name.
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 # The deepest level of a day's heading: 1, or 2 below the journal.
@@ -243,17 +246,16 @@ def meeting_ids(day: datetime, meetings: Sequence[tuple[str, datetime]]) -> list
 
     An id is ``m-``, the day as ``%Y%m%d``, ``-`` and the title's slug, else the first 16
     hex digits of the title's SHA-256. Of one id, the meetings are numbered from the
-    second, ``-2``, ``-3``, by start, then in the order given; a number that another
-    meeting's id already holds is passed over, so that no two ids are the same.
+    second, ``--2``, ``--3``, by start, then in the order given. No slug or digest holds
+    ``--``, so that the ids are distinct, and one title's never depend on another's.
     """
     bases = [f"m-{day:%Y%m%d}-{slug(title) or digest(title)}" for title, _ in meetings]
+    taken: Counter[str] = Counter()
     found: dict[int, str] = {}
     for index in sorted(range(len(meetings)), key=lambda index: (meetings[index][1], index)):
-        number, identifier = 1, bases[index]
-        while identifier in found.values():
-            number += 1
-            identifier = f"{bases[index]}-{number}"
-        found[index] = identifier
+        base = bases[index]
+        taken[base] += 1
+        found[index] = base if taken[base] == 1 else f"{base}{NUMBERED}{taken[base]}"
     return [found[index] for index in range(len(meetings))]
 
 

@@ -32,7 +32,8 @@ SITE_PATH = re.compile(r"/(?![/\\])[^\s\\\x00-\x1f\x7f]*")
 REVISION = re.compile(r"[0-9]{6}|[0-9]{8}T[0-9]{6}\.[0-9]{6}Z")
 # A work-log document's id, by its type: an entry's digest, numbered from the second
 # entry of one digest; a transcript's day and name, or its digest; a day's date; a
-# meeting's day and title's slug, numbered from the second meeting of one day and slug.
+# meeting's day and title's slug, numbered after -- from the second meeting of one day
+# and slug.
 WORKLOG_IDS = {
     "entry": re.compile(r"e-[0-9a-f]{16}(?:-[0-9]+)?"),
     "transcript": re.compile(r"t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})"),

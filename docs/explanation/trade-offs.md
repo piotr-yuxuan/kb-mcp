@@ -314,17 +314,18 @@ afresh at each run
   filters, `participant` and `created_after`
   ([`KEPT`](../../src/atlassian_offline_mcp/search/adapters/sqlite_index.py)).
 - **Cost.** A meeting renamed takes a new id, as an entry without `:ID:` does. Two
-  meetings of one day and one title swap ids when the order of their starts changes,
-  or, neither with a transcript, the order in which they are read: `todo.org` first,
-  then the archive in the order org appended to it, so that archiving the first alone,
-  or the second alone and then its day, swaps them; so does giving the first a
-  transcript while the second has none. A
-  top-level heading of any other purpose with a child titled by a date alone becomes a
-  journal, that child a day and its other children entries; the child joins the day of
-  its date that the journal's parts make, and the heading's title is lost: neither the
-  day's text nor its breadcrumb, which are its first part's, holds it, so that a search
-  for that title misses those notes. An archived heading joins its meeting by the
-  meeting's title as org writes it in `:ARCHIVE_OLPATH:`, whose `/` org does not escape
+  meetings of one day and one slug, such as two of one title, or `Réunion d'équipe` and
+  `Reunion d'equipe`, swap ids when the order of their starts changes, or, neither with
+  a transcript, the order in which they are read: `todo.org` first, then the archive
+  in the order org appended to it, so that archiving the first alone, or the second
+  alone and then its day, swaps them; so does giving the first a transcript while the
+  second has none. A top-level heading of any other purpose with a child titled by a
+  date alone becomes a journal, that child a day and its other children entries; the
+  child joins the day of its date that the journal's parts make, and the heading's title
+  is lost: neither the day's text nor its breadcrumb, which are its first part's, holds
+  it, so that a search for that title misses those notes. An archived heading joins its
+  meeting by the meeting's title as org writes it in `:ARCHIVE_OLPATH:`, whose `/` org
+  does not escape
   ([`Heading.outline_title`](../../src/atlassian_offline_mcp/sources/worklog/domain/org.py)):
   the longest title of the day that begins the path wins, but the day keeps a piece of
   one of two meetings of that title, which the path names alike; a title holding `//`,
@@ -355,13 +356,15 @@ afresh at each run
   an issue with those links 4,318, so backlinks for issue keys will need a budget of
   their own.
 - **Rejected.** The journal by its name. A second heading of one date numbered `-2`,
-  whose id archiving the first part would move. A meeting's id from its `:ID:`, which
-  survives a rename and the swaps above, but needs one in every meeting, which org does
-  not add by itself. A meeting's id from the file name that its `:MEETING:` gives.
-  Relations between a day and its meetings, whose breadcrumb and id already name the
-  day; a side table of links, and "Linked from" in `read`; participants joined across
-  documents, left to plan 043; a filter by type, which `source` with a participant or a
-  date already narrows.
+  whose id archiving the first part would move. A second meeting of one slug numbered
+  `-2`, which a title such as `Stand-up 2` holds already, so that passing over it tied
+  the ids of two titles: the number follows `--`, which no slug holds. A meeting's id
+  from its `:ID:`, which survives a rename and the swaps above, but needs one in every
+  meeting, which org does not add by itself. A meeting's id from the file name that its
+  `:MEETING:` gives. Relations between a day and its meetings, whose breadcrumb and id
+  already name the day; a side table of links, and "Linked from" in `read`; participants
+  joined across documents, left to plan 043; a filter by type, which `source` with a
+  participant or a date already narrows.
 - **Settled** by [plan
   042](../work/plans/042-work-log-days-and-meetings.md#days-and-meetings-the-rule), on
   the maintainer's feedback, its questions answered by their defaults when the

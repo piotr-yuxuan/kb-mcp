@@ -76,7 +76,7 @@ TRANSCRIPTS = [
 DAYS = ["d-20261026", "d-20261027"]
 MEETINGS = {
     "m-20261026-one-to-one": "One-to-one",
-    "m-20261026-one-to-one-2": "One-to-one",
+    "m-20261026-one-to-one--2": "One-to-one",
     "m-20261026-incident-review": "Incident review",
     "m-20261027-payments-stand-up": "Payments stand-up",
     "m-20261027-ledger-review": "Ledger review",
@@ -982,7 +982,7 @@ def test_same_titled_meetings_of_one_day_are_numbered(run: Run) -> None:
     names = {each.matter.id: each.matter.people[0].name for each in found}
     assert names == {
         "m-20261026-one-to-one": "Robin Example",
-        "m-20261026-one-to-one-2": "Jo Placeholder",
+        "m-20261026-one-to-one--2": "Jo Placeholder",
     }
 
 

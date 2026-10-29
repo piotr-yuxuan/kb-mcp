@@ -944,35 +944,48 @@ def test_a_long_participants_value_is_split_in_time_that_grows_with_it() -> None
 
 
 def test_meeting_ids_name_the_day_and_the_title_numbered_by_start_then_order() -> None:
-    """The later start takes -2; equal starts, the order given; no slug, the title's digest."""
+    """The later start takes --2; equal starts, the order given; no slug, the title's digest."""
     early, late = TUESDAY.replace(hour=9), TUESDAY.replace(hour=14)
     assert meeting_ids(
         TUESDAY,
         [("Payments stand-up", late), ("Payments stand-up", early), ("Café: 1/1", TUESDAY)],
-    ) == ["m-20261027-payments-stand-up-2", "m-20261027-payments-stand-up", "m-20261027-cafe-1-1"]
+    ) == ["m-20261027-payments-stand-up--2", "m-20261027-payments-stand-up", "m-20261027-cafe-1-1"]
     assert meeting_ids(TUESDAY, [("Retro", late)] * 3) == [
         "m-20261027-retro",
-        "m-20261027-retro-2",
-        "m-20261027-retro-3",
+        "m-20261027-retro--2",
+        "m-20261027-retro--3",
     ]
     assert meeting_ids(TUESDAY, [("会議", TUESDAY), ("", TUESDAY)]) == [
         f"m-20261027-{sha('会議')}",
         f"m-20261027-{sha('')}",
     ]
     long = meeting_ids(TUESDAY, [(LONG, TUESDAY), (LONG, TUESDAY)])
-    assert long == [f"m-20261027-{'a' * 60}", f"m-20261027-{'a' * 60}-2"]
+    assert long == [f"m-20261027-{'a' * 60}", f"m-20261027-{'a' * 60}--2"]
     assert all(WORKLOG_ID.fullmatch(each) for each in long)
 
 
-def test_a_title_whose_slug_is_another_s_numbered_id_takes_no_id_twice() -> None:
-    """Stand-up 2 holds stand-up-2, so the second Stand-up passes over it."""
-    early, late = TUESDAY.replace(hour=9), TUESDAY.replace(hour=14)
-    assert meeting_ids(
-        TUESDAY, [("Stand-up 2", early), ("Stand-up", late), ("Stand-up", late)]
-    ) == [
-        "m-20261027-stand-up-2",
+def test_one_slug_s_ids_never_depend_on_another_s_meetings() -> None:
+    """Stand-up 2 keeps stand-up-2 beside two Stand-ups, in whichever order they come.
+
+    In the order that archiving the first Stand-up alone leaves, the two Stand-ups swap,
+    the cost that the plan's "Ids" states; titles of one slug are numbered as one title.
+    """
+    first, second, other = ("Stand-up", TUESDAY), ("Stand-up", TUESDAY), ("Stand-up 2", TUESDAY)
+    assert meeting_ids(TUESDAY, [first, second, other]) == [
         "m-20261027-stand-up",
-        "m-20261027-stand-up-3",
+        "m-20261027-stand-up--2",
+        "m-20261027-stand-up-2",
+    ]
+    assert meeting_ids(TUESDAY, [second, other, first]) == [
+        "m-20261027-stand-up",
+        "m-20261027-stand-up-2",
+        "m-20261027-stand-up--2",
+    ]
+    assert meeting_ids(
+        TUESDAY, [("Réunion d'équipe", TUESDAY), ("Reunion d\u2019equipe", TUESDAY)]
+    ) == [
+        "m-20261027-reunion-d-equipe",
+        "m-20261027-reunion-d-equipe--2",
     ]
 
 
@@ -1297,8 +1310,8 @@ def test_same_titled_meetings_are_numbered_by_their_transcripts_starts() -> None
     )
     found, _ = journal(todo("\n".join(lines)), None, archives=True, transcripts=[late, early])
     assert [(each.id, each.start, each.links) for each in found if each.type == "meeting"] == [
-        ("m-20261027-stand-up-3", late.start, (("transcript", late.id),)),
-        ("m-20261027-stand-up-2", early.start, (("transcript", early.id),)),
+        ("m-20261027-stand-up--3", late.start, (("transcript", late.id),)),
+        ("m-20261027-stand-up--2", early.start, (("transcript", early.id),)),
         ("m-20261027-stand-up", TUESDAY, ()),
     ]
 

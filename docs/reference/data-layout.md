@@ -499,15 +499,16 @@ links one.
   `d-` and the date, `%Y%m%d`; its title, its first heading's, else the path's part.
 - A **meeting** is its subtree, then what joins it. Its id is `m-`, its day's date, `-`
   and its title's slug, as a file name's, else the first 16 hex digits of the title's
-  SHA-256; of one day and id, the meetings take `-2`, `-3` by start, then in file order,
-  passing over a number that another meeting's id holds. Its people are the names that
-  its `:PARTICIPANTS:` gives, split at commas outside brackets, each once and as
-  written, in the role `participant`; its link `transcript` names the transcript whose
-  file its `:MEETING:` names, from the folder of its org file, when that file is read,
-  and that transcript's link `summary` names it back; a `:MEETING:` that reaches no file
-  read links nothing, and `worklog.unlinked` counts it, a warning that holds no removal
-  back ([sync's telemetry](telemetry/sync.md)). A day and a meeting begin at level 1, what
-  joins them at level 2.
+  SHA-256; of one day and id, the meetings take `--2`, `--3` by start, then in file
+  order: two dashes, which no slug or digest holds, so that a numbered id is never
+  another title's. Its people are the names that its `:PARTICIPANTS:` gives, split at
+  commas outside brackets, each once and as written, in the role `participant`; its link
+  `transcript` names the transcript whose file its `:MEETING:` names, from the folder of
+  its org file, when that file is read, and that transcript's link `summary` names it
+  back; a `:MEETING:` that reaches no file read links nothing, and `worklog.unlinked`
+  counts it, a warning that holds no removal back ([sync's
+  telemetry](telemetry/sync.md)). A day and a meeting begin at level 1, what joins them
+  at level 2.
 - An **entry** is any other top-level heading, a child of the journal that is no day, or
   the journal's own lines above its children when they hold text besides its planning
   line and property drawer, with what lies below it, beginning at level 1. Its id is
