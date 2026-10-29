@@ -856,8 +856,8 @@ def child_environment(data: Path) -> dict[str, str]:
         "HOME": str(data.parent / "home"),
         "PATH": os.environ["PATH"],
         "COLUMNS": "200",
-        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": str(data),
-        "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "lexical",
+        "KB_MCP_DATA_DIR": str(data),
+        "KB_MCP_SEARCH_MODE": "lexical",
     }
 
 

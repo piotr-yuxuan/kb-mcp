@@ -29,7 +29,7 @@ read-only, for agents that prefer files.
   when it reranks, both on this machine (below). It
   takes its settings, the data directory included, from
   `~/.config/kb-mcp/config.toml` and the variables
-  `ATLASSIAN_OFFLINE_MCP_…`; `<data>` is `~/kb-mcp` unless they say
+  `KB_MCP_…`; `<data>` is `~/kb-mcp` unless they say
   otherwise. It never asks, since its stdin is the protocol's, and says on stderr which
   values it ignores.
 

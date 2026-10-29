@@ -434,7 +434,7 @@ laptop, or another such as the user's machine, whose GPU should change the times
 sandbox's commands name `--config <missing-file>`, a path where no file is, so that the
 machine's settings file changes nothing: otherwise `mirror` would write its `site` into
 the mirror's addresses, and `index`, `model check` and `eval` would take its model and
-endpoint, `index` its chunking and mode too. The variables `ATLASSIAN_OFFLINE_MCP_…`
+endpoint, `index` its chunking and mode too. The variables `KB_MCP_…`
 still apply: leave them unset, but where a command sets them. On your own corpus, your
 settings are the point: leave the flag out. Two things come first:
 
@@ -464,7 +464,7 @@ corpus's pages are in the space `QM`, its tickets in the project `ENG`, its idea
 `PRB`; plan 011's mirror also held the 13 probe pages of plan 001 in `MFS`:
 
 ```bash
-sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" uv run kb-mcp download --yes --config <missing-file> --data-dir <data> --since 1y --space MFS --space QM --project ENG --project PRB'
+sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'KB_MCP_SITE="$ATLASSIAN_SITE" KB_MCP_EMAIL="$ATLASSIAN_EMAIL" KB_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" uv run kb-mcp download --yes --config <missing-file> --data-dir <data> --since 1y --space MFS --space QM --project ENG --project PRB'
 ```
 
 The credentials file lies at the root of the checkout that made it, never in git

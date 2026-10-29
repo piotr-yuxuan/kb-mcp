@@ -42,9 +42,9 @@ command mapping the names to the program's variables as
 [the how-to](docs/how-to/api-token-with-sops.md) does, such as, from a worktree:
 
 ```bash
-sops exec-env <primary-checkout>/atlassian-test-credientials.sops.json 'ATLASSIAN_OFFLINE_MCP_SITE="$ATLASSIAN_SITE" \
-  ATLASSIAN_OFFLINE_MCP_EMAIL="$ATLASSIAN_EMAIL" \
-  ATLASSIAN_OFFLINE_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" \
+sops exec-env <primary-checkout>/atlassian-test-credientials.sops.json 'KB_MCP_SITE="$ATLASSIAN_SITE" \
+  KB_MCP_EMAIL="$ATLASSIAN_EMAIL" \
+  KB_MCP_API_TOKEN="$ATLASSIAN_API_TOKEN" \
   uv run kb-mcp download --yes --config <scratch>/none.toml \
   --data-dir <scratch>/data --space MFS --project PRB --since 7d'
 ```

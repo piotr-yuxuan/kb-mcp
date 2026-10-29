@@ -151,12 +151,12 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
 @pytest.mark.parametrize(
     ("case", "named"),
     [
-        (({"ATLASSIAN_OFFLINE_MCP_SITE": SENTINEL}, "", []), "site (ATLASSIAN_OFFLINE_MCP_SITE)"),
+        (({"KB_MCP_SITE": SENTINEL}, "", []), "site (KB_MCP_SITE)"),
         (({}, f'site = "{SENTINEL}"\n', []), "site (config.toml)"),
         (({}, "", ["--site", SENTINEL]), "site (--site)"),
         (
-            ({"ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": API_KEY}, "", []),
-            "embedding_url (ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL)",
+            ({"KB_MCP_EMBEDDING_URL": API_KEY}, "", []),
+            "embedding_url (KB_MCP_EMBEDDING_URL)",
         ),
     ],
 )

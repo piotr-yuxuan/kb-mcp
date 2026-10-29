@@ -30,7 +30,7 @@ uv run kb-mcp --help
 ```
 
 Settings live in `~/.config/kb-mcp/config.toml`, and each can also come
-from a variable `ATLASSIAN_OFFLINE_MCP_…` or, for some, a flag, the flag winning;
+from a variable `KB_MCP_…` or, for some, a flag, the flag winning;
 `kb-mcp check --summary detailed` shows each one, where it came from, and
 validates them and the data directory. A command that writes under the data directory
 says what it will do and asks first, unless given `--yes`.

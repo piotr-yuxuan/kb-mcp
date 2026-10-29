@@ -1,4 +1,4 @@
-"""Grafana's LGTM container, live: opt-in, by ``ATLASSIAN_OFFLINE_MCP_GRAFANA``.
+"""Grafana's LGTM container, live: opt-in, by ``KB_MCP_GRAFANA``.
 
 The variable gives Grafana's address, ``http://127.0.0.1:3000`` as ``deploy/lgtm/``
 publishes it, once the container runs and the commands have sent it their telemetry, as
@@ -24,7 +24,7 @@ from tests.endpoint import REACHABLE
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-GRAFANA = os.environ.get("ATLASSIAN_OFFLINE_MCP_GRAFANA")
+GRAFANA = os.environ.get("KB_MCP_GRAFANA")
 DASHBOARDS = Path(__file__).parents[1] / "deploy" / "lgtm" / "dashboards"
 PATHS = sorted(DASHBOARDS.iterdir())
 # What the title of a panel of failures begins with.
@@ -41,9 +41,7 @@ RECORDS = {
     "queryType": "range",
 }
 
-pytestmark = pytest.mark.skipif(
-    GRAFANA is None, reason="set ATLASSIAN_OFFLINE_MCP_GRAFANA to Grafana's address"
-)
+pytestmark = pytest.mark.skipif(GRAFANA is None, reason="set KB_MCP_GRAFANA to Grafana's address")
 
 
 @pytest.fixture

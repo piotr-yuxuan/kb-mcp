@@ -123,7 +123,7 @@ To turn it on, in the settings file:
 enabled = true
 ```
 
-Or `ATLASSIAN_OFFLINE_MCP_RERANK__ENABLED=true` in the server's environment, or
+Or `KB_MCP_RERANK__ENABLED=true` in the server's environment, or
 `--rerank` on the command that starts the server, which wins over both, as `--no-rerank`
 does to turn it off:
 

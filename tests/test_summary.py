@@ -42,11 +42,11 @@ if TYPE_CHECKING:
 
 SITE = "https://sandbox.example.invalid"
 # The variables of the email, the API token and the embedding endpoint's key.
-EMAIL = "ATLASSIAN_OFFLINE_MCP_EMAIL"
-CREDENTIAL = "ATLASSIAN_OFFLINE_MCP_API_TOKEN"
-KEY = "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY"
+EMAIL = "KB_MCP_EMAIL"
+CREDENTIAL = "KB_MCP_API_TOKEN"
+KEY = "KB_MCP_EMBEDDING_API_KEY"
 SECRETS = {CREDENTIAL: "token-sentinel-4d1c", KEY: "key-sentinel-9a7e"}
-UNKNOWN = "ATLASSIAN_OFFLINE_MCP_UNKNOWN"
+UNKNOWN = "KB_MCP_UNKNOWN"
 WAIT = 30  # seconds for the server to answer and stop
 # The modules that run the commands that write, by plan 015.
 WRITING = ("download", "evaluate", "index", "login", "mirror")
@@ -243,7 +243,7 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
     err = capsys.readouterr().err
     assert f"\n  model: {DEFAULT_MODEL} (not applied: replaced by --model)\n" in err
     assert "ignored: " not in err
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "lexical")
+    monkeypatch.setenv("KB_MCP_SEARCH_MODE", "lexical")
     assert main(["index", "--yes", "--config", none]) == 0
     summary = capsys.readouterr().err.split("kb-mcp index")[0]
     marked = [
@@ -306,7 +306,7 @@ def test_serve_says_what_it_ignores_on_stderr_and_answers_its_first_line(home: P
     environment = {
         "HOME": str(home),
         "PATH": os.environ["PATH"],
-        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": str(home / "data"),
+        "KB_MCP_DATA_DIR": str(home / "data"),
         UNKNOWN: "1",
     }
     with subprocess.Popen(
@@ -409,9 +409,7 @@ def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
     assert "telemetry.endpoint" not in said
 
 
-@pytest.mark.parametrize(
-    "variable", ["OTEL_EXPORTER_OTLP_ENDPOINT", "ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT"]
-)
+@pytest.mark.parametrize("variable", ["OTEL_EXPORTER_OTLP_ENDPOINT", "KB_MCP_TELEMETRY__ENDPOINT"])
 @pytest.mark.parametrize("command", [["index", "--yes"], ["check"]], ids=["index", "check"])
 @pytest.mark.usefixtures("runs")
 def test_every_command_says_that_telemetry_is_on_and_what_turned_it_on(
@@ -496,7 +494,7 @@ def test_the_command_to_copy_is_preceded_by_an_empty_list_that_no_flag_can_say(
     """A variable emptied the file's projects: the command, run again, would read the file."""
     config = home / "config.toml"
     config.write_text('[sources.jira]\nprojects = ["PLAT"]\n', "utf-8")
-    variable = "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS"
+    variable = "KB_MCP_SOURCES__JIRA__PROJECTS"
     monkeypatch.setenv(variable, "[]")
     options = ["--yes", "--config", str(config), "--site", SITE, "--space", "ENG"]
     assert main(["download", *options]) == 0
@@ -518,10 +516,10 @@ EMPTY_TABLE = '[sources.jira]\n# projects = ["PLAT"]\n'
 @pytest.mark.parametrize(
     "layers",
     [
-        ("", {"ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS": "[]"}, []),
+        ("", {"KB_MCP_SOURCES__JIRA__PROJECTS": "[]"}, []),
         ("[sources.jira]\nprojects = []\n", {}, []),
         (EMPTY_TABLE, {}, []),
-        (EMPTY_TABLE, {"ATLASSIAN_OFFLINE_MCP_SOURCES": "{}"}, []),
+        (EMPTY_TABLE, {"KB_MCP_SOURCES": "{}"}, []),
         (EMPTY_TABLE, {}, ["--project", "PRB"]),
     ],
 )
@@ -562,7 +560,7 @@ def test_the_command_to_copy_is_followed_by_the_settings_that_no_flag_sets(
     options = ["index", "--yes", "--config", str(home / "none.toml")]
     assert main(options) == 0
     assert "not in the command" not in capsys.readouterr().err
-    mode, model = "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "ATLASSIAN_OFFLINE_MCP_MODEL"
+    mode, model = "KB_MCP_SEARCH_MODE", "KB_MCP_MODEL"
     monkeypatch.setenv(mode, "semantic")
     monkeypatch.setenv(model, "foo")
     assert main(options) == 0
@@ -614,7 +612,7 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
         f'site = "{SITE}"\nmodel = "tiny"\n[sources.jira]\nprojects = ["PRB"]\n', "utf-8"
     )
     given = {
-        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": "~/from-variable",
+        "KB_MCP_DATA_DIR": "~/from-variable",
         EMAIL: "someone@example.invalid",
         **SECRETS,
     }

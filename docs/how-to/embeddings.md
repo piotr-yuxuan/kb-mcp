@@ -118,7 +118,7 @@ model = "<the model, as that server names it>"
 ```
 
 If the server needs a key, put it in the environment variable
-`ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY`; the settings file refuses it. Such a server
+`KB_MCP_EMBEDDING_API_KEY`; the settings file refuses it. Such a server
 lists no digest of its models as Ollama does, so the vectors follow the model's name
 alone: after changing the weights behind a name, delete `<data>/vectors.sqlite` and run
 `index`.

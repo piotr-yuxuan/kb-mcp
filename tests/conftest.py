@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from _pytest.tmpdir import TempPathFactory
     from opentelemetry.sdk.metrics.export import Metric
 
-PREFIX = "ATLASSIAN_OFFLINE_MCP_"
+PREFIX = "KB_MCP_"
 # OpenTelemetry's variables, two of which the settings read, and its SDK others.
 OTEL = "OTEL_"
 

@@ -38,9 +38,9 @@ projects = ["PLAT"]
 `spaces` and `projects` belong to their sources' tables: at the top of the file, where
 they were before, they are refused, and the message names their table.
 
-Each setting can also come from a variable, `ATLASSIAN_OFFLINE_MCP_` then its path in
-capitals joined by `__`, a list or a table in JSON (`ATLASSIAN_OFFLINE_MCP_SITE`,
-`ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS='["PLAT"]'`), and some from a flag
+Each setting can also come from a variable, `KB_MCP_` then its path in
+capitals joined by `__`, a list or a table in JSON (`KB_MCP_SITE`,
+`KB_MCP_SOURCES__JIRA__PROJECTS='["PLAT"]'`), and some from a flag
 (`--site`, `--data-dir`, `--space`, `--project`). A flag wins over a variable, which
 wins over the file, and a list replaces a weaker one whole. Each command says on stderr
 which values it ignores: one replaced, a variable that names no setting, or one the

@@ -523,7 +523,7 @@ def test_opentelemetry_s_endpoint_is_a_layer_below_the_file(
         Ignored("telemetry.endpoint", "OTEL_EXPORTER_OTLP_ENDPOINT", f"replaced by {FILE}"),
     )
 
-    variable = "ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT"
+    variable = "KB_MCP_TELEMETRY__ENDPOINT"
     monkeypatch.setenv(variable, "http://127.0.0.1:4319")
     from_the_variable = loaded_from(tmp_path, text)
     assert from_the_variable.settings.telemetry.endpoint == "http://127.0.0.1:4319"
@@ -600,13 +600,11 @@ def test_each_layer_wins_over_the_weaker_and_the_weaker_is_ignored(
     assert from_the_file.layers["site"] == FILE
     assert from_the_file.ignored == ()
 
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "https://variable.example.invalid")
+    monkeypatch.setenv("KB_MCP_SITE", "https://variable.example.invalid")
     from_the_variable = loaded_from(tmp_path, text)
     assert from_the_variable.settings.site == "https://variable.example.invalid"
-    assert from_the_variable.layers["site"] == "ATLASSIAN_OFFLINE_MCP_SITE"
-    assert from_the_variable.ignored == (
-        Ignored("site", FILE, "replaced by ATLASSIAN_OFFLINE_MCP_SITE"),
-    )
+    assert from_the_variable.layers["site"] == "KB_MCP_SITE"
+    assert from_the_variable.ignored == (Ignored("site", FILE, "replaced by KB_MCP_SITE"),)
 
     from_the_flag = loaded_from(
         tmp_path, text, {"--site": ("site", "https://flag.example.invalid")}
@@ -614,8 +612,8 @@ def test_each_layer_wins_over_the_weaker_and_the_weaker_is_ignored(
     assert from_the_flag.settings.site == "https://flag.example.invalid"
     assert from_the_flag.layers["site"] == "--site"
     assert set(from_the_flag.ignored) == {
-        Ignored("site", FILE, "replaced by ATLASSIAN_OFFLINE_MCP_SITE"),
-        Ignored("site", "ATLASSIAN_OFFLINE_MCP_SITE", "replaced by --site"),
+        Ignored("site", FILE, "replaced by KB_MCP_SITE"),
+        Ignored("site", "KB_MCP_SITE", "replaced by --site"),
     }
 
 
@@ -623,10 +621,10 @@ def test_a_list_from_the_environment_replaces_the_file_s_whole(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """The variable's projects are all the projects, in JSON."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
     loaded = loaded_from(tmp_path, '[sources.jira]\nprojects = ["PLAT", "PAY"]\n')
     assert loaded.settings.sources.jira.projects == ("PRB",)
-    assert loaded.layers["sources.jira.projects"] == "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS"
+    assert loaded.layers["sources.jira.projects"] == "KB_MCP_SOURCES__JIRA__PROJECTS"
 
 
 def test_each_setting_s_variable_gives_its_value_and_names_its_layer(
@@ -634,18 +632,18 @@ def test_each_setting_s_variable_gives_its_value_and_names_its_layer(
 ) -> None:
     """Every setting that is no table has a variable: the prefix, then its path."""
     given = {
-        "ATLASSIAN_OFFLINE_MCP_SITE": "https://variable.example.invalid",
-        "ATLASSIAN_OFFLINE_MCP_EMAIL": "someone@example.invalid",
-        "ATLASSIAN_OFFLINE_MCP_API_TOKEN": SENTINEL,
-        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": "~/from-variable",
-        "ATLASSIAN_OFFLINE_MCP_MODEL": "bge-m3",
-        "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "hybrid",
-        "ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": "http://127.0.0.1:8080/v1",
-        "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY": f"{SENTINEL}-key",
-        "ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES": '["ENG"]',
-        "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS": '["PRB", "PAY"]',
-        "ATLASSIAN_OFFLINE_MCP_LOGS__DIR": "~/logs",
-        "ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT": "http://127.0.0.1:4318",
+        "KB_MCP_SITE": "https://variable.example.invalid",
+        "KB_MCP_EMAIL": "someone@example.invalid",
+        "KB_MCP_API_TOKEN": SENTINEL,
+        "KB_MCP_DATA_DIR": "~/from-variable",
+        "KB_MCP_MODEL": "bge-m3",
+        "KB_MCP_SEARCH_MODE": "hybrid",
+        "KB_MCP_EMBEDDING_URL": "http://127.0.0.1:8080/v1",
+        "KB_MCP_EMBEDDING_API_KEY": f"{SENTINEL}-key",
+        "KB_MCP_SOURCES__CONFLUENCE__SPACES": '["ENG"]',
+        "KB_MCP_SOURCES__JIRA__PROJECTS": '["PRB", "PAY"]',
+        "KB_MCP_LOGS__DIR": "~/logs",
+        "KB_MCP_TELEMETRY__ENDPOINT": "http://127.0.0.1:4318",
     }
     for name, value in given.items():
         monkeypatch.setenv(name, value)
@@ -668,8 +666,7 @@ def test_each_setting_s_variable_gives_its_value_and_names_its_layer(
     assert settings.logs.dir == (tmp_path / "home" / "logs").resolve()
     assert settings.telemetry.endpoint == "http://127.0.0.1:4318"
     assert loaded.layers == {
-        name.removeprefix("ATLASSIAN_OFFLINE_MCP_").lower().replace("__", "."): name
-        for name in given
+        name.removeprefix("KB_MCP_").lower().replace("__", "."): name for name in given
     }
     assert loaded.ignored == ()
 
@@ -678,26 +675,26 @@ def test_a_table_from_the_environment_is_a_json_object(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """At the top or below it; each value it gives names its variable."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES", '{"confluence": {"spaces": ["ENG"]}}')
+    monkeypatch.setenv("KB_MCP_SOURCES", '{"confluence": {"spaces": ["ENG"]}}')
     loaded = loaded_from(tmp_path, "")
     assert loaded.settings.sources.confluence.spaces == ("ENG",)
-    assert loaded.layers["sources.confluence.spaces"] == "ATLASSIAN_OFFLINE_MCP_SOURCES"
-    monkeypatch.delenv("ATLASSIAN_OFFLINE_MCP_SOURCES")
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", '{"projects": ["PRB"]}')
+    assert loaded.layers["sources.confluence.spaces"] == "KB_MCP_SOURCES"
+    monkeypatch.delenv("KB_MCP_SOURCES")
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA", '{"projects": ["PRB"]}')
     loaded = loaded_from(tmp_path, "")
     assert loaded.settings.sources.jira.projects == ("PRB",)
-    assert loaded.layers["sources.jira.projects"] == "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA"
+    assert loaded.layers["sources.jira.projects"] == "KB_MCP_SOURCES__JIRA"
 
 
 def test_an_empty_table_from_the_environment_replaces_the_file_s_values_under_it(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """``{}`` leaves the table's settings at their defaults, the file's recorded as replaced."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", "{}")
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA", "{}")
     loaded = loaded_from(tmp_path, '[sources.jira]\nprojects = ["PLAT"]\n')
     assert loaded.settings.sources.jira.projects == ()
     assert loaded.ignored == (
-        Ignored("sources.jira.projects", FILE, "replaced by ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA"),
+        Ignored("sources.jira.projects", FILE, "replaced by KB_MCP_SOURCES__JIRA"),
     )
 
 
@@ -705,20 +702,20 @@ def test_an_empty_table_from_the_environment_replaces_the_file_s_values_under_it
     ("outer", "inner"),
     [
         (
-            ("ATLASSIAN_OFFLINE_MCP_SOURCES", f'{{"jira": {{"projects": ["{SENTINEL}"]}}}}'),
-            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]'),
+            ("KB_MCP_SOURCES", f'{{"jira": {{"projects": ["{SENTINEL}"]}}}}'),
+            ("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]'),
         ),
         (
-            ("ATLASSIAN_OFFLINE_MCP_SOURCES", "{}"),
-            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", f'{{"projects": ["{SENTINEL}"]}}'),
+            ("KB_MCP_SOURCES", "{}"),
+            ("KB_MCP_SOURCES__JIRA", f'{{"projects": ["{SENTINEL}"]}}'),
         ),
         (
-            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", '{"projects": ["PLAT"]}'),
-            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", f'["{SENTINEL}"]'),
+            ("KB_MCP_SOURCES__JIRA", '{"projects": ["PLAT"]}'),
+            ("KB_MCP_SOURCES__JIRA__PROJECTS", f'["{SENTINEL}"]'),
         ),
         (
-            ("ATLASSIAN_OFFLINE_MCP_SITE", f"https://{SENTINEL}.example.invalid"),
-            ("atlassian_offline_mcp_site", "https://other.example.invalid"),
+            ("KB_MCP_SITE", f"https://{SENTINEL}.example.invalid"),
+            ("kb_mcp_site", "https://other.example.invalid"),
         ),
     ],
 )
@@ -749,20 +746,20 @@ def test_two_variables_of_one_setting_or_of_a_table_and_inside_it_are_refused(
     ("given", "unknown"),
     [
         (
-            ("ATLASSIAN_OFFLINE_MCP_SOURCES", '{"jira": {"projects": ["PRB"]}}'),
-            "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS",
+            ("KB_MCP_SOURCES", '{"jira": {"projects": ["PRB"]}}'),
+            "KB_MCP_SOURCES__JIRA__PROJETS",
         ),
         (
-            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", '{"projects": ["PRB"]}'),
-            "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS",
+            ("KB_MCP_SOURCES__JIRA", '{"projects": ["PRB"]}'),
+            "KB_MCP_SOURCES__JIRA__PROJETS",
         ),
         (
-            ("ATLASSIAN_OFFLINE_MCP_SOURCES", '{"jira": {"projects": ["PRB"]}}'),
-            "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS__0",
+            ("KB_MCP_SOURCES", '{"jira": {"projects": ["PRB"]}}'),
+            "KB_MCP_SOURCES__JIRA__PROJECTS__0",
         ),
         (
-            ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]'),
-            "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS__0",
+            ("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]'),
+            "KB_MCP_SOURCES__JIRA__PROJECTS__0",
         ),
     ],
 )
@@ -792,23 +789,23 @@ def test_a_variable_naming_no_setting_below_a_value_is_ignored_alone(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """A value has nothing below it: the site is the variable's, the other is ignored."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "https://variable.example.invalid")
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE__X", "1")
+    monkeypatch.setenv("KB_MCP_SITE", "https://variable.example.invalid")
+    monkeypatch.setenv("KB_MCP_SITE__X", "1")
     loaded = loaded_from(tmp_path, "")
     assert loaded.settings.site == "https://variable.example.invalid"
-    assert loaded.ignored == (Ignored(None, "ATLASSIAN_OFFLINE_MCP_SITE__X", "names no setting"),)
+    assert loaded.ignored == (Ignored(None, "KB_MCP_SITE__X", "names no setting"),)
 
 
 def test_a_variable_is_read_without_regard_to_case_and_named_as_written(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """As pydantic-settings reads it: the layer is the variable's own name."""
-    monkeypatch.setenv("atlassian_offline_mcp_site", "https://lower.example.invalid")
-    monkeypatch.setenv("Atlassian_Offline_Mcp_Spaces", '["X"]')
+    monkeypatch.setenv("kb_mcp_site", "https://lower.example.invalid")
+    monkeypatch.setenv("Kb_Mcp_Spaces", '["X"]')
     loaded = loaded_from(tmp_path, "")
     assert loaded.settings.site == "https://lower.example.invalid"
-    assert loaded.layers == {"site": "atlassian_offline_mcp_site"}
-    assert loaded.ignored == (Ignored(None, "Atlassian_Offline_Mcp_Spaces", "names no setting"),)
+    assert loaded.layers == {"site": "kb_mcp_site"}
+    assert loaded.ignored == (Ignored(None, "Kb_Mcp_Spaces", "names no setting"),)
 
 
 def test_the_generic_atlassian_names_are_not_read(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
@@ -830,8 +827,8 @@ def test_secrets_come_from_the_environment_and_are_never_shown(
     Neither the settings, nor what the loader gives, nor the environment's entries,
     which hold them before they are masked, show them.
     """
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_API_TOKEN", SENTINEL)
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY", f"{SENTINEL}-key")
+    monkeypatch.setenv("KB_MCP_API_TOKEN", SENTINEL)
+    monkeypatch.setenv("KB_MCP_EMBEDDING_API_KEY", f"{SENTINEL}-key")
     loaded = loaded_from(tmp_path, "")
     settings = loaded.settings
     assert settings.api_token is not None
@@ -846,8 +843,8 @@ def test_secrets_come_from_the_environment_and_are_never_shown(
 @pytest.mark.parametrize(
     ("key", "variable"),
     [
-        ("api_token", "ATLASSIAN_OFFLINE_MCP_API_TOKEN"),
-        ("embedding_api_key", "ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY"),
+        ("api_token", "KB_MCP_API_TOKEN"),
+        ("embedding_api_key", "KB_MCP_EMBEDDING_API_KEY"),
     ],
 )
 def test_a_secret_in_the_file_is_refused_by_name_never_by_value(
@@ -862,10 +859,10 @@ def test_a_secret_in_the_file_is_refused_by_name_never_by_value(
 @pytest.mark.parametrize(
     ("name", "value"),
     [
-        ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", "PLAT,PRB"),
-        ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS", '{"PLAT": "PRB"}'),
-        ("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA", '["PLAT", "PRB"]'),
-        ("ATLASSIAN_OFFLINE_MCP_SOURCES", "null"),
+        ("KB_MCP_SOURCES__JIRA__PROJECTS", "PLAT,PRB"),
+        ("KB_MCP_SOURCES__JIRA__PROJECTS", '{"PLAT": "PRB"}'),
+        ("KB_MCP_SOURCES__JIRA", '["PLAT", "PRB"]'),
+        ("KB_MCP_SOURCES", "null"),
     ],
 )
 def test_a_list_or_a_table_not_in_json_is_refused_by_its_variable_never_its_value(
@@ -888,14 +885,14 @@ def test_a_list_or_a_table_not_in_json_is_refused_by_its_variable_never_its_valu
     ("variable", "value", "named"),
     [
         (
-            "ATLASSIAN_OFFLINE_MCP_SOURCES",
+            "KB_MCP_SOURCES",
             f'{{"worklog": "{SENTINEL}"}}',
-            "sources.worklog (ATLASSIAN_OFFLINE_MCP_SOURCES):",
+            "sources.worklog (KB_MCP_SOURCES):",
         ),
         (
-            "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE",
+            "KB_MCP_SEARCH_MODE",
             SENTINEL,
-            "search_mode (ATLASSIAN_OFFLINE_MCP_SEARCH_MODE):",
+            "search_mode (KB_MCP_SEARCH_MODE):",
         ),
     ],
 )
@@ -915,16 +912,16 @@ def test_variables_naming_no_setting_or_empty_are_ignored(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Other tools and versions share the environment: such a variable is ignored, and said."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS", '["X"]')
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SPACES", '["X"]')
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", "")
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJETS", '["X"]')
+    monkeypatch.setenv("KB_MCP_SPACES", '["X"]')
+    monkeypatch.setenv("KB_MCP_SITE", "")
     loaded = loaded_from(tmp_path, 'site = "https://file.example.invalid"\n')
     assert loaded.settings.site == "https://file.example.invalid"
     assert loaded.settings.sources.jira.projects == ()
     assert set(loaded.ignored) == {
-        Ignored(None, "ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJETS", "names no setting"),
-        Ignored(None, "ATLASSIAN_OFFLINE_MCP_SPACES", "names no setting"),
-        Ignored("site", "ATLASSIAN_OFFLINE_MCP_SITE", "empty"),
+        Ignored(None, "KB_MCP_SOURCES__JIRA__PROJETS", "names no setting"),
+        Ignored(None, "KB_MCP_SPACES", "names no setting"),
+        Ignored("site", "KB_MCP_SITE", "empty"),
     }
 
 
@@ -998,7 +995,7 @@ def test_an_address_with_a_user_part_is_neither_a_setting_nor_loopback() -> None
         from_file({"embedding_url": url})
 
 
-ARCHIVES = "ATLASSIAN_OFFLINE_MCP_SOURCES__WORKLOG__ARCHIVES"
+ARCHIVES = "KB_MCP_SOURCES__WORKLOG__ARCHIVES"
 
 
 def check_work_log(

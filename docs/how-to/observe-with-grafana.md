@@ -38,7 +38,7 @@ Set the endpoint in the settings file:
 endpoint = "http://127.0.0.1:4318"
 ```
 
-or for one run, in its environment, `ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT`, or
+or for one run, in its environment, `KB_MCP_TELEMETRY__ENDPOINT`, or
 `OTEL_EXPORTER_OTLP_ENDPOINT`, which other programs read too and the settings file
 outweighs. The endpoint is plain http to a literal address of this machine, with a
 port and no path: `localhost` is refused, since a name could lead elsewhere. `check`
@@ -126,7 +126,7 @@ error, and each panel but those of failures must have data; Loki must hold the r
 records; another host name must be turned away:
 
 ```bash
-ATLASSIAN_OFFLINE_MCP_GRAFANA=http://127.0.0.1:3000 uv run pytest tests/test_grafana.py
+KB_MCP_GRAFANA=http://127.0.0.1:3000 uv run pytest tests/test_grafana.py
 ```
 
 `serve`'s panels are rates, which need two exports within their interval, a minute:

@@ -20,7 +20,7 @@ value replaces a weaker one's whole, a list included, as
   `--config` names another; a missing file holds no settings. A key with dots, such as
   `sources.confluence.spaces`, is the key `spaces` of the table `[sources.confluence]`.
   The file may not hold a key that names no setting, nor a secret.
-- **The environment** names each setting by a variable: `ATLASSIAN_OFFLINE_MCP_`, then
+- **The environment** names each setting by a variable: `KB_MCP_`, then
   the setting's key in capitals, each dot written `__`. A list is a JSON array, and
   a table, which a variable of its own may give whole, a JSON object. An empty variable
   is ignored, as is one of the prefix that names no setting; two that set one setting,
@@ -35,25 +35,25 @@ A path that starts with `~` starts in the home directory.
 
 | Key | Variable | Type | Default | Description |
 |---|---|---|---|---|
-| `site` | `ATLASSIAN_OFFLINE_MCP_SITE` | text | unset | The Atlassian site, for Confluence and Jira alike: https://\<name>.atlassian.net. |
-| `email` | `ATLASSIAN_OFFLINE_MCP_EMAIL` | text | unset | The email address of the Atlassian account that signs in. |
-| `api_token` | `ATLASSIAN_OFFLINE_MCP_API_TOKEN` | secret | unset | The Atlassian account's API token, a secret: from the environment alone. |
-| `data_dir` | `ATLASSIAN_OFFLINE_MCP_DATA_DIR` | path | `"~/kb-mcp"` | Where the data lives, ~ being the home directory: never under a synchronised folder, nor inside a git working tree. |
-| `model` | `ATLASSIAN_OFFLINE_MCP_MODEL` | text | `"qwen3-embedding:0.6b"` | The embedding model that indexes by meaning, as the endpoint names it. |
-| `search_mode` | `ATLASSIAN_OFFLINE_MCP_SEARCH_MODE` | one of `lexical`, `semantic`, `hybrid` | `"hybrid"` | How search ranks: by words (lexical), by meaning (semantic), or both (hybrid), the default; all but lexical need the embedding endpoint. |
-| `chunking` | `ATLASSIAN_OFFLINE_MCP_CHUNKING` | one of `sections`, `windows`, `section-paths`, `small-to-big` | `"windows"` | How index cuts documents into the pieces it embeds: sections, windows, section-paths, small-to-big; search follows the index. By default windows, which ranked best on plan 019's sandbox. |
-| `embedding_url` | `ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL` | text | `"http://127.0.0.1:11434/v1"` | The OpenAI-compatible API that embeds, up to /embeddings, excluded. |
-| `embedding_api_key` | `ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY` | secret | unset | The embedding endpoint's API key, if it needs one, a secret: from the environment alone. |
-| `sources.confluence.spaces` | `ATLASSIAN_OFFLINE_MCP_SOURCES__CONFLUENCE__SPACES` | list of text | `[]` | The spaces to download when no --space is given, by key. |
-| `sources.jira.projects` | `ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS` | list of text | `[]` | The projects to download when no --project is given, by key. |
-| `sources.worklog.path` | `ATLASSIAN_OFFLINE_MCP_SOURCES__WORKLOG__PATH` | path | unset | The work log's folder, absolute or under ~, which holds todo.org, todo.org_archive, transcripts/ and meetings/; read in place, never written. |
-| `sources.worklog.archives` | `ATLASSIAN_OFFLINE_MCP_SOURCES__WORKLOG__ARCHIVES` | boolean | `true` | Whether todo.org_archive, transcripts/archive/, meetings/archive/ and the subtrees tagged ARCHIVE are mirrored too. |
-| `logs.dir` | `ATLASSIAN_OFFLINE_MCP_LOGS__DIR` | path | unset | The folder of each run's log file, ~ being the home directory: by default the user's log folder, where the platform keeps them; never under a synchronised folder, nor inside a git working tree. |
-| `telemetry.endpoint` | `ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT` | text | unset | The OTLP endpoint on this machine that traces, metrics and logs go to, over http with a port and no path, such as http://127.0.0.1:4318; unset, none is sent. Else OTEL_EXPORTER_OTLP_ENDPOINT gives it, below the settings file; OTEL_SDK_DISABLED=true leaves it unset. |
-| `rerank.enabled` | `ATLASSIAN_OFFLINE_MCP_RERANK__ENABLED` | boolean | `false` | Whether search and ask rerank their first documents through the reranking server: off by default, as it ranked worse on the sandbox, by the user's choice in plan 022. |
-| `rerank.url` | `ATLASSIAN_OFFLINE_MCP_RERANK__URL` | text | `"http://127.0.0.1:9931/v1"` | The reranking server's API, up to /rerank, excluded: an address of this machine, never another. |
-| `rerank.model` | `ATLASSIAN_OFFLINE_MCP_RERANK__MODEL` | text | `"qwen3-reranker-0.6b"` | The reranking model, as the server names it. |
-| `rerank.depth` | `ATLASSIAN_OFFLINE_MCP_RERANK__DEPTH` | integer | `30` | How many documents, after those a query names, are reranked: 2 to 64. |
+| `site` | `KB_MCP_SITE` | text | unset | The Atlassian site, for Confluence and Jira alike: https://\<name>.atlassian.net. |
+| `email` | `KB_MCP_EMAIL` | text | unset | The email address of the Atlassian account that signs in. |
+| `api_token` | `KB_MCP_API_TOKEN` | secret | unset | The Atlassian account's API token, a secret: from the environment alone. |
+| `data_dir` | `KB_MCP_DATA_DIR` | path | `"~/kb-mcp"` | Where the data lives, ~ being the home directory: never under a synchronised folder, nor inside a git working tree. |
+| `model` | `KB_MCP_MODEL` | text | `"qwen3-embedding:0.6b"` | The embedding model that indexes by meaning, as the endpoint names it. |
+| `search_mode` | `KB_MCP_SEARCH_MODE` | one of `lexical`, `semantic`, `hybrid` | `"hybrid"` | How search ranks: by words (lexical), by meaning (semantic), or both (hybrid), the default; all but lexical need the embedding endpoint. |
+| `chunking` | `KB_MCP_CHUNKING` | one of `sections`, `windows`, `section-paths`, `small-to-big` | `"windows"` | How index cuts documents into the pieces it embeds: sections, windows, section-paths, small-to-big; search follows the index. By default windows, which ranked best on plan 019's sandbox. |
+| `embedding_url` | `KB_MCP_EMBEDDING_URL` | text | `"http://127.0.0.1:11434/v1"` | The OpenAI-compatible API that embeds, up to /embeddings, excluded. |
+| `embedding_api_key` | `KB_MCP_EMBEDDING_API_KEY` | secret | unset | The embedding endpoint's API key, if it needs one, a secret: from the environment alone. |
+| `sources.confluence.spaces` | `KB_MCP_SOURCES__CONFLUENCE__SPACES` | list of text | `[]` | The spaces to download when no --space is given, by key. |
+| `sources.jira.projects` | `KB_MCP_SOURCES__JIRA__PROJECTS` | list of text | `[]` | The projects to download when no --project is given, by key. |
+| `sources.worklog.path` | `KB_MCP_SOURCES__WORKLOG__PATH` | path | unset | The work log's folder, absolute or under ~, which holds todo.org, todo.org_archive, transcripts/ and meetings/; read in place, never written. |
+| `sources.worklog.archives` | `KB_MCP_SOURCES__WORKLOG__ARCHIVES` | boolean | `true` | Whether todo.org_archive, transcripts/archive/, meetings/archive/ and the subtrees tagged ARCHIVE are mirrored too. |
+| `logs.dir` | `KB_MCP_LOGS__DIR` | path | unset | The folder of each run's log file, ~ being the home directory: by default the user's log folder, where the platform keeps them; never under a synchronised folder, nor inside a git working tree. |
+| `telemetry.endpoint` | `KB_MCP_TELEMETRY__ENDPOINT` | text | unset | The OTLP endpoint on this machine that traces, metrics and logs go to, over http with a port and no path, such as http://127.0.0.1:4318; unset, none is sent. Else OTEL_EXPORTER_OTLP_ENDPOINT gives it, below the settings file; OTEL_SDK_DISABLED=true leaves it unset. |
+| `rerank.enabled` | `KB_MCP_RERANK__ENABLED` | boolean | `false` | Whether search and ask rerank their first documents through the reranking server: off by default, as it ranked worse on the sandbox, by the user's choice in plan 022. |
+| `rerank.url` | `KB_MCP_RERANK__URL` | text | `"http://127.0.0.1:9931/v1"` | The reranking server's API, up to /rerank, excluded: an address of this machine, never another. |
+| `rerank.model` | `KB_MCP_RERANK__MODEL` | text | `"qwen3-reranker-0.6b"` | The reranking model, as the server names it. |
+| `rerank.depth` | `KB_MCP_RERANK__DEPTH` | integer | `30` | How many documents, after those a query names, are reranked: 2 to 64. |
 
 ## Variables read besides the settings
 

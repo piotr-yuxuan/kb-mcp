@@ -13,8 +13,8 @@ path = "~/todo"   # absolute or under ~
 archives = true   # false leaves out todo.org_archive, the archive/ folders and ARCHIVE subtrees
 ```
 
-Or by variable: `ATLASSIAN_OFFLINE_MCP_SOURCES__WORKLOG__PATH` and
-`ATLASSIAN_OFFLINE_MCP_SOURCES__WORKLOG__ARCHIVES`. Check it with:
+Or by variable: `KB_MCP_SOURCES__WORKLOG__PATH` and
+`KB_MCP_SOURCES__WORKLOG__ARCHIVES`. Check it with:
 
 ```bash
 kb-mcp check

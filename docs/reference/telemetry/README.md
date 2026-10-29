@@ -91,8 +91,8 @@ the time spent, the time left and the item at hand; `serve` has none. Each task 
 
 | Setting | Variable | Rule |
 |---|---|---|
-| `logs.dir` | `ATLASSIAN_OFFLINE_MCP_LOGS__DIR` | A folder, `~` the home directory; the data directory's guard; by default the user's log folder |
-| `telemetry.endpoint` | `ATLASSIAN_OFFLINE_MCP_TELEMETRY__ENDPOINT` | `http://<address>:<port>`, a literal address of this machine, no path, such as `http://127.0.0.1:4318`; else the run exits 2. Unset: telemetry off |
+| `logs.dir` | `KB_MCP_LOGS__DIR` | A folder, `~` the home directory; the data directory's guard; by default the user's log folder |
+| `telemetry.endpoint` | `KB_MCP_TELEMETRY__ENDPOINT` | `http://<address>:<port>`, a literal address of this machine, no path, such as `http://127.0.0.1:4318`; else the run exits 2. Unset: telemetry off |
 
 | Variable | Effect |
 |---|---|

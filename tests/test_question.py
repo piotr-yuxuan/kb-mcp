@@ -54,15 +54,15 @@ WRITING = {
     "sync": ([], "sync"),
 }
 # The work log's folder, which every test's environment names, so that sync has a source.
-WORKLOG_PATH = "ATLASSIAN_OFFLINE_MCP_SOURCES__WORKLOG__PATH"
+WORKLOG_PATH = "KB_MCP_SOURCES__WORKLOG__PATH"
 # Jira's projects, so that sync has an Atlassian source too.
-PROJECTS = {"ATLASSIAN_OFFLINE_MCP_SOURCES__JIRA__PROJECTS": '["PRB"]'}
+PROJECTS = {"KB_MCP_SOURCES__JIRA__PROJECTS": '["PRB"]'}
 # An embedding endpoint off this machine, over https and over http.
-ELSEWHERE = {"ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": "https://embeddings.example/v1"}
-IN_CLEAR = {"ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL": "http://embeddings.example/v1"}
-BY_MEANING = {"ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "hybrid"}
+ELSEWHERE = {"KB_MCP_EMBEDDING_URL": "https://embeddings.example/v1"}
+IN_CLEAR = {"KB_MCP_EMBEDDING_URL": "http://embeddings.example/v1"}
+BY_MEANING = {"KB_MCP_SEARCH_MODE": "hybrid"}
 # An API token, which signs in with its account's email, given without it.
-WITHOUT_EMAIL = {"ATLASSIAN_OFFLINE_MCP_API_TOKEN": "token-sentinel-4d1c"}
+WITHOUT_EMAIL = {"KB_MCP_API_TOKEN": "token-sentinel-4d1c"}
 # What plan 015 refuses without the network, before anything is asked: a command that
 # writes and its arguments, the variables set, and what the refusal names.
 REFUSED_FIRST = [
@@ -292,11 +292,11 @@ def test_a_yes_variable_skips_nothing_and_is_said_to_be_ignored(
 
     Before a question, the values ignored are said at any level.
     """
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_YES", "1")
+    monkeypatch.setenv("KB_MCP_YES", "1")
     asked = Terminal()
     given(monkeypatch, Terminal("n\n"), asked)
     assert main(command_line(home, "mirror", *level)) == DECLINED
-    assert "ignored: ATLASSIAN_OFFLINE_MCP_YES: names no setting\n" in asked.getvalue()
+    assert "ignored: KB_MCP_YES: names no setting\n" in asked.getvalue()
     assert QUESTION in asked.getvalue()
     given(monkeypatch, io.StringIO(), io.StringIO())
     assert main(command_line(home, "mirror")) == REFUSED
@@ -432,8 +432,8 @@ def test_on_a_pseudo_terminal_no_leaves_the_data_then_yes_builds_the_index(home:
     environment = {
         "HOME": str(home),
         "PATH": os.environ["PATH"],
-        "ATLASSIAN_OFFLINE_MCP_DATA_DIR": str(data),
-        "ATLASSIAN_OFFLINE_MCP_SEARCH_MODE": "lexical",
+        "KB_MCP_DATA_DIR": str(data),
+        "KB_MCP_SEARCH_MODE": "lexical",
     }
     outcomes = []
     for answer in (b"n\n", b"y\n"):

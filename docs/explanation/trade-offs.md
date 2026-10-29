@@ -658,7 +658,7 @@ registers every declaration, and imports a run only once the arguments are parse
 Settings come from one model,
 [`Settings`](../../src/kb_mcp/config/domain/settings.py), fed by three
 layers, each stronger than the last: the settings file, the environment (the prefix
-`ATLASSIAN_OFFLINE_MCP_`, `__` for nesting) and the flags.
+`KB_MCP_`, `__` for nesting) and the flags.
 [`load_settings`](../../src/kb_mcp/config/app/settings.py) reads each layer,
 merges them and keeps each value's layer.
 

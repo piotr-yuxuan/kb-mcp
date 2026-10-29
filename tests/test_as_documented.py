@@ -248,7 +248,7 @@ def test_index_records_as_documented(
     Plan 043, criterion 5: both warnings are recorded with their fields, by builds that
     exit 0 as by the others, and index.built with the persons.
     """
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_CHUNKING", "sections")
+    monkeypatch.setenv("KB_MCP_CHUNKING", "sections")
     data = tmp_path / "data"
     fillers(data / "docs", 5)
     for front in PERSONS:

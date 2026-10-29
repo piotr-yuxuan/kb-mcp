@@ -140,7 +140,7 @@ def worklog(tmp_path: Path) -> Path:
 @pytest.fixture(autouse=True)
 def words_alone(monkeypatch: MonkeyPatch) -> None:
     """Search by words alone, so that the index that sync builds calls no endpoint."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "lexical")
+    monkeypatch.setenv("KB_MCP_SEARCH_MODE", "lexical")
 
 
 def settings_file(home: Path, worklog: Path | None, *, atlassian: bool = False) -> Path:
@@ -195,7 +195,7 @@ def test_the_work_log_alone_says_the_period_it_ignores_and_a_dry_run_writes_noth
 
     No setting is given by variable either: a dry run would say the mode ignored.
     """
-    monkeypatch.delenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE")
+    monkeypatch.delenv("KB_MCP_SEARCH_MODE")
     config = settings_file(home, worklog)
     before = snapshot(worklog)
     assert main(command(home, config, "--include", "worklog", "--since", "7d", "--dry-run")) == 0
@@ -805,7 +805,7 @@ def test_an_endpoint_elsewhere_is_refused_before_any_step(
     capsys: CaptureFixture[str],
 ) -> None:
     """By meaning, an endpoint off this machine without --allow-remote-embeddings: exit 2."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "hybrid")
+    monkeypatch.setenv("KB_MCP_SEARCH_MODE", "hybrid")
     config = settings_file(home, worklog, atlassian=True)
     remote = 'embedding_url = "https://embeddings.example/v1"\n'
     config.write_text(remote + config.read_text("utf-8"), "utf-8")
@@ -836,10 +836,10 @@ def test_an_index_not_built_fails_its_row_and_keeps_the_others(
     home: Path, worklog: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The endpoint lacks the model: the work log done, the index failed, exit 1, said."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE", "hybrid")
+    monkeypatch.setenv("KB_MCP_SEARCH_MODE", "hybrid")
     config = settings_file(home, worklog)
     with serving(Scripted(models={})) as url:
-        monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL", url)
+        monkeypatch.setenv("KB_MCP_EMBEDDING_URL", url)
         status = main(command(home, config, "--yes", "--format", "json"))
     rows = json.loads(capsys.readouterr().out)["steps"]
     assert status == ExitStatus.FAILED
@@ -950,7 +950,7 @@ def test_with_a_site_source_an_email_without_a_token_alone_is_not_applied(
     home: Path, signed_in: FakeSite, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The site is used; the email, without its token, signs nothing in."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMAIL", "someone@example.invalid")
+    monkeypatch.setenv("KB_MCP_EMAIL", "someone@example.invalid")
     config = settings_file(home, None, atlassian=True)
     assert main(command(home, config, "--dry-run", "--since", "2026-10-02")) == ExitStatus.OK
     said = capsys.readouterr().err
@@ -963,14 +963,14 @@ def test_without_a_site_source_the_sign_in_s_settings_are_not_applied(
     home: Path, worklog: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The email and the token, given, are said ignored, by their variables."""
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMAIL", "someone@example.invalid")
-    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_API_TOKEN", "token-sentinel-7f2b")
+    monkeypatch.setenv("KB_MCP_EMAIL", "someone@example.invalid")
+    monkeypatch.setenv("KB_MCP_API_TOKEN", "token-sentinel-7f2b")
     config = settings_file(home, worklog)
     assert main(command(home, config, "--dry-run")) == ExitStatus.OK
     said = capsys.readouterr().err
     for setting, variable in (
-        ("email", "ATLASSIAN_OFFLINE_MCP_EMAIL"),
-        ("api_token", "ATLASSIAN_OFFLINE_MCP_API_TOKEN"),
+        ("email", "KB_MCP_EMAIL"),
+        ("api_token", "KB_MCP_API_TOKEN"),
     ):
         assert f"ignored: {setting} ({variable}): no Atlassian source in this sync\n" in said
     assert "token-sentinel-7f2b" not in said
@@ -1022,12 +1022,12 @@ def test_what_sync_records_is_what_its_page_says(
     the default model; by words alone, it does not. Either way, the index is built.
     """
     if mode is None:
-        monkeypatch.delenv("ATLASSIAN_OFFLINE_MCP_SEARCH_MODE")
+        monkeypatch.delenv("KB_MCP_SEARCH_MODE")
     config = settings_file(home, worklog, atlassian=True)
     period = ("--since", "2026-10-02")
     emitted = Emitted()
     with serving(Scripted(models={DEFAULT_MODEL: DIGEST})) as url:
-        monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_EMBEDDING_URL", url)
+        monkeypatch.setenv("KB_MCP_EMBEDDING_URL", url)
         with emitted.gathering(telemetry, "sync"):
             assert main(command(home, config, "--yes", "-vv", *period)) == ExitStatus.FAILED
         with emitted.gathering(telemetry, "sync"):

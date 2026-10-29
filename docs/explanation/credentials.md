@@ -12,8 +12,8 @@ in [the trade-offs](trade-offs.md#cookies-and-api-tokens).
 | Secret | Given by | Kept by the program | Sent to |
 |---|---|---|---|
 | the session's cookies | `login`, in a Chrome window | `<data>/session/cookies.json`, beside the window's own profile | the site's host alone |
-| the API token, with its email | `ATLASSIAN_OFFLINE_MCP_API_TOKEN`, in one run's environment | nowhere | the site's host alone, as Basic auth |
-| the embedding key | `ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY`, in one run's environment | nowhere | the embedding endpoint alone, as a bearer token |
+| the API token, with its email | `KB_MCP_API_TOKEN`, in one run's environment | nowhere | the site's host alone, as Basic auth |
+| the embedding key | `KB_MCP_EMBEDDING_API_KEY`, in one run's environment | nowhere | the embedding endpoint alone, as a bearer token |
 
 A run signs in by the token when one is set, else by the saved session
 ([`sign_in`](../../src/kb_mcp/sources/atlassian/adapters/sign_in.py)).
@@ -120,7 +120,7 @@ To revoke it, see [revoke the token](../how-to/api-token-with-sops.md#revoke-the
 
 Ollama on this machine, the example of any OpenAI-compatible API, needs no key; a hosted
 endpoint may. The key follows the token's rules: it comes from
-`ATLASSIAN_OFFLINE_MCP_EMBEDDING_API_KEY` alone, the settings file refuses it
+`KB_MCP_EMBEDDING_API_KEY` alone, the settings file refuses it
 ([`test_a_secret_in_the_file_is_refused_by_name_never_by_value`](../../tests/test_settings.py)),
 and no representation of the settings shows it
 ([`test_secrets_come_from_the_environment_and_are_never_shown`](../../tests/test_settings.py)).

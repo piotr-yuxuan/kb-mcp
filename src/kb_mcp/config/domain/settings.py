@@ -321,7 +321,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         **TABLE,
-        env_prefix="ATLASSIAN_OFFLINE_MCP_",
+        env_prefix="KB_MCP_",
         env_nested_delimiter="__",
         env_ignore_empty=True,
     )
