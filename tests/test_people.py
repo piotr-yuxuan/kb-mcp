@@ -2,7 +2,8 @@
 
 The names are made up: Robin Example, an account under two names; Sam Sample, the name
 of two accounts; Alex Example, a name alone; the work log's first names. Every expected
-person is written by hand from the plan's rules, its id from the plan's definition.
+person is written by hand from the plan's rules, its id from the plan's definition. The
+alias file is read from a scratch folder, and refused by the plan's list.
 """
 
 from __future__ import annotations
@@ -10,9 +11,11 @@ from __future__ import annotations
 import hashlib
 from dataclasses import replace
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pytest
 
+from atlassian_offline_mcp.search.adapters.aliases import AliasFileError, read_aliases
 from atlassian_offline_mcp.search.domain.people import (
     NOBODY,
     SEVERAL,
@@ -29,6 +32,9 @@ from atlassian_offline_mcp.search.domain.people import (
     joined,
     name_key,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def anchored(text: str) -> str:
@@ -420,3 +426,107 @@ def test_the_result_is_the_same_for_the_rows_in_any_order(rows: tuple[Row, ...])
     """Transcripts before their meetings, ties in another order, a row twice: no change."""
     aliases = {"Sam Sample": SAM_3, "Alex": "alex EXAMPLE"}
     assert joined(rows, LINKS, aliases) == joined(ROWS, LINKS, aliases)
+
+
+def test_an_alias_file_gives_each_name_and_its_target_as_written(tmp_path: Path) -> None:
+    """Names and targets as written, in the file's order; 200 characters are not too many."""
+    path = tmp_path / "aliases.toml"
+    long = "R" * 200
+    path.write_text(
+        "# Who each name means.\n"
+        '"Sam" = "Sam Sample"\n'
+        f'"Robin" = "{SAM_3}"\n'
+        '"Hélène" = "helene  EXAMPLE"\n'
+        f'"{long}" = "{long}"\n',
+        encoding="utf-8",
+    )
+    assert list(read_aliases(path).items()) == [
+        ("Sam", "Sam Sample"),
+        ("Robin", SAM_3),
+        ("Hélène", "helene  EXAMPLE"),
+        (long, long),
+    ]
+
+
+def test_no_alias_file_gives_no_alias(tmp_path: Path) -> None:
+    """The file is the user's, and optional: without it, no name has an alias."""
+    assert read_aliases(tmp_path / "aliases.toml") == {}
+
+
+@pytest.mark.parametrize(
+    ("written", "names", "why"),
+    [
+        ('"" = "Sam Sample"\n', [""], "the name is empty"),
+        ('" " = "Sam Sample"\n', [" "], "the name is empty"),
+        ('"Sam" = ""\n', ["Sam"], "its target is empty"),
+        ('"Sam\\nSample" = "Sam Sample"\n', ["Sam\nSample"], "the name holds a line break"),
+        ('"Sam\\u2028" = "Sam Sample"\n', ["Sam\u2028"], "the name holds a line break"),
+        ('"Sam" = """Sam\nSample"""\n', ["Sam"], "its target holds a line break"),
+        ('"Sam" = "Sam Sample\\r"\n', ["Sam"], "its target holds a line break"),
+        (f'"{"R" * 201}" = "Robin"\n', ["R" * 201], "the name is longer than 200"),
+        (f'"Robin" = "{"R" * 201}"\n', ["Robin"], "its target is longer than 200"),
+        ('[Sam]\nname = "Sam Sample"\n', ["Sam"], "a table"),
+        ('"Sam" = { name = "Sam Sample" }\n', ["Sam"], "a table"),
+        ('"Sam" = 1\n', ["Sam"], "not text"),
+        ('"Sam" = ["Sam Sample"]\n', ["Sam"], "not text"),
+        ('"Sam" = "Sam Sample"\n"sam" = "Sam Other"\n', ["Sam", "sam"], "one name"),
+        (
+            '"Hélène" = "Sam Sample"\n"helene (guest)" = "Sam"\n',
+            ["Hélène", "helene (guest)"],
+            "one name",
+        ),
+    ],
+    ids=[
+        "empty name",
+        "blank name",
+        "empty target",
+        "line feed in a name",
+        "line separator in a name",
+        "line feed in a target",
+        "carriage return in a target",
+        "name of 201 characters",
+        "target of 201 characters",
+        "table",
+        "inline table",
+        "number",
+        "array",
+        "two names of one key",
+        "two names of one key, by accent and annotation",
+    ],
+)
+def test_an_alias_file_off_its_rules_is_refused_naming_it_and_the_alias(
+    tmp_path: Path, written: str, names: list[str], why: str
+) -> None:
+    """Each refusal names the file and each name at fault, on one line, and says why."""
+    path = tmp_path / "aliases.toml"
+    path.write_text(written, encoding="utf-8")
+    with pytest.raises(AliasFileError) as refusal:
+        read_aliases(path)
+    message = str(refusal.value)
+    assert message.startswith(f"{path}: ")
+    assert all(repr(name) in message for name in names)
+    assert why in message
+    assert message.splitlines() == [message]
+
+
+@pytest.mark.parametrize(
+    "written",
+    [b'\xff\xfe"Sam" = "Sam Sample"\n', b"Sam = \n", b'"Sam" = "Sam Sample"\nSam = "x"\n'],
+    ids=["not UTF-8", "not TOML", "one key twice"],
+)
+def test_an_alias_file_that_is_not_utf_8_toml_is_refused_naming_it(
+    tmp_path: Path, written: bytes
+) -> None:
+    """A file that is not UTF-8 TOML holds no alias that could be named: the file is."""
+    path = tmp_path / "aliases.toml"
+    path.write_bytes(written)
+    with pytest.raises(AliasFileError, match="not UTF-8 TOML") as refusal:
+        read_aliases(path)
+    assert str(refusal.value).startswith(f"{path}: ")
+
+
+def test_an_alias_file_that_cannot_be_read_raises_os_error(tmp_path: Path) -> None:
+    """A folder in the file's place is no alias file, nor a missing one."""
+    (tmp_path / "aliases.toml").mkdir()
+    with pytest.raises(IsADirectoryError):
+        read_aliases(tmp_path / "aliases.toml")
