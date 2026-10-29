@@ -308,7 +308,10 @@ def by_meeting(row: Row, joining: Joining) -> Answer:
     return next(iter(persons), None)
 
 
-# Rules 2 to 4, each with how a name joins by it, in the order that ``joined`` tries them.
+# Rules 2 to 4, each with how a name joins by it, in the order that ``joined`` tries them,
+# the first answer winning. The order is not all of it: rules 2 and 3 read rule 4's
+# answer, so that neither takes a speaker whom its meeting gives another person; a rule
+# added here says how it stands to rule 4.
 RULES: tuple[tuple[str, Callable[[Row, Joining], Answer]], ...] = (
     (ALIAS, by_alias),
     (NAME, by_name),
