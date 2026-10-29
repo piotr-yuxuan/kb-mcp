@@ -905,6 +905,27 @@ def test_a_person_s_answer_opens_with_who_they_are_and_each_hit_ends_with_their_
     ]
 
 
+def test_a_one_word_name_of_an_account_is_never_shown_as_perhaps_the_same(
+    tmp_path: Path,
+) -> None:
+    """With an account named Robin, one word, the review's speaker Robin is ambiguous.
+
+    It is then a person by name alone, as is the planning's; but an alias of Robin would
+    also take the name from that account, which the unlinked transcript's Robin joins:
+    the answer narrowed to Robin Example suggests none.
+    """
+    robin = PersonRole(role="author", name="Robin", account="acct-0004")
+    library = built(
+        tmp_path,
+        [(front, None) for front in (*PERSONS, issue("PAY-3", "Ledger audit", people=(robin,)))],
+    )
+    block = parts(library.search(filters={"person": "Robin Example"}, sort="updated"))[1]
+    header = block.partition("\n\n")[0]
+    assert not [line for line in header.splitlines() if line.startswith("Perhaps the same")]
+    alone = library.search(filters={"person": ROBIN_ALONE}, sort="created")
+    assert sorted(refs(alone)) == ["t-20261020-1", "t-20261020-2"]
+
+
 def test_a_person_s_roles_on_a_hit_come_in_the_order_of_the_roles(commented: Library) -> None:
     """A Person wrote PROJ-1, is assigned it and commented three times; created PROJ-4."""
     filters = {"person": "a person", "source": "jira"}

@@ -402,14 +402,20 @@ def about(reader: Reader, filters: Filters, paths: Sequence[str]) -> tuple[str, 
     """Write the person that ``person`` narrows to, and their roles on each document shown.
 
     The person as ``responses.person`` writes them, then a blank line, with those perhaps
-    the same: the persons by name alone of one word, the first of one of their names; and
-    their roles by path, as ``responses.roles`` says them. Nothing without that filter.
+    the same: the persons by name alone of one word, the first of one of their names,
+    but a word that an account is named by, from which an alias of it would take the
+    name; and their roles by path, as ``responses.roles`` says them. Nothing without
+    that filter.
     """
     if filters.person is None:
         return "", {}
     found = reader.person(filters.person)
     words = sorted({spelling.key.partition(" ")[0] for spelling in found.person.names})
-    alike = [reader.person(people.person_id(people.NAME, word)) for word in words]
+    alike = [
+        reader.person(people.person_id(people.NAME, word))
+        for word in words
+        if not reader.persons(word, people.ACCOUNT)
+    ]
     others = [each.person for each in alike if each and each.person.id != filters.person]
     held = reader.roles(filters.person, paths)
     roles = {path: responses.roles(found.person.name, each) for path, each in held.items()}

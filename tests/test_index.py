@@ -765,13 +765,18 @@ def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
 
 
 def test_a_person_is_found_by_the_key_of_any_of_its_names(persons: Path) -> None:
-    """Every person holding the key, in order; none for a key that no one holds."""
+    """Every person holding the key, in order; none for a key that no one holds.
+
+    Given how a name joined, those of the names that joined so alone.
+    """
     with reading(persons) as reader:
         assert reader.persons("sam sample") == sorted([SAM_2, SAM_3, SAM_ALONE])
         assert reader.persons("robin") == sorted([ROBIN, ROBIN_ALONE])
         assert reader.persons("robin example") == [ROBIN]  # of three spellings, once
         assert reader.persons("Robin Sample") == []  # a name, not its key
         assert reader.persons("nobody") == []
+        assert reader.persons("sam sample", "account") == sorted([SAM_2, SAM_3])
+        assert reader.persons("robin", "account") == []  # by meeting and by name alone
 
 
 def test_a_person_s_documents_are_counted_by_role_and_by_source(persons: Path) -> None:

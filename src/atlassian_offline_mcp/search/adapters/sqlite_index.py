@@ -663,10 +663,15 @@ class Reader:
         """Give each value that a filter or count can take, the most used first."""
         return [(row[0], row[1]) for row in self._connection.execute(VALUES[name])]
 
-    def persons(self, key: str) -> list[str]:
-        """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted."""
+    def persons(self, key: str, joined: str | None = None) -> list[str]:
+        """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted.
+
+        ``joined``, if given, keeps the names that joined so, such as ``people.ACCOUNT``.
+        """
         rows = self._connection.execute(
-            "SELECT DISTINCT person FROM person_names WHERE key = ? ORDER BY person", (key,)
+            "SELECT DISTINCT person FROM person_names"
+            " WHERE key = :key AND (:joined IS NULL OR joined = :joined) ORDER BY person",
+            {"key": key, "joined": joined},
         )
         return [row[0] for row in rows]
 
