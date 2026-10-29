@@ -366,7 +366,7 @@ afresh at each run
   joined across documents, left to plan 043; a filter by type, which `source` with a
   participant or a date already narrows.
 - **Settled** by [plan
-  042](../work/plans/042-work-log-days-and-meetings.md#days-and-meetings-the-rule), on
+  042](../work/changelog/042-work-log-days-and-meetings.md#days-and-meetings-the-rule), on
   the maintainer's feedback, its questions answered by their defaults when the
   maintainer approved it.
 
