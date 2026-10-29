@@ -152,7 +152,15 @@ def refuse_former_name(
         ),
         ("the settings file", "--config", found.settings_given),
     ]
-    paths = [f"{name} ({layer})" for name, layer, value in judged if FORMER_NAME.search(str(value))]
+    if loaded.settings.data_dir != at_home(default_data, home):
+        # Given through a link, a data directory may lead into the former folder, which
+        # the move would leave it leading nowhere; rule 2 judges the default's.
+        judged.append(("data_dir", loaded.layer("data_dir"), data_dir))
+    paths = list(
+        dict.fromkeys(
+            f"{name} ({layer})" for name, layer, value in judged if FORMER_NAME.search(str(value))
+        )
+    )
     sections = [
         ("# Move the files:", moves),
         (

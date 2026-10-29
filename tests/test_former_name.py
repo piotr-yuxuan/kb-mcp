@@ -204,6 +204,18 @@ def test_a_link_at_the_new_data_directory_is_followed(home: Path, target: Path) 
         load_settings(SETTINGS_PATH, flags, home)
 
 
+def test_a_data_directory_given_through_a_link_into_the_former_folder_is_named(
+    home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Rule 4 judges where a data directory given leads: the move would strand it."""
+    place(home, FORMER_DATA)
+    (home / "mirror").symlink_to(home / FORMER_DATA)
+    monkeypatch.setenv("KB_MCP_DATA_DIR", str(home / "mirror"))
+    advice = refusal(home).advice
+    assert "data_dir (KB_MCP_DATA_DIR)" in advice.splitlines()
+    assert block(advice) == []
+
+
 def test_a_linked_settings_folder_still_holds_the_default(home: Path) -> None:
     """Rule 1 holds where ``~/.config`` is a link, as a manager of dotfiles makes it."""
     (home / "dotfiles").mkdir()
