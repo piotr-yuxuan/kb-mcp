@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from kb_mcp.config.domain.former_name import FORMER_PREFIX
 from tests.reference_pages import PAGES, REGENERATE
 
 ROOT = Path(__file__).parents[1]
@@ -31,6 +32,8 @@ NON_VARIABLES = {
     "SELECT_TAGS": "a setting of an org file, #+SELECT_TAGS:, that the work log reads",
     "SEQ_TODO": "a setting of an org file, #+SEQ_TODO:, that the work log reads",
     "TYP_TODO": "a setting of an org file, #+TYP_TODO:, that the work log reads",
+    FORMER_PREFIX: "the former name's prefix, whose variables stop a run, as"
+    " docs/how-to/move-to-kb-mcp.md says",
 }
 
 

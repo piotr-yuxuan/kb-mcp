@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic_settings import EnvSettingsSource
 
-from kb_mcp.config.adapters.settings_file import git_root, read_settings_file
+from kb_mcp.config.adapters.settings_file import SETTINGS_PATH, git_root, read_settings_file
+from kb_mcp.config.domain.former_name import (
+    FORMER_DATA_DIR,
+    FORMER_SETTINGS_FILE,
+    Found,
+    refuse_former_name,
+)
 from kb_mcp.config.domain.settings import (
+    DEFAULT_DATA_DIR,
     Entry,
     Loaded,
     Settings,
@@ -23,7 +31,6 @@ from kb_mcp.observability.adapters.logs import default_log_folder
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
 
 __all__ = ["UnsafeDataDirError", "load_settings"]
 
@@ -51,14 +58,29 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
     ``..`` removed) before the guard judges them, as logs hold titles and queries; the
     resolved data directory and log folder are what every command then uses. Links
     deeper inside are not followed.
+
+    Before the guard, ``refuse_former_name`` judges what the program's former name left,
+    from what exists under ``home``: the former settings file is read in place of the
+    default one when that is missing, so that its values are judged too.
     """
+    places = {
+        place: home.joinpath(*place.parts[1:])
+        for place in (SETTINGS_PATH, FORMER_SETTINGS_FILE, Path(DEFAULT_DATA_DIR), FORMER_DATA_DIR)
+    }
+    found = Found(
+        SETTINGS_PATH,
+        path.expanduser() == SETTINGS_PATH.expanduser(),
+        frozenset(place for place, there in places.items() if there.exists()),
+        git_root(places[FORMER_DATA_DIR]) is not None,
+    )
+    read = places[FORMER_SETTINGS_FILE] if found.former_file_judged else path
     try:
-        values = read_settings_file(path)
+        values = read_settings_file(read)
     except ValueError as error:
-        message = f"{path}: not a TOML file"
+        message = f"{read}: not a TOML file"
         raise SettingsError(message) from error
     except OSError as error:
-        message = f"{path}: not readable ({type(error).__name__})"
+        message = f"{read}: not readable ({type(error).__name__})"
         raise SettingsError(message) from error
     environment, unread = environment_entries(os.environ, EnvSettingsSource(Settings))
     below, above, unshared = shared_entries(os.environ)
@@ -76,6 +98,7 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
         ],
         home,
     )
+    refuse_former_name(found, loaded, os.environ, home)
     logs = loaded.settings.logs
     settings = loaded.settings.model_copy(
         update={

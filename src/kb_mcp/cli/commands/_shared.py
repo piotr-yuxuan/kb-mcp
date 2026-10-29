@@ -76,6 +76,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
         loaded = load_settings(arguments.config, flags, Path.home().resolve())
     except SettingsError as error:
         structlog.get_logger().error("settings.refused", reason=str(error))
+        sys.stderr.write(error.advice)
         return ExitStatus.REFUSED
     refusal = command.refused(arguments, values_of(loaded)) if command.refused else None
     refusal = refusal or next(

@@ -89,7 +89,12 @@ SYNCED_NAMES = ("Dropbox", "OneDrive", "Google Drive", "GoogleDrive")
 
 
 class SettingsError(ValueError):
-    """A setting that cannot be used; the message names it and its layer, never its value."""
+    """A setting that cannot be used; the message names it and its layer, never its value.
+
+    ``advice``, empty unless a refusal has more to say, is written after it as it is.
+    """
+
+    advice = ""
 
 
 def matching(pattern: re.Pattern[str], expected: str) -> AfterValidator:
