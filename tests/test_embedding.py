@@ -14,7 +14,7 @@ import socket
 import threading
 from argparse import Namespace
 from contextlib import suppress
-from dataclasses import replace
+from copy import replace
 from typing import TYPE_CHECKING
 
 import httpx

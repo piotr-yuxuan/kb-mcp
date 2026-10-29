@@ -16,7 +16,6 @@ import sqlite3
 import tempfile
 import uuid
 from contextlib import contextmanager
-from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -581,7 +580,7 @@ class Reader:
         if filters not in self._kept:
             parameters = {
                 name: moment(value) if isinstance(value, datetime) else value
-                for name, value in asdict(filters).items()
+                for name, value in filters.model_dump().items()
             }
             self._kept[filters] = self._connection.execute(KEPT, parameters).fetchone()[0]
         return self._kept[filters]

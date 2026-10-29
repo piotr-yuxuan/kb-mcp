@@ -21,12 +21,12 @@ import json
 import sqlite3
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 import structlog
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.progress import task
 
 if TYPE_CHECKING:
@@ -60,8 +60,7 @@ def as_bytes(vector: NDArray[np.float32]) -> bytes:
     return vector.astype(LAYOUT).tobytes()
 
 
-@dataclass(frozen=True)
-class Swept:
+class Swept(Record):
     """What a prune of the store did: the vectors deleted and those left, and its size.
 
     ``shrinks`` says whether the store gives freed pages back to the file system, as one

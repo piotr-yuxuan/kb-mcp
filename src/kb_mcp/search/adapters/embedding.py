@@ -18,8 +18,11 @@ from typing import TYPE_CHECKING, Protocol
 
 import httpx
 import numpy as np
+from numpy.typing import NDArray
 from opentelemetry import trace
+from pydantic import ConfigDict
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.http import client_span, server
 from kb_mcp.search.adapters.model_api import (
     OPERATION_DURATION,
@@ -33,12 +36,9 @@ from kb_mcp.search.adapters.model_api import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from numpy.typing import NDArray
-
     from kb_mcp.search.adapters.model_api import Endpoint
 
-    type Vectors = NDArray[np.float32]
-
+type Vectors = NDArray[np.float32]
 # The environment variable that holds the endpoint's API key, if it needs one.
 KEY_VARIABLE = "KB_MCP_EMBEDDING_API_KEY"
 # Texts sent in one request; a piece is at most about 1,500 characters.
@@ -63,8 +63,7 @@ DOCUMENTS = Bounds(deadline_s=120, attempts=len(WAITS_S) + 1)
 SINGLE = Bounds(deadline_s=30, attempts=1)
 
 
-@dataclass(frozen=True)
-class Prefixes:
+class Prefixes(Record):
     """What a model's card asks to put before a query, and before a document."""
 
     query: str
@@ -136,9 +135,10 @@ class Embedder(Protocol):
         ...
 
 
-@dataclass(frozen=True)
-class Embeddings:
+class Embeddings(Record):
     """What the endpoint gave for texts: a unit vector each, and the tokens it counted."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     vectors: Vectors
     tokens: int | None  # the answer's usage.prompt_tokens, None when it says none

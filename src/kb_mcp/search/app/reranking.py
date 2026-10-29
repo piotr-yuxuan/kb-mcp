@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import structlog
 from opentelemetry import metrics
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.search.adapters.reranking import RerankError
 from kb_mcp.search.app.meaning import QUIET_S
 
@@ -31,8 +31,7 @@ FALLBACKS = metrics.get_meter(__name__).create_counter(
 )
 
 
-@dataclass(frozen=True)
-class Reordered:
+class Reordered(Record):
     """The order of the texts, the best first, by their places; or why there is none."""
 
     order: tuple[int, ...] | None

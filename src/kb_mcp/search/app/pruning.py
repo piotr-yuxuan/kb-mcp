@@ -12,12 +12,13 @@ from __future__ import annotations
 import os
 import sqlite3
 import time
-from dataclasses import asdict, dataclass, replace
+from copy import replace
 from typing import TYPE_CHECKING, Literal
 
 import structlog
 from opentelemetry import metrics, trace
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.search.adapters import sqlite_index, vector_store
 
 if TYPE_CHECKING:
@@ -72,8 +73,7 @@ SAID: dict[Outcome, tuple[str, str, tuple[str, ...]]] = {
 }
 
 
-@dataclass(frozen=True)
-class Pruned:
+class Pruned(Record):
     """What a prune did: its outcome, the vectors kept and deleted, and the store's size.
 
     ``kept`` counts the vectors left in the store, ``kept_for_evaluation`` those of them
@@ -108,7 +108,7 @@ def said(pruned: Pruned, span: Span, started: float) -> Pruned:
     span.set_attribute("kb_mcp.outcome", pruned.outcome)
     span.set_attribute("kb_mcp.deleted", pruned.deleted)
     level, event, names = SAID[pruned.outcome]
-    fields = asdict(pruned)
+    fields = pruned.model_dump()
     getattr(structlog.get_logger(), level)(event, **{name: fields[name] for name in names})
     return pruned
 

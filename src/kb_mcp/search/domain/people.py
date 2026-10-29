@@ -26,13 +26,16 @@ import hashlib
 import re
 import unicodedata
 from collections import Counter
-from dataclasses import dataclass, replace
+from collections.abc import Mapping
+from copy import replace
+from datetime import datetime
 from itertools import chain
 from typing import TYPE_CHECKING
 
+from kb_mcp.kernel.record import Record
+
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Iterable, Mapping
-    from datetime import datetime
+    from collections.abc import Callable, Collection, Iterable
 
 # A trailing part in brackets, once a key's spaces are collapsed: an annotation of the
 # work log's, such as "Kim (not in the header)", and what it says. It needs a name
@@ -98,8 +101,7 @@ def person_id(anchor: str, value: str) -> str:
     return "p-" + hashlib.sha256(f"{anchor}\n{value}".encode()).hexdigest()[:16]
 
 
-@dataclass(frozen=True)
-class Row:
+class Row(Record):
     """A person in a role of a document, as a row of the index's people holds it.
 
     ``account`` is the source's account id, None for a name alone; ``updated`` is when
@@ -113,8 +115,7 @@ class Row:
     updated: datetime
 
 
-@dataclass(frozen=True)
-class Ambiguity:
+class Ambiguity(Record):
     """A name that could be several persons, none of whom is given it.
 
     Or a key whose names annotations part among persons by name alone, such as
@@ -129,8 +130,7 @@ class Ambiguity:
 type Answer = str | Ambiguity | None
 
 
-@dataclass(frozen=True)
-class Alias:
+class Alias(Record):
     """A line of the alias file: a name as a source writes it, and the person it means."""
 
     name: str  # as the file writes it
@@ -149,8 +149,7 @@ class Alias:
         return SEVERAL if isinstance(self.means, Ambiguity) else None
 
 
-@dataclass(frozen=True, order=True)
-class Spelling:
+class Spelling(Record):
     """A name of a person as a source writes it, its key, and how it joined the person."""
 
     name: str
@@ -158,8 +157,7 @@ class Spelling:
     how: str  # ACCOUNT, ALIAS, MEETING or NAME
 
 
-@dataclass(frozen=True)
-class Person:
+class Person(Record):
     """One person across sources: its id, the name it is served by, and its spellings."""
 
     id: str
@@ -167,8 +165,7 @@ class Person:
     names: tuple[Spelling, ...]  # in order
 
 
-@dataclass(frozen=True)
-class Joined:
+class Joined(Record):
     """What the join gives: the persons, the person of each row, and what it left apart."""
 
     persons: tuple[Person, ...]  # by id
@@ -177,8 +174,7 @@ class Joined:
     unused: tuple[Alias, ...]  # the aliases that changed nothing, in their order
 
 
-@dataclass(frozen=True)
-class Outcome:
+class Outcome(Record):
     """What a build says of its join: how many persons, and what it left apart, as Joined."""
 
     count: int = 0
@@ -424,7 +420,8 @@ def joined(
         else:
             name = written.get(person) or Counter(row.name for row, _ in joins).most_common(1)[0][0]
         spellings = sorted(
-            {Spelling(name=row.name, key=name_key(row.name), how=how) for row, how in joins}
+            {Spelling(name=row.name, key=name_key(row.name), how=how) for row, how in joins},
+            key=lambda each: (each.name, each.key, each.how),
         )
         persons.append(Person(id=person, name=name, names=tuple(spellings)))
     return Joined(

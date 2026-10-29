@@ -14,13 +14,13 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import httpx
 import structlog
 from opentelemetry import trace
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import LONGEST_QUERY, LONGEST_TEXT, MOST_TEXTS
 from kb_mcp.observability.adapters.http import client_span, server
 from kb_mcp.search.adapters.model_api import (
@@ -68,8 +68,7 @@ class RerankError(ModelError):
         self.kind: Kind = kind
 
 
-@dataclass(frozen=True)
-class Reranked:
+class Reranked(Record):
     """What the server gave for texts: a score each, in their order, and the tokens it counted."""
 
     scores: list[float]

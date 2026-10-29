@@ -14,7 +14,7 @@ import json
 import re
 import sqlite3
 from contextlib import closing
-from dataclasses import replace
+from copy import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 

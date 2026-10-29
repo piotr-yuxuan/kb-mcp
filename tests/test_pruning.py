@@ -11,7 +11,8 @@ import sys
 import threading
 import time
 from contextlib import closing
-from dataclasses import asdict, dataclass, field, replace
+from copy import replace
+from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, override
@@ -517,7 +518,7 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     assert counts == {"kept": len(stored(fresh)), "pruned": deleted}
     [size] = measured["kb_mcp.vectors.bytes"].data.data_points
     assert size.value == done.bytes_after
-    assert json.loads(to_json(indexed))["pruned"] == asdict(done)
+    assert json.loads(to_json(indexed))["pruned"] == done.model_dump()
     assert f"vectors pruned: {deleted}\nvector store: " in index_command.text(indexed, "short")
     detailed = index_command.text(indexed, "detailed")
     assert f"kept {len(stored(fresh))} vectors ({len(alone)} for the evaluation alone)" in detailed

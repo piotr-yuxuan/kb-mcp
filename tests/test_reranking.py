@@ -7,7 +7,7 @@ import os
 import re
 import threading
 import time
-from dataclasses import replace
+from copy import replace
 from typing import TYPE_CHECKING
 
 import httpx

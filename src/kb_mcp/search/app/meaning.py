@@ -11,17 +11,18 @@ from __future__ import annotations
 import json
 import threading
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.search.adapters.model_api import ModelError
+from kb_mcp.search.domain.search import Score
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from kb_mcp.search.adapters.embedding import Embedder
     from kb_mcp.search.adapters.sqlite_index import Reader
-    from kb_mcp.search.domain.search import Embedded, Filters, Pieces, Score
+    from kb_mcp.search.domain.search import Embedded, Filters, Pieces
 
 # The documents nearest a query that a search by meaning gives, at most.
 DEPTH = 100
@@ -35,8 +36,7 @@ NO_VECTORS = (
 STALE = "{name}: the index was built with other weights of it; run kb-mcp index"
 
 
-@dataclass(frozen=True)
-class Nearest:
+class Nearest(Record):
     """The documents nearest a query, or why there are none to give."""
 
     found: dict[str, tuple[Score, int, int, int]]  # each path's score, then its best

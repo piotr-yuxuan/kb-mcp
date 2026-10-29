@@ -10,22 +10,23 @@ from __future__ import annotations
 import re
 import string
 import unicodedata
-from dataclasses import dataclass
+from collections.abc import Mapping
+from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
+from numpy.typing import NDArray
+from pydantic import ConfigDict
 
+from kb_mcp.kernel.chunking import Chunking
 from kb_mcp.kernel.names import ISSUE_KEY
+from kb_mcp.kernel.record import Record
+from kb_mcp.mirror.domain.mirror import FrontMatter
+from kb_mcp.search.domain.people import Person
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Iterable, Mapping, Sequence
-    from datetime import datetime
+    from collections.abc import Collection, Iterable, Sequence
 
-    from numpy.typing import NDArray
-
-    from kb_mcp.kernel.chunking import Chunking
-    from kb_mcp.mirror.domain.mirror import FrontMatter
-    from kb_mcp.search.domain.people import Person
 
 WORD = re.compile(r"[^\W_]+")
 MAX_WORDS = 10
@@ -188,16 +189,14 @@ FUSION = 60
 Sort = Literal["relevance", "updated", "created"]
 
 
-@dataclass(frozen=True)
-class Identifiers:
+class Identifiers(Record):
     """The issue keys and page ids that a text names, in its order."""
 
     keys: tuple[str, ...]
     ids: tuple[str, ...]
 
 
-@dataclass(frozen=True)
-class Plan:
+class Plan(Record):
     """What the index is asked for one query.
 
     Each expression is scored on its own, and a document's score is the sum of its best
@@ -213,8 +212,7 @@ class Plan:
     dropped: int  # words beyond MAX_WORDS, not searched
 
 
-@dataclass(frozen=True)
-class Section:
+class Section(Record):
     """A part of a body: a heading line and the text up to the next one."""
 
     number: int  # 1 for the first
@@ -229,8 +227,7 @@ class Section:
         return self.head + self.body
 
 
-@dataclass(frozen=True)
-class Score:
+class Score(Record):
     """How well a document matches one expression, by its best section."""
 
     relevance: float  # higher is better
@@ -238,8 +235,7 @@ class Score:
     created: datetime | None = None  # by words; a score by meaning has none
 
 
-@dataclass(frozen=True)
-class Filters:
+class Filters(Record):
     """What narrows a search, each value as the index holds it; None does not narrow.
 
     A person, by their id: ``person`` in any role, each other in the role it names. The
@@ -266,8 +262,7 @@ class Filters:
     commented_before: datetime | None = None
 
 
-@dataclass(frozen=True)
-class Entry:
+class Entry(Record):
     """A document as the index holds it."""
 
     path: str  # relative to <data>/docs, with /
@@ -276,8 +271,7 @@ class Entry:
     sections: int
 
 
-@dataclass(frozen=True)
-class Passage:
+class Passage(Record):
     """A section of a document, as a search shows it: its number, heading and snippet."""
 
     number: int
@@ -285,8 +279,7 @@ class Passage:
     snippet: str
 
 
-@dataclass(frozen=True)
-class Persons:
+class Persons(Record):
     """The persons that an index joined, and the names that several accounts hold."""
 
     count: int
@@ -297,8 +290,7 @@ class Persons:
     shared: tuple[tuple[str, int], ...]
 
 
-@dataclass(frozen=True)
-class Summary:
+class Summary(Record):
     """What an index holds, and when it was built."""
 
     built_at: datetime
@@ -314,8 +306,7 @@ class Summary:
     chunking: Chunking | None = None  # how the pieces were cut, if there are vectors
 
 
-@dataclass(frozen=True)
-class Activity:
+class Activity(Record):
     """A person as the index holds them, with their documents by role and by source.
 
     A document counts once in a role, a commenter's however many their comments.
@@ -327,8 +318,7 @@ class Activity:
     last: datetime  # when the most recently updated of their documents was
 
 
-@dataclass(frozen=True)
-class Embedded:
+class Embedded(Record):
     """The model that embedded an index's pieces, and how they were cut, as the index records it."""
 
     model: str
@@ -337,9 +327,13 @@ class Embedded:
     chunking: Chunking = "sections"
 
 
-@dataclass(frozen=True, eq=False)
-class Pieces:
+class Pieces(Record):
     """Every piece of an index with its unit vector: what a search by meaning looks through."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    # By identity, as before: an array has no truth value to compare by.
+    __eq__ = object.__eq__
+    __hash__ = object.__hash__
 
     documents: tuple[int, ...]  # each piece's document, by rowid
     paths: Mapping[int, str]  # each document's path, by rowid
