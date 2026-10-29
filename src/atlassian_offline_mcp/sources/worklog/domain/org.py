@@ -32,6 +32,10 @@ COMMENT = re.compile(r"COMMENT(?:[ \t]+|$)")
 TAGS = re.compile(r"(?:^|[ \t]+):((?:[\w@#%]+:)+)$")
 # Statistics cookies: [1/3], [33%], and the empty [/] and [%].
 COOKIE = re.compile(r"\[[0-9]*(?:/[0-9]*|%)\]")
+# The cookies that org leaves out of a title in an outline path: filled ones alone.
+FILLED_COOKIE = re.compile(r"\[[0-9]+(?:/[0-9]+|%)\]")
+# A link in brackets within a text: its target, then its description, if any.
+TEXT_LINK = re.compile(r"\[\[([^\[\]]+)\](?:\[(.+?)\])?\]")
 # A setting of the file, such as #+TODO: or #+FILETAGS:; its name in any case.
 SETTING = re.compile(r"#\+([A-Za-z_]+):(?:[ \t]+(.*?))?[ \t]*")
 DECLARING = frozenset({"TODO", "SEQ_TODO", "TYP_TODO"})
@@ -93,6 +97,17 @@ class Heading:
     def title(self) -> str:
         """Its words without statistics cookies, single-spaced."""
         return " ".join(COOKIE.sub(" ", self.text).split())
+
+    @property
+    def outline_title(self) -> str:
+        """Its text as org writes it in an outline path, such as ``:ARCHIVE_OLPATH:``.
+
+        Filled statistics cookies are left out, ``[1/3]`` or ``[33%]`` but not ``[/]``;
+        then each link is its description, else its target; then it is trimmed. Blanks
+        within stay as written, and a ``/`` within is not escaped.
+        """
+        text = FILLED_COOKIE.sub("", self.text)
+        return TEXT_LINK.sub(lambda link: link[2] or link[1], text).strip()
 
     @property
     def line(self) -> str:

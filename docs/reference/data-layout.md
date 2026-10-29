@@ -485,8 +485,10 @@ problem (a file not read, a conversion that failed) removes none of its files.
   `<2026-10-28 Wed>`; a **meeting**, a child of a day with `:MEETING:` or
   `:PARTICIPANTS:` in its drawer. A top-level heading whose `:ARCHIVE_OLPATH:`, which
   org writes when it archives a subtree, names a day joins that day: a meeting archived
-  alone is one of its meetings; anything else joins the meeting that the path names
-  next after the day, if any, else the day.
+  alone is one of its meetings; anything else joins the meeting whose title, as org
+  writes it there (each link its description, else its target; filled statistics
+  cookies left out; a `/` within unescaped), is the path after the day or begins it
+  before a `/`, the longest such title, if any; else the day.
 - A **day** is one document per date: each of its headings, `todo.org` first, each
   meeting among their children cut to its heading line, then what joins it. Its id is
   `d-` and the date, `%Y%m%d`; its title, its first heading's, else the path's part.

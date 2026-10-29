@@ -327,8 +327,9 @@ def days_and_meetings(
     date: its headings, each meeting among their children cut to its heading line, then
     what an archived heading brings that ``:ARCHIVE_OLPATH:`` places below it: a meeting
     archived alone, its heading line; anything else that names none of its meetings
-    next, itself. A meeting is its subtree, then each archived heading that names it next
-    after its day. Each document begins at level 1, what joins it at level 2.
+    next, itself. A meeting is its subtree, then each archived heading whose path after
+    its day begins with the meeting's title as org writes it there, the longest such
+    title of the day. Each document begins at level 1, what joins it at level 2.
 
     A meeting links to the transcript whose file its ``:MEETING:`` names, from the folder
     of the file that holds it, and starts when that transcript starts, else at its day;
@@ -341,7 +342,7 @@ def days_and_meetings(
     """
     linked = {each.source.path: each for each in transcripts}
     days: dict[datetime, Day] = {}
-    joining: list[tuple[Day, str | None, Part]] = []  # its day, the title it names next, it
+    joining: list[tuple[Day, str, Part]] = []  # its day, its path after the day, it
     for part in parts:
         within = part.within
         if part.day is not None:
@@ -372,13 +373,17 @@ def days_and_meetings(
                 day.meetings.append((part, []))
                 day.lines.extend(org.shifted(part.subtree.lines[:1], DAY_LEVEL))
             else:
-                named = part.path[place + 1] if place + 1 < len(part.path) else None
-                joining.append((day, named and " ".join(named.split()), part))
-    for day, named, part in joining:
-        target = next(
-            (added for meeting, added in day.meetings if meeting.subtree.heading.title == named),
-            day.lines,
-        )
+                joining.append((day, "/".join(part.path[place + 1 :]), part))
+    for day, rest, part in joining:
+        # Org joins the titles of a path by a / that it does not escape, so that a title
+        # such as 1/1 with Robin spans two parts: the longest title that begins the rest.
+        named = [
+            (len(title), added)
+            for meeting, added in day.meetings
+            if (title := meeting.subtree.heading.outline_title)
+            and (rest == title or rest.startswith(f"{title}/"))
+        ]
+        target = max(named, key=lambda each: each[0], default=(0, day.lines))[1]
         target.extend(org.shifted(part.subtree.lines, DAY_LEVEL))
     found: list[Document] = []
     unlinked: list[str] = []

@@ -164,6 +164,33 @@ def test_a_heading_without_comment_is_still_a_heading(line: str) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("*** A/B review", "A/B review"),
+        ("*** Sync on [[https://example.invalid/PRB-1][PRB-1]]", "Sync on PRB-1"),
+        ("*** Link no desc [[./x.org]]", "Link no desc ./x.org"),
+        ("*** Ledger review [/]", "Ledger review [/]"),
+        ("*** Plan [1/2] review", "Plan  review"),
+        ("*** Ratio [50%] done [3/4]", "Ratio  done"),
+        ("*** COMMENT Hidden one", "Hidden one"),
+        ("*** TODO [#A] Keyed one :tag:", "Keyed one"),
+        ("*** Two  spaces  inside", "Two  spaces  inside"),
+    ],
+)
+def test_an_outline_title_is_the_heading_as_org_writes_it_in_a_path(
+    line: str, expected: str
+) -> None:
+    """As Emacs 31.1's archiving wrote each of these made-up headings in :ARCHIVE_OLPATH:.
+
+    A link is its description, else its target; a filled cookie goes, an empty one stays;
+    blanks within and a / stay as written.
+    """
+    found = org.heading(line, KEYWORDS)
+    assert found is not None
+    assert found.outline_title == expected
+
+
 def test_a_file_declares_its_keywords_its_title_and_its_tags() -> None:
     """#+TODO and #+SEQ_TODO in any case, fast-access keys dropped; #+FILETAGS both ways."""
     parsed = org.read(
@@ -1245,6 +1272,61 @@ def test_archived_headings_join_their_day_or_the_meeting_their_path_names() -> N
     ]
     assert retro.breadcrumb == ("todo.org_archive", "Entries", "<2026-10-27 Tue>")
     assert retro.people == ("Kim",)
+
+
+# Meetings whose titles hold a /, a link or an empty cookie, and the tasks archived from
+# them, each :ARCHIVE_OLPATH: as Emacs 31.1 wrote it for these made-up headings; the last
+# names a part of a title alone.
+SLASHED = "".join(
+    f"*** {title}\n:PROPERTIES:\n:PARTICIPANTS: Sam\n:END:\n"
+    for title in (
+        "1/1 with Robin",
+        "1",
+        "A/B review",
+        "Sync on [[https://example.invalid/PRB-1][PRB-1]]",
+        "Ledger review [/]",
+    )
+)
+FROM_SLASHED = "".join(
+    f"* DONE {task}\n:PROPERTIES:\n:ARCHIVE_OLPATH: Entries/<2026-10-27 Tue>/{path}\n:END:\n"
+    for task, path in (
+        ("Fourth", "1/1 with Robin/Actions"),
+        ("Fifth", "1/Actions"),
+        ("Decide", "A/B review/Actions"),
+        ("Close it", "Sync on PRB-1/Actions"),
+        ("Third", "Ledger review [/]/Actions"),
+        ("Sixth", "1/1 with Robin"),
+        ("Seventh", "A/B"),
+    )
+)
+
+
+def test_an_archived_task_joins_the_meeting_whose_title_its_path_holds_as_org_writes_it() -> None:
+    """Across the / that org writes unescaped, the longest title of the day that begins it."""
+    found, _ = journal(
+        todo(f"* Entries\n** <2026-10-27 Tue>\n{SLASHED}"),
+        archived(FROM_SLASHED),
+        archives=True,
+        transcripts=(),
+    )
+    held = {
+        each.title: [line for line in body(each) if not line.startswith(":")][1:] for each in found
+    }
+    assert held == {
+        "<2026-10-27 Tue>": [
+            "** 1/1 with Robin",
+            "** 1",
+            "** A/B review",
+            "** Sync on [[https://example.invalid/PRB-1][PRB-1]]",
+            "** Ledger review [/]",
+            "** DONE Seventh",
+        ],
+        "1/1 with Robin": ["** DONE Fourth", "** DONE Sixth"],
+        "1": ["** DONE Fifth"],
+        "A/B review": ["** DONE Decide"],
+        "Sync on [[https://example.invalid/PRB-1][PRB-1]]": ["** DONE Close it"],
+        "Ledger review": ["** DONE Third"],
+    }
 
 
 def test_a_day_that_archived_headings_alone_name_takes_its_title_from_their_path() -> None:
