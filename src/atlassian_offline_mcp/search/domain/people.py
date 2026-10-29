@@ -347,14 +347,14 @@ def joined(
             )
         # The persons that the row could be, none of whom is given it; and, for a name
         # alone that its annotation keeps from the other names of its key, its own.
-        key = name_key(row.name)
         could = found.persons if isinstance(found, Ambiguity) else frozenset()
         if not isinstance(found, str):
             compared = joining.key(row.name)
             how, found = NAME, person_id(NAME, compared)
-            if compared != key:
+            if compared != name_key(row.name):
                 could |= {found}
         if could:
+            key = name_key(row.name)
             known = ambiguous.setdefault(key, Ambiguity(row.name, could))
             ambiguous[key] = replace(known, persons=known.persons | could)
         joining.persons[row] = found
