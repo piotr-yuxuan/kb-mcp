@@ -351,6 +351,47 @@ def test_an_alias_to_an_account_s_id_settles_a_name_of_two_accounts() -> None:
     assert [ambiguity.name for ambiguity in result.ambiguous] == ["Robin"]
 
 
+def test_an_alias_to_a_name_alone_s_id_joins_it_even_where_accounts_share_the_key() -> None:
+    """The stand-up's Sam Sample, of two accounts' name, is a person by name alone.
+
+    Its id, which a refusal of Sam Sample lists, is a target as any person's: a meeting's
+    S. Sample and an unlinked transcript's Sam join it, and no alias is unused.
+    """
+    rows = (*ROWS, named(REVIEW, "S. Sample"), named(UNLINKED, "Sam"))
+    result = joined(rows, LINKS, {"S. Sample": SAM_ALONE, "Sam": SAM_ALONE})
+    assert result.of[named(REVIEW, "S. Sample")] == SAM_ALONE
+    assert result.of[named(UNLINKED, "Sam")] == SAM_ALONE
+    assert result.unused == ()
+
+
+def test_an_alias_to_the_id_of_a_speaker_left_apart_joins_it() -> None:
+    """Robin by name alone, the review's speaker, whom its meeting and an account dispute.
+
+    One account is named Robin, yet the disputed speaker is a person by name alone: an
+    alias of R. to its id joins it there.
+    """
+    rows = (*ROWS, Row(5, "author", "Robin", "acct-0004", day(20)), named(UNLINKED, "R."))
+    result = joined(rows, LINKS, {"R.": ROBIN_ALONE})
+    assert result.of[named(LINKED, "Robin")] == ROBIN_ALONE
+    assert result.of[named(UNLINKED, "R.")] == ROBIN_ALONE
+    assert result.unused == ()
+
+
+def test_an_alias_to_the_id_of_no_person_the_rows_make_names_nobody() -> None:
+    """Robin Example by name alone: every one of its names joins Robin's account.
+
+    As after an account fetched late, the id that its names had alone names nobody now;
+    the alias to it is unused, and changes nothing, as one to an id of none.
+    """
+    gone = anchored("name\nrobin example")
+    result = joined(ROWS, LINKS, {"Robin": gone, "Alex": "p-0123456789abcdef"})
+    assert [(alias.name, alias.reason) for alias in result.unused] == [
+        ("Robin", NOBODY),
+        ("Alex", NOBODY),
+    ]
+    assert replace(result, unused=()) == joined(ROWS, LINKS, {})
+
+
 def test_an_alias_that_cannot_join_is_reported_and_changes_nothing() -> None:
     """A target of nobody, by name or id, or of several; a key held by no name alone.
 

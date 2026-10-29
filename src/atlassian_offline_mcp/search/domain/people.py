@@ -23,7 +23,6 @@ import re
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass, replace
-from itertools import chain
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -162,9 +161,10 @@ class Joining:
     ) -> None:
         """Read the rows, the meetings of each transcript, by rowid, and the aliases.
 
-        An alias's target is a person's id, or a name, which means the one account of
-        its key, as rule 3 finds it, else the person by name alone of a key that a name
-        without an account holds. Aliases are not chained.
+        An alias's target is a person's id, which ``joined`` keeps when an account or a
+        name makes that person; or a name, which means the one account of its key, as
+        rule 3 finds it, else the person by name alone of a key that a name without an
+        account holds. Aliases are not chained.
         """
         self.meetings = meetings
         self.persons: dict[Row, str] = {}
@@ -178,13 +178,10 @@ class Joining:
                 self.held.add(key)
             else:
                 self.accounts.setdefault(key, set()).add(person_id(ACCOUNT, row.account))
-        # The persons that exist: the accounts, and the names alone of no account's key.
-        alone = {person_id(NAME, key) for key in self.held - self.accounts.keys()}
-        existing = alone | set(chain.from_iterable(self.accounts.values()))
         self.aliases: dict[str, Alias] = {}
         for name, target in aliases.items():
             if PERSON_ID.fullmatch(target):
-                means = target if target in existing else None
+                means: Answer = target
             else:
                 key = name_key(target)
                 means = self.account(target) or (person_id(NAME, key) if key in self.held else None)
@@ -272,6 +269,8 @@ def joined(
     order give the same result. A person is served by the name on its account's most
     recently updated document; else by the target of the alias that made it, when that
     is a name; else by its most frequent spelling: ties go to the first row in order.
+    An alias to a person's id that no account or name makes, but aliases alone, names
+    nobody: the join is made again without it, each pass with fewer aliases.
     """
     ordered = sorted(
         set(rows),
@@ -302,6 +301,20 @@ def joined(
             how, found = NAME, person_id(NAME, name_key(row.name))
         joining.persons[row] = found
         members.setdefault(found, []).append((row, how))
+    # The persons that an account or a name makes, not an alias or a meeting alone.
+    made = {
+        person for person, joins in members.items() for _, how in joins if how in {ACCOUNT, NAME}
+    }
+    nobody = {
+        alias.key: replace(alias, means=None)
+        for alias in joining.aliases.values()
+        if alias.reason is None and PERSON_ID.fullmatch(alias.target) and alias.means not in made
+    }
+    if nobody:
+        kept = {name: target for name, target in aliases.items() if name_key(name) not in nobody}
+        again = joined(ordered, meetings, kept)
+        unused = {alias.key: alias for alias in again.unused} | nobody
+        return replace(again, unused=tuple(unused[key] for key in joining.aliases if key in unused))
     # Each name alone's target as an alias writes it, the first alias's in their order.
     written = {
         alias.means: alias.target
