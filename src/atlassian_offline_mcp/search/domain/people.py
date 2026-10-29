@@ -286,13 +286,16 @@ def by_name(row: Row, joining: Joining) -> Answer:
 
     A name of several accounts' key is ambiguous; so is a transcript's speaker whose
     meetings give it, by rule 4, persons that do not hold that account: the site's name
-    and the participants that the user wrote for the meeting then disagree.
+    and the participants that the user wrote for the meeting then disagree. A speaker of
+    several accounts' key could be any of them or its meetings' persons.
     """
     found = joining.account(row.name)
     meeting = by_meeting(row, joining)
-    if meeting is None or not isinstance(found, str):
+    if meeting is None or found is None:
         return found
     others = meeting.persons if isinstance(meeting, Ambiguity) else frozenset({meeting})
+    if isinstance(found, Ambiguity):
+        return Ambiguity(row.name, found.persons | others)
     return found if found in others else Ambiguity(row.name, others | {found})
 
 

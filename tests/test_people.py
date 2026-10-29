@@ -662,6 +662,25 @@ def test_a_speaker_whom_its_meeting_and_an_account_tell_apart_is_ambiguous() -> 
     assert result.ambiguous[0] == Ambiguity("Robin", frozenset({one_word, ROBIN, ROBIN_OTHER}))
 
 
+def test_a_speaker_of_two_accounts_name_is_reported_with_its_meeting_s_person() -> None:
+    """Accounts Robin (Ops) and Robin (Sales), beside the review's Robin Example.
+
+    The review's transcript's Robin could be either account, or Robin Example, whom the
+    user wrote for that meeting: it joins none, and is reported with all three.
+    """
+    ops, sales = anchored("account\nacct-0005"), anchored("account\nacct-0006")
+    rows = (
+        *ACCOUNTS,
+        Row(5, "creator", "Robin (Ops)", "acct-0005", day(20)),
+        Row(6, "creator", "Robin (Sales)", "acct-0006", day(20)),
+        named(REVIEW, "Robin Example"),
+        named(LINKED, "Robin"),
+    )
+    result = joined(rows, LINKS, {})
+    assert result.of[named(LINKED, "Robin")] == ROBIN_ALONE
+    assert result.ambiguous == (Ambiguity("Robin", frozenset({ops, sales, ROBIN})),)
+
+
 def test_a_transcript_before_its_meeting_joins_by_it() -> None:
     """A transcript of a lower rowid than its meeting's is joined after the meeting."""
     early, late = 5, 30
