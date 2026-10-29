@@ -294,6 +294,7 @@ def test_a_bug_in_the_database_s_use_is_not_taken_for_a_failure_to_write(
         data / "index.sqlite",
         data / "vectors.sqlite",
         data / "eval" / "indexes",
+        data / "aliases.toml",
         "tiny",
         "sections",
         None,

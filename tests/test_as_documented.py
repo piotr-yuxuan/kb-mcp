@@ -39,7 +39,7 @@ from atlassian_offline_mcp.sources.atlassian.adapters.raw_store import RawStore
 from atlassian_offline_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
 from tests.collector import Collector, collecting
 from tests.endpoint import URL, Reranks, Scripted, nothing_listening, serving, tiny
-from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.mirrors import MOMENT, PERSONS, fillers, issue, page, write
 from tests.reference import README, Emitted, documented, operations, undocumented
 from tests.samples import v2_space
 from tests.test_download import SITE, FakeSite
@@ -243,11 +243,17 @@ def test_index_records_as_documented(
     Then no endpoint, and no mirror.
 
     The mirror holds a few pages, one with a front matter refused, and one whose second
-    section the endpoint refuses to embed, cut by sections.
+    section the endpoint refuses to embed, cut by sections; and the people of PERSONS,
+    two of whose names could be several persons, with an alias whose key none holds.
+    Plan 043, criterion 5: both warnings are recorded with their fields, by builds that
+    exit 0 as by the others, and index.built with the persons.
     """
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_CHUNKING", "sections")
     data = tmp_path / "data"
     fillers(data / "docs", 5)
+    for front in PERSONS:
+        write(data / "docs", front)
+    (data / "aliases.toml").write_text('"Jo Placeholder" = "Robin Example"\n', encoding="utf-8")
     body = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
     write(data / "docs", page("196845", "Rollback"), body)
     broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
@@ -287,6 +293,9 @@ def test_index_records_as_documented(
         empty = tmp_path / "empty"
         assert main(["index", "--yes", *by_meaning(empty, URL, "lexical")]) == ExitStatus.FAILED
     assert undocumented("index", emitted) == []
+    assert emitted.events["index.person_ambiguous"] == {"spelling", "people"}
+    assert emitted.events["index.alias_unused"] == {"alias", "key", "reason"}
+    assert "people" in emitted.events["index.built"]
 
 
 def test_serve_records_as_documented(tmp_path: Path) -> None:

@@ -4,7 +4,7 @@ What `sync` records, besides what every command does ([README](README.md)). A ru
 trace: its root `sync`, then a span per row, `sync.step`, in which the row's step records
 what its own command does: the download what [download.md](download.md) lists, the
 mirror what [mirror.md](mirror.md) lists, the work log what this page lists, and the
-index what [index.md](index.md) lists. The
+index what [index.md](index.md) lists, reading the alias file as `index` does. The
 task `work-log documents` reports each work-log document, by its title, as the README
 says of tasks.
 

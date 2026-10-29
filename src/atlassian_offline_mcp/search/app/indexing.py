@@ -25,6 +25,7 @@ from atlassian_offline_mcp.kernel.fields import RepresentationError
 from atlassian_offline_mcp.mirror.adapters import markdown
 from atlassian_offline_mcp.observability.adapters.progress import task
 from atlassian_offline_mcp.search.adapters import sqlite_index, vector_store
+from atlassian_offline_mcp.search.adapters.aliases import AliasFileError, read_aliases
 from atlassian_offline_mcp.search.adapters.embedding import connect
 from atlassian_offline_mcp.search.adapters.model_api import ModelError
 from atlassian_offline_mcp.search.app.pruning import prune
@@ -99,13 +100,15 @@ class Indexing:
 
     ``endpoint`` opens the embedding endpoint, as the run allows it, or is None for an
     index by words alone, which never calls it. ``evaluation_indexes`` holds the indexes
-    that eval builds, whose vectors a prune keeps.
+    that eval builds, whose vectors a prune keeps. ``aliases`` is the user's alias file,
+    which each build reads, if there is one, to join names into persons.
     """
 
     docs: Path
     index: Path
     vectors: Path
     evaluation_indexes: Path
+    aliases: Path
     model: str
     chunking: Chunking
     endpoint: Callable[[], Endpoint] | None
@@ -226,28 +229,31 @@ def build_index(
 def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
     """Build the index from the whole mirror, by words alone or with vectors too.
 
-    With an endpoint, it must answer with the model; when it does not, or there is no
-    mirror, or the index cannot be written (a file's error, or the database's operational
-    one, such as a full disk or a lock), the index in place stays, with its vectors,
-    nothing is returned, and ``index.not_built`` is an error. Each file skipped and each
-    piece that the endpoint refused is a warning, as is the count of files that the index
-    lacks.
+    The alias file is read first, before any request to the endpoint. With an endpoint,
+    it must answer with the model; when it does not, or the alias file is refused or
+    cannot be read, or there is no mirror, or the index cannot be written (a file's
+    error, or the database's operational one, such as a full disk or a lock), the index
+    in place stays, with its vectors, nothing is returned, and ``index.not_built`` is an
+    error. Each file skipped and each piece that the endpoint refused is a warning, as
+    is the count of files that the index lacks, each name that could be several persons
+    and each alias that changed nothing; the last two leave the report whole.
     """
     log = structlog.get_logger()
     opened = None if indexing.endpoint is None else indexing.endpoint()
     try:
         with opened or contextlib.nullcontext():
+            aliases = read_aliases(indexing.aliases)
             embedder = None if opened is None else connect(opened, indexing.model)
             embedding = (
                 None
                 if embedder is None
                 else Embedding(embedder, indexing.vectors, indexing.chunking)
             )
-            report = build_index(indexing.docs, indexing.index, built_at, embedding)
+            report = build_index(indexing.docs, indexing.index, built_at, embedding, aliases)
     except ModelError as error:
         structlog.get_logger().error("index.not_built", reason=str(error), hint=WORDS_ALONE)
         return None
-    except (MirrorMissingError, OSError, sqlite3.OperationalError) as error:
+    except (MirrorMissingError, AliasFileError, OSError, sqlite3.OperationalError) as error:
         structlog.get_logger().error("index.not_built", reason=str(error))
         return None
     for path, reason in report.skipped:
@@ -256,6 +262,12 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
         log.warning("index.piece_refused", path=path)
     if report.skipped:
         log.warning("index.lacks_files", count=len(report.skipped))
+    for ambiguity in report.ambiguous:
+        log.warning(
+            "index.person_ambiguous", spelling=ambiguity.name, people=len(ambiguity.persons)
+        )
+    for alias in report.unused:
+        log.warning("index.alias_unused", alias=alias.name, key=alias.key, reason=alias.reason)
     return Indexed(report, indexing.index, None if embedding is None else indexing.model)
 
 

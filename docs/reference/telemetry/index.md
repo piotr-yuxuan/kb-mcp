@@ -8,7 +8,9 @@ sent to the embedding endpoint, and nothing of it is recorded. A build by meanin
 the vector store's lock shared, and waits while a prune holds it. Once its index is in
 place, the prune of the vector store is a span of its own, `index.prune`: the vectors
 that neither the index nor an evaluation's index reads are deleted, and their pages
-given back.
+given back. Before any request to the endpoint, a build reads the alias file,
+`aliases.toml` in the data directory, if there is one; once the files are read, it joins
+the documents' people into persons through it.
 
 ## Events
 
@@ -19,11 +21,13 @@ given back.
 | `index.file_skipped` | warning | `path`, `reason` | A file cannot be read, its front matter is refused, or its document is there already: exit 1 |
 | `index.piece_refused` | warning | `path` | The endpoint refuses a piece of this document, left without a vector: exit 1 |
 | `index.lacks_files` | warning | `count` | How many files the index lacks |
+| `index.person_ambiguous` | warning | `spelling`, `people` | A name without an account that is the name of several accounts, or a transcript's speaker that begins the names of several participants of its meetings, once a build, as first spelt: it joins none of the persons it could be, how many said, and is a person by name alone. An alias settles it; the exit status stays the build's |
+| `index.alias_unused` | warning | `alias`, `key`, `reason` | An alias that changes nothing: its name as the file writes it, its key, and why: no name without an account has its key, or its target names nobody, or several people. The exit status stays the build's |
 | `vectors.lock_wait` | info | `lock` | A prune holds the vector store's lock: the build waits for it, at most 60 s, past which the index is not built |
 | `index.pruned` | info | `kept`, `kept_for_evaluation`, `deleted`, `bytes_before`, `bytes_after`, `seconds`, `shrinks`, `converted`, `reclaimed`, `reason` | The vector store is pruned: the vectors kept, those that the evaluation's indexes alone read, those deleted; its size before and after, in bytes; whether it gives freed pages back, whether this prune converted a store made by an earlier version to do so, and whether these went back, else why not |
 | `index.prune_deferred` | info | `reason` | A build, or another prune, holds the vector store's lock: nothing is deleted, and the next `index` prunes |
 | `index.prune_skipped` | warning | `outcome`, `reason`, `file` | Nothing is deleted: `held back` when the build skipped a file or indexed no document, an index cannot say which vectors it reads, by words alone, built before plan 023, at another schema (an evaluation's built before plan 041) or damaged (the file), or a folder of the evaluation's cannot be listed, or an entry below it is a link (the folder or the link); `failed` when the store could not delete. The exit status stays the build's |
-| `index.not_built` | error | `reason`, `hint` | No mirror, the endpoint or the model fails, or the index cannot be written (a full disk): the index in place stays, exit 1; in `sync`, its row fails |
+| `index.not_built` | error | `reason`, `hint` | No mirror, the alias file is refused, by its path and any alias at fault, or cannot be read, the endpoint or the model fails, or the index cannot be written (a full disk): the index in place stays, exit 1; in `sync`, its row fails |
 | `http.get` | debug | `url`, `status`, `error`, `seconds` | Each request for the endpoint's list of models |
 | `http.post` | debug | `url`, `status`, `error`, `seconds` | Each request for embeddings |
 

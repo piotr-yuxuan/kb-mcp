@@ -3,18 +3,23 @@
 The names are made up: Robin Example, an account under two names; Sam Sample, the name
 of two accounts; Alex Example, a name alone; the work log's first names. Every expected
 person is written by hand from the plan's rules, its id from the plan's definition. The
-alias file is read from a scratch folder, and refused by the plan's list.
+alias file is read from a scratch folder, and refused by the plan's list; ``index`` reads
+it from a scratch data directory, over the mirror of ``tests.mirrors.PERSONS``.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
+import sqlite3
+from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
 
+from atlassian_offline_mcp.cli.main import main
 from atlassian_offline_mcp.search.adapters.aliases import AliasFileError, read_aliases
 from atlassian_offline_mcp.search.domain.people import (
     NOBODY,
@@ -32,9 +37,17 @@ from atlassian_offline_mcp.search.domain.people import (
     joined,
     name_key,
 )
+from tests.endpoint import nothing_listening
+from tests.mirrors import PERSONS, write
+from tests.test_cli import logged_as
+from tests.test_observed import said
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
+
+    from _pytest.capture import CaptureFixture
+    from _pytest.monkeypatch import MonkeyPatch
 
 
 def anchored(text: str) -> str:
@@ -530,3 +543,111 @@ def test_an_alias_file_that_cannot_be_read_raises_os_error(tmp_path: Path) -> No
     (tmp_path / "aliases.toml").mkdir()
     with pytest.raises(IsADirectoryError):
         read_aliases(tmp_path / "aliases.toml")
+
+
+@pytest.fixture
+def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
+    """Give a scratch home, whose log files a test reads, and a data directory of PERSONS."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    for front in PERSONS:
+        write(tmp_path / "data" / "docs", front)
+    return tmp_path / "data"
+
+
+def index(
+    data: Path, capsys: CaptureFixture[str], settings: str = 'search_mode = "lexical"\n'
+) -> tuple[int, str]:
+    """Run ``index`` on the data directory, by words alone unless the settings say otherwise.
+
+    Give its exit status and stderr.
+    """
+    config = data.parent / "config.toml"
+    config.write_text(settings, encoding="utf-8")
+    status = main(["index", "--yes", "--config", str(config), "--data-dir", str(data)])
+    return status, capsys.readouterr().err
+
+
+def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 043, criteria 3 and 5, by the command: a build with both warnings exits 0.
+
+    The alias of Robin settles the planning's Robin, so that Sam Sample, of two accounts,
+    is the one name warned of, with how many persons it could be; the alias whose key no
+    name holds is warned of by its name, its key and why. Robin by name alone is gone.
+    """
+    aliases = '"Robin" = "Robin Example"\n"Jo Placeholder" = "Robin Example"\n'
+    (data / "aliases.toml").write_text(aliases, encoding="utf-8")
+    status, err = index(data, capsys)
+    assert status == 0
+    assert [each for each in said(err) if each[0] == "warning"] == [
+        ("warning", "index.person_ambiguous"),
+        ("warning", "index.alias_unused"),
+    ]
+    home = data.parent / "home"
+    (ambiguous,) = logged_as(home, "index.person_ambiguous")
+    assert (ambiguous["spelling"], ambiguous["people"]) == ("Sam Sample", 2)
+    (unused,) = logged_as(home, "index.alias_unused")
+    assert (unused["alias"], unused["key"], unused["reason"]) == (
+        "Jo Placeholder",
+        "jo placeholder",
+        UNHELD,
+    )
+    (built,) = logged_as(home, "index.built")
+    # Robin by name alone is gone; the other seven persons stay.
+    persons = {ROBIN, SAM_2, SAM_3, SAM_ALONE, ALEX_EXAMPLE, ALEX, ROBIN_OTHER}
+    assert built["people"] == len(persons)
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        robins = connection.execute("SELECT DISTINCT person FROM people WHERE name = 'Robin'")
+        assert robins.fetchall() == [(ROBIN,)]
+
+
+@pytest.mark.parametrize(
+    ("place", "why"),
+    [
+        (
+            lambda path: path.write_text('"Sam" = "Sam Sample"\n"sam" = "Sam Other"\n', "utf-8"),
+            "'Sam' and 'sam' are one name",
+        ),
+        (lambda path: path.write_text('"Sam" = 1\n', "utf-8"), "'Sam': its target is not text"),
+        (lambda path: path.write_bytes(b"Sam = \n"), "not UTF-8 TOML"),
+        (lambda path: path.mkdir(), "Is a directory"),
+    ],
+    ids=["two names of one key", "a number", "not TOML", "a folder"],
+)
+def test_index_over_an_alias_file_it_refuses_exits_1_and_keeps_the_index(
+    data: Path, capsys: CaptureFixture[str], place: Callable[[Path], object], why: str
+) -> None:
+    """Plan 043, criterion 3: nothing is built, index.not_built naming the file and why.
+
+    The index in place stays as it was, byte for byte.
+    """
+    assert index(data, capsys)[0] == 0
+    before = (data / "index.sqlite").read_bytes()
+    path = data / "aliases.toml"
+    place(path)
+    status, err = index(data, capsys)
+    assert status == 1
+    assert ("error", "index.not_built") in said(err)
+    (failed,) = logged_as(data.parent / "home", "index.not_built")
+    assert str(path.resolve()) in str(failed["reason"])
+    assert why in str(failed["reason"])
+    assert (data / "index.sqlite").read_bytes() == before
+
+
+def test_a_refused_alias_file_stops_a_build_before_the_endpoint_is_asked(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """By meaning, with nothing listening: the alias file's refusal is the reason given."""
+    (data / "aliases.toml").write_text('"Sam" = 1\n', encoding="utf-8")
+    with nothing_listening() as url:
+        settings = f'search_mode = "hybrid"\nembedding_url = {json.dumps(url)}\n'
+        status, _ = index(data, capsys, settings)
+    assert status == 1
+    (failed,) = logged_as(data.parent / "home", "index.not_built")
+    assert str(failed["reason"]).endswith(
+        "'Sam': its target is not text; write a name or an id in quotes"
+    )
+    assert "hint" not in failed
