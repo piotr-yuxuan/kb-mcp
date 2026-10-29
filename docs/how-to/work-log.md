@@ -69,7 +69,8 @@ A note of the day.
   It holds its subtree whole, its sections Summary, Details and Actions kept as
   headings, which search cuts at and `read` opens by number.
 - The journal's other children, such as the range of days above, are entries; its own
-  lines above its first child make one only when they hold text.
+  lines above its first child make one only when they hold text besides its planning
+  line and property drawer.
 - `:PARTICIPANTS:` names the meeting's people, separated by commas outside brackets,
   each kept as written, annotation included. `:MEETING:` links its transcript, as org
   writes a link to a file (`[[./path]]`, `[[file:path][text]]` or a path alone), from

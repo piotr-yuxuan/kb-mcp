@@ -251,15 +251,16 @@ def journal(
     """Return the entries, then the days and meetings, of ``todo.org`` and its archive.
 
     The journal is a top-level heading with a day among its children: its days are days,
-    its other children entries, and its own lines an entry only when they hold text. A
-    top-level heading that is a day, or that ``:ARCHIVE_OLPATH:`` places below one, is
-    the day's, as ``days_and_meetings`` says; every other is an entry. An entry's id is
-    the digest of its ``:ID:``; else of its title and ``:CREATED:``; else of its title,
-    numbered from the second entry of one digest, in reading order, ``todo.org`` first.
-    The archive file takes ``todo.org``'s keywords when it declares none. Without
-    ``archives``, the archive file and the headings tagged ARCHIVE, or below one, are
-    left out. ``transcripts`` are those read, which a meeting may link to; each
-    ``:MEETING:`` that links none is returned too, as ``days_and_meetings`` says.
+    its other children entries, and its own lines an entry only when they hold text
+    besides its heading's ``preamble``. A top-level heading that is a day, or that
+    ``:ARCHIVE_OLPATH:`` places below one, is the day's, as ``days_and_meetings`` says;
+    every other is an entry. An entry's id is the digest of its ``:ID:``; else of its
+    title and ``:CREATED:``; else of its title, numbered from the second entry of one
+    digest, in reading order, ``todo.org`` first. The archive file takes ``todo.org``'s
+    keywords when it declares none. Without ``archives``, the archive file and the
+    headings tagged ARCHIVE, or below one, are left out. ``transcripts`` are those read,
+    which a meeting may link to; each ``:MEETING:`` that links none is returned too, as
+    ``days_and_meetings`` says.
     """
     files: list[tuple[Source, org.OrgFile]] = []
     first = None
@@ -279,7 +280,8 @@ def journal(
                 parts.append(top)
                 continue
             own = dataclasses.replace(top, subtree=org.Subtree(subtree.heading, subtree.own))
-            parts.extend([own] if any(line.strip() for line in subtree.own[1:]) else [])
+            text = subtree.own[1 + len(subtree.preamble) :]
+            parts.extend([own] if any(line.strip() for line in text) else [])
             parts.extend(children)
     kept = [part for part in parts if archives or not part.archived]
     found: list[Document] = []

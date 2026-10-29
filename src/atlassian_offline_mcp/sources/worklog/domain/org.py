@@ -156,22 +156,28 @@ class Subtree:
     lines: tuple[str, ...]  # its heading's line first
 
     @property
-    def properties(self) -> dict[str, str]:
-        """Return the properties of its heading's drawer, by name in upper case.
+    def preamble(self) -> tuple[str, ...]:
+        """Return the lines after its heading that are not text: planning, then its drawer.
 
-        The drawer follows the heading, or its planning line; one never closed is text.
+        The planning line follows the heading; the property drawer follows the heading, or
+        its planning line, and one never closed is text.
         """
         start = 2 if len(self.lines) > 1 and PLANNING.match(self.lines[1]) else 1
-        if len(self.lines) <= start or self.lines[start].strip() != DRAWER_START:
-            return {}
-        found: dict[str, str] = {}
-        for line in self.lines[start + 1 :]:
-            if line.strip() == DRAWER_END:
-                return found
-            match = PROPERTY.fullmatch(line)
-            if match:
-                found[match[1].upper()] = match[2] or ""
-        return {}
+        if len(self.lines) > start and self.lines[start].strip() == DRAWER_START:
+            for end, line in enumerate(self.lines[start + 1 :], start + 1):
+                if line.strip() == DRAWER_END:
+                    return self.lines[1 : end + 1]
+        return self.lines[1:start]
+
+    @property
+    def properties(self) -> dict[str, str]:
+        """Return the properties of its heading's drawer, in its preamble, by name in upper case."""
+        return {
+            match[1].upper(): match[2] or ""
+            for line in self.preamble
+            if line.strip() not in {DRAWER_START, DRAWER_END}
+            and (match := PROPERTY.fullmatch(line))
+        }
 
     @property
     def own(self) -> tuple[str, ...]:

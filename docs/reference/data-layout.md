@@ -504,12 +504,12 @@ problem (a file not read, a conversion that failed) removes none of its files.
   back ([sync's telemetry](telemetry/sync.md)). A day and a meeting begin at level 1, what
   joins them at level 2.
 - An **entry** is any other top-level heading, a child of the journal that is no day, or
-  the journal's own lines above its children when they hold text, with what lies below
-  it, beginning at level 1. Its id is `e-` and the first 16 hex digits of the SHA-256 of
-  its `:ID:` property; else of its title, a line feed, and its `:CREATED:` property;
-  else of its title alone. The title is the heading without keyword, priority, tags and
-  statistics cookies. The second entry of one digest takes `-2`, the third `-3`, in file
-  order, `todo.org` first.
+  the journal's own lines above its children when they hold text besides its planning
+  line and property drawer, with what lies below it, beginning at level 1. Its id is
+  `e-` and the first 16 hex digits of the SHA-256 of its `:ID:` property; else of its
+  title, a line feed, and its `:CREATED:` property; else of its title alone. The title
+  is the heading without keyword, priority, tags and statistics cookies. The second
+  entry of one digest takes `-2`, the third `-3`, in file order, `todo.org` first.
 - The breadcrumb of an entry, a day or a meeting is its file's name, then the titles
   above it: the journal's, then a meeting's day's; for a heading at the top of a file,
   its `:ARCHIVE_OLPATH:` instead. Its labels are its tags, its file's `#+FILETAGS` and

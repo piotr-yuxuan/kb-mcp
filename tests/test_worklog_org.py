@@ -237,6 +237,27 @@ def test_subtrees_are_the_top_level_headings_with_what_follows() -> None:
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
+        ("* x\n:PROPERTIES:\n:ID: a\n:END:\ntext\n", (":PROPERTIES:", ":ID: a", ":END:")),
+        (
+            "* x\nSCHEDULED: <2026-10-01 Thu>\n  :PROPERTIES:\n  :ID: b\n  :END:\ntext\n",
+            ("SCHEDULED: <2026-10-01 Thu>", "  :PROPERTIES:", "  :ID: b", "  :END:"),
+        ),
+        ("* x\nDEADLINE: <2026-10-01 Thu>\ntext\n", ("DEADLINE: <2026-10-01 Thu>",)),
+        ("* x\n:PROPERTIES:\n:ID: c\n", ()),
+        ("* x\ntext\n:PROPERTIES:\n:ID: d\n:END:\n", ()),
+        ("* x\n", ()),
+    ],
+)
+def test_a_preamble_is_the_planning_line_then_the_drawer(
+    text: str, expected: tuple[str, ...]
+) -> None:
+    """Each as org reads it right after the heading: a drawer never closed is text."""
+    assert org.read(text).subtrees[0].preamble == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
         (
             "* x\n:PROPERTIES:\n:ID: a\n:created: [2026-10-01 Thu]\n:END:\n",
             {"ID": "a", "CREATED": "[2026-10-01 Thu]"},
@@ -1075,11 +1096,20 @@ def test_the_plan_s_sample_is_a_day_a_meeting_and_a_range() -> None:
     assert (day.people, day.links) == ((), ())
 
 
-@pytest.mark.parametrize(("own", "entries"), [("", []), ("Kept for the week.\n", ["Notes"])])
+@pytest.mark.parametrize(
+    ("own", "entries"),
+    [
+        ("", []),
+        ("Kept for the week.\n", ["Notes"]),
+        (":PROPERTIES:\n:ID: abc\n:VISIBILITY: children\n:END:\n", []),
+        ("SCHEDULED: <2026-10-26 Mon>\n:PROPERTIES:\n:CATEGORY: log\n:END:\n", []),
+        (":PROPERTIES:\n:ID: abc\n:END:\nKept for the week.\n", ["Notes"]),
+    ],
+)
 def test_the_journal_s_own_lines_are_an_entry_only_when_they_hold_text(
     own: str, entries: list[str]
 ) -> None:
-    """Whatever the journal's title; its blank lines alone make no entry."""
+    """Whatever the journal's title; blank lines, a planning line and a drawer make none."""
     found, _ = journal(
         todo(f"* Notes\n{own}\n** <2026-10-27 Tue>\n"), None, archives=True, transcripts=()
     )
