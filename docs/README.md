@@ -83,7 +83,8 @@ the command and those who change its code, unless it is marked for contributors.
 - [Trade-offs](explanation/trade-offs.md): each decision of the design, why it was
   taken, what it costs, the alternative rejected and the plan that settled it.
 - [The code's layout](explanation/code-layout.md), for contributors: the contexts, the
-  layers within each, the contracts that keep them, and where a new module goes.
+  layers within each, the contracts that keep them, the records and the classes that
+  stay dataclasses, and where a new module goes.
 - [A walkthrough of the code](explanation/code-walkthrough.md), for contributors: one
   `sync` of a Confluence space, then one `search` by an agent, followed through the
   functions and classes of `src/` that take each step.
