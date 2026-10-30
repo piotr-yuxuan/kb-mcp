@@ -527,7 +527,8 @@ telemetry](telemetry/sync.md)), at each run until it is fixed.
   `todo.org` first, then the archive, each in its file's order, never by a time or a
   file's name: two dashes, which no slug or digest holds, so that a numbered id is
   never another title's. Its people are the names that its `:PARTICIPANTS:` gives,
-  split at commas outside brackets, each once and as written, in the role `participant`; its link
+  split at commas outside brackets, each once and as written, in the role
+  `participant`; its link
   `transcript` names the transcript whose file its `:MEETING:` names, from the folder of
   its org file, when that file is found, read or not, by the id that its path gives;
   else, for a file under `transcripts/` or `meetings/`, the transcript found of the id

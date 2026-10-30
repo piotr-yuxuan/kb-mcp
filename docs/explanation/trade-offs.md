@@ -322,7 +322,8 @@ afresh at each run
   both have a transcript swaps so too, where its starts kept its ids before; no pair
   swaps any more when the order of its starts changes, nor when the first gains a
   transcript and the second has none. A top-level heading of any other purpose with a
-  child titled by a date alone becomes a journal, that child a day and its other children entries; the
+  child titled by a date alone becomes a journal, that child a day and its other
+  children entries; the
   child joins the day of its date that the journal's parts make, and the heading's title
   is lost: neither the day's text nor its breadcrumb, which are its first part's, holds
   it, so that a search for that title misses those notes. An archived heading joins its

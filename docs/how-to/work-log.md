@@ -131,7 +131,9 @@ alone, a number or words: `meetings/2026-10-27 Tue/Vendor call.org` is
 `t-20261027-meeting-vendor-call`, and no order or time is read from it. A file without
 a day takes a digest of its name. Of two files of one id, such as a copy and its
 original, or two `notes.org` in two folders, the file whose folder comes first by name
-keeps it, then the first in path order, read or not, and a warning names both. So
+keeps it, then whose own name does, then the first in path order, read or not, and a
+warning names both; while the first is not read, a link to the id reaches the copy that
+the id last named, which may be the other file's. So
 archiving one, with its folder, never hands its id to the other, unless the two folders
 have one name, as a copy's may.
 

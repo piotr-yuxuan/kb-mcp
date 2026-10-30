@@ -731,6 +731,7 @@ def held_back(where: str, ids: Mapping[PurePosixPath, str]) -> str:
     document for ``todo.org``, its archive, or the work log's folder itself (``.``); the
     transcript's id for a path that ``ids`` holds, read or not; else the transcripts not
     read under it, as a problem's path and reason do not tell a folder from a file: a
-    folder's, the files past the bound for its problem, none for an HTML file.
+    folder's, the files past the bound for its problem, none for an HTML file. So a
+    folder linking out whose name ends in ``.org`` reads as a transcript of its own id.
     """
     return EVERY_DOCUMENT if where in SHARED else ids.get(PurePosixPath(where), UNDER_IT)
