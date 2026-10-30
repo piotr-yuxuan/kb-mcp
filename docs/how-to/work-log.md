@@ -208,14 +208,14 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
   alone included, since any text, a meeting room's URL among them, reads as one; never
   the link itself ([sync's telemetry](../reference/telemetry/sync.md)). It goes on: the
   warning holds no removal back.
-- A document removed loses its file, unless the run reported a problem (a file not
-  read, a conversion that failed): then every file stays, but the old one of an entry
-  or a transcript written again under a new title, until a run reads the work log
-  whole, and the warning says why at each run. So, meanwhile, a meeting or an entry
-  renamed is found under its old id and its new, and one deleted stays, its file still
-  naming the transcript or the meetings that no longer name it back. A document not
-  read, or whose conversion fails, before it has a file is named in no other's `links`
-  until a run reads and converts it.
+- A document removed loses its file, unless the run reported a problem (a file not read,
+  a conversion that failed): then every file stays, but the old one of an entry or a
+  transcript written again under a new title, until a run reads the work log whole, and
+  the warning says why at each run. So, meanwhile, a meeting renamed, or an entry
+  renamed without `:ID:`, is found under its old id and its new, and one deleted stays,
+  its file still naming the transcript or the meetings that no longer name it back. A
+  document not read, or whose conversion fails, before it has a file is named in no
+  other's `links` until a run reads and converts it.
 - A file not read also holds back the files that it builds, which stay as they were:
   for `todo.org` or its archive, every file; for a transcript, its own; for a folder
   that cannot be listed, the transcripts under it. The others are written as usual. A
