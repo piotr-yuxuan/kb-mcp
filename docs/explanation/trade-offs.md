@@ -357,7 +357,7 @@ afresh at each run
   matter at its largest, twelve participants and twelve refs per relation, each of the
   longest, reads in 3,463 of `read`'s 4,000 with the smallest slice
   ([the tests](../../tests/test_budgets.py)): `participant` is the work log's role
-  alone ([`WORKLOG_ROLES`](../../src/kb_mcp/mirror/domain/mirror.py)),
+  alone ([`WORKLOG_ROLES`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
   since an issue with every other role and twelve participants would read 5,702, and
   an issue with those links 4,318, so backlinks for issue keys will need a budget of
   their own.

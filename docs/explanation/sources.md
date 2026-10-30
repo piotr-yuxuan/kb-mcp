@@ -130,7 +130,7 @@ So the filters by person read every source alike
 that a source adds is one more value of `role`, where a key of its own would change
 every file and the index's schema, as the work log's own keys would. No other source
 holds `participant`, and the work log holds no other role
-([`WORKLOG_ROLES`](../../src/kb_mcp/mirror/domain/mirror.py)),
+([`WORKLOG_ROLES`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 so that no front matter, which `read` never cuts, names people of both kinds: an issue
 with every role at its largest already fills most of a read's budget. The other keys
 that Atlassian shapes, `key`, `space`, `project`, `issue_type` and `version`, stay as

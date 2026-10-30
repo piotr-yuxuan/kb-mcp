@@ -25,14 +25,16 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from kb_mcp.kernel.names import WORKLOG_ID, WORKLOG_REVISION
-from kb_mcp.mirror.domain.mirror import RELATIONS
+from kb_mcp.kernel.names import WORKLOG_ID, RefusedError
+from kb_mcp.mirror.domain.mirror import RELATIONS, PersonRole
 from kb_mcp.sources.worklog.prepare.domain import org
 from kb_mcp.sources.worklog.prepare.domain.worklog import (
     SUMMARY,
     TRANSCRIBED,
+    WORKLOG_REVISION,
     Document,
     Source,
+    WorklogFrontMatter,
     held_back,
     journal,
     linked_back,
@@ -975,6 +977,97 @@ def test_a_revision_names_the_input_and_the_converter() -> None:
     assert revision("pandoc 3.7", "a") == first
     assert revision("pandoc 3.8", "a") != first
     assert revision("pandoc 3.7", "b") != first
+
+
+# An entry's front matter, as the work log's step builds it.
+ENTRY_MATTER = WorklogFrontMatter(
+    source="worklog",
+    type="entry",
+    id="e-0123456789abcdef-2",
+    key=None,
+    title="Retrospective notes",
+    space=None,
+    project=None,
+    status="WAITING",
+    issue_type=None,
+    labels=("review", "ARCHIVE"),
+    people=(),
+    links=(),
+    created=MODIFIED,
+    updated=MODIFIED,
+    version=None,
+    revision="0123456789abcdef",
+    url=None,
+    breadcrumb=("todo.org_archive",),
+    fetched_at=MODIFIED,
+)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"id": "e-0123456789abcdef"},
+        {"type": "transcript", "id": "t-20261020-1"},
+        {"type": "transcript", "id": "t-0123456789abcdef"},
+        {"type": "day", "id": "d-20261028"},
+        {"type": "meeting", "id": "m-20261027-payments-stand-up"},
+        {"type": "meeting", "id": "m-20261027-payments-stand-up--2"},
+        {"people": (PersonRole(role="participant", name="A Person"),)},
+    ],
+)
+def test_the_work_log_s_front_matter_takes_each_type_s_ids(changes: dict[str, object]) -> None:
+    """An entry, a day, a meeting or a transcript, its id of its type's rule, its people."""
+    built = copy.replace(ENTRY_MATTER, **changes)
+    assert {name: getattr(built, name) for name in changes} == changes
+
+
+@pytest.mark.parametrize(
+    ("changes", "refusal"),
+    [
+        ({"type": "page"}, r"^type: not one of the source's types$"),
+        ({"source": "jira", "type": "issue"}, r"^type: not one of the source's types$"),
+        ({"source": "memo"}, r"^type: not one of the source's types$"),
+        ({"id": "196845"}, r"^id: does not match"),
+        ({"id": "e-0123456789ABCDEF"}, r"^id: does not match"),
+        ({"id": "t-20261020-" + "a" * 65}, r"^id: does not match"),
+        ({"type": "day", "id": "d-2026102"}, r"^id: does not match"),
+        ({"type": "day", "id": "d-20261028-wed"}, r"^id: does not match"),
+        ({"type": "meeting", "id": "m-20261027-Payments"}, r"^id: does not match"),
+        ({"type": "meeting", "id": "m-20261027-"}, r"^id: does not match"),
+        ({"type": "meeting", "id": "m-20261027-" + "a" * 65}, r"^id: does not match"),
+        ({"type": "meeting", "id": "m-2026-10-27-stand-up"}, r"^id: does not match"),
+        ({"people": (PersonRole(role="author", name="A Person"),)}, r"^people: a role of another"),
+        ({"revision": "000003"}, r"^revision: does not match"),
+        ({"space": "MFS"}, r"^space: never the work log's$"),
+        ({"version": 3}, r"^version: never the work log's$"),
+        ({"key": "PRB-1", "project": "PRB"}, r"^key, project: never the work log's$"),
+    ],
+)
+def test_the_work_log_s_front_matter_off_its_rules_is_refused(
+    changes: dict[str, object], refusal: str
+) -> None:
+    """Another source's type, id, revision, keys or roles are refused, naming the key."""
+    with pytest.raises(RefusedError, match=refusal):
+        copy.replace(ENTRY_MATTER, **changes)
+
+
+@pytest.mark.parametrize(
+    ("kind", "identifier"),
+    [
+        ("entry", "m-20261027-payments-stand-up"),
+        ("entry", "d-20261028"),
+        ("day", "e-0123456789abcdef"),
+        ("day", "m-20261027-payments-stand-up"),
+        ("meeting", "t-20261027-1"),
+        ("meeting", "d-20261028"),
+        ("transcript", "d-20261028"),
+        ("transcript", "e-0123456789abcdef"),
+    ],
+)
+def test_a_work_log_id_of_another_type_s_shape_is_refused(kind: str, identifier: str) -> None:
+    """Each type has its own shape of id: a day bearing a meeting's is refused, naming id."""
+    with pytest.raises(RefusedError, match=r"^id: does not match"):
+        copy.replace(ENTRY_MATTER, type=kind, id=identifier)
 
 
 # Plan 042's meetings: who they name, and their ids.

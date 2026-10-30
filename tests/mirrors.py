@@ -13,10 +13,10 @@ from copy import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.names import time_revision
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
+from kb_mcp.sources.atlassian.fetch.domain.content import time_revision
 from kb_mcp.sources.atlassian.prepare.app.prepare import mirror
 
 if TYPE_CHECKING:

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.mirror.adapters.markdown import ATLASSIAN, documents
+from kb_mcp.mirror.adapters.markdown import documents
 from kb_mcp.mirror.adapters.mirror_files import regular_files
 from kb_mcp.sources.atlassian.prepare.domain.layout import ASSET_NAME, ASSETS, TREE
 
 if TYPE_CHECKING:
     from pathlib import Path, PurePosixPath
+
+# The documents of Confluence and Jira, relative to <data>/docs.
+ATLASSIAN = ("confluence/*/*.md", "confluence/*/blog/*.md", "jira/*/*.md")
 
 
 def owned(docs: Path) -> set[PurePosixPath]:

@@ -17,10 +17,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
-from kb_mcp.kernel.names import IDENTIFIER, REVISION, RefusedError, require
+from kb_mcp.kernel.names import IDENTIFIER, RefusedError, require
 from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.domain.content import (
+    REVISION,
     BlogPost,
     Folder,
     Issue,

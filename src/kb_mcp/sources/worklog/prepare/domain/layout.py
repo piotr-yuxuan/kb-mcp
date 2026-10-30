@@ -6,14 +6,19 @@ mirror's folder of its type.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import PurePosixPath
 
 from kb_mcp.kernel.slug import slug
-from kb_mcp.mirror.domain.mirror_layout import WORKLOG_FOLDERS
 
-if TYPE_CHECKING:
-    from pathlib import PurePosixPath
-
+# The work log's folders, by the type of their documents.
+WORKLOG_FOLDERS = {
+    "entry": PurePosixPath("worklog/entries"),
+    "day": PurePosixPath("worklog/days"),
+    "meeting": PurePosixPath("worklog/meetings"),
+    "transcript": PurePosixPath("worklog/transcripts"),
+}
+# The work log's documents, relative to <data>/docs: those of its folders.
+WORKLOG = tuple(f"{folder}/*.md" for folder in WORKLOG_FOLDERS.values())
 # The work log's types whose id names the file alone: a day's id is its date, and a
 # meeting's holds its title's slug already.
 NAMED_BY_ID = frozenset({"day", "meeting"})

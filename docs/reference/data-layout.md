@@ -367,7 +367,8 @@ people:
 
 A document has one `author`, one `creator` and one `assignee` at most, and each
 commenter and each participant once by name and account. `participant` is the work
-log's one role (`mirror.domain.mirror.WORKLOG_ROLES`), which no other source's
+log's one role
+(`sources.worklog.prepare.domain.worklog.WORKLOG_ROLES`), which no other source's
 documents hold, so that no document names people of both kinds. `load` refuses any
 other role, a field other than these or out of their order, a `null`, an empty `at` and
 any other broken rule of one entry, naming the entry, such as `people[1]`; and a second

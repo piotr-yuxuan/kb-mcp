@@ -28,11 +28,13 @@ import pytest
 from pydantic import Field
 from structlog.testing import capture_logs
 
+from kb_mcp.kernel.names import RefusedError
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import sync
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.prepare.adapters import files
+from kb_mcp.sources.worklog.prepare.app import prepare
 from kb_mcp.sources.worklog.prepare.app.prepare import (
     Outcome,
     Planned,
@@ -688,6 +690,22 @@ def test_a_link_into_the_archive_leaves_a_live_transcript_as_it_is(run: Run) -> 
             ("standup",),
             "current",
         )
+
+
+def test_a_day_bearing_a_meeting_s_id_is_refused_and_nothing_written(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The step checks the work log's own rules: each type's ids, which no other source has.
+
+    The day is read from the fixture, then given a meeting's id, which no org file gives.
+    """
+    read = prepare.read_worklog(run.root, archives=True)
+    (day, *_) = [each for each in read.documents if each.type == "day"]
+    wrong = copy.replace(read, documents=(copy.replace(day, id="m-20261027-payments-stand-up"),))
+    monkeypatch.setattr(prepare, "read_worklog", lambda *_, **__: wrong)
+    with pytest.raises(RefusedError, match=r"^id: does not match"):
+        run()
+    assert not run.docs.exists()
 
 
 def test_the_mirror_and_the_work_log_leave_each_other_s_files(run: Run) -> None:

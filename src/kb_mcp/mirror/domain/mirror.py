@@ -11,51 +11,24 @@ from kb_mcp.kernel.names import (
     IDENTIFIER,
     ISSUE_KEY,
     PROJECT_KEY,
-    REVISION,
+    REVISION_NAME,
+    SOURCE_NAME,
     SPACE_KEY,
-    WORKLOG_IDS,
-    WORKLOG_REVISION,
+    TYPE_NAME,
     RefusedError,
     require,
 )
 from kb_mcp.kernel.record import Record
 
-TYPES = {
-    "page": "confluence",
-    "blogpost": "confluence",
-    "issue": "jira",
-    "entry": "worklog",
-    "day": "worklog",
-    "meeting": "worklog",
-    "transcript": "worklog",
-}
-# Keys that one source alone has, always.
-ONLY = {
-    "space": "confluence",
-    "version": "confluence",
-    "key": "jira",
-    "project": "jira",
-    "issue_type": "jira",
-}
-# The rules of each type's ids, and of its source's revisions: a work-log document's id
-# by its type, so that a day never bears a meeting's.
-PATTERNS = {
-    "page": (IDENTIFIER, REVISION),
-    "blogpost": (IDENTIFIER, REVISION),
-    "issue": (IDENTIFIER, REVISION),
-    **{kind: (pattern, WORKLOG_REVISION) for kind, pattern in WORKLOG_IDS.items()},
-}
-# The role of a meeting's participants and a transcript's speakers.
+# The role of a meeting's participants and a transcript's speakers. A document that names
+# a participant names no other role, so that a read's front matter, which is never cut,
+# names one kind's people alone, within the read's budget.
 PARTICIPANT = "participant"
 # The roles that a person can hold in a document, a closed set, in the order that the
 # mirror gives a document's people.
 ROLES = ("author", "creator", "assignee", "commenter", PARTICIPANT)
 # The roles that one person alone holds in a document; each other is held once per person.
 SOLE = frozenset({"author", "creator", "assignee"})
-# The roles of the work log's documents, which hold no other: a meeting's participants
-# and a transcript's speakers. No document holds both kinds, so that a read's front
-# matter, which is never cut, names one kind's people alone, within the read's budget.
-WORKLOG_ROLES = frozenset({PARTICIPANT})
 # The relations that a document can have to another, a closed set: a meeting's to its
 # transcript, and a transcript's to the meeting that summarises it.
 RELATIONS = ("transcript", "summary")
@@ -142,24 +115,20 @@ class FrontMatter(Record):
 
     @model_validator(mode="after")
     def check_front_matter(self) -> Self:
-        """Refuse what the layout's table rules out.
+        """Refuse what the layout's table rules out for every source.
 
-        A source and type that disagree, a key that only the other source has, an id off
-        its type's rule, a key off its rule, a text with a line break of any kind, a time
-        not in UTC, a second author, creator or assignee, a commenter or a participant
-        twice by name and account, a role of another source, people out of the order of
-        the roles, a link to the document itself, by its id or key, and a link given twice.
+        A source, type, id or revision off its rule, a key off its rule, a text with a
+        line break of any kind, a time not in UTC, a second author, creator or assignee,
+        a commenter or a participant twice by name and account, a participant beside
+        another role, people out of the order of the roles, a link to the document
+        itself, by its id or key, and a link given twice. Which source fills which key,
+        and its types, ids and revisions, are the rules of the code that builds its front
+        matter.
         """
-        if TYPES.get(self.type) != self.source:
-            message = "type: not one of the source's types"
-            raise RefusedError(message)
-        for name, source in ONLY.items():
-            if (getattr(self, name) is not None) != (self.source == source):
-                message = f"{name}: only and always for {source}"
-                raise RefusedError(message)
-        identifier, revision = PATTERNS[self.type]
-        require(identifier, self.id, "id")
-        require(revision, self.revision, "revision")
+        require(SOURCE_NAME, self.source, "source")
+        require(TYPE_NAME, self.type, "type")
+        require(IDENTIFIER, self.id, "id")
+        require(REVISION_NAME, self.revision, "revision")
         for value, pattern, name in (
             (self.key, ISSUE_KEY, "key"),
             (self.space, SPACE_KEY, "space"),
@@ -185,15 +154,15 @@ class FrontMatter(Record):
             for person in self.people
         ]
         order = [ROLES.index(person.role) for person in self.people]
-        worklog = self.source == "worklog"
+        roles = {person.role for person in self.people}
         if (
             len(set(held)) != len(held)
-            or any((person.role in WORKLOG_ROLES) != worklog for person in self.people)
+            or (PARTICIPANT in roles and len(roles) > 1)
             or order != sorted(order)
         ):
             message = (
                 "people: a second author, creator or assignee, a commenter or a participant"
-                " twice, a role of another source, or out of the order of the roles"
+                " twice, a participant beside another role, or out of the order of the roles"
             )
             raise RefusedError(message)
         links = [(link.relation, link.ref) for link in self.links]

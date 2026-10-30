@@ -29,22 +29,24 @@ from opentelemetry import trace
 
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
-from kb_mcp.mirror.adapters.markdown import WORKLOG, documents, dump, load
+from kb_mcp.mirror.adapters.markdown import documents, dump, load
 from kb_mcp.mirror.adapters.mirror_files import Changes, sync
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, PersonRole
 from kb_mcp.mirror.domain.mirror_layout import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.prepare.adapters import files
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
-from kb_mcp.sources.worklog.prepare.domain.layout import worklog_path
+from kb_mcp.sources.worklog.prepare.domain.layout import WORKLOG, worklog_path
 from kb_mcp.sources.worklog.prepare.domain.worklog import (
     DAY_TYPE,
     ENTRY,
     MEETING_TYPE,
+    SOURCE,
     TODO,
     TODO_ARCHIVE,
     Document,
+    WorklogFrontMatter,
     held_back,
     journal,
     linked_back,
@@ -59,9 +61,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kb_mcp.mirror.adapters.pandoc import Pandoc
+    from kb_mcp.mirror.domain.mirror import FrontMatter
     from kb_mcp.sources.worklog.prepare.domain.worklog import Source
 
-SOURCE = "worklog"
 TRACER = trace.get_tracer(__name__)
 
 
@@ -267,7 +269,7 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                 fetched_at = document.source.fetched_at
                 CONVERSION_DURATION.record(time.perf_counter() - began, kind)
             DOCUMENTS.add(1, {"kb_mcp.outcome": outcome, **kind})
-            matter = FrontMatter(
+            matter = WorklogFrontMatter(
                 source=SOURCE,
                 type=document.type,
                 id=document.id,

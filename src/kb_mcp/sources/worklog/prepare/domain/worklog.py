@@ -16,13 +16,14 @@ import re
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
-from kb_mcp.kernel.names import WORKLOG_IDS
+from kb_mcp.kernel.names import WORKLOG_IDS, RefusedError, require
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.slug import slug
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter
 from kb_mcp.sources.worklog.prepare.domain import org
 
 if TYPE_CHECKING:
@@ -51,6 +52,15 @@ ENTRY = "entry"
 DAY_TYPE = "day"
 MEETING_TYPE = "meeting"
 TRANSCRIPT = "transcript"
+# The work log's name as a source, in its documents' front matter.
+SOURCE = "worklog"
+# A document's revision: a digest of what pandoc converts, and how.
+WORKLOG_REVISION = re.compile(r"[0-9a-f]{16}")
+# The roles of the work log's documents, which hold no other: a meeting's participants
+# and a transcript's speakers.
+WORKLOG_ROLES = frozenset({PARTICIPANT})
+# The keys of the front matter that Confluence or Jira fills, and the work log never.
+NOT_FILLED = ("key", "space", "project", "issue_type", "version")
 # The relations of a meeting to its transcript, and of a transcript to each meeting
 # that links to it, as the mirror's front matter names them.
 TRANSCRIBED = "transcript"
@@ -138,6 +148,32 @@ class Document(Record):
         if self.events:
             return min(self.events), max(self.events)
         return created or self.source.fetched_at, self.source.fetched_at
+
+
+class WorklogFrontMatter(FrontMatter):
+    """The front matter of a document of the work log: every source's rules, and its own."""
+
+    @model_validator(mode="after")
+    def check_worklog(self) -> Self:
+        """Refuse what the layout's table rules out for the work log.
+
+        A source or type not the work log's, a key that it never fills, an id off its
+        type's rule, so that a day never bears a meeting's, a revision off
+        ``WORKLOG_REVISION``, and a role of another source.
+        """
+        if self.source != SOURCE or self.type not in WORKLOG_IDS:
+            message = "type: not one of the source's types"
+            raise RefusedError(message)
+        filled = [name for name in NOT_FILLED if getattr(self, name) is not None]
+        if filled:
+            message = f"{', '.join(filled)}: never the work log's"
+            raise RefusedError(message)
+        require(WORKLOG_IDS[self.type], self.id, "id")
+        require(WORKLOG_REVISION, self.revision, "revision")
+        if any(person.role not in WORKLOG_ROLES for person in self.people):
+            message = "people: a role of another source"
+            raise RefusedError(message)
+        return self
 
 
 class Part(Record):
