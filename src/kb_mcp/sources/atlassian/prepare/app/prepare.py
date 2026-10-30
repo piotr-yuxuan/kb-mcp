@@ -62,6 +62,7 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
+    from kb_mcp.kernel.output import Summary
     from kb_mcp.mirror.adapters.conversions import Conversions
     from kb_mcp.sources.atlassian.fetch.domain.content import Folder
 
@@ -103,6 +104,23 @@ class Outcome(Record):
     changes: Changes
     unsupported: Counter[str]
     problems: tuple[Problem, ...]
+
+    def text(self, summary: Summary) -> str:
+        """Write the counts of documents, of conversions run and reused, of files, of problems.
+
+        In detail, what the mirror does not show, by name, comes before the problems.
+        """
+        unsupported = sorted(self.unsupported.items()) if summary == "detailed" else []
+        return (
+            f"documents: {self.documents}\n"
+            f"converted by pandoc: {self.converted}\n"
+            f"reused from the cache: {self.reused}\n"
+            f"files written: {self.changes.written}\n"
+            f"files unchanged: {self.changes.unchanged}\n"
+            f"files removed: {self.changes.removed}\n"
+            + "".join(f"not shown, {name}: {count}\n" for name, count in unsupported)
+            + f"problems: {len(self.problems)}\n"
+        )
 
 
 class Placed(Record):

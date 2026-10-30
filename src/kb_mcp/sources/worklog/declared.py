@@ -1,8 +1,8 @@
-"""The work log's declaration: what it reads in place, and its table.
+"""The work log's declaration: what it reads in place, its table, and its preparer.
 
 Each resource type is a type of its documents: entries, days and meetings split from
 ``todo.org`` and its archive at their headings, transcripts read from ``transcripts/``
-and ``meetings/``.
+and ``meetings/``. Read in place, it has no fetcher.
 """
 
 from __future__ import annotations
@@ -24,4 +24,5 @@ WORKLOG = Declared(
     ),
     settings=("path", "archives"),
     table="kb_mcp.sources.worklog.settings:WorklogSource",
+    preparers=("kb_mcp.sources.worklog.prepare.app.preparer",),
 )

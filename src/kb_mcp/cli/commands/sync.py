@@ -29,7 +29,6 @@ from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
 from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED
-from kb_mcp.sources.worklog.prepare.app.prepare import Planned
 
 if TYPE_CHECKING:
     import argparse
@@ -38,7 +37,7 @@ if TYPE_CHECKING:
     from kb_mcp.cli.app.sync import Synced
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources.worklog.prepare.app.prepare import Outcome
+    from kb_mcp.sources.worklog.prepare.app.prepare import Outcome, Planned
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Synced | None]:
@@ -83,28 +82,8 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sync
 
 
 def worklog_text(result: Outcome | Planned, summary: Summary) -> str:
-    """Write the work log's counts: of documents, files, HTML transcripts left out, problems.
-
-    A dry run's are those it would convert and remove. In detail, each warning comes
-    before the problems.
-    """
-    if isinstance(result, Planned):
-        counts = [("to convert", result.to_convert), ("files to remove", result.to_remove)]
-    else:
-        changes = result.changes
-        counts = [
-            ("files written", changes.written),
-            ("files unchanged", changes.unchanged),
-            ("files removed", changes.removed),
-        ]
-    warnings = result.warnings if summary == "detailed" else ()
-    return (
-        f"documents: {result.documents}\n"
-        + "".join(f"{what}: {number}\n" for what, number in counts)
-        + f"HTML left out: {result.html}\n"
-        + "".join(f"warning: {warning}\n" for warning in warnings)
-        + f"problems: {len(result.problems)}\n"
-    )
+    """Write the work log's counts, or a dry run's, as the result's own ``text`` does."""
+    return result.text(summary)
 
 
 # How each step's result is written, as its own command writes it.

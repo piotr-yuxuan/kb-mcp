@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.cli.options.download import DEFAULT_MAX_FILE_MB
+from kb_mcp.cli.domain.sync import PERIOD
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import StoreBusyError
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
-from kb_mcp.sources.atlassian.fetch.app.download import Targets, download, plan
-from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError, moment
+from kb_mcp.sources.atlassian.fetch.app.download import download, plan, read_targets
+from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
 
 if TYPE_CHECKING:
     import argparse
@@ -22,13 +22,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources.atlassian.fetch.app.download import Outcome
-
-MEBIBYTE = 1024 * 1024
-# The counts that a short summary shows: the documents fetched, or to fetch, of each kind,
-# and the files downloaded, or to download; then how a run stopped, if it did.
-SHORT_COUNTS = (": fetched", ": to fetch", "files: downloaded", "files: to download")
-STOPPED = "runs: "
+    from kb_mcp.sources.atlassian.fetch.app.download import Outcome, Targets
 
 
 def targets_of(
@@ -36,15 +30,10 @@ def targets_of(
 ) -> Targets:
     """Read what a run downloads of these spaces and projects from the period's options.
 
-    The options were checked before the run; --max-file-mb not given is the default.
+    The options were checked before the run, and read as ``read_targets`` reads them.
     """
-    return Targets(
-        spaces=list(spaces),
-        projects=list(projects),
-        max_file_bytes=(arguments.max_file_mb or DEFAULT_MAX_FILE_MB) * MEBIBYTE,
-        since=moment(arguments.since, now, "--since") if arguments.since else None,
-        until=moment(arguments.until, now, "--until") if arguments.until else None,
-    )
+    options = {option: getattr(arguments, dest) for dest, option in PERIOD.items()}
+    return read_targets(spaces, projects, options, now)
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outcome | None]:
@@ -84,30 +73,5 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
 
 
 def text(outcome: Outcome, summary: Summary) -> str:
-    """Write the documents fetched by kind and the files, or those a dry run would; then failures.
-
-    Detailed, and a dry run, begin with each target's window, why it starts there, and
-    what became of its coverage. Short also says how a run stopped, if it did; detailed
-    gives every count of what the run did, or would do. The failures come last.
-    """
-    windows = outcome.windows if summary == "detailed" or outcome.dry_run else ()
-    said = [
-        f"{each.target}: "
-        + (
-            f"skipped, {each.reason}"
-            if each.start is None or each.end is None
-            else f"from {each.start.isoformat()} to {each.end.isoformat()}, {each.reason}"
-        )
-        + ("" if each.coverage is None else f"; coverage {each.coverage}")
-        for each in windows
-    ]
-    shown = [
-        (what, number)
-        for what, number in sorted(outcome.report.counts.items())
-        if summary == "detailed" or what.endswith(SHORT_COUNTS) or what.startswith(STOPPED)
-    ]
-    return (
-        "".join(f"{line}\n" for line in said)
-        + "".join(f"{what}: {number}\n" for what, number in shown)
-        + f"failures: {outcome.report.failures}\n"
-    )
+    """Write the outcome as its own ``text`` does: counts, failures, and each window."""
+    return outcome.text(summary)

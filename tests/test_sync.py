@@ -45,9 +45,11 @@ from kb_mcp.search.app.indexing import Indexing
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.download import Outcome, Report, Targets
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
 from kb_mcp.sources.atlassian.prepare.app import prepare as mirror_app
+from kb_mcp.sources.atlassian.prepare.app import preparer
 from tests.composed import MODEL
 from tests.endpoint import DIGEST, Scripted, scripted, serving
 from tests.mirrors import fillers
@@ -441,7 +443,7 @@ def test_ctrl_c_in_the_download_exits_130_and_no_later_step_runs(
     def interrupted(*_: object) -> Outcome:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(sync_app, "download", interrupted)
+    monkeypatch.setattr(fetcher, "download", interrupted)
     settings = chosen_settings(tmp_path, worklog)
     steps = [
         Atlassian(
@@ -470,12 +472,12 @@ def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
         where="confluence/pages/1001/000001", reason="pandoc: exit status 9"
     )
     monkeypatch.setattr(
-        sync_app,
+        fetcher,
         "download",
         lambda *_: Outcome(report=Report(), failed_targets=[], status=ExitStatus.OK),
     )
     monkeypatch.setattr(
-        sync_app,
+        preparer,
         "mirror",
         lambda *_: mirror_app.Outcome(
             documents=0,
@@ -1003,11 +1005,11 @@ def test_ctrl_c_in_the_mirror_marks_it_interrupted_and_the_work_log_not_run(
 ) -> None:
     """The download done, the mirror interrupted, the work log not run: exit 130."""
     monkeypatch.setattr(
-        sync_app,
+        fetcher,
         "download",
         lambda *_: Outcome(report=Report(), failed_targets=[], status=ExitStatus.OK),
     )
-    monkeypatch.setattr(sync_app, "mirror", interrupting)
+    monkeypatch.setattr(preparer, "mirror", interrupting)
     settings = chosen_settings(tmp_path, worklog)
     steps = [
         Atlassian(
@@ -1052,7 +1054,7 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
         where="confluence/pages/1001/000001", reason="pandoc: exit status 9"
     )
     monkeypatch.setattr(
-        sync_app,
+        preparer,
         "mirror",
         lambda *_: mirror_app.Outcome(
             documents=0,
@@ -1130,7 +1132,7 @@ def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
     def busy(*_: object) -> Outcome:
         raise StoreBusyError
 
-    monkeypatch.setattr(sync_app, "download", busy)
+    monkeypatch.setattr(fetcher, "download", busy)
     settings = chosen_settings(tmp_path, worklog)
     steps = [
         Atlassian(
@@ -1186,7 +1188,7 @@ def test_what_sync_records_is_what_its_page_says(
         with emitted.gathering(telemetry, "sync"):
             assert main(command(home, config, "--yes", "--include", "worklog")) == ExitStatus.FAILED
         with monkeypatch.context() as patch:
-            patch.setattr(sync_app, "download", interrupting)
+            patch.setattr(fetcher, "download", interrupting)
             with emitted.gathering(telemetry, "sync"):
                 assert main(command(home, config, "--yes", *period)) == ExitStatus.INTERRUPTED
         with monkeypatch.context() as patch:

@@ -99,6 +99,7 @@ source_modules = [
   "kb_mcp.**.domain",
   "kb_mcp.sources.declaration",
   "kb_mcp.sources.registry",
+  "kb_mcp.sources.roles",
   "kb_mcp.sources.*.declared",
 ]
 forbidden_modules = [

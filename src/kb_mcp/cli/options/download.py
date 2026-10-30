@@ -18,12 +18,16 @@ from kb_mcp.cli.options._common import (
     token_without_email,
 )
 from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY
-from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, PeriodError, moment, period_rule
+from kb_mcp.sources.atlassian.fetch.domain.period import (
+    DEFAULT_MAX_FILE_MB,
+    EPOCH,
+    PeriodError,
+    moment,
+    period_rule,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
-
-DEFAULT_MAX_FILE_MB = 50
 
 
 def key_of(pattern_name: str) -> Callable[[str], str]:

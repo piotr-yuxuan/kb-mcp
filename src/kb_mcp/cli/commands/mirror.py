@@ -42,21 +42,8 @@ def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Syn
 
 
 def outcome_text(outcome: Outcome, summary: Summary) -> str:
-    """Write the counts of documents, of conversions run and reused, of files, then of problems.
-
-    In detail, what the mirror does not show, by name, comes before the problems.
-    """
-    unsupported = sorted(outcome.unsupported.items()) if summary == "detailed" else []
-    return (
-        f"documents: {outcome.documents}\n"
-        f"converted by pandoc: {outcome.converted}\n"
-        f"reused from the cache: {outcome.reused}\n"
-        f"files written: {outcome.changes.written}\n"
-        f"files unchanged: {outcome.changes.unchanged}\n"
-        f"files removed: {outcome.changes.removed}\n"
-        + "".join(f"not shown, {name}: {count}\n" for name, count in unsupported)
-        + f"problems: {len(outcome.problems)}\n"
-    )
+    """Write one source's counts under its row, as the outcome's own ``text`` does."""
+    return outcome.text(summary)
 
 
 def text(synced: Synced, summary: Summary) -> str:

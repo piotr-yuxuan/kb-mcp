@@ -59,12 +59,14 @@ from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     probing_order,
     too_many_gone,
 )
-from kb_mcp.sources.atlassian.fetch.domain.files import skip_reason
+from kb_mcp.sources.atlassian.fetch.domain.files import MEBIBYTE, skip_reason
+from kb_mcp.sources.atlassian.fetch.domain.period import DEFAULT_MAX_FILE_MB, moment
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
     from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.kernel.output import Summary
     from kb_mcp.sources.atlassian.fetch.adapters.http import ReadPage, Request
     from kb_mcp.sources.atlassian.fetch.domain.content import Attachment, Document, Listed
     from kb_mcp.sources.atlassian.fetch.domain.period import Period
@@ -83,6 +85,10 @@ KINDS: tuple[type[Page | BlogPost], ...] = (Page, BlogPost)
 # Jira reads JQL dates in the user's time zone, up to 14 hours off UTC, and a date
 # stands for its midnight: two days on each side always cover the period.
 JQL_MARGIN = timedelta(days=2)
+# The counts that a short summary shows: the documents fetched, or to fetch, of each kind,
+# and the files downloaded, or to download; then how a run stopped, if it did.
+SHORT_COUNTS = (": fetched", ": to fetch", "files: downloaded", "files: to download")
+STOPPED = "runs: "
 
 # How each kind of document is read from its listing, and which GETs make its snapshot.
 LISTED: dict[type[Document], Callable[[Fields], Listed]] = {
@@ -671,6 +677,25 @@ class Targets(Record):
         return {target: window(coverage, target, self.since, end) for target in named}
 
 
+def read_targets(
+    spaces: Sequence[str], projects: Sequence[str], options: Mapping[str, object], now: datetime
+) -> Targets:
+    """Read what a run downloads of these spaces and projects from the period's options.
+
+    ``options`` holds each by its flag, as typed, None when not given: --since and
+    --until read as ``moment`` reads them, at ``now``; --max-file-mb not given is
+    ``DEFAULT_MAX_FILE_MB``.
+    """
+    since, until = options.get("--since"), options.get("--until")
+    return Targets(
+        spaces=list(spaces),
+        projects=list(projects),
+        max_file_bytes=(options.get("--max-file-mb") or DEFAULT_MAX_FILE_MB) * MEBIBYTE,
+        since=moment(since, now, "--since") if since else None,
+        until=moment(until, now, "--until") if until else None,
+    )
+
+
 class TargetWindow(Record):
     """A target of a run: its window, from ``start`` to ``end``, and why it starts there.
 
@@ -722,6 +747,35 @@ class Outcome(Record):
     status: ExitStatus | None
     windows: tuple[TargetWindow, ...] = ()
     dry_run: bool = False
+
+    def text(self, summary: Summary) -> str:
+        """Write the documents fetched by kind and the files, or a dry run's; then failures.
+
+        Detailed, and a dry run, begin with each target's window, why it starts there, and
+        what became of its coverage. Short also says how a run stopped, if it did; detailed
+        gives every count of what the run did, or would do. The failures come last.
+        """
+        windows = self.windows if summary == "detailed" or self.dry_run else ()
+        said = [
+            f"{each.target}: "
+            + (
+                f"skipped, {each.reason}"
+                if each.start is None or each.end is None
+                else f"from {each.start.isoformat()} to {each.end.isoformat()}, {each.reason}"
+            )
+            + ("" if each.coverage is None else f"; coverage {each.coverage}")
+            for each in windows
+        ]
+        shown = [
+            (what, number)
+            for what, number in sorted(self.report.counts.items())
+            if summary == "detailed" or what.endswith(SHORT_COUNTS) or what.startswith(STOPPED)
+        ]
+        return (
+            "".join(f"{line}\n" for line in said)
+            + "".join(f"{what}: {number}\n" for what, number in shown)
+            + f"failures: {self.report.failures}\n"
+        )
 
 
 def plan(

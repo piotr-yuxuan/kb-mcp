@@ -27,26 +27,17 @@ from kb_mcp.cli.domain.sync import RANKED, Outcome, label
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.adapters import conversions
-from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
+from kb_mcp.mirror.adapters.pandoc import Pandoc
 from kb_mcp.search.app.indexing import Indexing, refresh
-from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
-from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
-from kb_mcp.sources.atlassian.fetch.app.download import Targets, download, plan
-from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, mirror
-from kb_mcp.sources.worklog.prepare.app.prepare import mirror_worklog, plan_worklog
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.fetch.app.download import Targets
+from kb_mcp.sources.atlassian.fetch.app.fetcher import fetch_targets
+from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED
+from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_kinds
+from kb_mcp.sources.worklog.prepare.app.preparer import prepare_folder
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-
-# How a download or its plan ended, by its status. A download that Ctrl-C stops raises
-# KeyboardInterrupt, so its status is never none here.
-DOWNLOADED: dict[ExitStatus | None, Outcome] = {
-    ExitStatus.OK: "done",
-    ExitStatus.FAILED: "failed",
-    ExitStatus.SIGN_IN_AGAIN: "sign in",
-}
 
 
 TRACER = trace.get_tracer(__name__)
@@ -137,51 +128,27 @@ class Rows(Record):
 def prepare_source(settings: Settings, pandoc: Pandoc, source: str) -> Row:
     """Mirror one Atlassian source, of ``PREPARED``, from the raw store; give its row.
 
-    The data folder's cache of pandoc's conversions is open for this mirror alone, on the
-    source's rows. What it could not mirror is said by place and reason, never content,
-    as is that the source then removed none of its files.
+    It mirrors as ``prepare_kinds`` does, through the source's rows of the cache, with
+    the site of the Atlassian account.
     """
-    log = structlog.get_logger()
-    with conversions.opened(
-        settings.conversions, pandoc.html_converter, pandoc.markdown, source=source
-    ) as cache:
-        mirrored = mirror(
-            RawStore(settings.raw),
-            settings.docs,
-            settings.accounts.atlassian.site,
-            cache,
-            PREPARED[source],
-        )
-    for problem in mirrored.problems:
-        log.warning("mirror.not_mirrored", where=problem.where, reason=problem.reason)
-    if mirrored.problems:
-        log.warning("mirror.nothing_removed", source=source, problems=len(mirrored.problems))
-    outcome = "failed" if mirrored.problems else "done"
-    return Row(step="mirror", source=source, outcome=outcome, result=mirrored)
+    site = settings.accounts.atlassian.site
+    prepared = prepare_kinds(settings, site, pandoc, source, PREPARED[source])
+    return Row(step="mirror", source=source, outcome=prepared.outcome, result=prepared.mirrored)
 
 
 def atlassian(context: Context, step: Atlassian, add: Callable[[Row], None]) -> None:
     """Download, or plan the download, then mirror each source of the step, unless a dry run.
 
     Each mirror runs whatever the download did, since it reads what is stored, a row of
-    its own. What went wrong is said by ``download``'s and ``mirror``'s events.
+    its own. What went wrong is said by the events of ``fetch_targets`` and of
+    ``prepare_kinds``.
     """
-    log, settings = structlog.get_logger(), context.settings
-    act = plan if context.dry_run else download
+    settings = context.settings
     with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "download"}):
-        try:
-            fetched = act(settings, step.targets, context.now, context.sleep)
-        except StoreBusyError:
-            hint = "another run is writing it; try again once that run ends"
-            structlog.get_logger().error("download.store_busy", store=str(settings.raw), hint=hint)
-            add(Row(step="download", source=None, outcome="failed", result=None))
-        else:
-            for target in fetched.failed_targets:
-                log.warning("download.target_failed", target=target)
-            if fetched.status == ExitStatus.SIGN_IN_AGAIN:
-                log.error("download.sign_in_needed", hint=sign_in(settings).again)
-            outcome = DOWNLOADED[fetched.status]
-            add(Row(step="download", source=None, outcome=outcome, result=fetched))
+        fetched = fetch_targets(
+            settings, step.targets, context.now, context.sleep, dry_run=context.dry_run
+        )
+        add(Row(step="download", source=None, outcome=fetched.outcome, result=fetched.downloaded))
     for source in step.sources:
         with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "mirror"}):
             if context.dry_run:
@@ -191,29 +158,20 @@ def atlassian(context: Context, step: Atlassian, add: Callable[[Row], None]) -> 
 
 
 def worklog(context: Context, step: Worklog, add: Callable[[Row], None]) -> None:
-    """Mirror the work log, or count what mirroring it would do; say its problems."""
-    log = structlog.get_logger()
-    act = plan_worklog if context.dry_run else mirror_worklog
+    """Mirror the work log, or count what mirroring it would do, as ``prepare_folder`` does."""
     with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "worklog"}):
-        try:
-            done = act(step.folder, context.settings.docs, context.pandoc, archives=step.archives)
-        except PandocFailedError as error:
-            structlog.get_logger().error("worklog.pandoc_failed", reason=str(error))
-            add(Row(step="worklog", source="worklog", outcome="failed", result=None))
-            return
-        for problem in done.problems:
-            log.warning(
-                "worklog.problem",
-                where=problem.where,
-                reason=problem.reason,
-                held_back=problem.held_back,
+        prepared = prepare_folder(
+            step.folder,
+            context.settings.docs,
+            context.pandoc,
+            archives=step.archives,
+            dry_run=context.dry_run,
+        )
+        add(
+            Row(
+                step="worklog", source="worklog", outcome=prepared.outcome, result=prepared.mirrored
             )
-        for warning in done.warnings:
-            log.warning("worklog.same_id", reason=warning)
-        if done.problems and not context.dry_run:
-            log.warning("worklog.nothing_removed", problems=len(done.problems))
-        outcome = "failed" if done.problems else "done"
-        add(Row(step="worklog", source="worklog", outcome=outcome, result=done))
+        )
 
 
 def index(context: Context, step: Index, add: Callable[[Row], None]) -> None:

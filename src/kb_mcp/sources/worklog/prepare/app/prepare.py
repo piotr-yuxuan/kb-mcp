@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping
     from pathlib import Path
 
+    from kb_mcp.kernel.output import Summary
     from kb_mcp.mirror.adapters.pandoc import Pandoc
     from kb_mcp.mirror.domain.mirror import FrontMatter
     from kb_mcp.sources.worklog.prepare.domain.worklog import Source
@@ -107,6 +108,22 @@ class Outcome(Record):
     problems: tuple[Problem, ...]
     warnings: tuple[str, ...]
 
+    def text(self, summary: Summary) -> str:
+        """Write the counts of documents, of files, of HTML transcripts left out, of problems.
+
+        In detail, each warning comes before the problems.
+        """
+        warnings = self.warnings if summary == "detailed" else ()
+        return (
+            f"documents: {self.documents}\n"
+            f"files written: {self.changes.written}\n"
+            f"files unchanged: {self.changes.unchanged}\n"
+            f"files removed: {self.changes.removed}\n"
+            f"HTML left out: {self.html}\n"
+            + "".join(f"warning: {warning}\n" for warning in warnings)
+            + f"problems: {len(self.problems)}\n"
+        )
+
 
 class Planned(Record):
     """What a run would do: documents, those to convert, files to remove, HTML left out."""
@@ -117,6 +134,21 @@ class Planned(Record):
     html: int
     problems: tuple[Problem, ...]
     warnings: tuple[str, ...]
+
+    def text(self, summary: Summary) -> str:
+        """Write the counts of documents, of those to convert, of files to remove, of problems.
+
+        HTML transcripts left out come before the problems, and in detail each warning.
+        """
+        warnings = self.warnings if summary == "detailed" else ()
+        return (
+            f"documents: {self.documents}\n"
+            f"to convert: {self.to_convert}\n"
+            f"files to remove: {self.to_remove}\n"
+            f"HTML left out: {self.html}\n"
+            + "".join(f"warning: {warning}\n" for warning in warnings)
+            + f"problems: {len(self.problems)}\n"
+        )
 
 
 def read_worklog(folder: Path, *, archives: bool) -> Read:
