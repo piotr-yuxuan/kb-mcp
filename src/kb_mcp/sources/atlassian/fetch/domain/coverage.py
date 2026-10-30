@@ -16,7 +16,7 @@ from pydantic import Field, model_validator
 
 from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY, RefusedError, require
 from kb_mcp.kernel.record import Record
-from kb_mcp.sources.atlassian.domain.period import EPOCH, FIRST_FETCH, Period
+from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, FIRST_FETCH, Period
 
 # The rule of a target's key, by source.
 KEYS = {"confluence": SPACE_KEY, "jira": PROJECT_KEY}

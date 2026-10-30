@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.sources.atlassian.adapters.session_file import (
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     read_cookies,
     write_cookies,
 )

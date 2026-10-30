@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from kb_mcp.sources.atlassian.domain.period import PeriodError, period
+from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError, period
 
 NOW = datetime(2026, 10, 22, 9, 30, tzinfo=UTC)
 # The moment of plan 034's examples.

@@ -30,20 +30,20 @@ from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER
 from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.progress import task
-from kb_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
-from kb_mcp.sources.atlassian.adapters.http import (
+from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
+from kb_mcp.sources.atlassian.fetch.adapters.http import (
     SignInNeededError,
     Site,
     SiteError,
     TooManyFailuresError,
 )
-from kb_mcp.sources.atlassian.adapters.raw_store import (
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     REPRESENTATIONS,
     RawStore,
     Unreadable,
 )
-from kb_mcp.sources.atlassian.adapters.sign_in import sign_in
-from kb_mcp.sources.atlassian.domain.coverage import (
+from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
+from kb_mcp.sources.atlassian.fetch.domain.coverage import (
     Coverage,
     Extension,
     Reason,
@@ -51,7 +51,7 @@ from kb_mcp.sources.atlassian.domain.coverage import (
     Window,
     window,
 )
-from kb_mcp.sources.atlassian.domain.deletions import (
+from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     Answer,
     Tombstone,
     after_probes,
@@ -59,15 +59,15 @@ from kb_mcp.sources.atlassian.domain.deletions import (
     probing_order,
     too_many_gone,
 )
-from kb_mcp.sources.atlassian.domain.files import skip_reason
+from kb_mcp.sources.atlassian.fetch.domain.files import skip_reason
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
     from kb_mcp.config.domain.settings import Settings
     from kb_mcp.kernel.content import Attachment, Document, Listed
-    from kb_mcp.sources.atlassian.adapters.http import ReadPage, Request
-    from kb_mcp.sources.atlassian.domain.period import Period
+    from kb_mcp.sources.atlassian.fetch.adapters.http import ReadPage, Request
+    from kb_mcp.sources.atlassian.fetch.domain.period import Period
 
     type SnapshotRequests = Callable[[Listed], dict[str, tuple[Request, ReadPage | None]]]
 

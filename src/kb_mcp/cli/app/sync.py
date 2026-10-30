@@ -31,9 +31,9 @@ from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
 from kb_mcp.mirror.app.mirror import mirror
 from kb_mcp.mirror.app.worklog import mirror_worklog, plan_worklog
 from kb_mcp.search.app.indexing import Indexing, refresh
-from kb_mcp.sources.atlassian.adapters.raw_store import RawStore, StoreBusyError
-from kb_mcp.sources.atlassian.adapters.sign_in import sign_in
-from kb_mcp.sources.atlassian.app.download import Targets, download, plan
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
+from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
+from kb_mcp.sources.atlassian.fetch.app.download import Targets, download, plan
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

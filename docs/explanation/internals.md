@@ -56,7 +56,7 @@ name, then `mirror`
 whole mirror, whichever sources the run took
 ([`index`](../../src/kb_mcp/cli/app/sync.py)). Each calls the same function
 as its own command:
-[`download`](../../src/kb_mcp/sources/atlassian/app/download.py),
+[`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py),
 [`mirror`](../../src/kb_mcp/mirror/app/mirror.py),
 [`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py) and
 [`index_mirror`](../../src/kb_mcp/search/app/indexing.py). A source is a
@@ -71,7 +71,7 @@ record that names its table and its step
   log is mirrored while the site asks to sign in again, and the index is built from what
   the mirror holds. What can be refused is refused before the first step: a space or
   project with nowhere to start
-  ([`PeriodError`](../../src/kb_mcp/sources/atlassian/domain/period.py)),
+  ([`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py)),
   or a work log that is not a folder
   ([`SyncRefusedError`](../../src/kb_mcp/cli/app/sync.py)). Ctrl-C ends
   the step it stops and runs no later one. The exit status ranks how the steps ended:
@@ -84,42 +84,42 @@ record that names its table and its step
 
 ## Download: from the site to the raw store
 
-[`download`](../../src/kb_mcp/sources/atlassian/app/download.py) reads the
-site through one port, [`Site`](../../src/kb_mcp/sources/atlassian/adapters/http.py),
+[`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) reads the
+site through one port, [`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
 which makes GETs alone, one at a time and paced, signed in by the saved session or an API
-token ([`sign_in`](../../src/kb_mcp/sources/atlassian/adapters/sign_in.py)).
+token ([`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
 For each Confluence space, it lists every page, blog post and folder, and stores the
 listings whole; for each Jira project, it searches the issues updated in its window. Then
 it fetches each document updated in the window whose revision the store lacks
-([`Download.fetch_listed`](../../src/kb_mcp/sources/atlassian/app/download.py)),
+([`Download.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)),
 its files first, the snapshot last
-([`Download.keep`](../../src/kb_mcp/sources/atlassian/app/download.py)),
+([`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)),
 and counts what it fetches apart from what it lists. Without `--since`, each target
 fetches what changed since its last fetch
-([`window`](../../src/kb_mcp/sources/atlassian/domain/coverage.py)): a
+([`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)): a
 project from a day before the end of the period it covers, which ends at its earliest
 document not stored whole, so that a run asks for that again; a space from the start of
 that period, its listing being read whole anyway; a target never fetched, its last 7
 days. A catch-up that would start after `--until` skips its target.
 
 - **Writes**, into `<data>/raw/` alone, through
-  [`RawStore`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py):
+  [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py):
   snapshots, listings, files by digest, the coverage and the tombstones of documents
   gone. One run at a time:
-  [`RawStore.writing`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)
+  [`RawStore.writing`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
   holds a lock, and a second run stops at once with
-  [`StoreBusyError`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py).
+  [`StoreBusyError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py).
   A snapshot is written into a hidden folder and renamed into place
-  ([`RawStore.put`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)):
+  ([`RawStore.put`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)):
   complete or absent. Its responses are never written again; its record gains the files
   that a later run fetches, such as one that failed
-  ([`RawStore.add_blobs`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)).
+  ([`RawStore.add_blobs`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)).
 - **One document's failure** is counted, logged with its id, and skipped; the run goes
   on. A response that its adapter refuses is stored all the same, raw, for a fixed
   adapter to read. Only ten GETs in a row without an answer
-  ([`MAX_FAILED_IN_A_ROW`](../../src/kb_mcp/sources/atlassian/adapters/http.py)),
+  ([`MAX_FAILED_IN_A_ROW`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
   or a session that no longer holds
-  ([`SignInNeededError`](../../src/kb_mcp/sources/atlassian/adapters/http.py)),
+  ([`SignInNeededError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
   stop a run; its report is saved even then.
 - **Offline**, nothing: this is the one stage that reads the site.
 
@@ -127,7 +127,7 @@ days. A catch-up that would start after `--until` skips its target.
 
 [`mirror`](../../src/kb_mcp/mirror/app/mirror.py) reads the newest
 snapshot of each document
-([`RawStore.latest`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)),
+([`RawStore.latest`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 the listings, the users and the tombstones, and the setting `site`: nothing else shapes
 its files. It places each document in the space whose freshest listing names it,
 leaving out those confirmed gone
@@ -342,18 +342,18 @@ them in turn, take the steps below.
 
 An edit gives the page a new version. The next `download` lists its space whole, finds
 the page updated within the period it covers, sees that this revision is not stored
-([`RawStore.has`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)),
+([`RawStore.has`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 and fetches it as a new snapshot, beside the old one, which stays. An issue edited in
 Jira has a new update time, its revision, and is fetched the same way.
 
 - **Moved** to another space that the run keeps, a page is listed there, and the store
   notes when each space was listed.
 - **Deleted**, a page is absent from its space's listing. The run records a
-  [`Tombstone`](../../src/kb_mcp/sources/atlassian/domain/deletions.py) and
+  [`Tombstone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py) and
   probes the page; a second answer of gone, an hour or more after the first, confirms
   it. When many probes of one space answer that their pages are gone, the run first
   checks that its session still holds
-  ([`too_many_gone`](../../src/kb_mcp/sources/atlassian/domain/deletions.py)),
+  ([`too_many_gone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py)),
   so that a lost session deletes nothing.
 - **Not yet seen**: a change that makes no new version, such as labels changed or a
   file attached without an edit, and Jira's deletions; [the data

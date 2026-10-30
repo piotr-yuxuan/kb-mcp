@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
-from kb_mcp.sources.atlassian.adapters.browser import (
+from kb_mcp.sources.atlassian.fetch.adapters.browser import (
     disable_password_saving,
     sign_in,
 )
-from kb_mcp.sources.atlassian.adapters.session_file import (
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
     for_site,
     write_cookies,

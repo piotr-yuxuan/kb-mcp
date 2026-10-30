@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 from kb_mcp.kernel.content import Attachment, Comment, Issue, Listed, Person, Snapshot
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import time_revision
-from kb_mcp.sources.atlassian.adapters.http import ReadPage, Request
+from kb_mcp.sources.atlassian.fetch.adapters.http import ReadPage, Request
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

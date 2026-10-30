@@ -43,11 +43,11 @@ from kb_mcp.mirror.adapters.pandoc import (
 from kb_mcp.mirror.app import mirror as mirror_app
 from kb_mcp.search.adapters import sqlite_index, vector_store
 from kb_mcp.search.app.indexing import Indexing
-from kb_mcp.sources.atlassian.adapters import http
-from kb_mcp.sources.atlassian.adapters.raw_store import RawStore, StoreBusyError
-from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
-from kb_mcp.sources.atlassian.app.download import Outcome, Report, Targets
-from kb_mcp.sources.atlassian.domain.coverage import Target
+from kb_mcp.sources.atlassian.fetch.adapters import http
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.app.download import Outcome, Report, Targets
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
 from tests.endpoint import DIGEST, Scripted, scripted, serving
 from tests.mirrors import fillers
 from tests.reference import Emitted, documented, pattern, undocumented

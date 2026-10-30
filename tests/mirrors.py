@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kb_mcp.mirror.app.mirror import Outcome
-    from kb_mcp.sources.atlassian.adapters.raw_store import RawStore
+    from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 LOREM = (

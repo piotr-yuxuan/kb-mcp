@@ -81,7 +81,8 @@ containers = [
   "kb_mcp.mcp",
   "kb_mcp.search",
   "kb_mcp.mirror",
-  "kb_mcp.sources.*",
+  "kb_mcp.sources.*.fetch",
+  "kb_mcp.sources.worklog",
   "kb_mcp.config",
   "kb_mcp.observability",
 ]

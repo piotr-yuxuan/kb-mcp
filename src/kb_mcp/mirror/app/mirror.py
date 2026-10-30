@@ -45,14 +45,14 @@ from kb_mcp.mirror.domain.mirror_layout import (
     tree_path,
 )
 from kb_mcp.observability.adapters.progress import task
-from kb_mcp.sources.atlassian.adapters.raw_store import (
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     UNREADABLE,
     RawStore,
     Stored,
     Unreadable,
     reason,
 )
-from kb_mcp.sources.atlassian.domain.period import EPOCH
+from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping

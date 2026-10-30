@@ -9,8 +9,8 @@ import pytest
 
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
-from kb_mcp.sources.atlassian.adapters import http
-from kb_mcp.sources.atlassian.app.doctor import FAILED, SIGN_IN, WELL, doctor
+from kb_mcp.sources.atlassian.fetch.adapters import http
+from kb_mcp.sources.atlassian.fetch.app.doctor import FAILED, SIGN_IN, WELL, doctor
 
 if TYPE_CHECKING:
     from pathlib import Path

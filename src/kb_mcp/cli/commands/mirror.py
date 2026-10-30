@@ -10,7 +10,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.mirror.app.mirror import mirror
-from kb_mcp.sources.atlassian.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 
 if TYPE_CHECKING:
     import argparse

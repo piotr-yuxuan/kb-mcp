@@ -22,8 +22,8 @@ from kb_mcp.mirror.adapters.markdown import load
 from kb_mcp.mirror.adapters.mirror_files import sync, worklog_owned
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
 from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
-from kb_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
-from kb_mcp.sources.atlassian.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from tests.mirrors import mirrored
 from tests.samples import (
     v1_user,

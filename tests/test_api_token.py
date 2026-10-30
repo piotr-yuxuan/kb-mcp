@@ -19,8 +19,8 @@ import pytest
 
 from kb_mcp.cli.commands import login as login_command
 from kb_mcp.cli.main import main
-from kb_mcp.sources.atlassian.adapters import http
-from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters import http
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from tests.endpoint import Scripted, serving
 from tests.test_cli import logged_as, the_log_file
 from tests.test_download import SITE, FakeSite

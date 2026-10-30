@@ -16,9 +16,9 @@ from pydantic import Field
 
 from kb_mcp.config.domain.settings import PREFIX
 from kb_mcp.kernel.record import Record
-from kb_mcp.sources.atlassian.adapters import http
-from kb_mcp.sources.atlassian.adapters.http import SignInNeededError
-from kb_mcp.sources.atlassian.adapters.session_file import (
+from kb_mcp.sources.atlassian.fetch.adapters import http
+from kb_mcp.sources.atlassian.fetch.adapters.http import SignInNeededError
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
     for_site,
     read_cookies,

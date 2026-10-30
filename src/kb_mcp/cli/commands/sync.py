@@ -27,7 +27,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.mirror.app.worklog import Planned
-from kb_mcp.sources.atlassian.domain.period import PeriodError
+from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
 
 if TYPE_CHECKING:
     import argparse

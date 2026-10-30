@@ -137,11 +137,11 @@ table is one:
 | `cli.domain.sync.Source` | G: `--help` imports it |
 | `kernel.endpoint.Service` | G: `--help` imports it |
 | `kernel.output.Output` | G: `--help` imports it |
-| `sources.atlassian.domain.period.Period` | G: `--help` imports it |
+| `sources.atlassian.fetch.domain.period.Period` | G: `--help` imports it |
 | `evaluation.app.reranked.Arms` | It holds a live client, the reranker's |
 | `search.adapters.embedding.ApiEmbedder` | It holds a live client, its `Endpoint` |
 | `search.adapters.model_api.Endpoint` | It holds a live client, httpx's |
-| `sources.atlassian.app.download.Download` | It holds the raw store under its lock and the site's client |
+| `sources.atlassian.fetch.app.download.Download` | It holds the raw store under its lock and the site's client |
 | `evaluation.app.evaluation.Target` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
 | `observability.adapters.progress.Task` | Pydantic cannot build it: a field is typed by the protocol `Bar` |
 | `search.app.indexing.Embedding` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |

@@ -10,8 +10,8 @@ so that the next person to weigh it knows what was paid.
 ## Reads only
 
 Every request to the site is a GET, and nothing is ever written to Confluence or Jira.
-[`Site`](../../src/kb_mcp/sources/atlassian/adapters/http.py), the one
-port for the session and the token, builds no other request ([`Site.once`](../../src/kb_mcp/sources/atlassian/adapters/http.py)),
+[`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), the one
+port for the session and the token, builds no other request ([`Site.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
 and the server's tools are read-only too.
 
 - **Why.** A mirror needs nothing more, and a program that only reads can do the site no
@@ -33,7 +33,7 @@ from the site.
 - **Why.** The user chooses when the site is read, and is there when a session has
   expired: through single sign-on, only a person can sign in again. Coverage makes a run
   by hand cheap: without `--since`, a run fetches what changed since each target's last
-  fetch ([`window`](../../src/kb_mcp/sources/atlassian/domain/coverage.py)),
+  fetch ([`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
   so nobody keeps track of when the last run was, and a target never fetched takes its
   last 7 days rather than refusing the run. A project's search starts a day before its
   covered end, which stops at its first document not stored whole, so that what failed
@@ -66,7 +66,7 @@ from the site.
 ## Cookies and API tokens
 
 A run signs in by the session saved from the user's own browser, or by an API token with
-its account's email: [`sign_in`](../../src/kb_mcp/sources/atlassian/adapters/sign_in.py)
+its account's email: [`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)
 takes the token when one is set, else the session.
 
 - **Why.** On a managed network, single sign-on in the user's own browser is the route. Chrome opens
@@ -92,27 +92,27 @@ takes the token when one is set, else the session.
 ## Raw first
 
 `download` keeps each response exactly as received, in the raw store
-([`RawStore`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py));
+([`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py));
 the mirror, the index and the vectors are all derived from it, offline.
 
 - **Why.** The site's responses and HTML "can and will unexpectedly change", in the
   maintainer's words. A response that a change breaks is still stored
-  ([`Download.keep`](../../src/kb_mcp/sources/atlassian/app/download.py)
+  ([`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
   stores a snapshot that its adapter refuses), and once the adapter is fixed, `mirror`
   reads it again without fetching anything. A fix to the conversion is a rebuild, never
   a download.
 - **Cost.** Disk: every revision fetched stays as received, a page with both its bodies,
   storage and view, and each attached file once, by its digest. A snapshot's responses are
   never rewritten, and no snapshot is removed; its record gains the files that a later run
-  fetches ([`RawStore.add_blobs`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)).
+  fetches ([`RawStore.add_blobs`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)).
 - **Rejected.** Converting while downloading, which would fetch everything again after
   each fix of the conversion.
 - **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions).
 
 ## Strict reading, a module per representation
 
-Only [the Confluence adapter](../../src/kb_mcp/sources/atlassian/adapters/confluence_v2.py)
-and [the Jira adapter](../../src/kb_mcp/sources/atlassian/adapters/jira_v3.py)
+Only [the Confluence adapter](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py)
+and [the Jira adapter](../../src/kb_mcp/sources/atlassian/fetch/adapters/jira_v3.py)
 know the JSON of their APIs, and only
 [`normalise`](../../src/kb_mcp/mirror/adapters/site_html.py)'s module
 knows the site's HTML. Adapters read through
@@ -224,7 +224,7 @@ that what read the two keys, a hit's line among them
   the filters `author`, `creator`, `assignee` and `commenter` read one table
   ([`KEPT`](../../src/kb_mcp/search/adapters/sqlite_index.py)). The
   creator cost no request: each stored `issue.json` holds every field of the issue
-  ([`issue`](../../src/kb_mcp/sources/atlassian/adapters/jira_v3.py)).
+  ([`issue`](../../src/kb_mcp/sources/atlassian/fetch/adapters/jira_v3.py)).
   Account ids are in the files, because the index is rebuilt from the files alone
   ([`entry`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and
   because a name alone cannot be told from the account id written when no name is

@@ -14,28 +14,28 @@ from structlog.testing import capture_logs
 
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.content import BlogPost, Issue, Page
-from kb_mcp.sources.atlassian.adapters import http
-from kb_mcp.sources.atlassian.adapters.http import (
+from kb_mcp.sources.atlassian.fetch.adapters import http
+from kb_mcp.sources.atlassian.fetch.adapters.http import (
     MAX_FAILED_IN_A_ROW,
     Site,
     TooManyFailuresError,
 )
-from kb_mcp.sources.atlassian.adapters.raw_store import (
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     RawStore,
     StoreBusyError,
     Stored,
     Unreadable,
 )
-from kb_mcp.sources.atlassian.adapters.session_file import (
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
     for_site,
     read_cookies,
     write_cookies,
 )
-from kb_mcp.sources.atlassian.app import download as download_module
-from kb_mcp.sources.atlassian.app.download import Download, Targets, download
-from kb_mcp.sources.atlassian.domain.coverage import Target, Window
-from kb_mcp.sources.atlassian.domain.period import Period, period
+from kb_mcp.sources.atlassian.fetch.app import download as download_module
+from kb_mcp.sources.atlassian.fetch.app.download import Download, Targets, download
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Target, Window
+from kb_mcp.sources.atlassian.fetch.domain.period import Period, period
 from tests.samples import (
     v1_user,
     v2_attachment,
