@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.cli.app.sync import Synced, prepare_source
+from kb_mcp.cli.app.sync import prepare_source
 from kb_mcp.cli.commands._rows import rows_text
+from kb_mcp.cli.domain.rows import Synced
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED

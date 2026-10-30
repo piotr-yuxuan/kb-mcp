@@ -9,7 +9,7 @@ from kb_mcp.cli.domain.sync import label
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from kb_mcp.cli.app.sync import Synced
+    from kb_mcp.cli.domain.rows import Synced
     from kb_mcp.kernel.output import Summary
 
 

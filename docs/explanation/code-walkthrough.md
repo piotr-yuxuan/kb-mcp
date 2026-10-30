@@ -424,8 +424,8 @@ and the row is `done` only when the report is
 ### 10. The result
 
 [`sync`](../../src/kb_mcp/cli/app/sync.py) returns a
-[`Synced`](../../src/kb_mcp/cli/app/sync.py), the status and a
-[`Row`](../../src/kb_mcp/cli/app/sync.py) per step.
+[`Synced`](../../src/kb_mcp/cli/domain/rows.py), the status and a
+[`Row`](../../src/kb_mcp/cli/domain/rows.py) per step.
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) writes it on stdout,
 as one JSON document with `--format json`, else as
 [`text`](../../src/kb_mcp/cli/commands/sync.py) writes it: each row, then

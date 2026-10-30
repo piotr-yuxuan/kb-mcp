@@ -23,6 +23,7 @@ import structlog
 from opentelemetry import trace
 from pydantic import ConfigDict, Field
 
+from kb_mcp.cli.domain.rows import Row, Synced
 from kb_mcp.cli.domain.sync import RANKED, Outcome, label
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.exit_status import ExitStatus
@@ -87,26 +88,6 @@ class Context(Record):
     now: Callable[[], datetime]
     sleep: Callable[[float], None]
     dry_run: bool
-
-
-class Row(Record):
-    """A step's row: its name, its source, how it ended, and its result, None if it gave none.
-
-    ``source`` is None on a row of no single source: the download of both Atlassian
-    sources, and the index.
-    """
-
-    step: str
-    source: str | None
-    outcome: Outcome
-    result: object | None
-
-
-class Synced(Record):
-    """What a sync, or a mirror, did: its exit status, then a row per step, in their order."""
-
-    exit_status: ExitStatus
-    steps: tuple[Row, ...]
 
 
 class Rows(Record):

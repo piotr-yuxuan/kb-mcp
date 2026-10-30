@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable
 
-    from kb_mcp.cli.app.sync import Synced
+    from kb_mcp.cli.domain.rows import Synced
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
     from kb_mcp.sources.worklog.prepare.app.prepare import Outcome, Planned

@@ -26,7 +26,8 @@ from pydantic_core import to_json
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.app import sync as sync_app
-from kb_mcp.cli.app.sync import Atlassian, Context, Index, Row, Worklog, sync
+from kb_mcp.cli.app.sync import Atlassian, Context, Index, Worklog, sync
+from kb_mcp.cli.domain.rows import Row
 from kb_mcp.cli.domain.sync import SOURCES, chosen
 from kb_mcp.cli.main import main, parser
 from kb_mcp.cli.options.sync import refused
