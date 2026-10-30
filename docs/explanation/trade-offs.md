@@ -698,7 +698,7 @@ dataclasses, each for the reason that [the code's layout](code-layout.md#records
   mode, which would have changed hundreds of callers; `SkipValidation`, which would make
   the exceptions models in name only.
 - **Settled** by the maintainer, in
-  [plan 028](../work/plans/028-pydantic-records.md#settled-by-the-user).
+  [plan 028](../work/changelog/028-pydantic-records.md#settled-by-the-user).
 
 ## Telemetry off, logs that may hold titles
 
