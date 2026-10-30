@@ -375,7 +375,7 @@ afresh at each run
   042](../work/changelog/042-work-log-days-and-meetings.md#days-and-meetings-the-rule), on
   the maintainer's feedback, its questions answered by their defaults when the
   maintainer approved it; dates by the day and numbers by the journal's order by [plan
-  044](../work/plans/044-meetings-by-their-day.md#dates-the-day-alone), on the
+  044](../work/changelog/044-meetings-by-their-day.md#dates-the-day-alone), on the
   maintainer's answer that the work log gives the day of a meeting, never its time.
 
 ## A file not read holds back its own
@@ -419,7 +419,7 @@ again under another title's path, and `sync` exits 1.
   it builds: a second rule in the step and in its dry run. Lifting the bound, or one in
   bytes: not needed for ten years or more.
 - **Settled** by [plan
-  044](../work/plans/044-meetings-by-their-day.md#settled-by-the-user), on the
+  044](../work/changelog/044-meetings-by-their-day.md#settled-by-the-user), on the
   maintainer's answers, its questions answered by their defaults when the maintainer
   approved it.
 
