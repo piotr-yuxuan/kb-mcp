@@ -442,7 +442,9 @@ always names a file: in a run where a document is not read, or its conversion fa
 and it has no file yet, the links to it are left out of the other documents' files,
 until a run reads and converts it. A link added or removed while a work-log transcript
 is not read is written on its meeting alone until a run reads the transcript, whose
-last copy stays as it was.
+last copy stays as it was; and while a problem holds removals back, the file of a
+meeting or a transcript gone from the work log stays, naming documents that no longer
+name it back.
 `load` refuses any other relation, a field other than these or out of their order, a
 `null` and a ref off its rule, naming the entry, such as `links[0]`; and a link to the
 document itself, by its id or key, or a link given twice, naming `links`.

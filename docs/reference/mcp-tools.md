@@ -73,8 +73,8 @@ Other filters of people add neither.
   `updated_before`, `created_before` and `commented_before` (excluded). The comment
   dates narrow by one comment: the commenter's, when `commenter` is given, so that
   `{"commenter": "Bo Sample", "commented_after": "2026-10-20"}` keeps the issues that
-  Bo Sample commented on since that day; else anyone's. A meeting and a transcript are
-  created on their day, at its midnight UTC, so that
+  Bo Sample commented on since that day; else anyone's. A meeting and a dated
+  transcript are created on their day, at its midnight UTC, so that
   `{"participant": "Bo Sample", "created_after": "2026-10-26"}` keeps what Bo Sample
   attended or said since that day. Dates are ISO 8601, a date being its midnight UTC.
   The work log's days, meetings and entries are the user's notes and AI-written
