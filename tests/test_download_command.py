@@ -16,10 +16,10 @@ from kb_mcp.cli.commands import download as download_command
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.adapters import http
-from kb_mcp.sources.atlassian.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
-from kb_mcp.sources.atlassian.app.download import (
+from kb_mcp.sources.atlassian.fetch.adapters import http
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.app.download import (
     Outcome,
     Report,
     Targets,

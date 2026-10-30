@@ -12,10 +12,10 @@ from pathlib import Path
 import pytest
 
 import kb_mcp
-from kb_mcp.kernel.content import Space
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.domain.catalogue import Catalogue
+from kb_mcp.sources.atlassian.fetch.domain.content import Space
+from kb_mcp.sources.atlassian.prepare.domain.catalogue import Catalogue
 
 PACKAGE = Path(kb_mcp.__file__).parent
 LAYOUT = Path(__file__).parents[1] / "docs" / "explanation" / "code-layout.md"

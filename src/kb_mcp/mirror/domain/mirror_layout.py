@@ -1,28 +1,15 @@
-"""The Markdown mirror's layout: where each file goes, and how a document is laid out.
+"""The Markdown mirror's rules of text, and the folders of the work log's documents.
 
-The paths and rules are those of ``docs/reference/data-layout.md``. A document is laid
-out here as plain HTML, which pandoc then writes as Markdown, so that every text the
-site gave is escaped by one writer.
+``visible`` and ``one_line`` keep a text to what shows, for every source's front matter
+and layout. The work log's folders are here since the mirror tells its documents apart
+by them (``markdown.WORKLOG``); each source's paths are in its own ``layout``.
 """
 
 from __future__ import annotations
 
-import re
 import unicodedata
-from html import escape
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import BlogPost
-from kb_mcp.kernel.slug import slug
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from kb_mcp.kernel.content import ConfluenceDocument, Issue
-
-ASSETS = PurePosixPath("assets")
-TREE = "_tree.md"
 # The work log's folders, by the type of their documents.
 WORKLOG_FOLDERS = {
     "entry": PurePosixPath("worklog/entries"),
@@ -30,12 +17,6 @@ WORKLOG_FOLDERS = {
     "meeting": PurePosixPath("worklog/meetings"),
     "transcript": PurePosixPath("worklog/transcripts"),
 }
-# The work log's types whose id names the file alone: a day's id is its date, and a
-# meeting's holds its title's slug already.
-NAMED_BY_ID = frozenset({"day", "meeting"})
-EXTENSION = re.compile(r"[a-z0-9]{1,8}")
-# The name of an asset: the file's SHA-256, then its extension if it has one.
-ASSET_NAME = re.compile(r"[0-9a-f]{64}(?:\.[a-z0-9]{1,8})?")
 # Characters that show nothing, reorder what is shown, or cannot be written, apart from
 # tab and line feed: controls, format characters (zero-width, bidirectional controls,
 # tags), lone surrogates, private use and unassigned code points.
@@ -45,45 +26,6 @@ KEPT_CONTROLS = frozenset("\t\n")
 SEPARATORS = frozenset({"Zl", "Zp"})
 # The variation selectors supplement, which no visible text needs.
 VARIATION_SUPPLEMENT = range(0xE0100, 0xE01F0)
-NONE = "<p>None.</p>"
-
-
-def confluence_path(document: ConfluenceDocument, space: str) -> PurePosixPath:
-    """Return where a page or a blog post of the space with this key is mirrored."""
-    name = "-".join(part for part in (document.id, slug(document.title)) if part)
-    folder = PurePosixPath("confluence", space)
-    if isinstance(document, BlogPost):
-        folder /= "blog"
-    return folder / f"{name}.md"
-
-
-def issue_path(issue: Issue) -> PurePosixPath:
-    """Return where an issue is mirrored."""
-    return PurePosixPath("jira", issue.project, f"{issue.key}.md")
-
-
-def worklog_path(document_type: str, identifier: str, title: str) -> PurePosixPath:
-    """Return where a document of the work log, of this type, id and title, is mirrored.
-
-    An entry's or a transcript's file is its id and its title's slug; a day's or a
-    meeting's, its id alone.
-    """
-    parts = (identifier,) if document_type in NAMED_BY_ID else (identifier, slug(title))
-    name = "-".join(part for part in parts if part)
-    return WORKLOG_FOLDERS[document_type] / f"{name}.md"
-
-
-def tree_path(space: str) -> PurePosixPath:
-    """Return where the tree of the space with this key is."""
-    return PurePosixPath("confluence", space, TREE)
-
-
-def asset_path(digest: str, filename: str) -> PurePosixPath:
-    """Return where an attached file is mirrored: its digest and its name's extension."""
-    extension = PurePosixPath(filename).suffix.removeprefix(".").lower()
-    if EXTENSION.fullmatch(extension):
-        return ASSETS / f"{digest}.{extension}"
-    return ASSETS / digest
 
 
 def visible(text: str) -> str:
@@ -104,31 +46,3 @@ def visible(text: str) -> str:
 def one_line(text: str) -> str:
     """Make a text one visible line: line breaks of any kind become spaces."""
     return visible(" ".join(text.splitlines()))
-
-
-def document_html(
-    title: str,
-    body: str,
-    attachments: Sequence[tuple[str, str | None]],
-    comments: Sequence[tuple[str, str]] | None,
-) -> str:
-    """Lay out a document: its title, its body, its attachments, then its comments.
-
-    ``body`` and each comment are normalised HTML. Each attachment is a file name and the
-    link to its asset, or None when its file was not downloaded. Each comment is its
-    heading and its HTML; ``comments`` is None for a document without a comments section.
-    """
-    items = [
-        f'<li><a href="{escape(link)}">{escape(one_line(name))}</a></li>'
-        if link is not None
-        else f"<li>{escape(one_line(name))} (not downloaded)</li>"
-        for name, link in attachments
-    ]
-    parts = [f"<h1>{escape(one_line(title))}</h1>", body, "<h2>Attachments</h2>"]
-    parts.append(f"<ul>{''.join(items)}</ul>" if items else NONE)
-    if comments is not None:
-        parts.append("<h2>Comments</h2>")
-        parts.extend(f"<h3>{escape(one_line(heading))}</h3>{html}" for heading, html in comments)
-        if not comments:
-            parts.append(NONE)
-    return "".join(parts)

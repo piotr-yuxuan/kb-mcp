@@ -10,8 +10,8 @@ import structlog
 
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
-from kb_mcp.sources.atlassian.adapters.browser import SignInFailedError
-from kb_mcp.sources.atlassian.app.login import login
+from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
+from kb_mcp.sources.atlassian.fetch.app.login import login
 
 if TYPE_CHECKING:
     import argparse

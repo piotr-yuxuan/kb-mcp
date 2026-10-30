@@ -9,18 +9,25 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from kb_mcp.kernel.content import BlogPost, Folder, Issue, Page, Person, Space
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
-from kb_mcp.sources.atlassian.adapters.raw_store import (
+from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     RawStore,
     StoreBusyError,
     Stored,
     Unreadable,
 )
-from kb_mcp.sources.atlassian.domain.coverage import Coverage, Target
-from kb_mcp.sources.atlassian.domain.deletions import Tombstone
-from kb_mcp.sources.atlassian.domain.period import Period
+from kb_mcp.sources.atlassian.fetch.domain.content import (
+    BlogPost,
+    Folder,
+    Issue,
+    Page,
+    Person,
+    Space,
+)
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target
+from kb_mcp.sources.atlassian.fetch.domain.deletions import Tombstone
+from kb_mcp.sources.atlassian.fetch.domain.period import Period
 from tests.samples import (
     v1_user,
     v2_attachment,

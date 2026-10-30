@@ -8,7 +8,8 @@ program knows, from its pure rules to its effects. So a change to search stays u
 
 ## The contexts, in their order
 
-Each context may use those below it, never those above:
+Each context may use those below it, never those above; `search` and `sources`, side by
+side, never use each other:
 
 | Context | Its concern |
 |---|---|
@@ -16,33 +17,36 @@ Each context may use those below it, never those above:
 | `evaluation` | How well search and ask answer golden questions (`eval`), and how agents fare with them (`eval-agents`) |
 | `mcp` | The tools agents call (`Library`), and answers within their budgets |
 | `search` | The index of the mirror, by words and by meaning, and ranking |
-| `mirror` | The raw store's newest snapshots as Markdown, with their front matter |
-| `sources` | Where documents come from: `atlassian/`, Confluence and Jira, with the sign-in (the saved session or an API token) and the raw store; `worklog/`, the user's work log, read in place |
+| `sources` | Where documents come from, each source a package nested by role: `atlassian/`, Confluence and Jira, whose `fetch/` holds the sign-in (the saved session or an API token) and the raw store, and whose `prepare/` writes their documents from that store; `worklog/`, the user's work log, read in place, with `prepare/` alone |
+| `mirror` | What every source writes through and search reads: the front matter, which files are documents, the writer of the files that changed, pandoc and its cache of conversions, the instruments of documents built, the rules of text |
 | `config` | The settings, their file, and the guard on where data lives |
 | `observability` | What a run tells of itself: structured logs, progress on the terminal, traces and metrics |
-| `kernel` | What all share: the vocabulary of what the mirror holds, strict reading of JSON, exit statuses, how a run reports, whether an endpoint is this machine and how each service there is named and started, the bounds of a reranking, the names of the chunkings and of the server's tools, the slug of a title |
+| `kernel` | What all share: the names of the mirror's sources and the rules of its ids, keys and revisions, strict reading of JSON, exit statuses, how a run reports, whether an endpoint is this machine and how each service there is named and started, the bounds of a reranking, the names of the chunkings and of the server's tools, the slug of a title |
 
 The order follows what each needs: `eval` ranks through the `Library` of `mcp`, which
-ranks with `search`, which indexes the mirror's front matter; the mirror reads the raw
-store of `sources`; a download reads the settings, which check keys by the kernel's
-patterns. `observability` sits just above the kernel, so that every other context, the
-settings included, may log, trace and report progress through it, while it takes from
-the kernel only how a run reports: the command line hands it plain values, never the
-settings.
+ranks with `search`, which indexes the mirror's front matter; each source writes its
+documents through the mirror, which imports none of them, so that search and the sources
+sit side by side above it; a download reads the settings, which check keys by the
+kernel's patterns. `observability` sits just above the kernel, so that every other
+context, the settings included, may log, trace and report progress through it, while it
+takes from the kernel only how a run reports: the command line hands it plain values,
+never the settings.
 
 Some choices are not obvious:
 
 - **No `store/`.** Each store belongs to the context whose model it keeps: the raw store
-  to `sources`, the Markdown files to `mirror`, the index and the vectors to `search`.
+  to `sources/atlassian/fetch/`, the Markdown files to `mirror`, the index and the
+  vectors to `search`.
 - **`kernel/` is small**, and holds only what contexts that cannot import one another
   share. It has no layers. Its `fields` reads JSON already decoded and does no I/O, so
   pure rules may use it; still, only the adapter of a representation reads a response.
 - **`evaluation/` is a context of its own**, above `mcp`, since it measures what agents
   get through `Library.ranked`; inside `search` it would make a cycle.
-- **`site_html.py` is in `mirror/adapters/`**, beside its only user. It is still an
+- **`site_html.py` is in `sources/atlassian/prepare/adapters/`**, in the package it
+  serves, beside its only user, the prepare of Confluence and Jira. It is still an
   adapter: a fix for the real site's HTML goes there.
-- **`sync`'s steps are `cli/app/sync.py`**, a use case of `cli`: a step combines a
-  source and the mirror, which only `cli` sits above. Its choices are pure, in
+- **`sync`'s steps are `cli/app/sync.py`**, a use case of `cli`: they run each source's
+  roles, then search's index, and only `cli` sits above both. Its choices are pure, in
   `cli/domain/sync.py`, so that its declaration stays light.
 - **The MCP SDK is known to two modules**: `cli/commands/serve.py`, which registers the
   methods of `mcp.app.tools.Library` as tools, with what `mcp.app.surface` composes, and
@@ -62,7 +66,8 @@ Each context but the kernel holds the same layers, as sub-packages, from the top
 | `adapters` | Effects: the network, the browser, files, SQLite, subprocesses, the terminal |
 | `domain` | Pure rules: decisions and conversions with no I/O, time or environment |
 
-A context holds only the layers it needs; `mcp` has only `app`.
+A context holds only the layers it needs; `mcp` has only `app`. In `sources/`, each
+role of a source holds them, as below.
 
 A subcommand is a pair of modules: `cli/options/<name>.py` declares it, and the module
 of `cli/commands/` that its declaration names runs it. `--help`, and shell completion at
@@ -72,29 +77,51 @@ that is not observed, such as `completion`'s, which shells run at each start, th
 alone. So a declaration stays light: contract G keeps the packages that runs need out
 of `cli.main` and `cli.options`.
 
+## The roles within a source
+
+Each source's package holds one sub-package per role, and each role holds the layers
+above. Plan 029 nested them so:
+
+- **`fetch/`** reaches a system and keeps the store it owns. For Confluence and Jira:
+  the sign-in, HTTP, the two APIs' adapters, the browser and the session file, the raw
+  store, a download's period, coverage, deletions and files kept; the records that the
+  fetch stores and the prepare reads, `content.py`; and the use cases of `download`,
+  `login` and `doctor`.
+- **`prepare/`** writes documents through the mirror, from its source's store or from a
+  folder read in place. For Confluence and Jira: the site's HTML, the catalogue, the
+  layout of their files, the files they own, and the use case of `mirror`. The work log
+  has `prepare/` alone, being read in place: org's syntax, its folder's reader, its
+  documents and their layout, the files it owns, and its step.
+
+Preparing may use what fetching keeps, never the reverse, and no source imports
+another: contracts J and I.
+
 ## The contracts
 
-`pyproject.toml` declares eight contracts:
+`pyproject.toml` declares ten contracts:
 
 | | What it protects |
 |---|---|
-| A | Contexts use those below them, never those above. It is exhaustive: a new top-level package breaks it until it is placed in the order |
-| B | Within each context, the layers' order. It is exhaustive too: a module outside a layer breaks it. Each source under `sources/` is a context of its own; a module put directly in `sources/` is outside B: A still orders it with `sources`, but no contract checks its layer or its use of `httpx`, so none goes there |
+| A | Contexts use those below them, never those above, and `search` and `sources`, side by side, never use each other. It is exhaustive: a new top-level package breaks it until it is placed in the order |
+| B | Within each context, and within each role of a source, the layers' order. It is exhaustive too: a module outside a layer breaks it. A module put directly in a source's package breaks J; one put directly in `sources/` is outside B and J: A still orders it with `sources`, but no contract checks its layer or its use of `httpx`, so none goes there |
 | C | Pure rules, in any context (and the kernel), use no effect and no use case, nor structlog, OpenTelemetry or Rich: a rule neither logs, traces nor draws |
 | D | Effects, in any context, use no use case |
 | E | Search, the server and the evaluation read the mirror, never a source: the index is built from the mirror alone |
 | F | Use cases and commands reach the network through effects only (no `httpx`) |
 | G | Declaring the command, `cli.main` and `cli.options`, imports none of the packages that runs need: the MCP SDK, Playwright, httpx, NumPy, lxml, PyYAML, Pydantic, Rich, OpenTelemetry, requests, structlog and platformdirs |
 | H | Only `observability` and `cli` use Rich, which draws on the terminal, and requests, which OpenTelemetry's exporters bring: the rest reaches the network by httpx. It counts indirect imports, so what the other contexts import of `observability` reaches neither. It names every other context, so a new one joins its list as it joins A's order, and `observability.adapters.progress`, through which they all report progress, so that it never imports the display that draws it |
+| I | No source imports another, `sources.atlassian` and `sources.worklog`: a new source's package joins its list |
+| J | Within each source, preparing may use fetching, never the reverse. It is exhaustive: a source's package holds its roles alone |
 
 A orders the contexts, which B, applied per context, does not; C and D carry the order
-of the layers across contexts, which B cannot. All but F count indirect imports too.
-None sees an import by name, as `main` makes of the entry and the run, or of the run
-alone: a test of `tests/test_cli.py` checks, in a fresh interpreter, that `--help` and a
-completion import none of G's packages. And a contract forbids only the root of another
-package, which OpenTelemetry's API and SDK share: so `tests/test_code_layout.py` keeps
-the SDK, its exporters and its instrumentation within `observability`, while the other
-contexts use the API alone.
+of the layers across contexts, which B cannot; I keeps the sources apart, and J the
+roles of each in their order, which A, ordering whole contexts, cannot. All but F count
+indirect imports too. None sees an import by name, as `main` makes of the entry and the
+run, or of the run alone: a test of `tests/test_cli.py` checks, in a fresh interpreter,
+that `--help` and a completion import none of G's packages. And a contract forbids only
+the root of another package, which OpenTelemetry's API and SDK share: so
+`tests/test_code_layout.py` keeps the SDK, its exporters and its instrumentation within
+`observability`, while the other contexts use the API alone.
 
 ## Records
 
@@ -137,11 +164,11 @@ table is one:
 | `cli.domain.sync.Source` | G: `--help` imports it |
 | `kernel.endpoint.Service` | G: `--help` imports it |
 | `kernel.output.Output` | G: `--help` imports it |
-| `sources.atlassian.domain.period.Period` | G: `--help` imports it |
+| `sources.atlassian.fetch.domain.period.Period` | G: `--help` imports it |
 | `evaluation.app.reranked.Arms` | It holds a live client, the reranker's |
 | `search.adapters.embedding.ApiEmbedder` | It holds a live client, its `Endpoint` |
 | `search.adapters.model_api.Endpoint` | It holds a live client, httpx's |
-| `sources.atlassian.app.download.Download` | It holds the raw store under its lock and the site's client |
+| `sources.atlassian.fetch.app.download.Download` | It holds the raw store under its lock and the site's client |
 | `evaluation.app.evaluation.Target` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
 | `observability.adapters.progress.Task` | Pydantic cannot build it: a field is typed by the protocol `Bar` |
 | `search.app.indexing.Embedding` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
@@ -154,9 +181,10 @@ would only hide. Any other value is a record.
 ## Where a new module goes
 
 1. Find the concern it serves, and so its context. A new source of documents is a new
-   package under `sources/`, with its own layers.
-2. Within the context, put it in the layer of what it does: a rule without effects in
-   `domain/`, an effect in `adapters/`, a use case in `app/`.
+   package under `sources/`, with a sub-package per role it has, `fetch/` and
+   `prepare/`, each with its own layers, and a place in contract I's list.
+2. Within the context, or the role, put it in the layer of what it does: a rule without
+   effects in `domain/`, an effect in `adapters/`, a use case in `app/`.
 3. Run `uv run lint-imports`. A broken contract says which import crosses a boundary;
    move the code, or the import, rather than the boundary. A module that fits no
    context needs a split, or a new context placed in contract A's order and H's list.

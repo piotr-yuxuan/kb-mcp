@@ -28,15 +28,15 @@ from mcp.client.stdio import StdioServerParameters
 from kb_mcp.cli.commands import login as login_command
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
-from kb_mcp.kernel.content import Page
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.app.indexing import Embedding, build_index
-from kb_mcp.sources.atlassian.adapters import http
-from kb_mcp.sources.atlassian.adapters.browser import SignInFailedError
-from kb_mcp.sources.atlassian.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters import http
+from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.domain.content import Page
 from tests.collector import Collector, collecting
 from tests.endpoint import URL, Reranks, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, PERSONS, fillers, issue, page, write

@@ -3,8 +3,9 @@
 This is the only code that writes there. A file is written through a hidden file
 renamed into place, so that a reader never sees half of it, and only when its bytes
 differ, so that a run that changes nothing leaves every file and its time as they were.
-Each step removes only the files it owns: the mirror those of Confluence, Jira and the
-assets, the work log's step those under ``worklog/``.
+Each step removes only the files it owns, as its source's ``mirrored`` finds them:
+``mirror`` those of Confluence, Jira and the assets, the work log's step those under
+``worklog/``.
 """
 
 from __future__ import annotations
@@ -15,8 +16,6 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.adapters.markdown import ATLASSIAN, WORKLOG, documents
-from kb_mcp.mirror.domain.mirror_layout import ASSET_NAME, ASSETS, TREE
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
@@ -28,24 +27,6 @@ class Changes(Record):
     written: int
     unchanged: int
     removed: int
-
-
-def owned(docs: Path) -> set[PurePosixPath]:
-    """Return the files under ``docs`` that the mirror owns: documents, trees, assets.
-
-    Hidden files, such as one left by an interrupted write, and any other file are not
-    the mirror's.
-    """
-    found = [*documents(docs, ATLASSIAN), *docs.glob(f"confluence/*/{TREE}")]
-    assets = docs / ASSETS
-    if assets.is_dir():
-        found += [path for path in assets.iterdir() if ASSET_NAME.fullmatch(path.name)]
-    return regular_files(docs, found)
-
-
-def worklog_owned(docs: Path) -> set[PurePosixPath]:
-    """Return the files under ``docs`` that the work log's step owns: its documents."""
-    return regular_files(docs, documents(docs, WORKLOG))
 
 
 def regular_files(docs: Path, found: Iterable[Path]) -> set[PurePosixPath]:

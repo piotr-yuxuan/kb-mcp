@@ -9,15 +9,15 @@ import structlog
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
-from kb_mcp.mirror.app.mirror import mirror
-from kb_mcp.sources.atlassian.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.prepare.app.prepare import mirror
 
 if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.mirror.app.mirror import Outcome
+    from kb_mcp.sources.atlassian.prepare.app.prepare import Outcome
 
 
 def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outcome | None]:

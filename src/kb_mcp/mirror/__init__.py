@@ -1,1 +1,1 @@
-"""The raw store's newest snapshots as Markdown, with their front matter."""
+"""The Markdown mirror's common part: what every source writes through, and search reads."""

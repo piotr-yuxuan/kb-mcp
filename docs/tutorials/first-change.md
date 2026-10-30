@@ -75,7 +75,7 @@ uv run lint-imports
 It ends with:
 
 ```text
-Contracts: 8 kept, 0 broken.
+Contracts: 10 kept, 0 broken.
 ```
 
 pytest runs the tests, spread over every core by `-n auto` (pytest-xdist), in a minute or
@@ -324,7 +324,7 @@ uv run lint-imports
 It refuses the change, and names the import at fault, in each contract that it breaks:
 
 ```text
-Contracts: 6 kept, 2 broken.
+Contracts: 8 kept, 2 broken.
 ```
 
 ```text
@@ -336,7 +336,7 @@ kb_mcp.mirror.domain is not allowed to import kb_mcp.mirror.adapters:
 A rule that reads files can be tested only with files, and changes whenever their
 layout does. So the layers of a context may import only those below them, and a rule,
 in any context, no effect. Put the rule back as step 4 wrote it, and run
-`uv run lint-imports` again: `Contracts: 8 kept, 0 broken.`
+`uv run lint-imports` again: `Contracts: 10 kept, 0 broken.`
 
 ## 7. Bring the reference up to date
 

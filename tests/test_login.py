@@ -10,9 +10,9 @@ import pytest
 from kb_mcp.cli.commands import login as login_command
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
-from kb_mcp.sources.atlassian.adapters.browser import SignInFailedError
-from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, read_cookies
-from kb_mcp.sources.atlassian.app import login as login_module
+from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, read_cookies
+from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from tests.test_cli import logged_as
 from tests.test_observed import said
 

@@ -7,7 +7,7 @@ import json
 import httpx
 import pytest
 
-from kb_mcp.sources.atlassian.adapters.http import (
+from kb_mcp.sources.atlassian.fetch.adapters.http import (
     INTERVAL_S,
     MAX_FAILED_IN_A_ROW,
     RETRIES,

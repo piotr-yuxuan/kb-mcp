@@ -10,8 +10,8 @@ so that the next person to weigh it knows what was paid.
 ## Reads only
 
 Every request to the site is a GET, and nothing is ever written to Confluence or Jira.
-[`Site`](../../src/kb_mcp/sources/atlassian/adapters/http.py), the one
-port for the session and the token, builds no other request ([`Site.once`](../../src/kb_mcp/sources/atlassian/adapters/http.py)),
+[`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), the one
+port for the session and the token, builds no other request ([`Site.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
 and the server's tools are read-only too.
 
 - **Why.** A mirror needs nothing more, and a program that only reads can do the site no
@@ -33,7 +33,7 @@ from the site.
 - **Why.** The user chooses when the site is read, and is there when a session has
   expired: through single sign-on, only a person can sign in again. Coverage makes a run
   by hand cheap: without `--since`, a run fetches what changed since each target's last
-  fetch ([`window`](../../src/kb_mcp/sources/atlassian/domain/coverage.py)),
+  fetch ([`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
   so nobody keeps track of when the last run was, and a target never fetched takes its
   last 7 days rather than refusing the run. A project's search starts a day before its
   covered end, which stops at its first document not stored whole, so that what failed
@@ -66,7 +66,7 @@ from the site.
 ## Cookies and API tokens
 
 A run signs in by the session saved from the user's own browser, or by an API token with
-its account's email: [`sign_in`](../../src/kb_mcp/sources/atlassian/adapters/sign_in.py)
+its account's email: [`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)
 takes the token when one is set, else the session.
 
 - **Why.** On a managed network, single sign-on in the user's own browser is the route. Chrome opens
@@ -92,29 +92,29 @@ takes the token when one is set, else the session.
 ## Raw first
 
 `download` keeps each response exactly as received, in the raw store
-([`RawStore`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py));
+([`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py));
 the mirror, the index and the vectors are all derived from it, offline.
 
 - **Why.** The site's responses and HTML "can and will unexpectedly change", in the
   maintainer's words. A response that a change breaks is still stored
-  ([`Download.keep`](../../src/kb_mcp/sources/atlassian/app/download.py)
+  ([`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
   stores a snapshot that its adapter refuses), and once the adapter is fixed, `mirror`
   reads it again without fetching anything. A fix to the conversion is a rebuild, never
   a download.
 - **Cost.** Disk: every revision fetched stays as received, a page with both its bodies,
   storage and view, and each attached file once, by its digest. A snapshot's responses are
   never rewritten, and no snapshot is removed; its record gains the files that a later run
-  fetches ([`RawStore.add_blobs`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)).
+  fetches ([`RawStore.add_blobs`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)).
 - **Rejected.** Converting while downloading, which would fetch everything again after
   each fix of the conversion.
 - **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions).
 
 ## Strict reading, a module per representation
 
-Only [the Confluence adapter](../../src/kb_mcp/sources/atlassian/adapters/confluence_v2.py)
-and [the Jira adapter](../../src/kb_mcp/sources/atlassian/adapters/jira_v3.py)
+Only [the Confluence adapter](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py)
+and [the Jira adapter](../../src/kb_mcp/sources/atlassian/fetch/adapters/jira_v3.py)
 know the JSON of their APIs, and only
-[`normalise`](../../src/kb_mcp/mirror/adapters/site_html.py)'s module
+[`normalise`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py)'s module
 knows the site's HTML. Adapters read through
 [`Fields`](../../src/kb_mcp/kernel/fields.py), which requires every field
 and raises [`RepresentationError`](../../src/kb_mcp/kernel/fields.py)
@@ -210,7 +210,7 @@ entry is one line of the file
 strictly ([`load`](../../src/kb_mcp/mirror/adapters/markdown.py)), as
 [the data layout](../reference/data-layout.md#people) gives it. Names are kept as
 written, never normalised, merged or masked
-([`Catalogue.name`](../../src/kb_mcp/mirror/domain/catalogue.py)).
+([`Catalogue.name`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py)).
 `FrontMatter.author` and `FrontMatter.assignee` name the one person of each role
 ([`FrontMatter.author`](../../src/kb_mcp/mirror/domain/mirror.py)), so
 that what read the two keys, a hit's line among them
@@ -224,7 +224,7 @@ that what read the two keys, a hit's line among them
   the filters `author`, `creator`, `assignee` and `commenter` read one table
   ([`KEPT`](../../src/kb_mcp/search/adapters/sqlite_index.py)). The
   creator cost no request: each stored `issue.json` holds every field of the issue
-  ([`issue`](../../src/kb_mcp/sources/atlassian/adapters/jira_v3.py)).
+  ([`issue`](../../src/kb_mcp/sources/atlassian/fetch/adapters/jira_v3.py)).
   Account ids are in the files, because the index is rebuilt from the files alone
   ([`entry`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and
   because a name alone cannot be told from the account id written when no name is
@@ -271,31 +271,31 @@ that what read the two keys, a hit's line among them
 
 The work log's journal, a top-level heading with a day among its children, whatever its
 title, is no longer one entry: each day is a document, and each meeting of a day
-([`journal`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
+([`journal`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 Both are found by their shape alone. A day is a heading at level 1 or 2 titled by one
 active timestamp of a date alone, such as `<2026-10-28 Wed>`
-([`date_title`](../../src/kb_mcp/sources/worklog/domain/org.py),
-[`Part.day`](../../src/kb_mcp/sources/worklog/domain/worklog.py));
+([`date_title`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py),
+[`Part.day`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
 a meeting, a child of a day with `:MEETING:` or `:PARTICIPANTS:` in its drawer
-([`Part.meeting`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
+([`Part.meeting`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 A heading that org archived joins the day, or the meeting, that its `:ARCHIVE_OLPATH:`
 names, and every part of one date makes one day
-([`days_and_meetings`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
+([`days_and_meetings`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 A day's id is `d-` and its date; a meeting's, `m-`, its day's date and its title's
 slug, numbered in the journal's order where two share one
-([`meeting_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
+([`meeting_ids`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 A meeting names its participants as its `:PARTICIPANTS:` writes them
-([`participants`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+([`participants`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 and a transcript its speakers
-([`speakers`](../../src/kb_mcp/sources/worklog/domain/worklog.py));
+([`speakers`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
 a meeting links the transcript whose file its `:MEETING:` names
-([`link_target`](../../src/kb_mcp/sources/worklog/domain/org.py)),
+([`link_target`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py)),
 which links it back
-([`linked_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
+([`linked_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 A day, a meeting and a dated transcript are dated by their day
-([`Document.dates`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+([`Document.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 afresh at each run
-([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)).
+([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
 
 - **Why.** The journal was one entry of about 2 MB: a hit in any meeting named the
   whole journal, its meetings named nobody,
@@ -329,7 +329,7 @@ afresh at each run
   it, so that a search for that title misses those notes. An archived heading joins its
   meeting by the meeting's title as org writes it in `:ARCHIVE_OLPATH:`, whose `/` org
   does not escape
-  ([`Heading.outline_title`](../../src/kb_mcp/sources/worklog/domain/org.py)):
+  ([`Heading.outline_title`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py)):
   the longest title of the day that begins the path wins, but the day keeps a piece of
   one of two meetings of that title, which the path names alike; a title holding `//`,
   or beginning or ending with `/`, or one whose keyword `todo.org` does not declare,
@@ -383,15 +383,15 @@ afresh at each run
 A file of the work log that cannot be read, over 32 MiB, linking out, not UTF-8, or a
 folder that cannot be listed, is reported at each run by its path and reason, with
 what it holds back
-([`held_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+([`held_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 and the run writes every document but those that it builds
-([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)):
+([`writable`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)):
 every document for `todo.org` or its archive, whence every day, meeting and entry; for
 a transcript, its own, whose last copy stays. A meeting needs nothing of its transcript
 but the id, which the path gives, so that it links a transcript read or not
-([`transcript_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+([`transcript_ids`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 and a link is written when its other end is written in that run or kept from an
-earlier one ([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)).
+earlier one ([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
 A run that meets a problem still removes no file but the old one of a document written
 again under another title's path, and `sync` exits 1.
 

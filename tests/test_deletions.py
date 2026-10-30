@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.sources.atlassian.domain.deletions import (
+from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     Answer,
     Tombstone,
     after_probes,

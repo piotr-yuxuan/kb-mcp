@@ -56,9 +56,9 @@ name, then `mirror`
 whole mirror, whichever sources the run took
 ([`index`](../../src/kb_mcp/cli/app/sync.py)). Each calls the same function
 as its own command:
-[`download`](../../src/kb_mcp/sources/atlassian/app/download.py),
-[`mirror`](../../src/kb_mcp/mirror/app/mirror.py),
-[`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py) and
+[`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py),
+[`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py),
+[`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) and
 [`index_mirror`](../../src/kb_mcp/search/app/indexing.py). A source is a
 record that names its table and its step
 ([`SOURCES`](../../src/kb_mcp/cli/domain/sync.py)), and `--include` and
@@ -71,7 +71,7 @@ record that names its table and its step
   log is mirrored while the site asks to sign in again, and the index is built from what
   the mirror holds. What can be refused is refused before the first step: a space or
   project with nowhere to start
-  ([`PeriodError`](../../src/kb_mcp/sources/atlassian/domain/period.py)),
+  ([`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py)),
   or a work log that is not a folder
   ([`SyncRefusedError`](../../src/kb_mcp/cli/app/sync.py)). Ctrl-C ends
   the step it stops and runs no later one. The exit status ranks how the steps ended:
@@ -84,56 +84,56 @@ record that names its table and its step
 
 ## Download: from the site to the raw store
 
-[`download`](../../src/kb_mcp/sources/atlassian/app/download.py) reads the
-site through one port, [`Site`](../../src/kb_mcp/sources/atlassian/adapters/http.py),
+[`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) reads the
+site through one port, [`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
 which makes GETs alone, one at a time and paced, signed in by the saved session or an API
-token ([`sign_in`](../../src/kb_mcp/sources/atlassian/adapters/sign_in.py)).
+token ([`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
 For each Confluence space, it lists every page, blog post and folder, and stores the
 listings whole; for each Jira project, it searches the issues updated in its window. Then
 it fetches each document updated in the window whose revision the store lacks
-([`Download.fetch_listed`](../../src/kb_mcp/sources/atlassian/app/download.py)),
+([`Download.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)),
 its files first, the snapshot last
-([`Download.keep`](../../src/kb_mcp/sources/atlassian/app/download.py)),
+([`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)),
 and counts what it fetches apart from what it lists. Without `--since`, each target
 fetches what changed since its last fetch
-([`window`](../../src/kb_mcp/sources/atlassian/domain/coverage.py)): a
+([`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)): a
 project from a day before the end of the period it covers, which ends at its earliest
 document not stored whole, so that a run asks for that again; a space from the start of
 that period, its listing being read whole anyway; a target never fetched, its last 7
 days. A catch-up that would start after `--until` skips its target.
 
 - **Writes**, into `<data>/raw/` alone, through
-  [`RawStore`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py):
+  [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py):
   snapshots, listings, files by digest, the coverage and the tombstones of documents
   gone. One run at a time:
-  [`RawStore.writing`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)
+  [`RawStore.writing`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
   holds a lock, and a second run stops at once with
-  [`StoreBusyError`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py).
+  [`StoreBusyError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py).
   A snapshot is written into a hidden folder and renamed into place
-  ([`RawStore.put`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)):
+  ([`RawStore.put`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)):
   complete or absent. Its responses are never written again; its record gains the files
   that a later run fetches, such as one that failed
-  ([`RawStore.add_blobs`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)).
+  ([`RawStore.add_blobs`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)).
 - **One document's failure** is counted, logged with its id, and skipped; the run goes
   on. A response that its adapter refuses is stored all the same, raw, for a fixed
   adapter to read. Only ten GETs in a row without an answer
-  ([`MAX_FAILED_IN_A_ROW`](../../src/kb_mcp/sources/atlassian/adapters/http.py)),
+  ([`MAX_FAILED_IN_A_ROW`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
   or a session that no longer holds
-  ([`SignInNeededError`](../../src/kb_mcp/sources/atlassian/adapters/http.py)),
+  ([`SignInNeededError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
   stop a run; its report is saved even then.
 - **Offline**, nothing: this is the one stage that reads the site.
 
 ## Mirror: from the raw store to Markdown
 
-[`mirror`](../../src/kb_mcp/mirror/app/mirror.py) reads the newest
+[`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the newest
 snapshot of each document
-([`RawStore.latest`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)),
+([`RawStore.latest`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 the listings, the users and the tombstones, and the setting `site`: nothing else shapes
 its files. It places each document in the space whose freshest listing names it,
 leaving out those confirmed gone
-([`place`](../../src/kb_mcp/mirror/app/mirror.py)); turns the site's HTML
+([`place`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)); turns the site's HTML
 into plain HTML, the one module that knows the site's markup
-([`normalise`](../../src/kb_mcp/mirror/adapters/site_html.py)); and has
+([`normalise`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py)); and has
 pandoc write it as Markdown, one process a document
 ([`Pandoc.markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py)), unless
 that HTML was converted before.
@@ -173,18 +173,18 @@ trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost
 
 ## The work log: from org files to Markdown
 
-[`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py), a step of
+[`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py), a step of
 `sync`, reads the work log's folder in place and never writes there, following a link
-only inside it ([`listed`](../../src/kb_mcp/sources/worklog/adapters/files.py)).
+only inside it ([`listed`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)).
 It has no raw store: its files are already on this machine, and reading them whole costs
 less than keeping a copy. They become documents, one per day of the journal, one per
 meeting of a day, one per other top-level entry of `todo.org` and of its archive
-([`journal`](../../src/kb_mcp/sources/worklog/domain/worklog.py)), and one
+([`journal`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)), and one
 per transcript
-([`transcripts`](../../src/kb_mcp/sources/worklog/domain/worklog.py)), each
+([`transcripts`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)), each
 with an id that org's own edits leave alone. A document's revision is a digest of what
 pandoc reads, with pandoc's version and options
-([`revision`](../../src/kb_mcp/sources/worklog/domain/worklog.py),
+([`revision`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
 [`Pandoc.org_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py)): a
 document whose file holds that revision keeps its body and its dates, but a day, a meeting
 or a dated transcript, dated afresh by its day; another is converted again
@@ -193,16 +193,16 @@ or a dated transcript, dated afresh by its day; another is converted again
 - **Writes**, into `<data>/docs/worklog/` alone, through the mirror's
   [`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
   whose bytes differ, renamed into place, and the files of documents gone removed
-  ([`worklog_owned`](../../src/kb_mcp/mirror/adapters/mirror_files.py)).
+  ([`worklog_owned`](../../src/kb_mcp/sources/worklog/prepare/adapters/mirrored.py)).
 - **One document's failure**, a file that links out of the folder
-  ([`listed`](../../src/kb_mcp/sources/worklog/adapters/files.py)), is
+  ([`listed`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), is
   over 32 MiB or is not UTF-8
-  ([`source`](../../src/kb_mcp/sources/worklog/adapters/files.py)), or a
+  ([`source`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), or a
   conversion that fails, is named by its path, never by its content, with what it holds
-  back ([`held_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py));
+  back ([`held_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
   the run goes on, writes no file that a file not read builds, every one for `todo.org`
   or its archive, else that file's own
-  ([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+  ([`writable`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
   and then removes no file but the old one of a document written again under another
   title's path, so that the last good copy of each stays.
 - **Offline**, everything: the work log is on this machine.
@@ -342,18 +342,18 @@ them in turn, take the steps below.
 
 An edit gives the page a new version. The next `download` lists its space whole, finds
 the page updated within the period it covers, sees that this revision is not stored
-([`RawStore.has`](../../src/kb_mcp/sources/atlassian/adapters/raw_store.py)),
+([`RawStore.has`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 and fetches it as a new snapshot, beside the old one, which stays. An issue edited in
 Jira has a new update time, its revision, and is fetched the same way.
 
 - **Moved** to another space that the run keeps, a page is listed there, and the store
   notes when each space was listed.
 - **Deleted**, a page is absent from its space's listing. The run records a
-  [`Tombstone`](../../src/kb_mcp/sources/atlassian/domain/deletions.py) and
+  [`Tombstone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py) and
   probes the page; a second answer of gone, an hour or more after the first, confirms
   it. When many probes of one space answer that their pages are gone, the run first
   checks that its session still holds
-  ([`too_many_gone`](../../src/kb_mcp/sources/atlassian/domain/deletions.py)),
+  ([`too_many_gone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py)),
   so that a lost session deletes nothing.
 - **Not yet seen**: a change that makes no new version, such as labels changed or a
   file attached without an edit, and Jira's deletions; [the data
@@ -388,14 +388,14 @@ The work log's step does the same from the folder itself. Closing an entry turns
 keyword to `DONE`, or another that means done, and adds a `CLOSED:` line under its
 heading. Its id is taken from its `:ID:`, else its title and `:CREATED:`, else its
 title, never from its keyword or planning lines
-([`journal`](../../src/kb_mcp/sources/worklog/domain/worklog.py)), so its
+([`journal`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)), so its
 file keeps its name. Its text changed, so its revision did
-([`revision`](../../src/kb_mcp/sources/worklog/domain/worklog.py)): the
+([`revision`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)): the
 entry is converted again, its `status` becomes `DONE`, and its `updated` the latest of
 its timestamps up to the file's time of change, usually the closing one
-([`Document.dates`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
+([`Document.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 Every other entry keeps its file as it was, dates included, though `todo.org`'s time
-changed ([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)). An
+changed ([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). An
 entry archived to `todo.org_archive` keeps its id too: its file is rewritten, labelled
 `ARCHIVE`, or removed when `archives = false`;
 [sources](sources.md#identity-that-survives-orgs-edits) says why identity is kept so.

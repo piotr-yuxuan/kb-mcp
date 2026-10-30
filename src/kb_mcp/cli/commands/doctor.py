@@ -5,14 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.app.doctor import FAILED, SIGN_IN, WELL, doctor
+from kb_mcp.sources.atlassian.fetch.app.doctor import FAILED, SIGN_IN, WELL, doctor
 
 if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources.atlassian.app.doctor import Verdict
+    from kb_mcp.sources.atlassian.fetch.app.doctor import Verdict
 
 
 def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, list[Verdict]]:

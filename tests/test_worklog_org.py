@@ -27,8 +27,8 @@ import pytest
 
 from kb_mcp.kernel.names import WORKLOG_ID, WORKLOG_REVISION
 from kb_mcp.mirror.domain.mirror import RELATIONS
-from kb_mcp.sources.worklog.domain import org
-from kb_mcp.sources.worklog.domain.worklog import (
+from kb_mcp.sources.worklog.prepare.domain import org
+from kb_mcp.sources.worklog.prepare.domain.worklog import (
     SUMMARY,
     TRANSCRIBED,
     Document,

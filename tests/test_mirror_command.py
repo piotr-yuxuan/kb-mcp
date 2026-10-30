@@ -13,15 +13,15 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.content import Page
 from kb_mcp.mirror.adapters import pandoc as pandoc_adapter
 from kb_mcp.mirror.adapters.pandoc import (
     Pandoc,
     PandocFailedError,
     PandocMissingError,
 )
-from kb_mcp.sources.atlassian.adapters import confluence_v2
-from kb_mcp.sources.atlassian.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.fetch.domain.content import Page
 from tests.reference import STANDARD
 from tests.samples import v2_page, v2_space, v2_view
 from tests.test_cli import logged_as

@@ -7,18 +7,17 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from kb_mcp.kernel.content import BlogPost, Issue, Page
 from kb_mcp.kernel.slug import slug
-from kb_mcp.mirror.domain.mirror_layout import (
+from kb_mcp.mirror.domain.mirror_layout import one_line, visible
+from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.prepare.domain.layout import (
     asset_path,
     confluence_path,
     document_html,
     issue_path,
-    one_line,
     tree_path,
-    visible,
-    worklog_path,
 )
+from kb_mcp.sources.worklog.prepare.domain.layout import worklog_path
 
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 DIGEST = "e" * 64

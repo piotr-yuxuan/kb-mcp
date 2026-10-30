@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.domain.period import period_rule
+from kb_mcp.sources.atlassian.fetch.domain.period import period_rule
 
 if TYPE_CHECKING:
     import argparse

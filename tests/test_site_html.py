@@ -14,7 +14,7 @@ from urllib.parse import quote
 import pytest
 
 from kb_mcp.mirror.adapters.pandoc import Pandoc
-from kb_mcp.mirror.adapters.site_html import (
+from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
     Context,
     MarkupError,
     Mirrored,

@@ -29,8 +29,8 @@ from kb_mcp.search.adapters.embedding import (
     embed,
 )
 from kb_mcp.search.adapters.model_api import endpoint
-from kb_mcp.sources.atlassian.adapters import http
-from kb_mcp.sources.atlassian.adapters.http import (
+from kb_mcp.sources.atlassian.fetch.adapters import http
+from kb_mcp.sources.atlassian.fetch.adapters.http import (
     RETRIES,
     Request,
     Site,

@@ -15,14 +15,14 @@ from structlog.testing import capture_logs
 from kb_mcp.cli.commands import download as download_command
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
-from kb_mcp.kernel.content import Page
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.sources.atlassian.adapters import http
-from kb_mcp.sources.atlassian.adapters.raw_store import RawStore, Stored
-from kb_mcp.sources.atlassian.adapters.session_file import COOKIES, write_cookies
-from kb_mcp.sources.atlassian.app.download import Targets, download, plan
-from kb_mcp.sources.atlassian.domain.coverage import Coverage, Target, Window
-from kb_mcp.sources.atlassian.domain.period import EPOCH, Period, PeriodError
+from kb_mcp.sources.atlassian.fetch.adapters import http
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, Stored
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.app.download import Targets, download, plan
+from kb_mcp.sources.atlassian.fetch.domain.content import Page
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target, Window
+from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, Period, PeriodError
 from tests.mirrors import mirrored
 from tests.samples import v2_page, v2_space
 from tests.test_download import (
@@ -335,7 +335,7 @@ def test_a_page_on_its_way_is_probed_before_one_newly_absent(
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
     gone = RefreshSite(listing=without("1002"), gone={"1002"})
     run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND)
-    monkeypatch.setattr("kb_mcp.sources.atlassian.app.download.MAX_PROBES", 1)
+    monkeypatch.setattr("kb_mcp.sources.atlassian.fetch.app.download.MAX_PROBES", 1)
     both = RefreshSite(listing={"1003": PAGES["1003"]}, gone={"1001", "1002"})
     run(chosen, monkeypatch, both, catch_up(["MFS"], []), SECOND + timedelta(days=1))
     stones = RawStore(chosen.raw).tombstones()

@@ -29,15 +29,16 @@ from pydantic import Field
 from structlog.testing import capture_logs
 
 from kb_mcp.mirror.adapters.markdown import dump, load
-from kb_mcp.mirror.adapters.mirror_files import owned, sync
+from kb_mcp.mirror.adapters.mirror_files import sync
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
-from kb_mcp.mirror.app.worklog import (
+from kb_mcp.sources.atlassian.prepare.adapters.mirrored import owned
+from kb_mcp.sources.worklog.prepare.adapters import files
+from kb_mcp.sources.worklog.prepare.app.prepare import (
     Outcome,
     Planned,
     mirror_worklog,
     plan_worklog,
 )
-from kb_mcp.sources.worklog.adapters import files
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

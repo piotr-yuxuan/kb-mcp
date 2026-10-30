@@ -16,7 +16,7 @@ in [the trade-offs](trade-offs.md#cookies-and-api-tokens).
 | the embedding key | `KB_MCP_EMBEDDING_API_KEY`, in one run's environment | nowhere | the embedding endpoint alone, as a bearer token |
 
 A run signs in by the token when one is set, else by the saved session
-([`sign_in`](../../src/kb_mcp/sources/atlassian/adapters/sign_in.py)).
+([`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
 Either opens what the account may read; the program only reads it, as
 [the wire](#on-the-wire) shows.
 
@@ -30,39 +30,39 @@ what the window sees and what it keeps:
   that `--chrome` names where that fails, on a profile under `<data>/session/browser/`,
   never your everyday one, so that your other sign-ins, saved passwords and extensions
   stay out of it
-  ([`login`](../../src/kb_mcp/sources/atlassian/app/login.py),
-  [`sign_in`](../../src/kb_mcp/sources/atlassian/adapters/browser.py)).
+  ([`login`](../../src/kb_mcp/sources/atlassian/fetch/app/login.py),
+  [`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/browser.py)).
   Extensions stay off unless `--keep-extensions` lets them load, for a sign-in that
   needs one.
 - **Nothing remembered for you.** Password saving and autofill are turned off in that
   profile before the window opens
-  ([`disable_password_saving`](../../src/kb_mcp/sources/atlassian/adapters/browser.py)):
+  ([`disable_password_saving`](../../src/kb_mcp/sources/atlassian/fetch/adapters/browser.py)):
   Playwright starts Chrome with a mock keychain, so the key that would protect a saved
   password is a fixed, public one, and whoever reads the profile would read the
   password.
 - **No script on the identity provider's pages.** The window is watched from outside
   until it is back on the site; only there does a script ask the site for the current
   account, to see that the sign-in has ended
-  ([`SIGNED_IN_JS`](../../src/kb_mcp/sources/atlassian/adapters/browser.py),
+  ([`SIGNED_IN_JS`](../../src/kb_mcp/sources/atlassian/fetch/adapters/browser.py),
   held by
   [`test_a_sign_in_through_an_identity_provider_is_seen_to_end`](../../tests/test_browser.py)).
   It gives up after
-  [`SIGN_IN_TIMEOUT_S`](../../src/kb_mcp/sources/atlassian/adapters/browser.py),
+  [`SIGN_IN_TIMEOUT_S`](../../src/kb_mcp/sources/atlassian/fetch/adapters/browser.py),
   five minutes, or as soon as you close the window
   ([`test_closing_the_window_on_the_identity_provider_is_seen`](../../tests/test_browser.py)).
 - **The site's cookies alone.** Of the cookies that the window holds at the end, only
   those whose domain the site's host is within are saved; the identity provider's and
   Atlassian's own stay in the profile
-  ([`for_site`](../../src/kb_mcp/sources/atlassian/adapters/session_file.py),
+  ([`for_site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/session_file.py),
   [`test_only_the_site_cookies_of_the_browser_are_saved`](../../tests/test_login.py)).
 - **Readable by you alone.** The folder is made with mode 0700, and the file is written
   with mode 0600 from its first byte, into a hidden file then renamed into place: a
   failure keeps the cookies saved before, and a looser mode from before never survives
-  ([`write_cookies`](../../src/kb_mcp/sources/atlassian/adapters/session_file.py),
+  ([`write_cookies`](../../src/kb_mcp/sources/atlassian/fetch/adapters/session_file.py),
   [`test_a_file_already_open_to_others_is_replaced_by_one_that_is_not`](../../tests/test_session_file.py)).
 - **Renewed as it is used.** The site renews the cookies as it answers, and a run
   signed in by the session writes them back
-  ([`SavedSession.keep`](../../src/kb_mcp/sources/atlassian/adapters/sign_in.py)).
+  ([`SavedSession.keep`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
   Once they no longer hold, the next run stops with exit status 3, and you run `login`
   again.
 
@@ -99,16 +99,16 @@ place where it would outlive a run:
   run begins, with exit status 2
   ([`token_without_email`](../../src/kb_mcp/cli/options/_common.py)).
   With it, it becomes the header of Basic auth, held by
-  [`ApiToken`](../../src/kb_mcp/sources/atlassian/adapters/sign_in.py),
+  [`ApiToken`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py),
   whose representation leaves the header out.
 - **To the site's host alone.** The header is put on each request to the site's host,
   and taken off any other, such as one to the media host that an attached file
   redirects to, which httpx's own `auth` would follow
-  ([`ApiToken.authorise`](../../src/kb_mcp/sources/atlassian/adapters/sign_in.py),
+  ([`ApiToken.authorise`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py),
   [`test_the_token_goes_to_the_site_s_host_alone`](../../tests/test_api_token.py)).
 - **Nothing kept.** A run signed in by a token neither reads nor writes the saved
   session
-  ([`ApiToken.keep`](../../src/kb_mcp/sources/atlassian/adapters/sign_in.py),
+  ([`ApiToken.keep`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py),
   [`test_a_run_with_the_token_leaves_a_saved_session_as_it_was`](../../tests/test_api_token.py)).
   A token that the site refuses stops the run with exit status 3, naming the two
   variables to check
@@ -143,37 +143,37 @@ redirect is never followed
 ## On the wire
 
 Every request that the program makes with the saved session or the token goes through
-one port, [`Site`](../../src/kb_mcp/sources/atlassian/adapters/http.py),
+one port, [`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
 with the same rules whichever way the run signs in; the one other request that it makes
 to the site, `doctor`'s, carries neither, as the end of this section says:
 
 - **GET alone.** The port makes no other request, so the program changes nothing on the
   site, whatever its account may do
-  ([`Site.once`](../../src/kb_mcp/sources/atlassian/adapters/http.py),
+  ([`Site.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
   [`test_a_run_sends_the_site_nothing_but_gets`](../../tests/test_download.py)).
 - **https alone.** A request over plain http is refused before it is sent, so that
   neither cookie nor header travels in clear
-  ([`refuse_plain_http`](../../src/kb_mcp/sources/atlassian/adapters/http.py),
+  ([`refuse_plain_http`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
   [`test_a_request_over_plain_http_is_refused_before_it_is_sent`](../../tests/test_http.py)).
   TLS is verified by the operating system's trust store
-  ([`client`](../../src/kb_mcp/sources/atlassian/adapters/http.py)).
+  ([`client`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)).
 - **Redirects to the site and Atlassian's media hosts alone.** A redirect within the
   site is followed, and one to
-  [`MEDIA_HOSTS`](../../src/kb_mcp/sources/atlassian/adapters/http.py)
+  [`MEDIA_HOSTS`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)
   for an attached file; one elsewhere, such as to a sign-in page, means the session no
   longer holds
-  ([`Site.once`](../../src/kb_mcp/sources/atlassian/adapters/http.py),
+  ([`Site.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
   [`test_a_redirect_to_the_media_host_is_followed`](../../tests/test_http.py),
   [`test_a_redirect_to_the_identity_provider_means_sign_in_is_needed`](../../tests/test_http.py)).
   The cookies kept are the site's alone, so the media host gets none, and the token's
   header is taken off, as above.
 - **A 401 means sign in again.** It stops the run, rather than failing one document
-  ([`SignInNeededError`](../../src/kb_mcp/sources/atlassian/adapters/http.py),
+  ([`SignInNeededError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
   [`test_a_401_means_sign_in_is_needed`](../../tests/test_http.py)), with exit status 3.
 - **Through the environment's proxy.** The site's requests go through the proxy that
   `HTTPS_PROXY`, `HTTP_PROXY` or `ALL_PROXY` names, unless `NO_PROXY` names the site,
   and on macOS, with none set, through the system's proxy settings, as httpx reads them
-  ([`client`](../../src/kb_mcp/sources/atlassian/adapters/http.py) leaves
+  ([`client`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) leaves
   them on). Over https, such a proxy sees the site's host and the times of the requests,
   not what they carry.
 
@@ -181,7 +181,7 @@ The trust store is the wire's one opening onto what requests carry. Where a comp
 inspects TLS, the operating system trusts its proxy's certificate, and the proxy reads
 every request, the cookies and the token's header included. `doctor` says whether the
 public certificate authorities verify the site, which they do not where TLS is inspected
-([`verified_by_public_cas`](../../src/kb_mcp/sources/atlassian/adapters/http.py)),
+([`verified_by_public_cas`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
 by a GET of its own, outside `Site`: on a client that trusts certifi's bundle of those
 authorities alone, and that carries no cookie and no token.
 
@@ -247,9 +247,9 @@ mistake. None of it stops someone who is already on the machine as you:
   while a run holds them, in its environment and its memory.
 - **A copied disk, or a backup.** The program encrypts nothing under the data
   directory: the cookies are in clear
-  ([`write_cookies`](../../src/kb_mcp/sources/atlassian/adapters/session_file.py)),
+  ([`write_cookies`](../../src/kb_mcp/sources/atlassian/fetch/adapters/session_file.py)),
   the profile's key is public
-  ([`disable_password_saving`](../../src/kb_mcp/sources/atlassian/adapters/browser.py)),
+  ([`disable_password_saving`](../../src/kb_mcp/sources/atlassian/fetch/adapters/browser.py)),
   the mirror is plain Markdown. A backup of your home copies the data directory as
   it copies any folder: the guard refuses synchronised folders and git working trees,
   nothing else

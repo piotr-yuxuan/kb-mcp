@@ -62,9 +62,8 @@ layers = [
   "cli",
   "evaluation",
   "mcp",
-  "search",
+  "search | sources",
   "mirror",
-  "sources",
   "config",
   "observability",
   "kernel",
@@ -81,7 +80,8 @@ containers = [
   "kb_mcp.mcp",
   "kb_mcp.search",
   "kb_mcp.mirror",
-  "kb_mcp.sources.*",
+  "kb_mcp.sources.*.fetch",
+  "kb_mcp.sources.*.prepare",
   "kb_mcp.config",
   "kb_mcp.observability",
 ]
@@ -162,3 +162,15 @@ source_modules = [
   "kb_mcp.kernel",
 ]
 forbidden_modules = ["requests", "rich"]
+
+[[tool.importlinter.contracts]]
+name = "No source imports another"
+type = "independence"
+modules = ["kb_mcp.sources.atlassian", "kb_mcp.sources.worklog"]
+
+[[tool.importlinter.contracts]]
+name = "Within each source, preparing may use fetching, never the reverse"
+type = "layers"
+containers = ["kb_mcp.sources.*"]
+layers = ["(prepare)", "(fetch)"]
+exhaustive = true

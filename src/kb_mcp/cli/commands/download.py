@@ -11,10 +11,10 @@ import structlog
 from kb_mcp.cli.options.download import DEFAULT_MAX_FILE_MB
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.sources.atlassian.adapters.raw_store import StoreBusyError
-from kb_mcp.sources.atlassian.adapters.sign_in import sign_in
-from kb_mcp.sources.atlassian.app.download import Targets, download, plan
-from kb_mcp.sources.atlassian.domain.period import PeriodError, moment
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import StoreBusyError
+from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
+from kb_mcp.sources.atlassian.fetch.app.download import Targets, download, plan
+from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError, moment
 
 if TYPE_CHECKING:
     import argparse
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources.atlassian.app.download import Outcome
+    from kb_mcp.sources.atlassian.fetch.app.download import Outcome
 
 MEBIBYTE = 1024 * 1024
 # The counts that a short summary shows: the documents fetched, or to fetch, of each kind,
