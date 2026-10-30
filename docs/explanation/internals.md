@@ -203,7 +203,8 @@ or a dated transcript, dated afresh by its day; another is converted again
   the run goes on, writes no file that a file not read builds, every one for `todo.org`
   or its archive, else that file's own
   ([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
-  and then removes no file, so that the last good copy of each stays.
+  and then removes no file but the old one of a document written again under another
+  title's path, so that the last good copy of each stays.
 - **Offline**, everything: the work log is on this machine.
 
 ## Index: from Markdown to words and vectors

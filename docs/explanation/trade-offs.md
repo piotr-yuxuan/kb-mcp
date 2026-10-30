@@ -391,7 +391,8 @@ but the id, which the path gives, so that it links a transcript read or not
 ([`transcript_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
 and a link is written when its other end is written in that run or kept from an
 earlier one ([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)).
-A run that meets a problem still removes no file, and `sync` exits 1.
+A run that meets a problem still removes no file but the old one of a document written
+again under another title's path, and `sync` exits 1.
 
 - **Why.** Once a meeting is its day and is numbered in the journal's order, nothing
   that it holds draws on a transcript's text: one transcript not read, or past the

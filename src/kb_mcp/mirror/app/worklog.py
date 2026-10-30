@@ -6,12 +6,13 @@ removes, under ``worklog/`` alone, those of documents gone. A document whose fil
 its revision keeps that file's body, dates and time of fetch, so that an edit elsewhere
 in its org file moves neither; but a day, a meeting and a dated transcript are dated by
 their day, afresh at each run, so that a file that held another date takes its day
-without a conversion. A run that reports a problem removes nothing, and a file not read
-holds back what draws on it alone, as ``worklog.writable`` says: every document for
-``todo.org`` or its archive, else its own, so that the last good copy of each file
-stays, and each problem says what it held back; a meeting whose link reaches no
-transcript found is a warning, not a problem. Reading, building and writing are each a span; each
-document is counted, and each conversion timed, by its kind, as
+without a conversion. A run that reports a problem removes nothing but the old file of a
+document written under another path, its title changed, and a file not read holds back
+what draws on it alone, as ``worklog.writable`` says: every document for ``todo.org`` or
+its archive, else its own, so that the last good copy of each file stays, and each
+problem says what it held back; a meeting whose link reaches no transcript found is a
+warning, not a problem. Reading, building and writing are each a span; each document is
+counted, and each conversion timed, by its kind, as
 ``docs/reference/telemetry/sync.md`` lists them.
 """
 
@@ -52,6 +53,7 @@ from kb_mcp.sources.worklog.domain.worklog import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
     from pathlib import Path
 
     from kb_mcp.mirror.adapters.pandoc import Pandoc
@@ -187,6 +189,22 @@ def existing(docs: Path) -> dict[str, tuple[FrontMatter, str]]:
     return kept
 
 
+def moved(
+    identifiers: Iterable[str], kept: Mapping[str, tuple[FrontMatter, str]]
+) -> set[PurePosixPath]:
+    """Return the path of each file of ``kept`` whose document, of these ids, is written.
+
+    Each is where its front matter places it, as the run that wrote it did: once its
+    document is written again, under another title's path when its title changed, it is
+    a copy of none, retired even by a run that removes nothing else.
+    """
+    return {
+        worklog_path(kept[each][0].type, each, kept[each][0].title)
+        for each in identifiers
+        if each in kept
+    }
+
+
 def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True) -> Outcome:
     """Mirror the work log under ``folder`` into ``docs/worklog/``, with ``pandoc``.
 
@@ -286,8 +304,9 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
         ).encode()
         for path, (matter, body) in ready.items()
     }
+    retired = moved((matter.id for matter, _ in ready.values()), kept)
     with TRACER.start_as_current_span("worklog.write"):
-        changes = sync(docs, wanted, worklog_owned, remove=not problems)
+        changes = sync(docs, wanted, worklog_owned, remove=not problems, retired=retired)
     log.info(
         "worklog.end",
         documents=len(wanted),
@@ -309,7 +328,8 @@ def plan_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = T
     """Say what mirroring the work log would do, converting and writing nothing.
 
     A document is to convert when no file holds its revision; a file is to remove when no
-    document read has its path, unless a problem was found, as a run would then keep it.
+    document read has its path, unless a problem was found, as a run would then keep it,
+    but for the old file of a document read under another path, as ``moved`` says.
     Pandoc runs for its version alone, which names revisions; raises
     ``PandocFailedError`` when it gives none. ``worklog.end`` says at INFO what a run
     would do.
@@ -324,7 +344,9 @@ def plan_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = T
         if held.get(document.id) != revision(converter, document.text)
     )
     wanted = {worklog_path(each.type, each.id, each.title) for each in read.documents}
-    to_remove = 0 if read.problems else len(worklog_owned(docs) - wanted)
+    stale = worklog_owned(docs) - wanted
+    retired = moved((each.id for each in read.documents), kept)
+    to_remove = len(stale & retired if read.problems else stale)
     structlog.get_logger().info(
         "worklog.end",
         documents=len(read.documents),

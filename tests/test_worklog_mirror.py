@@ -873,6 +873,32 @@ def test_a_transcript_not_read_holds_back_itself_alone(run: Run) -> None:
     ]
 
 
+def test_a_transcript_retitled_while_a_file_is_not_read_keeps_one_file(run: Run) -> None:
+    """Its old file, of its old title, is retired; a deleted one stays, as nothing else goes.
+
+    The dry run counts that one file. One faulty file leaves no stale copy of another
+    document beside its new one: "I do not see why one faulty could hold back other
+    meetings" (the user, 2026-10-29, plan 044).
+    """
+    run()
+    old = run.docs / run.by_id("t-20261027-1").path
+    gone = run.docs / run.by_title("Notes on the ledger").path
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    (run.root / "transcripts/current/2026-10-21 Wed/notes on x.org").unlink()
+    run.edit(
+        "transcripts/current/2026-10-27 Tue/1.org",
+        "#+TITLE: Payments stand-up, 27 October",
+        "#+TITLE: Stand-up, Tuesday",
+    )
+    assert run.plan().to_remove == 1
+    outcome = run()
+    assert [each.where for each in outcome.problems] == ["transcripts/misc/a.org"]
+    assert [each.path for each in run.files() if each.matter.id == "t-20261027-1"] == [
+        "worklog/transcripts/t-20261027-1-stand-up-tuesday.md"
+    ]
+    assert (old.exists(), gone.exists(), outcome.changes.removed) == (False, True, 1)
+
+
 def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path: Path) -> None:
     """Named by its path alone, as listed reports it, it keeps its id and its last copy.
 

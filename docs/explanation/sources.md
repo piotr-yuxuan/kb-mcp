@@ -42,7 +42,8 @@ turn's time or timestamp dates a meeting or a transcript.
 A file that breaks a bound, links out, or is not UTF-8 is named by its path alone, as
 its content could be anything, with what it holds back
 ([`held_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
-and the run then removes no file, nor writes one that the file not read builds: none
+and the run then removes no file, but the old one of a document written again under
+another title's path, nor writes one that the file not read builds: none
 for `todo.org` or its archive, which every day, meeting and entry draws on; for a
 transcript, its own alone
 ([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)). A
