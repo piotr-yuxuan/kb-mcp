@@ -28,10 +28,10 @@ import structlog
 from opentelemetry import trace
 
 from kb_mcp.kernel.record import Record
+from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import WORKLOG, documents, dump, load
 from kb_mcp.mirror.adapters.mirror_files import Changes, sync, worklog_owned
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.app.mirror import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, Link, PersonRole
 from kb_mcp.mirror.domain.mirror_layout import one_line, worklog_path
 from kb_mcp.observability.adapters.progress import task

@@ -21,11 +21,12 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 import structlog
-from opentelemetry import metrics, trace
+from opentelemetry import trace
 
 from kb_mcp.kernel.content import BlogPost, ConfluenceDocument, Issue, Page
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
+from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import TIME, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, owned, sync
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
@@ -71,15 +72,6 @@ UNKNOWN_AUTHOR = "unknown author"
 DOCUMENT_ERRORS = (ValueError, PandocFailedError)
 NAMED_ERRORS = (RefusedError, MarkupError, PandocFailedError)
 TRACER = trace.get_tracer(__name__)
-METER = metrics.get_meter(__name__)
-# The documents whose file a run built, or failed to; how long each took to build, pandoc
-# writing its Markdown included. A span each would make a run's trace too large.
-DOCUMENTS = METER.create_counter(
-    "kb_mcp.mirror.documents", unit="{document}", description="Documents built, by outcome"
-)
-CONVERSION_DURATION = METER.create_histogram(
-    "kb_mcp.mirror.conversion.duration", unit="s", description="How long a document's file took"
-)
 
 
 class Problem(Record):
