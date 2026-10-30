@@ -260,9 +260,9 @@ The latter builds a [`Page`](../../src/kb_mcp/sources/atlassian/fetch/domain/con
 [`document`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py),
 and its files through
 [`attachment`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py):
-frozen records of the kernel, each checking its own rules. A snapshot that the adapter
-refuses is stored all the same, raw, so that `mirror` reads it once the adapter is fixed,
-without a download ([raw first](trade-offs.md#raw-first), [strict
+frozen records of the fetch's domain, each checking its own rules. A snapshot that the
+adapter refuses is stored all the same, raw, so that `mirror` reads it once the adapter
+is fixed, without a download ([raw first](trade-offs.md#raw-first), [strict
 reading](trade-offs.md#strict-reading-a-module-per-representation)).
 
 ### 6. The snapshot

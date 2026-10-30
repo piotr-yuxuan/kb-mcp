@@ -52,18 +52,19 @@ reference](telemetry/README.md) gives the file's fields.
 
 The site's responses and its HTML change without notice. So that a change stays local:
 
-- **One vocabulary.** `kernel.content` names what the mirror holds: `Space`, `Folder`,
-  `Page` and `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment`, `Comment`,
-  `Person`, and `Snapshot`, a document at one revision with its rendered body. `Listed`
-  is what a listing says of a document (its type, id, revision, update time and
-  Confluence version), read apart from the rest of the entry, so that an entry whose
-  other fields have changed still lets the document be fetched.
+- **One vocabulary.** `sources.atlassian.fetch.domain.content` names what the mirror
+  holds: `Space`, `Folder`, `Page` and `BlogPost` (both `ConfluenceDocument`), `Issue`,
+  `Attachment`, `Comment`, `Person`, and `Snapshot`, a document at one revision with its
+  rendered body. `Listed` is what a listing says of a document (its type, id, revision,
+  update time and Confluence version), read apart from the rest of the entry, so that an
+  entry whose other fields have changed still lets the document be fetched.
   `mirror.domain.mirror.FrontMatter` names what the mirror says of each document. A
   document knows where it is stored (`source`, `kind`) and names its state (`revision`).
   Every layer above the adapters works with these types alone.
-- **One module per representation.** `sources.atlassian.adapters.confluence_v2` and
-  `sources.atlassian.adapters.jira_v3` hold all that the code knows of those JSON
-  responses: field names, which response holds what, and the file names a snapshot uses.
+- **One module per representation.** `sources.atlassian.fetch.adapters.confluence_v2`
+  and `sources.atlassian.fetch.adapters.jira_v3` hold all that the code knows of those
+  JSON responses: field names, which response holds what, and the file names a snapshot
+  uses.
   The API paths, query parameters and paging that 004 needs go into the same modules.
   `mirror.adapters.markdown` alone writes and reads front matter. No other code indexes
   into a response or a front matter.
@@ -89,10 +90,10 @@ The site's responses and its HTML change without notice. So that a change stays 
 
 ## The raw store
 
-Owned by `sources.atlassian.adapters.raw_store.RawStore`; nothing else reads or writes
-under `<data>/raw/`. One run at a time writes, inside `RawStore.writing()`, which holds
-a lock on `<data>/raw/.lock` and raises `StoreBusyError` when another run holds it;
-every method that writes refuses to run outside it.
+Owned by `sources.atlassian.fetch.adapters.raw_store.RawStore`; nothing else reads or
+writes under `<data>/raw/`. One run at a time writes, inside `RawStore.writing()`, which
+holds a lock on `<data>/raw/.lock` and raises `StoreBusyError` when another run holds
+it; every method that writes refuses to run outside it.
 
 ### Snapshots
 
@@ -115,8 +116,8 @@ A snapshot is one document at one revision:
   Finder's `.DS_Store`, AppleDouble `._` files and copies are skipped.
 
 Files of a Confluence snapshot, named by constants of
-`sources.atlassian.adapters.confluence_v2`, both GETs pinned to the version the listing
-gave (`version=N`):
+`sources.atlassian.fetch.adapters.confluence_v2`, both GETs pinned to the version the
+listing gave (`version=N`):
 
 | File | Content |
 |---|---|
@@ -127,7 +128,8 @@ gave (`version=N`):
 `confluence_v2.identity` refuses a view of another page or version than the document,
 so a page edited between the two GETs is never stored as one snapshot.
 
-Files of a Jira snapshot, named by constants of `sources.atlassian.adapters.jira_v3`:
+Files of a Jira snapshot, named by constants of
+`sources.atlassian.fetch.adapters.jira_v3`:
 
 | File | Content |
 |---|---|
@@ -208,26 +210,26 @@ Two more of the store's own records, each replaced whole:
 
 - `<data>/raw/coverage.json`, read by `coverage()` and written by `put_coverage()`: for
   each target (a space key or a project key,
-  `sources.atlassian.domain.coverage.Target`), the one period over which every document
-  updated is stored (`sources.atlassian.domain.coverage.Coverage`), and `"exact": true`
-  on a project's entry written since plan 034. A run that listed a target whole joins
-  its window to that period when the two overlap or touch. A space's period ends at the
-  window's end whatever failed, since a run without `--since` starts at its covered
-  start and asks again for whatever failed inside. A project's ends at the update time
-  of its earliest document found and not stored whole (a fetch failed, a snapshot that
-  the adapter refuses, a kept file failed, a stored snapshot unreadable), even below
-  the old end, else at the window's end; a search entry that the adapter refuses
-  leaves it as it was, and a failure at its very start makes it inexact. A run without
-  `--since` searches an exact project from a day before its covered end, and an entry
-  without `exact` from its covered start, which replaces it with an exact one. `exact`
-  on a space's entry is read as false. Versions before plan 034 read the record, and
-  ignore `exact`.
+  `sources.atlassian.fetch.domain.coverage.Target`), the one period over which every
+  document updated is stored (`sources.atlassian.fetch.domain.coverage.Coverage`), and
+  `"exact": true` on a project's entry written since plan 034. A run that listed a
+  target whole joins its window to that period when the two overlap or touch. A space's
+  period ends at the window's end whatever failed, since a run without `--since` starts
+  at its covered start and asks again for whatever failed inside. A project's ends at
+  the update time of its earliest document found and not stored whole (a fetch failed, a
+  snapshot that the adapter refuses, a kept file failed, a stored snapshot unreadable),
+  even below the old end, else at the window's end; a search entry that the adapter
+  refuses leaves it as it was, and a failure at its very start makes it inexact. A run
+  without `--since` searches an exact project from a day before its covered end, and an
+  entry without `exact` from its covered start, which replaces it with an exact one.
+  `exact` on a space's entry is read as false. Versions before plan 034 read the record,
+  and ignore `exact`.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
   `put_tombstones()`: each Confluence document absent from its space's listing
-  (`sources.atlassian.domain.deletions.Tombstone`), pending until a probe answers, then
-  dated by its first answer of gone (404, trashed, or moved to a space the store does
-  not keep), and confirmed by a second, at least an hour later. A document found in a
-  kept space whose stored listing names it has moved, and loses its tombstone, as does
+  (`sources.atlassian.fetch.domain.deletions.Tombstone`), pending until a probe answers,
+  then dated by its first answer of gone (404, trashed, or moved to a space the store
+  does not keep), and confirmed by a second, at least an hour later. A document found in
+  a kept space whose stored listing names it has moved, and loses its tombstone, as does
   one listed again; one found in a kept space whose listing does not name it goes back
   to pending. The absent are found from the last listing read by id alone
   (`listed_ids(space_id, kind)`), so that an entry the adapter would refuse is still
@@ -269,11 +271,11 @@ byte for byte: nothing in it depends on when `mirror` ran.
 - `<SPACE>` is the space key, `<PROJECT>` the project key, `<KEY>` the issue key.
 - `<slug>`: the title decomposed (Unicode NFKD) and lowered, its combining marks dropped
   (`Crème` gives `creme`), keeping ASCII letters and digits; every run of other
-  characters becomes one `-`; leading and trailing `-` are
-  removed; it is cut at 60 characters, and a `-` left at the cut is removed. An empty
-  slug leaves `<id>.md`, as does a work-log day or meeting, whose id holds its date or
-  its title's slug already (`mirror.domain.mirror_layout.NAMED_BY_ID`). When a title
-  changes, the file is renamed and the old name removed.
+  characters becomes one `-`; leading and trailing `-` are removed; it is cut at 60
+  characters, and a `-` left at the cut is removed. An empty slug leaves `<id>.md`, as
+  does a work-log day or meeting, whose id holds its date or its title's slug already
+  (`sources.worklog.prepare.domain.layout.NAMED_BY_ID`). When a title changes, the file
+  is renamed and the old name removed.
 - `<ext>`: the attachment file name's extension in lower case when it matches
   `[a-z0-9]{1,8}`, otherwise none. Links from documents to assets are relative.
 - `_tree.md`: one nested list item per page and folder of the listings, linking the
@@ -494,9 +496,10 @@ may fail at once, seldom, as SQLite's switch of a new file to WAL mode does not 
 
 ### The work log
 
-Owned by `sync`'s work-log step (017), in `mirror.app.worklog`: `<data>/docs/worklog/`,
-from the folder that `sources.worklog.path` names, read in place and never written.
-`mirror.adapters.mirror_files.owned` and `worklog_owned` tell each owner's files apart,
+Owned by `sync`'s work-log step (017), in `sources.worklog.prepare.app.prepare`:
+`<data>/docs/worklog/`, from the folder that `sources.worklog.path` names, read in place
+and never written. `sources.atlassian.prepare.adapters.mirrored.owned` and
+`sources.worklog.prepare.adapters.mirrored.worklog_owned` tell each owner's files apart,
 so that `mirror` and the work-log step never remove each other's. A run that meets a
 problem (a file not read, a conversion that failed) removes none of its files but the
 old file of a document written again under another path, as an entry's or a transcript's
@@ -830,8 +833,8 @@ Owned by `login` (004). `<data>/session/` has mode `0700`; it holds the browser 
 of the sign-in window and the saved session cookies (mode `0600`). Agents are never
 given access to it: only `<data>/docs/` is shared with them.
 
-`sources.atlassian.adapters.sign_in` chooses how a run signs in (015): by an API token
-when the setting `api_token` is set, else by the saved session, whose cookies a run
-writes back as the site renews them. A run signed in by a token reads and writes nothing
-under `<data>/session/`, and keeps nothing of the token, which the environment gives to
-each run and no file under `<data>` holds.
+`sources.atlassian.fetch.adapters.sign_in` chooses how a run signs in (015): by an API
+token when the setting `api_token` is set, else by the saved session, whose cookies a
+run writes back as the site renews them. A run signed in by a token reads and writes
+nothing under `<data>/session/`, and keeps nothing of the token, which the environment
+gives to each run and no file under `<data>` holds.

@@ -15,6 +15,14 @@ download then one mirror of the raw store, because they share the site, the sign
 the store: `sources/atlassian/` stays one package. The work log skips the raw store,
 since its files are already on this machine, and goes straight to the mirror.
 
+Each source converts its own documents, in its own package, nested by role:
+`sources/atlassian/fetch/` brings the site's changes into the raw store, and
+`sources/atlassian/prepare/` writes Confluence's and Jira's files from it; the work
+log, read in place, has `sources/worklog/prepare/` alone. Each writes through the
+mirror's common part: the front matter, which search reads back, the writer of the
+files that changed, and pandoc. So the mirror imports no source, and no source another
+([the code's layout](code-layout.md#the-roles-within-a-source)).
+
 The settings file holds a table per source, `[sources.confluence]`, `[sources.jira]`,
 `[sources.worklog]`, so that adding a source adds a table and moves nothing. `sync`
 takes its keys from the tables alone, and `--include` and `--exclude` choose among them.
