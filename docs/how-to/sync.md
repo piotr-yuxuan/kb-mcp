@@ -41,19 +41,20 @@ question.
 The steps, in order:
 
 1. **Confluence and Jira**: one download of every space and project named, then the
-   mirror of the raw store. Without `--since`, each space and project fetches what
-   changed since its last fetch, and asks again for what failed; one never fetched
-   takes its last 7 days, as the summary before the question says. `--since` (`12h`,
-   `7d`, `6mo`, an ISO date or time, or `all`), `--until` and `--max-file-mb` work as
-   for `download`; `--since 1y` or `--since all` reaches further back.
+   mirror of each source taken, Confluence's then Jira's, a row each. Without
+   `--since`, each space and project fetches what changed since its last fetch, and
+   asks again for what failed; one never fetched takes its last 7 days, as the summary
+   before the question says. `--since` (`12h`, `7d`, `6mo`, an ISO date or time, or
+   `all`), `--until` and `--max-file-mb` work as for `download`; `--since 1y` or
+   `--since all` reaches further back.
 
    The mirror keeps pandoc's conversions in `<data>/conversions.sqlite`: the first run
    converts every document, taking as long as a mirror always has, and each run after
-   it only what changed; its row says how many were `converted by pandoc` and how many
-   `reused from the cache`. Deleting the file starts again, converting everything once
-   and downloading nothing: do so after installing a pandoc rebuilt under the same
-   version line, the one change that the cache cannot see. A damaged file is replaced
-   by the run itself, which converts everything and says so in its log
+   it only what changed; each mirror's row says how many were `converted by pandoc` and
+   how many `reused from the cache`. Deleting the file starts again, converting
+   everything once and downloading nothing: do so after installing a pandoc rebuilt
+   under the same version line, the one change that the cache cannot see. A damaged
+   file is replaced by the run itself, which converts everything and says so in its log
    (`mirror.cache_replaced`): nothing to do. One that another run holds for more than a
    minute, or that breaks during the run, fails the mirror and stops the sync there,
    without the work log or the index; the next run tries again, on a new file if it

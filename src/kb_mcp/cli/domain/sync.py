@@ -2,9 +2,10 @@
 
 A source is configured when its table names what it covers: a space, a project or a
 folder. ``sync`` takes every source configured, ``--include NAME`` those named alone,
-``--exclude NAME`` all but those. Confluence and Jira share a step, one download then one
-mirror; the work log has its own, which reads no period, so that the period's options it
-ignores are said. The exit status ranks how the steps ended.
+``--exclude NAME`` all but those. Confluence and Jira share a step, one download, then a
+mirror of each; the work log has its own, which reads no period, so that the period's
+options it ignores are said. A row names its step and its source; the exit status ranks
+how the rows ended.
 """
 
 from __future__ import annotations
@@ -57,6 +58,11 @@ SOURCES = (
     Source("jira", "atlassian", ("sources.jira.projects",), tuple(PERIOD)),
     Source("worklog", "worklog", ("sources.worklog.path", "sources.worklog.archives"), ()),
 )
+
+
+def label(step: str, source: str | None) -> str:
+    """Name a row: its step, then its source, unless it has none or the step bears its name."""
+    return step if source in {None, step} else f"{step} {source}"
 
 
 def chosen(

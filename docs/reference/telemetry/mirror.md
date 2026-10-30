@@ -1,21 +1,24 @@
 # mirror
 
 What `mirror` records, besides what every command does ([README](README.md)). A run is
-one trace: its root `mirror`, then a span to read the raw store, one to build the files,
-pandoc converting what the cache of conversions, `<data>/conversions.sqlite`, does not
-hold yet, and one to write them. A document is counted and timed, never a span of its
-own: a run of thousands would make its trace too large.
+one trace: its root `mirror`, then, for Confluence, then for Jira, a span to read the
+raw store, one to build the source's files, pandoc converting what the source's rows of
+the cache of conversions, `<data>/conversions.sqlite`, do not hold yet, and one to write
+them. So a run gives each event below once per source, `mirror.document` and
+`mirror.not_mirrored` once per document, and `mirror.cache_replaced` once at most. A
+document is counted and timed, never a span of its own: a run of thousands would make
+its trace too large.
 
 ## Events
 
 | Event | Level | Fields | When |
 |---|---|---|---|
-| `mirror.placed` | info | `documents`, `assets`, `problems` | The store is read: the documents placed in the mirror, their files attached, the problems so far |
+| `mirror.placed` | info | `source`, `documents`, `assets`, `problems` | The store is read and every document placed, so that links reach the other source's: the source's documents placed in the mirror, the files they attach, its problems so far |
 | `mirror.document` | debug | `path`, `id`, `title`, `seconds` | A document's file is built, or fails to be: its path in the mirror, its id or key, its title |
-| `mirror.written` | info | `written`, `unchanged`, `removed`, `converted`, `reused`, `pruned` | The mirror's files are written: how many changed, were already so, were removed; the conversions pandoc ran, those the cache gave, and those deleted from it, which this run did not use, none when it has problems |
+| `mirror.written` | info | `source`, `written`, `unchanged`, `removed`, `converted`, `reused`, `pruned` | The source's files are written: how many changed, were already so, were removed; the conversions pandoc ran, those the cache gave, and those deleted from the source's rows, which this run did not use, none when the source has problems |
 | `mirror.not_mirrored` | warning | `where`, `reason` | Something is not mirrored, by its place in the raw store, never its content: the run exits 1 |
-| `mirror.nothing_removed` | warning | `problems` | A run with problems removes no file, so that each last good copy stays |
-| `mirror.cache_replaced` | warning | `reason` | The cache of conversions was damaged, no database, of a format that SQLite cannot read or may not write, or with a schema that names other columns: deleted and started empty, so that the run converts everything; `reason`, SQLite's error name, `integrity_check`, or `UnicodeDecodeError` when SQLite's report quotes a name of the schema that is no longer UTF-8, never content |
+| `mirror.nothing_removed` | warning | `source`, `problems` | A source with problems removes none of its files, nor an attached file, so that each last good copy stays. An attached file also stays, without this warning, while reading the store finds a problem of the other source's, such as a snapshot or listing that cannot be read |
+| `mirror.cache_replaced` | warning | `reason` | The cache of conversions was damaged, no database, of a format that SQLite cannot read or may not write, or with a schema that names other columns, as a file of plan 039's, without `source`, has: deleted and started empty, so that the run converts everything; `reason`, SQLite's error name, `integrity_check`, or `UnicodeDecodeError` when SQLite's report quotes a name of the schema that is no longer UTF-8, never content |
 | `mirror.pandoc_missing` | error | `reason` | Pandoc went from PATH once the run began: exit 1 |
 
 ## Spans
@@ -23,8 +26,8 @@ own: a run of thousands would make its trace too large.
 | Span | Kind | Attributes | What |
 |---|---|---|---|
 | `mirror.read` | internal | | The raw store read: spaces, users, listings, the newest snapshot of each document |
-| `mirror.build` | internal | | Each document's file built, through pandoc or the cache, then each space's tree |
-| `mirror.write` | internal | | The files that changed written, those no longer wanted removed, then the conversions this run did not use deleted |
+| `mirror.build` | internal | | Each of the source's documents' files built, through pandoc or the cache, then, for Confluence, each space's tree |
+| `mirror.write` | internal | | The source's files that changed written, those no longer wanted removed, then the source's conversions this run did not use deleted |
 
 ## Instruments
 

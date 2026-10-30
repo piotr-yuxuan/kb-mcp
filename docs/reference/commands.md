@@ -431,10 +431,12 @@ options:
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
 
-With --format json: documents, how many are mirrored; converted, the conversions
-pandoc ran, and reused, those the cache gave, a document's file and a space's tree
-being one each; changes, the files written, unchanged and removed; unsupported, what
-the mirror does not show, by name; problems, each by its place and why.
+With --format json: exit_status, the run's; steps, a row per source, confluence then
+jira, each with its step, mirror, its source, its outcome (done, failed) and its
+result: documents, how many are mirrored; converted, the conversions pandoc ran, and
+reused, those the cache gave, a document's file and a space's tree being one each;
+changes, the files written, unchanged and removed; unsupported, what the mirror does
+not show, by name; problems, each by its place and why.
 ```
 
 ## `model`
@@ -565,9 +567,10 @@ options:
   --dry-run             say what a run would fetch and what the work log would change;
                         write nothing
 
-With --format json: exit_status, the run's; steps, a row per step (download, mirror,
-worklog, index), each with its step, its outcome (done, failed, sign in, interrupted,
-not run) and its result, as its own command gives it.
+With --format json: exit_status, the run's; steps, a row per step and source
+(download, mirror of confluence then of jira, worklog, index), each with its step, its
+source, null for the download and the index, its outcome (done, failed, sign in,
+interrupted, not run) and its result, as its own command gives it.
 ```
 
 ## Exit statuses

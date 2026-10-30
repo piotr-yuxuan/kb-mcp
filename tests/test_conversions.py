@@ -1,6 +1,7 @@
 """Pandoc's conversions kept by their input across mirrors (plan 039, criteria 2 to 4 and 8).
 
-A run is one ``opened`` of the file, here in a data folder not made yet. A key is
+A run is one ``opened`` of the file, here in a data folder not made yet, for one source's
+rows, which plan 030 adds: Confluence's, unless a test names another. A key is
 computed as the plan defines it, the SHA-256 of the UTF-8 bytes of the converter's name,
 a NUL, then the HTML, so that the file is read as its layout says. The damage that the
 plan's first review found, each a byte of a sound file changed, is made by hand: a page
@@ -32,6 +33,8 @@ if TYPE_CHECKING:
 
 NAME = "pandoc 3.7.0.2\n--sandbox\n--from=html-native_divs-native_spans\n--to=gfm"
 TEXTS = ("<p>a</p>", "<p>b</p>", "<p>c</p>", "<p>d</p>")
+# The source whose rows a run reads and prunes, unless a test names another.
+SOURCE = "confluence"
 WAIT_S = 0.3
 
 
@@ -88,6 +91,12 @@ def stored(path: Path) -> set[str]:
         return {each for (each,) in connection.execute("SELECT key FROM conversions")}
 
 
+def rows(path: Path) -> set[tuple[str, str]]:
+    """Give the conversions that the file holds, each by its source and its key."""
+    with closing(sqlite3.connect(path)) as connection:
+        return set(connection.execute("SELECT source, key FROM conversions"))
+
+
 def page(path: Path, kind: str) -> slice:
     """Give where the root page of the file's ``table``, or of its ``index``, lies in it."""
     with closing(sqlite3.connect(path)) as connection:
@@ -98,9 +107,14 @@ def page(path: Path, kind: str) -> slice:
     return slice((root - 1) * size, root * size)
 
 
-def run(path: Path, scripted: Scripted, texts: Iterable[str]) -> tuple[list[str], int, int]:
-    """Convert ``texts`` in one run; give their Markdown, then how many it converted and reused."""
-    with conversions.opened(path, scripted.converter, scripted.convert) as cache:
+def run(
+    path: Path, scripted: Scripted, texts: Iterable[str], source: str = SOURCE
+) -> tuple[list[str], int, int]:
+    """Convert ``texts`` in one run of ``source``; give their Markdown, and the counts.
+
+    The counts are how many it converted, then how many it reused.
+    """
+    with conversions.opened(path, scripted.converter, scripted.convert, source=source) as cache:
         markdown = [cache.markdown(text) for text in texts]
         return markdown, cache.converted, cache.reused
 
@@ -129,7 +143,7 @@ def test_another_converter_or_one_byte_changed_is_a_miss(path: Path, name: str, 
 def test_a_text_that_fails_to_convert_raises_and_keeps_no_row(path: Path) -> None:
     """Criterion 2: neither converted nor reused, so that the next run converts it again."""
     failing = Scripted(fails_at=1)
-    with conversions.opened(path, failing.converter, failing.convert) as cache:
+    with conversions.opened(path, failing.converter, failing.convert, source=SOURCE) as cache:
         with pytest.raises(PandocFailedError, match="exit status 3"):
             cache.markdown(TEXTS[0])
         assert (cache.converted, cache.reused) == (0, 0)
@@ -152,7 +166,7 @@ def test_a_converter_that_cannot_be_named_fails_each_conversion_and_is_asked_aga
 ) -> None:
     """Criterion 3: unnamed twice, two conversions fail, converting nothing; then it is named."""
     scripted = Scripted(unnamed=2)
-    with conversions.opened(path, scripted.converter, scripted.convert) as cache:
+    with conversions.opened(path, scripted.converter, scripted.convert, source=SOURCE) as cache:
         for text in TEXTS[:2]:
             with pytest.raises(PandocFailedError, match="exit status 2"):
                 cache.markdown(text)
@@ -167,7 +181,7 @@ def test_a_prune_keeps_exactly_the_conversions_that_its_run_used(path: Path) -> 
     """Criterion 4: a, b and c kept; then a run uses b, c and d, and its prune deletes a."""
     scripted = Scripted()
     run(path, scripted, TEXTS[:3])
-    with conversions.opened(path, scripted.converter, scripted.convert) as cache:
+    with conversions.opened(path, scripted.converter, scripted.convert, source=SOURCE) as cache:
         for text in TEXTS[1:]:
             cache.markdown(text)
         assert cache.prune(remove=True) == 1
@@ -178,10 +192,59 @@ def test_a_prune_told_not_to_remove_deletes_nothing(path: Path) -> None:
     """Criterion 4: as a run that reports a problem removes no file, it removes no row."""
     scripted = Scripted()
     run(path, scripted, TEXTS[:3])
-    with conversions.opened(path, scripted.converter, scripted.convert) as cache:
+    with conversions.opened(path, scripted.converter, scripted.convert, source=SOURCE) as cache:
         cache.markdown(TEXTS[3])
         assert cache.prune(remove=False) == 0
     assert stored(path) == {key(NAME, text) for text in TEXTS}
+
+
+def test_a_text_that_two_sources_convert_is_a_row_of_each_that_neither_prune_takes(
+    path: Path,
+) -> None:
+    """Plan 030: each source looks up and prunes its own rows; another's stay.
+
+    Confluence converts a and b, then Jira b and c, b again, since Confluence's row is not
+    Jira's. Confluence then uses a alone, and prunes its b; Jira's b and c stay, and its
+    next run converts nothing.
+    """
+    assert run(path, Scripted(), TEXTS[:2], "confluence")[1:] == (2, 0)
+    assert run(path, Scripted(), TEXTS[1:3], "jira")[1:] == (2, 0)
+    scripted = Scripted()
+    with conversions.opened(
+        path, scripted.converter, scripted.convert, source="confluence"
+    ) as cache:
+        cache.markdown(TEXTS[0])
+        assert cache.prune(remove=True) == 1
+    assert rows(path) == {
+        ("confluence", key(NAME, TEXTS[0])),
+        ("jira", key(NAME, TEXTS[1])),
+        ("jira", key(NAME, TEXTS[2])),
+    }
+    assert run(path, Scripted(), TEXTS[1:3], "jira")[1:] == (0, 2)
+
+
+def test_a_file_of_plan_039_s_two_columns_is_replaced_once(path: Path) -> None:
+    """Plan 030: its rows name no source, though each holds the conversion asked for.
+
+    The run converts every text again, and says once, by SQLite's error, that it replaced
+    the file; the next reuses each.
+    """
+    path.parent.mkdir(parents=True)
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute(
+            "CREATE TABLE conversions (key TEXT PRIMARY KEY, markdown TEXT NOT NULL)"
+        )
+        connection.executemany(
+            "INSERT INTO conversions (key, markdown) VALUES (?, ?)",
+            [(key(NAME, text), f"Markdown of {text}") for text in TEXTS],
+        )
+        connection.commit()
+    with capture_logs() as events:
+        assert run(path, Scripted(), TEXTS)[1:] == (4, 0)
+        assert run(path, Scripted(), TEXTS)[1:] == (0, 4)
+    assert events_named(events, "mirror.cache_replaced") == [
+        {"reason": "SQLITE_ERROR", "log_level": "warning"}
+    ]
 
 
 def test_an_interrupted_run_keeps_the_conversions_it_made_for_the_next(path: Path) -> None:
@@ -351,7 +414,7 @@ def test_damage_found_during_a_run_raises_and_deletes_the_file(
     damaging = Scripted(meanwhile=lambda: damage(path))
 
     def mirrored() -> None:
-        with conversions.opened(path, damaging.converter, damaging.convert) as cache:
+        with conversions.opened(path, damaging.converter, damaging.convert, source=SOURCE) as cache:
             for text in TEXTS[1:3]:
                 cache.markdown(text)
             cache.prune(remove=True)

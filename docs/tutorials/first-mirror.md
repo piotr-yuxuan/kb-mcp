@@ -163,7 +163,7 @@ download: done
   space <KEY>: from 2000-01-01T00:00:00+00:00 to <now>, given
   confluence pages: to fetch: 13
   failures: 0
-mirror: not run
+mirror confluence: not run
 index: not run
 ```
 
@@ -190,7 +190,7 @@ download: done
   confluence pages: fetched: 13
   files: downloaded: 10
   failures: 0
-mirror: done
+mirror confluence: done
   documents: 13
   converted by pandoc: 14
   reused from the cache: 0

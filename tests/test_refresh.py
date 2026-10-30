@@ -459,7 +459,7 @@ def test_a_gone_page_leaves_the_mirror_even_when_another_has_a_problem(
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
     broken = next((chosen.raw / "confluence" / "pages" / "1001").iterdir()) / "view.json"
     broken.write_text("{}", "utf-8")  # another document now unreadable
-    outcome = mirrored(RawStore(chosen.raw), chosen.docs, SITE, identity)
+    outcome = mirrored(RawStore(chosen.raw), chosen.docs, SITE, identity)["confluence"]
     assert outcome.problems
     assert not list((chosen.docs / "confluence" / "MFS").glob("1002-*.md"))
     assert list((chosen.docs / "confluence" / "MFS").glob("1001-*.md"))
@@ -528,7 +528,7 @@ def test_a_damaged_listing_time_is_one_problem_not_one_per_document(tmp_path: Pa
         listing = [v2_page(id="1001"), v2_page(id="1002")]
         store.put_space(v2_space(), listing, [], [], listed_at=FIRST)
     (store.root / "confluence" / "spaces" / SPACE / "listed_at.json").write_text("{}", "utf-8")
-    outcome = mirrored(store, tmp_path / "docs", SITE, identity)
+    outcome = mirrored(store, tmp_path / "docs", SITE, identity)["confluence"]
     named = [problem.where for problem in outcome.problems if "listed_at" in problem.where]
     assert named == [f"confluence/spaces/{SPACE}/listed_at.json"]
 
@@ -574,7 +574,7 @@ def test_a_moved_page_whose_new_file_fails_keeps_its_old_file(tmp_path: Path) ->
             raise PandocFailedError(message)
         return html
 
-    outcome = mirrored(store, docs, SITE, failing)
+    outcome = mirrored(store, docs, SITE, failing)["confluence"]
     assert outcome.problems
     assert list((docs / "confluence" / "MFS").glob("196845-*.md"))
 

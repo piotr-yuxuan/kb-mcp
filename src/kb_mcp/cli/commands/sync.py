@@ -20,6 +20,7 @@ from kb_mcp.cli.commands import download as download_command
 from kb_mcp.cli.commands import index as index_command
 from kb_mcp.cli.commands import mirror as mirror_command
 from kb_mcp.cli.commands._embedding import indexing_of
+from kb_mcp.cli.commands._rows import rows_text
 from kb_mcp.cli.commands.download import targets_of
 from kb_mcp.cli.domain.summary import values_of
 from kb_mcp.cli.domain.sync import chosen
@@ -27,6 +28,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
+from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED
 from kb_mcp.sources.worklog.prepare.app.prepare import Planned
 
 if TYPE_CHECKING:
@@ -64,7 +66,9 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sync
         )
         steps: list[Atlassian | Worklog | Index] = []
         if spaces or projects:
-            steps.append(Atlassian(targets=targets_of(arguments, spaces, projects, context.now())))
+            targets = targets_of(arguments, spaces, projects, context.now())
+            prepared = tuple(source for source in PREPARED if source in names)
+            steps.append(Atlassian(targets=targets, sources=prepared))
         if folder is not None:
             steps.append(Worklog(folder=folder, archives=sources.worklog.archives))
         steps.append(Index(indexing=indexing_of(arguments, settings)))
@@ -106,18 +110,12 @@ def worklog_text(result: Outcome | Planned, summary: Summary) -> str:
 # How each step's result is written, as its own command writes it.
 TEXTS: dict[str, Callable[..., str]] = {
     "download": download_command.text,
-    "mirror": mirror_command.text,
+    "mirror": mirror_command.outcome_text,
     "worklog": worklog_text,
     "index": index_command.text,
 }
 
 
 def text(synced: Synced, summary: Summary) -> str:
-    """Write a row per step, how it ended, then its result as its command writes it."""
-    written: list[str] = []
-    for row in synced.steps:
-        written.append(f"{row.step}: {row.outcome}\n")
-        if row.result is not None:
-            shown = TEXTS[row.step](row.result, summary).splitlines()
-            written.extend(f"  {line}\n" for line in shown)
-    return "".join(written)
+    """Write a row per step and source, how it ended, then its result as its command does."""
+    return rows_text(synced, summary, TEXTS)

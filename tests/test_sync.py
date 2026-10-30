@@ -251,19 +251,23 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> FakeSite:
 def test_json_is_one_document_with_a_row_per_step(
     home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """exit_status, then download, mirror, the work log and the index, each with its result."""
+    """exit_status, then download, each mirror, the work log and the index, with its result.
+
+    Each row names its source, none for the download of both and for the index.
+    """
     config = settings_file(home, worklog, atlassian=True)
     given = ("--yes", "--since", "2026-10-02", "--format", "json")
     status = main(command(home, config, *given))
     document = json.loads(capsys.readouterr().out)
     assert document["exit_status"] == status == ExitStatus.FAILED  # one file fails
-    assert [(row["step"], row["outcome"]) for row in document["steps"]] == [
-        ("download", "failed"),
-        ("mirror", "done"),
-        ("worklog", "done"),
-        ("index", "done"),
+    assert [(row["step"], row["source"], row["outcome"]) for row in document["steps"]] == [
+        ("download", None, "failed"),
+        ("mirror", "confluence", "done"),
+        ("mirror", "jira", "done"),
+        ("worklog", "worklog", "done"),
+        ("index", None, "done"),
     ]
-    assert document["steps"][2]["result"]["documents"] == WORKLOG_DOCUMENTS
+    assert document["steps"][3]["result"]["documents"] == WORKLOG_DOCUMENTS
     assert signed_in.asked
 
 
@@ -374,7 +378,8 @@ def test_a_later_sync_catches_up_on_an_old_page_edited_today_and_nothing_stored(
     settings = chosen_settings(tmp_path, worklog)
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
     first = Atlassian(
-        targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+        targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
+        sources=("confluence",),
     )
     assert sync(context(settings, FIRST), [first]).exit_status == ExitStatus.OK
     assert "1003" not in stored_pages(settings)
@@ -383,7 +388,12 @@ def test_a_later_sync_catches_up_on_an_old_page_edited_today_and_nothing_stored(
     monkeypatch.setattr(http, "client", lambda *_: later.client())
     synced = sync(
         context(settings, SECOND),
-        [Atlassian(targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP))],
+        [
+            Atlassian(
+                targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP),
+                sources=("confluence",),
+            )
+        ],
     )
     assert synced.exit_status == ExitStatus.OK
     fetched = synced.steps[0].result
@@ -399,7 +409,8 @@ def test_the_site_asking_to_sign_in_still_lets_the_work_log_run_exit_3(
     settings = Settings(data_dir=tmp_path / "data", site=SITE)
     steps = [
         Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
+            sources=("confluence",),
         ),
         Worklog(folder=worklog, archives=True),
         by_words(settings),
@@ -429,7 +440,8 @@ def test_ctrl_c_in_the_download_exits_130_and_no_later_step_runs(
     settings = chosen_settings(tmp_path, worklog)
     steps = [
         Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
+            sources=("confluence",),
         ),
         Worklog(folder=worklog, archives=True),
     ]
@@ -472,7 +484,8 @@ def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
     settings = chosen_settings(tmp_path, worklog)
     steps = [
         Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
+            sources=("confluence",),
         ),
         Worklog(folder=worklog, archives=True),
     ]
@@ -656,10 +669,11 @@ def test_a_dry_run_of_the_site_plans_and_writes_nothing(
     given = ("--dry-run", "--since", "2026-10-02", "--format", "json")
     assert main(command(home, config, *given)) == ExitStatus.OK
     rows = json.loads(capsys.readouterr().out)["steps"]
-    assert [(row["step"], row["outcome"]) for row in rows] == [
-        ("download", "done"),
-        ("mirror", "not run"),
-        ("index", "not run"),
+    assert [(row["step"], row["source"], row["outcome"]) for row in rows] == [
+        ("download", None, "done"),
+        ("mirror", "confluence", "not run"),
+        ("mirror", "jira", "not run"),
+        ("index", None, "not run"),
     ]
     assert "confluence pages: to fetch" in rows[0]["result"]["report"]["counts"]
     windows = rows[0]["result"]["windows"]
@@ -689,9 +703,17 @@ def test_a_dry_run_of_the_site_says_each_target_s_window_under_its_row(
 @pytest.mark.parametrize(
     "case",
     [
-        (("--exclude", "worklog"), ["download", "mirror", "index"], True),
-        (("--exclude", "confluence"), ["download", "mirror", "worklog", "index"], False),
-        (("--include", "worklog"), ["worklog", "index"], False),
+        (
+            ("--exclude", "worklog"),
+            [("download", None), ("mirror", "confluence"), ("mirror", "jira"), ("index", None)],
+            True,
+        ),
+        (
+            ("--exclude", "confluence"),
+            [("download", None), ("mirror", "jira"), ("worklog", "worklog"), ("index", None)],
+            False,
+        ),
+        (("--include", "worklog"), [("worklog", "worklog"), ("index", None)], False),
     ],
 )
 def test_the_sources_chosen_are_the_steps_run(
@@ -699,16 +721,38 @@ def test_the_sources_chosen_are_the_steps_run(
     worklog: Path,
     signed_in: FakeSite,
     capsys: CaptureFixture[str],
-    case: tuple[tuple[str, ...], list[str], bool],
+    case: tuple[tuple[str, ...], list[tuple[str, str | None]], bool],
 ) -> None:
     """Excluded or not included: no step, no request, no file of it; the index runs always."""
     given, steps, confluence = case
     config = settings_file(home, worklog, atlassian=True)
     main(command(home, config, "--yes", "--since", "2026-10-02", "--format", "json", *given))
     rows = json.loads(capsys.readouterr().out)["steps"]
-    assert [row["step"] for row in rows] == steps
+    assert [(row["step"], row["source"]) for row in rows] == steps
     assert any("/wiki/" in url.path for url in signed_in.asked) is confluence
-    assert (home / "data" / "docs" / "worklog").exists() is ("worklog" in steps)
+    assert (home / "data" / "docs" / "worklog").exists() is (("worklog", "worklog") in steps)
+
+
+def test_a_source_left_out_is_not_mirrored_though_its_documents_are_stored(
+    home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 030: --include jira mirrors Jira alone; a Confluence file deleted stays so."""
+    config = settings_file(home, None, atlassian=True)
+    given = ("--yes", "--since", "2026-10-02", "--format", "json")
+    main(command(home, config, *given))
+    capsys.readouterr()
+    page = next((home / "data" / "docs" / "confluence").rglob("*.md"))
+    page.unlink()
+    main(command(home, config, *given, "--include", "jira"))
+    rows = json.loads(capsys.readouterr().out)["steps"]
+    steps = [(row["step"], row["source"], row["outcome"]) for row in rows]
+    assert steps == [
+        ("download", None, "done"),
+        ("mirror", "jira", "done"),
+        ("index", None, "done"),
+    ]
+    assert not page.exists()
+    assert signed_in.asked
 
 
 def test_archives_off_leaves_the_archived_documents_out_of_a_sync(
@@ -770,11 +814,14 @@ def test_a_second_sync_reuses_every_conversion_and_the_work_log_adds_none(
     assert (second["result"]["converted"], second["result"]["reused"]) == (0, converted)
     documents = first["result"]["documents"]
     assert (
-        f"mirror: done\n  documents: {documents}\n"
+        f"mirror confluence: done\n  documents: {documents}\n"
         f"  converted by pandoc: 0\n  reused from the cache: {converted}\n"
     ) in rows[2]
+    jira = json.loads(rows[0])["steps"][2]
+    assert (jira["step"], jira["source"], jira["outcome"]) == ("mirror", "jira", "done")
+    total = converted + jira["result"]["converted"]
     with closing(sqlite3.connect(home / "data" / "conversions.sqlite")) as cache:
-        assert cache.execute("SELECT count(*) FROM conversions").fetchone() == (converted,)
+        assert cache.execute("SELECT count(*) FROM conversions").fetchone() == (total,)
 
 
 def test_a_damaged_cache_is_replaced_and_every_step_runs_exit_0(
@@ -785,7 +832,8 @@ def test_a_damaged_cache_is_replaced_and_every_step_runs_exit_0(
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
     steps = [
         Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
+            sources=("confluence",),
         ),
         Worklog(folder=worklog, archives=True),
     ]
@@ -818,7 +866,8 @@ def test_other_arguments_for_pandoc_convert_the_mirror_again(
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
     steps = [
         Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
+            sources=("confluence",),
         )
     ]
     first = sync(context(settings, FIRST), steps).steps[1].result
@@ -839,7 +888,8 @@ def test_the_text_of_a_full_sync_gives_each_command_s_counts_under_its_row(
     assert main(command(home, config, "--yes", "--since", "2026-10-02")) == ExitStatus.FAILED
     out = capsys.readouterr().out
     assert out.startswith("download: failed\n  confluence blogposts: fetched: 1\n")
-    assert "  failures: 1\nmirror: done\n  documents: " in out
+    assert "  failures: 1\nmirror confluence: done\n  documents: " in out
+    assert "\nmirror jira: done\n  documents: " in out
     assert signed_in.asked
 
 
@@ -954,7 +1004,8 @@ def test_ctrl_c_in_the_mirror_marks_it_interrupted_and_the_work_log_not_run(
     settings = chosen_settings(tmp_path, worklog)
     steps = [
         Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
+            sources=("confluence",),
         ),
         Worklog(folder=worklog, archives=True),
     ]
@@ -966,7 +1017,8 @@ def test_ctrl_c_in_the_mirror_marks_it_interrupted_and_the_work_log_not_run(
         ("worklog", "not run"),
     ]
     assert synced.exit_status == ExitStatus.INTERRUPTED
-    assert [each["step"] for each in logged_as(logged, "sync.interrupted")] == ["mirror"]
+    stopped = logged_as(logged, "sync.interrupted")
+    assert [each["step"] for each in stopped] == ["mirror confluence"]
 
 
 def test_ctrl_c_once_every_step_ended_still_exits_130(
@@ -975,7 +1027,7 @@ def test_ctrl_c_once_every_step_ended_still_exits_130(
     """Every row kept as it ended, and the run interrupted."""
 
     def ended_then_stopped(_context: Context, _step: Worklog, add: Callable[[Row], None]) -> None:
-        add(Row(step="worklog", outcome="done", result=None))
+        add(Row(step="worklog", source="worklog", outcome="done", result=None))
         raise KeyboardInterrupt
 
     monkeypatch.setattr(sync_app, "worklog", ended_then_stopped)
@@ -1006,7 +1058,8 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
     )
     settings = Settings(data_dir=tmp_path / "data", site=SITE)
     atlassian = Atlassian(
-        targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+        targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
+        sources=("confluence",),
     )
     synced = sync(context(settings, FIRST), [atlassian, Worklog(folder=worklog, archives=True)])
     assert [row.outcome for row in synced.steps] == ["sign in", "failed", "done"]
@@ -1071,7 +1124,8 @@ def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
     settings = chosen_settings(tmp_path, worklog)
     steps = [
         Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
+            sources=("confluence",),
         ),
         Worklog(folder=worklog, archives=True),
     ]

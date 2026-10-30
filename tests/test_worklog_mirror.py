@@ -717,7 +717,7 @@ def test_the_mirror_and_the_work_log_leave_each_other_s_files(run: Run) -> None:
     worklog = {each.path for each in run.files()}
     run()
     assert page.exists()
-    sync(run.docs, {}, owned, remove=True)
+    sync(run.docs, {}, lambda docs: owned(docs, "confluence"), remove=True)
     assert {each.path for each in run.files()} == worklog
     assert not page.exists()
 

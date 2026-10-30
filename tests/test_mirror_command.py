@@ -36,6 +36,16 @@ if TYPE_CHECKING:
 
 SOME_FAILED = 1
 BAD_SETTINGS = 2
+# The counts of a mirror that has nothing to do, as a row writes them.
+NOTHING = (
+    "  documents: 0\n"
+    "  converted by pandoc: 0\n"
+    "  reused from the cache: 0\n"
+    "  files written: 0\n"
+    "  files unchanged: 0\n"
+    "  files removed: 0\n"
+    "  problems: 0\n"
+)
 
 
 @pytest.fixture
@@ -115,16 +125,13 @@ def test_refused_settings_exit_two(home: Path, capsys: CaptureFixture[str]) -> N
 def test_an_empty_store_mirrors_nothing_and_exits_zero(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """A data directory without a raw store gives an empty mirror, and counts of zero."""
+    """A data directory without a raw store gives an empty mirror, and counts of zero.
+
+    A row each, Confluence's then Jira's, names its source, as sync's rows do.
+    """
     assert main(arguments(home)) == 0
     assert capsys.readouterr().out == (
-        "documents: 0\n"
-        "converted by pandoc: 0\n"
-        "reused from the cache: 0\n"
-        "files written: 0\n"
-        "files unchanged: 0\n"
-        "files removed: 0\n"
-        "problems: 0\n"
+        f"mirror confluence: done\n{NOTHING}mirror jira: done\n{NOTHING}"
     )
 
 
@@ -144,35 +151,38 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
     assert main(arguments(home)) == 0
     first = capsys.readouterr().out.splitlines()
     names = [
-        "documents",
-        "converted by pandoc",
-        "reused from the cache",
-        "files written",
-        "files unchanged",
-        "files removed",
-        "problems",
+        "mirror confluence",
+        "  documents",
+        "  converted by pandoc",
+        "  reused from the cache",
+        "  files written",
+        "  files unchanged",
+        "  files removed",
+        "  problems",
     ]
-    assert [line.split(": ")[0] for line in first] == names
-    assert first[0] == "documents: 1"
-    converted = first[1].removeprefix("converted by pandoc: ")
-    written = first[3].removeprefix("files written: ")
+    assert [line.split(": ")[0] for line in first[: len(names)]] == names
+    assert first[1] == "  documents: 1"
+    converted = first[2].removeprefix("  converted by pandoc: ")
+    written = first[4].removeprefix("  files written: ")
     assert main(arguments(home, "--summary", "detailed")) == 0
     assert capsys.readouterr().out == (
-        "documents: 1\n"
-        "converted by pandoc: 0\n"
-        f"reused from the cache: {converted}\n"
-        "files written: 0\n"
-        f"files unchanged: {written}\n"
-        "files removed: 0\n"
-        "not shown, element: iframe: 1\n"
-        "problems: 0\n"
+        "mirror confluence: done\n"
+        "  documents: 1\n"
+        "  converted by pandoc: 0\n"
+        f"  reused from the cache: {converted}\n"
+        "  files written: 0\n"
+        f"  files unchanged: {written}\n"
+        "  files removed: 0\n"
+        "  not shown, element: iframe: 1\n"
+        "  problems: 0\n"
+        f"mirror jira: done\n{NOTHING}"
     )
 
 
 def test_the_command_reports_the_documents_it_builds(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Two pages: the run's log file ends the task documents with both done."""
+    """Two pages: the run's log file ends Confluence's task of documents with both done."""
     store = RawStore(home / "data" / "raw")
     listed = [listing_page("100", "Home", None, None), listing_page("101", "Away", None, None)]
     with store.writing():
@@ -180,10 +190,10 @@ def test_the_command_reports_the_documents_it_builds(
         store.put(Page, page_responses("100", "Home", 1, "<p>Home.</p>", []), FETCHED, {})
         store.put(Page, page_responses("101", "Away", 1, "<p>Away.</p>", []), FETCHED, {})
     assert main(arguments(home)) == 0
-    assert capsys.readouterr().out.startswith("documents: 2\n")
+    assert capsys.readouterr().out.startswith("mirror confluence: done\n  documents: 2\n")
     assert [
         (line["task"], line["done"], line["total"]) for line in logged_as(home, "progress")
-    ] == [("documents", 2, 2)]
+    ] == [("confluence documents", 2, 2), ("jira documents", 0, 0)]
 
 
 def two_pages(home: Path, monkeypatch: MonkeyPatch) -> Path:
@@ -215,17 +225,19 @@ def test_a_second_mirror_with_nothing_changed_runs_pandoc_on_nothing(
     """Plan 039, criterion 5: its text and its JSON say that each conversion was reused."""
     runs = two_pages(home, monkeypatch)
     assert main(arguments(home)) == 0
-    assert "documents: 2\nconverted by pandoc: 3\nreused from the cache: 0\n" in (
+    assert "  documents: 2\n  converted by pandoc: 3\n  reused from the cache: 0\n" in (
         capsys.readouterr().out
     )
     assert len(runs.read_text("utf-8").splitlines()) == CONVERSIONS
     assert main(arguments(home)) == 0
     assert capsys.readouterr().out.startswith(
-        "documents: 2\nconverted by pandoc: 0\nreused from the cache: 3\nfiles written: 0\n"
+        "mirror confluence: done\n"
+        "  documents: 2\n  converted by pandoc: 0\n  reused from the cache: 3\n"
+        "  files written: 0\n"
     )
     assert main(arguments(home, "--format", "json")) == 0
-    document = json.loads(capsys.readouterr().out)
-    assert (document["converted"], document["reused"]) == (0, CONVERSIONS)
+    first, _ = json.loads(capsys.readouterr().out)["steps"]
+    assert (first["result"]["converted"], first["result"]["reused"]) == (0, CONVERSIONS)
     assert len(runs.read_text("utf-8").splitlines()) == CONVERSIONS
 
 
@@ -245,13 +257,13 @@ def test_a_damaged_cache_is_replaced_and_the_mirror_converts_everything(
         cache.with_name(f"{cache.name}{suffix}").write_bytes(noise)
     capsys.readouterr()
     assert main(arguments(home)) == 0
-    assert "converted by pandoc: 3\nreused from the cache: 0\n" in capsys.readouterr().out
+    assert "  converted by pandoc: 3\n  reused from the cache: 0\n" in capsys.readouterr().out
     (replaced,) = logged_as(home, "mirror.cache_replaced")
     assert (replaced["level"], replaced["reason"]) == ("warning", "SQLITE_NOTADB")
     assert set(replaced) - STANDARD == {"reason"}
     assert sorted(path.name for path in cache.parent.glob(f"{cache.name}*")) == [cache.name]
     assert main(arguments(home)) == 0
-    assert "converted by pandoc: 0\nreused from the cache: 3\n" in capsys.readouterr().out
+    assert "  converted by pandoc: 0\n  reused from the cache: 3\n" in capsys.readouterr().out
 
 
 def test_a_new_pandoc_converts_again_and_writes_the_bytes_of_a_mirror_from_no_cache(
@@ -276,7 +288,7 @@ def test_a_new_pandoc_converts_again_and_writes_the_bytes_of_a_mirror_from_no_ca
     capsys.readouterr()
     assert main(arguments(home)) == 0
     # Home's file and the space's tree.
-    assert "converted by pandoc: 2\nreused from the cache: 0\n" in capsys.readouterr().out
+    assert "  converted by pandoc: 2\n  reused from the cache: 0\n" in capsys.readouterr().out
     tree = home / "data" / "docs" / "confluence" / "MFS" / "_tree.md"
     assert tree.read_text("utf-8").startswith("pandoc 2\n")
     fresh = home / "fresh"
@@ -298,7 +310,7 @@ def test_other_arguments_for_pandoc_convert_everything_again(
     monkeypatch.setattr(pandoc_adapter, "ARGUMENTS", more)
     capsys.readouterr()
     assert main(arguments(home)) == 0
-    assert "converted by pandoc: 3\nreused from the cache: 0\n" in capsys.readouterr().out
+    assert "  converted by pandoc: 3\n  reused from the cache: 0\n" in capsys.readouterr().out
     assert len(runs.read_text("utf-8").splitlines()) == 2 * CONVERSIONS
 
 
@@ -344,7 +356,8 @@ def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
     """A page whose space is not listed is reported by its place in the store.
 
     Each such page is the warning mirror.not_mirrored, then mirror.nothing_removed warns
-    that nothing was removed; the run's log file holds both.
+    that Confluence removed none of its files; the run's log file holds both. Its row
+    fails, Jira's is done.
     """
     store = RawStore(home / "data" / "raw")
     stamp = {"number": 1, "createdAt": "2026-10-20T21:52:41Z"}
@@ -371,10 +384,14 @@ def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
         "reason": "space not listed",
     }
     (kept,) = logged_as(home, "mirror.nothing_removed")
-    assert (kept["level"], kept["problems"]) == ("warning", 1)
+    assert (kept["level"], kept["source"], kept["problems"]) == ("warning", "confluence", 1)
     assert main(arguments(home, "--format", "json")) == SOME_FAILED
     document = json.loads(capsys.readouterr().out)
-    assert document["documents"] == 0
-    assert document["problems"] == [
+    assert document["exit_status"] == SOME_FAILED
+    rows = [(row["step"], row["source"], row["outcome"]) for row in document["steps"]]
+    assert rows == [("mirror", "confluence", "failed"), ("mirror", "jira", "done")]
+    confluence = document["steps"][0]["result"]
+    assert confluence["documents"] == 0
+    assert confluence["problems"] == [
         {"where": "confluence/pages/196845/000001", "reason": "space not listed"}
     ]
