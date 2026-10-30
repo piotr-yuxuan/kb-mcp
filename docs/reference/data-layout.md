@@ -52,12 +52,13 @@ reference](telemetry/README.md) gives the file's fields.
 
 The site's responses and its HTML change without notice. So that a change stays local:
 
-- **One vocabulary.** `sources.atlassian.fetch.domain.content` names what the mirror
-  holds: `Space`, `Folder`, `Page` and `BlogPost` (both `ConfluenceDocument`), `Issue`,
-  `Attachment`, `Comment`, `Person`, and `Snapshot`, a document at one revision with its
-  rendered body. `Listed` is what a listing says of a document (its type, id, revision,
-  update time and Confluence version), read apart from the rest of the entry, so that an
-  entry whose other fields have changed still lets the document be fetched.
+- **One vocabulary.** `sources.atlassian.fetch.domain.content` names what the fetch of
+  Confluence and Jira stores and their prepare reads: `Space`, `Folder`, `Page` and
+  `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment`, `Comment`, `Person`,
+  and `Snapshot`, a document at one revision with its rendered body. `Listed` is what a
+  listing says of a document (its type, id, revision, update time and Confluence
+  version), read apart from the rest of the entry, so that an entry whose other fields
+  have changed still lets the document be fetched.
   `mirror.domain.mirror.FrontMatter` names what the mirror says of each document. A
   document knows where it is stored (`source`, `kind`) and names its state (`revision`).
   Every layer above the adapters works with these types alone.
