@@ -1,26 +1,40 @@
-"""Where the code's imports may go and what stays a dataclass, past Import Linter's reach."""
+"""Where the code's imports may go and what stays a dataclass, past Import Linter's reach.
+
+Each contract of ``pyproject.toml`` carries, as its id, the letter that the layout page
+gives it; contract I lists the package of each source that the registry declares.
+"""
 
 from __future__ import annotations
 
 import ast
 import copy
 import importlib
+import importlib.util
 import pkgutil
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
 
 import kb_mcp
+from kb_mcp import sources
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.fetch.domain.content import Space
 from kb_mcp.sources.atlassian.prepare.domain.catalogue import Catalogue
+from kb_mcp.sources.registry import SOURCES
 
 PACKAGE = Path(kb_mcp.__file__).parent
-LAYOUT = Path(__file__).parents[1] / "docs" / "explanation" / "code-layout.md"
+ROOT = Path(__file__).parents[1]
+LAYOUT = ROOT / "docs" / "explanation" / "code-layout.md"
+CONTRACTS = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["tool"]["importlinter"][
+    "contracts"
+]
 # A row of the layout page's table of the classes that stay dataclasses.
 KEPT = re.compile(r"^\| `([\w.]+)` \| ", re.MULTILINE)
+# A row of the layout page's table of contracts: its letter.
+LETTER = re.compile(r"^\| ([A-Z]) \| ", re.MULTILINE)
 # OpenTelemetry's SDK, exporters and instrumentation, which plan 016 keeps within
 # observability: elsewhere code uses the API alone. Import Linter forbids root packages
 # only, and the API and the SDK share theirs, opentelemetry.
@@ -101,3 +115,30 @@ def test_a_record_replaced_is_checked_again_and_keeps_its_cached_properties_out(
     assert (replaced.spaces, replaced.names) == ({space.id: space}, {"account-1": "A Person"})
     with pytest.raises(RefusedError, match=r"^id: does not match"):
         copy.replace(space, id="../up")
+
+
+def test_each_contract_s_id_is_its_letter_on_the_layout_page_in_its_order() -> None:
+    """Plan 030: ``lint-imports`` names a contract as the page does, one row each.
+
+    A contract added, removed or moved without its row, or two ids swapped, fails it.
+    """
+    section = LAYOUT.read_text(encoding="utf-8").partition("\n## The contracts\n")[2]
+    letters = LETTER.findall(section.partition("\n## ")[0])
+    assert [contract.get("id") for contract in CONTRACTS] == letters
+
+
+def test_contract_i_lists_the_package_of_each_registered_source_once() -> None:
+    """I's packages are those whose ``declared`` holds a declaration of ``SOURCES``.
+
+    Under ``kb_mcp.sources``, each once and no other: a source registered without its
+    place in I fails it. Each declaration of ``SOURCES`` is one of a package's.
+    """
+    held: dict[str, str] = {}
+    for package in pkgutil.iter_modules(sources.__path__, f"{sources.__name__}."):
+        declared = f"{package.name}.declared"
+        if package.ispkg and importlib.util.find_spec(declared) is not None:
+            values = vars(importlib.import_module(declared)).values()
+            held |= {each.name: package.name for each in SOURCES if each in values}
+    assert set(held) == {each.name for each in SOURCES}
+    (independent,) = [contract for contract in CONTRACTS if contract.get("id") == "I"]
+    assert sorted(independent["modules"]) == sorted(set(held.values()))

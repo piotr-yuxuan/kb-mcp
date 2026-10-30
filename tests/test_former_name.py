@@ -22,6 +22,7 @@ from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
 from kb_mcp.config.app.settings import load_settings
 from kb_mcp.config.domain.former_name import FormerNameError
 from kb_mcp.kernel.exit_status import ExitStatus
+from tests.composed import MODEL
 
 if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
@@ -68,7 +69,7 @@ def refusal(
     """Load the settings, which must stop for the former name; nothing must have moved."""
     before = files(home)
     with pytest.raises(FormerNameError) as caught:
-        load_settings(path, flags or {}, home)
+        load_settings(path, flags or {}, home, MODEL)
     assert files(home) == before
     return caught.value
 
@@ -201,7 +202,7 @@ def test_a_link_at_the_new_data_directory_is_followed(home: Path, target: Path) 
     place(home, FORMER_DATA)
     (home / NEW_DATA).symlink_to(home / target)
     for flags in ({}, {"--data-dir": ("data_dir", str(home / NEW_DATA))}):
-        load_settings(SETTINGS_PATH, flags, home)
+        load_settings(SETTINGS_PATH, flags, home, MODEL)
 
 
 def test_a_data_directory_given_through_a_link_into_the_former_folder_is_named(
@@ -274,7 +275,7 @@ def test_a_run_that_finds_new_places_goes_on(
     for name, value in environment.items():
         monkeypatch.setenv(name, value)
     before = files(home)
-    load_settings(SETTINGS_PATH, {}, home)
+    load_settings(SETTINGS_PATH, {}, home, MODEL)
     assert files(home) == before
 
 
@@ -284,7 +285,7 @@ def test_a_run_given_other_places_goes_on(home: Path, tmp_path: Path) -> None:
     place(home, FORMER_DATA)
     before = files(home)
     flags = {"--data-dir": ("data_dir", str(tmp_path / "data"))}
-    load_settings(tmp_path / "none.toml", flags, home)
+    load_settings(tmp_path / "none.toml", flags, home, MODEL)
     assert files(home) == before
 
 

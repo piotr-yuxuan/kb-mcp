@@ -21,9 +21,12 @@ import argcomplete
 from kb_mcp.cli import options
 from kb_mcp.cli.domain.command import PROGRAM
 from kb_mcp.kernel.exit_status import MEANINGS
+from kb_mcp.sources.registry import SOURCES, refuse
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 # The entry that loads the settings and runs the chosen subcommand.
 ENTRY = "kb_mcp.cli.commands._shared"
@@ -91,15 +94,18 @@ def parser(
     return program
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None, sources: Sequence[Declared] = SOURCES) -> int:
     """Parse the arguments, run the chosen subcommand, and return its exit status.
 
-    When the shell asks for completions, argcomplete answers them and exits instead, as
-    --help and --version do. A command that is not ``observed``, ``completion``, is run
-    as they are: its run alone is imported, and writes its output. Else, from then on,
-    events and records go to stderr from WARNING, never to stdout, until the run's
-    settings are read.
+    ``sources`` is the registry, ``SOURCES`` unless a test gives one of its own: first
+    refused, raising ValueError, when it breaks a rule of every registry, then handed to
+    the entry, whose settings hold each of its sources' tables. When the shell asks for
+    completions, argcomplete answers them and exits instead, as --help and --version do.
+    A command that is not ``observed``, ``completion``, is run as they are: its run alone
+    is imported, and writes its output. Else, from then on, events and records go to
+    stderr from WARNING, never to stdout, until the run's settings are read.
     """
+    refuse(sources)
     program = parser()
     argcomplete.autocomplete(program)
     # Agents start the command with no arguments, which serves MCP over stdio.
@@ -108,4 +114,4 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not arguments.command.observed:
         return importlib.import_module(arguments.command.run).run(arguments)
     with importlib.import_module(OBSERVED).early():
-        return importlib.import_module(ENTRY).enter(arguments, given)
+        return importlib.import_module(ENTRY).enter(arguments, given, sources)

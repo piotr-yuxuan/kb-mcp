@@ -21,9 +21,10 @@ import pytest
 
 from kb_mcp.cli import commands, options
 from kb_mcp.cli.main import main, parser
-from kb_mcp.config.domain.settings import SETTING_PATHS
+from kb_mcp.config.domain.settings import setting_paths
 from kb_mcp.kernel.exit_status import MEANINGS, ExitStatus
 from kb_mcp.kernel.output import Output
+from tests.composed import MODEL
 from tests.endpoint import nothing_listening
 from tests.test_observed import said as said_on
 from tests.test_question import read_until
@@ -100,7 +101,7 @@ class Declaring(argparse.ArgumentParser):
 
 
 # Every setting but a table, by its path, its names joined by dots.
-SETTINGS = {".".join(path) for path, kind in SETTING_PATHS.items() if kind != "table"}
+SETTINGS = {".".join(path) for path, kind in setting_paths(MODEL).items() if kind != "table"}
 # Every subcommand that the command declares, by the name it is typed by.
 SUBCOMMANDS = parser(Declaring).subcommands
 # What a subcommand needs besides its options to be parsed: its positional arguments.

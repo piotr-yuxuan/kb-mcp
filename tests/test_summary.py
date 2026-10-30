@@ -28,6 +28,7 @@ from kb_mcp.cli.main import main, parser
 from kb_mcp.cli.options.index import by_words_alone
 from kb_mcp.config.domain.settings import DEFAULT_MODEL
 from kb_mcp.observability.app.observed import early
+from kb_mcp.sources.registry import SOURCES
 from tests.endpoint import nothing_listening
 from tests.test_settings import user_log_folder
 
@@ -477,7 +478,7 @@ def test_a_command_s_described_lines_end_its_summary(
     arguments = parser().parse_args(given)
     arguments.command = dataclasses.replace(arguments.command, described=described)
     with early():
-        assert enter(arguments, given) == 0
+        assert enter(arguments, given, SOURCES) == 0
     summary = capsys.readouterr().err.split("kb-mcp mirror")[0]
     assert summary.endswith(
         f"  data_dir: {(home / 'kb-mcp').resolve()}\n  mirrors {SITE}\n  as mirror\n"

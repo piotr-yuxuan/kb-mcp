@@ -40,14 +40,17 @@ class UnsafeDataDirError(SettingsError):
     """A data directory, or a log folder, where company data could leave the machine."""
 
 
-def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Path) -> Loaded:
+def load_settings(
+    path: Path, flags: Mapping[str, tuple[str, object]], home: Path, model: type[Settings]
+) -> Loaded:
     """Read the settings file, the environment and the flags given, each stronger, and check.
 
-    ``flags`` maps each flag, such as ``--site``, to the setting it overrides, by its
-    path joined by dots, and its value, None when it was not given. The file's layer is
-    its name, a variable's its name. ``~`` in a path is ``home``, which must be
-    resolved. What was ignored is each variable that names no setting or is empty,
-    then each value replaced.
+    The settings are of ``model``, which ``settings_model`` composed. ``flags`` maps
+    each flag, such as ``--site``, to the setting it overrides, by its path joined by
+    dots, and its value, None when it was not given. The file's layer is its name, a
+    variable's its name. ``~`` in a path is ``home``, which must be resolved. What was
+    ignored is each variable that names no setting or is empty, then each value
+    replaced.
 
     Telemetry's endpoint has two layers more, OpenTelemetry's own variables, as
     ``shared_entries`` reads them: ``OTEL_EXPORTER_OTLP_ENDPOINT``, below the file,
@@ -86,12 +89,12 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
     except OSError as error:
         message = f"{read}: not readable ({type(error).__name__})"
         raise SettingsError(message) from error
-    environment, unread = environment_entries(os.environ, EnvSettingsSource(Settings))
+    environment, unread = environment_entries(os.environ, EnvSettingsSource(model), model)
     below, above, unshared = shared_entries(os.environ)
     loaded = settings_of(
         [
             *below,
-            *file_entries(values, path.name),
+            *file_entries(values, path.name, model),
             *environment,
             *(
                 Entry(path=tuple(setting.split(".")), value=value, layer=flag)
@@ -101,6 +104,7 @@ def load_settings(path: Path, flags: Mapping[str, tuple[str, object]], home: Pat
             *above,
         ],
         home,
+        model,
     )
     logs = loaded.settings.logs
     settings = loaded.settings.model_copy(

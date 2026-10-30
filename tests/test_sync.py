@@ -48,6 +48,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_
 from kb_mcp.sources.atlassian.fetch.app.download import Outcome, Report, Targets
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
 from kb_mcp.sources.atlassian.prepare.app import prepare as mirror_app
+from tests.composed import MODEL
 from tests.endpoint import DIGEST, Scripted, scripted, serving
 from tests.mirrors import fillers
 from tests.reference import Emitted, documented, pattern, undocumented
@@ -364,9 +365,7 @@ def logged_as(logged: list[dict[str, object]], event: str) -> list[dict[str, obj
 
 def chosen_settings(tmp_path: Path, worklog: Path) -> Settings:
     """Give settings with a site, a data folder with a saved session, and the work log."""
-    settings = Settings(
-        site=SITE, data_dir=tmp_path / "data", sources={"worklog": {"path": worklog}}
-    )
+    settings = MODEL(site=SITE, data_dir=tmp_path / "data", sources={"worklog": {"path": worklog}})
     write_cookies(settings.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     return settings
 

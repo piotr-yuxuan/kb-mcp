@@ -55,6 +55,7 @@ root_package = "kb_mcp"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
+id = "A"
 name = "Contexts use those below them, never those above"
 type = "layers"
 containers = ["kb_mcp"]
@@ -72,6 +73,7 @@ exhaustive = true
 exhaustive_ignores = ["__main__"]
 
 [[tool.importlinter.contracts]]
+id = "B"
 name = "Within each context: entry, commands, options, use cases, effects, pure rules"
 type = "layers"
 containers = [
@@ -89,9 +91,16 @@ layers = ["(main)", "(commands)", "(options)", "(app)", "(adapters)", "(domain)"
 exhaustive = true
 
 [[tool.importlinter.contracts]]
+id = "C"
 name = "Pure rules, in any context, use no effect and no use case"
 type = "forbidden"
-source_modules = ["kb_mcp.kernel", "kb_mcp.**.domain"]
+source_modules = [
+  "kb_mcp.kernel",
+  "kb_mcp.**.domain",
+  "kb_mcp.sources.declaration",
+  "kb_mcp.sources.registry",
+  "kb_mcp.sources.*.declared",
+]
 forbidden_modules = [
   "kb_mcp.**.adapters",
   "kb_mcp.**.app",
@@ -101,12 +110,14 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
+id = "D"
 name = "Effects, in any context, use no use case"
 type = "forbidden"
 source_modules = ["kb_mcp.**.adapters"]
 forbidden_modules = ["kb_mcp.**.app"]
 
 [[tool.importlinter.contracts]]
+id = "E"
 name = "Search, the server and the evaluation read the mirror, never a source"
 type = "forbidden"
 source_modules = [
@@ -121,6 +132,7 @@ source_modules = [
 forbidden_modules = ["kb_mcp.sources"]
 
 [[tool.importlinter.contracts]]
+id = "F"
 name = "Use cases and commands reach the network through effects only"
 type = "forbidden"
 source_modules = ["kb_mcp.**.app", "kb_mcp.cli.commands"]
@@ -128,9 +140,16 @@ forbidden_modules = ["httpx"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
+id = "G"
 name = "Declaring the command imports none of the packages that runs need"
 type = "forbidden"
-source_modules = ["kb_mcp.cli.main", "kb_mcp.cli.options"]
+source_modules = [
+  "kb_mcp.cli.main",
+  "kb_mcp.cli.options",
+  "kb_mcp.sources.declaration",
+  "kb_mcp.sources.registry",
+  "kb_mcp.sources.*.declared",
+]
 forbidden_modules = [
   "httpx",
   "lxml",
@@ -149,6 +168,7 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
+id = "H"
 name = "Only observability and the command use Rich and requests, never progress"
 type = "forbidden"
 source_modules = [
@@ -164,13 +184,15 @@ source_modules = [
 forbidden_modules = ["requests", "rich"]
 
 [[tool.importlinter.contracts]]
+id = "I"
 name = "No source imports another"
 type = "independence"
 modules = ["kb_mcp.sources.atlassian", "kb_mcp.sources.worklog"]
 
 [[tool.importlinter.contracts]]
-name = "Within each source, preparing may use fetching, never the reverse"
+id = "J"
+name = "Within each source: its declaration, preparing, fetching, then its settings"
 type = "layers"
 containers = ["kb_mcp.sources.*"]
-layers = ["(prepare)", "(fetch)"]
+layers = ["(declared)", "(prepare)", "(fetch)", "(settings)"]
 exhaustive = true

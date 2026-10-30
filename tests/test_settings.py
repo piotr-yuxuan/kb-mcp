@@ -16,8 +16,6 @@ from pydantic_settings import EnvSettingsSource
 from kb_mcp.cli.main import main
 from kb_mcp.config.app.settings import UnsafeDataDirError, load_settings
 from kb_mcp.config.domain.settings import (
-    SETTING_PATHS,
-    ConfluenceSource,
     Entry,
     Ignored,
     Loaded,
@@ -26,11 +24,15 @@ from kb_mcp.config.domain.settings import (
     environment_entries,
     file_entries,
     setting_paths,
+    settings_model,
     settings_of,
     unsafe_location,
 )
 from kb_mcp.kernel.endpoint import Service, loopback, refused_endpoint
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.sources.atlassian.settings import ConfluenceSource
+from kb_mcp.sources.worklog.settings import WorklogSource
+from tests.composed import MODEL
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
@@ -43,7 +45,7 @@ SENTINEL = "sentinel-0c1e5a"
 
 def from_file(values: dict[str, object]) -> Settings:
     """Build the settings from a settings file's values alone."""
-    return settings_of(file_entries(values, FILE), HOME).settings
+    return settings_of(file_entries(values, FILE, MODEL), HOME, MODEL).settings
 
 
 def user_log_folder(home: Path) -> Path:
@@ -92,7 +94,7 @@ def test_settings_are_normalised() -> None:
 def test_the_alias_file_is_in_the_data_directory() -> None:
     """The user's aliases are <data>/aliases.toml, by plan 043, and no setting names them."""
     assert Settings(data_dir=Path("/data/mirror")).aliases == Path("/data/mirror/aliases.toml")
-    assert not any("alias" in ".".join(path) for path in SETTING_PATHS)
+    assert not any("alias" in ".".join(path) for path in setting_paths(MODEL))
 
 
 def test_the_default_embeddings_come_from_ollama_on_this_machine() -> None:
@@ -106,7 +108,7 @@ def test_the_default_embeddings_come_from_ollama_on_this_machine() -> None:
 
 def test_by_default_index_cuts_windows_and_search_is_hybrid() -> None:
     """Plan 025: with no file, variable or flag, windows, searched by words and meaning."""
-    settings = settings_of([], HOME).settings
+    settings = settings_of([], HOME, MODEL).settings
     assert (settings.chunking, settings.search_mode) == ("windows", "hybrid")
 
 
@@ -131,7 +133,7 @@ def test_the_data_directory_is_absolute_with_the_home_given_for_the_tilde(
 ) -> None:
     """Data written under a relative path would land below the current directory."""
     entries = [] if given is None else [Entry(path=("data_dir",), value=given, layer="--data-dir")]
-    assert settings_of(entries, HOME).settings.data_dir == data_dir
+    assert settings_of(entries, HOME, MODEL).settings.data_dir == data_dir
 
 
 def test_no_settings_hold_a_path_under_the_tilde_without_a_home() -> None:
@@ -144,8 +146,8 @@ def test_no_settings_hold_a_path_under_the_tilde_without_a_home() -> None:
 
 def test_every_setting_is_described() -> None:
     """Plan 020 writes the settings' reference from these descriptions, at every depth."""
-    for path in SETTING_PATHS:
-        model: type[BaseModel] = Settings
+    for path in setting_paths(MODEL):
+        model: type[BaseModel] = MODEL
         for name in path[:-1]:
             model = model.model_fields[name].annotation
         assert model.model_fields[path[-1]].description, path
@@ -157,7 +159,7 @@ def test_each_setting_is_read_by_its_kind() -> None:
     The data directory, the log folder and the work log's folder are paths, in which
     ``~`` is the home.
     """
-    assert {path: kind for path, kind in SETTING_PATHS.items() if kind != "value"} == {
+    assert {path: kind for path, kind in setting_paths(MODEL).items() if kind != "value"} == {
         ("api_token",): "secret",
         ("data_dir",): "path",
         ("embedding_api_key",): "secret",
@@ -199,6 +201,33 @@ def test_a_setting_of_a_type_that_has_no_kind_is_refused(annotation: object) -> 
     model = create_model("Table", setting=(annotation, None))
     with pytest.raises(TypeError, match="a type that has no kind"):
         setting_paths(model)
+
+
+def test_each_source_s_table_is_composed_under_sources_in_name_order() -> None:
+    """Plan 030: ``[sources.<name>]``, in name order, with the core's settings in theirs."""
+    model = settings_model({"worklog": WorklogSource, "confluence": ConfluenceSource})
+    assert list(model.model_fields) == list(Settings.model_fields)
+    assert [path for path in setting_paths(model) if path[0] == "sources"] == [
+        ("sources",),
+        ("sources", "confluence"),
+        ("sources", "confluence", "spaces"),
+        ("sources", "worklog"),
+        ("sources", "worklog", "path"),
+        ("sources", "worklog", "archives"),
+    ]
+    given = {"sources": {"worklog": {"archives": False}, "confluence": {"spaces": ["MFS"]}}}
+    settings = settings_of(file_entries(given, FILE, model), HOME, model).settings
+    assert (settings.sources.confluence.spaces, settings.sources.worklog.archives) == (
+        ("MFS",),
+        False,
+    )
+
+
+def test_a_source_s_table_with_a_type_that_has_no_kind_is_refused_naming_it() -> None:
+    """Refused as the model is composed, before any value is read, naming the source."""
+    table = create_model("Memo", folder=(list[str], []))
+    with pytest.raises(TypeError, match=r"^sources\.memo: a setting of a type that has no kind"):
+        settings_model({"memo": table})
 
 
 @pytest.mark.parametrize(
@@ -312,11 +341,12 @@ def test_an_empty_table_gives_each_setting_under_it_and_none_other() -> None:
     """Each at its default, by the table's layer, so that it replaces a weaker value there."""
     loaded = settings_of(
         [
-            *file_entries({"site": "https://file.example.invalid"}, FILE),
-            *file_entries({"sources": {"confluence": {"spaces": ["ENG"]}}}, FILE),
-            *file_entries({"sources": {}}, "stronger"),
+            *file_entries({"site": "https://file.example.invalid"}, FILE, MODEL),
+            *file_entries({"sources": {"confluence": {"spaces": ["ENG"]}}}, FILE, MODEL),
+            *file_entries({"sources": {}}, "stronger", MODEL),
         ],
         HOME,
+        MODEL,
     )
     assert loaded.settings.sources.confluence.spaces == ()
     assert loaded.layers == {
@@ -336,10 +366,11 @@ def test_a_value_replacing_an_empty_table_s_default_replaces_no_value_given() ->
     """The table's layer wrote none: the stronger value is its setting's, nothing ignored."""
     loaded = settings_of(
         [
-            *file_entries({"sources": {"jira": {}}}, FILE),
+            *file_entries({"sources": {"jira": {}}}, FILE, MODEL),
             Entry(path=("sources", "jira", "projects"), value=["PRB"], layer="--project"),
         ],
         HOME,
+        MODEL,
     )
     assert loaded.settings.sources.jira.projects == ("PRB",)
     assert loaded.layers == {"sources.jira.projects": "--project"}
@@ -355,7 +386,7 @@ def test_the_old_lists_at_the_top_of_the_file_are_refused_with_their_new_place(
 ) -> None:
     """Plan 015 moved spaces and projects into their sources' tables, without an alias."""
     with pytest.raises(SettingsError) as refused:
-        file_entries({key: ["PLAT"]}, FILE)
+        file_entries({key: ["PLAT"]}, FILE, MODEL)
     assert str(refused.value) == f"{key} ({FILE}): moved, as {key} under {table}"
 
 
@@ -367,7 +398,7 @@ def test_the_model_refuses_a_key_that_names_no_setting_whatever_its_layer(key: s
     ``_env_file``, which reads the file named, and ``SITE`` as ``site``.
     """
     with pytest.raises(SettingsError, match=re.escape(f"{key} (a layer):")):
-        settings_of([Entry(path=(key,), value="/etc/passwd", layer="a layer")], HOME)
+        settings_of([Entry(path=(key,), value="/etc/passwd", layer="a layer")], HOME, MODEL)
 
 
 def test_a_refusal_never_holds_the_value() -> None:
@@ -391,6 +422,7 @@ def test_a_stronger_layer_replaces_a_weaker_one_and_the_weaker_is_ignored() -> N
             Entry(path=("site",), value="https://flag.example.invalid", layer="--site"),
         ],
         HOME,
+        MODEL,
     )
     assert loaded.settings.site == "https://flag.example.invalid"
     assert loaded.layers == {"site": "--site"}
@@ -401,10 +433,11 @@ def test_a_stronger_list_replaces_a_weaker_one_whole() -> None:
     """A list is never joined to another: the flag's spaces are all the spaces."""
     loaded = settings_of(
         [
-            *file_entries({"sources": {"confluence": {"spaces": ["ENG", "OPS"]}}}, FILE),
+            *file_entries({"sources": {"confluence": {"spaces": ["ENG", "OPS"]}}}, FILE, MODEL),
             Entry(path=("sources", "confluence", "spaces"), value=["MFS"], layer="--space"),
         ],
         HOME,
+        MODEL,
     )
     assert loaded.settings.sources.confluence.spaces == ("MFS",)
     assert loaded.layers == {"sources.confluence.spaces": "--space"}
@@ -422,6 +455,7 @@ def test_a_value_replaces_a_weaker_table_above_or_below_it() -> None:
             Entry(path=("sources", "jira", "projects"), value=["PRB"], layer="strongest"),
         ],
         HOME,
+        MODEL,
     )
     assert loaded.settings.sources.jira.projects == ("PRB",)
     assert loaded.ignored == (
@@ -449,6 +483,7 @@ def test_the_loader_takes_the_file_then_the_flags_and_makes_the_home_s_path(
             "--project": ("sources.jira.projects", ["PRB", "PAY"]),
         },
         home,
+        MODEL,
     )
     assert loaded.settings.data_dir == home / "from-flag"
     assert loaded.settings.site == "https://file.example.invalid"
@@ -471,7 +506,7 @@ def loaded_from(
     home = (tmp_path / "home").resolve()
     config = tmp_path / FILE
     config.write_text(text, "utf-8")
-    return load_settings(config, flags or {}, home)
+    return load_settings(config, flags or {}, home, MODEL)
 
 
 def test_the_log_folder_is_the_user_s_unless_one_is_set(
@@ -503,7 +538,7 @@ def test_the_user_s_log_folder_passes_the_guard_too(
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     elsewhere = {"--data-dir": ("data_dir", str(tmp_path / "data"))}
     with pytest.raises(UnsafeDataDirError, match=r"^logs\.dir \(default\): inside the git"):
-        load_settings(tmp_path / FILE, elsewhere, home)
+        load_settings(tmp_path / FILE, elsewhere, home, MODEL)
 
 
 def test_opentelemetry_s_endpoint_is_a_layer_below_the_file(
@@ -854,7 +889,7 @@ def test_secrets_come_from_the_environment_and_are_never_shown(
     assert settings.embedding_api_key is not None
     assert settings.embedding_api_key.get_secret_value() == f"{SENTINEL}-key"
     assert SENTINEL not in f"{settings!r} {settings} {loaded!r}"
-    entries, _ = environment_entries(os.environ, EnvSettingsSource(Settings))
+    entries, _ = environment_entries(os.environ, EnvSettingsSource(MODEL), MODEL)
     assert SENTINEL not in f"{entries!r} {entries}"
 
 

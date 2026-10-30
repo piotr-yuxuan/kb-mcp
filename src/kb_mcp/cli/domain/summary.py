@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Literal
 
 from kb_mcp.cli.domain.command import OBSERVING
 from kb_mcp.cli.domain.command_line import command_line
-from kb_mcp.config.domain.settings import SETTING_PATHS, Ignored
+from kb_mcp.config.domain.settings import Ignored
 
 if TYPE_CHECKING:
     import argparse
@@ -32,7 +32,7 @@ def values_of(loaded: Loaded) -> dict[str, object]:
     """Give every setting's value by its path joined by dots, as a command's functions take them."""
     return {
         ".".join(path): reduce(getattr, path, loaded.settings)
-        for path, kind in SETTING_PATHS.items()
+        for path, kind in loaded.paths.items()
         if kind != "table"
     }
 
@@ -44,9 +44,10 @@ def setting_line(loaded: Loaded, setting: str, *, detailed: bool) -> str:
     """
     path = tuple(setting.split("."))
     value = reduce(getattr, path, loaded.settings)
-    if SETTING_PATHS[path] == "secret":
+    kind = loaded.paths[path]
+    if kind == "secret":
         shown = "not set" if value is None else "set"
-    elif SETTING_PATHS[path] == "list":
+    elif kind == "list":
         shown = ", ".join(value) or "(none)"
     else:
         shown = "(not set)" if value is None else str(value)

@@ -26,7 +26,6 @@ from typing import TYPE_CHECKING
 from kb_mcp.config.domain.settings import (
     DEFAULT_DATA_DIR,
     NESTING,
-    SETTING_PATHS,
     SettingsError,
     at_home,
     variable,
@@ -147,7 +146,7 @@ def refuse_former_name(
         *(
             (setting, layer, reduce(getattr, setting.split("."), loaded.settings))
             for setting, layer in sorted(loaded.layers.items())
-            if SETTING_PATHS[tuple(setting.split("."))] == "path"
+            if loaded.paths[tuple(setting.split("."))] == "path"
         ),
         ("the settings file", "--config", found.settings_given),
     ]
