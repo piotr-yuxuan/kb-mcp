@@ -372,7 +372,50 @@ afresh at each run
 - **Settled** by [plan
   042](../work/changelog/042-work-log-days-and-meetings.md#days-and-meetings-the-rule), on
   the maintainer's feedback, its questions answered by their defaults when the
-  maintainer approved it.
+  maintainer approved it; dates by the day and numbers by the journal's order by [plan
+  044](../work/plans/044-meetings-by-their-day.md#dates-the-day-alone), on the
+  maintainer's answer that the work log gives the day of a meeting, never its time.
+
+## A file not read holds back its own
+
+A file of the work log that cannot be read, over 32 MiB, linking out, not UTF-8, or a
+folder that cannot be listed, is reported at each run by its path and reason, with
+what it holds back
+([`held_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+and the run writes every document but those that it builds
+([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)):
+every document for `todo.org` or its archive, whence every day, meeting and entry; for
+a transcript, its own, whose last copy stays. A meeting needs nothing of its transcript
+but the id, which the path gives, so that it links a transcript read or not
+([`transcript_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+and a link is written when its other end is written in that run or kept from an
+earlier one ([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)).
+A run that meets a problem still removes no file, and `sync` exits 1.
+
+- **Why.** Once a meeting is its day and is numbered in the journal's order, nothing
+  that it holds draws on a transcript's text: one transcript not read, or past the
+  bound of 20,000, no longer needs to hold back every meeting and every document that
+  links one, as plan 042's rule did. The maintainer asked that one faulty file be
+  flagged and reported loudly, without stopping everything.
+- **Cost.** A link made while its transcript is not read is one way until a run reads
+  that transcript, whose last copy does not name the new meeting; a link removed
+  meanwhile stays on that copy; and a meeting linking a transcript never read yet is
+  written without the link. While any file stays not read, the run removes nothing, so
+  a meeting or an entry renamed is indexed and served under its old id and its new, and
+  one deleted stays. A folder that cannot be listed hides its files: a meeting that
+  links one is written without the link, `worklog.unlinked` counting it, and a file
+  elsewhere of the same id takes that id for the run. Past the bound, each meeting that
+  links a file past it loses its link, and the row fails at each run.
+- **Rejected.** Leaving out every link to a transcript not read: both ways always, but
+  `read` of the meeting loses its record for as long as the file stays unread, which
+  past the bound is for good. Keeping a meeting's links from its last copy: a file
+  written from two runs' reads. Removing files while a file is not read, but those that
+  it builds: a second rule in the step and in its dry run. Lifting the bound, or one in
+  bytes: not needed for ten years or more.
+- **Settled** by [plan
+  044](../work/plans/044-meetings-by-their-day.md#settled-by-the-user), on the
+  maintainer's answers, its questions answered by their defaults when the maintainer
+  approved it.
 
 ## Persons joined by account, then exact name
 

@@ -438,9 +438,11 @@ links:
 
 The two relations are each other's reverse, and a link is written on both documents,
 so that a program that reads one file finds the other without reading them all. A ref
-always names a file: in a run where a document's conversion fails and it has no file
-yet, the links to it are left out of the other documents' files, until a run converts
-it.
+always names a file: in a run where a document is not read, or its conversion fails,
+and it has no file yet, the links to it are left out of the other documents' files,
+until a run reads and converts it. A link added or removed while a work-log transcript
+is not read is written on its meeting alone until a run reads the transcript, whose
+last copy stays as it was.
 `load` refuses any other relation, a field other than these or out of their order, a
 `null` and a ref off its rule, naming the entry, such as `links[0]`; and a link to the
 document itself, by its id or key, or a link given twice, naming `links`.
@@ -495,10 +497,11 @@ from the folder that `sources.worklog.path` names, read in place and never writt
 `mirror.adapters.mirror_files.owned` and `worklog_owned` tell each owner's files apart,
 so that `mirror` and the work-log step never remove each other's. A run that meets a
 problem (a file not read, a conversion that failed) removes none of its files, and a
-file not read holds back the files of what draws on it: every one for `todo.org` or
-`todo.org_archive`, on which days, meetings and entries' numbers draw; for any other,
-each meeting, whose link draws on the transcripts, and each document that
-links one, or whose file does, so that a link stays written on both files.
+file not read holds back the files of what it builds: every one for `todo.org` or
+`todo.org_archive`, on which days, meetings and entries' numbers draw; for a transcript,
+its own; for a folder not listed, or the files past the bound, the transcripts under
+it. Each problem says what it held back, as `worklog.problem` ([sync's
+telemetry](telemetry/sync.md)), at each run until it is fixed.
 
 - The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
   a day among its children, whatever its title. A **day** is a heading at level 1, or 2

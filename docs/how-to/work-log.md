@@ -31,13 +31,14 @@ kb-mcp check
 - Names beginning with `.` or `#`, or ending in `~`, are passed over: hidden files, and
   Emacs's lock, autosave and backup files. A link is followed only inside the folder.
 - A file over 32 MiB, a link out of the folder, or a file that is not UTF-8 is named by
-  its path, never by its content, and the run removes nothing, nor writes what draws on
-  it, until it is fixed: for a transcript, every meeting, so that an edited meeting
-  stays as it was and a new one has no file yet, though its day names it.
-  `worklog.nothing_removed` says how many documents were held back. Past 20,000
-  transcripts in the two folders, the first in path order are read and the rest are a
-  problem, so that no meeting is written: count them before a first run, with
-  `find transcripts meetings -name '*.org' | wc -l` in the folder.
+  its path, never by its content, in a warning, `worklog.problem`, that says what it
+  held back, at each run until it is fixed, and `sync` exits 1. The run removes
+  nothing, nor writes what the file builds: for `todo.org` or its archive, every
+  document; for a transcript, its own, whose last copy stays, while its meeting is
+  written and links it as before. Past 20,000 transcripts in the two folders, the first
+  in path order are read and the rest are a problem, which holds back those files
+  alone: a meeting that links one is written without the link. Count them before a
+  first run, with `find transcripts meetings -name '*.org' | wc -l` in the folder.
 
 Keywords are those `todo.org` declares, as org reads them: put the line that your Emacs
 configuration holds in the file, such as `#+TODO: TODO WAITING | DONE`, else only `TODO`
@@ -207,12 +208,16 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
   warning holds no removal back.
 - A document removed loses its file, unless the run reported a problem (a file not
   read, a conversion that failed): then every file stays, until a run reads the work
-  log whole. A document whose conversion fails before it has a file is named in no
-  other's `links` until a run converts it.
-- A file not read also holds back the files that draw on it, which stay as they were:
-  for `todo.org` or its archive, every file; for a transcript, every meeting's and each
-  that links a meeting, or whose file does, so that a link stays written on both files.
-  The others are written as usual.
+  log whole, and the warning says why at each run. So, meanwhile, a meeting or an entry
+  renamed is found under its old id and its new, and one deleted stays. A document not
+  read, or whose conversion fails, before it has a file is named in no other's `links`
+  until a run reads and converts it.
+- A file not read also holds back the files that it builds, which stay as they were:
+  for `todo.org` or its archive, every file; for a transcript, its own; for a folder
+  that cannot be listed, the transcripts under it. The others are written as usual. A
+  meeting that links a transcript not read names it, whose last copy names the meeting
+  back; a link added or removed meanwhile is written on the meeting alone until a run
+  reads the transcript.
 - `archives = false` removes, at the next run, the files of what the archive file holds,
   of `transcripts/archive/` and `meetings/archive/`, and of the headings tagged
   `ARCHIVE`; a meeting that links an archived transcript then links nothing, and is

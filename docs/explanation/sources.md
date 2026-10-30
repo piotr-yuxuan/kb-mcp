@@ -40,12 +40,17 @@ without a conversion. The work log gives the day of a meeting, never its time, s
 turn's time or timestamp dates a meeting or a transcript.
 
 A file that breaks a bound, links out, or is not UTF-8 is named by its path alone, as
-its content could be anything, and the run then removes no file, nor writes one that
-draws on the file not read: none for `todo.org` or its archive, which every day draws
-on; for a transcript, no meeting, whose link draws on the transcripts, nor
-a document that links one, or whose file does
-([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)). So
-the last good copy of each document stays until a run reads the folder whole.
+its content could be anything, with what it holds back
+([`held_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+and the run then removes no file, nor writes one that the file not read builds: none
+for `todo.org` or its archive, which every day, meeting and entry draws on; for a
+transcript, its own alone
+([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)). A
+meeting needs nothing of its transcript but the id, which the path gives, so it is
+written, linking the transcript, read or not. So the last good copy of what a file
+builds stays until a run reads it, and one faulty file holds back no other document.
+[The trade-offs](trade-offs.md#a-file-not-read-holds-back-its-own) give what this
+costs.
 
 ## Days and meetings, found by shape
 

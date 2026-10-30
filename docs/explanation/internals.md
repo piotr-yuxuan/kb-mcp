@@ -198,8 +198,10 @@ or a dated transcript, dated afresh by its day; another is converted again
   ([`listed`](../../src/kb_mcp/sources/worklog/adapters/files.py)), is
   over 32 MiB or is not UTF-8
   ([`source`](../../src/kb_mcp/sources/worklog/adapters/files.py)), or a
-  conversion that fails, is named by its path, never by its content; the run goes on,
-  writes no file that draws on a file not read
+  conversion that fails, is named by its path, never by its content, with what it holds
+  back ([`held_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py));
+  the run goes on, writes no file that a file not read builds, every one for `todo.org`
+  or its archive, else that file's own
   ([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
   and then removes no file, so that the last good copy of each stays.
 - **Offline**, everything: the work log is on this machine.
