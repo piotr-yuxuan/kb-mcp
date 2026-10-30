@@ -81,10 +81,11 @@ two share one
 ([`meeting_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
 so that archiving it keeps its id, but for two of one slug archived apart ([the
 trade-offs](trade-offs.md#the-journal-split-by-shape)). Transcripts are named by their day and file name, or
-that name's slug, never by their folders
-([`transcripts`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+that name's slug, never by their folders, and by their path alone, read or not
+([`transcript_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
 so that moving one under `transcripts/archive/` keeps its id, and a copy left beside
-its original is told apart by its path, with a warning.
+its original is told apart by its path, with a warning. A name is a handle: no number,
+order or time is read from it.
 
 ## One front matter for every source
 
@@ -132,9 +133,9 @@ work log's step writes each link both ways
 since a program that reads one file cannot find those that link to it without reading
 them all. A meeting finds its transcript by the path that its `:MEETING:` names, else by
 the id that the path gives
-([`Meeting.read`](../../src/kb_mcp/sources/worklog/domain/worklog.py)):
-org rewrites no link when the user moves a transcript under `archive/`, and the move
-keeps its id.
+([`Meeting.read`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+whether the file is read or not, as the link needs the id alone: org rewrites no link
+when the user moves a transcript under `archive/`, and the move keeps its id.
 
 ## One person across sources
 

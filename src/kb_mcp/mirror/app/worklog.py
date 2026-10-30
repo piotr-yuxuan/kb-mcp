@@ -40,11 +40,11 @@ from kb_mcp.sources.worklog.domain.worklog import (
     MEETING_TYPE,
     TODO,
     TODO_ARCHIVE,
-    TRANSCRIPTS,
     Document,
     journal,
     linked_back,
     revision,
+    transcript_ids,
     transcripts,
     writable,
 )
@@ -109,15 +109,16 @@ def read_worklog(
 ) -> Read:
     """Read the work log under ``folder``: its entries, days and meetings, then its transcripts.
 
-    A meeting links to its transcript and the transcript back to it, both read in this
-    one run. Without ``archives``, the archive file, ``transcripts/archive/``,
-    ``meetings/archive/`` and the subtrees tagged ARCHIVE are left out. A file not read
-    is a problem, named by its path, and the documents that draw on it are left out, as
-    ``writable`` says, so that a run writes none of their files; so is a document whose
-    file of ``kept``, the mirror's as ``existing`` reads them, has links. The span
+    A meeting links to the id of its transcript, found in this run, read or not, and a
+    transcript read links back to it. Without ``archives``, the archive file,
+    ``transcripts/archive/``, ``meetings/archive/`` and the subtrees tagged ARCHIVE are
+    left out. A file not read is a problem, named by its path, and the documents that
+    draw on it are left out, as ``writable`` says, so that a run writes none of their
+    files; so is a document whose file of ``kept``, the mirror's as ``existing`` reads
+    them, has links. The span
     ``worklog.read`` holds the reading; ``worklog.read`` says at INFO what was read.
     ``worklog.unlinked``, a warning, says how many meetings' ``:MEETING:`` link no
-    transcript read, and the first by its file, else its id: never a problem, so that it
+    transcript found, and the first by its file, else its id: never a problem, so that it
     holds no removal back.
     """
     with TRACER.start_as_current_span("worklog.read"):
@@ -130,11 +131,14 @@ def read_worklog(
             except files.UnreadableError as error:
                 problems.append(Problem(where=str(relative), reason=str(error)))
         found = {each.path: each for each in sources}
-        named, warnings = transcripts(
-            [each for each in sources if each.path.parts[0] in TRANSCRIPTS], archives=archives
+        # A file linking out is a problem, never listed: its path names it all the same.
+        ids, warnings = transcript_ids(
+            [*listing.paths, *(PurePosixPath(each.path) for each in listing.problems)],
+            archives=archives,
         )
+        named = transcripts(sources, ids, archives=archives)
         todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
-        journaled, unlinked = journal(todo, archive, archives=archives, transcripts=named)
+        journaled, unlinked = journal(todo, archive, archives=archives, transcripts=ids)
         unread = {each.where for each in problems}
         linked = {identifier for identifier, (matter, _) in kept.items() if matter.links}
         every = (*journaled, *linked_back(named, journaled))

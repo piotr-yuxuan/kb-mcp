@@ -522,10 +522,11 @@ links one, or whose file does, so that a link stays written on both files.
   never another title's. Its people are the names that its `:PARTICIPANTS:` gives, split at
   commas outside brackets, each once and as written, in the role `participant`; its link
   `transcript` names the transcript whose file its `:MEETING:` names, from the folder of
-  its org file, when that file is read, else, for a file under `transcripts/` or
-  `meetings/`, the transcript read of the id that the file's path gives, since a move
-  under `archive/` keeps the id and org rewrites no link; that transcript's link
-  `summary` names it back; a `:MEETING:` that reaches no file read links nothing, and
+  its org file, when that file is found, read or not, by the id that its path gives;
+  else, for a file under `transcripts/` or `meetings/`, the transcript found of the id
+  that the file's path gives, since a move under `archive/` keeps the id and org
+  rewrites no link; that transcript's link `summary` names it back; a `:MEETING:` that
+  reaches no file found links nothing, and
   `worklog.unlinked` counts it, a warning that holds no removal back ([sync's
   telemetry](telemetry/sync.md)). A day and a meeting begin at level 1, what joins them
   at level 2.
@@ -552,11 +553,14 @@ links one, or whose file does, so that a link stays written on both files.
   name: `notes on x.org` of 21 October is `t-20261021-notes-on-x`,
   `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. Without a day, it is `t-`
   and the digest of its name, `meeting-` before it under `meetings/`. No folder below
-  the first is in an id, so a move under `archive/` keeps it. Of two files of one id,
-  the second in order of first folder, the folder that holds it, name, then path takes
-  the digest of its whole path from the work log's root, written with a leading `/`,
-  which no name has: a move under `archive/` with the folder that holds a file never
-  hands its id to the other, unless both folders have one name.
+  the first is in an id, so a move under `archive/` keeps it. The name is a handle
+  alone, from which no number, order or time is read. Of two files of one id, the
+  second in order of first folder, the folder that holds it, name, then path takes the
+  digest of its whole path from the work log's root, written with a leading `/`, which
+  no name has: a move under `archive/` with the folder that holds a file never hands
+  its id to the other, unless both folders have one name. Each file found, read or
+  not, takes its id from its path alone, so that a file not read moves no other's; that
+  order decides nothing else.
 - A transcript's people are its speakers, in the role `participant`, each once, in
   order of first speech: inside its `#+begin_quote` blocks when it has any, the notes
   outside them being the user's, else on any line, each line that holds an optional

@@ -128,11 +128,11 @@ is `t-20261021-notes-on-x`. A file under `meetings/` takes `meeting-` before its
 so that `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. A name is a handle
 alone, a number or words: `meetings/2026-10-27 Tue/Vendor call.org` is
 `t-20261027-meeting-vendor-call`, and no order or time is read from it. A file without
-a day takes a digest of its name. Of two files of one id, such as a copy and its original,
-or two `notes.org` in two folders, the file whose folder comes first by name keeps it,
-then the first in path order, and a warning names both. So archiving one, with its
-folder, never hands its id to the other, unless the two folders have one name, as a
-copy's may.
+a day takes a digest of its name. Of two files of one id, such as a copy and its
+original, or two `notes.org` in two folders, the file whose folder comes first by name
+keeps it, then the first in path order, read or not, and a warning names both. So
+archiving one, with its folder, never hands its id to the other, unless the two folders
+have one name, as a copy's may.
 
 ## 4. Mirror it
 
@@ -197,9 +197,9 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
 - A transcript added or removed changes the link of the meeting whose `:MEETING:`
   names it, whose file is written again without a conversion; one moved
   under `archive/`, its id kept, changes neither.
-- A `:MEETING:` that links no transcript read, through `..`, absolute, of another type,
-  or to a file not read, such as one outside `transcripts/` and `meetings/`, or one
-  there whose id no transcript read has, leaves its meeting without a link. The run
+- A `:MEETING:` that links no transcript found, through `..`, absolute, of another
+  type, or to a file not found, such as one outside `transcripts/` and `meetings/`, or
+  one there whose id no transcript found has, leaves its meeting without a link. The run
   warns once, `worklog.unlinked`, with how many and the first: the file that its link
   names when it is in brackets or begins `file:` or `./`, else the meeting's id, a path
   alone included, since any text, a meeting room's URL among them, reads as one; never
