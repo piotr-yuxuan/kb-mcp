@@ -1,1 +1,1 @@
-"""A download's rules: periods, coverage, deletions, names; and the records it stores."""
+"""A download's rules: periods, coverage, deletions, attached files; and the records it stores."""
