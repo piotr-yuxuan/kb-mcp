@@ -65,8 +65,8 @@ class Problem(Record):
     """A file of the work log not read, or a document not converted, and what it held back.
 
     ``where`` is the path from the work log's folder, or a document's file and id, never
-    its content; ``held_back``, what keeps its last copy for it: as
-    ``worklog.held_back`` says for a file not read, the document's id for a conversion.
+    its content; ``held_back``, what keeps its last copy for it: for a file not read, as
+    the domain's function ``held_back`` says; for a conversion, the document's id.
     """
 
     where: str

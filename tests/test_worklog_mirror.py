@@ -870,6 +870,35 @@ def test_a_transcript_not_read_holds_back_itself_alone(run: Run) -> None:
     ]
 
 
+def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path: Path) -> None:
+    """Named by its path alone, as listed reports it, it keeps its id and its last copy.
+
+    The stand-up still links it, so the warning on links counts the missing file alone:
+    "It should be flagged and reported loudly in logs" (the user, 2026-10-29, plan 044).
+    """
+    run()
+    record = run.root / "transcripts/current/2026-10-27 Tue/1.org"
+    kept = run.docs / run.by_id("t-20261027-1").path
+    before = kept.read_bytes()
+    outside = tmp_path / "elsewhere.org"
+    outside.write_bytes(record.read_bytes())
+    record.unlink()
+    record.symlink_to(outside)
+    with capture_logs() as logged:
+        outcome = run()
+    assert [(each.where, each.reason, each.held_back) for each in outcome.problems] == [
+        ("transcripts/current/2026-10-27 Tue/1.org", "links outside the work log", "t-20261027-1")
+    ]
+    assert kept.read_bytes() == before
+    assert [(each.relation, each.ref) for each in run.by_id(STANDUP).matter.links] == [
+        ("transcript", "t-20261027-1")
+    ]
+    warned = [each for each in logged if each["event"] == "worklog.unlinked"]
+    assert [(each["meetings"], each["first"]) for each in warned] == [
+        (1, "meetings/2026-10-27 Tue/2.org")
+    ]
+
+
 def test_a_meeting_linking_a_new_file_not_read_links_it_once_it_is_read(run: Run) -> None:
     """Written without the link while the file has no copy, so that no link is one way.
 
