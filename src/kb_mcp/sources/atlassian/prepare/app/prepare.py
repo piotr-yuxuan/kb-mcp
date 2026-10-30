@@ -39,7 +39,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
 )
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, ConfluenceDocument, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH
-from kb_mcp.sources.atlassian.prepare.adapters.mirrored import owned
+from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
     Context,
     MarkupError,

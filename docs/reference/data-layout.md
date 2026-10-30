@@ -499,8 +499,8 @@ may fail at once, seldom, as SQLite's switch of a new file to WAL mode does not 
 
 Owned by `sync`'s work-log step (017), in `sources.worklog.prepare.app.prepare`:
 `<data>/docs/worklog/`, from the folder that `sources.worklog.path` names, read in place
-and never written. `sources.atlassian.prepare.adapters.mirrored.owned` and
-`sources.worklog.prepare.adapters.mirrored.worklog_owned` tell each owner's files apart,
+and never written. `sources.atlassian.prepare.adapters.owned.owned` and
+`sources.worklog.prepare.adapters.owned.worklog_owned` tell each owner's files apart,
 so that `mirror` and the work-log step never remove each other's. A run that meets a
 problem (a file not read, a conversion that failed) removes none of its files but the
 old file of a document written again under another path, as an entry's or a transcript's

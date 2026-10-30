@@ -341,7 +341,7 @@ go on. The space's tree, `_tree.md`, is written from the listings
 [`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py) writes each file
 whose bytes differ, through a hidden file renamed into place. Then, when nothing was
 reported, it removes every file that it owns
-([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/mirrored.py): documents,
+([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py): documents,
 trees and assets) and no longer wants, such as the file of a document gone or moved, or
 the old name of one whose title changed. When something was reported, it removes only
 the files of documents confirmed gone, and the old file of a document that moved once

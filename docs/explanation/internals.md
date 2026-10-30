@@ -193,7 +193,7 @@ or a dated transcript, dated afresh by its day; another is converted again
 - **Writes**, into `<data>/docs/worklog/` alone, through the mirror's
   [`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
   whose bytes differ, renamed into place, and the files of documents gone removed
-  ([`worklog_owned`](../../src/kb_mcp/sources/worklog/prepare/adapters/mirrored.py)).
+  ([`worklog_owned`](../../src/kb_mcp/sources/worklog/prepare/adapters/owned.py)).
 - **One document's failure**, a file that links out of the folder
   ([`listed`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), is
   over 32 MiB or is not UTF-8

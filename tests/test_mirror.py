@@ -24,7 +24,7 @@ from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
-from kb_mcp.sources.worklog.prepare.adapters.mirrored import worklog_owned
+from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
 from tests.mirrors import mirrored
 from tests.samples import (
     v1_user,

@@ -31,7 +31,7 @@ from structlog.testing import capture_logs
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import sync
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
-from kb_mcp.sources.atlassian.prepare.adapters.mirrored import owned
+from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.prepare.adapters import files
 from kb_mcp.sources.worklog.prepare.app.prepare import (
     Outcome,
