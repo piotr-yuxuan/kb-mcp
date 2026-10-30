@@ -925,6 +925,24 @@ def test_an_entry_retitled_while_a_file_is_not_read_keeps_one_file(run: Run, tit
     )
 
 
+def test_two_files_of_one_id_from_an_earlier_run_leave_one_while_a_file_is_not_read(
+    run: Run,
+) -> None:
+    """As an earlier rule could leave, a copy under an older title's name: retired.
+
+    Every file of a written document's id is known, the last one read too.
+    """
+    run()
+    (entry,) = [each for each in run.files() if ROLLED_BACK in each.body]
+    older = run.docs / "worklog/entries" / f"{entry.matter.id}-an-older-title.md"
+    older.write_bytes((run.docs / entry.path).read_bytes())
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    assert run.plan().to_remove == 1
+    outcome = run()
+    assert [each.path for each in run.files() if each.matter.id == entry.matter.id] == [entry.path]
+    assert (older.exists(), outcome.changes.removed) == (False, 1)
+
+
 def test_an_entry_retitled_whose_conversion_fails_keeps_its_old_file(run: Run) -> None:
     """Not written, it keeps its last copy: no file of its id is retired."""
     run()
