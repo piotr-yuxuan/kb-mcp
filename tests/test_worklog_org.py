@@ -33,6 +33,7 @@ from kb_mcp.sources.worklog.domain.worklog import (
     TRANSCRIBED,
     Document,
     Source,
+    held_back,
     journal,
     linked_back,
     meeting_ids,
@@ -1573,29 +1574,27 @@ def test_only_a_meeting_s_link_that_reaches_nothing_is_returned_in_meetings_orde
     assert unlinked == ["first.org", "m-20261027-second"]
 
 
-# The transcript that no meeting of SAMPLE links.
-ALONE = f"t-{sha('alone.org')}"
-
-
 @pytest.mark.parametrize(
-    ("unread", "linked", "kinds"),
+    ("unread", "every"),
     [
-        (set(), set(), ["entry", "day", "meeting", "transcript", "transcript"]),
-        (set(), {ALONE}, ["entry", "day", "meeting", "transcript", "transcript"]),
-        ({"todo.org"}, set(), []),
-        ({"todo.org_archive"}, set(), []),
-        ({"transcripts/misc/x.org"}, set(), ["entry", "day", "transcript"]),
-        ({"transcripts/misc/x.org"}, {ALONE}, ["entry", "day"]),
-        ({"transcripts, meetings"}, set(), ["entry", "day", "transcript"]),
+        (set(), True),
+        ({"todo.org"}, False),
+        ({"todo.org_archive"}, False),
+        ({"."}, False),
+        ({"transcripts/misc/x.org"}, True),
+        ({"meetings/2026-10-27 Tue/1.org"}, True),
+        ({"transcripts/current"}, True),
+        ({"transcripts, meetings"}, True),
     ],
 )
-def test_a_file_not_read_holds_back_each_document_that_draws_on_it(
-    unread: set[str], linked: set[str], kinds: list[str]
+def test_a_file_not_read_holds_back_every_document_for_the_journal_s_alone(
+    unread: set[str], *, every: bool
 ) -> None:
-    """The journal's files: every one; another: the meetings and what links one.
+    """The journal's files, or the folder itself: none written; any other: each one read.
 
-    Nor a document whose file links one, as the mirror holds it, though it links none
-    now: the meeting that its file names keeps its file, which names it back.
+    A file not read builds no document, which keeps its last copy, and holds back no
+    other, links and all: "I do not see why one faulty could hold back other meetings"
+    (the user, 2026-10-29, plan 044).
     """
     read, _ = transcribed(
         [
@@ -1610,9 +1609,44 @@ def test_a_file_not_read_holds_back_each_document_that_draws_on_it(
     )
     found, _ = journal(todo(DECLARED + SAMPLE), None, archives=True, transcripts=by_path(read))
     documents = [*found, *linked_back(read, found)]
-    written = writable(documents, unread, linked)
-    assert [each.type for each in written] == kinds
-    assert all(each.links == () for each in written if unread)
+    assert [each.type for each in documents] == [
+        "entry",
+        "day",
+        "meeting",
+        "transcript",
+        "transcript",
+    ]
+    assert writable(documents, unread) == (documents if every else [])
+
+
+@pytest.mark.parametrize(
+    ("where", "held"),
+    [
+        ("todo.org", "every document"),
+        ("todo.org_archive", "every document"),
+        (".", "every document"),
+        ("transcripts/current/2026-10-27 Tue/1.org", "t-20261027-1"),
+        ("meetings/out.org", f"t-{sha('meeting-out.org')}"),
+        ("transcripts/current/2026-10-27 Tue", "the transcripts not read under it"),
+        ("meetings/out.html", "the transcripts not read under it"),
+        ("transcripts, meetings", "the transcripts not read under it"),
+    ],
+)
+def test_a_file_not_read_says_what_it_held_back(where: str, held: str) -> None:
+    """Every document for the journal's files; a transcript's id; else what is under it.
+
+    "It should be flagged and reported loudly in logs" (the user, 2026-10-29, plan 044).
+    A path and a reason do not tell a folder from a file: a folder, an HTML file and an
+    org file linking out read alike, the last a transcript of an id.
+    """
+    ids, _ = transcript_ids(
+        [
+            PurePosixPath("transcripts/current/2026-10-27 Tue/1.org"),
+            PurePosixPath("meetings/out.org"),
+        ],
+        archives=True,
+    )
+    assert held_back(where, ids) == held
 
 
 def test_the_work_log_s_relations_are_among_the_front_matter_s() -> None:

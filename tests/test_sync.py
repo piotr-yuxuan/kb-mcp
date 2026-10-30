@@ -551,9 +551,11 @@ def test_sync_and_its_dry_run_leave_the_work_log_as_it_was(
 def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     tmp_path: Path, worklog: Path, telemetry: InMemory
 ) -> None:
-    """Until the next clean run; the logs say that nothing was removed, nor held back.
+    """Until the next clean run; the logs say that nothing was removed, and what was held.
 
-    The row's event and span say that it failed, and the entry is counted failed.
+    The row's event and span say that it failed, and the entry is counted failed; its
+    problem says that its entry alone was held back, "reported loudly in logs" (the
+    user, 2026-10-29, plan 044).
     """
     settings = chosen_settings(tmp_path, worklog)
     step = Worklog(folder=worklog, archives=True)
@@ -569,7 +571,10 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
         synced = sync(context(settings, FIRST, failing), [step])
     assert (synced.steps[0].outcome, synced.exit_status) == ("failed", ExitStatus.FAILED)
     (kept,) = logged_as(logged, "worklog.nothing_removed")
-    assert (kept["problems"], kept["held_back"]) == (1, 0)
+    assert {key: kept[key] for key in kept if key not in {"event", "log_level"}} == {"problems": 1}
+    (problem,) = logged_as(logged, "worklog.problem")
+    assert problem["where"] == f"todo.org, {problem['held_back']}"
+    assert re.fullmatch(r"e-[0-9a-f]{16}", problem["held_back"])
     assert [each["outcome"] for each in logged_as(logged, "sync.step")] == ["failed"]
     spans = telemetry.spans.get_finished_spans()
     (row,) = [span for span in spans if span.name == "sync.step"]
@@ -579,6 +584,28 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     todo.write_text(todo.read_text("utf-8").replace("Drafted, failing, on", "Drafted on"), "utf-8")
     assert sync(context(settings, FIRST), [step]).exit_status == ExitStatus.OK
     assert not gone.exists()
+
+
+def test_a_transcript_not_read_is_said_loudly_with_what_it_held_back(
+    home: Path, worklog: Path, capsys: CaptureFixture[str]
+) -> None:
+    """On stderr at the default level, one worklog.problem: where, why, what it held back.
+
+    "It should be flagged and reported loudly in logs" (the user, 2026-10-29, plan 044):
+    the run exits 1; its JSON gives the problem's held_back, and none at the row's top.
+    """
+    where = "transcripts/current/2026-10-27 Tue/1.org"
+    (worklog / where).write_bytes(b"* Caf\xe9\n")
+    config = settings_file(home, worklog)
+    assert main(command(home, config, "--yes", "--format", "json")) == ExitStatus.FAILED
+    captured = capsys.readouterr()
+    (said,) = [line for line in captured.err.splitlines() if "worklog.problem" in line]
+    assert all(part in said for part in (where, "not UTF-8", "held_back=t-20261027-1"))
+    (row,) = [each for each in json.loads(captured.out)["steps"] if each["step"] == "worklog"]
+    assert row["result"]["problems"] == [
+        {"where": where, "reason": "not UTF-8", "held_back": "t-20261027-1"}
+    ]
+    assert "held_back" not in row["result"]
 
 
 def test_the_text_gives_a_row_per_step_then_its_counts(

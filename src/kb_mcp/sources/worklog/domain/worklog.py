@@ -30,6 +30,13 @@ if TYPE_CHECKING:
 
 TODO = "todo.org"
 TODO_ARCHIVE = "todo.org_archive"
+# What every document draws on: the work log's folder itself, and the journal's two
+# files, whence every day, meeting and entry, and every transcript's links back.
+SHARED = frozenset({".", TODO, TODO_ARCHIVE})
+# What a problem of reading holds back, besides a transcript's id: every document, or
+# the transcripts under a folder or past the bound, which the run cannot name.
+EVERY_DOCUMENT = "every document"
+UNDER_IT = "the transcripts not read under it"
 # The folders of transcripts: those saved, and the meeting files that a meeting's
 # :MEETING: links, as the user's meeting notes save them.
 MEETINGS = "meetings"
@@ -704,27 +711,26 @@ def linked_back(transcripts: Iterable[Document], documents: Iterable[Document]) 
     ]
 
 
-def writable(
-    documents: Iterable[Document], unread: Collection[str], linked: Collection[str]
-) -> list[Document]:
+def writable(documents: Iterable[Document], unread: Collection[str]) -> list[Document]:
     """Return the documents whose files a run may write, when ``unread`` were not read.
 
     ``unread`` names each file or folder of the work log not read, by its path from the
-    work log's folder; ``linked``, the id of each document whose file, as the mirror holds
-    it, has links. A day draws on ``todo.org`` and its archive, and an entry's number on
-    both: without either, none is written. A meeting draws too on the transcript that it
-    links, whose start numbers its id among its day's, and a transcript's links name
-    those ids: without any other, neither a meeting nor a document that links one, or
-    whose file does, is written. So no file is written from a part of what it draws on,
-    each keeps its last good copy until a run reads the folder whole, and a link that a
-    file kept names stays written on both documents.
+    work log's folder. Every document draws on ``todo.org`` and its archive: without
+    either, none is written. Any other file builds its own document alone, which is not
+    among ``documents`` and keeps its last copy; it holds back no other. So no file is
+    written from a part of what it draws on.
     """
-    if {TODO, TODO_ARCHIVE} & set(unread):
-        return []
-    if unread:
-        return [
-            each
-            for each in documents
-            if each.type != MEETING_TYPE and not each.links and each.id not in linked
-        ]
-    return list(documents)
+    return [] if SHARED & set(unread) else list(documents)
+
+
+def held_back(where: str, ids: Mapping[PurePosixPath, str]) -> str:
+    """Return what keeps its last copy when ``where`` was not read, as ``writable`` says.
+
+    ``where`` is a file or folder of the work log, by its path from the work log's
+    folder; ``ids``, the transcripts found, as ``transcript_ids`` gives them. Every
+    document for ``todo.org``, its archive, or the work log's folder itself (``.``); the
+    transcript's id for a path that ``ids`` holds, read or not; else the transcripts not
+    read under it, as a problem's path and reason do not tell a folder from a file: a
+    folder's, the files past the bound for its problem, none for an HTML file.
+    """
+    return EVERY_DOCUMENT if where in SHARED else ids.get(PurePosixPath(where), UNDER_IT)

@@ -169,13 +169,16 @@ def worklog(context: Context, step: Worklog, add: Callable[[Row], None]) -> None
             add(Row(step="worklog", outcome="failed", result=None))
             return
         for problem in done.problems:
-            log.warning("worklog.problem", where=problem.where, reason=problem.reason)
+            log.warning(
+                "worklog.problem",
+                where=problem.where,
+                reason=problem.reason,
+                held_back=problem.held_back,
+            )
         for warning in done.warnings:
             log.warning("worklog.same_id", reason=warning)
         if done.problems and not context.dry_run:
-            log.warning(
-                "worklog.nothing_removed", problems=len(done.problems), held_back=done.held_back
-            )
+            log.warning("worklog.nothing_removed", problems=len(done.problems))
         add(Row(step="worklog", outcome="failed" if done.problems else "done", result=done))
 
 

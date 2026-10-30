@@ -6,10 +6,11 @@ removes, under ``worklog/`` alone, those of documents gone. A document whose fil
 its revision keeps that file's body, dates and time of fetch, so that an edit elsewhere
 in its org file moves neither; but a day, a meeting and a dated transcript are dated by
 their day, afresh at each run, so that a file that held another date takes its day
-without a conversion. A run that reports a problem removes nothing, and a file
-not read holds back every document that draws on it, as ``worklog.writable`` says, so
-that the last good copy of each file stays; a meeting whose link reaches no transcript
-read is a warning, not a problem. Reading, building and writing are each a span; each
+without a conversion. A run that reports a problem removes nothing, and a file not read
+holds back what draws on it alone, as ``worklog.writable`` says: every document for
+``todo.org`` or its archive, else its own, so that the last good copy of each file
+stays, and each problem says what it held back; a meeting whose link reaches no
+transcript found is a warning, not a problem. Reading, building and writing are each a span; each
 document is counted, and each conversion timed, by its kind, as
 ``docs/reference/telemetry/sync.md`` lists them.
 """
@@ -29,7 +30,7 @@ from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.markdown import WORKLOG, documents, dump, load
 from kb_mcp.mirror.adapters.mirror_files import Changes, sync, worklog_owned
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.app.mirror import CONVERSION_DURATION, DOCUMENTS, Problem
+from kb_mcp.mirror.app.mirror import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, Link, PersonRole
 from kb_mcp.mirror.domain.mirror_layout import one_line, worklog_path
 from kb_mcp.observability.adapters.progress import task
@@ -41,6 +42,7 @@ from kb_mcp.sources.worklog.domain.worklog import (
     TODO,
     TODO_ARCHIVE,
     Document,
+    held_back,
     journal,
     linked_back,
     revision,
@@ -50,7 +52,6 @@ from kb_mcp.sources.worklog.domain.worklog import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     from pathlib import Path
 
     from kb_mcp.mirror.adapters.pandoc import Pandoc
@@ -60,25 +61,36 @@ SOURCE = "worklog"
 TRACER = trace.get_tracer(__name__)
 
 
+class Problem(Record):
+    """A file of the work log not read, or a document not converted, and what it held back.
+
+    ``where`` is the path from the work log's folder, or a document's file and id, never
+    its content; ``held_back``, what keeps its last copy for it: as
+    ``worklog.held_back`` says for a file not read, the document's id for a conversion.
+    """
+
+    where: str
+    reason: str
+    held_back: str
+
+
 class Read(Record):
     """The work log's documents to write, in order, and the HTML transcripts left out.
 
-    The documents are those read that draw on no file not read; ``held_back`` counts the
-    others. Problems stop removals; warnings, such as two transcripts of one id, do not.
+    The documents are those read that draw on no file not read. Problems stop removals;
+    warnings, such as two transcripts of one id, do not.
     """
 
     documents: tuple[Document, ...]
     html: int
     problems: tuple[Problem, ...]
     warnings: tuple[str, ...]
-    held_back: int
 
 
 class Outcome(Record):
     """What a run did: documents mirrored, files changed, HTML transcripts left out.
 
     Problems stop removals; warnings, such as two transcripts of one id, do not.
-    ``held_back`` counts the documents read that a file not read held back.
     """
 
     documents: int
@@ -86,14 +98,10 @@ class Outcome(Record):
     html: int
     problems: tuple[Problem, ...]
     warnings: tuple[str, ...]
-    held_back: int
 
 
 class Planned(Record):
-    """What a run would do: documents, those to convert, files to remove, HTML left out.
-
-    ``held_back`` counts the documents read that a file not read would hold back.
-    """
+    """What a run would do: documents, those to convert, files to remove, HTML left out."""
 
     documents: int
     to_convert: int
@@ -101,21 +109,17 @@ class Planned(Record):
     html: int
     problems: tuple[Problem, ...]
     warnings: tuple[str, ...]
-    held_back: int
 
 
-def read_worklog(
-    folder: Path, kept: Mapping[str, tuple[FrontMatter, str]], *, archives: bool
-) -> Read:
+def read_worklog(folder: Path, *, archives: bool) -> Read:
     """Read the work log under ``folder``: its entries, days and meetings, then its transcripts.
 
     A meeting links to the id of its transcript, found in this run, read or not, and a
     transcript read links back to it. Without ``archives``, the archive file,
     ``transcripts/archive/``, ``meetings/archive/`` and the subtrees tagged ARCHIVE are
-    left out. A file not read is a problem, named by its path, and the documents that
-    draw on it are left out, as ``writable`` says, so that a run writes none of their
-    files; so is a document whose file of ``kept``, the mirror's as ``existing`` reads
-    them, has links. The span
+    left out. A file not read is a problem, named by its path, with what it holds back,
+    as ``held_back`` says; the documents that draw on it are left out, as ``writable``
+    says, so that a run writes none of their files. The span
     ``worklog.read`` holds the reading; ``worklog.read`` says at INFO what was read.
     ``worklog.unlinked``, a warning, says how many meetings' ``:MEETING:`` link no
     transcript found, and the first by its file, else its id: never a problem, so that it
@@ -123,26 +127,29 @@ def read_worklog(
     """
     with TRACER.start_as_current_span("worklog.read"):
         listing = files.listed(folder, archives=archives)
-        problems = [Problem(where=each.path, reason=each.reason) for each in listing.problems]
+        unread = [(each.path, each.reason) for each in listing.problems]
         sources: list[Source] = []
         for relative in listing.paths:
             try:
                 sources.append(files.source(listing.root, relative))
             except files.UnreadableError as error:
-                problems.append(Problem(where=str(relative), reason=str(error)))
+                unread.append((str(relative), str(error)))
         found = {each.path: each for each in sources}
         # A file linking out is a problem, never listed: its path names it all the same.
         ids, warnings = transcript_ids(
             [*listing.paths, *(PurePosixPath(each.path) for each in listing.problems)],
             archives=archives,
         )
+        problems = [
+            Problem(where=where, reason=reason, held_back=held_back(where, ids))
+            for where, reason in unread
+        ]
         named = transcripts(sources, ids, archives=archives)
         todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
         journaled, unlinked = journal(todo, archive, archives=archives, transcripts=ids)
-        unread = {each.where for each in problems}
-        linked = {identifier for identifier, (matter, _) in kept.items() if matter.links}
-        every = (*journaled, *linked_back(named, journaled))
-        documents_read = writable(every, unread, linked)
+        documents_read = writable(
+            [*journaled, *linked_back(named, journaled)], [where for where, _ in unread]
+        )
     log = structlog.get_logger()
     kinds = Counter(each.type for each in journaled)
     log.info(
@@ -156,13 +163,11 @@ def read_worklog(
     )
     if unlinked:
         log.warning("worklog.unlinked", meetings=len(unlinked), first=unlinked[0])
-    held_back = len(every) - len(documents_read)
     return Read(
         documents=tuple(documents_read),
         html=listing.html,
         problems=tuple(problems),
         warnings=tuple(warnings),
-        held_back=held_back,
     )
 
 
@@ -193,17 +198,17 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
     ``worklog.convert`` and ``worklog.write`` hold building the files and writing them.
     ``worklog.document`` says at DEBUG each document, by its path, id and title, and how
     it went; ``worklog.end`` at INFO the files written. Each document is counted by its
-    outcome and kind, and each conversion timed. A document whose conversion failed, and
-    that has no file, is no link's other end: the links to it are left out of the
-    others' files, so that each link names a file.
+    outcome and kind, and each conversion timed. A link is written only when its other
+    end is written in this run or kept from an earlier one, so that each link names a
+    file: a transcript not read, or whose conversion failed, without a file yet is no
+    link's other end.
     """
     log = structlog.get_logger()
     kept = existing(docs)
-    read = read_worklog(folder, kept, archives=archives)
+    read = read_worklog(folder, archives=archives)
     problems = list(read.problems)
     converter = pandoc.org_converter()
     ready: dict[PurePosixPath, tuple[FrontMatter, str]] = {}
-    failed: set[str] = set()
     with (
         TRACER.start_as_current_span("worklog.convert"),
         task("work-log documents", len(read.documents)) as built,
@@ -224,10 +229,13 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                     body = pandoc.org_markdown(document.text)
                 except PandocFailedError as error:
                     problems.append(
-                        Problem(where=f"{document.source.path}, {document.id}", reason=str(error))
+                        Problem(
+                            where=f"{document.source.path}, {document.id}",
+                            reason=str(error),
+                            held_back=document.id,
+                        )
                     )
                     DOCUMENTS.add(1, {"kb_mcp.outcome": "failed", **kind})
-                    failed.add(document.id)
                     continue
                 outcome = "mirrored"
                 created, updated = document.dates(None if old is None else old.created)
@@ -269,12 +277,10 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                 kind=document.type,
                 outcome=outcome,
             )
-    gone = failed - kept.keys()
+    ends = {matter.id for matter, _ in ready.values()} | kept.keys()
     wanted: dict[PurePosixPath, bytes | Path] = {
         path: dump(
-            copy.replace(
-                matter, links=tuple(link for link in matter.links if link.ref not in gone)
-            ),
+            copy.replace(matter, links=tuple(link for link in matter.links if link.ref in ends)),
             body,
         ).encode()
         for path, (matter, body) in ready.items()
@@ -295,7 +301,6 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
         html=read.html,
         problems=tuple(problems),
         warnings=read.warnings,
-        held_back=read.held_back,
     )
 
 
@@ -309,7 +314,7 @@ def plan_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = T
     would do.
     """
     kept = existing(docs)
-    read = read_worklog(folder, kept, archives=archives)
+    read = read_worklog(folder, archives=archives)
     converter = pandoc.org_converter()
     held = {identifier: matter.revision for identifier, (matter, _) in kept.items()}
     to_convert = sum(
@@ -333,5 +338,4 @@ def plan_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = T
         html=read.html,
         problems=read.problems,
         warnings=read.warnings,
-        held_back=read.held_back,
     )
