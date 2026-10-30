@@ -35,15 +35,15 @@ A path that starts with `~` starts in the home directory.
 
 | Key | Variable | Type | Default | Description |
 |---|---|---|---|---|
-| `site` | `KB_MCP_SITE` | text | unset | The Atlassian site, for Confluence and Jira alike: https://\<name>.atlassian.net. |
-| `email` | `KB_MCP_EMAIL` | text | unset | The email address of the Atlassian account that signs in. |
-| `api_token` | `KB_MCP_API_TOKEN` | secret | unset | The Atlassian account's API token, a secret: from the environment alone. |
 | `data_dir` | `KB_MCP_DATA_DIR` | path | `"~/kb-mcp"` | Where the data lives, ~ being the home directory: never under a synchronised folder, nor inside a git working tree. |
 | `model` | `KB_MCP_MODEL` | text | `"qwen3-embedding:0.6b"` | The embedding model that indexes by meaning, as the endpoint names it. |
 | `search_mode` | `KB_MCP_SEARCH_MODE` | one of `lexical`, `semantic`, `hybrid` | `"hybrid"` | How search ranks: by words (lexical), by meaning (semantic), or both (hybrid), the default; all but lexical need the embedding endpoint. |
 | `chunking` | `KB_MCP_CHUNKING` | one of `sections`, `windows`, `section-paths`, `small-to-big` | `"windows"` | How index cuts documents into the pieces it embeds: sections, windows, section-paths, small-to-big; search follows the index. By default windows, which ranked best on plan 019's sandbox. |
 | `embedding_url` | `KB_MCP_EMBEDDING_URL` | text | `"http://127.0.0.1:11434/v1"` | The OpenAI-compatible API that embeds, up to /embeddings, excluded. |
 | `embedding_api_key` | `KB_MCP_EMBEDDING_API_KEY` | secret | unset | The embedding endpoint's API key, if it needs one, a secret: from the environment alone. |
+| `accounts.atlassian.site` | `KB_MCP_ACCOUNTS__ATLASSIAN__SITE` | text | unset | The Atlassian site, for Confluence and Jira alike: https://\<name>.atlassian.net. |
+| `accounts.atlassian.email` | `KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL` | text | unset | The email address of the Atlassian account that signs in. |
+| `accounts.atlassian.api_token` | `KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN` | secret | unset | The Atlassian account's API token, a secret: from the environment alone. |
 | `sources.confluence.spaces` | `KB_MCP_SOURCES__CONFLUENCE__SPACES` | list of text | `[]` | The spaces to download when no --space is given, by key. |
 | `sources.jira.projects` | `KB_MCP_SOURCES__JIRA__PROJECTS` | list of text | `[]` | The projects to download when no --project is given, by key. |
 | `sources.worklog.path` | `KB_MCP_SOURCES__WORKLOG__PATH` | path | unset | The work log's folder, absolute or under ~, which holds todo.org, todo.org_archive, transcripts/ and meetings/; read in place, never written. |

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import (
     SIGN_IN,
+    SITE,
     add_output_options,
     add_settings_options,
     email_without_token,
@@ -33,7 +34,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         command=Command(
             "doctor",
             "kb_mcp.cli.commands.doctor",
-            reads=("site", *SIGN_IN, "data_dir"),
+            reads=(SITE, *SIGN_IN, "data_dir"),
             flags=flags,
             actions=actions,
             unapplied=email_without_token,

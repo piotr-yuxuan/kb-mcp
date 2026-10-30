@@ -34,7 +34,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sign
     the result alone; a sign-in that does not complete is an error.
     """
     settings = loaded.settings
-    site = str(settings.site)
+    site = str(settings.accounts.atlassian.site)
     sys.stderr.write(f"Sign in to {site} in the Chrome window that opens.\n")
     try:
         login(settings, site, arguments.chrome, extensions=arguments.keep_extensions)

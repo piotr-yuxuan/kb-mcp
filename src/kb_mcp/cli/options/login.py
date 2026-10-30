@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import (
     SIGN_IN,
+    SITE,
     add_output_options,
     add_settings_options,
     add_yes_option,
@@ -49,7 +50,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         command=Command(
             "login",
             "kb_mcp.cli.commands.login",
-            reads=("site", "data_dir"),
+            reads=(SITE, "data_dir"),
             flags=flags,
             actions=(*actions, chrome, extensions),
             writes=True,

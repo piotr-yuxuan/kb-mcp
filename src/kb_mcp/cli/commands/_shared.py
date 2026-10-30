@@ -36,9 +36,9 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
 
     The settings are loaded for every command observed, which reads those of
     ``OBSERVING`` whatever else it reads, by the model that holds the table of each
-    source of the registry, ``sources``, each loaded by the module path that its
-    declaration names. Refused settings exit 2 before the run is
-    imported, as does what the command refuses of them and of its arguments, a program
+    source of the registry, ``sources``, and of each account that a source names, each
+    loaded by the module path that its declaration names. Refused settings exit 2 before
+    the run is imported, as does what the command refuses of them and of its arguments, a program
     that it needs missing from PATH, or a file that it reads missing or a folder, a pipe
     being read: each is an error, the event ``settings.refused`` or ``run.refused`` with
     its reason, on stderr alone, as a run that never started has no log file. Else the
@@ -76,7 +76,14 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
         option: (setting, getattr(arguments, dest))
         for dest, (option, setting) in command.setting_flags().items()
     }
-    model = settings_model({each.name: pkgutil.resolve_name(each.table) for each in sources})
+    model = settings_model(
+        {each.name: pkgutil.resolve_name(each.table) for each in sources},
+        {
+            each.account.name: pkgutil.resolve_name(each.account.table)
+            for each in sources
+            if each.account is not None
+        },
+    )
     try:
         loaded = load_settings(arguments.config, flags, Path.home().resolve(), model)
     except SettingsError as error:

@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import Settings
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.app.doctor import FAILED, SIGN_IN, WELL, doctor
+from tests.composed import MODEL
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -30,7 +30,7 @@ def states(verdicts: list[object]) -> dict[str, str]:
 
 def test_without_a_site_the_doctor_says_so_and_checks_no_network(tmp_path: Path) -> None:
     """With no site set, the checks that need one are replaced by that verdict."""
-    found = states(doctor(Settings(data_dir=tmp_path / "data")))
+    found = states(doctor(MODEL(data_dir=tmp_path / "data")))
     assert found["site"] == FAILED
     assert "tls" not in found
     assert "sign-in" not in found
@@ -39,7 +39,7 @@ def test_without_a_site_the_doctor_says_so_and_checks_no_network(tmp_path: Path)
 def test_a_missing_pandoc_fails_its_check(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """The mirror needs pandoc; its absence is said plainly."""
     monkeypatch.setenv("PATH", str(tmp_path))
-    assert states(doctor(Settings(data_dir=tmp_path / "data")))["pandoc"] == FAILED
+    assert states(doctor(MODEL(data_dir=tmp_path / "data")))["pandoc"] == FAILED
 
 
 @pytest.mark.parametrize(("verified", "state"), [(True, WELL), (False, WELL), (None, FAILED)])
@@ -48,7 +48,12 @@ def test_tls_inspection_is_reported_and_only_no_answer_fails(
 ) -> None:
     """Inspected TLS works through the OS trust store; a site that does not answer fails."""
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: verified)
-    assert states(doctor(Settings(site=SITE, data_dir=tmp_path / "data")))["tls"] == state
+    assert (
+        states(doctor(MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")))[
+            "tls"
+        ]
+        == state
+    )
 
 
 def test_without_a_saved_session_the_doctor_exits_3(
@@ -60,7 +65,12 @@ def test_without_a_saved_session_the_doctor_exits_3(
     options = ["doctor", "--config", str(tmp_path / "none.toml"), "--site", SITE]
     assert main(options) == NOT_SIGNED_IN
     assert "sign-in: no session saved: run kb-mcp login" in capsys.readouterr().out
-    assert states(doctor(Settings(site=SITE, data_dir=tmp_path / "data")))["sign-in"] == SIGN_IN
+    assert (
+        states(doctor(MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")))[
+            "sign-in"
+        ]
+        == SIGN_IN
+    )
 
 
 def test_a_check_that_fails_makes_the_doctor_exit_1(

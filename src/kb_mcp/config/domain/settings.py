@@ -1,13 +1,14 @@
-"""Settings: the site, where data lives, and each source's table, composed.
+"""Settings: where data lives, and each account's and each source's table, composed.
 
 ``settings_model`` composes the model of the settings from the core's, ``Settings``, and
-the table of each source that the entry gives it, under ``sources``; this module names
-no source. They come in layers, each stronger than the last: the settings file, the
-environment, then the flags given. Each layer gives entries, a value at a setting's
-path of that model; ``settings_of`` merges them, a stronger value replacing a weaker one
-whole, a list included, and builds the settings, whose fields hold every rule of a
-value. Secrets come from the environment alone. Where data may live is judged by
-``unsafe_location``, once the loader has resolved the data directory.
+the table of each account and of each source that the entry gives it, under ``accounts``
+and ``sources``; this module names no source but in ``MOVED``. They come in layers, each
+stronger than the last: the settings file, the environment, then the flags given. Each
+layer gives entries, a value at a setting's path of that model; ``settings_of`` merges
+them, a stronger value replacing a weaker one whole, a list included, and builds the
+settings, whose fields hold every rule of a value. Secrets come from the environment
+alone. Where data may live is judged by ``unsafe_location``, once the loader has
+resolved the data directory.
 """
 
 from __future__ import annotations
@@ -81,8 +82,14 @@ DEFAULT_RERANKER = "qwen3-reranker-0.6b"
 DEFAULT_RERANK_DEPTH = 30
 # The layer of a setting that no layer gives, as it is named.
 DEFAULT_LAYER = "default"
-# The settings that the file held at its top before plan 015, and their tables now.
-MOVED = {"spaces": "[sources.confluence]", "projects": "[sources.jira]"}
+# The settings that the file held at its top before plans 015 and 030, and their tables
+# now.
+MOVED = {
+    "spaces": "[sources.confluence]",
+    "projects": "[sources.jira]",
+    "site": "[accounts.atlassian]",
+    "email": "[accounts.atlassian]",
+}
 # The type of every refusal of a value by the settings' rules.
 RULE = "setting"
 # What telemetry's endpoint must be, since what it is sent holds titles and queries.
@@ -118,24 +125,6 @@ def matching(pattern: re.Pattern[str], expected: str) -> AfterValidator:
         return value
 
     return AfterValidator(check)
-
-
-def site_address(value: str) -> str:
-    """Give a site's address as ``https://<host>``; refuse one that is not a host alone."""
-    try:
-        parts = urlsplit(value)
-        usable = (
-            parts.scheme == "https"
-            and bool(parts.hostname)
-            and parts.netloc.lower() == parts.hostname
-            and parts.path in {"", "/"}
-        )
-    except ValueError:  # such as an unclosed [ in the host
-        usable = False
-    if not usable:
-        message = "an https address with a host name alone, such as https://x.atlassian.net"
-        raise PydanticCustomError(RULE, message)
-    return f"https://{parts.hostname}"
 
 
 def endpoint_address(value: str) -> str:
@@ -187,7 +176,6 @@ def local_path(path: Path) -> Path:
     return path
 
 
-Site = Annotated[str, AfterValidator(site_address)]
 # A path on this machine, such as the data directory: absolute.
 LocalPath = Annotated[Path, AfterValidator(local_path)]
 ModelName = Annotated[
@@ -201,6 +189,12 @@ RerankerName = Annotated[
 TelemetryEndpoint = Annotated[str, AfterValidator(telemetry_address)]
 # Every table of the settings: frozen, and refusing a key it does not know.
 TABLE = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
+
+
+class Accounts(BaseModel):
+    """The accounts that sources sign in with, each a table, which ``settings_model`` adds."""
+
+    model_config = TABLE
 
 
 class Sources(BaseModel):
@@ -275,10 +269,11 @@ class Rerank(BaseModel):
 
 
 class Settings(BaseSettings):
-    """What every command needs to know: the site, the data directory, the defaults.
+    """What every command needs to know: the data directory, the defaults, the tables.
 
-    The core's settings, whose ``sources`` holds no table: ``settings_model`` composes
-    from it the model that holds each source's. The loader builds the settings from the
+    The core's settings, whose ``accounts`` and ``sources`` hold no table:
+    ``settings_model`` composes from it the model that holds each account's and each
+    source's. The loader builds the settings from the
     layers' merge (``settings_of``), with the home that ``~`` stands for: their paths are
     absolute, the default data directory included. The model reads nothing of its own:
     the loader reads its variables by pydantic-settings' ``EnvSettingsSource``, with the
@@ -294,19 +289,6 @@ class Settings(BaseSettings):
         env_ignore_empty=True,
     )
 
-    site: Site | None = Field(
-        default=None,
-        description=(
-            "The Atlassian site, for Confluence and Jira alike: https://<name>.atlassian.net."
-        ),
-    )
-    email: str | None = Field(
-        default=None, description="The email address of the Atlassian account that signs in."
-    )
-    api_token: SecretStr | None = Field(
-        default=None,
-        description="The Atlassian account's API token, a secret: from the environment alone.",
-    )
     data_dir: LocalPath = Field(
         default=Path(DEFAULT_DATA_DIR),
         validate_default=True,
@@ -344,6 +326,10 @@ class Settings(BaseSettings):
             "The embedding endpoint's API key, if it needs one, a secret: from the environment"
             " alone."
         ),
+    )
+    accounts: Accounts = Field(
+        default_factory=Accounts,
+        description="The accounts that sources sign in with, each a table.",
     )
     sources: Sources = Field(
         default_factory=Sources, description="The sources of the mirror, each a table."
@@ -455,8 +441,8 @@ TEXT_KINDS: dict[object, Kind] = {
 def kind_of(annotation: object) -> Kind:
     """Give the kind of a setting that is no table by its type; refuse a type of no kind.
 
-    An alias, ``Annotated`` and ``| None`` are looked through: ``Site | None`` is a
-    value. Another type, such as ``list[str]`` or a table that may be None, raises
+    An alias, ``Annotated`` and ``| None`` are looked through: ``LocalPath | None`` is a
+    path. Another type, such as ``list[str]`` or a table that may be None, raises
     TypeError, so that the environment never reads a setting by the wrong kind.
     """
     if isinstance(annotation, TypeAliasType):
@@ -498,33 +484,46 @@ def setting_paths(
     return paths
 
 
-def settings_model(sources: Mapping[str, type[BaseModel]]) -> type[Settings]:
-    """Compose the settings' model: the core's, with each source's table under ``sources``.
+def settings_model(
+    sources: Mapping[str, type[BaseModel]], accounts: Mapping[str, type[BaseModel]]
+) -> type[Settings]:
+    """Compose the settings' model: the core's, with each account's and each source's table.
 
-    ``sources`` gives each table by its source's name, which names its table,
-    ``[sources.<name>]``; the tables follow one another in name order, each described
-    by its docstring. Raises TypeError, naming the source, for a table that holds a
-    setting of a type that has no kind, before any value is read.
+    ``sources`` gives each source's table by its name, which names its table,
+    ``[sources.<name>]``, and ``accounts`` each account's alike, ``[accounts.<name>]``;
+    the tables of each follow one another in name order, each described by its
+    docstring. Raises TypeError, naming the table, for one that holds a setting of a type
+    that has no kind, before any value is read.
     """
-    for name, table in sources.items():
-        try:
-            setting_paths(table)
-        except TypeError as error:
-            message = f"sources.{name}: {error}"
-            raise TypeError(message) from None
-    tables = create_model(
-        "Sources",
-        __base__=Sources,
-        **{
-            name: (table, Field(default_factory=table, description=table.__doc__))
-            for name, table in sorted(sources.items())
-        },
-    )
-    described = Settings.model_fields["sources"].description
+    places = {"accounts": (Accounts, accounts), "sources": (Sources, sources)}
+    for place, (_, tables) in places.items():
+        for name, table in tables.items():
+            try:
+                setting_paths(table)
+            except TypeError as error:
+                message = f"{place}.{name}: {error}"
+                raise TypeError(message) from None
+    composed = {
+        place: create_model(
+            base.__name__,
+            __base__=base,
+            **{
+                name: (table, Field(default_factory=table, description=table.__doc__))
+                for name, table in sorted(tables.items())
+            },
+        )
+        for place, (base, tables) in places.items()
+    }
     return create_model(
         "Settings",
         __base__=Settings,
-        sources=(tables, Field(default_factory=tables, description=described)),
+        **{
+            place: (
+                model,
+                Field(default_factory=model, description=Settings.model_fields[place].description),
+            )
+            for place, model in composed.items()
+        },
     )
 
 

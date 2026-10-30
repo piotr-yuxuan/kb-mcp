@@ -12,7 +12,6 @@ import httpx
 import pytest
 from structlog.testing import capture_logs
 
-from kb_mcp.config.domain.settings import Settings
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import (
     MAX_FAILED_IN_A_ROW,
@@ -36,6 +35,7 @@ from kb_mcp.sources.atlassian.fetch.app.download import Download, Targets, downl
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target, Window
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, period
+from tests.composed import MODEL
 from tests.samples import (
     v1_user,
     v2_attachment,
@@ -51,6 +51,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
+
+    from kb_mcp.config.domain.settings import Settings
 
 SITE = "https://sandbox.example.invalid"
 MEDIA = "https://api.media.atlassian.com/file/abc/binary?token=t"
@@ -461,7 +463,7 @@ def test_a_run_sends_the_site_nothing_but_gets(tmp_path: Path) -> None:
 
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory under the scratch folder."""
-    return Settings(site=SITE, data_dir=tmp_path / "data")
+    return MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
 
 
 def targets(spaces: list[str], projects: list[str]) -> Targets:

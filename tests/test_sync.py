@@ -71,9 +71,9 @@ if TYPE_CHECKING:
 
 # Each setting that chooses a source, as the declaration's functions take them.
 CONFIGURED = {
-    "site": SITE,
-    "email": None,
-    "api_token": None,
+    "accounts.atlassian.site": SITE,
+    "accounts.atlassian.email": None,
+    "accounts.atlassian.api_token": None,
     "sources.confluence.spaces": ("MFS",),
     "sources.jira.projects": ("PRB",),
     "sources.worklog.path": Path("/work/todo"),
@@ -148,7 +148,7 @@ def settings_file(home: Path, worklog: Path | None, *, atlassian: bool = False) 
     """Write a settings file naming the work log, and with ``atlassian``, MFS and PRB."""
     text = ""
     if atlassian:
-        text += f'site = "{SITE}"\n[sources.confluence]\nspaces = ["MFS"]\n'
+        text += f'[accounts.atlassian]\nsite = "{SITE}"\n[sources.confluence]\nspaces = ["MFS"]\n'
         text += '[sources.jira]\nprojects = ["PRB"]\n'
     if worklog is not None:
         text += f'[sources.worklog]\npath = "{worklog}"\n'
@@ -242,7 +242,9 @@ def test_sync_asks_once_after_naming_each_source_taken_and_left_out(
 @pytest.fixture
 def signed_in(home: Path, monkeypatch: MonkeyPatch) -> FakeSite:
     """Save a session in the home's data folder, and serve the scripted site of plan 004."""
-    chosen_settings = Settings(site=SITE, data_dir=(home / "data").resolve())
+    chosen_settings = MODEL(
+        accounts={"atlassian": {"site": SITE}}, data_dir=(home / "data").resolve()
+    )
     write_cookies(chosen_settings.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
@@ -365,7 +367,11 @@ def logged_as(logged: list[dict[str, object]], event: str) -> list[dict[str, obj
 
 def chosen_settings(tmp_path: Path, worklog: Path) -> Settings:
     """Give settings with a site, a data folder with a saved session, and the work log."""
-    settings = MODEL(site=SITE, data_dir=tmp_path / "data", sources={"worklog": {"path": worklog}})
+    settings = MODEL(
+        accounts={"atlassian": {"site": SITE}},
+        data_dir=tmp_path / "data",
+        sources={"worklog": {"path": worklog}},
+    )
     write_cookies(settings.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     return settings
 
@@ -405,7 +411,7 @@ def test_the_site_asking_to_sign_in_still_lets_the_work_log_run_exit_3(
     tmp_path: Path, worklog: Path
 ) -> None:
     """No session saved: the download says to sign in; the mirror, work log and index run."""
-    settings = Settings(data_dir=tmp_path / "data", site=SITE)
+    settings = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
     steps = [
         Atlassian(
             targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
@@ -777,7 +783,9 @@ def test_the_settings_of_sources_left_out_are_said_not_applied(
     config = settings_file(home, worklog, atlassian=True)
     assert main(command(home, config, "--yes", "--include", "worklog")) == 0
     said = capsys.readouterr().err
-    assert "ignored: site (config.toml): no Atlassian source in this sync\n" in said
+    assert (
+        "ignored: accounts.atlassian.site (config.toml): no Atlassian source in this sync\n" in said
+    )
     assert "ignored: sources.jira.projects (config.toml): jira not included\n" in said
 
 
@@ -1055,7 +1063,7 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
             problems=(problem,),
         ),
     )
-    settings = Settings(data_dir=tmp_path / "data", site=SITE)
+    settings = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
     atlassian = Atlassian(
         targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
         sources=("confluence",),
@@ -1085,12 +1093,15 @@ def test_with_a_site_source_an_email_without_a_token_alone_is_not_applied(
     home: Path, signed_in: FakeSite, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The site is used; the email, without its token, signs nothing in."""
-    monkeypatch.setenv("KB_MCP_EMAIL", "someone@example.invalid")
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL", "someone@example.invalid")
     config = settings_file(home, None, atlassian=True)
     assert main(command(home, config, "--dry-run", "--since", "2026-10-02")) == ExitStatus.OK
     said = capsys.readouterr().err
     assert "no Atlassian source" not in said
-    assert "email: someone@example.invalid (not applied: without an API token" in said
+    assert (
+        "accounts.atlassian.email: someone@example.invalid (not applied: without an API token"
+        in said
+    )
     assert signed_in.asked
 
 
@@ -1098,14 +1109,14 @@ def test_without_a_site_source_the_sign_in_s_settings_are_not_applied(
     home: Path, worklog: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The email and the token, given, are said ignored, by their variables."""
-    monkeypatch.setenv("KB_MCP_EMAIL", "someone@example.invalid")
-    monkeypatch.setenv("KB_MCP_API_TOKEN", "token-sentinel-7f2b")
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL", "someone@example.invalid")
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", "token-sentinel-7f2b")
     config = settings_file(home, worklog)
     assert main(command(home, config, "--dry-run")) == ExitStatus.OK
     said = capsys.readouterr().err
     for setting, variable in (
-        ("email", "KB_MCP_EMAIL"),
-        ("api_token", "KB_MCP_API_TOKEN"),
+        ("accounts.atlassian.email", "KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL"),
+        ("accounts.atlassian.api_token", "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"),
     ):
         assert f"ignored: {setting} ({variable}): no Atlassian source in this sync\n" in said
     assert "token-sentinel-7f2b" not in said

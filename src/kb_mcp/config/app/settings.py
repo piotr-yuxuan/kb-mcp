@@ -47,10 +47,10 @@ def load_settings(
 
     The settings are of ``model``, which ``settings_model`` composed. ``flags`` maps
     each flag, such as ``--site``, to the setting it overrides, by its path joined by
-    dots, and its value, None when it was not given. The file's layer is its name, a
-    variable's its name. ``~`` in a path is ``home``, which must be resolved. What was
-    ignored is each variable that names no setting or is empty, then each value
-    replaced.
+    dots, and its value, None when it was not given. The file's layer is its name, the
+    former settings file's its path from ``~``, and a variable's its name. ``~`` in a
+    path is ``home``, which must be resolved. What was ignored is each variable that
+    names no setting or is empty, then each value replaced.
 
     Telemetry's endpoint has two layers more, OpenTelemetry's own variables, as
     ``shared_entries`` reads them: ``OTEL_EXPORTER_OTLP_ENDPOINT``, below the file,
@@ -65,9 +65,10 @@ def load_settings(
 
     Before the guard, ``refuse_former_name`` judges what the program's former name left,
     from what exists under ``home``: the former settings file is read in place of the
-    default one when that is missing, so that its values are judged too. The settings
-    file given and the data directory are compared with the defaults once resolved, so
-    that any path naming a default is taken for it.
+    default one when that is missing, so that its values are judged too, but for its
+    keys renamed since, which the stop names. The settings file given and the data
+    directory are compared with the defaults once resolved, so that any path naming a
+    default is taken for it.
     """
     defaults = {
         place: at_home(place, home)
@@ -89,12 +90,17 @@ def load_settings(
     except OSError as error:
         message = f"{read}: not readable ({type(error).__name__})"
         raise SettingsError(message) from error
+    judged = found.model_copy(update={"keys_read": frozenset(values)})
     environment, unread = environment_entries(os.environ, EnvSettingsSource(model), model)
     below, above, unshared = shared_entries(os.environ)
     loaded = settings_of(
         [
             *below,
-            *file_entries(values, path.name, model),
+            *file_entries(
+                {name: value for name, value in values.items() if name not in judged.renamed_keys},
+                str(FORMER_SETTINGS_FILE) if found.former_file_judged else path.name,
+                model,
+            ),
             *environment,
             *(
                 Entry(path=tuple(setting.split(".")), value=value, layer=flag)
@@ -113,7 +119,7 @@ def load_settings(
             "logs": logs.model_copy(update={"dir": (logs.dir or default_log_folder()).resolve()}),
         }
     )
-    refuse_former_name(found, loaded, settings.data_dir, os.environ, home)
+    refuse_former_name(judged, loaded, settings.data_dir, os.environ, home)
     places = [
         ("data_dir", settings.data_dir, ""),
         *(("data_dir", part, f"{part.name}: ") for part in settings.parts),

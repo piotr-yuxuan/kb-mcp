@@ -1,7 +1,7 @@
 """The settings' model of a registry, composed as the entry composes it, for the tests.
 
-``MODEL`` is the program's, of ``SOURCES``: each declaration's table loaded by its module
-path, composed by ``settings_model``.
+``MODEL`` is the program's, of ``SOURCES``: each declaration's table, and its account's,
+loaded by its module path, composed by ``settings_model``.
 """
 
 from __future__ import annotations
@@ -21,7 +21,15 @@ if TYPE_CHECKING:
 
 def model_of(sources: Iterable[Declared]) -> type[Settings]:
     """Compose the settings' model of a registry, each table loaded by its module path."""
-    return settings_model({each.name: pkgutil.resolve_name(each.table) for each in sources})
+    declared = tuple(sources)
+    return settings_model(
+        {each.name: pkgutil.resolve_name(each.table) for each in declared},
+        {
+            each.account.name: pkgutil.resolve_name(each.account.table)
+            for each in declared
+            if each.account is not None
+        },
+    )
 
 
 MODEL = model_of(SOURCES)

@@ -16,7 +16,7 @@ from kb_mcp.sources.worklog.declared import WORKLOG
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Account, Declared
 
 # Every source, in name order.
 SOURCES = (CONFLUENCE, JIRA, WORKLOG)
@@ -30,10 +30,16 @@ def refuse(sources: Iterable[Declared]) -> None:
 
     A source's name is its table, its folder of the mirror and the front matter's
     ``source``, so one source type has one instance: a name matches ``SOURCE_NAME``, is
-    not ``assets``, and is declared once.
+    not ``assets``, and is declared once. An account's name is its table, which the
+    sources naming it share: each names it alike.
     """
     seen: set[str] = set()
+    accounts: dict[str, Account] = {}
     for declared in sources:
+        account = declared.account
+        if account is not None and accounts.setdefault(account.name, account) != account:
+            message = f"source {declared.name!r}: account {account.name!r} declared otherwise"
+            raise ValueError(message)
         if not SOURCE_NAME.fullmatch(declared.name) or declared.name == ASSETS:
             message = (
                 f"source {declared.name!r}: a source's name matches {SOURCE_NAME.pattern},"

@@ -43,8 +43,8 @@ if TYPE_CHECKING:
 
 SITE = "https://sandbox.example.invalid"
 # The variables of the email, the API token and the embedding endpoint's key.
-EMAIL = "KB_MCP_EMAIL"
-CREDENTIAL = "KB_MCP_API_TOKEN"
+EMAIL = "KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL"
+CREDENTIAL = "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"
 KEY = "KB_MCP_EMBEDDING_API_KEY"
 SECRETS = {CREDENTIAL: "token-sentinel-4d1c", KEY: "key-sentinel-9a7e"}
 UNKNOWN = "KB_MCP_UNKNOWN"
@@ -103,8 +103,8 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
     out, err = capsys.readouterr()
     ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
     assert ignored == [
-        f"ignored: email ({EMAIL}): login signs in in a browser",
-        f"ignored: api_token ({CREDENTIAL}): login signs in in a browser",
+        f"ignored: accounts.atlassian.email ({EMAIL}): login signs in in a browser",
+        f"ignored: accounts.atlassian.api_token ({CREDENTIAL}): login signs in in a browser",
     ]
     assert "someone@example.invalid" not in out + err
     assert SECRETS[CREDENTIAL] not in out + err
@@ -125,12 +125,15 @@ def test_an_email_without_a_token_is_ignored(
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
     options = [*command, "--config", str(home / "none.toml")]
     main(options)
-    ignored = f"ignored: email ({EMAIL}): without an API token, the browser's session signs in\n"
+    ignored = (
+        f"ignored: accounts.atlassian.email ({EMAIL}):"
+        " without an API token, the browser's session signs in\n"
+    )
     assert ignored in capsys.readouterr().err
     monkeypatch.setenv(CREDENTIAL, SECRETS[CREDENTIAL])
     main(options)
     err = capsys.readouterr().err
-    assert "ignored: email" not in err
+    assert "ignored: accounts.atlassian.email" not in err
     assert SECRETS[CREDENTIAL] not in err
 
 
@@ -344,7 +347,7 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     In detail, the entry's own follow, which it reads for every command.
     """
     config = home / "config.toml"
-    config.write_text(f'site = "{SITE}"\nmodel = "tiny"\n', "utf-8")
+    config.write_text(f'model = "tiny"\n[accounts.atlassian]\nsite = "{SITE}"\n', "utf-8")
     monkeypatch.setenv(UNKNOWN, "1")
     data = (home / "data").resolve()
     options = ["mirror", "--yes", "--config", str(config), "--data-dir", str(data)]
@@ -357,7 +360,7 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     assert main(options) == 0
     assert capsys.readouterr().err == (
         "mirror, with these settings:\n"
-        f"  site: {SITE}\n"
+        f"  accounts.atlassian.site: {SITE}\n"
         f"  data_dir: {data}\n"
         f"ignored: {UNKNOWN}: names no setting\n"
         f"{command}"
@@ -365,7 +368,7 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     assert main([*options, "--summary", "detailed"]) == 0
     assert capsys.readouterr().err == (
         "mirror, with these settings:\n"
-        f"  site: {SITE} [config.toml]\n"
+        f"  accounts.atlassian.site: {SITE} [config.toml]\n"
         f"  data_dir: {data} [--data-dir]\n"
         f"  logs.dir: {user_log_folder(home.resolve())} [default]\n"
         "  telemetry.endpoint: (not set) [default]\n"
@@ -472,7 +475,7 @@ def test_a_command_s_described_lines_end_its_summary(
     """They are its own function's, of the arguments and the settings' values by path."""
 
     def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
-        return (f"mirrors {settings['site']}", f"as {arguments.command.name}")
+        return (f"mirrors {settings['accounts.atlassian.site']}", f"as {arguments.command.name}")
 
     given = ["mirror", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
     arguments = parser().parse_args(given)
@@ -610,7 +613,9 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     (home / "golden.yaml").write_text("", "utf-8")
     config = home / "config.toml"
     config.write_text(
-        f'site = "{SITE}"\nmodel = "tiny"\n[sources.jira]\nprojects = ["PRB"]\n', "utf-8"
+        f'model = "tiny"\n[accounts.atlassian]\nsite = "{SITE}"\n'
+        '[sources.jira]\nprojects = ["PRB"]\n',
+        "utf-8",
     )
     given = {
         "KB_MCP_DATA_DIR": "~/from-variable",

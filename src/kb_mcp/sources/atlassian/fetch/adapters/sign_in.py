@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 from pydantic import Field
 
-from kb_mcp.config.domain.settings import PREFIX
+from kb_mcp.config.domain.settings import variable
 from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import SignInNeededError
@@ -75,7 +75,10 @@ class ApiToken(Record):
     site: str
     authorisation: str = Field(repr=False)
     name: str = "an API token"
-    again: str = f"check {PREFIX}EMAIL and {PREFIX}API_TOKEN"
+    again: str = (
+        f"check {variable(('accounts', 'atlassian', 'email'))}"
+        f" and {variable(('accounts', 'atlassian', 'api_token'))}"
+    )
 
     def client(self) -> httpx.Client:
         """Return a client that sends the header to the site's host, and to no other."""
@@ -99,13 +102,15 @@ class ApiToken(Record):
 def sign_in(settings: Settings) -> SignIn:
     """Sign in by the API token when one is set, else by the session that ``login`` saved.
 
-    The token goes with its account's email; the commands refuse a token without one
-    before they run, and the site would refuse it.
+    Either signs in as the Atlassian account, ``[accounts.atlassian]``, to its site. The
+    token goes with the account's email; the commands refuse a token without one before
+    they run, and the site would refuse it.
     """
-    token = settings.api_token
+    account = settings.accounts.atlassian
+    token = account.api_token
     if token is None:
-        return SavedSession(site=str(settings.site), folder=settings.session)
-    pair = f"{settings.email or ''}:{token.get_secret_value()}"
+        return SavedSession(site=str(account.site), folder=settings.session)
+    pair = f"{account.email or ''}:{token.get_secret_value()}"
     return ApiToken(
-        site=str(settings.site), authorisation=f"Basic {base64.b64encode(pair.encode()).decode()}"
+        site=str(account.site), authorisation=f"Basic {base64.b64encode(pair.encode()).decode()}"
     )

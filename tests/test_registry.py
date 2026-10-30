@@ -2,9 +2,11 @@
 
 The expectations come from plan 030: the registry lists Confluence, Jira and the work
 log in name order; any registry that the entry is given is refused, naming the
-declaration, for a name off the rule, ``assets``, or a name declared twice; each
-declaration names its table, whose settings are the declaration's; and a source that a
-registry leaves out has no setting (criterion 3).
+declaration, for a name off the rule, ``assets``, a name declared twice, or an account
+that two declarations name differently; each declaration names its table, whose
+settings are the declaration's; Confluence and Jira sign in with one account,
+``[accounts.atlassian]`` (question 1); and a source, or an account, that a registry
+leaves out has no setting (criterion 3).
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from pydantic import BaseModel
 
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
+from kb_mcp.sources.atlassian.declared import ATLASSIAN, CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.worklog.declared import WORKLOG
@@ -91,6 +93,45 @@ def test_a_registry_with_two_declarations_of_one_name_is_refused_naming_it(
     registry = (*SOURCES, replace(JIRA, table=WORKLOG.table))
     with pytest.raises(ValueError, match=r"^source 'jira': declared twice$"):
         main(["check", "--config", str(tmp_path / "none.toml")], registry)
+
+
+def test_confluence_and_jira_sign_in_with_one_atlassian_account() -> None:
+    """Question 1's answer: its site, email and token, in ``[accounts.atlassian]``.
+
+    The work log, read in place, signs in with none.
+    """
+    assert {each.name: each.account for each in SOURCES} == {
+        "confluence": ATLASSIAN,
+        "jira": ATLASSIAN,
+        "worklog": None,
+    }
+    assert ATLASSIAN.name == "atlassian"
+    table = pkgutil.resolve_name(ATLASSIAN.table)
+    assert tuple(table.model_fields) == ("site", "email", "api_token")
+
+
+def test_a_registry_naming_one_account_differently_is_refused_naming_the_source(
+    tmp_path: Path,
+) -> None:
+    """The sources that name an account share its table: two tables of one name are refused."""
+    other = replace(ATLASSIAN, table=WORKLOG.table)
+    registry = (CONFLUENCE, replace(JIRA, account=other), WORKLOG)
+    with pytest.raises(
+        ValueError, match=r"^source 'jira': account 'atlassian' declared otherwise$"
+    ):
+        main(["check", "--config", str(tmp_path / "none.toml")], registry)
+
+
+def test_an_account_that_no_source_of_the_registry_names_has_no_setting(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Without Confluence and Jira, ``[accounts.atlassian]`` is refused; with them, read."""
+    config = tmp_path / "config.toml"
+    config.write_text('[accounts.atlassian]\nsite = "https://x.atlassian.net"\n', "utf-8")
+    assert main(["check", "--config", str(config)], (WORKLOG,)) == ExitStatus.REFUSED
+    assert "accounts.atlassian.site (config.toml): not a setting" in capsys.readouterr().err
+    assert main(["check", "--config", str(config)]) == ExitStatus.OK
+    assert capsys.readouterr().out == "accounts.atlassian.site: https://x.atlassian.net\n"
 
 
 @pytest.mark.parametrize("left_out", ["worklog", "confluence"])

@@ -146,7 +146,11 @@ def prepare_source(settings: Settings, pandoc: Pandoc, source: str) -> Row:
         settings.conversions, pandoc.html_converter, pandoc.markdown, source=source
     ) as cache:
         mirrored = mirror(
-            RawStore(settings.raw), settings.docs, settings.site, cache, PREPARED[source]
+            RawStore(settings.raw),
+            settings.docs,
+            settings.accounts.atlassian.site,
+            cache,
+            PREPARED[source],
         )
     for problem in mirrored.problems:
         log.warning("mirror.not_mirrored", where=problem.where, reason=problem.reason)

@@ -8,6 +8,7 @@ from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.domain.sync import SITE_SETTINGS, SOURCES, chosen, described
 from kb_mcp.cli.options._common import (
     SIGN_IN,
+    SITE,
     add_embedding_options,
     add_output_options,
     add_settings_options,
@@ -118,7 +119,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "sync",
             "kb_mcp.cli.commands.sync",
             reads=(
-                "site",
+                SITE,
                 *SIGN_IN,
                 "data_dir",
                 "sources.confluence.spaces",

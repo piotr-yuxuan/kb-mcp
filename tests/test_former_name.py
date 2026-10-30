@@ -3,11 +3,14 @@
 The rules are plan 027's: the former settings file in place of a missing default, the
 former data directory where the default is used and missing, a variable of the former
 prefix, and a path setting with a folder or file named after the former name. Every test
-builds the former places in its scratch home; none is ever moved.
+builds the former places in its scratch home; none is ever moved. By plan 030, the stop
+names each setting by its final name, the sign-in's in ``[accounts.atlassian]``: a key
+of the former file, and a variable, the former prefix's or 027's own.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -20,7 +23,8 @@ import pytest
 from kb_mcp.cli.main import main
 from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
 from kb_mcp.config.app.settings import load_settings
-from kb_mcp.config.domain.former_name import FormerNameError
+from kb_mcp.config.domain.former_name import BY_HAND, FormerNameError
+from kb_mcp.config.domain.settings import SettingsError
 from kb_mcp.kernel.exit_status import ExitStatus
 from tests.composed import MODEL
 
@@ -39,6 +43,18 @@ FILE_MOVE = (
 )
 DATA_MOVE = "mv ~/atlassian-offline-mcp ~/kb-mcp"
 SITE = "https://secret.example.invalid"
+# The site's variable since plan 030, in the Atlassian account's table.
+SITE_VARIABLE = "KB_MCP_ACCOUNTS__ATLASSIAN__SITE"
+# The former settings file of a machine that signs in, as the user's machine's: its site and
+# its email at its top, where plan 030 moved them from.
+SIGNING_IN = f'site = "{SITE}"\nemail = "someone@secret.example.invalid"\n'
+KEYS = [
+    "Rename each key of the settings file:",
+    "site to accounts.atlassian.site",
+    "email to accounts.atlassian.email",
+]
+# The page that says the same as the stop, line for line.
+PAGE = ROOT / "docs" / "how-to" / "move-to-kb-mcp.md"
 
 
 @pytest.fixture
@@ -98,15 +114,16 @@ def test_the_former_data_directory_alone_is_moved(home: Path) -> None:
 @pytest.mark.parametrize(
     ("name", "renamed"),
     [
-        ("ATLASSIAN_OFFLINE_MCP_SITE", "KB_MCP_SITE"),
-        ("atlassian_offline_mcp_site", "KB_MCP_SITE"),
+        ("ATLASSIAN_OFFLINE_MCP_SITE", SITE_VARIABLE),
+        ("atlassian_offline_mcp_site", SITE_VARIABLE),
+        ("ATLASSIAN_OFFLINE_MCP_API_TOKEN", "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"),
         ("ATLASSIAN_OFFLINE_MCP_LOGS__DIR", "KB_MCP_LOGS__DIR"),
     ],
 )
 def test_a_former_variable_is_renamed_and_its_value_never_shown(
     home: Path, monkeypatch: MonkeyPatch, name: str, renamed: str
 ) -> None:
-    """Rule 3, in any case: the variable and its new name, with no move to make."""
+    """Rule 3, in any case: the variable and its final name, with no move to make."""
     monkeypatch.setenv(name, SITE)
     advice = refusal(home).advice
     assert f"{name} to {renamed}" in advice.splitlines()
@@ -192,8 +209,30 @@ def test_the_defaults_named_through_a_linked_home_are_the_defaults(
 def test_an_empty_new_variable_is_not_set(home: Path, monkeypatch: MonkeyPatch) -> None:
     """An empty variable is ignored, as the loader ignores it: the former one still stops."""
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", SITE)
-    monkeypatch.setenv("KB_MCP_SITE", "")
-    assert "ATLASSIAN_OFFLINE_MCP_SITE to KB_MCP_SITE" in refusal(home).advice.splitlines()
+    monkeypatch.setenv(SITE_VARIABLE, "")
+    assert f"ATLASSIAN_OFFLINE_MCP_SITE to {SITE_VARIABLE}" in refusal(home).advice.splitlines()
+
+
+def test_plan_027_s_name_of_the_site_is_not_its_final_one(
+    home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Set beside the former one, ``KB_MCP_SITE`` is not the site's: the stop still names it."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", SITE)
+    monkeypatch.setenv("KB_MCP_SITE", SITE)
+    assert f"ATLASSIAN_OFFLINE_MCP_SITE to {SITE_VARIABLE}" in refusal(home).advice.splitlines()
+
+
+@pytest.mark.parametrize("name", ["KB_MCP_SITE", "KB_MCP_EMAIL", "KB_MCP_API_TOKEN"])
+def test_plan_027_s_names_of_the_sign_in_name_no_setting_and_are_said(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], name: str
+) -> None:
+    """Criterion 5 of plan 030: ignored and said, as plan 036 rules for its own; never read."""
+    monkeypatch.setenv(name, SITE)
+    options = ["check", "--config", str(home / "none.toml"), "--format", "json"]
+    assert main(options) == ExitStatus.OK
+    out, err = capsys.readouterr()
+    assert json.loads(out)["layers"] == {}
+    assert err == f"ignored: {name}: names no setting\n"
 
 
 @pytest.mark.parametrize("target", [Path("nowhere"), FORMER_DATA])
@@ -226,12 +265,15 @@ def test_a_linked_settings_folder_still_holds_the_default(home: Path) -> None:
 
 
 def test_the_former_file_is_judged_in_place_of_the_missing_one(home: Path) -> None:
-    """A former file naming the former data directory: its move, and its key to change."""
+    """A former file naming the former data directory: its move, and its key to change.
+
+    The key's layer is the former file, by its path, which plan 030 names.
+    """
     place(home, FORMER_FILE, 'data_dir = "~/atlassian-offline-mcp"\n')
     place(home, FORMER_DATA)
     advice = refusal(home).advice
     assert block(advice) == ["# Move the files:", FILE_MOVE]
-    assert "data_dir (config.toml)" in advice.splitlines()
+    assert "data_dir (~/.config/atlassian-offline-mcp/config.toml)" in advice.splitlines()
 
 
 def test_a_new_file_naming_the_default_data_directory_moves_the_former(home: Path) -> None:
@@ -248,13 +290,13 @@ def test_a_new_file_naming_the_default_data_directory_moves_the_former(home: Pat
         pytest.param((NEW_FILE, NEW_DATA), {"ATLASSIAN_OFFLINE_MCP_SITE": ""}, id="empty variable"),
         pytest.param(
             (NEW_FILE, NEW_DATA),
-            {"ATLASSIAN_OFFLINE_MCP_SITE": SITE, "KB_MCP_SITE": SITE},
+            {"ATLASSIAN_OFFLINE_MCP_SITE": SITE, SITE_VARIABLE: SITE},
             id="variable renamed already",
         ),
         pytest.param((NEW_FILE, FORMER_DATA / ".git"), {}, id="former data in git"),
         pytest.param(
             (NEW_FILE, NEW_DATA),
-            {"KB_MCP_EMAIL": "me+atlassian-offline-mcp@example.invalid"},
+            {"KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL": "me+atlassian-offline-mcp@example.invalid"},
             id="no path naming it",
         ),
         pytest.param(
@@ -311,7 +353,7 @@ def test_check_stops_before_any_log_file_and_moves_nothing(tmp_path: Path) -> No
     assert done.returncode == ExitStatus.REFUSED
     assert "settings.refused" in done.stderr
     assert block(done.stderr) == ["# Move the files:", FILE_MOVE, DATA_MOVE]
-    assert "ATLASSIAN_OFFLINE_MCP_SITE to KB_MCP_SITE" in said
+    assert f"ATLASSIAN_OFFLINE_MCP_SITE to {SITE_VARIABLE}" in said
     assert "Then, by hand, as docs/how-to/move-to-kb-mcp.md says:" in said
     assert (
         "- uv tool uninstall atlassian-offline-mcp, then uv tool install --force <checkout>" in said
@@ -341,12 +383,99 @@ def test_what_reads_no_settings_never_stops(
 def test_the_how_to_page_holds_every_line_the_stop_prints(
     home: Path, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The page's sample is what the stop says, line for line, for a home holding all four."""
-    place(home, FORMER_FILE)
+    """The page's sample is what the stop says, line for line, for a home holding all four.
+
+    Its former settings file holds the site and the email at its top, as the user's machine's.
+    """
+    place(home, FORMER_FILE, SIGNING_IN)
     place(home, FORMER_DATA)
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", SITE)
     monkeypatch.setenv("KB_MCP_LOGS__DIR", str(tmp_path / "logs" / "atlassian-offline-mcp"))
-    page = (ROOT / "docs" / "how-to" / "move-to-kb-mcp.md").read_text(encoding="utf-8")
-    sample = re.search(r"```text\n(.*?)```", page, re.DOTALL)
+    sample = re.search(r"```text\n(.*?)```", PAGE.read_text(encoding="utf-8"), re.DOTALL)
     assert sample is not None
     assert refusal(home).advice.rstrip("\n") == sample[1].rstrip("\n")
+
+
+def check(home: Path) -> tuple[int, list[str]]:
+    """Run ``kb-mcp check`` in a home of its own; give its status and its stderr's lines.
+
+    The first line, the event ``settings.refused``, is left out.
+    """
+    done = subprocess.run(
+        [sys.executable, "-m", "kb_mcp", "check"],
+        env={"HOME": str(home), "PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    event, *said = done.stderr.splitlines()
+    assert "settings.refused" in event
+    return done.returncode, said
+
+
+def test_the_former_file_s_site_and_email_are_named_by_their_keys_now(tmp_path: Path) -> None:
+    """Criterion 5 of plan 030: the stop, not the refusal of a moved key.
+
+    With the former settings file alone under the home, holding the site and the email
+    at its top: exit 2, the file's move and each key's final name, never a value, each
+    line on the page; the stop gives the advice, so no refusal names a moved key.
+    """
+    home = tmp_path / "home"
+    place(home, FORMER_FILE, SIGNING_IN)
+    status, said = check(home)
+    assert status == ExitStatus.REFUSED
+    assert block("\n".join(said)) == ["# Move the files:", FILE_MOVE]
+    assert said[3:6] == KEYS
+    assert "secret" not in "\n".join(said)
+    page = PAGE.read_text(encoding="utf-8").splitlines()
+    assert [line for line in said if line and line not in page] == []
+
+
+def test_the_former_file_s_keys_are_named_whatever_replaces_their_values(
+    home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A stronger layer replaces the site, not the key that the file holds: still named."""
+    place(home, FORMER_FILE, SIGNING_IN)
+    monkeypatch.setenv(SITE_VARIABLE, SITE)
+    advice = refusal(home, flags={"--site": ("accounts.atlassian.site", SITE)}).advice
+    assert advice.splitlines()[3:6] == KEYS
+
+
+def test_a_value_that_the_former_file_holds_and_a_setting_refuses_names_the_file(
+    home: Path,
+) -> None:
+    """Refused before the stop judges, by the former file's path: not by the new file's name."""
+    place(home, FORMER_FILE, 'search_mode = "fast"\n')
+    with pytest.raises(SettingsError) as refused:
+        load_settings(SETTINGS_PATH, {}, home, MODEL)
+    assert str(refused.value).startswith(
+        "search_mode (~/.config/atlassian-offline-mcp/config.toml): "
+    )
+
+
+def test_an_empty_former_file_stops_as_before_plan_030(tmp_path: Path) -> None:
+    """Nothing to rename: the move and what is done by hand alone, as plan 027 printed them."""
+    home = tmp_path / "home"
+    place(home, FORMER_FILE)
+    status, said = check(home)
+    assert status == ExitStatus.REFUSED
+    assert said == [
+        "# Move the files:",
+        FILE_MOVE,
+        "",
+        "Then, by hand, as docs/how-to/move-to-kb-mcp.md says:",
+        *BY_HAND,
+        "",
+    ]
+
+
+def test_a_file_that_the_stop_leaves_alone_is_refused_its_site_at_its_top(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 015's refusal of a moved key, with its table now: the new file is never renamed."""
+    place(home, FORMER_FILE, SIGNING_IN)
+    place(home, NEW_FILE, f'site = "{SITE}"\n')
+    assert main(["check"]) == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    assert "site (config.toml): moved, as site under [accounts.atlassian]" in err
+    assert "Rename each key" not in err

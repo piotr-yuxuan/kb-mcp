@@ -20,9 +20,9 @@ from typing import TYPE_CHECKING, override
 import pytest
 
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import Settings
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from tests.composed import MODEL
 from tests.endpoint import Scripted, serving
 from tests.test_download import SITE, FakeSite
 from tests.test_observed import said as said_on
@@ -62,11 +62,11 @@ ELSEWHERE = {"KB_MCP_EMBEDDING_URL": "https://embeddings.example/v1"}
 IN_CLEAR = {"KB_MCP_EMBEDDING_URL": "http://embeddings.example/v1"}
 BY_MEANING = {"KB_MCP_SEARCH_MODE": "hybrid"}
 # An API token, which signs in with its account's email, given without it.
-WITHOUT_EMAIL = {"KB_MCP_API_TOKEN": "token-sentinel-4d1c"}
+WITHOUT_EMAIL = {"KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": "token-sentinel-4d1c"}
 # What plan 015 refuses without the network, before anything is asked: a command that
 # writes and its arguments, the variables set, and what the refusal names.
 REFUSED_FIRST = [
-    (["download", "--space", "MFS"], {}, "site: not set"),
+    (["download", "--space", "MFS"], {}, "accounts.atlassian.site: not set"),
     (["download", "--site", SITE], {}, "nothing to download"),
     (["download", *WRITING["download"][0], "--max-file-mb", "0"], {}, "--max-file-mb"),
     (["download", *WRITING["download"][0], "--since", "yesterday"], {}, "--since"),
@@ -75,9 +75,13 @@ REFUSED_FIRST = [
     (["download", *WRITING["download"][0], "--since", "0d"], {}, "--since"),
     (["download", *WRITING["download"][0], "--since", "0h"], {}, "--since"),
     (["download", *WRITING["download"][0], "--until", "all"], {}, "--until"),
-    (["download", *WRITING["download"][0]], WITHOUT_EMAIL, "email: not set"),
-    (["download", *WRITING["download"][0], "--dry-run"], WITHOUT_EMAIL, "email: not set"),
-    (["login"], {}, "site: not set"),
+    (["download", *WRITING["download"][0]], WITHOUT_EMAIL, "accounts.atlassian.email: not set"),
+    (
+        ["download", *WRITING["download"][0], "--dry-run"],
+        WITHOUT_EMAIL,
+        "accounts.atlassian.email: not set",
+    ),
+    (["login"], {}, "accounts.atlassian.site: not set"),
     (["index"], BY_MEANING | ELSEWHERE, "embedding_url: not an address of this machine"),
     (["index", "--allow-remote-embeddings"], BY_MEANING | IN_CLEAR, "over https only"),
     (["eval", GOLDEN], ELSEWHERE, "embedding_url: not an address of this machine"),
@@ -86,9 +90,9 @@ REFUSED_FIRST = [
     (["mirror"], {"PATH": ""}, "pandoc: not found on PATH"),
     (["sync", "--include", "jira"], {}, "--include jira: not configured"),
     (["sync", "--exclude", "worklog"], {}, "nothing to sync"),
-    (["sync"], PROJECTS, "site: not set"),
+    (["sync"], PROJECTS, "accounts.atlassian.site: not set"),
     (["sync", "--site", SITE, "--since", "yesterday"], PROJECTS, "--since"),
-    (["sync", "--site", SITE], PROJECTS | WITHOUT_EMAIL, "email: not set"),
+    (["sync", "--site", SITE], PROJECTS | WITHOUT_EMAIL, "accounts.atlassian.email: not set"),
     (["sync"], {"PATH": ""}, "pandoc: not found on PATH"),
 ]
 
@@ -321,7 +325,7 @@ def test_a_download_declined_or_refused_asks_the_site_nothing(
     home: Path, monkeypatch: MonkeyPatch, *, terminal: bool
 ) -> None:
     """Nothing is spent before the question: no request, no file, the session as it was."""
-    chosen = Settings(site=SITE, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())

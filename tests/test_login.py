@@ -9,10 +9,10 @@ import pytest
 
 from kb_mcp.cli.commands import login as login_command
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import Settings
 from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, read_cookies
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
+from tests.composed import MODEL
 from tests.test_cli import logged_as
 from tests.test_observed import said
 
@@ -40,7 +40,7 @@ def test_only_the_site_cookies_of_the_browser_are_saved(
     ]
     monkeypatch.setattr(login_module, "sign_in", lambda *_, **__: browser)
     monkeypatch.setattr(login_module, "disable_password_saving", lambda _: None)
-    settings = Settings(site=SITE, data_dir=tmp_path / "data")
+    settings = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
     login_module.login(settings, SITE, None, extensions=False)
     saved = read_cookies(settings.session / COOKIES)
     assert [(cookie["name"], cookie["path"]) for cookie in saved] == [

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import (
     SIGN_IN,
+    SITE,
     add_output_options,
     add_settings_options,
     add_yes_option,
@@ -130,7 +131,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "download",
             "kb_mcp.cli.commands.download",
             reads=(
-                "site",
+                SITE,
                 *SIGN_IN,
                 "data_dir",
                 "sources.confluence.spaces",

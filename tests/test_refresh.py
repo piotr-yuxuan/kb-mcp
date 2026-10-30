@@ -14,7 +14,6 @@ from structlog.testing import capture_logs
 
 from kb_mcp.cli.commands import download as download_command
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import Settings
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, Stored
@@ -23,6 +22,7 @@ from kb_mcp.sources.atlassian.fetch.app.download import Targets, download, plan
 from kb_mcp.sources.atlassian.fetch.domain.content import Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target, Window
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, Period, PeriodError
+from tests.composed import MODEL
 from tests.mirrors import mirrored
 from tests.samples import v2_page, v2_space
 from tests.test_download import (
@@ -43,6 +43,8 @@ if TYPE_CHECKING:
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
+
+    from kb_mcp.config.domain.settings import Settings
 
 FIRST = datetime(2026, 10, 22, 9, tzinfo=UTC)
 SECOND = datetime(2026, 10, 23, 9, tzinfo=UTC)
@@ -117,7 +119,7 @@ class RefreshSite(FakeSite):
 
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory, and a saved session, under the scratch folder."""
-    chosen = Settings(site=SITE, data_dir=tmp_path / "data")
+    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     return chosen
 

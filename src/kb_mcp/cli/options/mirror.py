@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import (
+    SITE,
     add_output_options,
     add_settings_options,
     add_yes_option,
@@ -37,7 +38,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         command=Command(
             "mirror",
             "kb_mcp.cli.commands.mirror",
-            reads=("site", "data_dir"),
+            reads=(SITE, "data_dir"),
             flags=flags,
             actions=actions,
             writes=True,

@@ -154,7 +154,7 @@ never print a value. Plan 028 made the program's dataclasses records. Their rule
   does not report an alias. A record base defined in one module and subclassed in
   another joins that list.
 
-Fourteen classes stay dataclasses, each for its reason; `tests/test_code_layout.py` checks
+Fifteen classes stay dataclasses, each for its reason; `tests/test_code_layout.py` checks
 that every dataclass under `src/kb_mcp/` is in this table, and that every class of the
 table is one:
 
@@ -165,6 +165,7 @@ table is one:
 | `kernel.endpoint.Service` | G: `--help` imports it |
 | `kernel.output.Output` | G: `--help` imports it |
 | `sources.atlassian.fetch.domain.period.Period` | G: `--help` imports it |
+| `sources.declaration.Account` | G: `--help` imports it |
 | `sources.declaration.Declared` | G: `--help` imports it |
 | `sources.declaration.ResourceType` | G: `--help` imports it |
 | `evaluation.app.reranked.Arms` | It holds a live client, the reranker's |

@@ -1,8 +1,9 @@
-"""What a source declares: its name, what it reads, and its settings' table.
+"""What a source declares: its name, what it reads, its settings' table, and its account.
 
 Standard library alone, since ``--help`` imports every declaration (contract G), so its
-classes are dataclasses, as ``Command`` is. A declaration names its table by module
-path, ``module:name``, which the entry loads once the arguments are parsed.
+classes are dataclasses, as ``Command`` is. A declaration names its table, and its
+account's, by module path, ``module:name``, which the entry loads once the arguments are
+parsed.
 """
 
 from __future__ import annotations
@@ -25,13 +26,26 @@ class ResourceType:
 
 
 @dataclass(frozen=True)
+class Account:
+    """What a source's fetcher signs in with: its name, and the Pydantic model of its table.
+
+    ``name`` is its table, ``[accounts.<name>]``, which every source naming it shares.
+    ``table`` names the model by module path.
+    """
+
+    name: str
+    table: str
+
+
+@dataclass(frozen=True)
 class Declared:
     """A source: its name, what it is, the types it reads, its settings and their table.
 
     ``name`` is its table, ``[sources.<name>]``, its folder of the mirror and the front
     matter's ``source``. ``settings`` are its table's settings, by name, in their order:
     the first names what it covers, which makes it configured. ``table`` is the
-    Pydantic model of its table, by module path.
+    Pydantic model of its table, by module path. ``account``, if any, is what its
+    fetcher signs in with.
     """
 
     name: str
@@ -39,3 +53,4 @@ class Declared:
     types: tuple[ResourceType, ...]
     settings: tuple[str, ...]
     table: str
+    account: Account | None = None

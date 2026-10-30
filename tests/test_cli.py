@@ -119,7 +119,7 @@ WRITING = {"download", "eval", "eval-agents", "eval-rerank", "index", "login", "
 # The subcommands that take --dry-run, by plans 015 and 017.
 DRY_RUN = {"download", "sync"}
 SECRETS = {
-    "KB_MCP_API_TOKEN": "token-sentinel-4d1c",
+    "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": "token-sentinel-4d1c",
     "KB_MCP_EMBEDDING_API_KEY": "key-sentinel-9a7e",
 }
 
@@ -523,7 +523,7 @@ def test_check_quiet_prints_nothing_but_still_its_document(
     assert main(options) == 0
     assert capsys.readouterr() == ("", "")
     assert main([*options, "--format", "json"]) == 0
-    assert json.loads(capsys.readouterr().out)["layers"] == {"site": "--site"}
+    assert json.loads(capsys.readouterr().out)["layers"] == {"accounts.atlassian.site": "--site"}
 
 
 @pytest.mark.parametrize(
@@ -538,7 +538,7 @@ def test_a_level_leaves_check_s_listing_as_the_default_writes_it(
     options = ["check", "--config", str(home / "none.toml"), "--site", site]
     assert main(options) == 0
     default = capsys.readouterr().out
-    assert default == f"site: {site}\n"
+    assert default == f"accounts.atlassian.site: {site}\n"
     assert main([*options, *level]) == 0
     assert capsys.readouterr().out == default
 
@@ -549,11 +549,13 @@ def test_check_as_json_gives_settings_layers_and_ignored_values_secrets_masked(
     """One document: the settings, each one's layer, what was ignored; never a secret's value."""
     config = home / "config.toml"
     config.write_text(
-        'site = "https://file.example.invalid"\n[sources.confluence]\nspaces = ["ENG"]\n', "utf-8"
+        '[accounts.atlassian]\nsite = "https://file.example.invalid"\n'
+        '[sources.confluence]\nspaces = ["ENG"]\n',
+        "utf-8",
     )
     for name, value in SECRETS.items():
         monkeypatch.setenv(name, value)
-    monkeypatch.setenv("KB_MCP_SITE", "https://variable.example.invalid")
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__SITE", "https://variable.example.invalid")
     monkeypatch.setenv("KB_MCP_SPACES", '["X"]')
     for summary in ("short", "detailed"):
         options = ["--config", str(config), "--summary", summary, "--format", "json"]
@@ -562,23 +564,23 @@ def test_check_as_json_gives_settings_layers_and_ignored_values_secrets_masked(
         assert not any(secret in out for secret in SECRETS.values())
         document = json.loads(out)
         settings = document["settings"]
-        assert settings["site"] == "https://variable.example.invalid"
+        assert settings["accounts"]["atlassian"]["site"] == "https://variable.example.invalid"
         assert settings["data_dir"] == str((home / "kb-mcp").resolve())
         assert settings["sources"]["confluence"]["spaces"] == ["ENG"]
-        assert settings["api_token"]
+        assert settings["accounts"]["atlassian"]["api_token"]
         assert settings["embedding_api_key"]
         assert document["layers"] == {
-            "site": "KB_MCP_SITE",
+            "accounts.atlassian.site": "KB_MCP_ACCOUNTS__ATLASSIAN__SITE",
             "sources.confluence.spaces": "config.toml",
-            "api_token": "KB_MCP_API_TOKEN",
+            "accounts.atlassian.api_token": "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN",
             "embedding_api_key": "KB_MCP_EMBEDDING_API_KEY",
         }
         assert sorted(document["ignored"], key=lambda ignored: ignored["layer"]) == [
             {"setting": None, "layer": "KB_MCP_SPACES", "why": "names no setting"},
             {
-                "setting": "site",
+                "setting": "accounts.atlassian.site",
                 "layer": "config.toml",
-                "why": "replaced by KB_MCP_SITE",
+                "why": "replaced by KB_MCP_ACCOUNTS__ATLASSIAN__SITE",
             },
         ]
 
@@ -587,12 +589,15 @@ def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture
     """Valid settings and a safe directory exit 0; in short, the settings given are shown."""
     config = home / "config.toml"
     config.write_text(
-        'site = "https://example.atlassian.net"\n[sources.confluence]\nspaces = ["ENG"]\n',
+        '[accounts.atlassian]\nsite = "https://example.atlassian.net"\n'
+        '[sources.confluence]\nspaces = ["ENG"]\n',
         "utf-8",
     )
     assert main(["check", "--config", str(config)]) == 0
     out = capsys.readouterr().out
-    assert out == "site: https://example.atlassian.net\nsources.confluence.spaces: ENG\n"
+    assert out == (
+        "accounts.atlassian.site: https://example.atlassian.net\nsources.confluence.spaces: ENG\n"
+    )
     assert main(["check", "--config", str(config), "--summary", "detailed"]) == 0
     data = (home / "kb-mcp").resolve()
     assert f"data_dir: {data} [default]\n" in capsys.readouterr().out
@@ -603,17 +608,20 @@ def test_check_in_short_shows_each_setting_given_and_its_value(
 ) -> None:
     """From any layer, by its path; a secret said to be set; the settings at defaults left out."""
     config = home / "config.toml"
-    config.write_text('site = "https://file.example.invalid"\nsearch_mode = "semantic"\n', "utf-8")
+    config.write_text(
+        'search_mode = "semantic"\n[accounts.atlassian]\nsite = "https://file.example.invalid"\n',
+        "utf-8",
+    )
     monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SPACES", '["ENG", "OPS"]')
     for name, value in SECRETS.items():
         monkeypatch.setenv(name, value)
     assert main(["check", "--config", str(config), "--data-dir", "~/from-flag"]) == 0
     assert capsys.readouterr().out == (
-        "site: https://file.example.invalid\n"
-        "api_token: set\n"
         f"data_dir: {(home / 'from-flag').resolve()}\n"
         "search_mode: semantic\n"
         "embedding_api_key: set\n"
+        "accounts.atlassian.site: https://file.example.invalid\n"
+        "accounts.atlassian.api_token: set\n"
         "sources.confluence.spaces: ENG, OPS\n"
     )
 
@@ -626,15 +634,15 @@ def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
     assert main(["check", "--config", str(home / "none.toml"), "--summary", "detailed"]) == 0
     out = capsys.readouterr().out
     assert out == (
-        "site: (not set) [default]\n"
-        "email: (not set) [default]\n"
-        "api_token: set [KB_MCP_API_TOKEN]\n"
         f"data_dir: {(home / 'kb-mcp').resolve()} [default]\n"
         "model: qwen3-embedding:0.6b [default]\n"
         "search_mode: hybrid [default]\n"
         "chunking: windows [default]\n"
         "embedding_url: http://127.0.0.1:11434/v1 [default]\n"
         "embedding_api_key: not set [default]\n"
+        "accounts.atlassian.site: (not set) [default]\n"
+        "accounts.atlassian.email: (not set) [default]\n"
+        "accounts.atlassian.api_token: set [KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN]\n"
         "sources.confluence.spaces: (none) [default]\n"
         "sources.jira.projects: (none) [default]\n"
         "sources.worklog.path: (not set) [default]\n"
@@ -868,10 +876,10 @@ def test_check_refuses_a_secret_in_the_settings_file(
 ) -> None:
     """The API token is read from the environment alone."""
     config = home / "config.toml"
-    config.write_text('api_token = "not-to-be-shown"\n', "utf-8")
+    config.write_text('[accounts.atlassian]\napi_token = "not-to-be-shown"\n', "utf-8")
     assert main(["check", "--config", str(config)]) == BAD_SETTINGS
     error = capsys.readouterr().err
-    assert "api_token (config.toml): a secret" in error
+    assert "accounts.atlassian.api_token (config.toml): a secret" in error
     assert "not-to-be-shown" not in error
 
 
@@ -881,14 +889,14 @@ def test_check_runs_with_variables_that_name_no_setting_or_are_empty(
     """A misspelt, a former or an empty variable is ignored, not refused, and said on stderr."""
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJETS", '["X"]')
     monkeypatch.setenv("KB_MCP_SPACES", '["X"]')
-    monkeypatch.setenv("KB_MCP_SITE", "")
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__SITE", "")
     assert main(["check", "--config", str(home / "none.toml"), "--summary", "detailed"]) == 0
     out, err = capsys.readouterr()
-    assert "site: (not set) [default]\n" in out
+    assert "\naccounts.atlassian.site: (not set) [default]\n" in out
     assert sorted(err.splitlines()) == [
         "ignored: KB_MCP_SOURCES__JIRA__PROJETS: names no setting",
         "ignored: KB_MCP_SPACES: names no setting",
-        "ignored: site (KB_MCP_SITE): empty",
+        "ignored: accounts.atlassian.site (KB_MCP_ACCOUNTS__ATLASSIAN__SITE): empty",
     ]
 
 
@@ -923,14 +931,16 @@ def test_a_settings_file_named_default_is_a_layer_as_any_other(
 ) -> None:
     """Its site is shown in short, as a layer gave it, and said replaced by a variable."""
     config = home / "default"
-    config.write_text('site = "https://file.example.invalid"\n', "utf-8")
+    config.write_text('[accounts.atlassian]\nsite = "https://file.example.invalid"\n', "utf-8")
     assert main(["check", "--config", str(config)]) == 0
-    assert capsys.readouterr().out == "site: https://file.example.invalid\n"
-    monkeypatch.setenv("KB_MCP_SITE", "https://variable.example.invalid")
+    assert capsys.readouterr().out == "accounts.atlassian.site: https://file.example.invalid\n"
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__SITE", "https://variable.example.invalid")
     assert main(["check", "--config", str(config)]) == 0
     out, err = capsys.readouterr()
-    assert out == "site: https://variable.example.invalid\n"
-    assert err == "ignored: site (default): replaced by KB_MCP_SITE\n"
+    assert out == "accounts.atlassian.site: https://variable.example.invalid\n"
+    assert err == (
+        "ignored: accounts.atlassian.site (default): replaced by KB_MCP_ACCOUNTS__ATLASSIAN__SITE\n"
+    )
 
 
 def test_check_refuses_a_file_that_is_not_toml(home: Path, capsys: CaptureFixture[str]) -> None:
@@ -983,34 +993,37 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
     assert main(["check", "--config", str(home / "none.toml"), *detailed]) == 0
     out, err = capsys.readouterr()
     assert err == ""
-    assert "site: (not set) [default]\n" in out
+    assert "\naccounts.atlassian.site: (not set) [default]\n" in out
     assert f"data_dir: {(home / 'kb-mcp').resolve()} [default]\n" in out
     assert "sources.confluence.spaces: (none) [default]\n" in out
     assert "sources.jira.projects: (none) [default]\n" in out
 
     config = home / "config.toml"
     config.write_text(
-        'site = "https://file.example.invalid"\ndata_dir = "~/from-file"\n'
+        'data_dir = "~/from-file"\n[accounts.atlassian]\nsite = "https://file.example.invalid"\n'
         '[sources.confluence]\nspaces = ["ENG"]\n[sources.jira]\nprojects = ["PLAT"]\n',
         "utf-8",
     )
     assert main(["check", "--config", str(config), *detailed]) == 0
     out, err = capsys.readouterr()
     assert err == ""
-    assert "site: https://file.example.invalid [config.toml]\n" in out
+    assert "\naccounts.atlassian.site: https://file.example.invalid [config.toml]\n" in out
     assert f"data_dir: {(home / 'from-file').resolve()} [config.toml]\n" in out
     assert "sources.confluence.spaces: ENG [config.toml]\n" in out
     assert "sources.jira.projects: PLAT [config.toml]\n" in out
 
-    monkeypatch.setenv("KB_MCP_SITE", "https://variable.example.invalid")
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__SITE", "https://variable.example.invalid")
     monkeypatch.setenv("KB_MCP_DATA_DIR", "~/from-variable")
     monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SPACES", '["OPS"]')
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB", "PAY"]')
     assert main(["check", "--config", str(config), *detailed]) == 0
     out, err = capsys.readouterr()
     assert sorted(err.splitlines()) == [
+        (
+            "ignored: accounts.atlassian.site (config.toml):"
+            " replaced by KB_MCP_ACCOUNTS__ATLASSIAN__SITE"
+        ),
         "ignored: data_dir (config.toml): replaced by KB_MCP_DATA_DIR",
-        "ignored: site (config.toml): replaced by KB_MCP_SITE",
         (
             "ignored: sources.confluence.spaces (config.toml):"
             " replaced by KB_MCP_SOURCES__CONFLUENCE__SPACES"
@@ -1020,7 +1033,8 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
             " replaced by KB_MCP_SOURCES__JIRA__PROJECTS"
         ),
     ]
-    assert "site: https://variable.example.invalid [KB_MCP_SITE]\n" in out
+    variable = "KB_MCP_ACCOUNTS__ATLASSIAN__SITE"
+    assert f"\naccounts.atlassian.site: https://variable.example.invalid [{variable}]\n" in out
     data = (home / "from-variable").resolve()
     assert f"data_dir: {data} [KB_MCP_DATA_DIR]\n" in out
     spaces = "sources.confluence.spaces: OPS [KB_MCP_SOURCES__CONFLUENCE__SPACES]"
@@ -1031,9 +1045,9 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
     flag = ["--site", "https://flag.example.invalid", "--data-dir", "~/from-flag"]
     assert main(["check", "--config", str(config), *flag, *detailed]) == 0
     out, err = capsys.readouterr()
-    assert "site: https://flag.example.invalid [--site]\n" in out
+    assert "\naccounts.atlassian.site: https://flag.example.invalid [--site]\n" in out
     assert f"data_dir: {(home / 'from-flag').resolve()} [--data-dir]\n" in out
-    assert "ignored: site (KB_MCP_SITE): replaced by --site\n" in err
+    assert f"ignored: accounts.atlassian.site ({variable}): replaced by --site\n" in err
     assert "ignored: data_dir (KB_MCP_DATA_DIR): replaced by --data-dir\n" in err
 
 
@@ -1043,7 +1057,7 @@ def test_check_reads_no_generic_atlassian_name(
     """ATLASSIAN_SITE is another tool's: the site stays unset."""
     monkeypatch.setenv("ATLASSIAN_SITE", "https://other.example.invalid")
     assert main(["check", "--config", str(home / "none.toml"), "--summary", "detailed"]) == 0
-    assert "site: (not set) [default]\n" in capsys.readouterr().out
+    assert "\naccounts.atlassian.site: (not set) [default]\n" in capsys.readouterr().out
 
 
 def test_a_flag_overrides_the_settings_file(home: Path, capsys: CaptureFixture[str]) -> None:
@@ -1117,8 +1131,10 @@ def test_check_writes_one_log_file_at_the_platform_s_default_from_run_start_to_r
         assert re.fullmatch("[0-9a-f]{16}", str(line["run"]))
     assert start["run"] == end["run"]
     project = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]
-    for secret in ("api_token", "embedding_api_key"):  # by their names, at any depth
-        document["settings"][secret] = document["layers"][secret] = "[redacted]"
+    masked = "[redacted]"  # by their names, at any depth
+    document["settings"]["accounts"]["atlassian"]["api_token"] = masked
+    document["layers"]["accounts.atlassian.api_token"] = masked
+    document["settings"]["embedding_api_key"] = document["layers"]["embedding_api_key"] = masked
     assert {key: start[key] for key in ("level", "event", "version", "arguments")} == {
         "level": "info",
         "event": "run.start",
@@ -1211,7 +1227,7 @@ def test_check_s_stderr_holds_its_level_s_lines_and_stdout_its_listing(
     """
     assert main(["check", "--config", str(home / "none.toml"), "--site", SITE, *level]) == 0
     out, err = capsys.readouterr()
-    assert out == ("" if level == ["-q"] else f"site: {SITE}\n")
+    assert out == ("" if level == ["-q"] else f"accounts.atlassian.site: {SITE}\n")
     assert said_on(err) == said
     assert "\x1b" not in err
     assert [line["event"] for line in logged(the_log_file(home))] == ["run.start", "run.end"]
@@ -1340,6 +1356,6 @@ def test_stderr_on_a_terminal_is_coloured_unless_no_color(
         out, _ = child.communicate()
     os.close(controller)
     assert child.returncode == 0
-    assert out == b"site: https://a.invalid\n"
+    assert out == b"accounts.atlassian.site: https://a.invalid\n"
     assert b"run.start" in said
     assert (b"\x1b" in said) is coloured

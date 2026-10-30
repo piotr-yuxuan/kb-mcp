@@ -25,6 +25,7 @@ from kb_mcp.sources.atlassian.fetch.app.download import (
     Targets,
     download,
 )
+from tests.composed import MODEL
 from tests.samples import v2_page
 from tests.test_cli import logged_as
 from tests.test_download import CAP, SITE, FakeSite, stamp
@@ -65,7 +66,7 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> list[str]:
     Its space and project changed since 2 October: two pages, a blog post and an issue,
     with three files to keep, of which one fails, and a video, which is not kept.
     """
-    chosen = Settings(site=SITE, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     return command(
@@ -234,7 +235,7 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
 
     It is the warning download.target_failed, which the run's log file holds too.
     """
-    chosen = Settings(site=SITE, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite(spaces=[])
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
@@ -274,7 +275,7 @@ def test_a_busy_store_exits_1_with_its_reason(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Another run writing the store: the user is told to wait for it, by an error."""
-    chosen = Settings(site=SITE, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     options = ("--site", SITE, "--space", "MFS", "--since", "7d")
