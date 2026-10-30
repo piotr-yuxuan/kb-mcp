@@ -1,1 +1,1 @@
-"""The mirror's effects: the site's HTML, pandoc, Markdown files."""
+"""The mirror's effects: Markdown files and their writer, pandoc and its cache, instruments."""

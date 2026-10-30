@@ -1,4 +1,4 @@
-"""The mirror: the newest snapshot of every document of the raw store, as Markdown.
+"""``mirror``: the newest snapshot of every document of the raw store, as Markdown.
 
 It reads the store, builds every file of ``docs/reference/data-layout.md``'s Markdown
 mirror and its bytes, then hands them to ``mirror_files``, which writes those that

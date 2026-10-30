@@ -1,1 +1,1 @@
-"""Confluence and Jira Cloud: the site, sign-in, download, raw store."""
+"""Confluence and Jira Cloud: their fetch into the raw store, and their documents from it."""

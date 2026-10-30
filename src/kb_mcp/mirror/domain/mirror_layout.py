@@ -1,8 +1,8 @@
-"""The Markdown mirror's layout: where each file goes, and how a document is laid out.
+"""The Markdown mirror's rules of text, and the folders of the work log's documents.
 
-The paths and rules are those of ``docs/reference/data-layout.md``. A document is laid
-out here as plain HTML, which pandoc then writes as Markdown, so that every text the
-site gave is escaped by one writer.
+``visible`` and ``one_line`` keep a text to what shows, for every source's front matter
+and layout. The work log's folders are here since the mirror tells its documents apart
+by them (``markdown.WORKLOG``); each source's paths are in its own ``layout``.
 """
 
 from __future__ import annotations

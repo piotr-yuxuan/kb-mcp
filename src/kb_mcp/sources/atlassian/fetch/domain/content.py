@@ -1,9 +1,10 @@
-"""What the mirror holds, named once, whatever response or HTML it was read from.
+"""What the fetch stores and the prepare reads, named once, whatever response gave it.
 
 Adapters build these types from one representation each
-(``sources.atlassian.fetch.adapters.confluence_v2``, ``sources.atlassian.fetch.adapters.jira_v3``),
-and every other layer sees only these types. When the site changes a response, the
-adapter for that representation changes, and nothing else.
+(``sources.atlassian.fetch.adapters.confluence_v2``,
+``sources.atlassian.fetch.adapters.jira_v3``), and every other layer sees only these
+types. When the site changes a response, the adapter for that representation changes,
+and nothing else.
 """
 
 from __future__ import annotations

@@ -1,1 +1,1 @@
-"""The mirror's rules: its layout, its front matter, the catalogue."""
+"""The mirror's rules: its front matter, and the rules of text."""

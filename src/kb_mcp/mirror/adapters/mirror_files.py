@@ -3,8 +3,9 @@
 This is the only code that writes there. A file is written through a hidden file
 renamed into place, so that a reader never sees half of it, and only when its bytes
 differ, so that a run that changes nothing leaves every file and its time as they were.
-Each step removes only the files it owns: the mirror those of Confluence, Jira and the
-assets, the work log's step those under ``worklog/``.
+Each step removes only the files it owns, as its source's ``mirrored`` finds them:
+``mirror`` those of Confluence, Jira and the assets, the work log's step those under
+``worklog/``.
 """
 
 from __future__ import annotations
