@@ -89,10 +89,10 @@ A note of the day.
   under `archive/`, reaches it by the id that its path gives, which the move kept. A
   `:TRANSCRIPT:` URL is no link here.
 - A transcript's people are its speakers: each line such as
-  `[09:31] Alex Example: Morning.`, the time optional, read inside the file's
-  `#+begin_quote` blocks when it has any, so that your notes outside them name nobody;
-  else on every line, where a line of prose such as `Decision: we wait` reads as a
-  speaker too.
+  `[09:31] Alex Example: Morning.`, the time optional and dating nothing, read inside
+  the file's `#+begin_quote` blocks when it has any, so that your notes outside them
+  name nobody; else on every line, where a line of prose such as `Decision: we wait`
+  reads as a speaker too.
 - Archiving keeps all this: org writes a day archived at level 1 of `todo.org_archive`,
   and a meeting or a task archived alone with `:ARCHIVE_OLPATH:` naming its day, which
   it joins again, or its meeting. Every part of one date, `todo.org` first, makes one
@@ -163,19 +163,19 @@ Dates, as `created` and `updated`:
 
 - An entry: its earliest and latest timestamps (a timestamp after the file's last change
   is a plan, and does not count).
-- A day, a meeting and a transcript: when it happened. A day at its date's midnight; a
-  transcript at its first turn's time, when it reads strictly as `HH:MM` or `HH:MM:SS`,
-  else at its earliest timestamp on its day, else at its day's midnight; a meeting when
-  its transcript starts on the meeting's day, else at its day's midnight. A meeting
-  copied with its link to another day's transcript, as a recurring meeting may be,
-  keeps the link and its own day, and that transcript names both meetings. Times are
-  read as written, as UTC, as org's timestamps are: a caption tool that writes an
-  offset from the start, `00:05`, dates its transcript at five past midnight.
+- A day, a meeting, and a transcript whose folder's name or its own begins with a date:
+  their day, at its midnight UTC, whatever their lines hold. The work log gives the day
+  a meeting was held, never its time, so a turn's time, such as `[09:31]`, and a
+  timestamp of the day date nothing. `read` and search show such a date as
+  `2026-10-27 00:00 UTC`, which stands for the day. A meeting copied with its link to
+  another day's transcript, as a recurring meeting may be, keeps the link and its own
+  day, and that transcript names both meetings.
+- A transcript without a day, such as `transcripts/misc/a.org`: as an entry.
 
 A document whose text did not change is not converted again, and an entry's file keeps
 its dates, so an edit to one entry moves no other. A day's, a meeting's and a dated
 transcript's dates and links are found afresh at each run: a transcript saved later
-dates and links its meeting without converting it again. pandoc converts each document;
+links its meeting without converting it again. pandoc converts each document;
 a transcript's lines stay apart.
 
 `sync` then rebuilds the index, by default in hybrid mode, which needs the embedding
@@ -194,8 +194,8 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
 - A day or a meeting archived keeps its id and its file, but for the swaps of two
   meetings of one slug above. A meeting renamed takes a new id, as an entry without
   `:ID:` does.
-- A transcript added or removed changes the links and dates of the meeting whose
-  `:MEETING:` names it, whose file is written again without a conversion; one moved
+- A transcript added or removed changes the link of the meeting whose `:MEETING:`
+  names it, whose file is written again without a conversion; one moved
   under `archive/`, its id kept, changes neither.
 - A `:MEETING:` that links no transcript read, through `..`, absolute, of another type,
   or to a file not read, such as one outside `transcripts/` and `meetings/`, or one
@@ -248,8 +248,9 @@ word-by-word record, which they should prefer when quoting and check a summary a
 Its text comes to them as untrusted reference data, as a page's does. `browse` lists
 spaces and projects, not the work log:
 `search(sort="updated", filters={"source": "worklog"})` lists its entries by their last
-change, but its days, meetings and dated transcripts by when they happened, so that an
-edit to an old meeting does not surface there and a day written ahead sorts first.
+change, but its days, meetings and dated transcripts by their day, so that an edit to
+an old meeting does not surface there and a day written ahead sorts first; one day's
+documents tie, and come by path.
 
 ## 7. Join a speaker to a colleague
 

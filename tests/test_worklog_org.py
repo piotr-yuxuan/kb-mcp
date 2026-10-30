@@ -9,8 +9,8 @@ Plan 042's outline, days' titles and links to files are expected as org's own pa
 reads the same made-up lines (Emacs 31.1, ``org-element``), and its archiving writes
 ``:ARCHIVE_OLPATH:``; its journal's days and meetings, their ids and participants, as its
 "Days and meetings: the rule", "What archiving does", "Ids" and "Participants" say, its
-question 1's sample first; plan 044's numbers, in the journal's order, as the user's
-words that its tests quote ask.
+question 1's sample first; plan 044's numbers, in the journal's order, and dates, by
+the day alone, as the user's words that its tests quote ask.
 """
 
 from __future__ import annotations
@@ -39,9 +39,7 @@ from kb_mcp.sources.worklog.domain.worklog import (
     participants,
     revision,
     speakers,
-    start,
     transcripts,
-    turns,
     writable,
 )
 
@@ -1062,30 +1060,31 @@ def test_a_bare_transcript_s_speakers_are_on_any_line_but_org_s_own() -> None:
     assert speakers(lines(BARE)) == ("Alex", "Sam", "Kim", "Jo (lead)", AT_BOUND)
 
 
-def test_a_turn_s_time_is_as_written_or_none() -> None:
-    """The bracket before the name, whatever it holds; none without one."""
-    assert turns(lines("[9:31] Alex: x\nSam: y\n[01:02:03.5] Kim: z\n")) == [
-        ("9:31", "Alex"),
-        (None, "Sam"),
-        ("01:02:03.5", "Kim"),
-    ]
+def test_a_turn_s_time_is_passed_over_whatever_it_holds() -> None:
+    """The bracket before the name, or none, names its speaker alone.
+
+    "You can not know when the meeting is held in the day" (the user, 2026-10-29, plan
+    044): a turn's time dates nothing.
+    """
+    assert speakers(lines("[9:31] Alex: x\nSam: y\n[01:02:03.5] Kim: z\n")) == (
+        "Alex",
+        "Sam",
+        "Kim",
+    )
 
 
 @pytest.mark.parametrize(
-    ("text", "began"),
+    "text",
     [
-        ("[09:31] Alex: x\n[09:40] Sam: y\n", TUESDAY.replace(hour=9, minute=31)),
-        ("[09:31:05] Alex: x\n", TUESDAY.replace(hour=9, minute=31, second=5)),
-        ("[00:05] Alex: x\n", TUESDAY.replace(minute=5)),  # an offset, read as a time
-        ("Alex: x\n[10:00] Sam: y\nOn <2026-10-27 Tue 14:00>.\n", TUESDAY.replace(hour=14)),
-        ("[9:31] Alex: x\nOn [2026-10-27 Tue 14:00].\n", TUESDAY.replace(hour=14)),
-        ("[25:00] Alex: x\n", TUESDAY),
-        (
-            "[09:31 AM] Alex: x\n<2026-10-26 Mon 08:00> <2026-10-27 Tue 16:00> [2026-10-27 15:00]",
-            TUESDAY.replace(hour=15),
-        ),
-        (QUOTED, TUESDAY.replace(hour=9, minute=31)),
-        ("", TUESDAY),
+        "[09:31] Alex: x\n[09:40] Sam: y\n",
+        "[09:31:05] Alex: x\n",
+        "[00:05] Alex: x\n",  # an offset from the start of the recording
+        "Alex: x\n[10:00] Sam: y\nOn <2026-10-27 Tue 14:00>.\n",
+        "[9:31] Alex: x\nOn [2026-10-27 Tue 14:00].\n",
+        "[25:00] Alex: x\n",
+        "[09:31 AM] Alex: x\n<2026-10-26 Mon 08:00> <2026-10-27 Tue 16:00> [2026-10-27 15:00]",
+        QUOTED,
+        "",
     ],
     ids=[
         "turn",
@@ -1099,18 +1098,23 @@ def test_a_turn_s_time_is_as_written_or_none() -> None:
         "empty",
     ],
 )
-def test_a_transcript_begins_at_its_first_turn_else_its_day_s_timestamp_else_its_day(
-    text: str, began: datetime
-) -> None:
-    """The first turn's time, strictly HH:MM or HH:MM:SS; else its day's first timestamp.
+def test_a_dated_transcript_is_its_day_whatever_its_turns_and_timestamps(text: str) -> None:
+    """Created and updated at the midnight UTC of the day that its folder's name gives.
 
-    Active or inactive, the timestamps of another day left out; else its day at midnight.
+    Neither a turn's time nor a timestamp dates it: "You can not know when the meeting is
+    held in the day, only the day it was held, and I am happy enough with that" (the
+    user, 2026-10-29, plan 044).
     """
-    assert start(TUESDAY, lines(text)) == began
+    (found,), _ = transcripts([transcript("2026-10-27 Tue/1.org", text)], archives=True)
+    assert found.dates(None) == (TUESDAY, TUESDAY)
 
 
-def test_a_transcript_names_its_speakers_and_a_dated_one_begins_at_its_first_turn() -> None:
-    """Undated, it has no start: its dates are its events'."""
+def test_a_transcript_names_its_speakers_and_a_dated_one_is_its_day() -> None:
+    """Dated, its first turn's time dates nothing; undated, its dates are its events'.
+
+    "it's usually enough to have the day" (the user, 2026-10-29, plan 044); an undated
+    one has none to take.
+    """
     found, _ = transcripts(
         [
             transcript("current/2026-10-27 Tue/1.org", QUOTED),
@@ -1118,11 +1122,10 @@ def test_a_transcript_names_its_speakers_and_a_dated_one_begins_at_its_first_tur
         ],
         archives=True,
     )
-    assert [(each.people, each.start) for each in found] == [
-        (("Alex Example", "You", "Unverified", "Sam Sample"), TUESDAY.replace(hour=9, minute=31)),
-        (("Alex",), None),
+    assert [(each.people, each.dates(None)) for each in found] == [
+        (("Alex Example", "You", "Unverified", "Sam Sample"), (TUESDAY, TUESDAY)),
+        (("Alex",), (datetime(2026, 10, 1, 10, tzinfo=UTC),) * 2),
     ]
-    assert found[1].dates(None) == (datetime(2026, 10, 1, 10, tzinfo=UTC),) * 2
 
 
 # Plan 042's question 1, the journal's shape on a made-up sample.
@@ -1310,6 +1313,8 @@ def test_a_day_takes_the_labels_of_each_of_its_headings_each_from_its_file() -> 
     ]
 
 
+# A transcript whose first turn has a time, which dates nothing.
+TURN_AT_9_31 = "[09:31] Alex: Morning.\n"
 # Two transcripts of 27 October, named without a number, whose first turns would order
 # them the other way round; and the ids that their names give.
 RETRO, KICK_OFF = "2026-10-27 Tue/retro notes.org", "2026-10-27 Tue/kick-off.org"
@@ -1371,14 +1376,15 @@ def test_same_titled_meetings_are_numbered_in_the_journal_s_order(
 def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
     value: str, unlinked: str | None
 ) -> None:
-    """From the folder of its file, and starts with it; a file not read, up, or none: no link.
+    """From the folder of its file; a file not read, up, or none: no link.
 
     A link that reaches no transcript read is named, for the run's warning, by the file
     that it names in brackets or after file: or ./, else by the meeting's id: never as
-    written, which may hold a passcode, whatever case its scheme takes.
+    written, which may hold a passcode, whatever case its scheme takes. Linked or not,
+    the meeting is its day, whatever its transcript's first turn: "it's usually enough
+    to have the day" (the user, 2026-10-29, plan 044).
     """
-    (record,), _ = transcripts([transcript("2026-10-27 Tue/1.org")], archives=True)
-    record = copy.replace(record, start=TUESDAY.replace(hour=9, minute=31))
+    (record,), _ = transcripts([transcript("2026-10-27 Tue/1.org", TURN_AT_9_31)], archives=True)
     found, named = journal(
         todo(
             "* Entries\n** <2026-10-27 Tue>\n*** Stand-up\n"
@@ -1390,13 +1396,10 @@ def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
     )
     (meeting,) = [each for each in found if each.type == "meeting"]
     if unlinked is None:
-        assert (meeting.links, meeting.start, named) == (
-            (("transcript", record.id),),
-            record.start,
-            [],
-        )
+        assert (meeting.links, named) == ((("transcript", record.id),), [])
     else:
-        assert (meeting.links, meeting.start, named) == ((), TUESDAY, [unlinked])
+        assert (meeting.links, named) == ((), [unlinked])
+    assert meeting.dates(None) == (TUESDAY, TUESDAY)
 
 
 @pytest.mark.parametrize(
@@ -1418,12 +1421,13 @@ def test_a_link_to_a_transcript_moved_under_archive_reaches_it_by_its_id(
     """Org rewrites no link when a file moves, and the move keeps its id.
 
     Under transcripts/ or meetings/, a link that reaches no file read reaches the
-    transcript of the id that its path gives; elsewhere, or of another id, none.
+    transcript of the id that its path gives; elsewhere, or of another id, none. The
+    meeting is its day either way: "it's usually enough to have the day" (the user,
+    2026-10-29, plan 044).
     """
     (record,), _ = transcripts(
-        [transcript("archive/2026/2026-10/2026-10-27 Tue/1.org")], archives=True
+        [transcript("archive/2026/2026-10/2026-10-27 Tue/1.org", TURN_AT_9_31)], archives=True
     )
-    record = copy.replace(record, start=TUESDAY.replace(hour=9, minute=31))
     found, named = journal(
         todo(
             "* Entries\n** <2026-10-27 Tue>\n*** Stand-up\n"
@@ -1435,19 +1439,18 @@ def test_a_link_to_a_transcript_moved_under_archive_reaches_it_by_its_id(
     )
     (meeting,) = [each for each in found if each.type == "meeting"]
     if unlinked is None:
-        assert (meeting.links, meeting.start, named) == (
-            (("transcript", record.id),),
-            record.start,
-            [],
-        )
+        assert (meeting.links, named) == ((("transcript", record.id),), [])
     else:
-        assert (meeting.links, meeting.start, named) == ((), TUESDAY, [unlinked])
+        assert (meeting.links, named) == ((), [unlinked])
+    assert meeting.dates(None) == (TUESDAY, TUESDAY)
 
 
-def test_a_meeting_linking_another_day_s_transcript_starts_at_its_own_day() -> None:
-    """A recurring meeting's heading copied with its link: the link kept, the date its day's."""
-    (record,), _ = transcripts([transcript("2026-10-21 Wed/1.org")], archives=True)
-    record = copy.replace(record, start=datetime(2026, 10, 21, 9, tzinfo=UTC))
+def test_a_meeting_linking_another_day_s_transcript_is_at_its_own_day() -> None:
+    """A recurring meeting's heading copied with its link: the link kept, the date its day's.
+
+    Each meeting is its day: "it's usually enough to have the day" (the user, plan 044).
+    """
+    (record,), _ = transcripts([transcript("2026-10-21 Wed/1.org", TURN_AT_9_31)], archives=True)
     text = "".join(
         f"** {day}\n*** Weekly sync\n:PROPERTIES:\n"
         ":MEETING: [[./transcripts/2026-10-21 Wed/1.org]]\n:END:\n"
@@ -1455,9 +1458,15 @@ def test_a_meeting_linking_another_day_s_transcript_starts_at_its_own_day() -> N
     )
     found, _ = journal(todo(f"* Entries\n{text}"), None, archives=True, transcripts=[record])
     linked = (("transcript", record.id),)
-    assert [(each.id, each.start, each.links) for each in found if each.type == "meeting"] == [
-        ("m-20261021-weekly-sync", record.start, linked),
-        ("m-20261028-weekly-sync", datetime(2026, 10, 28, tzinfo=UTC), linked),
+    wednesday, next_wednesday = (
+        datetime(2026, 10, 21, tzinfo=UTC),
+        datetime(2026, 10, 28, tzinfo=UTC),
+    )
+    assert [
+        (each.id, each.dates(None), each.links) for each in found if each.type == "meeting"
+    ] == [
+        ("m-20261021-weekly-sync", (wednesday, wednesday), linked),
+        ("m-20261028-weekly-sync", (next_wednesday, next_wednesday), linked),
     ]
 
 

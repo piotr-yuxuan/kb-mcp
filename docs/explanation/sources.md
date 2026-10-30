@@ -31,16 +31,18 @@ only when their text changed. A document whose file holds its revision, a digest
 what pandoc reads and of pandoc's version
 ([`revision`](../../src/kb_mcp/sources/worklog/domain/worklog.py)), keeps
 that file's body: an edit elsewhere in `todo.org`, which changes the file's time, moves
-no other entry's dates. A day, a meeting and a dated transcript are dated, and linked,
-afresh at each run
-([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)): a meeting
-starts when its transcript does, and the transcript may be saved after the meeting's
-notes, so neither its dates nor its links are part of its revision.
+no other entry's dates. A day, a meeting and a dated transcript are dated by their day,
+and linked, afresh at each run
+([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)): the
+transcript may be saved after the meeting's notes, so a meeting's links are not part of
+its revision, nor are its dates, so that a file that held another date takes its day
+without a conversion. The work log gives the day of a meeting, never its time, so no
+turn's time or timestamp dates a meeting or a transcript.
 
 A file that breaks a bound, links out, or is not UTF-8 is named by its path alone, as
 its content could be anything, and the run then removes no file, nor writes one that
 draws on the file not read: none for `todo.org` or its archive, which every day draws
-on; for a transcript, no meeting, whose link, start and id draw on the transcripts, nor
+on; for a transcript, no meeting, whose link draws on the transcripts, nor
 a document that links one, or whose file does
 ([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)). So
 the last good copy of each document stays until a run reads the folder whole.
@@ -88,7 +90,7 @@ its original is told apart by its path, with a warning.
 
 A work-log document takes the keys every document has, so that search and the index read
 it as they read a page: its keyword as `status`, its tags as `labels`, its timestamps,
-or when it happened, as `created` and `updated`, its file and the titles above it as
+or its day, as `created` and `updated`, its file and the titles above it as
 `breadcrumb`; the keys of other sources are `null`. Keys of its own (scheduled,
 deadline, priority) would change every file of the mirror and the index's schema; they
 wait until something filters on them.

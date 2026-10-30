@@ -7,7 +7,8 @@ written by hand, and every file is read back by ``markdown.load``. Plan 042's jo
 two days, its archived parts and its meetings are expected as its "Days and meetings:
 the rule", "Ids" and criterion 4 describe them; its transcripts, the meeting file under
 ``meetings/`` among them, as its "Ids", "Dates" and "Participants" and criteria 5, 6
-and 8 do.
+and 8 do. Plan 044's dates, by the day alone, as the user's words that its tests quote
+ask.
 """
 
 from __future__ import annotations
@@ -334,25 +335,21 @@ def test_front_matter_says_status_labels_and_place(
         ("day", "<2026-10-27 Tue>", datetime(2026, 10, 27, tzinfo=UTC), None),
         ("meeting", "Ledger review", datetime(2026, 10, 27, tzinfo=UTC), None),
         ("meeting", "Capacity planning", datetime(2026, 10, 27, tzinfo=UTC), None),
-        (
-            "transcript",
-            "Payments stand-up, 27 October",
-            datetime(2026, 10, 27, 9, 31, tzinfo=UTC),
-            None,
-        ),
-        ("meeting", "Payments stand-up", datetime(2026, 10, 27, 9, 31, tzinfo=UTC), None),
-        ("transcript", "Vendor call, 27 October", datetime(2026, 10, 27, 15, tzinfo=UTC), None),
-        ("meeting", "Vendor call", datetime(2026, 10, 27, 15, tzinfo=UTC), None),
+        ("transcript", "Payments stand-up, 27 October", datetime(2026, 10, 27, tzinfo=UTC), None),
+        ("meeting", "Payments stand-up", datetime(2026, 10, 27, tzinfo=UTC), None),
+        ("transcript", "Vendor call, 27 October", datetime(2026, 10, 27, tzinfo=UTC), None),
+        ("meeting", "Vendor call", datetime(2026, 10, 27, tzinfo=UTC), None),
     ],
 )
 def test_dates_are_the_earliest_and_latest_events_up_to_the_file_time(
     run: Run, kind: str, title: str, created: datetime, updated: datetime | None
 ) -> None:
-    """A later timestamp is a plan; no event, the file's time; a transcript, when it began.
+    """A later timestamp is a plan; no event, the file's time; a day's documents, their day.
 
-    A transcript begins at its first turn's time, else at its day's timestamp, else at its
-    day; a meeting with it. A day, and a meeting without a transcript, are their day,
-    whatever their lines hold.
+    A day, a meeting and a dated transcript are their day at midnight UTC, whatever their
+    lines, turns and timestamps hold: "You can not know when the meeting is held in the
+    day, only the day it was held, and I am happy enough with that" (the user, 2026-10-29,
+    plan 044).
     """
     run()
     matter = run.by_title(title, kind).matter
@@ -963,7 +960,7 @@ def test_a_linked_meeting_and_its_transcript_name_each_other(run: Run) -> None:
     }
 
 
-def test_linked_transcripts_archived_keep_their_links_and_their_meetings_starts(
+def test_linked_transcripts_archived_keep_their_links_and_dates(
     run: Run,
 ) -> None:
     """Both day folders moved under archive/, as the user archives them; todo.org unchanged.
@@ -993,26 +990,27 @@ def test_linked_transcripts_archived_keep_their_links_and_their_meetings_starts(
     ]
 
 
-def test_a_transcript_added_dates_and_links_its_meeting_without_converting_it(run: Run) -> None:
-    """todo.org unchanged: the stand-up is kept, its start and link its transcript's.
+def test_a_transcript_added_links_its_meeting_without_converting_it(run: Run) -> None:
+    """todo.org unchanged: the stand-up is kept, its link its transcript's, its dates its day.
 
-    Without the transcript, it begins at its day and links nothing; once the transcript
-    is back, pandoc converts that alone, and the meeting's body is as it was. Gone
-    again, the meeting is kept, at its day.
+    Without the transcript, it links nothing; once the transcript is back, pandoc
+    converts that alone, and the meeting's body is as it was. Gone again, the meeting is
+    kept. Its dates never move: "it's usually enough to have the day" (the user,
+    2026-10-29, plan 044).
     """
     record = run.root / "transcripts/current/2026-10-27 Tue/1.org"
     text = record.read_bytes()
     record.unlink()
     run()
     alone = run.by_id(STANDUP)
-    day, began = datetime(2026, 10, 27, tzinfo=UTC), datetime(2026, 10, 27, 9, 31, tzinfo=UTC)
+    day = datetime(2026, 10, 27, tzinfo=UTC)
     assert (alone.matter.created, alone.matter.updated, alone.matter.links) == (day, day, ())
     record.write_bytes(text)
     settle(record)
     with capture_logs() as logged:
         run()
     linked = run.by_id(STANDUP)
-    assert (linked.matter.created, linked.matter.updated) == (began, began)
+    assert (linked.matter.created, linked.matter.updated) == (day, day)
     assert [(each.relation, each.ref) for each in linked.matter.links] == [
         ("transcript", "t-20261027-1")
     ]

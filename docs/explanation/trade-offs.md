@@ -292,27 +292,25 @@ a meeting links the transcript whose file its `:MEETING:` names
 ([`link_target`](../../src/kb_mcp/sources/worklog/domain/org.py)),
 which links it back
 ([`linked_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
-A day, a meeting and a transcript are dated by when they happened
-([`start`](../../src/kb_mcp/sources/worklog/domain/worklog.py),
-[`Document.dates`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+A day, a meeting and a dated transcript are dated by their day
+([`Document.dates`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
 afresh at each run
 ([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)).
 
-- **Why.** The journal was one entry of about 2 MB: a hit in any meeting named the
-  whole journal, its meetings named nobody, a transcript was created at midnight,
-  nothing tied a summary to its record, and the meeting files under `meetings/` were
-  never read. The maintainer's feedback asked for days and meetings as documents, the
-  meetings' sections kept, participants, and each summary and its transcript linked
-  both ways. By shape rather than by the journal's name, so that a renamed journal, an
-  older "Daily notes", and the archive file, where org writes a day at level 1 and a
-  meeting archived alone with the path of its day, read alike: what Emacs 31.1's
-  archiving writes was probed for it. A day's id is its date, so that archiving one
-  part of a day moves nothing; a meeting's holds its title, readable in every hit, and
-  never the file name that its `:MEETING:` gives, which a transcript exported again
-  would change. Links are written on both files, since a program that reads one file
-  cannot compute the reverse ([the data layout](../reference/data-layout.md#links)).
-  With 040's created range, the meetings that someone attended this week are two
-  filters, `participant` and `created_after`
+- **Why.** The journal was one entry of about 2 MB: a hit in any meeting named the whole
+  journal, its meetings named nobody, nothing tied a summary to its record, and the
+  meeting files under `meetings/` were never read. The maintainer's feedback asked for
+  days and meetings as documents, the meetings' sections kept, participants, and each
+  summary and its transcript linked both ways. By shape rather than by the journal's
+  name, so that a renamed journal, an older "Daily notes", and the archive file, where
+  org writes a day at level 1 and a meeting archived alone with the path of its day,
+  read alike: what Emacs 31.1's archiving writes was probed for it. A day's id is its
+  date, so that archiving one part of a day moves nothing; a meeting's holds its title,
+  readable in every hit, and never the file name that its `:MEETING:` gives, which a
+  transcript exported again would change. Links are written on both files, since a
+  program that reads one file cannot compute the reverse ([the data
+  layout](../reference/data-layout.md#links)). With 040's created range, the meetings
+  that someone attended this week are two filters, `participant` and `created_after`
   ([`KEPT`](../../src/kb_mcp/search/adapters/sqlite_index.py)).
 - **Cost.** A meeting renamed takes a new id, as an entry without `:ID:` does. Two
   meetings of one day and one slug, such as two of one title, or `Réunion d'équipe` and
@@ -333,12 +331,14 @@ afresh at each run
   the longest title of the day that begins the path wins, but the day keeps a piece of
   one of two meetings of that title, which the path names alike; a title holding `//`,
   or beginning or ending with `/`, or one whose keyword `todo.org` does not declare,
-  joins none, its pieces staying in the day. Times are read as written, as UTC: a
-  caption tool that writes an offset from the start, `00:05`, dates its transcript at
-  five past midnight. A meeting copied with its link to another day's transcript, as a recurring
-  one may be, keeps the link, so that the transcript names two meetings, but its own
-  day's date. In a transcript without quote blocks, a line of prose such as
-  `Decision: we wait` reads as a speaker. A meeting's names and its transcript's
+  joins none, its pieces staying in the day. A meeting and a dated transcript are their
+  day at midnight UTC, since plan 044: the work log gives the day of a meeting, never
+  its time, so one day's documents tie when sorted by date, and come by path; a
+  caption tool's offset, `00:05`, no longer dates a transcript at five past midnight. A
+  meeting copied with its link to another day's transcript, as a recurring one may be,
+  keeps the link, so that the transcript names two meetings, and its own day's date. In
+  a transcript without quote blocks, a line of prose such as `Decision: we wait` reads
+  as a speaker. A meeting's names and its transcript's
   speakers stay apart in the files, as written: the index joins them into persons,
   `Kim` and `Kim (not in the header)` among them ([persons joined by account, then exact
   name](#persons-joined-by-account-then-exact-name)). The dates and links of

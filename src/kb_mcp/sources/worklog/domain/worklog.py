@@ -69,13 +69,12 @@ OUTLINE_PATH = "ARCHIVE_OLPATH"
 # The brackets within which a comma is a name's, as in Kim (payments, ops).
 OPENING = "(["
 CLOSING = ")]"
-# A turn of a transcript: an optional [time] and a blank, then its speaker's name, of at
-# most 64 characters, beginning with a letter and holding no colon or bracket, then ": ".
-TURN = re.compile(r"[ \t]*(?:\[([^\[\]]*)\][ \t]+)?([^\W\d_][^:\[\]]{0,63}?)[ \t]*: ")
+# A turn of a transcript: an optional [time], which dates nothing, and a blank, then its
+# speaker's name, of at most 64 characters, beginning with a letter and holding no colon
+# or bracket, then ": ".
+TURN = re.compile(r"[ \t]*(?:\[[^\[\]]*\][ \t]+)?([^\W\d_][^:\[\]]{0,63}?)[ \t]*: ")
 # Org's planning and clock lines, which read as turns.
 NOT_SPEAKERS = frozenset({"SCHEDULED", "DEADLINE", "CLOSED", "CLOCK"})
-# A turn's time that dates its transcript: two-digit hours and minutes, seconds or not.
-CLOCK_TIME = re.compile(r"([0-9]{2}):([0-9]{2})(?::([0-9]{2}))?")
 
 
 class Source(Record):
@@ -118,17 +117,17 @@ class Document(Record):
     links: tuple[tuple[str, str], ...]
     text: str  # pandoc's input
     events: tuple[datetime, ...]
-    start: datetime | None  # when a day, a meeting or a dated transcript began, in UTC
+    day: datetime | None  # a day's, a meeting's or a dated transcript's, at midnight UTC
     source: Source
 
     def dates(self, created: datetime | None) -> tuple[datetime, datetime]:
         """Return when it was created and last updated.
 
-        Its start, else its earliest and latest events; without any, its file's
+        Its day, else its earliest and latest events; without any, its file's
         modification time, created being ``created``, the existing file's, when given.
         """
-        if self.start is not None:
-            return self.start, self.start
+        if self.day is not None:
+            return self.day, self.day
         if self.events:
             return min(self.events), max(self.events)
         return created or self.source.fetched_at, self.source.fetched_at
@@ -263,8 +262,7 @@ class Meeting(Record):
 
     ``link`` is its ``:MEETING:`` as written; ``file``, the file that it names, from the
     work log's folder, or None; ``transcript``, that file's when read, else the one of
-    the id that its path gives, as ``read`` says; ``start``, when that transcript starts
-    if on the meeting's day, else the day. ``added`` are the lines of the archived
+    the id that its path gives, as ``read`` says. ``added`` are the lines of the archived
     headings that join it.
     """
 
@@ -272,18 +270,16 @@ class Meeting(Record):
     link: str
     file: PurePosixPath | None
     transcript: Document | None
-    start: datetime
     added: list[str] = Field(default_factory=list)
 
     @classmethod
     def read(
         cls,
         part: Part,
-        day: datetime,
         transcripts: Mapping[PurePosixPath, Document],
         ids: Mapping[str, Document],
     ) -> Meeting:
-        """Read a meeting of ``day``, its link resolved from the folder of its file.
+        """Read a meeting, its link resolved from the folder of its file.
 
         ``transcripts`` are those read, by their path from the work log's folder, and
         ``ids`` the same, by their id. A link to a file under ``transcripts/`` or
@@ -299,13 +295,7 @@ class Meeting(Record):
             transcript = transcripts.get(file)
             if transcript is None and file.parts[0] in TRANSCRIPTS:
                 transcript = ids.get(transcript_id(file))
-        start = None if transcript is None else transcript.start
-        # A transcript of another day, such as a recurring meeting's link copied with its
-        # heading, is linked but dates nothing: the meeting is its day's.
-        today = start is not None and start.date() == day.date()
-        return cls(
-            part=part, link=link, file=file, transcript=transcript, start=start if today else day
-        )
+        return cls(part=part, link=link, file=file, transcript=transcript)
 
 
 class Day(Record):
@@ -403,7 +393,7 @@ def journal(
                     archives=archives,
                 ),
                 events=part.source.events(part.subtree.lines),
-                start=None,
+                day=None,
                 source=part.source,
             )
         )
@@ -427,8 +417,8 @@ def days_and_meetings(
 
     A meeting links to the transcript whose file its ``:MEETING:`` names, from the folder
     of the file that holds it, or whose id that file's path gives, as ``Meeting.read``
-    says, and starts when that transcript starts on the meeting's day, else at its day;
-    its id is as ``meeting_ids`` gives it. Labels: a meeting's, as ``Part.labels`` gives
+    says; its id is as ``meeting_ids`` gives it. A day and each of its meetings are
+    dated by that day, whatever a transcript holds. Labels: a meeting's, as ``Part.labels`` gives
     them; a day's, those of each of its headings, else, when it has none, its first
     part's file's ``#+FILETAGS`` and ARCHIVE.
 
@@ -457,7 +447,7 @@ def days_and_meetings(
             day.headings.append(part)
             children = part.children
             day.meetings.extend(
-                Meeting.read(child, part.day, linked, ids)
+                Meeting.read(child, linked, ids)
                 for child in children
                 if child.meeting and (archives or not child.archived)
             )
@@ -478,7 +468,7 @@ def days_and_meetings(
                 ),
             )
             if part.meeting:
-                day.meetings.append(Meeting.read(part, date, linked, ids))
+                day.meetings.append(Meeting.read(part, linked, ids))
                 day.lines.extend(org.shifted(part.subtree.lines[:1], JOINED_LEVEL))
             else:
                 joining.append((day, "/".join(part.path[place + 1 :]), part))
@@ -529,7 +519,7 @@ def days_and_meetings(
                     archives=archives,
                 ),
                 events=(),
-                start=date,
+                day=date,
                 source=day.first.source,
             )
         )
@@ -553,47 +543,26 @@ def days_and_meetings(
                         archives=archives,
                     ),
                     events=(),
-                    start=each.start,
+                    day=date,
                     source=meeting.source,
                 )
             )
     return found, unlinked
 
 
-def turns(lines: Sequence[str]) -> list[tuple[str | None, str]]:
-    """Return each turn of a transcript, in order: its time as written, or None, and speaker.
+def speakers(lines: Sequence[str]) -> tuple[str, ...]:
+    """Return the speakers of a transcript's turns, in order of first speech, each once.
 
     Turns are read inside the quote blocks when there is any, the notes outside them being
-    the user's, else on every line. A turn's line holds an optional ``[time]`` and a blank,
-    then a name of at most 64 characters that begins with a letter and holds no colon or
-    bracket, then ``: ``, blanks before the colon not being the name's. The name is none
-    of org's planning and clock keywords, such as ``DEADLINE``.
+    the user's, else on every line. A turn's line holds an optional ``[time]``, passed
+    over, and a blank, then a name of at most 64 characters that begins with a letter and
+    holds no colon or bracket, then ``: ``, blanks before the colon not being the name's.
+    The name is none of org's planning and clock keywords, such as ``DEADLINE``, and is
+    kept as written.
     """
     inside = org.quoted(lines)
     matches = [TURN.match(line) for line in (lines if inside is None else inside)]
-    return [(each[1], each[2]) for each in matches if each and each[2] not in NOT_SPEAKERS]
-
-
-def speakers(lines: Sequence[str]) -> tuple[str, ...]:
-    """Return the speakers of a transcript's turns, as ``turns`` reads them, each once.
-
-    In order of first speech, each name as written.
-    """
-    return tuple(dict.fromkeys(name for _, name in turns(lines)))
-
-
-def start(day: datetime, lines: Sequence[str]) -> datetime:
-    """Return when a transcript of ``day``, at midnight UTC, began, read as written in UTC.
-
-    Its first turn's time, when it reads strictly as ``HH:MM`` or ``HH:MM:SS`` and names a
-    time of day; else its earliest timestamp on its day; else its day.
-    """
-    said = turns(lines)
-    clock = CLOCK_TIME.fullmatch(said[0][0] or "") if said else None
-    if clock is not None:
-        with contextlib.suppress(ValueError):  # 24:00 is no time of day
-            return day.replace(hour=int(clock[1]), minute=int(clock[2]), second=int(clock[3] or 0))
-    return min((each for each in org.timestamps(lines) if each.date() == day.date()), default=day)
+    return tuple(dict.fromkeys(each[1] for each in matches if each and each[1] not in NOT_SPEAKERS))
 
 
 def named_day(path: PurePosixPath) -> tuple[str, datetime] | None:
@@ -645,7 +614,9 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
     digest is the same. So a file moved under ``archive/`` with the folder that holds it
     never hands its id to the other file, unless both are in folders of one name.
 
-    Its people are its ``speakers``; a dated one begins as ``start`` says. Without
+    Its people are its ``speakers``; a dated one is its day, as ``named_day`` reads it,
+    whatever its turns and timestamps hold, and an undated one is dated by its events.
+    Without
     ``archives``, those under ``transcripts/archive/`` and ``meetings/archive/`` are left
     out.
     """
@@ -691,7 +662,7 @@ def transcripts(sources: Iterable[Source], *, archives: bool) -> tuple[list[Docu
                     parsed.declarations, parsed.lines, parsed.keywords, archives=archives
                 ),
                 events=source.events(parsed.lines),
-                start=start(named[1], parsed.lines) if named else None,
+                day=named[1] if named else None,
                 source=source,
             )
         )

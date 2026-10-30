@@ -497,7 +497,7 @@ so that `mirror` and the work-log step never remove each other's. A run that mee
 problem (a file not read, a conversion that failed) removes none of its files, and a
 file not read holds back the files of what draws on it: every one for `todo.org` or
 `todo.org_archive`, on which days, meetings and entries' numbers draw; for any other,
-each meeting, whose link, start and id draw on the transcripts, and each document that
+each meeting, whose link draws on the transcripts, and each document that
 links one, or whose file does, so that a link stays written on both files.
 
 - The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
@@ -560,9 +560,10 @@ links one, or whose file does, so that a link stays written on both files.
 - A transcript's people are its speakers, in the role `participant`, each once, in
   order of first speech: inside its `#+begin_quote` blocks when it has any, the notes
   outside them being the user's, else on any line, each line that holds an optional
-  `[time]` and a blank, then a name of at most 64 characters that begins with a letter
-  and holds no colon or bracket, then `: `, blanks before the colon not the name's;
-  the name is none of `SCHEDULED`, `DEADLINE`, `CLOSED` and `CLOCK`.
+  `[time]`, which dates nothing, and a blank, then a name of at most 64 characters that
+  begins with a letter and holds no colon or bracket, then `: `, blanks before the
+  colon not the name's; the name is none of `SCHEDULED`, `DEADLINE`, `CLOSED` and
+  `CLOCK`.
 - The rule of an id is its type's, `kernel.names.WORKLOG_IDS`:
   `e-[0-9a-f]{16}(?:-[0-9]+)?` for an entry;
   `t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})` for a transcript; `d-[0-9]{8}` for
@@ -573,15 +574,14 @@ links one, or whose file does, so that a link stays written on both files.
 - `revision` is the digest of pandoc's version and options, a NUL, and the org text
   that pandoc converts: a document whose revision has not changed is not converted
   again, and its file keeps its dates, but a day's, a meeting's and a dated
-  transcript's, which come from the work log as read at each run, so that a transcript
-  read since dates its meeting.
-- `created` and `updated` are a day's date at midnight UTC; a meeting's start, its
-  transcript's when that is on the meeting's day, else its day's; a dated transcript's
-  start, its first turn's time when it reads strictly as `HH:MM` or `HH:MM:SS`, else
-  its earliest timestamp on its day, else its day at midnight, read as written in UTC;
-  else the earliest and latest timestamps of the document's lines, as written, up to its
-  file's modification time, a later one being a plan; else, without any, the
-  modification time, `created` keeping an existing file's.
+  transcript's, their day, found at each run, so that a file that held another date
+  takes it without a conversion.
+- `created` and `updated` are a day's date at midnight UTC; so are a meeting's, its
+  day's, and a dated transcript's, the day that begins its folder's name or its own,
+  whatever their lines, turns and timestamps hold, since the work log gives the day of a
+  meeting and never its time; else the earliest and latest timestamps of the
+  document's lines, as written, up to its file's modification time, a later one being a
+  plan; else, without any, the modification time, `created` keeping an existing file's.
 - The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
   and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
   file, `transcripts/archive/`, `meetings/archive/` and subtrees tagged `ARCHIVE` are
