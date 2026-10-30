@@ -16,15 +16,15 @@ from typing import TYPE_CHECKING
 from kb_mcp.kernel.names import time_revision
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump
-from kb_mcp.mirror.app.mirror import mirror
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
+from kb_mcp.sources.atlassian.prepare.app.prepare import mirror
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
-    from kb_mcp.mirror.app.mirror import Outcome
     from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
+    from kb_mcp.sources.atlassian.prepare.app.prepare import Outcome
 
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 LOREM = (

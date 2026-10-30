@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from kb_mcp.kernel.content import BlogPost, Folder, Issue, Page, Person, Space
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
@@ -17,6 +16,14 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     StoreBusyError,
     Stored,
     Unreadable,
+)
+from kb_mcp.sources.atlassian.fetch.domain.content import (
+    BlogPost,
+    Folder,
+    Issue,
+    Page,
+    Person,
+    Space,
 )
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target
 from kb_mcp.sources.atlassian.fetch.domain.deletions import Tombstone

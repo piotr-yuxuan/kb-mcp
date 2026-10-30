@@ -57,8 +57,8 @@ whole mirror, whichever sources the run took
 ([`index`](../../src/kb_mcp/cli/app/sync.py)). Each calls the same function
 as its own command:
 [`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py),
-[`mirror`](../../src/kb_mcp/mirror/app/mirror.py),
-[`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py) and
+[`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py),
+[`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) and
 [`index_mirror`](../../src/kb_mcp/search/app/indexing.py). A source is a
 record that names its table and its step
 ([`SOURCES`](../../src/kb_mcp/cli/domain/sync.py)), and `--include` and
@@ -125,15 +125,15 @@ days. A catch-up that would start after `--until` skips its target.
 
 ## Mirror: from the raw store to Markdown
 
-[`mirror`](../../src/kb_mcp/mirror/app/mirror.py) reads the newest
+[`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the newest
 snapshot of each document
 ([`RawStore.latest`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 the listings, the users and the tombstones, and the setting `site`: nothing else shapes
 its files. It places each document in the space whose freshest listing names it,
 leaving out those confirmed gone
-([`place`](../../src/kb_mcp/mirror/app/mirror.py)); turns the site's HTML
+([`place`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)); turns the site's HTML
 into plain HTML, the one module that knows the site's markup
-([`normalise`](../../src/kb_mcp/mirror/adapters/site_html.py)); and has
+([`normalise`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py)); and has
 pandoc write it as Markdown, one process a document
 ([`Pandoc.markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py)), unless
 that HTML was converted before.
@@ -173,18 +173,18 @@ trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost
 
 ## The work log: from org files to Markdown
 
-[`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py), a step of
+[`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py), a step of
 `sync`, reads the work log's folder in place and never writes there, following a link
-only inside it ([`listed`](../../src/kb_mcp/sources/worklog/adapters/files.py)).
+only inside it ([`listed`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)).
 It has no raw store: its files are already on this machine, and reading them whole costs
 less than keeping a copy. They become documents, one per day of the journal, one per
 meeting of a day, one per other top-level entry of `todo.org` and of its archive
-([`journal`](../../src/kb_mcp/sources/worklog/domain/worklog.py)), and one
+([`journal`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)), and one
 per transcript
-([`transcripts`](../../src/kb_mcp/sources/worklog/domain/worklog.py)), each
+([`transcripts`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)), each
 with an id that org's own edits leave alone. A document's revision is a digest of what
 pandoc reads, with pandoc's version and options
-([`revision`](../../src/kb_mcp/sources/worklog/domain/worklog.py),
+([`revision`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
 [`Pandoc.org_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py)): a
 document whose file holds that revision keeps its body and its dates, but a day, a meeting
 or a dated transcript, dated afresh by its day; another is converted again
@@ -193,16 +193,16 @@ or a dated transcript, dated afresh by its day; another is converted again
 - **Writes**, into `<data>/docs/worklog/` alone, through the mirror's
   [`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
   whose bytes differ, renamed into place, and the files of documents gone removed
-  ([`worklog_owned`](../../src/kb_mcp/mirror/adapters/mirror_files.py)).
+  ([`worklog_owned`](../../src/kb_mcp/sources/worklog/prepare/adapters/mirrored.py)).
 - **One document's failure**, a file that links out of the folder
-  ([`listed`](../../src/kb_mcp/sources/worklog/adapters/files.py)), is
+  ([`listed`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), is
   over 32 MiB or is not UTF-8
-  ([`source`](../../src/kb_mcp/sources/worklog/adapters/files.py)), or a
+  ([`source`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), or a
   conversion that fails, is named by its path, never by its content, with what it holds
-  back ([`held_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py));
+  back ([`held_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
   the run goes on, writes no file that a file not read builds, every one for `todo.org`
   or its archive, else that file's own
-  ([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+  ([`writable`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
   and then removes no file but the old one of a document written again under another
   title's path, so that the last good copy of each stays.
 - **Offline**, everything: the work log is on this machine.
@@ -388,14 +388,14 @@ The work log's step does the same from the folder itself. Closing an entry turns
 keyword to `DONE`, or another that means done, and adds a `CLOSED:` line under its
 heading. Its id is taken from its `:ID:`, else its title and `:CREATED:`, else its
 title, never from its keyword or planning lines
-([`journal`](../../src/kb_mcp/sources/worklog/domain/worklog.py)), so its
+([`journal`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)), so its
 file keeps its name. Its text changed, so its revision did
-([`revision`](../../src/kb_mcp/sources/worklog/domain/worklog.py)): the
+([`revision`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)): the
 entry is converted again, its `status` becomes `DONE`, and its `updated` the latest of
 its timestamps up to the file's time of change, usually the closing one
-([`Document.dates`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
+([`Document.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 Every other entry keeps its file as it was, dates included, though `todo.org`'s time
-changed ([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)). An
+changed ([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). An
 entry archived to `todo.org_archive` keeps its id too: its file is rewritten, labelled
 `ARCHIVE`, or removed when `archives = false`;
 [sources](sources.md#identity-that-survives-orgs-edits) says why identity is kept so.

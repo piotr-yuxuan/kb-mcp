@@ -15,12 +15,12 @@ from structlog.testing import capture_logs
 from kb_mcp.cli.commands import download as download_command
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
-from kb_mcp.kernel.content import Page
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, Stored
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app.download import Targets, download, plan
+from kb_mcp.sources.atlassian.fetch.domain.content import Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target, Window
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, Period, PeriodError
 from tests.mirrors import mirrored

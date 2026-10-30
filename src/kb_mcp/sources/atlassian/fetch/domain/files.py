@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from kb_mcp.kernel.content import Attachment
+    from kb_mcp.sources.atlassian.fetch.domain.content import Attachment
 
 # Media that the mirror cannot show or search: kept as metadata only.
 SKIPPED_PREFIXES = ("video/", "audio/")

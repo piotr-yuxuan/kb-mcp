@@ -40,7 +40,6 @@ from kb_mcp.mirror.adapters.pandoc import (
     PandocFailedError,
     PandocMissingError,
 )
-from kb_mcp.mirror.app import mirror as mirror_app
 from kb_mcp.search.adapters import sqlite_index, vector_store
 from kb_mcp.search.app.indexing import Indexing
 from kb_mcp.sources.atlassian.fetch.adapters import http
@@ -48,6 +47,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBus
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app.download import Outcome, Report, Targets
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
+from kb_mcp.sources.atlassian.prepare.app import prepare as mirror_app
 from tests.endpoint import DIGEST, Scripted, scripted, serving
 from tests.mirrors import fillers
 from tests.reference import Emitted, documented, pattern, undocumented

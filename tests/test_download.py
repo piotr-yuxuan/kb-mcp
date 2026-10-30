@@ -13,7 +13,6 @@ import pytest
 from structlog.testing import capture_logs
 
 from kb_mcp.config.domain.settings import Settings
-from kb_mcp.kernel.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import (
     MAX_FAILED_IN_A_ROW,
@@ -34,6 +33,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
 )
 from kb_mcp.sources.atlassian.fetch.app import download as download_module
 from kb_mcp.sources.atlassian.fetch.app.download import Download, Targets, download
+from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target, Window
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, period
 from tests.samples import (

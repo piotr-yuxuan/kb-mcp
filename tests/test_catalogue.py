@@ -7,10 +7,18 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from kb_mcp.kernel.content import BlogPost, Comment, Folder, Issue, Page, Person, Space
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.mirror.domain.catalogue import Catalogue, front_matter
 from kb_mcp.mirror.domain.mirror import PersonRole
+from kb_mcp.sources.atlassian.fetch.domain.content import (
+    BlogPost,
+    Comment,
+    Folder,
+    Issue,
+    Page,
+    Person,
+    Space,
+)
+from kb_mcp.sources.atlassian.prepare.domain.catalogue import Catalogue, front_matter
 
 PARIS = timezone(timedelta(hours=2))
 MOMENT = datetime(2026, 10, 20, 23, 52, 41, 371000, tzinfo=PARIS)

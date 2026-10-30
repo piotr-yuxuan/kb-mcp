@@ -24,7 +24,6 @@ from opentelemetry.context import Context
 from opentelemetry.trace import StatusCode
 from pydantic import ConfigDict, Field
 
-from kb_mcp.kernel.content import BlogPost, Issue, Page
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER
@@ -43,6 +42,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     Unreadable,
 )
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
+from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import (
     Coverage,
     Extension,
@@ -65,8 +65,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.kernel.content import Attachment, Document, Listed
     from kb_mcp.sources.atlassian.fetch.adapters.http import ReadPage, Request
+    from kb_mcp.sources.atlassian.fetch.domain.content import Attachment, Document, Listed
     from kb_mcp.sources.atlassian.fetch.domain.period import Period
 
     type SnapshotRequests = Callable[[Listed], dict[str, tuple[Request, ReadPage | None]]]

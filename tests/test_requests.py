@@ -6,10 +6,10 @@ from datetime import date
 
 import httpx
 
-from kb_mcp.kernel.content import BlogPost, Page
 from kb_mcp.kernel.fields import Fields
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.http import Request
+from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from tests.samples import v2_page
 
 NEXT = "/wiki/api/v2/spaces/196613/pages?limit=250&cursor=abc"

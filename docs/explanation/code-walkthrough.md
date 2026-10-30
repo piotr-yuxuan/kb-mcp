@@ -256,7 +256,7 @@ whose [`Representation`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_s
 of a page pairs the adapter's
 [`identity`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py)
 and [`snapshot`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py).
-The latter builds a [`Page`](../../src/kb_mcp/kernel/content.py) through
+The latter builds a [`Page`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py) through
 [`document`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py),
 and its files through
 [`attachment`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py):
@@ -292,35 +292,35 @@ The layout: [snapshots](../reference/data-layout.md#snapshots).
 ### 7. HTML, pandoc and front matter
 
 Back in [`atlassian`](../../src/kb_mcp/cli/app/sync.py),
-[`mirror`](../../src/kb_mcp/mirror/app/mirror.py) reads the raw store,
+[`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the raw store,
 whatever the download did.
-[`read_catalogue`](../../src/kb_mcp/mirror/app/mirror.py) reads the spaces,
+[`read_catalogue`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the spaces,
 users and listings into a
-[`Catalogue`](../../src/kb_mcp/mirror/domain/catalogue.py);
-[`place`](../../src/kb_mcp/mirror/app/mirror.py) reads the newest snapshot
+[`Catalogue`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py);
+[`place`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the newest snapshot
 of each document
 ([`RawStore.latest`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 leaves out those confirmed gone, unless a listing taken since names them again, puts a
 page or a post in the space whose freshest listing names it, and names each one's file
-by [`confluence_path`](../../src/kb_mcp/mirror/domain/mirror_layout.py): the
+by [`confluence_path`](../../src/kb_mcp/sources/atlassian/prepare/domain/layout.py): the
 space's key, then the id and the title's
 [`slug`](../../src/kb_mcp/kernel/slug.py).
 
-[`document_file`](../../src/kb_mcp/mirror/app/mirror.py) then builds each
+[`document_file`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) then builds each
 document's file:
 
-- [`front_matter`](../../src/kb_mcp/mirror/domain/catalogue.py) says what
+- [`front_matter`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py) says what
   the mirror says of the document, as a
   [`FrontMatter`](../../src/kb_mcp/mirror/domain/mirror.py) that refuses
   what the layout rules out, such as a title with a line break.
-- [`normalise`](../../src/kb_mcp/mirror/adapters/site_html.py), in the one
+- [`normalise`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py), in the one
   module that knows the site's markup, makes the view's HTML plain. Each kind of markup
-  is a small [`Construct`](../../src/kb_mcp/mirror/adapters/site_html.py),
-  such as a [`Macro`](../../src/kb_mcp/mirror/adapters/site_html.py) or a
-  [`Link`](../../src/kb_mcp/mirror/adapters/site_html.py), whose links to
+  is a small [`Construct`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py),
+  such as a [`Macro`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py) or a
+  [`Link`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py), whose links to
   mirrored documents become relative; markup that no construct knows stays, as a
   placeholder that names it.
-- [`document_html`](../../src/kb_mcp/mirror/domain/mirror_layout.py) lays
+- [`document_html`](../../src/kb_mcp/sources/atlassian/prepare/domain/layout.py) lays
   out the title, the body and the attachments (and an issue's comments).
 - [`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)
   gives that HTML's Markdown from the cache of conversions that `atlassian` opened
@@ -337,11 +337,11 @@ document's file:
 
 A document whose conversion fails is reported by its place in the store, and the others
 go on. The space's tree, `_tree.md`, is written from the listings
-([`Catalogue.tree`](../../src/kb_mcp/mirror/domain/catalogue.py)). Last,
+([`Catalogue.tree`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py)). Last,
 [`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py) writes each file
 whose bytes differ, through a hidden file renamed into place. Then, when nothing was
 reported, it removes every file that it owns
-([`owned`](../../src/kb_mcp/mirror/adapters/mirror_files.py): documents,
+([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/mirrored.py): documents,
 trees and assets) and no longer wants, such as the file of a document gone or moved, or
 the old name of one whose title changed. When something was reported, it removes only
 the files of documents confirmed gone, and the old file of a document that moved once
@@ -554,7 +554,7 @@ document fetched, and a call of a tool is one trace:
 | `download.space`, `download.probes`, `download.users` | [`Download.space`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.users`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
 | `download.document`, a trace of its own linked to the run's | [`Download.fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
 | `GET` and `POST`, one a request | [`Recorded`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
-| `mirror.read`, `mirror.build`, `mirror.write` | [`mirror`](../../src/kb_mcp/mirror/app/mirror.py) |
+| `mirror.read`, `mirror.build`, `mirror.write` | [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) |
 | `index.files`, `index.embed` | [`build_index`](../../src/kb_mcp/search/app/indexing.py) |
 | `embeddings <model>`, one an embedding | [`embeddings`](../../src/kb_mcp/search/adapters/embedding.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
 | `tools/call search`, a call's root | the MCP SDK; [`Library.search`](../../src/kb_mcp/mcp/app/tools.py) adds the mode, the documents found and whether words stood in for meaning |

@@ -15,16 +15,24 @@ from functools import cached_property
 from html import escape
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import BlogPost, ConfluenceDocument, Folder, Issue, Page, Space
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
-from kb_mcp.mirror.domain.mirror_layout import NONE, one_line
+from kb_mcp.mirror.domain.mirror_layout import one_line
+from kb_mcp.sources.atlassian.fetch.domain.content import (
+    BlogPost,
+    ConfluenceDocument,
+    Folder,
+    Issue,
+    Page,
+    Space,
+)
+from kb_mcp.sources.atlassian.prepare.domain.layout import NONE
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from datetime import datetime
 
-    from kb_mcp.kernel.content import Comment, Person
+    from kb_mcp.sources.atlassian.fetch.domain.content import Comment, Person
 
 # The front matter's type of each kind of document.
 TYPES: dict[type[ConfluenceDocument | Issue], str] = {

@@ -23,7 +23,7 @@ from pydantic import ConfigDict, Field
 from kb_mcp.kernel.names import WORKLOG_IDS
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.slug import slug
-from kb_mcp.sources.worklog.domain import org
+from kb_mcp.sources.worklog.prepare.domain import org
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping, Sequence

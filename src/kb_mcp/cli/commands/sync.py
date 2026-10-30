@@ -26,8 +26,8 @@ from kb_mcp.cli.domain.sync import chosen
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
-from kb_mcp.mirror.app.worklog import Planned
 from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
+from kb_mcp.sources.worklog.prepare.app.prepare import Planned
 
 if TYPE_CHECKING:
     import argparse
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from kb_mcp.cli.app.sync import Synced
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.mirror.app.worklog import Outcome
+    from kb_mcp.sources.worklog.prepare.app.prepare import Outcome
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Synced | None]:

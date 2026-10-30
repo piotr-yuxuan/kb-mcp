@@ -23,27 +23,12 @@ from typing import TYPE_CHECKING
 import structlog
 from opentelemetry import trace
 
-from kb_mcp.kernel.content import BlogPost, ConfluenceDocument, Issue, Page
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import TIME, dump
-from kb_mcp.mirror.adapters.mirror_files import Changes, owned, sync
+from kb_mcp.mirror.adapters.mirror_files import Changes, sync
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.adapters.site_html import (
-    Context,
-    MarkupError,
-    Mirrored,
-    normalise,
-)
-from kb_mcp.mirror.domain.catalogue import Catalogue, front_matter
-from kb_mcp.mirror.domain.mirror_layout import (
-    asset_path,
-    confluence_path,
-    document_html,
-    issue_path,
-    tree_path,
-)
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     UNREADABLE,
@@ -52,15 +37,31 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     Unreadable,
     reason,
 )
+from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, ConfluenceDocument, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH
+from kb_mcp.sources.atlassian.prepare.adapters.mirrored import owned
+from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
+    Context,
+    MarkupError,
+    Mirrored,
+    normalise,
+)
+from kb_mcp.sources.atlassian.prepare.domain.catalogue import Catalogue, front_matter
+from kb_mcp.sources.atlassian.prepare.domain.layout import (
+    asset_path,
+    confluence_path,
+    document_html,
+    issue_path,
+    tree_path,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from datetime import datetime
     from pathlib import Path
 
-    from kb_mcp.kernel.content import Folder
     from kb_mcp.mirror.adapters.conversions import Conversions
+    from kb_mcp.sources.atlassian.fetch.domain.content import Folder
 
 KINDS: tuple[type[Page | BlogPost | Issue], ...] = (Page, BlogPost, Issue)
 # A comment's headings sit under its own third-level heading.

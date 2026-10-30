@@ -16,11 +16,20 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import BlogPost, Folder, Issue, Listed, Page, Person, Snapshot, Space
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER, REVISION, RefusedError, require
 from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
+from kb_mcp.sources.atlassian.fetch.domain.content import (
+    BlogPost,
+    Folder,
+    Issue,
+    Listed,
+    Page,
+    Person,
+    Snapshot,
+    Space,
+)
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target
 from kb_mcp.sources.atlassian.fetch.domain.deletions import Tombstone
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, PeriodError
@@ -28,7 +37,7 @@ from kb_mcp.sources.atlassian.fetch.domain.period import Period, PeriodError
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
-    from kb_mcp.kernel.content import Document
+    from kb_mcp.sources.atlassian.fetch.domain.content import Document
 
 # The store's own file in a snapshot, beside the responses.
 RECORD = "store.json"

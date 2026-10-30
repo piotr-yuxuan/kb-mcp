@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from kb_mcp.kernel.content import BlogPost, Folder, Page, Person
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
+from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Folder, Page, Person
 from tests.samples import (
     ATTACHMENT_SIZE,
     PAGE_VERSION,
