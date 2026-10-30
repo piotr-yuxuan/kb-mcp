@@ -899,6 +899,43 @@ def test_a_transcript_retitled_while_a_file_is_not_read_keeps_one_file(run: Run)
     assert (old.exists(), gone.exists(), outcome.changes.removed) == (False, True, 1)
 
 
+# An entry with an :ID:, which keeps its id when retitled, and the words of its body.
+RUNBOOK, ROLLED_BACK = "Payout gateway rollback runbook", "rolling back the payout gateway"
+
+
+@pytest.mark.parametrize("title", [RUNBOOK, RUNBOOK.replace(" ", "\u200b", 1)])
+def test_an_entry_retitled_while_a_file_is_not_read_keeps_one_file(run: Run, title: str) -> None:
+    """Its old file is retired where it lies, though its old title held an invisible blank.
+
+    The front matter's title drops a zero-width space that the file's name turned into a
+    dash. The dry run counts that one file; nothing else goes.
+    """
+    run.edit("todo.org", f"* {RUNBOOK}", f"* {title}")
+    run()
+    (entry,) = [each for each in run.files() if ROLLED_BACK in each.body]
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    run.edit("todo.org", f"* {title}", f"* {title} v2")
+    assert run.plan().to_remove == 1
+    outcome = run()
+    (now,) = [each for each in run.files() if each.matter.id == entry.matter.id]
+    assert (now.path != entry.path, ROLLED_BACK in now.body) == (True, True)
+    assert (outcome.changes.removed, [each.where for each in outcome.problems]) == (
+        1,
+        ["transcripts/misc/a.org"],
+    )
+
+
+def test_an_entry_retitled_whose_conversion_fails_keeps_its_old_file(run: Run) -> None:
+    """Not written, it keeps its last copy: no file of its id is retired."""
+    run()
+    (entry,) = [each for each in run.files() if ROLLED_BACK in each.body]
+    run.edit("todo.org", f"* {RUNBOOK}", f"* {RUNBOOK} v2")
+    outcome = run(failing=f"{RUNBOOK} v2")
+    assert [each.where for each in outcome.problems] == [f"todo.org, {entry.matter.id}"]
+    assert [each.path for each in run.files() if each.matter.id == entry.matter.id] == [entry.path]
+    assert outcome.changes.removed == 0
+
+
 def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path: Path) -> None:
     """Named by its path alone, as listed reports it, it keeps its id and its last copy.
 
