@@ -408,9 +408,10 @@ again under another title's path, and `sync` exits 1.
   indexed and served under their old id and their new, and one deleted stays, the file
   of a meeting or a transcript gone naming documents that no longer name it back, which
   042 avoided by holding those back. A folder that cannot be listed hides its files: a
-  meeting that links one is written without the link, `worklog.unlinked` counting it,
-  and a file elsewhere of the same id takes that id for the run. Past the bound, each
-  meeting that links a file past it loses its link, and the row fails at each run.
+  meeting that links one is written without the link, `worklog.unlinked` counting it;
+  but a file elsewhere of the same id takes that id for the run, its copy replacing the
+  hidden file's last one, and the meeting links it. Past the bound, each meeting that
+  links a file past it loses its link, but for the same, and the row fails at each run.
 - **Rejected.** Leaving out every link to a transcript not read: both ways always, but
   `read` of the meeting loses its record for as long as the file stays unread, which
   past the bound is for good. Keeping a meeting's links from its last copy: a file

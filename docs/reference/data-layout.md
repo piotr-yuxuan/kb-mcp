@@ -499,11 +499,11 @@ from the folder that `sources.worklog.path` names, read in place and never writt
 `mirror.adapters.mirror_files.owned` and `worklog_owned` tell each owner's files apart,
 so that `mirror` and the work-log step never remove each other's. A run that meets a
 problem (a file not read, a conversion that failed) removes none of its files but the
-old file of a document written again under another path, as an entry's or a
-transcript's whose title changed, and a file not read holds back the files of what it
-builds: every one for `todo.org` or
-`todo.org_archive`, on which days, meetings and entries' numbers draw; for a transcript,
-its own; for a folder not listed, or the files past the bound, the transcripts under
+old file of a document written again under another path, as an entry's or a transcript's
+whose title changed, and a file not read holds back the files of what it builds: every
+one for `todo.org` or `todo.org_archive`, on which days, meetings and entries' numbers
+draw; for a transcript, its own; for a folder not listed, or the files past the bound,
+the transcripts under it, but one whose id a file found takes, whose copy then replaces
 it. Each problem says what it held back, as `worklog.problem` ([sync's
 telemetry](telemetry/sync.md)), at each run until it is fixed.
 

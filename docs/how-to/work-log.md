@@ -216,12 +216,12 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
   its file still naming the transcript or the meetings that no longer name it back. A
   document not read, or whose conversion fails, before it has a file is named in no
   other's `links` until a run reads and converts it.
-- A file not read also holds back the files that it builds, which stay as they were:
-  for `todo.org` or its archive, every file; for a transcript, its own; for a folder
-  that cannot be listed, the transcripts under it. The others are written as usual. A
-  meeting that links a transcript not read names it, whose last copy names the meeting
-  back; a link added or removed meanwhile is written on the meeting alone until a run
-  reads the transcript.
+- A file not read also holds back the files that it builds, which stay as they were: for
+  `todo.org` or its archive, every file; for a transcript, its own; for a folder that
+  cannot be listed, the transcripts under it, but one whose id a file elsewhere takes,
+  whose copy then replaces it. The others are written as usual. A meeting that links a
+  transcript not read names it, whose last copy names the meeting back; a link added or
+  removed meanwhile is written on the meeting alone until a run reads the transcript.
 - `archives = false` removes, at the next run, the files of what the archive file holds,
   of `transcripts/archive/` and `meetings/archive/`, and of the headings tagged
   `ARCHIVE`; a meeting that links an archived transcript then links nothing, and is

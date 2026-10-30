@@ -79,8 +79,9 @@ class Problem(Record):
 class Read(Record):
     """The work log's documents to write, in order, and the HTML transcripts left out.
 
-    The documents are those read that draw on no file not read. Problems stop removals;
-    warnings, such as two transcripts of one id, do not.
+    The documents are those read that draw on no file not read. Problems stop removals
+    but of a written document's old files; warnings, such as two transcripts of one id,
+    do not.
     """
 
     documents: tuple[Document, ...]
@@ -92,7 +93,8 @@ class Read(Record):
 class Outcome(Record):
     """What a run did: documents mirrored, files changed, HTML transcripts left out.
 
-    Problems stop removals; warnings, such as two transcripts of one id, do not.
+    Problems stop removals but of a written document's old files; warnings, such as two
+    transcripts of one id, do not.
     """
 
     documents: int
