@@ -325,7 +325,7 @@ def test_the_fetcher_refuses_an_until_before_since_before_any_request(
 def test_the_fetch_s_text_is_what_download_writes(
     home: Path, settings: Settings, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Confluence's fetch writes the counts that ``download --space MFS`` writes.
+    """Confluence's fetch writes the counts that ``download --space MFS`` writes under its row.
 
     A file of the scripted site fails, which fails both.
     """
@@ -337,7 +337,8 @@ def test_the_fetch_s_text_is_what_download_writes(
     given = [*command, "--data-dir", str(other.data_dir), "--site", SITE, *period]
     capsys.readouterr()  # what the fetch logged, outside a run, which has no log file
     assert main(given) == ExitStatus.FAILED
-    assert capsys.readouterr().out == fetched.text("short")
+    indented = "".join(f"  {line}\n" for line in fetched.text("short").splitlines())
+    assert capsys.readouterr().out == f"download confluence: failed\n{indented}"
 
 
 def test_the_atlassian_preparer_mirrors_the_kinds_of_the_source_that_it_runs_for(

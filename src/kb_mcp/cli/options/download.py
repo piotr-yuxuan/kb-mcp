@@ -110,11 +110,14 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "download",
         help="download what changed in a period, with its files",
         epilog=(
-            "With --format json: report, the counts of what the run did, or with --dry-run"
-            " would do; failed_targets, the spaces and projects that failed; status, the"
-            " exit status; windows, each target's: its start, end and reason, and its"
-            " coverage, extended, capped at a failure, held, or null when not written;"
-            " dry_run, whether the run only planned."
+            "With --format json: exit_status, the run's; steps, a row per source with"
+            " targets, confluence then jira, each with its step, download, its source, its"
+            " outcome (done, failed, sign in) and its result, null when the fetch could not"
+            " start: report, the counts of what the fetch did, or with --dry-run would do;"
+            " failed_targets, the spaces or projects that failed; status, its exit status;"
+            " windows, each target's: its start, end and reason, and its coverage,"
+            " extended, capped at a failure, held, or null when not written; dry_run,"
+            " whether the fetch only planned."
         ),
     )
     actions, flags = add_settings_options(parser)

@@ -40,8 +40,8 @@ question.
 
 The steps, in order:
 
-1. **Confluence and Jira**: one download of every space and project named, then the
-   mirror of each source taken, Confluence's then Jira's, a row each. Without
+1. **Confluence and Jira**: a download of each source taken, Confluence's spaces then
+   Jira's projects, then the mirror of each, in the same order, a row each. Without
    `--since`, each space and project fetches what changed since its last fetch, and
    asks again for what failed; one never fetched takes its last 7 days, as the summary
    before the question says. `--since` (`12h`, `7d`, `6mo`, an ISO date or time, or

@@ -151,10 +151,13 @@ options:
                         the largest file kept, in MB; 50 by default
   --dry-run             say what a run would fetch, and fetch nothing
 
-With --format json: report, the counts of what the run did, or with --dry-run would
-do; failed_targets, the spaces and projects that failed; status, the exit status;
-windows, each target's: its start, end and reason, and its coverage, extended, capped
-at a failure, held, or null when not written; dry_run, whether the run only planned.
+With --format json: exit_status, the run's; steps, a row per source with targets,
+confluence then jira, each with its step, download, its source, its outcome (done,
+failed, sign in) and its result, null when the fetch could not start: report, the
+counts of what the fetch did, or with --dry-run would do; failed_targets, the spaces
+or projects that failed; status, its exit status; windows, each target's: its start,
+end and reason, and its coverage, extended, capped at a failure, held, or null when
+not written; dry_run, whether the fetch only planned.
 ```
 
 ## `eval`
@@ -567,9 +570,9 @@ options:
   --dry-run             say what a run would fetch and what the work log would change;
                         write nothing
 
-With --format json: exit_status, the run's; steps, a row per step and source
-(download, mirror of confluence then of jira, worklog, index), each with its step, its
-source, null for the download and the index, its outcome (done, failed, sign in,
+With --format json: exit_status, the run's; steps, a row per step and source (download
+of confluence then of jira, mirror of confluence then of jira, worklog, index), each
+with its step, its source, null for the index, its outcome (done, failed, sign in,
 interrupted, not run) and its result, as its own command gives it.
 ```
 

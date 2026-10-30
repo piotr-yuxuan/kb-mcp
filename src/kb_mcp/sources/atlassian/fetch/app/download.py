@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from collections.abc import Sequence
+from copy import replace
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -184,7 +185,8 @@ class Download:
         holds. A source that does not answer at all (a site without Jira) is counted as a
         failure, and its targets skipped. A target without a window is skipped too, and
         asked nothing. The task ``targets`` reports those of the sources that answer,
-        each by its key.
+        each by its key. Confluence's probes and users follow its spaces alone, so that a
+        run of projects alone does and counts nothing of Confluence's.
         """
         self.held |= {target: "after --until" for target, w in self.windows.items() if w is None}
         confluence = bool(spaces) and self.reachable(
@@ -201,14 +203,14 @@ class Download:
                 window = self.windows[target]
                 if window is not None and self.space(target, window):
                     self.covered[target] = window.period
-            if not self.plan:
+            if spaces and not self.plan:
                 self.probe_absent()
             for key in targets.each(answered_projects, str):
                 target = Target(source="jira", key=key)
                 window = self.windows[target]
                 if window is not None and self.project(target, window):
                     self.covered[target] = window.period
-        if not self.plan:
+        if spaces and not self.plan:
             self.users()
 
     def reachable(self, source: str, request: Request, signed_in: Callable[[Fields], bool]) -> bool:
@@ -676,6 +678,24 @@ class Targets(Record):
         end = min(self.until, now) if self.until else now  # never past what a run can see
         return {target: window(coverage, target, self.since, end) for target in named}
 
+    def by_source(self) -> dict[str, Targets]:
+        """Give each source's targets apart, by its name: Confluence's spaces, Jira's projects.
+
+        Each is fetched on its own, in this order, over the same period; a source without
+        targets is left out.
+        """
+        apart = {"confluence": replace(self, projects=[]), "jira": replace(self, spaces=[])}
+        return {source: each for source, each in apart.items() if each.spaces or each.projects}
+
+    @property
+    def source(self) -> str:
+        """Name the one source of these targets, which names its fetch's report and events.
+
+        Raises ValueError for targets of no source, or of both: a fetch is of one source.
+        """
+        (source,) = self.by_source()
+        return source
+
 
 def read_targets(
     spaces: Sequence[str], projects: Sequence[str], options: Mapping[str, object], now: datetime
@@ -829,20 +849,22 @@ def download(
     now: Callable[[], datetime],
     sleep: Callable[[float], None],
 ) -> Outcome:
-    """Run a download signed in as the settings say, and save its report, even when stopped.
+    """Run a download of one source signed in as the settings say, and save its report.
 
-    Each target is fetched over its window. The coverage of every target listed whole
-    grows as ``Coverage.extended`` rules, and the tombstones found are kept, even when
-    the run stops; ``download.coverage`` says at INFO what became of each finished
-    target's coverage, and why it was held, if it was. The status is ``OK`` when nothing
-    failed, ``FAILED`` when something did, and ``SIGN_IN_AGAIN`` when the sign-in no
-    longer holds or no session was saved. Raises PeriodError when --since does not come
-    before the windows' end, and StoreBusyError when another run writes, both before
-    anything is written.
+    The targets are one source's, whose name ends the report's,
+    ``<runs>/<time>-<source>.json``, saved even when the run stops; another source's are
+    another download. Each target is fetched over its window. The coverage of every
+    target listed whole grows as ``Coverage.extended`` rules, and the tombstones found
+    are kept, even when the run stops; ``download.coverage`` says at INFO what became of
+    each finished target's coverage, and why it was held, if it was. The status is
+    ``OK`` when nothing failed, ``FAILED`` when something did, and ``SIGN_IN_AGAIN`` when
+    the sign-in no longer holds or no session was saved. Raises PeriodError when --since
+    does not come before the windows' end, StoreBusyError when another run writes, and
+    ValueError for targets of no source or of both, all before anything is written.
     """
     report, failed_targets, status = Report(), [], None
     extensions: dict[Target, Extension] = {}
-    store, started = RawStore(settings.raw), now()
+    store, started, source = RawStore(settings.raw), now(), targets.source
     coverage = store.coverage()
     windows = targets.windows(coverage, started)
     signing = sign_in(settings)
@@ -895,7 +917,8 @@ def download(
             settings.runs.mkdir(parents=True, exist_ok=True)
             stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
             saved = {"status": status, "counts": dict(sorted(report.counts.items()))}
-            (settings.runs / f"{stamp}.json").write_text(json.dumps(saved, indent=1), "utf-8")
+            path = settings.runs / f"{stamp}-{source}.json"
+            path.write_text(json.dumps(saved, indent=1), "utf-8")
     return Outcome(
         report=report,
         failed_targets=failed_targets,

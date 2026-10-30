@@ -12,7 +12,7 @@ says of tasks.
 
 | Event | Level | Fields | When |
 |---|---|---|---|
-| `sync.start` | info | `steps`, `dry_run` | The rows begin: each row planned, in order (`download`, `mirror confluence`, `mirror jira`, `worklog`, `index`), and whether it is a dry run |
+| `sync.start` | info | `steps`, `dry_run` | The rows begin: each row planned, in order (`download confluence`, `download jira`, `mirror confluence`, `mirror jira`, `worklog`, `index`), and whether it is a dry run |
 | `sync.step` | info | `step`, `outcome` | A row ends, named as `sync.start` names it: `done`, `failed`, `sign in` or `not run` |
 | `sync.interrupted` | warning | `step` | Ctrl-C stopped the run in this row, none if every row had ended; no later row runs: exit 130 |
 | `sync.end` | info | `status`, `steps` | The rows end: the exit status, and each row as `<row>: <outcome>` |
@@ -31,7 +31,7 @@ says of tasks.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `sync.step` | internal | `kb_mcp.step`, `kb_mcp.outcome` | A row, `download`, `mirror` (once for each source mirrored), `worklog` or `index`, and how it ended; its step's own spans within. The row that Ctrl-C stops has no outcome, and the rows after it no span |
+| `sync.step` | internal | `kb_mcp.step`, `kb_mcp.outcome` | A row, `download` (once for each source fetched), `mirror` (once for each source mirrored), `worklog` or `index`, and how it ended; its step's own spans within. The row that Ctrl-C stops has no outcome, and the rows after it no span |
 | `worklog.read` | internal | | The work log's folder listed, its files read and split into documents |
 | `worklog.convert` | internal | | Each document's file built, through pandoc when no file holds its revision |
 | `worklog.write` | internal | | The work log's files that changed written, those of documents gone removed |

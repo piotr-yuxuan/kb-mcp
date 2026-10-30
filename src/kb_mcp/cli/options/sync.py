@@ -85,10 +85,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         ),
         epilog=(
             "With --format json: exit_status, the run's; steps, a row per step and source"
-            " (download, mirror of confluence then of jira, worklog, index), each with its"
-            " step, its source, null for the download and the index, its outcome (done,"
-            " failed, sign in, interrupted, not run) and its result, as its own command"
-            " gives it."
+            " (download of confluence then of jira, mirror of confluence then of jira,"
+            " worklog, index), each with its step, its source, null for the index, its"
+            " outcome (done, failed, sign in, interrupted, not run) and its result, as its"
+            " own command gives it."
         ),
     )
     actions, flags = add_settings_options(parser)

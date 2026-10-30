@@ -88,7 +88,7 @@ def worklog_text(result: Outcome | Planned, summary: Summary) -> str:
 
 # How each step's result is written, as its own command writes it.
 TEXTS: dict[str, Callable[..., str]] = {
-    "download": download_command.text,
+    "download": download_command.outcome_text,
     "mirror": mirror_command.outcome_text,
     "worklog": worklog_text,
     "index": index_command.text,

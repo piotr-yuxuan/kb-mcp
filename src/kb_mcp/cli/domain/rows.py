@@ -1,8 +1,9 @@
 """The rows of a run of sources: a row per step and source, and the run's exit status.
 
-``sync`` and ``mirror`` give them. They are records, so not in ``cli.domain.sync``,
-which ``--help`` imports, nor in ``sync``'s use case, whose steps reach every source's
-code, so that a command writes rows without importing what it does not run.
+``sync``, ``mirror`` and ``download`` give them. They are records, so not in
+``cli.domain.sync``, which ``--help`` imports, nor in ``sync``'s use case, whose steps
+reach every source's code, so that a command writes rows without importing what it does
+not run.
 """
 
 from __future__ import annotations
@@ -15,8 +16,7 @@ from kb_mcp.kernel.record import Record
 class Row(Record):
     """A step's row: its name, its source, how it ended, and its result, None if it gave none.
 
-    ``source`` is None on a row of no single source: the download of both Atlassian
-    sources, and the index.
+    ``source`` is None on a row of no single source: the index.
     """
 
     step: str

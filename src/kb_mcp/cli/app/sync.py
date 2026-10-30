@@ -1,11 +1,11 @@
-"""``sync``'s steps: Atlassian's download and each source's mirror, the work log's, the index.
+"""``sync``'s steps: each Atlassian source's download and mirror, the work log's, the index.
 
 Each step runs even when an earlier one failed, since the next reads what is on disk;
 Ctrl-C stops the run, and no later step runs, as does a cache of pandoc's conversions
 that the mirror cannot use, such as one locked past the wait, or one that breaks during
 the mirror. What can be refused is refused before the
 first step: an --until before --since, and a work log that is not a folder. A dry
-run plans the download and counts the work log, and writes nothing. Each row is a span,
+run plans each download and counts the work log, and writes nothing. Each row is a span,
 ``sync.step``, within which its step's own spans and events are recorded, those of
 ``download``, ``mirror``, the work log or ``index``, as
 ``docs/reference/telemetry/sync.md`` says. ``mirror``'s command makes its rows here too,
@@ -51,6 +51,7 @@ class SyncRefusedError(ValueError):
 class Atlassian(Record):
     """Confluence's and Jira's step: what to download, then the sources to mirror, in order.
 
+    The targets are downloaded a source at a time, as ``Targets.by_source`` gives them.
     Each source of ``sources`` is one of ``PREPARED``.
     """
 
@@ -59,8 +60,11 @@ class Atlassian(Record):
 
     @property
     def rows(self) -> tuple[tuple[str, str | None], ...]:
-        """Give the step's rows, each its step and source: the download, then each mirror."""
-        return (("download", None), *(("mirror", source) for source in self.sources))
+        """Give the step's rows, each its step and source: each download, then each mirror."""
+        return (
+            *(("download", source) for source in self.targets.by_source()),
+            *(("mirror", source) for source in self.sources),
+        )
 
 
 class Worklog(Record):
@@ -118,18 +122,27 @@ def prepare_source(settings: Settings, pandoc: Pandoc, source: str) -> Row:
 
 
 def atlassian(context: Context, step: Atlassian, add: Callable[[Row], None]) -> None:
-    """Download, or plan the download, then mirror each source of the step, unless a dry run.
+    """Download each source's targets, or plan it, then mirror each source, unless a dry run.
 
-    Each mirror runs whatever the download did, since it reads what is stored, a row of
-    its own. What went wrong is said by the events of ``fetch_targets`` and of
-    ``prepare_kinds``.
+    Confluence's spaces are downloaded, then Jira's projects, each a row of its own, before
+    any mirror; each mirror runs whatever the downloads did, since it reads what is
+    stored, a row of its own. What went wrong is said by the events of ``fetch_targets``
+    and of ``prepare_kinds``.
     """
     settings = context.settings
-    with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "download"}):
-        fetched = fetch_targets(
-            settings, step.targets, context.now, context.sleep, dry_run=context.dry_run
-        )
-        add(Row(step="download", source=None, outcome=fetched.outcome, result=fetched.downloaded))
+    for source, targets in step.targets.by_source().items():
+        with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "download"}):
+            fetched = fetch_targets(
+                settings, targets, context.now, context.sleep, dry_run=context.dry_run
+            )
+            add(
+                Row(
+                    step="download",
+                    source=source,
+                    outcome=fetched.outcome,
+                    result=fetched.downloaded,
+                )
+            )
     for source in step.sources:
         with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "mirror"}):
             if context.dry_run:

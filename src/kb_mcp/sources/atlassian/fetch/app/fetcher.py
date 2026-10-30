@@ -3,8 +3,9 @@
 Both declarations name this module, a ``Fetcher``: ``preflight`` and ``fetch`` read the
 source that a run is for from its declaration, by its kinds, and fetch that source's
 targets alone, its table's spaces or projects, over the period that its options give.
-``fetch_targets`` downloads, or plans a download, and says what went wrong as
-``download``'s events do; ``sync``'s download of both sources runs it too.
+``fetch_targets`` downloads one source's targets, or plans their download, and says
+what went wrong as ``download``'s events do; ``download`` and ``sync``'s Atlassian step
+run it too, for each source apart.
 """
 
 from __future__ import annotations
@@ -90,22 +91,26 @@ def fetch_targets(
     *,
     dry_run: bool,
 ) -> Fetched:
-    """Download these targets, or plan their download; say what went wrong, by name.
+    """Download these targets, one source's, or plan their download; say what went wrong.
 
     Another run writing the raw store fails the fetch before it starts, an error,
     ``download.store_busy``; each target that failed is a warning,
     ``download.target_failed``, and a sign-in that no longer holds an error,
-    ``download.sign_in_needed``, saying how to sign in again.
+    ``download.sign_in_needed``, saying how to sign in again; both errors name the
+    source, since each source's fetch can give them.
     """
     act = plan if dry_run else download
+    source = targets.source
     try:
         downloaded = act(settings, targets, now, sleep)
     except StoreBusyError:
-        structlog.get_logger().error("download.store_busy", store=str(settings.raw), hint=BUSY)
+        structlog.get_logger().error(
+            "download.store_busy", source=source, store=str(settings.raw), hint=BUSY
+        )
         return Fetched(outcome="failed", downloaded=None)
     log = structlog.get_logger()
     for target in downloaded.failed_targets:
         log.warning("download.target_failed", target=target)
     if downloaded.status == ExitStatus.SIGN_IN_AGAIN:
-        log.error("download.sign_in_needed", hint=sign_in(settings).again)
+        log.error("download.sign_in_needed", source=source, hint=sign_in(settings).again)
     return Fetched(outcome=FETCHED[downloaded.status], downloaded=downloaded)

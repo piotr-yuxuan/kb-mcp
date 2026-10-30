@@ -240,9 +240,9 @@ Two more of the store's own records, each replaced whole:
 
 ## Run reports
 
-Owned by `download` (004): `<data>/runs/<UTC time as %Y%m%dT%H%M%SZ>.json`, in the format
-004's plan defines. A run report holds counts and refused fields' paths, never content,
-and names no target. Its counts of documents depend on whether `--since` was given
+Owned by `download` (004): `<data>/runs/<UTC time as %Y%m%dT%H%M%SZ>-<source>.json`, one
+for each source fetched, `confluence` or `jira` (030), in the format 004's plan defines.
+A run report holds counts and refused fields' paths, never content, and names no target. Its counts of documents depend on whether `--since` was given
 (034): with it, `<kind>: in the period` and `<kind>: already stored`; without,
 `<kind>: new or changed since the last fetch`; `listed` and `fetched` either way.
 

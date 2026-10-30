@@ -257,9 +257,10 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> FakeSite:
 def test_json_is_one_document_with_a_row_per_step(
     home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """exit_status, then download, each mirror, the work log and the index, with its result.
+    """exit_status, then each download, each mirror, the work log and the index, with its result.
 
-    Each row names its source, none for the download of both and for the index.
+    Each row names its source, none for the index: Confluence's and Jira's downloads are
+    a row each, the file that fails, a page's, failing Confluence's alone.
     """
     config = settings_file(home, worklog, atlassian=True)
     given = ("--yes", "--since", "2026-10-02", "--format", "json")
@@ -267,13 +268,14 @@ def test_json_is_one_document_with_a_row_per_step(
     document = json.loads(capsys.readouterr().out)
     assert document["exit_status"] == status == ExitStatus.FAILED  # one file fails
     assert [(row["step"], row["source"], row["outcome"]) for row in document["steps"]] == [
-        ("download", None, "failed"),
+        ("download", "confluence", "failed"),
+        ("download", "jira", "done"),
         ("mirror", "confluence", "done"),
         ("mirror", "jira", "done"),
         ("worklog", "worklog", "done"),
         ("index", None, "done"),
     ]
-    assert document["steps"][3]["result"]["documents"] == WORKLOG_DOCUMENTS
+    assert document["steps"][4]["result"]["documents"] == WORKLOG_DOCUMENTS
     assert signed_in.asked
 
 
@@ -672,24 +674,26 @@ def test_the_sources_are_the_names_that_the_options_offer() -> None:
 def test_a_dry_run_of_the_site_plans_and_writes_nothing(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """The download planned, mirror and index not run; the data folder holds the session alone."""
+    """Each download planned, mirror and index not run; the data folder holds the session alone."""
     config = settings_file(home, None, atlassian=True)
     given = ("--dry-run", "--since", "2026-10-02", "--format", "json")
     assert main(command(home, config, *given)) == ExitStatus.OK
     rows = json.loads(capsys.readouterr().out)["steps"]
     assert [(row["step"], row["source"], row["outcome"]) for row in rows] == [
-        ("download", None, "done"),
+        ("download", "confluence", "done"),
+        ("download", "jira", "done"),
         ("mirror", "confluence", "not run"),
         ("mirror", "jira", "not run"),
         ("index", None, "not run"),
     ]
     assert "confluence pages: to fetch" in rows[0]["result"]["report"]["counts"]
-    windows = rows[0]["result"]["windows"]
+    assert "jira issues: to fetch" in rows[1]["result"]["report"]["counts"]
+    windows = [each for row in rows[:2] for each in row["result"]["windows"]]
     assert [(each["target"]["key"], each["reason"], each["coverage"]) for each in windows] == [
         ("MFS", "given", None),
         ("PRB", "given", None),
     ]
-    assert rows[0]["result"]["dry_run"] is True
+    assert [row["result"]["dry_run"] for row in rows[:2]] == [True, True]
     assert sorted(path.name for path in (home / "data").iterdir()) == ["session"]
     assert signed_in.asked
 
@@ -697,11 +701,13 @@ def test_a_dry_run_of_the_site_plans_and_writes_nothing(
 def test_a_dry_run_of_the_site_says_each_target_s_window_under_its_row(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """Short as it is: the window of each target, where it starts and why, then the counts."""
+    """Short as it is: under each download's row, its target's window and why, then counts."""
     config = settings_file(home, None, atlassian=True)
     assert main(command(home, config, "--dry-run", "--since", "2026-10-02")) == ExitStatus.OK
-    download_step, space, project, *_ = capsys.readouterr().out.splitlines()
-    assert download_step == "download: done"
+    confluence, jira = capsys.readouterr().out.split("download jira: done\n")
+    download_step, space, *_ = confluence.splitlines()
+    project, *_ = jira.splitlines()
+    assert download_step == "download confluence: done"
     assert space.startswith("  space MFS: from 2026-10-02T00:00:00+00:00 to ")
     assert project.startswith("  project PRB: from 2026-10-02T00:00:00+00:00 to ")
     assert space.endswith(", given")
@@ -713,12 +719,18 @@ def test_a_dry_run_of_the_site_says_each_target_s_window_under_its_row(
     [
         (
             ("--exclude", "worklog"),
-            [("download", None), ("mirror", "confluence"), ("mirror", "jira"), ("index", None)],
+            [
+                ("download", "confluence"),
+                ("download", "jira"),
+                ("mirror", "confluence"),
+                ("mirror", "jira"),
+                ("index", None),
+            ],
             True,
         ),
         (
             ("--exclude", "confluence"),
-            [("download", None), ("mirror", "jira"), ("worklog", "worklog"), ("index", None)],
+            [("download", "jira"), ("mirror", "jira"), ("worklog", "worklog"), ("index", None)],
             False,
         ),
         (("--include", "worklog"), [("worklog", "worklog"), ("index", None)], False),
@@ -755,7 +767,7 @@ def test_a_source_left_out_is_not_mirrored_though_its_documents_are_stored(
     rows = json.loads(capsys.readouterr().out)["steps"]
     steps = [(row["step"], row["source"], row["outcome"]) for row in rows]
     assert steps == [
-        ("download", None, "done"),
+        ("download", "jira", "done"),
         ("mirror", "jira", "done"),
         ("index", None, "done"),
     ]
@@ -817,7 +829,7 @@ def test_a_second_sync_reuses_every_conversion_and_the_work_log_adds_none(
     for output in (("--format", "json"), ("--format", "json"), ()):
         main(command(home, config, *given, *output))
         rows.append(capsys.readouterr().out)
-    first, second = (json.loads(row)["steps"][1] for row in rows[:2])
+    first, second = (json.loads(row)["steps"][2] for row in rows[:2])
     assert (first["step"], first["outcome"], first["result"]["reused"]) == ("mirror", "done", 0)
     converted = first["result"]["converted"]
     assert converted > first["result"]["documents"] > 0  # a tree among them
@@ -827,7 +839,7 @@ def test_a_second_sync_reuses_every_conversion_and_the_work_log_adds_none(
         f"mirror confluence: done\n  documents: {documents}\n"
         f"  converted by pandoc: 0\n  reused from the cache: {converted}\n"
     ) in rows[2]
-    jira = json.loads(rows[0])["steps"][2]
+    jira = json.loads(rows[0])["steps"][3]
     assert (jira["step"], jira["source"], jira["outcome"]) == ("mirror", "jira", "done")
     total = converted + jira["result"]["converted"]
     with closing(sqlite3.connect(home / "data" / "conversions.sqlite")) as cache:
@@ -893,12 +905,13 @@ def test_other_arguments_for_pandoc_convert_the_mirror_again(
 def test_the_text_of_a_full_sync_gives_each_command_s_counts_under_its_row(
     home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """Download's counts, as download writes them, indented under its row."""
+    """Each download's counts, as download writes them, indented under its source's row."""
     config = settings_file(home, worklog, atlassian=True)
     assert main(command(home, config, "--yes", "--since", "2026-10-02")) == ExitStatus.FAILED
     out = capsys.readouterr().out
-    assert out.startswith("download: failed\n  confluence blogposts: fetched: 1\n")
-    assert "  failures: 1\nmirror confluence: done\n  documents: " in out
+    assert out.startswith("download confluence: failed\n  confluence blogposts: fetched: 1\n")
+    assert "  failures: 1\ndownload jira: done\n  files: downloaded: 1\n" in out
+    assert "  failures: 0\nmirror confluence: done\n  documents: " in out
     assert "\nmirror jira: done\n  documents: " in out
     assert signed_in.asked
 
