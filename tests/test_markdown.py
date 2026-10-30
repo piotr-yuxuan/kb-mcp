@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from copy import replace
 from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import pytest
 
-from kb_mcp.kernel.content import RefusedError
 from kb_mcp.kernel.fields import RepresentationError
+from kb_mcp.kernel.names import RefusedError
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 

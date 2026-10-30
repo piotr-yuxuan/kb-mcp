@@ -174,8 +174,8 @@ def test_the_sandbox_s_golden_set_reads_as_written() -> None:
     ]
     assert read_golden(yaml.safe_dump(written, allow_unicode=True), path) == [
         Question(
-            item["id"],
-            item["question"],
+            id=item["id"],
+            text=item["question"],
             expected=tuple(path(ref) for ref in item["expected"]),
             partial=tuple(path(ref) for ref in item["partial"]),
             groups=(item["overlap"], item["lang"]),
@@ -520,8 +520,8 @@ def test_ask_is_measured_beside_search_in_each_mode(data: Path) -> None:
     """The paraphrase: quoted with its evidence by meaning, missed by words; costs counted."""
     settings = Settings(data_dir=data, model="tiny")
     [run] = evaluate(settings, golden(data), targets(tiny()), ticking(), MOMENT)
-    assert run.asked["semantic"]["q1"] == Quoted(1.0, 1.0)
-    assert run.asked["lexical"]["q1"] == Quoted(0.0, 0.0)
+    assert run.asked["semantic"]["q1"] == Quoted(found=1.0, evidence=1.0)
+    assert run.asked["lexical"]["q1"] == Quoted(found=0.0, evidence=0.0)
     assert run.asked["lexical"]["q3"].found == 1.0
     assert set(run.ask_times) == {"lexical", "semantic", "hybrid"}
     assert run.costs.pieces > 0

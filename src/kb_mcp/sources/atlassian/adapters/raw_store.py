@@ -9,37 +9,26 @@ import os
 import re
 import shutil
 import tempfile
+from collections.abc import Callable, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import UTC
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import (
-    IDENTIFIER,
-    REVISION,
-    BlogPost,
-    Folder,
-    Issue,
-    Listed,
-    Page,
-    Person,
-    RefusedError,
-    Space,
-    require,
-)
+from kb_mcp.kernel.content import BlogPost, Folder, Issue, Listed, Page, Person, Snapshot, Space
 from kb_mcp.kernel.fields import Fields, RepresentationError
+from kb_mcp.kernel.names import IDENTIFIER, REVISION, RefusedError, require
+from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.domain.coverage import Coverage, Target
 from kb_mcp.sources.atlassian.domain.deletions import Tombstone
 from kb_mcp.sources.atlassian.domain.period import Period, PeriodError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Mapping
-    from datetime import datetime
+    from collections.abc import Iterable, Iterator
 
-    from kb_mcp.kernel.content import Document, Snapshot
+    from kb_mcp.kernel.content import Document
 
 # The store's own file in a snapshot, beside the responses.
 RECORD = "store.json"
@@ -55,8 +44,7 @@ DIGEST = re.compile(r"[0-9a-f]{64}")
 UNREADABLE = (ValueError, OSError)
 
 
-@dataclass(frozen=True)
-class Representation:
+class Representation(Record):
     """How the snapshots of one kind of document are read.
 
     ``files`` names the responses that a snapshot of the kind must have. ``identity``
@@ -73,12 +61,20 @@ class Representation:
 CONFLUENCE_FILES = (confluence_v2.DOCUMENT, confluence_v2.VIEW, confluence_v2.ATTACHMENTS)
 REPRESENTATIONS: dict[type[Document], Representation] = {
     Page: Representation(
-        CONFLUENCE_FILES, confluence_v2.identity, partial(confluence_v2.snapshot, Page)
+        files=CONFLUENCE_FILES,
+        identity=confluence_v2.identity,
+        snapshot=partial(confluence_v2.snapshot, Page),
     ),
     BlogPost: Representation(
-        CONFLUENCE_FILES, confluence_v2.identity, partial(confluence_v2.snapshot, BlogPost)
+        files=CONFLUENCE_FILES,
+        identity=confluence_v2.identity,
+        snapshot=partial(confluence_v2.snapshot, BlogPost),
     ),
-    Issue: Representation((jira_v3.ISSUE, jira_v3.COMMENTS), jira_v3.identity, jira_v3.snapshot),
+    Issue: Representation(
+        files=(jira_v3.ISSUE, jira_v3.COMMENTS),
+        identity=jira_v3.identity,
+        snapshot=jira_v3.snapshot,
+    ),
 }
 
 
@@ -86,8 +82,7 @@ class StoreBusyError(RuntimeError):
     """Another run is writing the raw store."""
 
 
-@dataclass(frozen=True)
-class Stored:
+class Stored(Record):
     """A stored snapshot, read into the domain, with the store's record of it.
 
     ``blobs`` maps each downloaded attachment's id to its file's SHA-256; an attachment
@@ -100,8 +95,7 @@ class Stored:
     blobs: Mapping[str, str]
 
 
-@dataclass(frozen=True)
-class Unreadable:
+class Unreadable(Record):
     """Something stored that its adapter refuses: where it is, and why, without content."""
 
     where: str  # the path within the store, with an index for an entry of a listing
@@ -304,7 +298,7 @@ class RawStore:
         # Only the snapshot's own attachments: a key of anything else names no file here.
         known = {attachment.id for attachment in snapshot.attachments}
         own = {key: digest for key, digest in blobs.items() if key in known}
-        return Stored(folder, snapshot, fetched_at, own)
+        return Stored(folder=folder, snapshot=snapshot, fetched_at=fetched_at, blobs=own)
 
     def latest(self, kind: type[Document]) -> Iterator[Stored | Unreadable]:
         """Yield the newest stored snapshot of each document of a kind, or why it is not.
@@ -319,7 +313,9 @@ class RawStore:
             try:
                 yield self._read(kind, revisions[-1])
             except UNREADABLE as error:
-                yield Unreadable(str(revisions[-1].relative_to(self.root)), reason(error))
+                yield Unreadable(
+                    where=str(revisions[-1].relative_to(self.root)), reason=reason(error)
+                )
 
     @staticmethod
     def responses(folder: Path) -> dict[str, object]:
@@ -375,7 +371,7 @@ class RawStore:
             try:
                 spaces.append(confluence_v2.space(Fields(_decode(folder / "space.json"), where)))
             except UNREADABLE as error:
-                spaces.append(Unreadable(where, reason(error)))
+                spaces.append(Unreadable(where=where, reason=reason(error)))
         return spaces
 
     def listed(
@@ -427,13 +423,13 @@ class RawStore:
         try:
             entries = Fields.each(_decode(path), where)
         except UNREADABLE as error:
-            return [Unreadable(where, reason(error))]
+            return [Unreadable(where=where, reason=reason(error))]
         results: list[T | Unreadable] = []
         for index, entry in enumerate(entries):
             try:
                 results.append(read(entry))
             except UNREADABLE as error:
-                results.append(Unreadable(f"{where}[{index}]", reason(error)))
+                results.append(Unreadable(where=f"{where}[{index}]", reason=reason(error)))
         return results
 
     def stored_ids(self, kind: type[Document]) -> set[str]:
@@ -454,7 +450,7 @@ class RawStore:
         exact: set[Target] = set()
         for item in Fields.each(_record_json(path), COVERAGE):
             with item.refusals():
-                target = Target(item.text("source"), item.text("key"))
+                target = Target(source=item.text("source"), key=item.text("key"))
             try:
                 periods[target] = Period(item.time("start"), item.time("end"))
             except PeriodError:
@@ -462,7 +458,7 @@ class RawStore:
                 raise RepresentationError(message) from None
             if target.searched_by_time and "exact" in item.value and item.flag("exact"):
                 exact.add(target)
-        return Coverage(periods, frozenset(exact))
+        return Coverage(periods=periods, exact=frozenset(exact))
 
     def put_coverage(self, coverage: Coverage) -> None:
         """Replace the record of coverage, whole; an exact entry says so, beside the rest.
@@ -478,7 +474,9 @@ class RawStore:
                 "end": covered.end.astimezone(UTC).isoformat(),
                 **({"exact": True} if target in coverage.exact else {}),
             }
-            for target, covered in sorted(coverage.periods.items())
+            for target, covered in sorted(
+                coverage.periods.items(), key=lambda item: (item[0].source, item[0].key)
+            )
         ]
         _replace_synced(self.root / COVERAGE, _encode(entries))
 
@@ -496,10 +494,10 @@ class RawStore:
                     raise RepresentationError(message)
                 first_gone = item.time("first_gone") if item.optional_text("first_gone") else None
                 stone = Tombstone(
-                    kind,
-                    identifier,
-                    item.text("space"),
-                    first_gone,
+                    kind=kind,
+                    id=identifier,
+                    space_id=item.text("space"),
+                    first_gone=first_gone,
                     confirmed=item.flag("confirmed"),
                 )
             stones[stone.key] = stone

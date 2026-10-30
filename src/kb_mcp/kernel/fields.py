@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
-from kb_mcp.kernel.content import RefusedError
+from kb_mcp.kernel.names import RefusedError
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

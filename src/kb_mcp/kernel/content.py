@@ -8,89 +8,49 @@ adapter for that representation changes, and nothing else.
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import ClassVar, Literal
+import builtins
+from datetime import datetime
+from typing import ClassVar, Self
 
-# The sources of the mirror, as sync's --include and --exclude name them.
-type SourceName = Literal["confluence", "jira", "worklog"]
-SOURCE_NAMES: tuple[SourceName, ...] = ("confluence", "jira", "worklog")
-# An id names a folder of the raw store, so it must be one safe path part.
-IDENTIFIER = re.compile(r"[A-Za-z0-9_-]+")
-# A Confluence space key; a personal space's key begins with a tilde.
-SPACE_KEY = re.compile(r"~?[A-Za-z0-9]+")
-PROJECT_KEY = re.compile(r"[A-Z][A-Z0-9_]+")
-ISSUE_KEY = re.compile(r"[A-Z][A-Z0-9_]+-[0-9]+")
-# An embedding model's name, as the endpoint names it: the settings and the command
-# line check it alike.
-MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
-# A path on the site, never another host's: one slash, no second one, no backslash, no
-# control character.
-SITE_PATH = re.compile(r"/(?![/\\])[^\s\\\x00-\x1f\x7f]*")
-# A revision's name: a Confluence version, or a Jira update time in UTC.
-REVISION = re.compile(r"[0-9]{6}|[0-9]{8}T[0-9]{6}\.[0-9]{6}Z")
-# A work-log document's id, by its type: an entry's digest, numbered from the second
-# entry of one digest; a transcript's day and name, or its digest; a day's date; a
-# meeting's day and title's slug, numbered after -- from the second meeting of one day
-# and slug.
-WORKLOG_IDS = {
-    "entry": re.compile(r"e-[0-9a-f]{16}(?:-[0-9]+)?"),
-    "transcript": re.compile(r"t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})"),
-    "day": re.compile(r"d-[0-9]{8}"),
-    "meeting": re.compile(r"m-[0-9]{8}-[a-z0-9-]{1,64}"),
-}
-# Any work-log document's id, of whichever type.
-WORKLOG_ID = re.compile("|".join(f"(?:{each.pattern})" for each in WORKLOG_IDS.values()))
-# A work-log document's revision: a digest of what pandoc converts, and how.
-WORKLOG_REVISION = re.compile(r"[0-9a-f]{16}")
+from pydantic import model_validator
+
+from kb_mcp.kernel.names import (
+    IDENTIFIER,
+    ISSUE_KEY,
+    PROJECT_KEY,
+    REVISION,
+    SITE_PATH,
+    SPACE_KEY,
+    require,
+    time_revision,
+    version_revision,
+)
+from kb_mcp.kernel.record import Record
 
 
-class RefusedError(ValueError):
-    """A value that a domain type refuses; the message names the field, never the value."""
-
-
-def require(pattern: re.Pattern[str], value: str, name: str) -> None:
-    """Refuse a value that does not match its rule, naming the field and the rule."""
-    if not pattern.fullmatch(value):
-        message = f"{name}: does not match {pattern.pattern}"
-        raise RefusedError(message)
-
-
-def version_revision(version: int) -> str:
-    """Name a Confluence version, padded so that names sort as versions do."""
-    return f"{version:06d}"
-
-
-def time_revision(updated: datetime) -> str:
-    """Name a state by its update time in UTC, so that names sort as times do."""
-    return updated.astimezone(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
-
-
-@dataclass(frozen=True)
-class Person:
+class Person(Record):
     """Someone named in content: the account id is stable; the name, when given, is not."""
 
     account_id: str
     display_name: str | None = None
 
 
-@dataclass(frozen=True)
-class Space:
+class Space(Record):
     """A Confluence space."""
 
     id: str
     key: str
     name: str
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_space(self) -> Self:
         """Refuse an id or a key that could not name a folder."""
         require(IDENTIFIER, self.id, "id")
         require(SPACE_KEY, self.key, "key")
+        return self
 
 
-@dataclass(frozen=True)
-class Folder:
+class Folder(Record):
     """A Confluence folder: a node of the space's tree, with a title and no body."""
 
     id: str
@@ -98,13 +58,14 @@ class Folder:
     parent_id: str | None = None
     parent_type: str | None = None  # a page or a folder, as for a page
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_folder(self) -> Self:
         """Refuse an id that could not name a node."""
         require(IDENTIFIER, self.id, "id")
+        return self
 
 
-@dataclass(frozen=True)
-class Attachment:
+class Attachment(Record):
     """A file attached to a page, a blog post or an issue."""
 
     id: str
@@ -113,14 +74,15 @@ class Attachment:
     size: int  # bytes
     download: str  # the site-relative path whose GET returns the file
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_attachment(self) -> Self:
         """Refuse an id that could not name a file, and a download off the site."""
         require(IDENTIFIER, self.id, "id")
         require(SITE_PATH, self.download, "download")
+        return self
 
 
-@dataclass(frozen=True)
-class Comment:
+class Comment(Record):
     """A comment, with its body as the site renders it."""
 
     id: str
@@ -129,8 +91,7 @@ class Comment:
     html: str
 
 
-@dataclass(frozen=True, kw_only=True)
-class Document:
+class Document(Record):
     """A page, a blog post or an issue: what becomes one file of the mirror.
 
     ``source`` and ``kind`` name where it is stored; ``revision`` names this state of it,
@@ -148,10 +109,12 @@ class Document:
     url: str  # the site-relative path of its web page
     labels: tuple[str, ...] = ()
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_document(self) -> Self:
         """Refuse an id that could not name a folder, and a web page off the site."""
         require(IDENTIFIER, self.id, "id")
         require(SITE_PATH, self.url, "url")
+        return self
 
     @property
     def revision(self) -> str:
@@ -159,7 +122,6 @@ class Document:
         return time_revision(self.updated)
 
 
-@dataclass(frozen=True, kw_only=True)
 class ConfluenceDocument(Document):
     """A page or a blog post, versioned within its space."""
 
@@ -169,10 +131,11 @@ class ConfluenceDocument(Document):
     version: int
     status: str  # current, archived, trashed, and so on
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_confluence_document(self) -> Self:
         """Refuse an id or a space id that could not name a folder."""
-        super().__post_init__()
         require(IDENTIFIER, self.space_id, "space_id")
+        return self
 
     @property
     def revision(self) -> str:
@@ -180,14 +143,12 @@ class ConfluenceDocument(Document):
         return version_revision(self.version)
 
 
-@dataclass(frozen=True, kw_only=True)
 class BlogPost(ConfluenceDocument):
     """A Confluence blog post."""
 
     kind: ClassVar[str] = "blogposts"
 
 
-@dataclass(frozen=True, kw_only=True)
 class Page(ConfluenceDocument):
     """A Confluence page, with its place in the space's tree.
 
@@ -201,7 +162,6 @@ class Page(ConfluenceDocument):
     parent_type: str | None = None
 
 
-@dataclass(frozen=True, kw_only=True)
 class Issue(Document):
     """A Jira issue; its id stays when it moves, its key does not."""
 
@@ -216,15 +176,15 @@ class Issue(Document):
     assignee: Person | None = None
     parent: str | None = None  # the parent issue's key
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_issue(self) -> Self:
         """Refuse an id, a key or a project key that could not name a file."""
-        super().__post_init__()
         require(ISSUE_KEY, self.key, "key")
         require(PROJECT_KEY, self.project, "project")
+        return self
 
 
-@dataclass(frozen=True)
-class Listed:
+class Listed(Record):
     """What a listing says of a document: enough to decide whether to fetch it, and how.
 
     An adapter reads it from a listing's entry leniently, apart from the rest of the
@@ -232,16 +192,19 @@ class Listed:
     fetched. It names its stored snapshot as the document would.
     """
 
-    type: type[Document]
+    # The builtin, which the field's own name hides in the class's body.
+    type: builtins.type[Document]
     id: str
     revision: str
     updated: datetime
     version: int | None = None  # a Confluence document's GETs are pinned to its version
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_listed(self) -> Self:
         """Refuse an id or a revision that could not name a folder."""
         require(IDENTIFIER, self.id, "id")
         require(REVISION, self.revision, "revision")
+        return self
 
     @property
     def source(self) -> str:
@@ -254,8 +217,7 @@ class Listed:
         return self.type.kind
 
 
-@dataclass(frozen=True)
-class Snapshot:
+class Snapshot(Record):
     """A document at one revision, with what the mirror shows of it."""
 
     document: Document

@@ -153,7 +153,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import SOURCE_NAMES
+from kb_mcp.kernel.names import SOURCE_NAMES
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -170,7 +170,7 @@ def per_source(documents: Iterable[PurePath]) -> dict[str, int]:
 ```
 
 The sources are named once, in the kernel
-([`SOURCE_NAMES`](../../src/kb_mcp/kernel/content.py)), so that `count`
+([`SOURCE_NAMES`](../../src/kb_mcp/kernel/names.py)), so that `count`
 names each source as `sync` does. Run the test again:
 
 ```bash
@@ -299,7 +299,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import SOURCE_NAMES
+from kb_mcp.kernel.names import SOURCE_NAMES
 from kb_mcp.mirror.adapters.markdown import documents
 
 if TYPE_CHECKING:

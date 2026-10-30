@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import os
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.markdown import ATLASSIAN, WORKLOG, documents
 from kb_mcp.mirror.domain.mirror_layout import ASSET_NAME, ASSETS, TREE
 
@@ -22,8 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
 
-@dataclass(frozen=True)
-class Changes:
+class Changes(Record):
     """How many files a run wrote, found unchanged, and removed."""
 
     written: int
@@ -93,4 +92,4 @@ def sync(
         while folder != docs and not any(folder.iterdir()):
             folder.rmdir()
             folder = folder.parent
-    return Changes(written, unchanged, len(stale))
+    return Changes(written=written, unchanged=unchanged, removed=len(stale))

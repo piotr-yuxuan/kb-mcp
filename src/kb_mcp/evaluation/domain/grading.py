@@ -8,7 +8,6 @@ A refusal names the field at fault, never what was found there.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from statistics import fmean
 from typing import TYPE_CHECKING, Literal
 
@@ -22,6 +21,7 @@ from kb_mcp.evaluation.domain.evaluation import (
     paired_test,
     plain,
 )
+from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -79,8 +79,7 @@ def refusal(error: ValidationError) -> str:
     )
 
 
-@dataclass(frozen=True)
-class Graded:
+class Graded(Record):
     """How an answer serves its question."""
 
     found: bool  # the agent said that the base holds the answer
@@ -128,8 +127,7 @@ def grade(
     )
 
 
-@dataclass(frozen=True)
-class Difference:
+class Difference(Record):
     """B's mean less A's on one measure, its seeded bootstrap interval, and its tests."""
 
     difference: float
@@ -138,8 +136,7 @@ class Difference:
     adjusted: float  # by Holm, over the measures compared
 
 
-@dataclass(frozen=True)
-class Verdict:
+class Verdict(Record):
     """Whether ``ask`` stays among the default tools, and each measure's difference."""
 
     keeps_ask: bool
@@ -172,12 +169,14 @@ def ask_verdict(pairs: Mapping[str, Sequence[tuple[float, float]]]) -> Verdict:
     adjusted = dict(zip(pvalues, holm(list(pvalues.values())), strict=True))
     differences = {
         name: Difference(
-            fmean(b - a for a, b in each) if each else 0.0,
-            interval([b - a for a, b in each]),
-            pvalues[name],
-            adjusted[name],
+            difference=fmean(b - a for a, b in each) if each else 0.0,
+            interval=interval([b - a for a, b in each]),
+            pvalue=pvalues[name],
+            adjusted=adjusted[name],
         )
         for name, each in pairs.items()
     }
     success = differences["success"]
-    return Verdict(not (success.difference < 0 and success.adjusted < ALPHA), differences)
+    return Verdict(
+        keeps_ask=not (success.difference < 0 and success.adjusted < ALPHA), differences=differences
+    )

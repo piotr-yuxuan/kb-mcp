@@ -99,12 +99,12 @@ def before(
     ignored = [
         *loaded.ignored,
         *(
-            Ignored(setting, loaded.layers[setting], why)
+            Ignored(setting=setting, layer=loaded.layers[setting], why=why)
             for setting, why in unapplied.items()
             if setting in loaded.layers
         ),
         *(
-            Ignored(setting, layer, f"not read by {command.name}")
+            Ignored(setting=setting, layer=layer, why=f"not read by {command.name}")
             for setting, layer in loaded.layers.items()
             if detailed and setting not in read and setting not in unapplied
         ),

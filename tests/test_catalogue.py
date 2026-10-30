@@ -2,21 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from copy import replace
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from kb_mcp.kernel.content import (
-    BlogPost,
-    Comment,
-    Folder,
-    Issue,
-    Page,
-    Person,
-    RefusedError,
-    Space,
-)
+from kb_mcp.kernel.content import BlogPost, Comment, Folder, Issue, Page, Person, Space
+from kb_mcp.kernel.names import RefusedError
 from kb_mcp.mirror.domain.catalogue import Catalogue, front_matter
 from kb_mcp.mirror.domain.mirror import PersonRole
 
@@ -31,7 +23,7 @@ def page(page_id: str, title: str, parent: str | None, **changes: object) -> Pag
     made = Page(
         id=page_id,
         title=title,
-        author=Person("account-1"),
+        author=Person(account_id="account-1"),
         created=MOMENT,
         updated=MOMENT,
         url=f"/wiki/spaces/MFS/pages/{page_id}",
@@ -45,7 +37,7 @@ def page(page_id: str, title: str, parent: str | None, **changes: object) -> Pag
 
 
 ROOT = page("10", "Root", None)
-FOLDER = Folder("20", "A folder", "10", "page")
+FOLDER = Folder(id="20", title="A folder", parent_id="10", parent_type="page")
 LEAF = page("30", "Leaf", "20", parent_type="folder")
 POST = BlogPost(
     id="40",
@@ -61,7 +53,7 @@ POST = BlogPost(
 ISSUE = Issue(
     id="10000",
     title="What are\narchived ideas?",
-    author=Person("account-2", "Another\u2028Person"),
+    author=Person(account_id="account-2", display_name="Another\u2028Person"),
     created=MOMENT,
     updated=MOMENT,
     url="/browse/PRB-1",
@@ -74,7 +66,7 @@ ISSUE = Issue(
     parent="PRB-3",
 )
 CATALOGUE = Catalogue(
-    spaces={"1": Space("1", "MFS", "A space")},
+    spaces={"1": Space(id="1", key="MFS", name="A space")},
     names={"account-1": "A Person"},
     listed={
         ROOT.id: ROOT,
@@ -87,9 +79,9 @@ CATALOGUE = Catalogue(
 
 def test_a_name_is_the_display_name_else_the_users_else_the_account_id() -> None:
     """Jira gives names; Confluence names come from the users; else the account id."""
-    assert CATALOGUE.name(Person("account-2", "Given")) == "Given"
-    assert CATALOGUE.name(Person("account-1")) == "A Person"
-    assert CATALOGUE.name(Person("account-9")) == "account-9"
+    assert CATALOGUE.name(Person(account_id="account-2", display_name="Given")) == "Given"
+    assert CATALOGUE.name(Person(account_id="account-1")) == "A Person"
+    assert CATALOGUE.name(Person(account_id="account-9")) == "account-9"
     assert CATALOGUE.name(None) is None
 
 
@@ -113,7 +105,12 @@ def test_a_breadcrumb_stops_at_an_unlisted_parent_or_a_loop() -> None:
         spaces={},
         names={},
         listed={},
-        folders={"1": (Folder("1", "One", "2", "folder"), Folder("2", "Two", "1", "folder"))},
+        folders={
+            "1": (
+                Folder(id="1", title="One", parent_id="2", parent_type="folder"),
+                Folder(id="2", title="Two", parent_id="1", parent_type="folder"),
+            )
+        },
     )
     assert looping.breadcrumb(page("3", "Under a loop", "1")) == ("Two", "One")
     assert looping.breadcrumb(page("3", "Under nothing", "9")) == ()
@@ -157,17 +154,25 @@ def test_a_page_of_a_space_not_listed_is_refused() -> None:
         front_matter(other, (), FETCHED, CATALOGUE, SITE)
 
 
-ANOTHER = Person("account-2", "Another Person")
+ANOTHER = Person(account_id="account-2", display_name="Another Person")
 # Filed by Another Person for A Person, assigned to someone whom nothing names.
 FILED = replace(
-    ISSUE, author=Person("account-1", "A Person"), creator=ANOTHER, assignee=Person("account-3")
+    ISSUE,
+    author=Person(account_id="account-1", display_name="A Person"),
+    creator=ANOTHER,
+    assignee=Person(account_id="account-3"),
 )
 # Three comments by two people, as Jira gives them: by creation time. A Person's is
 # named by the users.
 COMMENTS = (
-    Comment("1", ANOTHER, datetime(2026, 10, 21, 10, tzinfo=PARIS), ""),
-    Comment("2", Person("account-1"), datetime(2026, 10, 21, 9, 30, tzinfo=UTC), ""),
-    Comment("3", ANOTHER, datetime(2026, 10, 22, 8, tzinfo=UTC), ""),
+    Comment(id="1", author=ANOTHER, created=datetime(2026, 10, 21, 10, tzinfo=PARIS), html=""),
+    Comment(
+        id="2",
+        author=Person(account_id="account-1"),
+        created=datetime(2026, 10, 21, 9, 30, tzinfo=UTC),
+        html="",
+    ),
+    Comment(id="3", author=ANOTHER, created=datetime(2026, 10, 22, 8, tzinfo=UTC), html=""),
 )
 
 
@@ -204,13 +209,13 @@ def test_commenters_come_by_their_first_comment_in_whatever_order_given() -> Non
 
 def test_a_commenter_is_one_name_with_one_account() -> None:
     """Namesakes of two accounts are two commenters; one account under two names, two."""
-    namesake = Person("account-4", "Another Person")
-    renamed = Person("account-2", "A Person")
+    namesake = Person(account_id="account-4", display_name="Another Person")
+    renamed = Person(account_id="account-2", display_name="A Person")
     comments = (
-        Comment("5", ANOTHER, datetime(2026, 10, 21, 8, tzinfo=UTC), ""),
-        Comment("6", namesake, datetime(2026, 10, 21, 9, tzinfo=UTC), ""),
-        Comment("7", renamed, datetime(2026, 10, 21, 10, tzinfo=UTC), ""),
-        Comment("8", namesake, datetime(2026, 10, 21, 11, tzinfo=UTC), ""),
+        Comment(id="5", author=ANOTHER, created=datetime(2026, 10, 21, 8, tzinfo=UTC), html=""),
+        Comment(id="6", author=namesake, created=datetime(2026, 10, 21, 9, tzinfo=UTC), html=""),
+        Comment(id="7", author=renamed, created=datetime(2026, 10, 21, 10, tzinfo=UTC), html=""),
+        Comment(id="8", author=namesake, created=datetime(2026, 10, 21, 11, tzinfo=UTC), html=""),
     )
     matter = front_matter(FILED, comments, FETCHED, CATALOGUE, SITE)
     commenters = [person for person in matter.people if person.role == "commenter"]
@@ -223,6 +228,6 @@ def test_a_commenter_is_one_name_with_one_account() -> None:
 
 def test_a_comment_without_an_author_names_nobody() -> None:
     """Jira leaves out the author of an anonymous comment; no commenter stands for it."""
-    anonymous = Comment("4", None, MOMENT, "")
+    anonymous = Comment(id="4", author=None, created=MOMENT, html="")
     matter = front_matter(FILED, (anonymous,), FETCHED, CATALOGUE, SITE)
     assert [person.role for person in matter.people] == ["author", "creator", "assignee"]

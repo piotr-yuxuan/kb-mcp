@@ -43,14 +43,14 @@ def indexing_of(arguments: argparse.Namespace, settings: Settings) -> Indexing:
         None if settings.search_mode == "lexical" else partial(open_endpoint, arguments, settings)
     )
     return Indexing(
-        settings.docs,
-        settings.index,
-        settings.vectors,
-        settings.evaluation_indexes,
-        settings.aliases,
-        settings.model,
-        settings.chunking,
-        opening,
+        docs=settings.docs,
+        index=settings.index,
+        vectors=settings.vectors,
+        evaluation_indexes=settings.evaluation_indexes,
+        aliases=settings.aliases,
+        model=settings.model,
+        chunking=settings.chunking,
+        endpoint=opening,
     )
 
 

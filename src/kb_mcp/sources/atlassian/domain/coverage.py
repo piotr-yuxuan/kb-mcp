@@ -8,12 +8,15 @@ whole anyway; a target never covered, its last week.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping
 from datetime import timedelta
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Self
 
-from kb_mcp.kernel.content import PROJECT_KEY, SPACE_KEY, RefusedError, require
-from kb_mcp.sources.atlassian.domain.period import EPOCH, Period
+from pydantic import Field, model_validator
+
+from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY, RefusedError, require
+from kb_mcp.kernel.record import Record
+from kb_mcp.sources.atlassian.domain.period import EPOCH, FIRST_FETCH, Period
 
 # The rule of a target's key, by source.
 KEYS = {"confluence": SPACE_KEY, "jira": PROJECT_KEY}
@@ -28,27 +31,25 @@ type Reason = Literal["given", "since the last fetch", "covered start", "first f
 # and an issue saved while its search pages through moves in it. A day survives a laptop's
 # clock off after sleep; it costs no request, since the search reads whole days.
 CATCH_UP_MARGIN = timedelta(days=1)
-# How far back a target never covered starts without --since.
-FIRST_FETCH = timedelta(days=7)
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     from datetime import datetime
 
 
-@dataclass(frozen=True, order=True)
-class Target:
+class Target(Record):
     """A space of Confluence or a project of Jira, by its key."""
 
     source: str  # confluence or jira
     key: str
 
-    def __post_init__(self) -> None:
+    @model_validator(mode="after")
+    def check_target(self) -> Self:
         """Refuse a source that is neither, and a key that does not look like its kind's."""
         if self.source not in KEYS:
             message = "source: neither confluence nor jira"
             raise RefusedError(message)
         require(KEYS[self.source], self.key, "key")
+        return self
 
     def __str__(self) -> str:
         """Name the target as the user does: ``space ENG``, ``project PLAT``."""
@@ -63,8 +64,7 @@ class Target:
         return self.source == "jira"
 
 
-@dataclass(frozen=True)
-class Coverage:
+class Coverage(Record):
     """Each target's covered period: every document updated in it is stored.
 
     A space is listed whole on every run, so a failure within its period (a document
@@ -75,7 +75,7 @@ class Coverage:
     before plan 034 is not, and its end may hide a failure.
     """
 
-    periods: Mapping[Target, Period] = field(default_factory=dict)
+    periods: Mapping[Target, Period] = Field(default_factory=dict)
     exact: frozenset[Target] = frozenset()
 
     def extended(
@@ -106,15 +106,20 @@ class Coverage:
         else:
             start, end = min(covered.start, fetched.start), max(covered.end, fetched.end)
         if not exact or failed is None:
-            return Coverage({**self.periods, target: Period(start, end)}, marked), "extended"
+            return Coverage(
+                periods={**self.periods, target: Period(start, end)}, exact=marked
+            ), "extended"
         if failed <= start:
             inside = covered is not None and covered.start <= failed
-            return Coverage(self.periods, self.exact - {target} if inside else self.exact), "capped"
-        return Coverage({**self.periods, target: Period(start, failed)}, marked), "capped"
+            return Coverage(
+                periods=self.periods, exact=self.exact - {target} if inside else self.exact
+            ), "capped"
+        return Coverage(
+            periods={**self.periods, target: Period(start, failed)}, exact=marked
+        ), "capped"
 
 
-@dataclass(frozen=True)
-class Window:
+class Window(Record):
     """The period that a run fetches for a target, and why it starts where it does."""
 
     period: Period
@@ -134,7 +139,7 @@ def window(
     nothing on the site is older, and dates stay in range.
     """
     if since is not None:
-        return Window(Period(max(since, EPOCH), end), "given")
+        return Window(period=Period(max(since, EPOCH), end), reason="given")
     covered = coverage.periods.get(target)
     start: datetime
     reason: Reason
@@ -147,20 +152,7 @@ def window(
     start = max(start, EPOCH)
     if start >= end:
         return None
-    return Window(Period(start, end), reason)
+    return Window(period=Period(start, end), reason=reason)
 
 
-def period_rule(*, since: bool) -> str:
-    """Say in words where a run's windows start, with --since given or not.
-
-    Said before a run, which reads no store yet: the rule, not each target's window.
-    """
-    if since:
-        return "period: from --since"
-    return (
-        "period: since each target's last fetch;"
-        f" the last {FIRST_FETCH.days} days for one never fetched"
-    )
-
-
-__all__ = ["EPOCH", "Coverage", "Extension", "Target", "Window", "period_rule", "window"]
+__all__ = ["EPOCH", "Coverage", "Extension", "Target", "Window", "window"]

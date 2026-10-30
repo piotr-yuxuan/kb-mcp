@@ -136,12 +136,12 @@ def run(
 
 def first_week(spaces: list[str], projects: list[str]) -> Targets:
     """Return the targets of a first run over the week before ``FIRST``."""
-    return Targets(spaces, projects, CAP, since=FIRST - WEEK)
+    return Targets(spaces=spaces, projects=projects, max_file_bytes=CAP, since=FIRST - WEEK)
 
 
 def catch_up(spaces: list[str], projects: list[str]) -> Targets:
     """Return the targets of a later run, from what is covered."""
-    return Targets(spaces, projects, CAP)
+    return Targets(spaces=spaces, projects=projects, max_file_bytes=CAP)
 
 
 def stored_pages(chosen: Settings) -> dict[str, str]:
@@ -160,8 +160,8 @@ def test_a_first_run_starts_the_coverage_of_each_target(
     chosen = settings(tmp_path)
     assert run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], ["PRB"]), FIRST) == 0
     assert RawStore(chosen.raw).coverage().periods == {
-        Target("confluence", "MFS"): Period(FIRST - WEEK, FIRST),
-        Target("jira", "PRB"): Period(FIRST - WEEK, FIRST),
+        Target(source="confluence", key="MFS"): Period(FIRST - WEEK, FIRST),
+        Target(source="jira", key="PRB"): Period(FIRST - WEEK, FIRST),
     }
 
 
@@ -177,9 +177,9 @@ def test_a_later_run_catches_up_on_an_old_page_edited_since(
     later = RefreshSite(listing=listing)
     assert run(chosen, monkeypatch, later, catch_up(["MFS"], []), SECOND) == 0
     assert stored_pages(chosen)["1003"] == "000004"
-    assert RawStore(chosen.raw).coverage().periods[Target("confluence", "MFS")] == Period(
-        FIRST - WEEK, SECOND
-    )
+    assert RawStore(chosen.raw).coverage().periods[
+        Target(source="confluence", key="MFS")
+    ] == Period(FIRST - WEEK, SECOND)
 
 
 def test_an_earlier_since_reaches_further_and_moves_the_covered_start(
@@ -188,10 +188,10 @@ def test_an_earlier_since_reaches_further_and_moves_the_covered_start(
     """--since 1y, where --back went: the old page comes, and the coverage starts a year back."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
-    targets = Targets(["MFS"], [], CAP, since=SECOND - YEAR)
+    targets = Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=SECOND - YEAR)
     assert run(chosen, monkeypatch, RefreshSite(), targets, SECOND) == 0
     assert stored_pages(chosen)["1003"] == "000003"
-    covered = RawStore(chosen.raw).coverage().periods[Target("confluence", "MFS")]
+    covered = RawStore(chosen.raw).coverage().periods[Target(source="confluence", key="MFS")]
     assert covered == Period(SECOND - YEAR, SECOND)
 
 
@@ -201,7 +201,9 @@ def test_an_until_before_since_is_refused_before_anything_runs(
     """Refused by name, before any request, and nothing is written."""
     chosen = settings(tmp_path)
     fake = RefreshSite()
-    backwards = Targets(["MFS"], [], CAP, since=FIRST, until=FIRST - WEEK)
+    backwards = Targets(
+        spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST, until=FIRST - WEEK
+    )
     with pytest.raises(PeriodError, match=r"^--until: must come after --since"):
         run(chosen, monkeypatch, fake, backwards, FIRST)
     assert fake.asked == []
@@ -215,7 +217,7 @@ def test_a_target_whose_listing_failed_keeps_its_coverage(
     """A refused search leaves the project uncovered; the space is covered all the same."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(search_status=400), first_week(["MFS"], ["PRB"]), FIRST)
-    assert set(RawStore(chosen.raw).coverage().periods) == {Target("confluence", "MFS")}
+    assert set(RawStore(chosen.raw).coverage().periods) == {Target(source="confluence", key="MFS")}
 
 
 def test_a_plan_lists_and_decides_and_writes_nothing(
@@ -579,8 +581,10 @@ def test_a_moved_page_whose_new_file_fails_keeps_its_old_file(tmp_path: Path) ->
 
 def test_a_window_never_ends_past_the_run() -> None:
     """An --until in the future stops at now: coverage never claims time not yet seen."""
-    later = Targets(["MFS"], [], CAP, since=FIRST - WEEK, until=FIRST + WEEK)
-    window = later.windows(Coverage(), FIRST)[Target("confluence", "MFS")]
+    later = Targets(
+        spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK, until=FIRST + WEEK
+    )
+    window = later.windows(Coverage(), FIRST)[Target(source="confluence", key="MFS")]
     assert window is not None
     assert window.period.end == FIRST
 
@@ -623,14 +627,16 @@ def test_a_stale_listing_never_brings_back_a_page_confirmed_gone(
 
 def test_a_since_before_the_epoch_starts_at_the_epoch() -> None:
     """Nothing on the site is older; the dates searched stay within the calendar."""
-    early = Targets(["MFS"], [], CAP, since=datetime(1, 1, 2, tzinfo=UTC))
-    window = early.windows(Coverage(), FIRST)[Target("confluence", "MFS")]
+    early = Targets(
+        spaces=["MFS"], projects=[], max_file_bytes=CAP, since=datetime(1, 1, 2, tzinfo=UTC)
+    )
+    window = early.windows(Coverage(), FIRST)[Target(source="confluence", key="MFS")]
     assert window is not None
     assert window.period.start == EPOCH
 
 
 # Plan 034: a project's coverage ends exactly, at its earliest document not stored whole.
-PRB = Target("jira", "PRB")
+PRB = Target(source="jira", key="PRB")
 START = datetime(2026, 10, 21, 12, tzinfo=UTC)
 RUN = datetime(2026, 10, 28, 12, tzinfo=UTC)
 NEXT = RUN + timedelta(hours=6)
@@ -655,7 +661,7 @@ def two_issues() -> dict[str, dict[str, object]]:
 
 def exactly(start: datetime, end: datetime) -> Coverage:
     """Return PRB covered exactly from ``start`` to ``end``."""
-    return Coverage({PRB: Period(start, end)}, frozenset({PRB}))
+    return Coverage(periods={PRB: Period(start, end)}, exact=frozenset({PRB}))
 
 
 def said_coverage(events: list[dict[str, object]]) -> list[tuple[object, ...]]:
@@ -682,7 +688,13 @@ def test_a_failure_ends_a_project_s_coverage_at_its_update_time(
     """Not stored whole: the coverage ends at its update time, exact, and is said capped."""
     chosen = settings(tmp_path)
     with capture_logs() as events:
-        run(chosen, monkeypatch, failing, Targets([], ["PRB"], CAP, since=START), RUN)
+        run(
+            chosen,
+            monkeypatch,
+            failing,
+            Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+            RUN,
+        )
     assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
     assert said_coverage(events) == [("project PRB", "capped")]
 
@@ -699,9 +711,15 @@ def test_a_stored_snapshot_that_cannot_be_read_ends_the_coverage_at_it(
     """Stored already, it is read for its files: unreadable, it is not stored whole."""
     chosen = settings(tmp_path)
     whole = RefreshSite(issues=two_issues())
-    run(chosen, monkeypatch, whole, Targets([], ["PRB"], CAP, since=START), RUN)
+    run(
+        chosen,
+        monkeypatch,
+        whole,
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        RUN,
+    )
     stored_issue(chosen, "20001").write_text("{}", "utf-8")
-    again = Targets([], ["PRB"], CAP, since=START)
+    again = Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START)
     with capture_logs() as events:
         run(chosen, monkeypatch, RefreshSite(issues=two_issues()), again, NEXT)
     assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
@@ -724,7 +742,13 @@ def test_what_failed_is_asked_for_again_and_the_coverage_then_reaches_the_run(
 ) -> None:
     """The next run without --since asks for it again, and covers up to its own start."""
     chosen = settings(tmp_path)
-    run(chosen, monkeypatch, failing, Targets([], ["PRB"], CAP, since=START), RUN)
+    run(
+        chosen,
+        monkeypatch,
+        failing,
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        RUN,
+    )
     again = RefreshSite(issues=two_issues())
     with capture_logs() as events:
         run(chosen, monkeypatch, again, catch_up([], ["PRB"]), NEXT)
@@ -743,7 +767,13 @@ def test_a_snapshot_refused_holds_the_coverage_until_the_adapter_reads_it(
     """
     chosen = settings(tmp_path)
     refused = RefreshSite(issues=two_issues(), unread_issues={"20001"})
-    run(chosen, monkeypatch, refused, Targets([], ["PRB"], CAP, since=START), RUN)
+    run(
+        chosen,
+        monkeypatch,
+        refused,
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        RUN,
+    )
     run(chosen, monkeypatch, RefreshSite(issues=two_issues()), catch_up([], ["PRB"]), NEXT)
     assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
     stored_issue(chosen, "20001").write_text(json.dumps(issue_at("20001", FAILING)), "utf-8")
@@ -762,7 +792,13 @@ def test_among_several_failures_the_earliest_ends_the_coverage(
     earlier = FAILING - timedelta(days=1)
     issues = {**two_issues(), "20003": issue_at("20003", earlier)}
     failing = RefreshSite(issues=issues, failing_issues={"20001": 500, "20003": 500})
-    run(chosen, monkeypatch, failing, Targets([], ["PRB"], CAP, since=START), RUN)
+    run(
+        chosen,
+        monkeypatch,
+        failing,
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        RUN,
+    )
     assert RawStore(chosen.raw).coverage() == exactly(START, earlier)
 
 
@@ -797,7 +833,7 @@ def test_a_run_stopped_during_a_project_leaves_its_coverage_and_extends_those_be
     assert run(chosen, monkeypatch, failing, catch_up(["MFS"], ["PRB"]), RUN) == stopped
     periods = RawStore(chosen.raw).coverage().periods
     assert periods[PRB] == before
-    assert periods[Target("confluence", "MFS")] == Period(FIRST - WEEK, RUN)
+    assert periods[Target(source="confluence", key="MFS")] == Period(FIRST - WEEK, RUN)
 
 
 def test_an_entry_from_before_034_is_replaced_by_a_catch_up_and_capped(
@@ -812,7 +848,7 @@ def test_an_entry_from_before_034_is_replaced_by_a_catch_up_and_capped(
     old = [{"source": "jira", "key": "PRB", "start": START.isoformat(), "end": RUN.isoformat()}]
     (chosen.raw / "coverage.json").write_text(json.dumps(old), "utf-8")
     windows = catch_up([], ["PRB"]).windows(RawStore(chosen.raw).coverage(), NEXT)
-    assert windows == {PRB: Window(Period(START, NEXT), "covered start")}
+    assert windows == {PRB: Window(period=Period(START, NEXT), reason="covered start")}
     failing = RefreshSite(issues=two_issues(), failing_issues={"20001": 500})
     run(chosen, monkeypatch, failing, catch_up([], ["PRB"]), NEXT)
     assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
@@ -832,13 +868,15 @@ def test_an_entry_from_before_034_met_by_a_later_since_stays_inexact(
     old = [{"source": "jira", "key": "PRB", "start": START.isoformat(), "end": RUN.isoformat()}]
     (chosen.raw / "coverage.json").write_text(json.dumps(old), "utf-8")
     failing = RefreshSite(issues=two_issues(), failing_issues={"20001": 500})
-    inside = Targets([], ["PRB"], CAP, since=FAILING - timedelta(hours=1))
+    inside = Targets(
+        spaces=[], projects=["PRB"], max_file_bytes=CAP, since=FAILING - timedelta(hours=1)
+    )
     run(chosen, monkeypatch, failing, inside, NEXT)
     after = RawStore(chosen.raw).coverage()
-    assert after == Coverage({PRB: Period(START, NEXT)})
+    assert after == Coverage(periods={PRB: Period(START, NEXT)})
     later = NEXT + timedelta(hours=6)
     assert catch_up([], ["PRB"]).windows(after, later) == {
-        PRB: Window(Period(START, later), "covered start")
+        PRB: Window(period=Period(START, later), reason="covered start")
     }
 
 
@@ -864,7 +902,13 @@ def test_a_project_catches_up_from_a_day_before_its_last_fetch(
     chosen = settings(tmp_path)
     stored = issue_at("20010", LAST_FETCH - timedelta(hours=1), files=False)
     first = RefreshSite(issues={"20010": stored})
-    run(chosen, monkeypatch, first, Targets([], ["PRB"], CAP, since=START), LAST_FETCH)
+    run(
+        chosen,
+        monkeypatch,
+        first,
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        LAST_FETCH,
+    )
     assert RawStore(chosen.raw).coverage() == exactly(START, LAST_FETCH)
     issues = {
         "20010": stored,
@@ -887,11 +931,23 @@ def test_a_catch_up_until_a_moment_reaches_that_moment(
     """--until 06:00 on the 28th: the coverage reaches 06:00, and an issue of 10:00 waits."""
     chosen = settings(tmp_path)
     first = RefreshSite(issues={})
-    run(chosen, monkeypatch, first, Targets([], ["PRB"], CAP, since=START), LAST_FETCH)
+    run(
+        chosen,
+        monkeypatch,
+        first,
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        LAST_FETCH,
+    )
     until = datetime(2026, 10, 28, 6, tzinfo=UTC)
     issues = {"20013": issue_at("20013", CATCH_UP - timedelta(hours=2), files=False)}
     later = RefreshSite(issues=issues)
-    run(chosen, monkeypatch, later, Targets([], ["PRB"], CAP, until=until), CATCH_UP)
+    run(
+        chosen,
+        monkeypatch,
+        later,
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, until=until),
+        CATCH_UP,
+    )
     assert jira_asked(later) == []
     assert RawStore(chosen.raw).coverage() == exactly(START, until)
 
@@ -901,7 +957,13 @@ def test_a_failure_at_the_start_of_a_catch_up_ends_the_coverage_there(
 ) -> None:
     """At a day before the covered end: the coverage ends there, and the next run asks again."""
     chosen = settings(tmp_path)
-    run(chosen, monkeypatch, RefreshSite(issues={}), Targets([], ["PRB"], CAP, since=START), RUN)
+    run(
+        chosen,
+        monkeypatch,
+        RefreshSite(issues={}),
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        RUN,
+    )
     start_of_catch_up = RUN - timedelta(days=1)
     issues = {"20020": issue_at("20020", start_of_catch_up)}
     failing = RefreshSite(issues=issues, failing_issues={"20020": 500})
@@ -936,15 +998,23 @@ def test_a_target_never_fetched_fetches_its_last_week_while_the_others_catch_up(
 ) -> None:
     """A space added to the settings no longer refuses the run: it covers the week before."""
     chosen = settings(tmp_path)
-    run(chosen, monkeypatch, RefreshSite(issues={}), Targets([], ["PRB"], CAP, since=START), RUN)
+    run(
+        chosen,
+        monkeypatch,
+        RefreshSite(issues={}),
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        RUN,
+    )
     targets = catch_up(["MFS"], ["PRB"])
     assert targets.windows(RawStore(chosen.raw).coverage(), NEXT) == {
-        Target("confluence", "MFS"): Window(Period(NEXT - WEEK, NEXT), "first fetch"),
-        PRB: Window(Period(RUN - timedelta(days=1), NEXT), "since the last fetch"),
+        Target(source="confluence", key="MFS"): Window(
+            period=Period(NEXT - WEEK, NEXT), reason="first fetch"
+        ),
+        PRB: Window(period=Period(RUN - timedelta(days=1), NEXT), reason="since the last fetch"),
     }
     assert run(chosen, monkeypatch, RefreshSite(issues={}), targets, NEXT) == 0
     assert RawStore(chosen.raw).coverage().periods == {
-        Target("confluence", "MFS"): Period(NEXT - WEEK, NEXT),
+        Target(source="confluence", key="MFS"): Period(NEXT - WEEK, NEXT),
         PRB: Period(START, NEXT),
     }
 
@@ -955,16 +1025,28 @@ def test_a_target_whose_catch_up_starts_after_until_is_skipped_and_asked_nothing
     """PRB covered to the run before, --until earlier still: held, no search; MFS runs."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
-    run(chosen, monkeypatch, RefreshSite(issues={}), Targets([], ["PRB"], CAP, since=START), RUN)
+    run(
+        chosen,
+        monkeypatch,
+        RefreshSite(issues={}),
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        RUN,
+    )
     before = RawStore(chosen.raw).coverage().periods[PRB]
     until = RUN - timedelta(days=1)
     fake = RefreshSite(issues=two_issues())
     with capture_logs() as events:
-        run(chosen, monkeypatch, fake, Targets(["MFS"], ["PRB"], CAP, until=until), NEXT)
+        run(
+            chosen,
+            monkeypatch,
+            fake,
+            Targets(spaces=["MFS"], projects=["PRB"], max_file_bytes=CAP, until=until),
+            NEXT,
+        )
     assert not [url for url in fake.asked if url.path.startswith("/rest/api/3/search")]
     periods = RawStore(chosen.raw).coverage().periods
     assert periods[PRB] == before
-    assert periods[Target("confluence", "MFS")] == Period(FIRST - WEEK, until)
+    assert periods[Target(source="confluence", key="MFS")] == Period(FIRST - WEEK, until)
     assert said_coverage(events) == [
         ("space MFS", "extended"),
         ("project PRB", "held", "after --until"),
@@ -977,7 +1059,13 @@ def test_a_kept_file_that_fails_again_keeps_the_coverage_at_its_issue(
     """Stored without its file, the issue is completed by the next run: failing again, capped."""
     chosen = settings(tmp_path)
     failing = RefreshSite(issues=two_issues(), media_fails=True)
-    run(chosen, monkeypatch, failing, Targets([], ["PRB"], CAP, since=START), RUN)
+    run(
+        chosen,
+        monkeypatch,
+        failing,
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        RUN,
+    )
     again = RefreshSite(issues=two_issues(), media_fails=True)
     with capture_logs() as events:
         run(chosen, monkeypatch, again, catch_up([], ["PRB"]), NEXT)
@@ -995,7 +1083,7 @@ def test_a_space_whose_catch_up_starts_after_until_is_skipped_and_said_so(
     before = RawStore(chosen.raw).coverage()
     fake = RefreshSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
-    early = Targets(["MFS"], [], CAP, until=FIRST - WEEK)
+    early = Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, until=FIRST - WEEK)
     outcome = download(chosen, early, lambda: SECOND, lambda _: None)
     assert not [url for url in fake.asked if url.path.startswith("/wiki/api/v2/spaces")]
     assert RawStore(chosen.raw).coverage() == before
@@ -1015,8 +1103,14 @@ def test_a_run_apart_from_what_is_covered_leaves_it_and_says_why(
 ) -> None:
     """--since a day after the covered end: joining would claim that day, so it is held."""
     chosen = settings(tmp_path)
-    run(chosen, monkeypatch, RefreshSite(issues={}), Targets([], ["PRB"], CAP, since=START), RUN)
-    apart = Targets([], ["PRB"], CAP, since=RUN + timedelta(days=1))
+    run(
+        chosen,
+        monkeypatch,
+        RefreshSite(issues={}),
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        RUN,
+    )
+    apart = Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=RUN + timedelta(days=1))
     with capture_logs() as events:
         run(chosen, monkeypatch, RefreshSite(issues={}), apart, RUN + timedelta(days=2))
     assert RawStore(chosen.raw).coverage() == exactly(START, RUN)
@@ -1033,7 +1127,13 @@ def test_an_issue_that_the_search_names_twice_is_fetched_once(
     search = {"/rest/api/3/search/jql": lambda _: httpx.Response(200, json={"issues": entries})}
     monkeypatch.setattr(twice, "changes", lambda: search)
     with capture_logs() as events:
-        run(chosen, monkeypatch, twice, Targets([], ["PRB"], CAP, since=START), RUN)
+        run(
+            chosen,
+            monkeypatch,
+            twice,
+            Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+            RUN,
+        )
     assert jira_asked(twice).count("/rest/api/3/issue/20002") == 1
     tasks = [(each["done"], each["total"]) for each in events if each.get("task") == "documents"]
     assert tasks[-1] == (1, 1)
@@ -1049,6 +1149,11 @@ def test_a_dry_run_counts_once_an_issue_that_the_search_names_twice(
     search = {"/rest/api/3/search/jql": lambda _: httpx.Response(200, json={"issues": entries})}
     monkeypatch.setattr(twice, "changes", lambda: search)
     monkeypatch.setattr(http, "client", lambda *_: twice.client())
-    planned = plan(chosen, Targets([], ["PRB"], CAP, since=START), lambda: RUN, lambda _: None)
+    planned = plan(
+        chosen,
+        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        lambda: RUN,
+        lambda _: None,
+    )
     assert planned.report.counts["jira issues: to fetch"] == 1
     assert planned.report.counts["files: to download"] == 1

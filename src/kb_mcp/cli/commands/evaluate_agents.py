@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -39,6 +38,7 @@ from kb_mcp.evaluation.app.agents import (
 )
 from kb_mcp.evaluation.app.evaluation import GoldenError, read_golden
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.tools import TOOLS
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.mirror.adapters import markdown
@@ -56,8 +56,7 @@ if TYPE_CHECKING:
 PROGRAM = (sys.executable, "-m", "kb_mcp")
 
 
-@dataclass(frozen=True)
-class Prepared:
+class Prepared(Record):
     """The runs that ``prepare`` wrote, or would write with --dry-run, and where."""
 
     runs: int
@@ -79,7 +78,7 @@ def prepared(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus,
         structlog.get_logger().error("eval.agent.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     if arguments.dry_run:
-        return ExitStatus.OK, Prepared(2 * len(asked), arguments.out, written=False)
+        return ExitStatus.OK, Prepared(runs=2 * len(asked), directory=arguments.out, written=False)
     # The server reads the settings as this run did: the same file, the same variables,
     # and the data directory given here, if one was.
     given = ("--data-dir", str(settings.data_dir)) if arguments.data_dir else ()
@@ -111,7 +110,7 @@ def prepared(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus,
             "eval.agent.not_prepared", reason=f"a surface's server listed nothing ({error!r})"
         )
         return ExitStatus.FAILED, None
-    return ExitStatus.OK, Prepared(len(runs.runs), arguments.out, written=True)
+    return ExitStatus.OK, Prepared(runs=len(runs.runs), directory=arguments.out, written=True)
 
 
 def bridged(arguments: argparse.Namespace, _loaded: Loaded) -> tuple[ExitStatus, Called | None]:

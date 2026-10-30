@@ -23,8 +23,8 @@ from kb_mcp.evaluation.domain.evaluation import (
 )
 
 QUESTION = Question(
-    "q1",
-    "a question",
+    id="q1",
+    text="a question",
     expected=("a", "b"),
     partial=("c",),
     groups=("keyword", "en"),
@@ -69,14 +69,16 @@ def test_success_is_an_expected_document_first() -> None:
 
 def test_averages_are_overall_and_per_group() -> None:
     """Each group averages its own questions, a question counting in each of its groups."""
-    other = Question("q2", "another", expected=("z",), groups=("paraphrase", "en"))
+    other = Question(id="q2", text="another", expected=("z",), groups=("paraphrase", "en"))
     per = {"q1": measure(["a"], QUESTION), "q2": measure(["x"], other)}
     found = averages(per, [QUESTION, other], Measures.mean)
     assert found["keyword"].success == 1.0
     assert found["paraphrase"].success == 0.0
     assert found["en"] == found["all"]
     overall = found["all"]
-    expected = Measures(0.25, reciprocal_rank=HALF, ndcg=overall.ndcg, success=HALF, section=0.0)
+    expected = Measures(
+        recall=0.25, reciprocal_rank=HALF, ndcg=overall.ndcg, success=HALF, section=0.0
+    )
     assert overall == expected
 
 
@@ -110,7 +112,7 @@ def test_the_percentile_is_the_nearest_rank() -> None:
 
 def test_evidence_in_a_table_row_is_found_without_its_pipes() -> None:
     """Plain text renders a row's cells apart by spaces, as the evidence was taken."""
-    question = Question("q", "x", expected=("a",), evidence={"a": "SEV1 15 minutes"})
+    question = Question(id="q", text="x", expected=("a",), evidence={"a": "SEV1 15 minutes"})
     assert measure(["a"], question, {"a": "| SEV1 | 15 minutes |"}).section == 1.0
 
 
@@ -165,7 +167,7 @@ def test_the_seed_makes_the_p_value_reproducible() -> None:
 
 def test_ndcg_reaches_one_with_more_relevant_documents_than_ten() -> None:
     """The ideal ranking is cut at ten too: a perfect top ten is perfect."""
-    many = Question("q", "x", expected=tuple(f"d{n}" for n in range(11)))
+    many = Question(id="q", text="x", expected=tuple(f"d{n}" for n in range(11)))
     assert measure([f"d{n}" for n in range(10)], many).ndcg == pytest.approx(1.0)
 
 
@@ -176,17 +178,21 @@ def test_the_percentile_of_thirty_is_the_twenty_ninth() -> None:
 
 def test_found_and_evidence_at_ask_are_shares_of_the_expected_documents() -> None:
     """Worked by hand: half found, evidence held; all found, none held; none, no evidence."""
-    first = Question("q1", "x", expected=("a", "b"), evidence={"a": "Rollback pause"})
-    second = Question("q2", "y", expected=("a",), evidence={"a": "drain"})
-    third = Question("q3", "z", expected=("z",))
+    first = Question(id="q1", text="x", expected=("a", "b"), evidence={"a": "Rollback pause"})
+    second = Question(id="q2", text="y", expected=("a",), evidence={"a": "drain"})
+    third = Question(id="q3", text="z", expected=("z",))
     shown = [("a", "## Rollback\n\n**Rollback** pause, then go on."), ("c", "drain")]
     measured = [
         quoting(shown, first),
         quoting([("a", "nothing to see")], second),
         quoting([], third),
     ]
-    assert measured == [Quoted(0.5, 1.0), Quoted(1.0, 0.0), Quoted(0.0, None)]
-    assert Quoted.mean(measured) == Quoted(0.5, 0.5)
+    assert measured == [
+        Quoted(found=0.5, evidence=1.0),
+        Quoted(found=1.0, evidence=0.0),
+        Quoted(found=0.0, evidence=None),
+    ]
+    assert Quoted.mean(measured) == Quoted(found=0.5, evidence=0.5)
 
 
 QUESTIONS = 20
@@ -199,7 +205,7 @@ def scored(
 ) -> Scored:
     """Score a chunking on QUESTIONS questions, all alike unless ``last`` sets the last one."""
     each = (evidence,) * (QUESTIONS - 1) + ((evidence if last is None else last),)
-    return Scored((mrr,) * QUESTIONS, each, tokens)
+    return Scored(reciprocal_ranks=(mrr,) * QUESTIONS, evidence=each, tokens=tokens)
 
 
 def test_a_challenger_better_on_evidence_and_no_worse_otherwise_becomes_the_default() -> None:

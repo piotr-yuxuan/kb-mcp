@@ -107,7 +107,9 @@ def test_an_index_with_a_model_holds_a_unit_vector_for_every_piece(data: Path) -
     embedder = counting()
     build(data, embedder)
     with reading(data / "index.sqlite") as reader:
-        assert reader.embedded() == Embedded("tiny", tiny().fingerprint, DIMENSIONS)
+        assert reader.embedded() == Embedded(
+            model="tiny", fingerprint=tiny().fingerprint, dimensions=DIMENSIONS
+        )
         pieces = reader.pieces()
         assert len(pieces.documents) == reader.summary().sections == len(embedder.texts)
         assert np.allclose(np.linalg.norm(pieces.matrix, axis=1), 1)
@@ -291,10 +293,14 @@ def test_the_index_and_its_status_name_its_chunking(data: Path) -> None:
     """The meta row says how the pieces were cut, sections unless told; so does status."""
     build(data, counting())
     with reading(data / "index.sqlite") as reader:
-        assert reader.embedded() == Embedded("tiny", tiny().fingerprint, DIMENSIONS, "sections")
+        assert reader.embedded() == Embedded(
+            model="tiny", fingerprint=tiny().fingerprint, dimensions=DIMENSIONS, chunking="sections"
+        )
     chunked(data, counting(), "windows")
     with reading(data / "index.sqlite") as reader:
-        assert reader.embedded() == Embedded("tiny", tiny().fingerprint, DIMENSIONS, "windows")
+        assert reader.embedded() == Embedded(
+            model="tiny", fingerprint=tiny().fingerprint, dimensions=DIMENSIONS, chunking="windows"
+        )
         said = responses.status(reader.summary(), data / "docs")
     assert re.search(r"search by meaning: tiny, \d+ pieces cut by windows\n", said)
 
@@ -306,7 +312,9 @@ def test_an_index_built_before_the_row_reads_as_cut_by_sections(data: Path) -> N
         connection.execute("DELETE FROM meta WHERE name = 'chunking'")
         connection.commit()
     with reading(data / "index.sqlite") as reader:
-        assert reader.embedded() == Embedded("tiny", tiny().fingerprint, DIMENSIONS, "sections")
+        assert reader.embedded() == Embedded(
+            model="tiny", fingerprint=tiny().fingerprint, dimensions=DIMENSIONS, chunking="sections"
+        )
         assert reader.summary().chunking == "sections"
 
 

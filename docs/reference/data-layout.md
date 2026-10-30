@@ -73,7 +73,7 @@ The site's responses and its HTML change without notice. So that a change stays 
   `document.json.version.number: expected an integer`. The `optional_` readers also
   accept null, and accept absence only where the documented response may leave the field
   out (labels in a listing, an issue's `parent`). A value that a domain type refuses
-  (`kernel.content.RefusedError`) is reported the same way, through `Fields.refusals`,
+  (`kernel.names.RefusedError`) is reported the same way, through `Fields.refusals`,
   as `page: id: does not match <rule>`. Messages never hold the value, so reports can
   print them.
 - **Raw first.** The raw store keeps responses exactly as received, reading only what
@@ -429,7 +429,7 @@ links:
 | Field | Value |
 |---|---|
 | `relation` | one of `mirror.domain.mirror.RELATIONS`, a closed set: `transcript`, `summary` |
-| `ref` | the other document's ref, which `read` takes: its id, of the rule `kernel.content.IDENTIFIER`, `[A-Za-z0-9_-]+` |
+| `ref` | the other document's ref, which `read` takes: its id, of the rule `kernel.names.IDENTIFIER`, `[A-Za-z0-9_-]+` |
 
 | Relation | On | Ref |
 |---|---|---|
@@ -562,7 +562,7 @@ links one, or whose file does, so that a link stays written on both files.
   `[time]` and a blank, then a name of at most 64 characters that begins with a letter
   and holds no colon or bracket, then `: `, blanks before the colon not the name's;
   the name is none of `SCHEDULED`, `DEADLINE`, `CLOSED` and `CLOCK`.
-- The rule of an id is its type's, `kernel.content.WORKLOG_IDS`:
+- The rule of an id is its type's, `kernel.names.WORKLOG_IDS`:
   `e-[0-9a-f]{16}(?:-[0-9]+)?` for an entry;
   `t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})` for a transcript; `d-[0-9]{8}` for
   a day, its date; `m-[0-9]{8}-[a-z0-9-]{1,64}` for a meeting, its day's date and its

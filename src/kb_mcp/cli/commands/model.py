@@ -5,13 +5,13 @@ It never downloads a model: with Ollama, ``ollama pull`` does.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import structlog
 
 from kb_mcp.cli.commands._embedding import open_endpoint, prefixes_said
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.record import Record
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError
 
@@ -25,8 +25,7 @@ if TYPE_CHECKING:
 SHORT = 12
 
 
-@dataclass(frozen=True)
-class Ready:
+class Ready(Record):
     """A model that the endpoint embeds with: its name, its dimensions, the endpoint, its digest.
 
     The digest is empty when the endpoint reports none.
@@ -48,7 +47,12 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Read
         except ModelError as error:
             structlog.get_logger().error("model.not_ready", reason=str(error))
             return ExitStatus.FAILED, None
-    return ExitStatus.OK, Ready(name, embedder.dimensions, settings.embedding_url, embedder.digest)
+    return ExitStatus.OK, Ready(
+        name=name,
+        dimensions=embedder.dimensions,
+        url=settings.embedding_url,
+        digest=embedder.digest,
+    )
 
 
 def text(ready: Ready, _summary: Summary) -> str:

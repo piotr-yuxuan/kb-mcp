@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import contextlib
 import re
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
+
+from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Sequence
@@ -78,8 +79,7 @@ EXCLUDE_TAGS = "#+EXCLUDE_TAGS:"
 OPTIONS = "#+OPTIONS: arch:{} d:t p:t H:6 ^:nil -:nil"
 
 
-@dataclass(frozen=True)
-class Heading:
+class Heading(Record):
     """A heading's parts.
 
     ``text`` is what follows its keyword, priority and ``COMMENT``, without its tags;
@@ -145,8 +145,7 @@ def heading(line: str, keywords: Collection[str]) -> Heading | None:
     )
 
 
-@dataclass(frozen=True)
-class Subtree:
+class Subtree(Record):
     """A heading and the lines below it, up to the next heading of its level or higher.
 
     ``read`` gives a file's top-level subtrees, and ``children`` the subtrees below one.
@@ -202,11 +201,10 @@ class Subtree:
                 found.append((child, [line]))
             elif found:
                 found[-1][1].append(line)
-        return tuple(Subtree(first, tuple(rest)) for first, rest in found)
+        return tuple(Subtree(heading=first, lines=tuple(rest)) for first, rest in found)
 
 
-@dataclass(frozen=True)
-class OrgFile:
+class OrgFile(Record):
     """An org file's settings, keywords, headings and top-level subtrees."""
 
     lines: tuple[str, ...]
@@ -264,7 +262,7 @@ def read(text: str, inherited: OrgFile | None = None) -> OrgFile:
             for tag in value.replace(":", " ").split()
         ),
         headings=tuple(headings),
-        subtrees=tuple(Subtree(first, tuple(rest)) for first, rest in subtrees),
+        subtrees=tuple(Subtree(heading=first, lines=tuple(rest)) for first, rest in subtrees),
     )
 
 

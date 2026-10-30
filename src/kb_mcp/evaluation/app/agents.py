@@ -21,7 +21,7 @@ import shlex
 import time
 from collections import Counter
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -35,18 +35,19 @@ from kb_mcp.evaluation.adapters.mcp_client import ServerError, called, listed
 from kb_mcp.evaluation.domain.evaluation import Question
 from kb_mcp.evaluation.domain.grading import (
     Answer,
+    Graded,
     Harness,
+    Verdict,
     ask_verdict,
     grade,
     refusal,
 )
+from kb_mcp.kernel.record import Record
 from kb_mcp.mcp.app.responses import tokens
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
-    from pathlib import Path
 
-    from kb_mcp.evaluation.domain.grading import Graded, Verdict
     from kb_mcp.kernel.tools import Tool
 
 # What each run's agent is told; its SHA-256 goes with the results.
@@ -158,7 +159,13 @@ class Runs(BaseModel):
     def question(self, name: str) -> Question:
         """Give what grades a question, by its id, as the evaluation's question."""
         given = next(each for each in self.questions if each.id == name)
-        return Question(name, "", given.expected, given.partial, evidence=given.evidence)
+        return Question(
+            id=name,
+            text="",
+            expected=given.expected,
+            partial=given.partial,
+            evidence=given.evidence,
+        )
 
     def run(self, name: str) -> Run:
         """Give a run by its id, or refuse one that is not there."""
@@ -169,8 +176,7 @@ class Runs(BaseModel):
         return found
 
 
-@dataclass(frozen=True)
-class Asking:
+class Asking(Record):
     """What ``prepare`` is given besides the questions: who answers, how, and within what.
 
     ``program`` is the command line that reaches ``eval-agents``, for the prompts;
@@ -318,8 +324,7 @@ def locked(directory: Path, run: Run) -> Iterator[None]:
         yield
 
 
-@dataclass(frozen=True)
-class Called:
+class Called(Record):
     """What a call through the bridge gave: how it went, and the text for the agent."""
 
     status: str  # answered, refused by the tool, timeout or failed
@@ -360,11 +365,13 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
         with TRACER.start_as_current_span("eval.agent.call", attributes=named) as span:
             try:
                 answered = called(server, tool, arguments, runs.call_s)
-                done = Called("refused" if answered.refused else "answered", answered.text)
+                done = Called(
+                    status="refused" if answered.refused else "answered", text=answered.text
+                )
             except TimeoutError:
-                done = Called("timeout", f"no answer within {runs.call_s:g} seconds")
+                done = Called(status="timeout", text=f"no answer within {runs.call_s:g} seconds")
             except ServerError as error:
-                done = Called("failed", str(error))
+                done = Called(status="failed", text=str(error))
             span.set_attribute("kb_mcp.status", done.status)
         line = Logged(
             tool=tool,
@@ -420,8 +427,7 @@ def answer(directory: Path, name: str, given: str) -> Answer:
     return accepted
 
 
-@dataclass(frozen=True)
-class Outcome:
+class Outcome(Record):
     """A run judged: success or failure, no result and why, or pending; and its costs."""
 
     run: str
@@ -431,7 +437,7 @@ class Outcome:
     reason: str  # why it failed, or gave no result
     calls: dict[str, int]  # by tool
     handed: int  # estimated tokens handed over
-    seconds: float
+    seconds: int | float  # the int 0 when no call was logged, as the sum of none is
     model: str | None  # as the harness reports it
     model_tokens: int | None
     graded: Graded | None
@@ -518,8 +524,7 @@ def judged(
     return outcome
 
 
-@dataclass(frozen=True)
-class Results:
+class Results(Record):
     """The runs judged, B judged against A, and each outcome counted."""
 
     model: str
@@ -560,18 +565,18 @@ def concluded(directory: Path, runs: Runs, outcomes: Sequence[Outcome]) -> Resul
         [1 for each in by_question.values() if any(o.result == "pending" for o in each.values())]
     )
     results = Results(
-        runs.model,
-        list(outcomes),
-        verdict,
-        dict(Counter(outcome.result for outcome in outcomes)),
-        settled - len(pairs),
-        len(pairs),
+        model=runs.model,
+        outcomes=list(outcomes),
+        verdict=verdict,
+        counted=dict(Counter(outcome.result for outcome in outcomes)),
+        left_out=settled - len(pairs),
+        pairs=len(pairs),
     )
     kept = {
         "golden_sha256": runs.golden_sha256,
         "agents": runs.model,
         "models": sorted({outcome.model for outcome in outcomes if outcome.model}),
-        **asdict(results),
+        **results.model_dump(),
     }
     (directory / "results.json").write_text(json.dumps(kept, indent=1), encoding="utf-8")
     structlog.get_logger().info(

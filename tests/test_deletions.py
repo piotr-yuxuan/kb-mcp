@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from kb_mcp.kernel.content import RefusedError
+from kb_mcp.kernel.names import RefusedError
 from kb_mcp.sources.atlassian.domain.deletions import (
     Answer,
     Tombstone,
@@ -24,7 +24,7 @@ SPACE = "196613"
 
 def stone(*, confirmed: bool = False) -> Tombstone:
     """Return the tombstone of the page, as the first run made it."""
-    return Tombstone("pages", "1001", SPACE, FIRST, confirmed=confirmed)
+    return Tombstone(kind="pages", id="1001", space_id=SPACE, first_gone=FIRST, confirmed=confirmed)
 
 
 def test_a_first_gone_answer_makes_a_tombstone_not_yet_confirmed() -> None:
@@ -48,7 +48,7 @@ def test_a_moved_page_loses_its_tombstone_and_an_unsettled_one_waits_again() -> 
     """Followed into a space that lists it: not gone. Found, but unlisted: pending again."""
     assert after_probes({PAGE: stone()}, {PAGE: SPACE}, {PAGE: Answer.MOVED}, LATER) == {}
     unsettled = after_probes({PAGE: stone()}, {PAGE: SPACE}, {PAGE: Answer.UNSETTLED}, LATER)
-    assert unsettled == {PAGE: Tombstone("pages", "1001", SPACE)}
+    assert unsettled == {PAGE: Tombstone(kind="pages", id="1001", space_id=SPACE)}
 
 
 def test_a_page_not_probed_this_run_keeps_its_tombstone_as_it_was() -> None:
@@ -85,15 +85,17 @@ def test_a_trashed_or_out_of_scope_page_is_gone_and_one_listed_elsewhere_moved()
 def test_a_confirmation_without_a_first_answer_of_gone_is_refused() -> None:
     """Confirmed means answered gone twice: a tombstone saying otherwise is damaged."""
     with pytest.raises(RefusedError, match="confirmed"):
-        Tombstone("pages", "1001", SPACE, confirmed=True)
+        Tombstone(kind="pages", id="1001", space_id=SPACE, confirmed=True)
 
 
 def test_pages_on_their_way_are_probed_first_and_confirmed_ones_not_at_all() -> None:
     """A cap on probes never starves a confirmation, nor is spent on settled pages."""
     absent = [("pages", "1"), ("pages", "2"), ("pages", "3"), ("pages", "4")]
     known = {
-        ("pages", "3"): Tombstone("pages", "3", SPACE, FIRST),
-        ("pages", "4"): Tombstone("pages", "4", SPACE, FIRST, confirmed=True),
+        ("pages", "3"): Tombstone(kind="pages", id="3", space_id=SPACE, first_gone=FIRST),
+        ("pages", "4"): Tombstone(
+            kind="pages", id="4", space_id=SPACE, first_gone=FIRST, confirmed=True
+        ),
     }
     assert probing_order(absent, known) == [("pages", "3"), ("pages", "1"), ("pages", "2")]
 
@@ -101,9 +103,9 @@ def test_pages_on_their_way_are_probed_first_and_confirmed_ones_not_at_all() -> 
 def test_an_absent_page_without_an_answer_waits_as_pending() -> None:
     """No answer this run (a failed probe, the cap, a silent site): it waits, not lost."""
     kept = after_probes({}, {PAGE: SPACE}, {}, FIRST)
-    assert kept == {PAGE: Tombstone("pages", "1001", SPACE)}
+    assert kept == {PAGE: Tombstone(kind="pages", id="1001", space_id=SPACE)}
     answered = after_probes(kept, {PAGE: SPACE}, {PAGE: Answer.GONE}, LATER)
-    assert answered == {PAGE: Tombstone("pages", "1001", SPACE, LATER)}
+    assert answered == {PAGE: Tombstone(kind="pages", id="1001", space_id=SPACE, first_gone=LATER)}
 
 
 def test_a_confirmed_page_absent_and_unprobed_stays_confirmed() -> None:

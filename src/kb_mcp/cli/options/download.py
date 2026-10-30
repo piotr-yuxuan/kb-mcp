@@ -16,9 +16,8 @@ from kb_mcp.cli.options._common import (
     site_not_set,
     token_without_email,
 )
-from kb_mcp.kernel.content import PROJECT_KEY, SPACE_KEY
-from kb_mcp.sources.atlassian.domain.coverage import period_rule
-from kb_mcp.sources.atlassian.domain.period import EPOCH, PeriodError, moment
+from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY
+from kb_mcp.sources.atlassian.domain.period import EPOCH, PeriodError, moment, period_rule
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping

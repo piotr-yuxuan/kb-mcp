@@ -576,6 +576,21 @@ def test_runs_that_failed_broke_a_rule_or_lost_their_server_give_no_result(
     assert (results["pairs"], results["left_out"]) == (0, len(("q", "q")))
 
 
+def test_a_run_without_a_call_says_its_seconds_as_the_integer_0(
+    world: World, capsys: CaptureFixture[str]
+) -> None:
+    """The sum of no call's seconds is written 0, in the results and the output, as before."""
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    for run in runs_of(out):
+        harness(out, run["id"], status="failed")
+    capsys.readouterr()
+    assert main(["eval-agents", "--format", "json", "grade", str(out), "--yes"]) == 0
+    printed = json.loads(capsys.readouterr().out)["outcomes"]
+    kept = json.loads((out / "results.json").read_text("utf-8"))["outcomes"]
+    assert [repr(each["seconds"]) for each in (*printed, *kept)] == ["0"] * 4  # two runs
+
+
 def test_a_harness_file_not_as_written_exits_2_naming_run_and_field(
     world: World, capsys: CaptureFixture[str]
 ) -> None:
@@ -617,7 +632,7 @@ def test_each_call_starts_the_server_that_prepare_named(
 
     def recorded(server: list[str], *_: object) -> Answered:
         started.append(server)
-        return Answered("an answer", refused=False)
+        return Answered(text="an answer", refused=False)
 
     monkeypatch.setattr(agents, "called", recorded)
     run = runs_of(out)[0]

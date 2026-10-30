@@ -6,6 +6,7 @@ inputs follow the same markup. These tests run pandoc, and fail without it.
 
 from __future__ import annotations
 
+import copy
 import re
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
@@ -26,7 +27,7 @@ OWN = PurePosixPath("assets") / f"{'a' * 64}.png"
 INCLUDED = PurePosixPath("assets") / f"{'b' * 64}.png"
 HERE = PurePosixPath("confluence/MFS/196845-probe-complex.md")
 MIRRORED = Mirrored(
-    SITE,
+    site=SITE,
     documents={
         "65664": PurePosixPath("confluence/MFS/65664-probe-long.md"),
         "65690": PurePosixPath("confluence/MFS/65690-probe-child.md"),
@@ -49,7 +50,9 @@ MIRRORED = Mirrored(
 
 def markdown(html: str, owner: str = "196845", here: PurePosixPath = HERE) -> str:
     """Normalise a body of the document ``owner`` at ``here``, and write it with pandoc."""
-    return Pandoc.find().markdown(normalise(html, Context(owner, here, MIRRORED)))
+    return Pandoc.find().markdown(
+        normalise(html, Context(owner=owner, here=here, mirrored=MIRRORED))
+    )
 
 
 def fixture(name: str) -> str:
@@ -131,13 +134,13 @@ def test_an_image_from_a_blog_post_links_one_folder_further_up() -> None:
 def test_two_pages_files_of_one_name_are_never_confused() -> None:
     """An image's address names its page, and the file of that page is shown."""
     mirrored = Mirrored(
-        SITE,
+        site=SITE,
         documents={},
         files={},
         names={("1", "image.png"): OWN, ("2", "image.png"): INCLUDED},
     )
     html = '<p><img src="/wiki/download/attachments/2/image.png?version=1" alt="shot"></p>'
-    context = Context("1", HERE, mirrored)
+    context = Context(owner="1", here=HERE, mirrored=mirrored)
     page = Pandoc.find().markdown(normalise(html, context))
     assert page.strip() == f"![shot](../../{INCLUDED})"
 
@@ -160,10 +163,18 @@ def test_an_issue_image_is_found_by_its_attachment_id() -> None:
 def test_an_unknown_macro_leaves_a_placeholder_and_its_text() -> None:
     """Its name is shown, and what the site rendered is kept."""
     html = '<div class="conf-macro" data-macro-name="roadmap"><p>Road text</p></div>'
-    context = Context("196845", HERE, MIRRORED)
+    context = Context(owner="196845", here=HERE, mirrored=MIRRORED)
     page = Pandoc.find().markdown(normalise(html, context))
     assert "\\[unsupported macro: roadmap\\]" in page
     assert "Road text" in page
+    assert context.unsupported == {"macro: roadmap": 1}
+
+
+def test_a_comment_counts_its_unknown_macro_in_its_document_s_count() -> None:
+    """A comment, normalised under its own heading, counts where its document counts."""
+    html = '<div class="conf-macro" data-macro-name="roadmap"><p>Road text</p></div>'
+    context = Context(owner="PRB-1", here=HERE, mirrored=MIRRORED)
+    normalise(html, copy.replace(context, shift=1))
     assert context.unsupported == {"macro: roadmap": 1}
 
 
@@ -264,7 +275,9 @@ def test_an_injected_page_is_inert_text() -> None:
 
 def test_a_comments_headings_move_three_levels_down_at_most_to_six() -> None:
     """A comment sits under its own third-level heading, so its headings go under it."""
-    context = Context("PRB-1", PurePosixPath("jira/PRB/PRB-1.md"), MIRRORED, shift=3)
+    context = Context(
+        owner="PRB-1", here=PurePosixPath("jira/PRB/PRB-1.md"), mirrored=MIRRORED, shift=3
+    )
     page = Pandoc.find().markdown(normalise("<h1>One</h1><h2>Two</h2><h5>Five</h5>", context))
     assert page.split("\n\n") == ["#### One", "##### Two", "###### Five\n"]
 
@@ -294,23 +307,23 @@ def test_odd_markup_is_converted_without_error(html: str, kept: str) -> None:
 @pytest.mark.parametrize("name", ["my image.png", "été.png"])
 def test_a_file_name_in_an_address_is_read_decoded(name: str) -> None:
     """An address carries the file name percent-encoded; the attachment's is plain."""
-    mirrored = Mirrored(SITE, documents={}, files={}, names={("1", name): OWN})
+    mirrored = Mirrored(site=SITE, documents={}, files={}, names={("1", name): OWN})
     encoded = quote(name)
     html = f'<p><img src="/wiki/download/attachments/1/{encoded}?version=1" alt="shot"></p>'
-    page = Pandoc.find().markdown(normalise(html, Context("1", HERE, mirrored)))
+    page = Pandoc.find().markdown(normalise(html, Context(owner="1", here=HERE, mirrored=mirrored)))
     assert page.strip() == f"![shot](../../{OWN})"
 
 
 def test_an_image_names_its_page_by_its_data_attributes() -> None:
     """The container attribute names the page whose file of that id is shown."""
     mirrored = Mirrored(
-        SITE, documents={}, files={("1", "att5"): OWN, ("2", "att5"): INCLUDED}, names={}
+        site=SITE, documents={}, files={("1", "att5"): OWN, ("2", "att5"): INCLUDED}, names={}
     )
     html = (
         '<img data-linked-resource-id="5" data-linked-resource-type="attachment"'
         ' data-linked-resource-container-id="2" src="/x.png" alt="shot">'
     )
-    page = Pandoc.find().markdown(normalise(html, Context("1", HERE, mirrored)))
+    page = Pandoc.find().markdown(normalise(html, Context(owner="1", here=HERE, mirrored=mirrored)))
     assert page.strip() == f"![shot](../../{INCLUDED})"
 
 
@@ -369,7 +382,7 @@ def test_deep_markup_is_read_whole_up_to_the_parsers_limit() -> None:
     assert ("BEFORE" in page, "DEEP" in page, "AFTER" in page) == (True, True, True)
     deeper = "<div>" * 3000 + "DEEP" + "</div>" * 3000 + "<p>AFTER</p>"
     with pytest.raises(MarkupError):
-        normalise(deeper, Context("196845", HERE, MIRRORED))
+        normalise(deeper, Context(owner="196845", here=HERE, mirrored=MIRRORED))
 
 
 def test_a_name_decoded_from_an_address_is_cleaned_too() -> None:
@@ -394,12 +407,12 @@ def test_a_title_within_a_panels_content_is_not_its_title() -> None:
 def test_an_attachments_page_comes_from_its_data_attributes_before_its_address() -> None:
     """The container names the page of an attachment; without the type, the address does."""
     mirrored = Mirrored(
-        SITE,
+        site=SITE,
         documents={},
         files={("2", "att5"): INCLUDED},
         names={("3", "a.png"): OWN, ("2", "a.png"): INCLUDED},
     )
-    context = Context("1", HERE, mirrored)
+    context = Context(owner="1", here=HERE, mirrored=mirrored)
     attributes = 'data-linked-resource-container-id="2" src="/wiki/download/attachments/3/a.png"'
     typed = f'<img data-linked-resource-id="5" data-linked-resource-type="attachment" {attributes}>'
     untyped = f'<img data-linked-resource-id="5" {attributes}>'
@@ -417,7 +430,7 @@ def test_an_image_elsewhere_keeps_its_link_whatever_the_schemes_case() -> None:
 def test_an_attachment_without_its_page_attribute_takes_the_page_of_its_address() -> None:
     """An included page's image that names no container is that page's, not the includer's."""
     mirrored = Mirrored(
-        SITE,
+        site=SITE,
         documents={},
         files={},
         names={("1", "a.png"): OWN, ("2", "a.png"): INCLUDED},
@@ -426,7 +439,7 @@ def test_an_attachment_without_its_page_attribute_takes_the_page_of_its_address(
         '<img data-linked-resource-id="5" data-linked-resource-type="attachment"'
         ' src="/wiki/download/attachments/2/a.png">'
     )
-    page = Pandoc.find().markdown(normalise(html, Context("1", HERE, mirrored)))
+    page = Pandoc.find().markdown(normalise(html, Context(owner="1", here=HERE, mirrored=mirrored)))
     assert page.strip() == f"![a.png](../../{INCLUDED})"
 
 

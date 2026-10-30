@@ -10,21 +10,23 @@ the rule", "Ids", "Participants" and "Links"; org's syntax is read by ``org``.
 from __future__ import annotations
 
 import contextlib
-import dataclasses
+import copy
 import hashlib
 import re
 from collections import Counter
-from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import WORKLOG_IDS
+from pydantic import ConfigDict, Field
+
+from kb_mcp.kernel.names import WORKLOG_IDS
+from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.slug import slug
 from kb_mcp.sources.worklog.domain import org
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping, Sequence
-    from pathlib import PurePosixPath
 
 TODO = "todo.org"
 TODO_ARCHIVE = "todo.org_archive"
@@ -76,8 +78,7 @@ NOT_SPEAKERS = frozenset({"SCHEDULED", "DEADLINE", "CLOSED", "CLOCK"})
 CLOCK_TIME = re.compile(r"([0-9]{2}):([0-9]{2})(?::([0-9]{2}))?")
 
 
-@dataclass(frozen=True)
-class Source:
+class Source(Record):
     """An org file of the work log, as read.
 
     ``modified`` is aware, in the time zone of the machine that read it: org writes the
@@ -99,8 +100,7 @@ class Source:
         return tuple(moment for moment in org.timestamps(lines) if moment <= limit)
 
 
-@dataclass(frozen=True)
-class Document:
+class Document(Record):
     """One document of the work log: what the mirror says of it, and what pandoc converts.
 
     ``people`` names its participants as written; ``links`` holds each relation to another
@@ -134,8 +134,7 @@ class Document:
         return created or self.source.fetched_at, self.source.fetched_at
 
 
-@dataclass(frozen=True)
-class Part:
+class Part(Record):
     """A heading of ``todo.org`` or its archive, and the titles above it: org's outline path.
 
     Below the journal, the path is the journal's title, then for a meeting its day's; at
@@ -198,12 +197,12 @@ class Part:
         """Return its children, below its path and title, archived when it is, given its tags."""
         return [
             Part(
-                child,
-                (*self.path, self.subtree.heading.title),
-                self.source,
-                self.parsed,
-                self.archived or org.ARCHIVE in child.heading.tags,
-                (*self.inherited, *self.subtree.heading.tags),
+                subtree=child,
+                path=(*self.path, self.subtree.heading.title),
+                source=self.source,
+                parsed=self.parsed,
+                archived=self.archived or org.ARCHIVE in child.heading.tags,
+                inherited=(*self.inherited, *self.subtree.heading.tags),
             )
             for child in self.subtree.children(self.parsed.keywords)
         ]
@@ -259,8 +258,7 @@ def meeting_ids(day: datetime, meetings: Sequence[tuple[str, datetime]]) -> list
     return [found[index] for index in range(len(meetings))]
 
 
-@dataclass(frozen=True)
-class Meeting:
+class Meeting(Record):
     """A meeting of a day, and the transcript that it links, as ``read`` finds them.
 
     ``link`` is its ``:MEETING:`` as written; ``file``, the file that it names, from the
@@ -275,7 +273,7 @@ class Meeting:
     file: PurePosixPath | None
     transcript: Document | None
     start: datetime
-    added: list[str] = dataclasses.field(default_factory=list)
+    added: list[str] = Field(default_factory=list)
 
     @classmethod
     def read(
@@ -305,11 +303,12 @@ class Meeting:
         # A transcript of another day, such as a recurring meeting's link copied with its
         # heading, is linked but dates nothing: the meeting is its day's.
         today = start is not None and start.date() == day.date()
-        return cls(part, link, file, transcript, start if today else day)
+        return cls(
+            part=part, link=link, file=file, transcript=transcript, start=start if today else day
+        )
 
 
-@dataclass
-class Day:
+class Day(Record):
     """What one date of the journal gathers, in reading order, ``todo.org`` first.
 
     ``title``, ``breadcrumb`` and ``first`` (its file and settings) come from its first
@@ -317,12 +316,14 @@ class Day:
     pandoc converts, before the settings; ``meetings``, its meetings.
     """
 
+    model_config = ConfigDict(frozen=False)
+
     title: str
     breadcrumb: tuple[str, ...]
     first: Part
-    headings: list[Part] = dataclasses.field(default_factory=list)
-    lines: list[str] = dataclasses.field(default_factory=list)
-    meetings: list[Meeting] = dataclasses.field(default_factory=list)
+    headings: list[Part] = Field(default_factory=list)
+    lines: list[str] = Field(default_factory=list)
+    meetings: list[Meeting] = Field(default_factory=list)
 
 
 def journal(
@@ -358,12 +359,19 @@ def journal(
         for subtree in parsed.subtrees:
             archived = source.path.name == TODO_ARCHIVE or org.ARCHIVE in subtree.heading.tags
             path = tuple(filter(None, subtree.properties.get(OUTLINE_PATH, "").split("/")))
-            top = Part(subtree, path, source, parsed, archived, ())
+            top = Part(
+                subtree=subtree,
+                path=path,
+                source=source,
+                parsed=parsed,
+                archived=archived,
+                inherited=(),
+            )
             children = top.children
             if not any(child.day is not None for child in children):
                 parts.append(top)
                 continue
-            own = dataclasses.replace(top, subtree=org.Subtree(subtree.heading, subtree.own))
+            own = copy.replace(top, subtree=org.Subtree(heading=subtree.heading, lines=subtree.own))
             text = subtree.own[1 + len(subtree.preamble) :]
             parts.extend([own] if any(line.strip() for line in text) else [])
             parts.extend(children)
@@ -440,7 +448,11 @@ def days_and_meetings(
         if part.day is not None:
             day = days.setdefault(
                 part.day,
-                Day(part.subtree.heading.title, (part.source.path.name, *part.path), part),
+                Day(
+                    title=part.subtree.heading.title,
+                    breadcrumb=(part.source.path.name, *part.path),
+                    first=part,
+                ),
             )
             day.headings.append(part)
             children = part.children
@@ -459,7 +471,11 @@ def days_and_meetings(
             place, date = within
             day = days.setdefault(
                 date,
-                Day(part.path[place], (part.source.path.name, *part.path[:place]), part),
+                Day(
+                    title=part.path[place],
+                    breadcrumb=(part.source.path.name, *part.path[:place]),
+                    first=part,
+                ),
             )
             if part.meeting:
                 day.meetings.append(Meeting.read(part, date, linked, ids))
@@ -697,8 +713,7 @@ def linked_back(transcripts: Iterable[Document], documents: Iterable[Document]) 
             if relation == TRANSCRIBED:
                 summaries.setdefault(ref, []).append((SUMMARY, document.id))
     return [
-        dataclasses.replace(each, links=(*each.links, *summaries.get(each.id, ())))
-        for each in transcripts
+        copy.replace(each, links=(*each.links, *summaries.get(each.id, ()))) for each in transcripts
     ]
 
 

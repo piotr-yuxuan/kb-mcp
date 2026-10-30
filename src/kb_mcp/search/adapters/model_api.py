@@ -17,6 +17,7 @@ from opentelemetry import metrics
 
 from kb_mcp.config.domain.settings import SettingsError
 from kb_mcp.kernel.endpoint import loopback, refused_endpoint
+from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.http import Recorded
 
 if TYPE_CHECKING:
@@ -50,8 +51,7 @@ RETRIED = frozenset({429, 500, 502, 503, 504})
 WAITS_S = (1.0, 4.0)
 
 
-@dataclass(frozen=True)
-class Bounds:
+class Bounds(Record):
     """How long one attempt may take, in seconds, and how many attempts a request gets."""
 
     deadline_s: float

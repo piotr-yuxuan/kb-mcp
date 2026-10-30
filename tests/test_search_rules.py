@@ -179,11 +179,14 @@ def test_ranking_sums_each_expression_once_per_document() -> None:
     newer = MOMENT + timedelta(days=1)
     by_word = [
         {
-            "a.md": Score(1.0, MOMENT, MOMENT),
-            "b.md": Score(3.0, MOMENT, MOMENT),
-            "c.md": Score(1.5, newer, MOMENT),
+            "a.md": Score(relevance=1.0, updated=MOMENT, created=MOMENT),
+            "b.md": Score(relevance=3.0, updated=MOMENT, created=MOMENT),
+            "c.md": Score(relevance=1.5, updated=newer, created=MOMENT),
         },
-        {"a.md": Score(2.5, MOMENT, MOMENT), "d.md": Score(1.5, MOMENT, MOMENT)},
+        {
+            "a.md": Score(relevance=2.5, updated=MOMENT, created=MOMENT),
+            "d.md": Score(relevance=1.5, updated=MOMENT, created=MOMENT),
+        },
     ]
     assert rank(by_word, ["d.md", "x.md", "d.md"], sort="relevance") == [
         "d.md",
@@ -208,11 +211,11 @@ def test_each_sort_orders_what_follows_the_documents_named(sort: Sort, expected:
     older, newer = MOMENT - timedelta(days=1), MOMENT + timedelta(days=1)
     by_word = [
         {
-            "a.md": Score(1.0, MOMENT, older),
-            "b.md": Score(3.0, MOMENT, MOMENT),
-            "c.md": Score(0.5, newer, older),
-            "d.md": Score(0.1, MOMENT, older),
-            "e.md": Score(2.0, MOMENT, older),
+            "a.md": Score(relevance=1.0, updated=MOMENT, created=older),
+            "b.md": Score(relevance=3.0, updated=MOMENT, created=MOMENT),
+            "c.md": Score(relevance=0.5, updated=newer, created=older),
+            "d.md": Score(relevance=0.1, updated=MOMENT, created=older),
+            "e.md": Score(relevance=2.0, updated=MOMENT, created=older),
         }
     ]
     assert rank(by_word, ["d.md"], sort=sort) == expected
@@ -221,7 +224,7 @@ def test_each_sort_orders_what_follows_the_documents_named(sort: Sort, expected:
 def test_a_score_by_meaning_cannot_be_sorted_by_created_date() -> None:
     """A score by meaning holds no created date: sorting it by one fails, naming it."""
     with pytest.raises(ValueError, match=r"^a\.md: "):
-        rank([{"a.md": Score(0.9, MOMENT)}], [], sort="created")
+        rank([{"a.md": Score(relevance=0.9, updated=MOMENT)}], [], sort="created")
 
 
 def test_pieces_end_at_the_last_blank_line_that_fits() -> None:

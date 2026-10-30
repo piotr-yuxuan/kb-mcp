@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from itertools import batched
 from typing import TYPE_CHECKING, Literal
@@ -21,10 +22,13 @@ import structlog
 from opentelemetry import metrics, trace
 from opentelemetry.context import Context
 from opentelemetry.trace import StatusCode
+from pydantic import ConfigDict, Field
 
-from kb_mcp.kernel.content import IDENTIFIER, BlogPost, Issue, Page
+from kb_mcp.kernel.content import BlogPost, Issue, Page
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import Fields, RepresentationError
+from kb_mcp.kernel.names import IDENTIFIER
+from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.adapters.http import (
@@ -58,8 +62,7 @@ from kb_mcp.sources.atlassian.domain.deletions import (
 from kb_mcp.sources.atlassian.domain.files import skip_reason
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping, Sequence
-    from datetime import datetime
+    from collections.abc import Callable, Iterable, Mapping
 
     from kb_mcp.config.domain.settings import Settings
     from kb_mcp.kernel.content import Attachment, Document, Listed
@@ -107,11 +110,12 @@ BYTES = METER.create_counter(
 )
 
 
-@dataclass
-class Report:
+class Report(Record):
     """What a run did, by count; it names nothing that the site served."""
 
-    counts: Counter[str] = field(default_factory=Counter)
+    model_config = ConfigDict(frozen=False)
+
+    counts: Counter[str] = Field(default_factory=Counter)
 
     def add(self, what: str, number: int = 1) -> None:
         """Count something that happened."""
@@ -187,14 +191,14 @@ class Download:
         answered_projects = projects if jira else ()
         with task("targets", len(answered_spaces) + len(answered_projects)) as targets:
             for key in targets.each(answered_spaces, str):
-                target = Target("confluence", key)
+                target = Target(source="confluence", key=key)
                 window = self.windows[target]
                 if window is not None and self.space(target, window):
                     self.covered[target] = window.period
             if not self.plan:
                 self.probe_absent()
             for key in targets.each(answered_projects, str):
-                target = Target("jira", key)
+                target = Target(source="jira", key=key)
                 window = self.windows[target]
                 if window is not None and self.project(target, window):
                     self.covered[target] = window.period
@@ -642,8 +646,7 @@ class Download:
             self.report.add("confluence users: named", len(users))
 
 
-@dataclass(frozen=True)
-class Targets:
+class Targets(Record):
     """What a run downloads: spaces and projects, from when, and the largest file kept.
 
     ``since`` starts every target's window there; without it, each target catches up on
@@ -662,14 +665,13 @@ class Targets:
 
         Raises PeriodError when --since does not come before the windows' end.
         """
-        named = [Target("confluence", key) for key in self.spaces]
-        named += [Target("jira", key) for key in self.projects]
+        named = [Target(source="confluence", key=key) for key in self.spaces]
+        named += [Target(source="jira", key=key) for key in self.projects]
         end = min(self.until, now) if self.until else now  # never past what a run can see
         return {target: window(coverage, target, self.since, end) for target in named}
 
 
-@dataclass(frozen=True)
-class TargetWindow:
+class TargetWindow(Record):
     """A target of a run: its window, from ``start`` to ``end``, and why it starts there.
 
     A target skipped, its catch-up after --until, has none, as ``reason`` says.
@@ -689,17 +691,26 @@ def windows_of(
 ) -> tuple[TargetWindow, ...]:
     """Give each target's record: its window, and what became of its coverage."""
     return tuple(
-        TargetWindow(target, None, None, "after --until", coverage.get(target))
+        TargetWindow(
+            target=target,
+            start=None,
+            end=None,
+            reason="after --until",
+            coverage=coverage.get(target),
+        )
         if window is None
         else TargetWindow(
-            target, window.period.start, window.period.end, window.reason, coverage.get(target)
+            target=target,
+            start=window.period.start,
+            end=window.period.end,
+            reason=window.reason,
+            coverage=coverage.get(target),
         )
         for target, window in windows.items()
     )
 
 
-@dataclass(frozen=True)
-class Outcome:
+class Outcome(Record):
     """What a run did, the user's keys that failed, and the run's exit status.
 
     ``windows`` holds each target's window, and what became of its coverage; ``dry_run``
@@ -729,7 +740,7 @@ def plan(
     try:
         client = sign_in(settings).client()
     except SignInNeededError:
-        return planned(report, [], ExitStatus.SIGN_IN_AGAIN)
+        return planned(report=report, failed_targets=[], status=ExitStatus.SIGN_IN_AGAIN)
     with client:
         run = Download(
             Site(client, sleep=sleep),
@@ -743,12 +754,18 @@ def plan(
         try:
             run.run(targets.spaces, targets.projects)
         except SignInNeededError:
-            return planned(report, run.failed_targets, ExitStatus.SIGN_IN_AGAIN)
+            return planned(
+                report=report, failed_targets=run.failed_targets, status=ExitStatus.SIGN_IN_AGAIN
+            )
         except TooManyFailuresError:
             report.add("runs: stopped, too many failures in a row")
-            return planned(report, run.failed_targets, ExitStatus.FAILED)
+            return planned(
+                report=report, failed_targets=run.failed_targets, status=ExitStatus.FAILED
+            )
     return planned(
-        report, run.failed_targets, ExitStatus.FAILED if report.failures else ExitStatus.OK
+        report=report,
+        failed_targets=run.failed_targets,
+        status=ExitStatus.FAILED if report.failures else ExitStatus.OK,
     )
 
 
@@ -825,4 +842,9 @@ def download(
             stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
             saved = {"status": status, "counts": dict(sorted(report.counts.items()))}
             (settings.runs / f"{stamp}.json").write_text(json.dumps(saved, indent=1), "utf-8")
-    return Outcome(report, failed_targets, status, windows_of(windows, extensions))
+    return Outcome(
+        report=report,
+        failed_targets=failed_targets,
+        status=status,
+        windows=windows_of(windows, extensions),
+    )

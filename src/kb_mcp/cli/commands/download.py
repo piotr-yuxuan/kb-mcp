@@ -39,9 +39,9 @@ def targets_of(
     The options were checked before the run; --max-file-mb not given is the default.
     """
     return Targets(
-        list(spaces),
-        list(projects),
-        (arguments.max_file_mb or DEFAULT_MAX_FILE_MB) * MEBIBYTE,
+        spaces=list(spaces),
+        projects=list(projects),
+        max_file_bytes=(arguments.max_file_mb or DEFAULT_MAX_FILE_MB) * MEBIBYTE,
         since=moment(arguments.since, now, "--since") if arguments.since else None,
         until=moment(arguments.until, now, "--until") if arguments.until else None,
     )

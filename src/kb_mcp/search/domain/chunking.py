@@ -13,23 +13,22 @@ from __future__ import annotations
 import bisect
 import functools
 import re
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.chunking import CHARACTERS_PER_TOKEN
-from kb_mcp.search.domain.search import HEADING
+from kb_mcp.kernel.record import Record
+from kb_mcp.mirror.domain.mirror import FrontMatter
+from kb_mcp.search.domain.search import HEADING, Section
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Mapping
 
     from kb_mcp.kernel.chunking import Chunking
-    from kb_mcp.mirror.domain.mirror import FrontMatter
-    from kb_mcp.search.domain.search import Section
 
-    # Each piece of a document: the index in its sections of the one holding its middle,
-    # its span relative to that section's body, and the text embedded.
-    type Cut = list[tuple[int, int, int, str]]
-
+# Each piece of a document: the index in its sections of the one holding its middle, its
+# span relative to that section's body, and the text embedded.
+type Cut = list[tuple[int, int, int, str]]
 # The characters of a piece of a section that one vector stands for, at most: under the
 # 512 tokens of the smaller models' window, with the title, in English and French.
 PIECE = 1200
@@ -178,8 +177,7 @@ def around(piece: tuple[int, int], section: tuple[int, int], size: int = UNIT) -
     return section if last - first <= size else (start, start + size)
 
 
-@dataclass(frozen=True)
-class Chunker:
+class Chunker(Record):
     """A chunking: the pieces it cuts a document into, and the unit returned for one."""
 
     cut: Callable[[FrontMatter, Sequence[Section]], Cut]
@@ -189,8 +187,10 @@ class Chunker:
 
 
 CHUNKERS: Mapping[Chunking, Chunker] = {
-    "sections": Chunker(lambda front, cut: passages(front.title, cut), lambda piece, _: piece),
-    "windows": Chunker(windows, lambda piece, _: piece),
-    "section-paths": Chunker(section_paths, lambda piece, _: piece),
-    "small-to-big": Chunker(functools.partial(section_paths, limit=SMALL), around),
+    "sections": Chunker(
+        cut=lambda front, cut: passages(front.title, cut), unit=lambda piece, _: piece
+    ),
+    "windows": Chunker(cut=windows, unit=lambda piece, _: piece),
+    "section-paths": Chunker(cut=section_paths, unit=lambda piece, _: piece),
+    "small-to-big": Chunker(cut=functools.partial(section_paths, limit=SMALL), unit=around),
 }

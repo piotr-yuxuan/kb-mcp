@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import add_output_options, add_settings_options
-from kb_mcp.kernel.content import MODEL_NAME
+from kb_mcp.kernel.names import MODEL_NAME
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

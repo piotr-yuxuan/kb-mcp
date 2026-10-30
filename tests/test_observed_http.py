@@ -12,7 +12,7 @@ from __future__ import annotations
 import socket
 import threading
 from contextlib import suppress
-from dataclasses import replace
+from copy import replace
 from typing import TYPE_CHECKING
 
 import httpx
@@ -90,7 +90,7 @@ def test_a_request_is_a_client_span_named_after_its_method_by_the_http_conventio
     sent: list[httpx.Request] = []
     fake = FakeSite()
     reader = site(lambda request: sent.append(request) or fake.handle(request))
-    reader.json(Request("/wiki/api/v2/spaces", {"keys": "MFS"}))
+    reader.json(Request(path="/wiki/api/v2/spaces", params={"keys": "MFS"}))
     (span,) = telemetry.spans.get_finished_spans()
     assert (span.name, span.kind) == ("GET", SpanKind.CLIENT)
     assert dict(span.attributes or {}) == {
@@ -109,7 +109,7 @@ def test_a_request_s_duration_is_measured_by_its_bounded_attributes_alone(
 ) -> None:
     """In seconds, in the buckets that the conventions advise, without the URL."""
     reader = site(FakeSite().handle)
-    reader.json(Request("/wiki/api/v2/spaces", {"keys": "MFS"}))
+    reader.json(Request(path="/wiki/api/v2/spaces", params={"keys": "MFS"}))
     duration = telemetry.measured()["http.client.request.duration"]
     assert duration.unit == "s"
     (point,) = duration.data.data_points
@@ -174,7 +174,7 @@ def test_each_attempt_is_a_span_of_its_own_an_answer_of_400_or_more_an_error(
     answers = iter([httpx.Response(429, headers={"retry-after": "1"}), httpx.Response(200)])
     reader = site(lambda _: next(answers))
     with capture_logs() as events:
-        reader.get(Request("/wiki/api/v2/spaces"), 10)
+        reader.get(Request(path="/wiki/api/v2/spaces"), 10)
     throttled, answered = telemetry.spans.get_finished_spans()
     status = dict(throttled.attributes or {})["http.response.status_code"]
     assert status == httpx.codes.TOO_MANY_REQUESTS
@@ -205,7 +205,7 @@ def test_a_lost_connection_is_an_error_named_by_its_class_never_its_message(
 
     reader = site(handle)
     with capture_logs() as events, pytest.raises(SiteError, match=r"^ConnectError$"):
-        reader.json(Request("/wiki/api/v2/spaces"))
+        reader.json(Request(path="/wiki/api/v2/spaces"))
     spans = telemetry.spans.get_finished_spans()
     assert len(spans) == RETRIES + 1
     for span in spans:

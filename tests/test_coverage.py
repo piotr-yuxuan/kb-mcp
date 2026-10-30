@@ -20,25 +20,29 @@ if TYPE_CHECKING:
 
 NOW = datetime(2026, 11, 1, 9, tzinfo=UTC)
 COVERED = datetime(2026, 10, 15, 9, tzinfo=UTC)
-SPACE = Target("confluence", "ENG")
-PROJECT = Target("jira", "PLAT")
+SPACE = Target(source="confluence", key="ENG")
+PROJECT = Target(source="jira", key="PLAT")
 
 
 def covered() -> Coverage:
     """Return coverage of the space from mid-October to now."""
-    return Coverage({SPACE: Period(COVERED, NOW)})
+    return Coverage(periods={SPACE: Period(COVERED, NOW)})
 
 
 def test_a_space_without_since_catches_up_on_its_covered_period() -> None:
     """No --since: from the covered start to now, the end pinned too; its listing is whole."""
-    assert window(covered(), SPACE, None, NOW) == Window(Period(COVERED, NOW), "covered start")
+    assert window(covered(), SPACE, None, NOW) == Window(
+        period=Period(COVERED, NOW), reason="covered start"
+    )
 
 
 def test_a_run_with_since_starts_there() -> None:
     """--since wins over the coverage."""
     since = datetime(2026, 10, 25, tzinfo=UTC)
-    assert window(covered(), SPACE, since, NOW) == Window(Period(since, NOW), "given")
-    assert window(covered(), PROJECT, since, NOW) == Window(Period(since, NOW), "given")
+    assert window(covered(), SPACE, since, NOW) == Window(period=Period(since, NOW), reason="given")
+    assert window(covered(), PROJECT, since, NOW) == Window(
+        period=Period(since, NOW), reason="given"
+    )
 
 
 def test_a_since_that_does_not_come_before_the_end_is_refused() -> None:
@@ -50,7 +54,7 @@ def test_a_since_that_does_not_come_before_the_end_is_refused() -> None:
 def test_a_target_never_covered_fetches_its_last_week() -> None:
     """Rather than refusing the run: seven days before the window's end, said first fetch."""
     assert window(covered(), PROJECT, None, NOW) == Window(
-        Period(NOW - timedelta(days=7), NOW), "first fetch"
+        period=Period(NOW - timedelta(days=7), NOW), reason="first fetch"
     )
 
 
@@ -58,21 +62,23 @@ def test_an_exact_project_catches_up_from_a_day_before_its_covered_end() -> None
     """Covered exactly to 27 October 09:00, a run on the 28th at noon: from the 26th 09:00."""
     end = datetime(2026, 10, 27, 9, tzinfo=UTC)
     run = datetime(2026, 10, 28, 12, tzinfo=UTC)
-    exact = Coverage({PROJECT: Period(COVERED, end)}, frozenset({PROJECT}))
+    exact = Coverage(periods={PROJECT: Period(COVERED, end)}, exact=frozenset({PROJECT}))
     assert window(exact, PROJECT, None, run) == Window(
-        Period(datetime(2026, 10, 26, 9, tzinfo=UTC), run), "since the last fetch"
+        period=Period(datetime(2026, 10, 26, 9, tzinfo=UTC), run), reason="since the last fetch"
     )
 
 
 def test_a_project_recorded_before_034_catches_up_from_its_covered_start() -> None:
     """Its end may hide a failure: the whole period is searched again, once."""
-    old = Coverage({PROJECT: Period(COVERED, NOW - timedelta(days=1))})
-    assert window(old, PROJECT, None, NOW) == Window(Period(COVERED, NOW), "covered start")
+    old = Coverage(periods={PROJECT: Period(COVERED, NOW - timedelta(days=1))})
+    assert window(old, PROJECT, None, NOW) == Window(
+        period=Period(COVERED, NOW), reason="covered start"
+    )
 
 
 def test_a_catch_up_that_would_start_at_or_after_the_end_skips_the_target() -> None:
     """An --until before the catch-up's start: no window, rather than a refused run."""
-    exact = Coverage({PROJECT: Period(COVERED, NOW)}, frozenset({PROJECT}))
+    exact = Coverage(periods={PROJECT: Period(COVERED, NOW)}, exact=frozenset({PROJECT}))
     until = NOW - timedelta(days=1)
     assert window(exact, PROJECT, None, until) is None
     assert window(covered(), SPACE, None, COVERED) is None
@@ -81,9 +87,9 @@ def test_a_catch_up_that_would_start_at_or_after_the_end_skips_the_target() -> N
 def test_a_first_run_covers_its_period() -> None:
     """--since 7d on a new target covers the last seven days; a project's, exactly."""
     fetched = Period(NOW - timedelta(days=7), NOW)
-    exact = Coverage({PROJECT: fetched}, frozenset({PROJECT}))
+    exact = Coverage(periods={PROJECT: fetched}, exact=frozenset({PROJECT}))
     assert Coverage().extended(PROJECT, fetched) == (exact, "extended")
-    assert Coverage().extended(SPACE, fetched) == (Coverage({SPACE: fetched}), "extended")
+    assert Coverage().extended(SPACE, fetched) == (Coverage(periods={SPACE: fetched}), "extended")
 
 
 def test_a_run_apart_from_the_covered_period_leaves_it() -> None:
@@ -95,7 +101,9 @@ def test_a_run_apart_from_the_covered_period_leaves_it() -> None:
 def test_a_later_short_run_does_not_claim_the_days_between() -> None:
     """Covered to 8 October, then --since 3d on the 21st: the 8th to the 18th were not seen."""
     early = Coverage(
-        {SPACE: Period(datetime(2026, 10, 1, tzinfo=UTC), datetime(2026, 10, 8, tzinfo=UTC))}
+        periods={
+            SPACE: Period(datetime(2026, 10, 1, tzinfo=UTC), datetime(2026, 10, 8, tzinfo=UTC))
+        }
     )
     late = Period(datetime(2026, 10, 18, tzinfo=UTC), datetime(2026, 10, 21, tzinfo=UTC))
     assert early.extended(SPACE, late) == (early, "held")
@@ -120,19 +128,19 @@ DAY = timedelta(days=1)
 
 def exactly(start: datetime, end: datetime) -> Coverage:
     """Return the project covered exactly from ``start`` to ``end``."""
-    return Coverage({PROJECT: Period(start, end)}, frozenset({PROJECT}))
+    return Coverage(periods={PROJECT: Period(start, end)}, exact=frozenset({PROJECT}))
 
 
 def before_034(start: datetime, end: datetime) -> Coverage:
     """Return the project covered from ``start`` to ``end`` by a record without exact."""
-    return Coverage({PROJECT: Period(start, end)})
+    return Coverage(periods={PROJECT: Period(start, end)})
 
 
 def test_a_failure_does_not_end_a_space_s_period() -> None:
     """A space is listed whole: the next catch-up asks for its whole period again."""
     fetched = Period(COVERED, NOW + DAY)
     after = covered().extended(SPACE, fetched, NOW)
-    assert after == (Coverage({SPACE: fetched}), "extended")
+    assert after == (Coverage(periods={SPACE: fetched}), "extended")
 
 
 def test_a_project_s_period_ends_at_its_first_failure_whatever_the_run() -> None:
@@ -196,7 +204,9 @@ def test_a_failure_at_the_start_of_an_exact_entry_makes_it_inexact() -> None:
     fetched = Period(COVERED, NOW)
     after = exactly(COVERED, END).extended(PROJECT, fetched, COVERED)
     assert after == (before_034(COVERED, END), "capped")
-    assert window(after[0], PROJECT, None, NOW) == Window(Period(COVERED, NOW), "covered start")
+    assert window(after[0], PROJECT, None, NOW) == Window(
+        period=Period(COVERED, NOW), reason="covered start"
+    )
 
 
 def test_an_entry_from_before_034_met_inside_is_joined_and_stays_inexact() -> None:

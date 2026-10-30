@@ -440,8 +440,8 @@ class Ordered(Meaning):
         """Give the scripted documents, the first nearest."""
         del reader, query, filters
         return Nearest(
-            {
-                path: (Score(1.0 - rank / 100, MOMENT), section, start, end)
+            found={
+                path: (Score(relevance=1.0 - rank / 100, updated=MOMENT), section, start, end)
                 for rank, (path, section, start, end) in enumerate(self.order)
             }
         )

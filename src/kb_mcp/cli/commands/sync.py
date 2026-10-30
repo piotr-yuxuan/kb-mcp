@@ -56,18 +56,18 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sync
     folder = sources.worklog.path if "worklog" in names else None
     try:
         context = Context(
-            settings,
-            Pandoc.find(),
-            lambda: datetime.now(UTC),
-            time.sleep,
+            settings=settings,
+            pandoc=Pandoc.find(),
+            now=lambda: datetime.now(UTC),
+            sleep=time.sleep,
             dry_run=arguments.dry_run,
         )
         steps: list[Atlassian | Worklog | Index] = []
         if spaces or projects:
-            steps.append(Atlassian(targets_of(arguments, spaces, projects, context.now())))
+            steps.append(Atlassian(targets=targets_of(arguments, spaces, projects, context.now())))
         if folder is not None:
-            steps.append(Worklog(folder, sources.worklog.archives))
-        steps.append(Index(indexing_of(arguments, settings)))
+            steps.append(Worklog(folder=folder, archives=sources.worklog.archives))
+        steps.append(Index(indexing=indexing_of(arguments, settings)))
         synced = sync(context, steps)
     except (PeriodError, RepresentationError, SyncRefusedError) as error:
         structlog.get_logger().error("sync.refused", reason=str(error))

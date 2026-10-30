@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -36,8 +37,7 @@ class PandocFailedError(RuntimeError):
     """Pandoc did not convert a document; the message holds no content."""
 
 
-@dataclass(frozen=True)
-class Pandoc:
+class Pandoc(Record):
     """The pandoc found on PATH."""
 
     path: str
@@ -49,7 +49,7 @@ class Pandoc:
         if path is None:
             message = "pandoc: not found on PATH; install pandoc 3"
             raise PandocMissingError(message)
-        return cls(path)
+        return cls(path=path)
 
     def markdown(self, html: str) -> str:
         """Write one document's HTML as Markdown."""

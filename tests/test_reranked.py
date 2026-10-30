@@ -65,7 +65,7 @@ class Scripted:
         self.asked.append(list(texts))
         if self.failing:
             raise self.failing
-        return Reranked([float(text.count("zeta")) for text in texts], None)
+        return Reranked(scores=[float(text.count("zeta")) for text in texts], tokens=None)
 
 
 @pytest.fixture(scope="module")

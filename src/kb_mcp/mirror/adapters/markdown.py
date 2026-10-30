@@ -6,7 +6,6 @@ two agree on every key, type and quotation without either guessing.
 
 from __future__ import annotations
 
-import dataclasses
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -20,9 +19,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
     from pathlib import Path
 
-KEYS = [field.name for field in dataclasses.fields(FrontMatter)]
-PERSON = [field.name for field in dataclasses.fields(PersonRole)]
-LINK = [field.name for field in dataclasses.fields(Link)]
+KEYS = list(FrontMatter.model_fields)
+PERSON = list(PersonRole.model_fields)
+LINK = list(Link.model_fields)
 TIME = "%Y-%m-%dT%H:%M:%SZ"
 OPENING = "---\n"
 CLOSING = "\n---\n"

@@ -8,7 +8,7 @@ depth of N could bring into the first ten. Plan 022's bar then reads the arms.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from statistics import fmean, median
 from typing import TYPE_CHECKING
 
@@ -25,6 +25,7 @@ from kb_mcp.evaluation.domain.evaluation import (
     quoting,
 )
 from kb_mcp.evaluation.domain.reranking import Decision, Depthed, default_reranking
+from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.search.app.reranking import Reranking
 
@@ -73,8 +74,7 @@ class Arms:
     built_at: datetime
 
 
-@dataclass(frozen=True)
-class Arm:
+class Arm(Record):
     """How one depth served the golden questions; depth 0, the order not reranked."""
 
     depth: int
@@ -145,7 +145,18 @@ def measured(
             times = (median(spent), percentile(spent, TAIL))
             groups = averages(per, questions, Measures.mean)
             asked = averages(quoted, questions, Quoted.mean)
-            found.append(Arm(depth, per, groups, asked, ranks, times, counted, recall))
+            found.append(
+                Arm(
+                    depth=depth,
+                    per=per,
+                    groups=groups,
+                    asked=asked,
+                    ranks=ranks,
+                    times=times,
+                    tokens=counted,
+                    recall=recall,
+                )
+            )
     return found
 
 
@@ -153,9 +164,9 @@ def decided(found: Sequence[Arm], questions: Sequence[Question]) -> Decision | N
     """Apply plan 022's bar to the arms measured: the first, not reranked, against the rest."""
     read = {
         arm.depth: Depthed(
-            tuple(arm.per[question.id].reciprocal_rank for question in questions),
-            {group: each.reciprocal_rank for group, each in arm.groups.items()},
-            round(arm.times[1] * 1000),
+            reciprocal=tuple(arm.per[question.id].reciprocal_rank for question in questions),
+            groups={group: each.reciprocal_rank for group, each in arm.groups.items()},
+            tail_ms=round(arm.times[1] * 1000),
         )
         for arm in found
     }
@@ -177,8 +188,8 @@ def recorded(
         "arms": [
             {
                 "depth": arm.depth,
-                "groups": {group: asdict(each) for group, each in arm.groups.items()},
-                "asked": {group: asdict(each) for group, each in arm.asked.items()},
+                "groups": {group: each.model_dump() for group, each in arm.groups.items()},
+                "asked": {group: each.model_dump() for group, each in arm.asked.items()},
                 "times": arm.times,
                 "tokens": arm.tokens,
                 "recall": arm.recall,
@@ -186,5 +197,5 @@ def recorded(
             }
             for arm in found
         ],
-        "decision": None if decision is None else asdict(decision),
+        "decision": None if decision is None else decision.model_dump(),
     }

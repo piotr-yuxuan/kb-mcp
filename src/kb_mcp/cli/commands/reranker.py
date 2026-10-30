@@ -6,13 +6,13 @@ It never starts the server nor downloads a model: the user does, as the guide sh
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import structlog
 
 from kb_mcp.kernel.endpoint import RERANKING
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import BOUND_S, LONGEST_TEXT
 from kb_mcp.search.adapters.model_api import Bounds, endpoint
 from kb_mcp.search.adapters.reranking import SEARCH, RerankError, rerank, served
@@ -30,11 +30,10 @@ UNRELATED = "The canteen opens at noon and closes at two."
 # Each text of the request timed: as long as any that a search sends.
 LONGEST = (ANSWER + " ") * (LONGEST_TEXT // len(ANSWER) + 1)
 # The request timed is made once, however long it takes, within an evaluation's deadline.
-TIMED = Bounds(300, 1)
+TIMED = Bounds(deadline_s=300, attempts=1)
 
 
-@dataclass(frozen=True)
-class Checked:
+class Checked(Record):
     """A reranker that ranks: its scores of the probe, and one request at the depth, timed."""
 
     model: str
@@ -69,7 +68,15 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Chec
         )
         structlog.get_logger().error("reranker.not_ready", reason=reason)
         return ExitStatus.FAILED, None
-    checked = Checked(name, settings.url, listed, answering, unrelated, settings.depth, seconds)
+    checked = Checked(
+        model=name,
+        url=settings.url,
+        served=listed,
+        answering=answering,
+        unrelated=unrelated,
+        depth=settings.depth,
+        seconds=seconds,
+    )
     return ExitStatus.OK, checked
 
 

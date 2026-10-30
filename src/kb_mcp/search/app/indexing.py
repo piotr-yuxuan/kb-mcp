@@ -15,33 +15,35 @@ from __future__ import annotations
 import contextlib
 import sqlite3
 from collections import Counter
-from dataclasses import dataclass, field, replace
+from collections.abc import Callable
+from copy import replace
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
 from opentelemetry import metrics, trace
+from pydantic import ConfigDict, Field
 
+from kb_mcp.kernel.chunking import Chunking
 from kb_mcp.kernel.fields import RepresentationError
+from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters import markdown
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.search.adapters import sqlite_index, vector_store
 from kb_mcp.search.adapters.aliases import AliasFileError, read_aliases
 from kb_mcp.search.adapters.embedding import connect
-from kb_mcp.search.adapters.model_api import ModelError
-from kb_mcp.search.app.pruning import prune
+from kb_mcp.search.adapters.model_api import Endpoint, ModelError
+from kb_mcp.search.app.pruning import Pruned, prune
 from kb_mcp.search.domain.chunking import CHUNKERS
 from kb_mcp.search.domain.people import Outcome
 from kb_mcp.search.domain.search import Embedded, sections
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Mapping
     from datetime import datetime
-    from pathlib import Path
 
-    from kb_mcp.kernel.chunking import Chunking
     from kb_mcp.search.adapters.embedding import Embedder
-    from kb_mcp.search.adapters.model_api import Endpoint
-    from kb_mcp.search.app.pruning import Pruned
 
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
@@ -61,18 +63,19 @@ class MirrorMissingError(Exception):
     """No mirror to index; the message names where it was looked for."""
 
 
-@dataclass
-class Report:
+class Report(Record):
     """What a build indexed, which files it skipped and why, and whom it joined."""
 
-    types: Counter[str] = field(default_factory=Counter)  # documents indexed per type
+    model_config = ConfigDict(frozen=False)
+
+    types: Counter[str] = Field(default_factory=Counter)  # documents indexed per type
     sections: int = 0
-    skipped: list[tuple[str, str]] = field(default_factory=list)  # each path and reason
+    skipped: list[tuple[str, str]] = Field(default_factory=list)  # each path and reason
     pieces: int = 0  # pieces with a vector
     embedded: int = 0  # texts that the model embedded, the store lacking them
-    unembedded: list[str] = field(default_factory=list)  # paths with a piece refused
+    unembedded: list[str] = Field(default_factory=list)  # paths with a piece refused
     characters: int = 0  # of the texts that the pieces embed, whatever the store held
-    persons: Outcome = field(default_factory=Outcome)  # that the documents' people make
+    persons: Outcome = Field(default_factory=Outcome)  # that the documents' people make
 
     @property
     def whole(self) -> bool:
@@ -92,8 +95,7 @@ class Embedding:
     chunking: Chunking = "sections"
 
 
-@dataclass(frozen=True)
-class Indexing:
+class Indexing(Record):
     """What a build of the index reads and writes, and how it embeds.
 
     ``endpoint`` opens the embedding endpoint, as the run allows it, or is None for an
@@ -112,8 +114,7 @@ class Indexing:
     endpoint: Callable[[], Endpoint] | None
 
 
-@dataclass(frozen=True)
-class Indexed:
+class Indexed(Record):
     """What a build did, the index it wrote, and the model that embedded, None by words alone.
 
     ``pruned`` says what the prune of the vector store that followed did: None by words
@@ -158,7 +159,12 @@ def build_index(
     report = Report()
     model = embedding.embedder if embedding else None
     embedded = (
-        Embedded(model.name, model.fingerprint, model.dimensions, embedding.chunking)
+        Embedded(
+            model=model.name,
+            fingerprint=model.fingerprint,
+            dimensions=model.dimensions,
+            chunking=embedding.chunking,
+        )
         if model
         else None
     )
@@ -267,7 +273,9 @@ def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
         )
     for alias in report.persons.unused:
         log.warning("index.alias_unused", alias=alias.name, key=alias.key, reason=alias.reason)
-    return Indexed(report, indexing.index, None if embedding is None else indexing.model)
+    return Indexed(
+        report=report, index=indexing.index, model=None if embedding is None else indexing.model
+    )
 
 
 def refresh(indexing: Indexing, built_at: datetime) -> Indexed | None:

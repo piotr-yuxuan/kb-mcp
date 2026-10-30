@@ -18,8 +18,11 @@ from typing import TYPE_CHECKING, Protocol
 
 import httpx
 import numpy as np
+from numpy.typing import NDArray
 from opentelemetry import trace
+from pydantic import ConfigDict
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.http import client_span, server
 from kb_mcp.search.adapters.model_api import (
     OPERATION_DURATION,
@@ -33,12 +36,10 @@ from kb_mcp.search.adapters.model_api import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from numpy.typing import NDArray
-
     from kb_mcp.search.adapters.model_api import Endpoint
 
-    type Vectors = NDArray[np.float32]
-
+# The texts' unit vectors, one row each.
+type Vectors = NDArray[np.float32]
 # The environment variable that holds the endpoint's API key, if it needs one.
 KEY_VARIABLE = "KB_MCP_EMBEDDING_API_KEY"
 # Texts sent in one request; a piece is at most about 1,500 characters.
@@ -57,35 +58,34 @@ FORMAT = 1
 PROVIDER = "openai"
 
 
-DOCUMENTS = Bounds(120, len(WAITS_S) + 1)
+DOCUMENTS = Bounds(deadline_s=120, attempts=len(WAITS_S) + 1)
 # Queries, the probe, the list of models and texts tried alone: a search falls back to
 # words at once, and the next one tries again.
-SINGLE = Bounds(30, 1)
+SINGLE = Bounds(deadline_s=30, attempts=1)
 
 
-@dataclass(frozen=True)
-class Prefixes:
+class Prefixes(Record):
     """What a model's card asks to put before a query, and before a document."""
 
     query: str
     document: str
 
 
-GEMMA = Prefixes("task: search result | query: ", "title: none | text: ")
-NOMIC = Prefixes("search_query: ", "search_document: ")
+GEMMA = Prefixes(query="task: search result | query: ", document="title: none | text: ")
+NOMIC = Prefixes(query="search_query: ", document="search_document: ")
 # Each known family's prefixes, from its model card; a model of another family, such as
 # bge-m3, whose card asks for none, embeds texts as they are.
 PREFIXES = {
     "qwen3-embedding": Prefixes(
-        "Instruct: Given a web search query, retrieve relevant passages that answer the query"
+        query="Instruct: Given a web search query, retrieve relevant passages that answer the query"
         "\nQuery:",
-        "",
+        document="",
     ),
     "embeddinggemma": GEMMA,
     "embeddinggemma-2": GEMMA,
     "nomic-embed-text": NOMIC,
     "nomic-embed-text-v2-moe": NOMIC,
-    "snowflake-arctic-embed2": Prefixes("query: ", ""),
+    "snowflake-arctic-embed2": Prefixes(query="query: ", document=""),
 }
 
 
@@ -136,9 +136,10 @@ class Embedder(Protocol):
         ...
 
 
-@dataclass(frozen=True)
-class Embeddings:
+class Embeddings(Record):
     """What the endpoint gave for texts: a unit vector each, and the tokens it counted."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     vectors: Vectors
     tokens: int | None  # the answer's usage.prompt_tokens, None when it says none
@@ -212,7 +213,7 @@ def embeddings(
         if not np.all(np.isfinite(norms) & (norms > 0)):
             message = f"{model}: the endpoint gave a vector of no length, or not of numbers"
             raise ModelError(message)
-        return Embeddings((vectors / norms).astype(np.float32), tokens)
+        return Embeddings(vectors=(vectors / norms).astype(np.float32), tokens=tokens)
 
 
 def embed(
@@ -357,7 +358,7 @@ def connect(endpoint: Endpoint, model: str) -> ApiEmbedder:
     Raises ModelError, saying what to do, when the endpoint does not answer, lacks the
     model, or gives vectors that cannot be used.
     """
-    known = prefixes(model) or Prefixes("", "")
+    known = prefixes(model) or Prefixes(query="", document="")
     found = digest(endpoint, model)
     probe = embed(endpoint, model, [known.query + PROBE], SINGLE)
     return ApiEmbedder(endpoint, model, found, probe.shape[1], known)

@@ -9,11 +9,11 @@ around it.
 from __future__ import annotations
 
 import shlex
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import PROGRAM
+from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
     import argparse
@@ -25,8 +25,7 @@ if TYPE_CHECKING:
 CONTINUED = " \\\n  "
 
 
-@dataclass(frozen=True)
-class Copy:
+class Copy(Record):
     """The command to copy, and the lines that name what it cannot carry, said around it.
 
     ``command`` is the command alone, an option to a line, then a newline. ``emptied``,
@@ -98,4 +97,4 @@ def command_line(
         for setting in command.reads
         if setting in given and setting not in settings.values()
     )
-    return Copy("".join(emptied), written + "\n", unflagged)
+    return Copy(emptied="".join(emptied), command=written + "\n", unflagged=unflagged)

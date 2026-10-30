@@ -34,8 +34,8 @@ REFS = {
     "OPS-1": "ops.md",
 }
 QUESTION = Question(
-    "q1",
-    "",
+    id="q1",
+    text="",
     expected=("kafka.md",),
     partial=("upgrade.md",),
     evidence={"kafka.md": "logs for seven days"},

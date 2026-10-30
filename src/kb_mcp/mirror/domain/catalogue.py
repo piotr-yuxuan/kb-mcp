@@ -9,21 +9,22 @@ from all of them, as the table of ``docs/reference/data-layout.md`` says.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
 from datetime import UTC
 from functools import cached_property
 from html import escape
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.content import BlogPost, ConfluenceDocument, Folder, Issue, Page
+from kb_mcp.kernel.content import BlogPost, ConfluenceDocument, Folder, Issue, Page, Space
+from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from kb_mcp.mirror.domain.mirror_layout import NONE, one_line
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Iterable
     from datetime import datetime
 
-    from kb_mcp.kernel.content import Comment, Person, Space
+    from kb_mcp.kernel.content import Comment, Person
 
 # The front matter's type of each kind of document.
 TYPES: dict[type[ConfluenceDocument | Issue], str] = {
@@ -33,8 +34,7 @@ TYPES: dict[type[ConfluenceDocument | Issue], str] = {
 }
 
 
-@dataclass(frozen=True)
-class Catalogue:
+class Catalogue(Record):
     """The spaces, the users' names, and the documents and folders last listed.
 
     ``spaces`` are by id, ``names`` by account id, ``listed`` pages and blog posts by id,

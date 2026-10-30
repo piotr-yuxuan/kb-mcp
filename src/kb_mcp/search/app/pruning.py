@@ -12,12 +12,13 @@ from __future__ import annotations
 import os
 import sqlite3
 import time
-from dataclasses import asdict, dataclass, replace
+from copy import replace
 from typing import TYPE_CHECKING, Literal
 
 import structlog
 from opentelemetry import metrics, trace
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.search.adapters import sqlite_index, vector_store
 
 if TYPE_CHECKING:
@@ -72,8 +73,7 @@ SAID: dict[Outcome, tuple[str, str, tuple[str, ...]]] = {
 }
 
 
-@dataclass(frozen=True)
-class Pruned:
+class Pruned(Record):
     """What a prune did: its outcome, the vectors kept and deleted, and the store's size.
 
     ``kept`` counts the vectors left in the store, ``kept_for_evaluation`` those of them
@@ -108,7 +108,7 @@ def said(pruned: Pruned, span: Span, started: float) -> Pruned:
     span.set_attribute("kb_mcp.outcome", pruned.outcome)
     span.set_attribute("kb_mcp.deleted", pruned.deleted)
     level, event, names = SAID[pruned.outcome]
-    fields = asdict(pruned)
+    fields = pruned.model_dump()
     getattr(structlog.get_logger(), level)(event, **{name: fields[name] for name in names})
     return pruned
 
@@ -131,10 +131,10 @@ def prune(
     with TRACER.start_as_current_span("index.prune") as span:
         if skipped or not documents:
             reason = SKIPPED if skipped else NO_DOCUMENT
-            return said(Pruned("held back", reason=reason), span, started)
+            return said(Pruned(outcome="held back", reason=reason), span, started)
         with vector_store.exclusive(store) as held:
             if not held:
-                return said(Pruned("deferred", reason=DEFERRED), span, started)
+                return said(Pruned(outcome="deferred", reason=DEFERRED), span, started)
             keys: dict[Path, set[str]] = {}
             path = evaluation_indexes  # what the listing reads, before any index
             try:
@@ -142,10 +142,12 @@ def prune(
                     with sqlite_index.reading(path) as reader:
                         keys[path] = reader.keys()
             except OSError as error:
-                unlisted = Pruned("held back", reason=UNLISTED, file=shown(error.filename or path))
+                unlisted = Pruned(
+                    outcome="held back", reason=UNLISTED, file=shown(error.filename or path)
+                )
                 return said(unlisted, span, started)
             except sqlite_index.UnavailableIndexError, sqlite3.DatabaseError:
-                held_back = Pruned("held back", reason=UNREADABLE, file=shown(path))
+                held_back = Pruned(outcome="held back", reason=UNREADABLE, file=shown(path))
                 return said(held_back, span, started)
             read = keys.pop(index)
             evaluation = set().union(*keys.values()) - read
@@ -155,12 +157,12 @@ def prune(
                     alone = opened.count(evaluation)
                     swept = opened.prune(kept)
             except sqlite3.Error as error:
-                return said(Pruned("failed", reason=str(error)), span, started)
+                return said(Pruned(outcome="failed", reason=str(error)), span, started)
         VECTORS.add(swept.kept, {"kb_mcp.outcome": "kept"})
         VECTORS.add(swept.deleted, {"kb_mcp.outcome": "pruned"})
         STORE_SIZE.set(swept.bytes_after)
         pruned = Pruned(
-            "pruned",
+            outcome="pruned",
             kept=swept.kept,
             kept_for_evaluation=alone,
             deleted=swept.deleted,

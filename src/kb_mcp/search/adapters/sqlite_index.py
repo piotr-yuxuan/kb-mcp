@@ -16,7 +16,6 @@ import sqlite3
 import tempfile
 import uuid
 from contextlib import contextmanager
-from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -315,13 +314,13 @@ class Writer:
 
         Return the rowid of its first section; the others follow it.
         """
-        values = {name: getattr(front, name) for name in FrontMatter.__dataclass_fields__}
+        values = {name: getattr(front, name) for name in FrontMatter.model_fields}
         values |= {
             "labels": json.dumps(front.labels, ensure_ascii=False),
             "people": json.dumps(
-                [asdict(person) for person in front.people], ensure_ascii=False, default=moment
+                [person.model_dump() for person in front.people], ensure_ascii=False, default=moment
             ),
-            "links": json.dumps([asdict(link) for link in front.links], ensure_ascii=False),
+            "links": json.dumps([link.model_dump() for link in front.links], ensure_ascii=False),
             "breadcrumb": json.dumps(front.breadcrumb, ensure_ascii=False),
             "created": moment(front.created),
             "updated": moment(front.updated),
@@ -423,7 +422,13 @@ class Writer:
         row's person stays here. The span ``index.join`` holds it.
         """
         rows = {
-            rowid: people.Row(document, role, name, account, datetime.fromisoformat(updated))
+            rowid: people.Row(
+                document=document,
+                role=role,
+                name=name,
+                account=account,
+                updated=datetime.fromisoformat(updated),
+            )
             for rowid, document, role, name, account, updated in self._connection.execute(
                 PEOPLE_ROWS
             )
@@ -448,7 +453,9 @@ class Writer:
                 for spelling in person.names
             ],
         )
-        return people.Outcome(len(found.persons), found.ambiguous, found.unused)
+        return people.Outcome(
+            count=len(found.persons), ambiguous=found.ambiguous, unused=found.unused
+        )
 
 
 def indexes_in(folder: Path) -> list[Path]:
@@ -573,7 +580,7 @@ class Reader:
         if filters not in self._kept:
             parameters = {
                 name: moment(value) if isinstance(value, datetime) else value
-                for name, value in asdict(filters).items()
+                for name, value in filters.model_dump().items()
             }
             self._kept[filters] = self._connection.execute(KEPT, parameters).fetchone()[0]
         return self._kept[filters]
@@ -594,9 +601,9 @@ class Reader:
         }
         found = {
             row["path"]: Score(
-                row["relevance"],
-                datetime.fromisoformat(row["updated"]),
-                datetime.fromisoformat(row["created"]),
+                relevance=row["relevance"],
+                updated=datetime.fromisoformat(row["updated"]),
+                created=datetime.fromisoformat(row["created"]),
             )
             for row in self._connection.execute(SCORES, parameters)
         }
@@ -610,7 +617,11 @@ class Reader:
         """
         parameters = {**SECTION_WEIGHTS, "match": match, "path": path, "tokens": SNIPPET_TOKENS}
         row = self._connection.execute(PASSAGE, parameters).fetchone()
-        return None if row is None else Passage(row["number"], row["heading"], row["snippet"])
+        return (
+            None
+            if row is None
+            else Passage(number=row["number"], heading=row["heading"], snippet=row["snippet"])
+        )
 
     def entries(
         self,
@@ -695,11 +706,11 @@ class Reader:
             " ORDER BY name, key, joined",
             (person,),
         )
-        spellings = tuple(people.Spelling(*row) for row in rows)
+        spellings = tuple(people.Spelling(name=name, key=key, how=how) for name, key, how in rows)
         roles = self._connection.execute(PERSON_ROLES, {"person": person})
         sources = self._connection.execute(PERSON_SOURCES, {"person": person}).fetchall()
         return Activity(
-            person=people.Person(person, name[0], spellings),
+            person=people.Person(id=person, name=name[0], names=spellings),
             roles={row[0]: row[1] for row in roles},
             sources={row[0]: row[1] for row in sources},
             last=max(datetime.fromisoformat(row[2]) for row in sources),
@@ -737,7 +748,12 @@ class Reader:
             return None
         # Indexes of 011 and 018 have no chunking: their pieces were cut by sections.
         chunking = cast("Chunking", meta.get("chunking", "sections"))
-        return Embedded(meta["model"], meta["fingerprint"], int(meta["dimensions"]), chunking)
+        return Embedded(
+            model=meta["model"],
+            fingerprint=meta["fingerprint"],
+            dimensions=int(meta["dimensions"]),
+            chunking=chunking,
+        )
 
     def keys(self) -> set[str]:
         """Give the vector store's keys of the pieces' vectors: what the index reads of it.
@@ -795,7 +811,7 @@ class Reader:
             projects=dict(self.values("project")),
             sections=sections,
             newest_fetch=None if newest is None else datetime.fromisoformat(newest),
-            people=Persons(persons, across, alone, shared),
+            people=Persons(count=persons, across=across, alone=alone, shared=shared),
             model=meta["model"] or None,
             pieces=pieces,
             chunking=embedded.chunking if embedded else None,

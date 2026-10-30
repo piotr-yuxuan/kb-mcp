@@ -245,14 +245,16 @@ def test_spaces_listed_on_different_runs_are_all_kept(store: RawStore) -> None:
     store.put_space(v2_space(), [v2_page()], [], [v2_folder()])
     store.put_space(v2_space(id="300000", key="OPS", name="Another"), [], [], [])
     assert store.spaces() == [
-        Space("196613", "MFS", "A space"),
-        Space("300000", "OPS", "Another"),
+        Space(id="196613", key="MFS", name="A space"),
+        Space(id="300000", key="OPS", name="Another"),
     ]
     [page] = store.listed("196613", Page)
     assert isinstance(page, Page)
     assert page.parent_type == "page"
     assert store.listed("196613", BlogPost) == []
-    assert store.folders("196613") == [Folder("197001", "A folder", "196725", "page")]
+    assert store.folders("196613") == [
+        Folder(id="197001", title="A folder", parent_id="196725", parent_type="page")
+    ]
 
 
 def test_a_space_listing_is_replaced_whole(store: RawStore) -> None:
@@ -272,7 +274,7 @@ def test_an_entry_of_a_listing_that_its_adapter_refuses_is_reported_alone(
     first, second = store.listed("196613", Page)
     assert isinstance(first, Page)
     where = "confluence/spaces/196613/pages.json[1]"
-    assert second == Unreadable(where, f"{where}.title: expected a string")
+    assert second == Unreadable(where=where, reason=f"{where}.title: expected a string")
 
 
 def test_a_space_id_that_is_a_path_is_refused(store: RawStore) -> None:
@@ -285,7 +287,10 @@ def test_users_are_merged_across_runs_by_account_id(store: RawStore) -> None:
     """Authors seen by earlier runs stay; a user seen again takes the newer name."""
     store.put_users([v1_user(), v1_user(accountId="account-2", displayName="Two")])
     store.put_users([v1_user(displayName="Renamed")])
-    assert store.users() == [Person("account-1", "Renamed"), Person("account-2", "Two")]
+    assert store.users() == [
+        Person(account_id="account-1", display_name="Renamed"),
+        Person(account_id="account-2", display_name="Two"),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -320,7 +325,7 @@ def test_a_user_without_an_account_id_is_named_by_its_index(store: RawStore) -> 
     store.put_users([v1_user()])
     with pytest.raises(RepresentationError, match=r"^users\[0\]\.accountId: missing"):
         store.put_users([{"displayName": "No id"}])
-    assert store.users() == [Person("account-1", "A Person")]
+    assert store.users() == [Person(account_id="account-1", display_name="A Person")]
 
 
 @pytest.mark.parametrize(
@@ -344,16 +349,18 @@ def test_coverage_and_tombstones_read_back_as_written(store: RawStore) -> None:
     """The store's two records of runs keep what was put, in any time zone, as UTC."""
     start = datetime(2026, 10, 15, 11, tzinfo=timezone(timedelta(hours=2)))
     coverage = Coverage(
-        {
-            Target("confluence", "MFS"): Period(start, FETCHED),
-            Target("jira", "PRB"): Period(start - timedelta(days=1), FETCHED),
-            Target("jira", "OPS"): Period(start, FETCHED),
+        periods={
+            Target(source="confluence", key="MFS"): Period(start, FETCHED),
+            Target(source="jira", key="PRB"): Period(start - timedelta(days=1), FETCHED),
+            Target(source="jira", key="OPS"): Period(start, FETCHED),
         },
-        frozenset({Target("jira", "PRB")}),
+        exact=frozenset({Target(source="jira", key="PRB")}),
     )
     store.put_coverage(coverage)
     assert store.coverage() == coverage
-    stone = Tombstone("pages", "1001", "196613", FETCHED, confirmed=True)
+    stone = Tombstone(
+        kind="pages", id="1001", space_id="196613", first_gone=FETCHED, confirmed=True
+    )
     store.put_tombstones([stone])
     assert store.tombstones() == {("pages", "1001"): stone}
 
@@ -365,8 +372,10 @@ def test_a_coverage_record_keeps_the_format_of_before_034_beside_exact(store: Ra
     """
     start = datetime(2026, 10, 15, 9, tzinfo=UTC)
     period = Period(start, start + timedelta(days=7))
-    space, project = Target("confluence", "MFS"), Target("jira", "PRB")
-    store.put_coverage(Coverage({space: period, project: period}, frozenset({project})))
+    space, project = Target(source="confluence", key="MFS"), Target(source="jira", key="PRB")
+    store.put_coverage(
+        Coverage(periods={space: period, project: period}, exact=frozenset({project}))
+    )
     written = json.loads((store.root / "coverage.json").read_text("utf-8"))
     times = {"start": "2026-10-15T09:00:00+00:00", "end": "2026-10-22T09:00:00+00:00"}
     assert written == [
@@ -375,7 +384,7 @@ def test_a_coverage_record_keeps_the_format_of_before_034_beside_exact(store: Ra
     ]
     old = [{key: value for key, value in entry.items() if key != "exact"} for entry in written]
     (store.root / "coverage.json").write_text(json.dumps(old), "utf-8")
-    assert store.coverage() == Coverage({space: period, project: period})
+    assert store.coverage() == Coverage(periods={space: period, project: period})
 
 
 def test_a_space_s_entry_marked_exact_is_read_as_inexact(store: RawStore) -> None:

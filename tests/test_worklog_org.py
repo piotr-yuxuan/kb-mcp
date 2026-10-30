@@ -14,7 +14,7 @@ question 1's sample first.
 
 from __future__ import annotations
 
-import dataclasses
+import copy
 import hashlib
 import itertools
 import re
@@ -24,7 +24,7 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from kb_mcp.kernel.content import WORKLOG_ID, WORKLOG_REVISION
+from kb_mcp.kernel.names import WORKLOG_ID, WORKLOG_REVISION
 from kb_mcp.mirror.domain.mirror import RELATIONS
 from kb_mcp.sources.worklog.domain import org
 from kb_mcp.sources.worklog.domain.worklog import (
@@ -71,12 +71,12 @@ def sha(text: str) -> str:
 
 def todo(text: str, modified: datetime = MODIFIED) -> Source:
     """Return ``todo.org`` holding ``text``."""
-    return Source(PurePosixPath("todo.org"), text, modified)
+    return Source(path=PurePosixPath("todo.org"), text=text, modified=modified)
 
 
 def transcript(path: str, text: str = "Words.\n", modified: datetime = MODIFIED) -> Source:
     """Return a transcript at ``transcripts/<path>``."""
-    return Source(PurePosixPath("transcripts", path), text, modified)
+    return Source(path=PurePosixPath("transcripts", path), text=text, modified=modified)
 
 
 def one(text: str) -> dict[str, str]:
@@ -433,7 +433,7 @@ def test_shifting_moves_the_stars_alone() -> None:
         ], line
         before, after = org.heading(line, KEYWORDS), org.heading(moved[0], KEYWORDS)
         assert before is not None
-        assert after == dataclasses.replace(before, level=level), line
+        assert after == copy.replace(before, level=level), line
 
 
 def test_a_meeting_shifted_begins_at_level_one() -> None:
@@ -616,7 +616,7 @@ def test_same_titled_entries_are_numbered_in_reading_order() -> None:
     """The second and third of one title take -2 and -3; distinct :CREATED: tell apart."""
     found, _ = journal(
         todo("* Retro\none\n* Retro\ntwo\n* Retro\nthree\n"),
-        Source(PurePosixPath("todo.org_archive"), "* Retro\nfour\n", MODIFIED),
+        Source(path=PurePosixPath("todo.org_archive"), text="* Retro\nfour\n", modified=MODIFIED),
         archives=True,
         transcripts=(),
     )
@@ -684,7 +684,11 @@ def test_an_entry_describes_its_title_status_labels_and_file() -> None:
     parent = DECLARED + "#+FILETAGS: :work:\n"
     found, _ = journal(
         todo(parent + "* WAITING [#A] Review [1/3] :review:work:\n* Old :ARCHIVE:\n* Plain\n"),
-        Source(PurePosixPath("todo.org_archive"), "* WAITING Vendor :vendor:\n", MODIFIED),
+        Source(
+            path=PurePosixPath("todo.org_archive"),
+            text="* WAITING Vendor :vendor:\n",
+            modified=MODIFIED,
+        ),
         archives=True,
         transcripts=(),
     )
@@ -702,7 +706,7 @@ def test_without_archives_the_archive_file_and_archived_entries_are_left_out() -
     """The archive file's entries and those tagged ARCHIVE; arch:nil for the rest."""
     found, _ = journal(
         todo("* Old :ARCHIVE:\n* Kept\n** Gone :ARCHIVE:\n"),
-        Source(PurePosixPath("todo.org_archive"), "* Vendor\n", MODIFIED),
+        Source(path=PurePosixPath("todo.org_archive"), text="* Vendor\n", modified=MODIFIED),
         archives=False,
         transcripts=(),
     )
@@ -769,7 +773,9 @@ def test_transcript_ids_name_the_day_and_the_name_else_a_slug_else_a_digest(
     Without a day, the digest of the name alone, meeting- before it under meetings/: no
     folder, so a move under archive/ keeps every id.
     """
-    (found,), warnings = transcripts([Source(PurePosixPath(path), "", MODIFIED)], archives=True)
+    (found,), warnings = transcripts(
+        [Source(path=PurePosixPath(path), text="", modified=MODIFIED)], archives=True
+    )
     assert (found.id, warnings) == (expected, [])
     assert WORKLOG_ID.fullmatch(found.id)
 
@@ -778,8 +784,12 @@ def test_one_day_s_first_file_in_both_folders_takes_two_ids() -> None:
     """meetings/<day>/1.org and transcripts/current/<day>/1.org: distinct, no warning."""
     found, warnings = transcripts(
         [
-            Source(PurePosixPath("meetings/2026-10-27 Tue/1.org"), "", MODIFIED),
-            Source(PurePosixPath("transcripts/current/2026-10-27 Tue/1.org"), "", MODIFIED),
+            Source(path=PurePosixPath("meetings/2026-10-27 Tue/1.org"), text="", modified=MODIFIED),
+            Source(
+                path=PurePosixPath("transcripts/current/2026-10-27 Tue/1.org"),
+                text="",
+                modified=MODIFIED,
+            ),
         ],
         archives=True,
     )
@@ -1133,7 +1143,7 @@ CONDENSED = "From <2026-10-05 Mon> to <2026-10-09 Fri> (summary)"
 
 def archived(text: str) -> Source:
     """Return ``todo.org_archive`` holding ``text``."""
-    return Source(PurePosixPath("todo.org_archive"), text, MODIFIED)
+    return Source(path=PurePosixPath("todo.org_archive"), text=text, modified=MODIFIED)
 
 
 def body(document: Document) -> list[str]:
@@ -1147,7 +1157,13 @@ def test_the_plan_s_sample_is_a_day_a_meeting_and_a_range() -> None:
     Each begins at level 1.
     """
     (record,), _ = transcripts(
-        [Source(PurePosixPath("meetings/2026-10-27 Tue/1.org"), "Words.\n", MODIFIED)],
+        [
+            Source(
+                path=PurePosixPath("meetings/2026-10-27 Tue/1.org"),
+                text="Words.\n",
+                modified=MODIFIED,
+            )
+        ],
         archives=True,
     )
     found, _ = journal(todo(DECLARED + SAMPLE), None, archives=True, transcripts=[record])
@@ -1305,7 +1321,7 @@ def test_same_titled_meetings_are_numbered_by_their_transcripts_starts() -> None
         archives=True,
     )
     early, late = (
-        dataclasses.replace(each, start=TUESDAY.replace(hour=hour))
+        copy.replace(each, start=TUESDAY.replace(hour=hour))
         for each, hour in zip(read, (9, 14), strict=True)
     )
     found, _ = journal(todo("\n".join(lines)), None, archives=True, transcripts=[late, early])
@@ -1348,7 +1364,7 @@ def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
     written, which may hold a passcode, whatever case its scheme takes.
     """
     (record,), _ = transcripts([transcript("2026-10-27 Tue/1.org")], archives=True)
-    record = dataclasses.replace(record, start=TUESDAY.replace(hour=9, minute=31))
+    record = copy.replace(record, start=TUESDAY.replace(hour=9, minute=31))
     found, named = journal(
         todo(
             "* Entries\n** <2026-10-27 Tue>\n*** Stand-up\n"
@@ -1393,7 +1409,7 @@ def test_a_link_to_a_transcript_moved_under_archive_reaches_it_by_its_id(
     (record,), _ = transcripts(
         [transcript("archive/2026/2026-10/2026-10-27 Tue/1.org")], archives=True
     )
-    record = dataclasses.replace(record, start=TUESDAY.replace(hour=9, minute=31))
+    record = copy.replace(record, start=TUESDAY.replace(hour=9, minute=31))
     found, named = journal(
         todo(
             "* Entries\n** <2026-10-27 Tue>\n*** Stand-up\n"
@@ -1417,7 +1433,7 @@ def test_a_link_to_a_transcript_moved_under_archive_reaches_it_by_its_id(
 def test_a_meeting_linking_another_day_s_transcript_starts_at_its_own_day() -> None:
     """A recurring meeting's heading copied with its link: the link kept, the date its day's."""
     (record,), _ = transcripts([transcript("2026-10-21 Wed/1.org")], archives=True)
-    record = dataclasses.replace(record, start=datetime(2026, 10, 21, 9, tzinfo=UTC))
+    record = copy.replace(record, start=datetime(2026, 10, 21, 9, tzinfo=UTC))
     text = "".join(
         f"** {day}\n*** Weekly sync\n:PROPERTIES:\n"
         ":MEETING: [[./transcripts/2026-10-21 Wed/1.org]]\n:END:\n"
@@ -1470,7 +1486,11 @@ def test_a_file_not_read_holds_back_each_document_that_draws_on_it(
     """
     read, _ = transcripts(
         [
-            Source(PurePosixPath("meetings/2026-10-27 Tue/1.org"), "Words.\n", MODIFIED),
+            Source(
+                path=PurePosixPath("meetings/2026-10-27 Tue/1.org"),
+                text="Words.\n",
+                modified=MODIFIED,
+            ),
             transcript("misc/alone.org"),
         ],
         archives=True,

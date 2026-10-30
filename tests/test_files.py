@@ -12,7 +12,9 @@ CAP = 50 * 1024 * 1024
 
 def attachment(media_type: str, size: int = 1000) -> Attachment:
     """Return an attachment of a media type and size."""
-    return Attachment("att1", "file", media_type, size, "/wiki/download/att1")
+    return Attachment(
+        id="att1", filename="file", media_type=media_type, size=size, download="/wiki/download/att1"
+    )
 
 
 @pytest.mark.parametrize(

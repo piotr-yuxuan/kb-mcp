@@ -13,13 +13,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.domain.coverage import period_rule
+from kb_mcp.sources.atlassian.domain.period import period_rule
 
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping
 
-    from kb_mcp.kernel.content import SourceName
+    from kb_mcp.kernel.names import SourceName
 
 # The steps of a sync, in their order: Confluence's and Jira's together, the work log's.
 type Step = Literal["atlassian", "worklog"]

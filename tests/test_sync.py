@@ -31,8 +31,8 @@ from kb_mcp.cli.domain.sync import SOURCES, chosen
 from kb_mcp.cli.main import main, parser
 from kb_mcp.cli.options.sync import refused
 from kb_mcp.config.domain.settings import DEFAULT_MODEL, Settings
-from kb_mcp.kernel.content import SOURCE_NAMES
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import SOURCE_NAMES
 from kb_mcp.mirror.adapters import pandoc as pandoc_adapter
 from kb_mcp.mirror.adapters.mirror_files import Changes
 from kb_mcp.mirror.adapters.pandoc import (
@@ -293,27 +293,36 @@ def test_a_first_sync_without_since_fetches_the_last_week_of_each_target(
     assert rule in capsys.readouterr().err
     assert signed_in.asked
     periods = RawStore((home / "data" / "raw").resolve()).coverage().periods
-    assert set(periods) == {Target("confluence", "MFS"), Target("jira", "PRB")}
+    assert set(periods) == {
+        Target(source="confluence", key="MFS"),
+        Target(source="jira", key="PRB"),
+    }
     assert {each.end - each.start for each in periods.values()} == {WEEK}
 
 
 def context(settings: Settings, now: datetime, pandoc: Pandoc | None = None) -> Context:
     """Give a sync's context at ``now``."""
-    return Context(settings, pandoc or Pandoc.find(), lambda: now, lambda _: None, dry_run=False)
+    return Context(
+        settings=settings,
+        pandoc=pandoc or Pandoc.find(),
+        now=lambda: now,
+        sleep=lambda _: None,
+        dry_run=False,
+    )
 
 
 def by_words(settings: Settings) -> Index:
     """Give the index's step as sync builds it in the lexical mode: no endpoint."""
     return Index(
-        Indexing(
-            settings.docs,
-            settings.index,
-            settings.vectors,
-            settings.evaluation_indexes,
-            settings.aliases,
-            settings.model,
-            settings.chunking,
-            None,
+        indexing=Indexing(
+            docs=settings.docs,
+            index=settings.index,
+            vectors=settings.vectors,
+            evaluation_indexes=settings.evaluation_indexes,
+            aliases=settings.aliases,
+            model=settings.model,
+            chunking=settings.chunking,
+            endpoint=None,
         )
     )
 
@@ -323,15 +332,15 @@ def test_the_index_step_prunes_and_a_deferred_prune_leaves_it_done(tmp_path: Pat
     settings = Settings(data_dir=tmp_path / "data", model="tiny")
     fillers(settings.docs, 3)
     step = Index(
-        Indexing(
-            settings.docs,
-            settings.index,
-            settings.vectors,
-            settings.evaluation_indexes,
-            settings.aliases,
-            "tiny",
-            "sections",
-            scripted,
+        indexing=Indexing(
+            docs=settings.docs,
+            index=settings.index,
+            vectors=settings.vectors,
+            evaluation_indexes=settings.evaluation_indexes,
+            aliases=settings.aliases,
+            model="tiny",
+            chunking="sections",
+            endpoint=scripted,
         )
     )
     with vector_store.shared(settings.vectors):
@@ -364,13 +373,18 @@ def test_a_later_sync_catches_up_on_an_old_page_edited_today_and_nothing_stored(
     """A first sync over a week; a second, with no --since, fetches the edited page alone."""
     settings = chosen_settings(tmp_path, worklog)
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
-    first = Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK))
+    first = Atlassian(
+        targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+    )
     assert sync(context(settings, FIRST), [first]).exit_status == ExitStatus.OK
     assert "1003" not in stored_pages(settings)
     edited = {"number": 4, "createdAt": "2026-10-23T08:00:00.000Z"}
     later = RefreshSite(listing={**PAGES, "1003": {**PAGES["1003"], "version": edited}})
     monkeypatch.setattr(http, "client", lambda *_: later.client())
-    synced = sync(context(settings, SECOND), [Atlassian(Targets(["MFS"], [], CAP))])
+    synced = sync(
+        context(settings, SECOND),
+        [Atlassian(targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP))],
+    )
     assert synced.exit_status == ExitStatus.OK
     fetched = synced.steps[0].result
     assert isinstance(fetched, Outcome)
@@ -384,8 +398,10 @@ def test_the_site_asking_to_sign_in_still_lets_the_work_log_run_exit_3(
     """No session saved: the download says to sign in; the mirror, work log and index run."""
     settings = Settings(data_dir=tmp_path / "data", site=SITE)
     steps = [
-        Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
-        Worklog(worklog, archives=True),
+        Atlassian(
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+        ),
+        Worklog(folder=worklog, archives=True),
         by_words(settings),
     ]
     with capture_logs() as logged:
@@ -412,8 +428,10 @@ def test_ctrl_c_in_the_download_exits_130_and_no_later_step_runs(
     monkeypatch.setattr(sync_app, "download", interrupted)
     settings = chosen_settings(tmp_path, worklog)
     steps = [
-        Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
-        Worklog(worklog, archives=True),
+        Atlassian(
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+        ),
+        Worklog(folder=worklog, archives=True),
     ]
     synced = sync(context(settings, FIRST), [*steps, by_words(settings)])
     assert [(row.step, row.outcome) for row in synced.steps] == [
@@ -431,17 +449,32 @@ def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """The mirror fails, said by place; the work log and the index still run."""
-    problem = mirror_app.Problem("confluence/pages/1001/000001", "pandoc: exit status 9")
-    monkeypatch.setattr(sync_app, "download", lambda *_: Outcome(Report(), [], ExitStatus.OK))
+    problem = mirror_app.Problem(
+        where="confluence/pages/1001/000001", reason="pandoc: exit status 9"
+    )
+    monkeypatch.setattr(
+        sync_app,
+        "download",
+        lambda *_: Outcome(report=Report(), failed_targets=[], status=ExitStatus.OK),
+    )
     monkeypatch.setattr(
         sync_app,
         "mirror",
-        lambda *_: mirror_app.Outcome(0, 0, 0, Changes(0, 0, 0), Counter(), (problem,)),
+        lambda *_: mirror_app.Outcome(
+            documents=0,
+            converted=0,
+            reused=0,
+            changes=Changes(written=0, unchanged=0, removed=0),
+            unsupported=Counter(),
+            problems=(problem,),
+        ),
     )
     settings = chosen_settings(tmp_path, worklog)
     steps = [
-        Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
-        Worklog(worklog, archives=True),
+        Atlassian(
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+        ),
+        Worklog(folder=worklog, archives=True),
     ]
     with capture_logs() as logged:
         synced = sync(context(settings, FIRST), [*steps, by_words(settings)])
@@ -470,7 +503,7 @@ def test_an_index_that_cannot_be_written_fails_its_row_and_keeps_the_others(
         raise sqlite3.OperationalError(message)
 
     settings = chosen_settings(tmp_path, worklog)
-    steps = [Worklog(worklog, archives=True), by_words(settings)]
+    steps = [Worklog(folder=worklog, archives=True), by_words(settings)]
     assert sync(context(settings, FIRST), steps).exit_status == ExitStatus.OK
     before = settings.index.read_bytes()
     monkeypatch.setattr(sqlite_index.Writer, "add", full)
@@ -523,13 +556,13 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     The row's event and span say that it failed, and the entry is counted failed.
     """
     settings = chosen_settings(tmp_path, worklog)
-    step = Worklog(worklog, archives=True)
+    step = Worklog(folder=worklog, archives=True)
     sync(context(settings, FIRST), [step])
     gone = next((settings.docs / "worklog/transcripts").glob("*waiting-notes.md"))
     (worklog / "transcripts/misc/a.org").unlink()
     todo = worklog / "todo.org"
     todo.write_text(todo.read_text("utf-8").replace("Drafted on", "Drafted, failing, on"), "utf-8")
-    failing = Counting(Pandoc.find().path, failing="failing")
+    failing = Counting(path=Pandoc.find().path, failing="failing")
     telemetry.spans.clear()
     telemetry.measured()
     with capture_logs() as logged:
@@ -724,8 +757,10 @@ def test_a_damaged_cache_is_replaced_and_every_step_runs_exit_0(
     settings = chosen_settings(tmp_path, worklog)
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
     steps = [
-        Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
-        Worklog(worklog, archives=True),
+        Atlassian(
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+        ),
+        Worklog(folder=worklog, archives=True),
     ]
     first = sync(context(settings, FIRST), steps).steps[1].result
     assert isinstance(first, mirror_app.Outcome)
@@ -754,7 +789,11 @@ def test_other_arguments_for_pandoc_convert_the_mirror_again(
     """
     settings = chosen_settings(tmp_path, worklog)
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
-    steps = [Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK))]
+    steps = [
+        Atlassian(
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+        )
+    ]
     first = sync(context(settings, FIRST), steps).steps[1].result
     assert isinstance(first, mirror_app.Outcome)
     more = (*pandoc_adapter.ARGUMENTS, "--columns=72")
@@ -879,12 +918,18 @@ def test_ctrl_c_in_the_mirror_marks_it_interrupted_and_the_work_log_not_run(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """The download done, the mirror interrupted, the work log not run: exit 130."""
-    monkeypatch.setattr(sync_app, "download", lambda *_: Outcome(Report(), [], ExitStatus.OK))
+    monkeypatch.setattr(
+        sync_app,
+        "download",
+        lambda *_: Outcome(report=Report(), failed_targets=[], status=ExitStatus.OK),
+    )
     monkeypatch.setattr(sync_app, "mirror", interrupting)
     settings = chosen_settings(tmp_path, worklog)
     steps = [
-        Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
-        Worklog(worklog, archives=True),
+        Atlassian(
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+        ),
+        Worklog(folder=worklog, archives=True),
     ]
     with capture_logs() as logged:
         synced = sync(context(settings, FIRST), steps)
@@ -903,12 +948,12 @@ def test_ctrl_c_once_every_step_ended_still_exits_130(
     """Every row kept as it ended, and the run interrupted."""
 
     def ended_then_stopped(_context: Context, _step: Worklog, add: Callable[[Row], None]) -> None:
-        add(Row("worklog", "done", None))
+        add(Row(step="worklog", outcome="done", result=None))
         raise KeyboardInterrupt
 
     monkeypatch.setattr(sync_app, "worklog", ended_then_stopped)
     settings = chosen_settings(tmp_path, worklog)
-    synced = sync(context(settings, FIRST), [Worklog(worklog, archives=True)])
+    synced = sync(context(settings, FIRST), [Worklog(folder=worklog, archives=True)])
     assert [(row.step, row.outcome) for row in synced.steps] == [("worklog", "done")]
     assert synced.exit_status == ExitStatus.INTERRUPTED
 
@@ -917,19 +962,30 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """No session saved and a mirror problem exit 3; Ctrl-C after them exits 130."""
-    problem = mirror_app.Problem("confluence/pages/1001/000001", "pandoc: exit status 9")
+    problem = mirror_app.Problem(
+        where="confluence/pages/1001/000001", reason="pandoc: exit status 9"
+    )
     monkeypatch.setattr(
         sync_app,
         "mirror",
-        lambda *_: mirror_app.Outcome(0, 0, 0, Changes(0, 0, 0), Counter(), (problem,)),
+        lambda *_: mirror_app.Outcome(
+            documents=0,
+            converted=0,
+            reused=0,
+            changes=Changes(written=0, unchanged=0, removed=0),
+            unsupported=Counter(),
+            problems=(problem,),
+        ),
     )
     settings = Settings(data_dir=tmp_path / "data", site=SITE)
-    atlassian = Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK))
-    synced = sync(context(settings, FIRST), [atlassian, Worklog(worklog, archives=True)])
+    atlassian = Atlassian(
+        targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+    )
+    synced = sync(context(settings, FIRST), [atlassian, Worklog(folder=worklog, archives=True)])
     assert [row.outcome for row in synced.steps] == ["sign in", "failed", "done"]
     assert synced.exit_status == ExitStatus.SIGN_IN_AGAIN
     monkeypatch.setattr(sync_app, "worklog", interrupting)
-    synced = sync(context(settings, FIRST), [atlassian, Worklog(worklog, archives=True)])
+    synced = sync(context(settings, FIRST), [atlassian, Worklog(folder=worklog, archives=True)])
     assert [row.outcome for row in synced.steps] == ["sign in", "failed", "interrupted"]
     assert synced.exit_status == ExitStatus.INTERRUPTED
 
@@ -987,8 +1043,10 @@ def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
     monkeypatch.setattr(sync_app, "download", busy)
     settings = chosen_settings(tmp_path, worklog)
     steps = [
-        Atlassian(Targets(["MFS"], [], CAP, since=FIRST - WEEK)),
-        Worklog(worklog, archives=True),
+        Atlassian(
+            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK)
+        ),
+        Worklog(folder=worklog, archives=True),
     ]
     with capture_logs() as logged:
         synced = sync(context(settings, FIRST), steps)
@@ -1175,8 +1233,14 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     on an empty mirror, none after a run, and one file to remove once a transcript is
     deleted.
     """
-    settings, step = chosen_settings(tmp_path, worklog), Worklog(worklog, archives=True)
-    dry = Context(settings, Pandoc.find(), lambda: FIRST, lambda _: None, dry_run=True)
+    settings, step = chosen_settings(tmp_path, worklog), Worklog(folder=worklog, archives=True)
+    dry = Context(
+        settings=settings,
+        pandoc=Pandoc.find(),
+        now=lambda: FIRST,
+        sleep=lambda _: None,
+        dry_run=True,
+    )
     with capture_logs() as planned:
         sync(dry, [step])
     with capture_logs() as fresh:

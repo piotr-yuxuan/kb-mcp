@@ -674,6 +674,32 @@ merges them and keeps each value's layer.
 - **Settled** by the maintainer, in
   [plan 015](../work/changelog/015-cli-and-configuration.md#the-settings-one-model-three-layers).
 
+## Records as Pydantic models
+
+Each value of the program, a document, a setting's layer or a run's outcome, is a
+[`Record`](../../src/kb_mcp/kernel/record.py): a Pydantic model built by keyword,
+checked where it is built, and frozen unless it accumulates. Twelve classes stay
+dataclasses, each for the reason that [the code's layout](code-layout.md#records) gives.
+
+- **Why.** The maintainer prefers Pydantic to dataclasses, except where it is
+  impossible: a record refuses a misspelt keyword, its checks run at every construction,
+  a changed copy included, and its errors never print a value, as the settings' model
+  already did.
+- **Cost.** A record is slower than a dataclass: about 0.9 µs to build one of three
+  fields against 0.3. A search by words alone builds hundreds a question, a score for
+  each document that matches, and takes about 1.4 ms more, a fifth of its time; one by
+  meaning is the embedding's time. A record checks a record that it holds again. A model
+  copies a list, a dict or a `Counter` that it is given, so a field whose object the
+  caller keeps using says so, by `InstanceOf`. The types that a record names are
+  imported at run time, and `--help` must not load Pydantic, so the classes that
+  `--help` imports stay dataclasses, with those that hold a live client or that Pydantic
+  cannot build.
+- **Rejected.** Pydantic's own dataclasses, which keep positional arguments; strict
+  mode, which would have changed hundreds of callers; `SkipValidation`, which would make
+  the exceptions models in name only.
+- **Settled** by the maintainer, in
+  [plan 028](../work/changelog/028-pydantic-records.md#settled-by-the-user).
+
 ## Telemetry off, logs that may hold titles
 
 Each run writes a log file of JSON lines, from DEBUG, in the user's log folder; it may

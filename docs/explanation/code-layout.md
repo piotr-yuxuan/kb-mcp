@@ -96,6 +96,61 @@ package, which OpenTelemetry's API and SDK share: so `tests/test_code_layout.py`
 the SDK, its exporters and its instrumentation within `observability`, while the other
 contexts use the API alone.
 
+## Records
+
+A record is a value of the program: a document, a setting's layer, a run's outcome. Each
+is a `kernel.record.Record`, a Pydantic model built by keyword and checked at
+construction, frozen unless it accumulates as a run goes (`model_config =
+ConfigDict(frozen=False)`). A record refuses a keyword it does not know, and its errors
+never print a value. Plan 028 made the program's dataclasses records. Their rules:
+
+- A record's own checks are a validator, `@model_validator(mode="after")`, which raises
+  `kernel.names.RefusedError`; the constructor raises that error as it is, not wrapped
+  in Pydantic's, so callers and messages see the field and the rule alone.
+- `copy.replace(record, field=value)` gives a record with some fields changed, checked
+  again; Pydantic's `model_copy` and `model_construct` skip the checks, so no record
+  uses them. `model_dump()` gives a record's values, `model_fields` its fields' names,
+  in their order.
+- A model copies a list, a dict or a `Counter` that it is given: a field whose object
+  the caller keeps using is typed `InstanceOf[...]`, which checks its class and keeps it,
+  as `Context.unsupported` is.
+- A record has no order: a sort of records takes a `key=`. A frozen record hashes by its
+  fields; one that accumulates has no hash, as a dataclass that was not frozen.
+- A protocol is never a record's base, as its metaclass and Pydantic's conflict: a
+  record that implements one, such as `site_html.Part` a `Construct` or
+  `display.TaskBar` a `Bar`, has `Record` for its base and meets the protocol by its
+  methods.
+- Pydantic reads a record's annotations, so the types they name are imported at run
+  time, never under `TYPE_CHECKING`, and so is a `type` alias that they name. Ruff
+  knows records by their base, `kb_mcp.kernel.record.Record`, which `ruff.toml` names
+  among its runtime-evaluated base classes, and reports an import to move as TC004; it
+  does not report an alias. A record base defined in one module and subclassed in
+  another joins that list.
+
+Twelve classes stay dataclasses, each for its reason; `tests/test_code_layout.py` checks
+that every dataclass under `src/kb_mcp/` is in this table, and that every class of the
+table is one:
+
+| Class | Why it stays a dataclass |
+|---|---|
+| `cli.domain.command.Command` | G: `--help` imports it |
+| `cli.domain.sync.Source` | G: `--help` imports it |
+| `kernel.endpoint.Service` | G: `--help` imports it |
+| `kernel.output.Output` | G: `--help` imports it |
+| `sources.atlassian.domain.period.Period` | G: `--help` imports it |
+| `evaluation.app.reranked.Arms` | It holds a live client, the reranker's |
+| `search.adapters.embedding.ApiEmbedder` | It holds a live client, its `Endpoint` |
+| `search.adapters.model_api.Endpoint` | It holds a live client, httpx's |
+| `sources.atlassian.app.download.Download` | It holds the raw store under its lock and the site's client |
+| `evaluation.app.evaluation.Target` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
+| `observability.adapters.progress.Task` | Pydantic cannot build it: a field is typed by the protocol `Bar` |
+| `search.app.indexing.Embedding` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
+
+A new dataclass needs a row here with its reason, of these three kinds: a module that
+`--help` or completion imports, which contract G keeps from Pydantic; a live connection,
+client, lock or process; or a type that Pydantic cannot build, which `SkipValidation`
+would only hide. Any other value is a record.
+
 ## Where a new module goes
 
 1. Find the concern it serves, and so its context. A new source of documents is a new

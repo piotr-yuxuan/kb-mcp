@@ -8,11 +8,14 @@ kept, and a run signed in by one reads and writes nothing of the session.
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from urllib.parse import urlsplit
 
+from pydantic import Field
+
 from kb_mcp.config.domain.settings import PREFIX
+from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.adapters import http
 from kb_mcp.sources.atlassian.adapters.http import SignInNeededError
 from kb_mcp.sources.atlassian.adapters.session_file import (
@@ -23,8 +26,6 @@ from kb_mcp.sources.atlassian.adapters.session_file import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import httpx
 
     from kb_mcp.config.domain.settings import Settings
@@ -46,8 +47,7 @@ class SignIn(Protocol):
         """Keep what a run has left of the sign-in, for the next run."""
 
 
-@dataclass(frozen=True)
-class SavedSession:
+class SavedSession(Record):
     """The site's cookies, which ``login`` saved under the session's folder."""
 
     site: str
@@ -69,12 +69,11 @@ class SavedSession:
         write_cookies(self.folder / COOKIES, for_site(http.jar(client), host))
 
 
-@dataclass(frozen=True)
-class ApiToken:
+class ApiToken(Record):
     """An account's API token, with its email, as the Authorization header of Basic auth."""
 
     site: str
-    authorisation: str = field(repr=False)
+    authorisation: str = Field(repr=False)
     name: str = "an API token"
     again: str = f"check {PREFIX}EMAIL and {PREFIX}API_TOKEN"
 
@@ -105,6 +104,8 @@ def sign_in(settings: Settings) -> SignIn:
     """
     token = settings.api_token
     if token is None:
-        return SavedSession(str(settings.site), settings.session)
+        return SavedSession(site=str(settings.site), folder=settings.session)
     pair = f"{settings.email or ''}:{token.get_secret_value()}"
-    return ApiToken(str(settings.site), f"Basic {base64.b64encode(pair.encode()).decode()}")
+    return ApiToken(
+        site=str(settings.site), authorisation=f"Basic {base64.b64encode(pair.encode()).decode()}"
+    )

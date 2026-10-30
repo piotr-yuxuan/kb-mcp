@@ -14,13 +14,13 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import httpx
 import structlog
 from opentelemetry import trace
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import LONGEST_QUERY, LONGEST_TEXT, MOST_TEXTS
 from kb_mcp.observability.adapters.http import client_span, server
 from kb_mcp.search.adapters.model_api import (
@@ -40,8 +40,8 @@ if TYPE_CHECKING:
 # A search makes one attempt: a server that hangs costs one deadline, and the search goes
 # on in its own order. An evaluation, which stops at a failure, tries again, as the
 # embeddings of documents do.
-SEARCH = Bounds(30, 1)
-EVALUATION = Bounds(300, len(WAITS_S) + 1)
+SEARCH = Bounds(deadline_s=30, attempts=1)
+EVALUATION = Bounds(deadline_s=300, attempts=len(WAITS_S) + 1)
 # The provider, as the GenAI conventions name it by the client's best knowledge: the
 # server whose API, and whose quirks, this module knows.
 PROVIDER = "llama.cpp"
@@ -68,8 +68,7 @@ class RerankError(ModelError):
         self.kind: Kind = kind
 
 
-@dataclass(frozen=True)
-class Reranked:
+class Reranked(Record):
     """What the server gave for texts: a score each, in their order, and the tokens it counted."""
 
     scores: list[float]
@@ -160,7 +159,7 @@ def rerank(
         structlog.get_logger().debug(
             "rerank.request", model=model, texts=len(texts), characters=characters, tokens=tokens
         )
-        return Reranked(scores, tokens)
+        return Reranked(scores=scores, tokens=tokens)
 
 
 def served(endpoint: Endpoint) -> tuple[str, ...]:
