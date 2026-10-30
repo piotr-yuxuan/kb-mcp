@@ -282,7 +282,7 @@ A heading that org archived joins the day, or the meeting, that its `:ARCHIVE_OL
 names, and every part of one date makes one day
 ([`days_and_meetings`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
 A day's id is `d-` and its date; a meeting's, `m-`, its day's date and its title's
-slug, numbered by start time where two share one
+slug, numbered in the journal's order where two share one
 ([`meeting_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
 A meeting names its participants as its `:PARTICIPANTS:` writes them
 ([`participants`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
@@ -316,11 +316,13 @@ afresh at each run
   ([`KEPT`](../../src/kb_mcp/search/adapters/sqlite_index.py)).
 - **Cost.** A meeting renamed takes a new id, as an entry without `:ID:` does. Two
   meetings of one day and one slug, such as two of one title, or `Réunion d'équipe` and
-  `Reunion d'equipe`, swap ids when the order of their starts changes, or, neither with
-  a transcript, the order in which they are read: `todo.org` first, then the archive
-  in the order org appended to it, so that archiving the first alone, or the second
-  alone and then its day, swaps them; so does giving the first a transcript while the
-  second has none. A top-level heading of any other purpose with a child titled by a
+  `Reunion d'equipe`, swap ids when the order in which they are read changes: `todo.org`
+  first, then the archive in the order org appended to it, so that reordering them,
+  archiving the first alone, or the second alone and then its day, swaps them, each
+  time. Since plan 044, which numbers them by that order alone, a pair of which one or
+  both have a transcript swaps so too, where its starts kept its ids before; no pair
+  swaps any more when the order of its starts changes, nor when the first gains a
+  transcript and the second has none. A top-level heading of any other purpose with a child titled by a
   date alone becomes a journal, that child a day and its other children entries; the
   child joins the day of its date that the journal's parts make, and the heading's title
   is lost: neither the day's text nor its breadcrumb, which are its first part's, holds

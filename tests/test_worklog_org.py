@@ -9,7 +9,8 @@ Plan 042's outline, days' titles and links to files are expected as org's own pa
 reads the same made-up lines (Emacs 31.1, ``org-element``), and its archiving writes
 ``:ARCHIVE_OLPATH:``; its journal's days and meetings, their ids and participants, as its
 "Days and meetings: the rule", "What archiving does", "Ids" and "Participants" say, its
-question 1's sample first.
+question 1's sample first; plan 044's numbers, in the journal's order, as the user's
+words that its tests quote ask.
 """
 
 from __future__ import annotations
@@ -953,23 +954,27 @@ def test_a_long_participants_value_is_split_in_time_that_grows_with_it() -> None
     assert time.perf_counter() - began < SPLIT_S
 
 
-def test_meeting_ids_name_the_day_and_the_title_numbered_by_start_then_order() -> None:
-    """The later start takes --2; equal starts, the order given; no slug, the title's digest."""
-    early, late = TUESDAY.replace(hour=9), TUESDAY.replace(hour=14)
-    assert meeting_ids(
-        TUESDAY,
-        [("Payments stand-up", late), ("Payments stand-up", early), ("Café: 1/1", TUESDAY)],
-    ) == ["m-20261027-payments-stand-up--2", "m-20261027-payments-stand-up", "m-20261027-cafe-1-1"]
-    assert meeting_ids(TUESDAY, [("Retro", late)] * 3) == [
+def test_meeting_ids_name_the_day_and_the_title_numbered_in_the_order_given() -> None:
+    """The second of one id takes --2, the third --3; no slug, the title's digest.
+
+    In the order given, the journal's, never by a time: "you can not infer any order"
+    (the user, 2026-10-29, plan 044).
+    """
+    assert meeting_ids(TUESDAY, ["Payments stand-up", "Payments stand-up", "Café: 1/1"]) == [
+        "m-20261027-payments-stand-up",
+        "m-20261027-payments-stand-up--2",
+        "m-20261027-cafe-1-1",
+    ]
+    assert meeting_ids(TUESDAY, ["Retro"] * 3) == [
         "m-20261027-retro",
         "m-20261027-retro--2",
         "m-20261027-retro--3",
     ]
-    assert meeting_ids(TUESDAY, [("会議", TUESDAY), ("", TUESDAY)]) == [
+    assert meeting_ids(TUESDAY, ["会議", ""]) == [
         f"m-20261027-{sha('会議')}",
         f"m-20261027-{sha('')}",
     ]
-    long = meeting_ids(TUESDAY, [(LONG, TUESDAY), (LONG, TUESDAY)])
+    long = meeting_ids(TUESDAY, [LONG, LONG])
     assert long == [f"m-20261027-{'a' * 60}", f"m-20261027-{'a' * 60}--2"]
     assert all(WORKLOG_ID.fullmatch(each) for each in long)
 
@@ -978,22 +983,20 @@ def test_one_slug_s_ids_never_depend_on_another_s_meetings() -> None:
     """Stand-up 2 keeps stand-up-2 beside two Stand-ups, in whichever order they come.
 
     In the order that archiving the first Stand-up alone leaves, the two Stand-ups swap,
-    the cost that the plan's "Ids" states; titles of one slug are numbered as one title.
+    the cost that plan 044's "Numbers" states, since "you can not infer any order" (the
+    user, 2026-10-29); titles of one slug are numbered as one title.
     """
-    first, second, other = ("Stand-up", TUESDAY), ("Stand-up", TUESDAY), ("Stand-up 2", TUESDAY)
-    assert meeting_ids(TUESDAY, [first, second, other]) == [
+    assert meeting_ids(TUESDAY, ["Stand-up", "Stand-up", "Stand-up 2"]) == [
         "m-20261027-stand-up",
         "m-20261027-stand-up--2",
         "m-20261027-stand-up-2",
     ]
-    assert meeting_ids(TUESDAY, [second, other, first]) == [
+    assert meeting_ids(TUESDAY, ["Stand-up", "Stand-up 2", "Stand-up"]) == [
         "m-20261027-stand-up",
         "m-20261027-stand-up-2",
         "m-20261027-stand-up--2",
     ]
-    assert meeting_ids(
-        TUESDAY, [("Réunion d'équipe", TUESDAY), ("Reunion d\u2019equipe", TUESDAY)]
-    ) == [
+    assert meeting_ids(TUESDAY, ["Réunion d'équipe", "Reunion d\u2019equipe"]) == [
         "m-20261027-reunion-d-equipe",
         "m-20261027-reunion-d-equipe--2",
     ]
@@ -1307,28 +1310,39 @@ def test_a_day_takes_the_labels_of_each_of_its_headings_each_from_its_file() -> 
     ]
 
 
-def test_same_titled_meetings_are_numbered_by_their_transcripts_starts() -> None:
-    """The meeting without a transcript starts at its day, first; then by each transcript's."""
+# Two transcripts of 27 October, named without a number, whose first turns would order
+# them the other way round; and the ids that their names give.
+RETRO, KICK_OFF = "2026-10-27 Tue/retro notes.org", "2026-10-27 Tue/kick-off.org"
+NAMED = {RETRO: "t-20261027-retro-notes", KICK_OFF: "t-20261027-kick-off"}
+
+
+@pytest.mark.parametrize(
+    "linked",
+    [(RETRO, KICK_OFF), (KICK_OFF, RETRO), (None, None), (RETRO, None), (None, KICK_OFF)],
+)
+def test_same_titled_meetings_are_numbered_in_the_journal_s_order(
+    linked: tuple[str | None, str | None],
+) -> None:
+    """The first Stand-up, then --2, whichever transcript each links, if any.
+
+    Neither a turn's time nor a file's name orders them: "the data do not enable you to
+    reconstruct any meeting time" and "do not assume that all meeting transcript file
+    names contain a number" (the user, 2026-10-29, plan 044).
+    """
     lines = ["* Entries", "** <2026-10-27 Tue>"]
-    for value in (
-        ":MEETING: [[./transcripts/2026-10-27 Tue/late.org]]",
-        ":MEETING: [[file:transcripts/2026-10-27 Tue/early.org][Record]]",
-        ":PARTICIPANTS: Sam Sample",
-    ):
+    for path in linked:
+        value = ":PARTICIPANTS: Sam" if path is None else f":MEETING: [[./transcripts/{path}]]"
         lines += ["*** Stand-up", ":PROPERTIES:", value, ":END:"]
     read, _ = transcripts(
-        [transcript("2026-10-27 Tue/early.org"), transcript("2026-10-27 Tue/late.org")],
+        [transcript(RETRO, "[16:00] Alex: Late.\n"), transcript(KICK_OFF, "[08:00] Sam: Early.\n")],
         archives=True,
     )
-    early, late = (
-        copy.replace(each, start=TUESDAY.replace(hour=hour))
-        for each, hour in zip(read, (9, 14), strict=True)
-    )
-    found, _ = journal(todo("\n".join(lines)), None, archives=True, transcripts=[late, early])
-    assert [(each.id, each.start, each.links) for each in found if each.type == "meeting"] == [
-        ("m-20261027-stand-up--3", late.start, (("transcript", late.id),)),
-        ("m-20261027-stand-up--2", early.start, (("transcript", early.id),)),
-        ("m-20261027-stand-up", TUESDAY, ()),
+    found, _ = journal(todo("\n".join(lines)), None, archives=True, transcripts=read)
+    assert [(each.id, each.links) for each in found if each.type == "meeting"] == [
+        (identifier, () if path is None else (("transcript", NAMED[path]),))
+        for identifier, path in zip(
+            ["m-20261027-stand-up", "m-20261027-stand-up--2"], linked, strict=True
+        )
     ]
 
 

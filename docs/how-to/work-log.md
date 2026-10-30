@@ -110,23 +110,25 @@ property may swap files when reordered.
 
 A day's id is `d-` and its date, `d-20261027`. A meeting's is `m-`, its day's date and
 its title's slug, `m-20261027-payments-stand-up`; a second meeting of one day and slug
-takes `--2`, by start time, then in order: two dashes, which no slug holds, so that
-`Stand-up 2`, `stand-up-2`, keeps its id beside two `Stand-up`. Archiving a day or a
-meeting keeps its id, but for two meetings of one day and one slug, such as two of one
-title, or `Réunion d'équipe` and `Reunion d'equipe`: they swap ids when the order of
-their start times changes, or, neither with a transcript, the order in which they are
-read, `todo.org` first, then the archive in the order org appended to it. So archiving
-the first alone, or the second alone and its day later, swaps them, as does giving the
-first a transcript while the second has none. A title of another slug avoids it.
-Renaming a meeting gives it a new id.
+takes `--2`, a third `--3`, in the order in which they are read, `todo.org` first, then
+the archive in the order org appended to it, never by a time or a transcript: two
+dashes, which no slug holds, so that `Stand-up 2`, `stand-up-2`, keeps its id beside
+two `Stand-up`. Archiving a day or a meeting keeps its id, but for two meetings of one
+day and one slug, such as two of one title, or `Réunion d'équipe` and
+`Reunion d'equipe`: they swap ids whenever that order changes, with transcripts or
+without. So reordering them, archiving the first alone, or the second alone and its
+day later, swaps them, each time; linking a transcript swaps nothing. A title of
+another slug avoids it. Renaming a meeting gives it a new id.
 
 A transcript's id is the day that begins its folder's name (or its own) and its name:
 `transcripts/current/2026-10-20 Tue/1.org` is `t-20261020-1`, kept when the file moves
 under `transcripts/archive/`. A name holding other characters than ASCII letters,
 digits, `_` and `-` takes its slug, as a file name does: `notes on x.org` of 21 October
 is `t-20261021-notes-on-x`. A file under `meetings/` takes `meeting-` before its name,
-so that `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. A file without a day
-takes a digest of its name. Of two files of one id, such as a copy and its original,
+so that `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. A name is a handle
+alone, a number or words: `meetings/2026-10-27 Tue/Vendor call.org` is
+`t-20261027-meeting-vendor-call`, and no order or time is read from it. A file without
+a day takes a digest of its name. Of two files of one id, such as a copy and its original,
 or two `notes.org` in two folders, the file whose folder comes first by name keeps it,
 then the first in path order, and a warning names both. So archiving one, with its
 folder, never hands its id to the other, unless the two folders have one name, as a

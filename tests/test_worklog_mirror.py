@@ -1073,7 +1073,7 @@ def test_a_meeting_room_s_link_is_never_logged(run: Run, value: str) -> None:
 
 
 def test_same_titled_meetings_of_one_day_are_numbered(run: Run) -> None:
-    """Neither has a transcript, so both start at the day: numbered in reading order."""
+    """Numbered in the journal's order: "you can not infer any order" (the user, plan 044)."""
     run()
     found = [each for each in run.files() if each.matter.title == "One-to-one"]
     names = {each.matter.id: each.matter.people[0].name for each in found}

@@ -240,22 +240,22 @@ def participants(value: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(name for each in names if (name := each.strip())))
 
 
-def meeting_ids(day: datetime, meetings: Sequence[tuple[str, datetime]]) -> list[str]:
-    """Return the ids of one day's meetings, each given by its title and start, in order.
+def meeting_ids(day: datetime, titles: Iterable[str]) -> list[str]:
+    """Return the ids of one day's meetings, given by their titles in the journal's order.
 
     An id is ``m-``, the day as ``%Y%m%d``, ``-`` and the title's slug, else the first 16
     hex digits of the title's SHA-256. Of one id, the meetings are numbered from the
-    second, ``--2``, ``--3``, by start, then in the order given. No slug or digest holds
-    ``--``, so that the ids are distinct, and one title's never depend on another's.
+    second, ``--2``, ``--3``, in the order given, never by a time or a file's name. No
+    slug or digest holds ``--``, so that the ids are distinct, and one title's never
+    depend on another's.
     """
-    bases = [f"m-{day:%Y%m%d}-{slug(title) or digest(title)}" for title, _ in meetings]
     taken: Counter[str] = Counter()
-    found: dict[int, str] = {}
-    for index in sorted(range(len(meetings)), key=lambda index: (meetings[index][1], index)):
-        base = bases[index]
+    found: list[str] = []
+    for title in titles:
+        base = f"m-{day:%Y%m%d}-{slug(title) or digest(title)}"
         taken[base] += 1
-        found[index] = base if taken[base] == 1 else f"{base}{NUMBERED}{taken[base]}"
-    return [found[index] for index in range(len(meetings))]
+        found.append(base if taken[base] == 1 else f"{base}{NUMBERED}{taken[base]}")
+    return found
 
 
 class Meeting(Record):
@@ -499,9 +499,7 @@ def days_and_meetings(
     found: list[Document] = []
     unlinked: list[str] = []
     for date, day in days.items():
-        ids = meeting_ids(
-            date, [(each.part.subtree.heading.title, each.start) for each in day.meetings]
-        )
+        ids = meeting_ids(date, [each.part.subtree.heading.title for each in day.meetings])
         unlinked.extend(
             str(each.file) if org.link_target(each.link, bare=False) else identifier
             for each, identifier in zip(day.meetings, ids, strict=True)

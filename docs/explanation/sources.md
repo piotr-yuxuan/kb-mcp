@@ -74,8 +74,8 @@ property, else its title and `:CREATED:`, else its title. Planning lines, notes,
 keyword, tags and cookies never count. A day is named by its date, so that every part
 of one date, archived or not, makes one document
 ([`days_and_meetings`](../../src/kb_mcp/sources/worklog/domain/worklog.py));
-a meeting by its day's date and its title's slug, numbered by start time where two
-share one
+a meeting by its day's date and its title's slug, numbered in the journal's order where
+two share one
 ([`meeting_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
 so that archiving it keeps its id, but for two of one slug archived apart ([the
 trade-offs](trade-offs.md#the-journal-split-by-shape)). Transcripts are named by their day and file name, or

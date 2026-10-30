@@ -516,9 +516,10 @@ links one, or whose file does, so that a link stays written on both files.
   `d-` and the date, `%Y%m%d`; its title, its first heading's, else the path's part.
 - A **meeting** is its subtree, then what joins it. Its id is `m-`, its day's date, `-`
   and its title's slug, as a file name's, else the first 16 hex digits of the title's
-  SHA-256; of one day and id, the meetings take `--2`, `--3` by start, then in file
-  order: two dashes, which no slug or digest holds, so that a numbered id is never
-  another title's. Its people are the names that its `:PARTICIPANTS:` gives, split at
+  SHA-256; of one day and id, the meetings take `--2`, `--3` in the journal's order,
+  `todo.org` first, then the archive, each in its file's order, never by a time or a
+  file's name: two dashes, which no slug or digest holds, so that a numbered id is
+  never another title's. Its people are the names that its `:PARTICIPANTS:` gives, split at
   commas outside brackets, each once and as written, in the role `participant`; its link
   `transcript` names the transcript whose file its `:MEETING:` names, from the folder of
   its org file, when that file is read, else, for a file under `transcripts/` or
