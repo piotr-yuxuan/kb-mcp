@@ -297,20 +297,21 @@ A day, a meeting and a dated transcript are dated by their day
 afresh at each run
 ([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)).
 
-- **Why.** The journal was one entry of about 2 MB: a hit in any meeting named the whole
-  journal, its meetings named nobody, nothing tied a summary to its record, and the
-  meeting files under `meetings/` were never read. The maintainer's feedback asked for
-  days and meetings as documents, the meetings' sections kept, participants, and each
-  summary and its transcript linked both ways. By shape rather than by the journal's
-  name, so that a renamed journal, an older "Daily notes", and the archive file, where
-  org writes a day at level 1 and a meeting archived alone with the path of its day,
-  read alike: what Emacs 31.1's archiving writes was probed for it. A day's id is its
-  date, so that archiving one part of a day moves nothing; a meeting's holds its title,
-  readable in every hit, and never the file name that its `:MEETING:` gives, which a
-  transcript exported again would change. Links are written on both files, since a
-  program that reads one file cannot compute the reverse ([the data
-  layout](../reference/data-layout.md#links)). With 040's created range, the meetings
-  that someone attended this week are two filters, `participant` and `created_after`
+- **Why.** The journal was one entry of about 2 MB: a hit in any meeting named the
+  whole journal, its meetings named nobody,
+  nothing tied a summary to its record, and the meeting files under `meetings/` were
+  never read. The maintainer's feedback asked for days and meetings as documents, the
+  meetings' sections kept, participants, and each summary and its transcript linked
+  both ways. By shape rather than by the journal's name, so that a renamed journal, an
+  older "Daily notes", and the archive file, where org writes a day at level 1 and a
+  meeting archived alone with the path of its day, read alike: what Emacs 31.1's
+  archiving writes was probed for it. A day's id is its date, so that archiving one
+  part of a day moves nothing; a meeting's holds its title, readable in every hit, and
+  never the file name that its `:MEETING:` gives, which a transcript exported again
+  would change. Links are written on both files, since a program that reads one file
+  cannot compute the reverse ([the data layout](../reference/data-layout.md#links)).
+  With 040's created range, the meetings that someone attended this week are two
+  filters, `participant` and `created_after`
   ([`KEPT`](../../src/kb_mcp/search/adapters/sqlite_index.py)).
 - **Cost.** A meeting renamed takes a new id, as an entry without `:ID:` does. Two
   meetings of one day and one slug, such as two of one title, or `Réunion d'équipe` and
@@ -320,8 +321,8 @@ afresh at each run
   time. Since plan 044, which numbers them by that order alone, a pair of which one or
   both have a transcript swaps so too, where its starts kept its ids before; no pair
   swaps any more when the order of its starts changes, nor when the first gains a
-  transcript and the second has none. A top-level heading of any other purpose with a child titled by a
-  date alone becomes a journal, that child a day and its other children entries; the
+  transcript and the second has none. A top-level heading of any other purpose with a
+  child titled by a date alone becomes a journal, that child a day and its other children entries; the
   child joins the day of its date that the journal's parts make, and the heading's title
   is lost: neither the day's text nor its breadcrumb, which are its first part's, holds
   it, so that a search for that title misses those notes. An archived heading joins its
