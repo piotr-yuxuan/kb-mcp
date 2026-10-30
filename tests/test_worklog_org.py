@@ -838,12 +838,12 @@ def test_two_files_of_one_id_take_the_same_ids_when_the_first_is_not_read() -> N
     """
     archived = transcript("archive/2026/2026-10/2026-10-20 Tue/1.org")
     current = transcript("current/2026-10-20 Tue/1.org")
-    both, _ = transcribed([archived, current])
+    whole = f"t-{sha('/transcripts/current/2026-10-20 Tue/1.org')}"
     ids, warnings = transcript_ids([archived.path, current.path], archives=True)
-    assert ids == by_path(both)
+    assert ids == {archived.path: "t-20261020-1", current.path: whole}
     assert len(warnings) == 1
     (alone,) = transcripts([current], ids, archives=True)
-    assert alone.id == f"t-{sha('/transcripts/current/2026-10-20 Tue/1.org')}"
+    assert alone.id == whole
 
 
 def test_only_an_org_file_under_the_two_folders_takes_an_id() -> None:
@@ -1164,9 +1164,11 @@ def test_a_dated_transcript_is_its_day_whatever_its_turns_and_timestamps(text: s
 
     Neither a turn's time nor a timestamp dates it: "You can not know when the meeting is
     held in the day, only the day it was held, and I am happy enough with that" (the
-    user, 2026-10-29, plan 044).
+    user, 2026-10-29, plan 044). Saved the next day, its timestamps of its day are
+    events, which date nothing either.
     """
-    (found,), _ = transcribed([transcript("2026-10-27 Tue/1.org", text)], archives=True)
+    saved = TUESDAY + timedelta(days=1)
+    (found,), _ = transcribed([transcript("2026-10-27 Tue/1.org", text, saved)], archives=True)
     assert found.dates(None) == (TUESDAY, TUESDAY)
 
 

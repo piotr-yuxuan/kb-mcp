@@ -13,6 +13,7 @@ own document alone but for the journal's, as the user's words that its tests quo
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import os
 import re
@@ -27,7 +28,7 @@ import pytest
 from pydantic import Field
 from structlog.testing import capture_logs
 
-from kb_mcp.mirror.adapters.markdown import load
+from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import owned, sync
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
 from kb_mcp.mirror.app.worklog import (
@@ -350,8 +351,10 @@ def test_dates_are_the_earliest_and_latest_events_up_to_the_file_time(
     A day, a meeting and a dated transcript are their day at midnight UTC, whatever their
     lines, turns and timestamps hold: "You can not know when the meeting is held in the
     day, only the day it was held, and I am happy enough with that" (the user, 2026-10-29,
-    plan 044).
+    plan 044). The vendor call's transcript saved the next day, its timestamp of its day
+    is an event, which dates nothing either.
     """
+    settle(run.root / "meetings/2026-10-27 Tue/1.org", datetime(2026, 10, 28, tzinfo=UTC))
     run()
     matter = run.by_title(title, kind).matter
     assert (matter.created, matter.updated) == (created, updated or created)
@@ -1154,6 +1157,36 @@ def test_a_transcript_added_links_its_meeting_without_converting_it(run: Run) ->
     run()
     again = run.by_id(STANDUP).matter
     assert (again.created, again.updated, again.links, run.runs[-1]) == (day, day, (), [VERSION])
+
+
+def test_a_file_dated_by_a_time_takes_its_day_without_a_conversion(run: Run) -> None:
+    """The stand-up and its transcript, as plan 042 dated them, at their first turn's time.
+
+    Their revisions unchanged, both are kept and written again at their day, as at the
+    one move from those dates: "I think it's usually enough to have the day" (the user,
+    2026-10-29, plan 044).
+    """
+    run()
+    began, day = datetime(2026, 10, 27, 9, 31, tzinfo=UTC), datetime(2026, 10, 27, tzinfo=UTC)
+    identifiers = (STANDUP, "t-20261027-1")
+    for identifier in identifiers:
+        old = run.by_id(identifier)
+        dated = copy.replace(old.matter, created=began, updated=began)
+        (run.docs / old.path).write_text(dump(dated, old.body), "utf-8")
+    with capture_logs() as logged:
+        run()
+    outcomes = {
+        each["id"]: each["outcome"] for each in logged if each["event"] == "worklog.document"
+    }
+    dates = {
+        identifier: (run.by_id(identifier).matter.created, run.by_id(identifier).matter.updated)
+        for identifier in identifiers
+    }
+    assert ([outcomes[each] for each in identifiers], dates) == (
+        ["kept", "kept"],
+        dict.fromkeys(identifiers, (day, day)),
+    )
+    assert run.runs[-1] == [VERSION]
 
 
 def test_a_link_to_a_missing_file_warns_once_and_holds_nothing_back(run: Run) -> None:
