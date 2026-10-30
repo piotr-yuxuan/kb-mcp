@@ -282,7 +282,7 @@ A heading that org archived joins the day, or the meeting, that its `:ARCHIVE_OL
 names, and every part of one date makes one day
 ([`days_and_meetings`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
 A day's id is `d-` and its date; a meeting's, `m-`, its day's date and its title's
-slug, numbered by start time where two share one
+slug, numbered in the journal's order where two share one
 ([`meeting_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
 A meeting names its participants as its `:PARTICIPANTS:` writes them
 ([`participants`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
@@ -292,14 +292,13 @@ a meeting links the transcript whose file its `:MEETING:` names
 ([`link_target`](../../src/kb_mcp/sources/worklog/domain/org.py)),
 which links it back
 ([`linked_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py)).
-A day, a meeting and a transcript are dated by when they happened
-([`start`](../../src/kb_mcp/sources/worklog/domain/worklog.py),
-[`Document.dates`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+A day, a meeting and a dated transcript are dated by their day
+([`Document.dates`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
 afresh at each run
 ([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)).
 
 - **Why.** The journal was one entry of about 2 MB: a hit in any meeting named the
-  whole journal, its meetings named nobody, a transcript was created at midnight,
+  whole journal, its meetings named nobody,
   nothing tied a summary to its record, and the meeting files under `meetings/` were
   never read. The maintainer's feedback asked for days and meetings as documents, the
   meetings' sections kept, participants, and each summary and its transcript linked
@@ -316,12 +315,15 @@ afresh at each run
   ([`KEPT`](../../src/kb_mcp/search/adapters/sqlite_index.py)).
 - **Cost.** A meeting renamed takes a new id, as an entry without `:ID:` does. Two
   meetings of one day and one slug, such as two of one title, or `Réunion d'équipe` and
-  `Reunion d'equipe`, swap ids when the order of their starts changes, or, neither with
-  a transcript, the order in which they are read: `todo.org` first, then the archive
-  in the order org appended to it, so that archiving the first alone, or the second
-  alone and then its day, swaps them; so does giving the first a transcript while the
-  second has none. A top-level heading of any other purpose with a child titled by a
-  date alone becomes a journal, that child a day and its other children entries; the
+  `Reunion d'equipe`, swap ids when the order in which they are read changes: `todo.org`
+  first, then the archive in the order org appended to it, so that reordering them,
+  archiving the first alone, or the second alone and then its day, swaps them, each
+  time. Since plan 044, which numbers them by that order alone, a pair of which one or
+  both have a transcript swaps so too, where its starts kept its ids before; no pair
+  swaps any more when the order of its starts changes, nor when the first gains a
+  transcript and the second has none. A top-level heading of any other purpose with a
+  child titled by a date alone becomes a journal, that child a day and its other
+  children entries; the
   child joins the day of its date that the journal's parts make, and the heading's title
   is lost: neither the day's text nor its breadcrumb, which are its first part's, holds
   it, so that a search for that title misses those notes. An archived heading joins its
@@ -331,12 +333,14 @@ afresh at each run
   the longest title of the day that begins the path wins, but the day keeps a piece of
   one of two meetings of that title, which the path names alike; a title holding `//`,
   or beginning or ending with `/`, or one whose keyword `todo.org` does not declare,
-  joins none, its pieces staying in the day. Times are read as written, as UTC: a
-  caption tool that writes an offset from the start, `00:05`, dates its transcript at
-  five past midnight. A meeting copied with its link to another day's transcript, as a recurring
-  one may be, keeps the link, so that the transcript names two meetings, but its own
-  day's date. In a transcript without quote blocks, a line of prose such as
-  `Decision: we wait` reads as a speaker. A meeting's names and its transcript's
+  joins none, its pieces staying in the day. A meeting and a dated transcript are their
+  day at midnight UTC, since plan 044: the work log gives the day of a meeting, never
+  its time, so one day's documents tie when sorted by date, and come by path; a
+  caption tool's offset, `00:05`, no longer dates a transcript at five past midnight. A
+  meeting copied with its link to another day's transcript, as a recurring one may be,
+  keeps the link, so that the transcript names two meetings, and its own day's date. In
+  a transcript without quote blocks, a line of prose such as `Decision: we wait` reads
+  as a speaker. A meeting's names and its transcript's
   speakers stay apart in the files, as written: the index joins them into persons,
   `Kim` and `Kim (not in the header)` among them ([persons joined by account, then exact
   name](#persons-joined-by-account-then-exact-name)). The dates and links of
@@ -370,7 +374,54 @@ afresh at each run
 - **Settled** by [plan
   042](../work/changelog/042-work-log-days-and-meetings.md#days-and-meetings-the-rule), on
   the maintainer's feedback, its questions answered by their defaults when the
-  maintainer approved it.
+  maintainer approved it; dates by the day and numbers by the journal's order by [plan
+  044](../work/changelog/044-meetings-by-their-day.md#dates-the-day-alone), on the
+  maintainer's answer that the work log gives the day of a meeting, never its time.
+
+## A file not read holds back its own
+
+A file of the work log that cannot be read, over 32 MiB, linking out, not UTF-8, or a
+folder that cannot be listed, is reported at each run by its path and reason, with
+what it holds back
+([`held_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+and the run writes every document but those that it builds
+([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)):
+every document for `todo.org` or its archive, whence every day, meeting and entry; for
+a transcript, its own, whose last copy stays. A meeting needs nothing of its transcript
+but the id, which the path gives, so that it links a transcript read or not
+([`transcript_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+and a link is written when its other end is written in that run or kept from an
+earlier one ([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)).
+A run that meets a problem still removes no file but the old one of a document written
+again under another title's path, and `sync` exits 1.
+
+- **Why.** Once a meeting is its day and is numbered in the journal's order, nothing
+  that it holds draws on a transcript's text: one transcript not read, or past the
+  bound of 20,000, no longer needs to hold back every meeting and every document that
+  links one, as plan 042's rule did. The maintainer asked that one faulty file be
+  flagged and reported loudly, without stopping everything.
+- **Cost.** A link made while its transcript is not read is one way until a run reads
+  that transcript, whose last copy does not name the new meeting; a link removed
+  meanwhile stays on that copy; and a meeting linking a transcript never read yet is
+  written without the link. While any file stays not read, the run removes nothing else,
+  so a meeting renamed, or an entry renamed without `:ID:`, which take new ids, are
+  indexed and served under their old id and their new, and one deleted stays, the file
+  of a meeting or a transcript gone naming documents that no longer name it back, which
+  042 avoided by holding those back. A folder that cannot be listed hides its files: a
+  meeting that links one is written without the link, `worklog.unlinked` counting it;
+  but a file elsewhere of the same id takes that id for the run, its copy replacing the
+  hidden file's last one, and the meeting links it. Past the bound, each meeting that
+  links a file past it loses its link, but for the same, and the row fails at each run.
+- **Rejected.** Leaving out every link to a transcript not read: both ways always, but
+  `read` of the meeting loses its record for as long as the file stays unread, which
+  past the bound is for good. Keeping a meeting's links from its last copy: a file
+  written from two runs' reads. Removing files while a file is not read, but those that
+  it builds: a second rule in the step and in its dry run. Lifting the bound, or one in
+  bytes: not needed for ten years or more.
+- **Settled** by [plan
+  044](../work/changelog/044-meetings-by-their-day.md#settled-by-the-user), on the
+  maintainer's answers, its questions answered by their defaults when the maintainer
+  approved it.
 
 ## Persons joined by account, then exact name
 

@@ -31,19 +31,27 @@ only when their text changed. A document whose file holds its revision, a digest
 what pandoc reads and of pandoc's version
 ([`revision`](../../src/kb_mcp/sources/worklog/domain/worklog.py)), keeps
 that file's body: an edit elsewhere in `todo.org`, which changes the file's time, moves
-no other entry's dates. A day, a meeting and a dated transcript are dated, and linked,
-afresh at each run
-([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)): a meeting
-starts when its transcript does, and the transcript may be saved after the meeting's
-notes, so neither its dates nor its links are part of its revision.
+no other entry's dates. A day, a meeting and a dated transcript are dated by their day,
+and linked, afresh at each run
+([`mirror_worklog`](../../src/kb_mcp/mirror/app/worklog.py)): the
+transcript may be saved after the meeting's notes, so a meeting's links are not part of
+its revision, nor are its dates, so that a file that held another date takes its day
+without a conversion. The work log gives the day of a meeting, never its time, so no
+turn's time or timestamp dates a meeting or a transcript.
 
 A file that breaks a bound, links out, or is not UTF-8 is named by its path alone, as
-its content could be anything, and the run then removes no file, nor writes one that
-draws on the file not read: none for `todo.org` or its archive, which every day draws
-on; for a transcript, no meeting, whose link, start and id draw on the transcripts, nor
-a document that links one, or whose file does
-([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)). So
-the last good copy of each document stays until a run reads the folder whole.
+its content could be anything, with what it holds back
+([`held_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+and the run then removes no file, but the old one of a document written again under
+another title's path, nor writes one that the file not read builds: none
+for `todo.org` or its archive, which every day, meeting and entry draws on; for a
+transcript, its own alone
+([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)). A
+meeting needs nothing of its transcript but the id, which the path gives, so it is
+written, linking the transcript, read or not. So the last good copy of what a file
+builds stays until a run reads it, and one faulty file holds back no other document.
+[The trade-offs](trade-offs.md#a-file-not-read-holds-back-its-own) give what this
+costs.
 
 ## Days and meetings, found by shape
 
@@ -74,21 +82,22 @@ property, else its title and `:CREATED:`, else its title. Planning lines, notes,
 keyword, tags and cookies never count. A day is named by its date, so that every part
 of one date, archived or not, makes one document
 ([`days_and_meetings`](../../src/kb_mcp/sources/worklog/domain/worklog.py));
-a meeting by its day's date and its title's slug, numbered by start time where two
-share one
+a meeting by its day's date and its title's slug, numbered in the journal's order where
+two share one
 ([`meeting_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
 so that archiving it keeps its id, but for two of one slug archived apart ([the
 trade-offs](trade-offs.md#the-journal-split-by-shape)). Transcripts are named by their day and file name, or
-that name's slug, never by their folders
-([`transcripts`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+that name's slug, never by their folders, and by their path alone, read or not
+([`transcript_ids`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
 so that moving one under `transcripts/archive/` keeps its id, and a copy left beside
-its original is told apart by its path, with a warning.
+its original is told apart by its path, with a warning. A name is a handle: no number,
+order or time is read from it.
 
 ## One front matter for every source
 
 A work-log document takes the keys every document has, so that search and the index read
 it as they read a page: its keyword as `status`, its tags as `labels`, its timestamps,
-or when it happened, as `created` and `updated`, its file and the titles above it as
+or its day, as `created` and `updated`, its file and the titles above it as
 `breadcrumb`; the keys of other sources are `null`. Keys of its own (scheduled,
 deadline, priority) would change every file of the mirror and the index's schema; they
 wait until something filters on them.
@@ -130,9 +139,9 @@ work log's step writes each link both ways
 since a program that reads one file cannot find those that link to it without reading
 them all. A meeting finds its transcript by the path that its `:MEETING:` names, else by
 the id that the path gives
-([`Meeting.read`](../../src/kb_mcp/sources/worklog/domain/worklog.py)):
-org rewrites no link when the user moves a transcript under `archive/`, and the move
-keeps its id.
+([`Meeting.read`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
+whether the file is read or not, as the link needs the id alone: org rewrites no link
+when the user moves a transcript under `archive/`, and the move keeps its id.
 
 ## One person across sources
 

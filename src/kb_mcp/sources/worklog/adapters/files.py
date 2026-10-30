@@ -29,6 +29,9 @@ MEBIBYTE = 1024 * 1024
 FILE_BYTES = 32 * MEBIBYTE
 TRANSCRIPT_COUNT = 20_000
 HTML = ".html"
+# The reason of a file or folder linking out of the work log; a folder not listed has
+# its own.
+LINKS_OUT = "links outside the work log"
 
 
 class UnreadableError(OSError):
@@ -97,7 +100,7 @@ def listed(folder: Path, *, archives: bool) -> Listing:
         ):
             continue
         if not real.is_relative_to(root):
-            problems.append(Problem(path=str(relative), reason="links outside the work log"))
+            problems.append(Problem(path=str(relative), reason=LINKS_OUT))
         elif real.is_dir() and relative.parts[0] in TRANSCRIPTS:
             seen.add(real)
             try:

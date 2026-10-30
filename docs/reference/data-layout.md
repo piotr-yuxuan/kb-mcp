@@ -438,9 +438,13 @@ links:
 
 The two relations are each other's reverse, and a link is written on both documents,
 so that a program that reads one file finds the other without reading them all. A ref
-always names a file: in a run where a document's conversion fails and it has no file
-yet, the links to it are left out of the other documents' files, until a run converts
-it.
+always names a file: in a run where a document is not read, or its conversion fails,
+and it has no file yet, the links to it are left out of the other documents' files,
+until a run reads and converts it. A link added or removed while a work-log transcript
+is not read is written on its meeting alone until a run reads the transcript, whose
+last copy stays as it was; and while a problem holds removals back, the file of a
+meeting or a transcript gone from the work log stays, naming documents that no longer
+name it back.
 `load` refuses any other relation, a field other than these or out of their order, a
 `null` and a ref off its rule, naming the entry, such as `links[0]`; and a link to the
 document itself, by its id or key, or a link given twice, naming `links`.
@@ -494,11 +498,14 @@ Owned by `sync`'s work-log step (017), in `mirror.app.worklog`: `<data>/docs/wor
 from the folder that `sources.worklog.path` names, read in place and never written.
 `mirror.adapters.mirror_files.owned` and `worklog_owned` tell each owner's files apart,
 so that `mirror` and the work-log step never remove each other's. A run that meets a
-problem (a file not read, a conversion that failed) removes none of its files, and a
-file not read holds back the files of what draws on it: every one for `todo.org` or
-`todo.org_archive`, on which days, meetings and entries' numbers draw; for any other,
-each meeting, whose link, start and id draw on the transcripts, and each document that
-links one, or whose file does, so that a link stays written on both files.
+problem (a file not read, a conversion that failed) removes none of its files but the
+old file of a document written again under another path, as an entry's or a transcript's
+whose title changed, and a file not read holds back the files of what it builds: every
+one for `todo.org` or `todo.org_archive`, on which days, meetings and entries' numbers
+draw; for a transcript, its own; for a folder not listed, or the files past the bound,
+the transcripts under it, but one whose id a file found takes, whose copy then replaces
+it. Each problem says what it held back, as `worklog.problem` ([sync's
+telemetry](telemetry/sync.md)), at each run until it is fixed.
 
 - The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
   a day among its children, whatever its title. A **day** is a heading at level 1, or 2
@@ -516,15 +523,18 @@ links one, or whose file does, so that a link stays written on both files.
   `d-` and the date, `%Y%m%d`; its title, its first heading's, else the path's part.
 - A **meeting** is its subtree, then what joins it. Its id is `m-`, its day's date, `-`
   and its title's slug, as a file name's, else the first 16 hex digits of the title's
-  SHA-256; of one day and id, the meetings take `--2`, `--3` by start, then in file
-  order: two dashes, which no slug or digest holds, so that a numbered id is never
-  another title's. Its people are the names that its `:PARTICIPANTS:` gives, split at
-  commas outside brackets, each once and as written, in the role `participant`; its link
+  SHA-256; of one day and id, the meetings take `--2`, `--3` in the journal's order,
+  `todo.org` first, then the archive, each in its file's order, never by a time or a
+  file's name: two dashes, which no slug or digest holds, so that a numbered id is
+  never another title's. Its people are the names that its `:PARTICIPANTS:` gives,
+  split at commas outside brackets, each once and as written, in the role
+  `participant`; its link
   `transcript` names the transcript whose file its `:MEETING:` names, from the folder of
-  its org file, when that file is read, else, for a file under `transcripts/` or
-  `meetings/`, the transcript read of the id that the file's path gives, since a move
-  under `archive/` keeps the id and org rewrites no link; that transcript's link
-  `summary` names it back; a `:MEETING:` that reaches no file read links nothing, and
+  its org file, when that file is found, read or not, by the id that its path gives;
+  else, for a file under `transcripts/` or `meetings/`, the transcript found of the id
+  that the file's path gives, since a move under `archive/` keeps the id and org
+  rewrites no link; that transcript's link `summary` names it back; a `:MEETING:` that
+  reaches no file found links nothing, and
   `worklog.unlinked` counts it, a warning that holds no removal back ([sync's
   telemetry](telemetry/sync.md)). A day and a meeting begin at level 1, what joins them
   at level 2.
@@ -551,17 +561,21 @@ links one, or whose file does, so that a link stays written on both files.
   name: `notes on x.org` of 21 October is `t-20261021-notes-on-x`,
   `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. Without a day, it is `t-`
   and the digest of its name, `meeting-` before it under `meetings/`. No folder below
-  the first is in an id, so a move under `archive/` keeps it. Of two files of one id,
-  the second in order of first folder, the folder that holds it, name, then path takes
-  the digest of its whole path from the work log's root, written with a leading `/`,
-  which no name has: a move under `archive/` with the folder that holds a file never
-  hands its id to the other, unless both folders have one name.
+  the first is in an id, so a move under `archive/` keeps it. The name is a handle
+  alone, from which no number, order or time is read. Of two files of one id, the
+  second in order of first folder, the folder that holds it, name, then path takes the
+  digest of its whole path from the work log's root, written with a leading `/`, which
+  no name has: a move under `archive/` with the folder that holds a file never hands
+  its id to the other, unless both folders have one name. Each file found, read or
+  not, takes its id from its path alone, so that a file not read moves no other's; that
+  order decides nothing else.
 - A transcript's people are its speakers, in the role `participant`, each once, in
   order of first speech: inside its `#+begin_quote` blocks when it has any, the notes
   outside them being the user's, else on any line, each line that holds an optional
-  `[time]` and a blank, then a name of at most 64 characters that begins with a letter
-  and holds no colon or bracket, then `: `, blanks before the colon not the name's;
-  the name is none of `SCHEDULED`, `DEADLINE`, `CLOSED` and `CLOCK`.
+  `[time]`, which dates nothing, and a blank, then a name of at most 64 characters that
+  begins with a letter and holds no colon or bracket, then `: `, blanks before the
+  colon not the name's; the name is none of `SCHEDULED`, `DEADLINE`, `CLOSED` and
+  `CLOCK`.
 - The rule of an id is its type's, `kernel.names.WORKLOG_IDS`:
   `e-[0-9a-f]{16}(?:-[0-9]+)?` for an entry;
   `t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})` for a transcript; `d-[0-9]{8}` for
@@ -572,15 +586,14 @@ links one, or whose file does, so that a link stays written on both files.
 - `revision` is the digest of pandoc's version and options, a NUL, and the org text
   that pandoc converts: a document whose revision has not changed is not converted
   again, and its file keeps its dates, but a day's, a meeting's and a dated
-  transcript's, which come from the work log as read at each run, so that a transcript
-  read since dates its meeting.
-- `created` and `updated` are a day's date at midnight UTC; a meeting's start, its
-  transcript's when that is on the meeting's day, else its day's; a dated transcript's
-  start, its first turn's time when it reads strictly as `HH:MM` or `HH:MM:SS`, else
-  its earliest timestamp on its day, else its day at midnight, read as written in UTC;
-  else the earliest and latest timestamps of the document's lines, as written, up to its
-  file's modification time, a later one being a plan; else, without any, the
-  modification time, `created` keeping an existing file's.
+  transcript's, their day, found at each run, so that a file that held another date
+  takes it without a conversion.
+- `created` and `updated` are a day's date at midnight UTC; so are a meeting's, its
+  day's, and a dated transcript's, the day that begins its folder's name or its own,
+  whatever their lines, turns and timestamps hold, since the work log gives the day of a
+  meeting and never its time; else the earliest and latest timestamps of the
+  document's lines, as written, up to its file's modification time, a later one being a
+  plan; else, without any, the modification time, `created` keeping an existing file's.
 - The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
   and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
   file, `transcripts/archive/`, `meetings/archive/` and subtrees tagged `ARCHIVE` are

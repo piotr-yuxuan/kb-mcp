@@ -7,11 +7,13 @@ written by hand, and every file is read back by ``markdown.load``. Plan 042's jo
 two days, its archived parts and its meetings are expected as its "Days and meetings:
 the rule", "Ids" and criterion 4 describe them; its transcripts, the meeting file under
 ``meetings/`` among them, as its "Ids", "Dates" and "Participants" and criteria 5, 6
-and 8 do.
+and 8 do. Plan 044's dates, by the day alone, and what a file not read holds back, its
+own document alone but for the journal's, as the user's words that its tests quote ask.
 """
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import os
 import re
@@ -26,7 +28,7 @@ import pytest
 from pydantic import Field
 from structlog.testing import capture_logs
 
-from kb_mcp.mirror.adapters.markdown import load
+from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import owned, sync
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
 from kb_mcp.mirror.app.worklog import (
@@ -35,6 +37,7 @@ from kb_mcp.mirror.app.worklog import (
     mirror_worklog,
     plan_worklog,
 )
+from kb_mcp.sources.worklog.adapters import files
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -334,26 +337,24 @@ def test_front_matter_says_status_labels_and_place(
         ("day", "<2026-10-27 Tue>", datetime(2026, 10, 27, tzinfo=UTC), None),
         ("meeting", "Ledger review", datetime(2026, 10, 27, tzinfo=UTC), None),
         ("meeting", "Capacity planning", datetime(2026, 10, 27, tzinfo=UTC), None),
-        (
-            "transcript",
-            "Payments stand-up, 27 October",
-            datetime(2026, 10, 27, 9, 31, tzinfo=UTC),
-            None,
-        ),
-        ("meeting", "Payments stand-up", datetime(2026, 10, 27, 9, 31, tzinfo=UTC), None),
-        ("transcript", "Vendor call, 27 October", datetime(2026, 10, 27, 15, tzinfo=UTC), None),
-        ("meeting", "Vendor call", datetime(2026, 10, 27, 15, tzinfo=UTC), None),
+        ("transcript", "Payments stand-up, 27 October", datetime(2026, 10, 27, tzinfo=UTC), None),
+        ("meeting", "Payments stand-up", datetime(2026, 10, 27, tzinfo=UTC), None),
+        ("transcript", "Vendor call, 27 October", datetime(2026, 10, 27, tzinfo=UTC), None),
+        ("meeting", "Vendor call", datetime(2026, 10, 27, tzinfo=UTC), None),
     ],
 )
 def test_dates_are_the_earliest_and_latest_events_up_to_the_file_time(
     run: Run, kind: str, title: str, created: datetime, updated: datetime | None
 ) -> None:
-    """A later timestamp is a plan; no event, the file's time; a transcript, when it began.
+    """A later timestamp is a plan; no event, the file's time; a day's documents, their day.
 
-    A transcript begins at its first turn's time, else at its day's timestamp, else at its
-    day; a meeting with it. A day, and a meeting without a transcript, are their day,
-    whatever their lines hold.
+    A day, a meeting and a dated transcript are their day at midnight UTC, whatever their
+    lines, turns and timestamps hold: "You can not know when the meeting is held in the
+    day, only the day it was held, and I am happy enough with that" (the user, 2026-10-29,
+    plan 044). The vendor call's transcript saved the next day, its timestamp of its day
+    is an event, which dates nothing either.
     """
+    settle(run.root / "meetings/2026-10-27 Tue/1.org", datetime(2026, 10, 28, tzinfo=UTC))
     run()
     matter = run.by_title(title, kind).matter
     assert (matter.created, matter.updated) == (created, updated or created)
@@ -788,19 +789,19 @@ def one_way(files: list[Mirrored]) -> list[tuple[str, str, str]]:
     )
 
 
-def test_a_link_that_a_file_held_back_names_stays_written_both_ways(run: Run) -> None:
-    """The stand-up's link removed while a transcript is not read: both files stay.
+def test_a_link_removed_while_a_file_is_not_read_goes_from_both_files(run: Run) -> None:
+    """The stand-up's link removed while another transcript is not read: both lose it.
 
-    The meeting is held back, its file naming its transcript, so the transcript, which
-    links nothing now, keeps its file, which names the meeting back.
+    The file not read holds back itself alone, so the stand-up and its transcript are
+    written, neither naming the other: "I do not see why one faulty could hold back other
+    meetings" (the user, 2026-10-29, plan 044).
     """
     run()
     run.edit("todo.org", ":MEETING: [[./transcripts/current/2026-10-27 Tue/1.org]]\n", "")
     (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
     outcome = run()
     assert [each.where for each in outcome.problems] == ["transcripts/misc/a.org"]
-    record = run.by_id("t-20261027-1").matter
-    assert [(each.relation, each.ref) for each in record.links] == [("summary", STANDUP)]
+    assert (run.by_id(STANDUP).matter.links, run.by_id("t-20261027-1").matter.links) == ((), ())
     assert one_way(run.files()) == []
 
 
@@ -835,29 +836,241 @@ def test_a_document_that_fails_with_no_file_is_no_link_s_other_end(
     assert one_way(run.files()) == []
 
 
-def test_a_transcript_not_read_holds_back_meetings_and_what_links_them(run: Run) -> None:
-    """A meeting's link, start and id draw on transcripts, and a transcript's links on ids.
+def test_a_transcript_not_read_holds_back_itself_alone(run: Run) -> None:
+    """Its file stays as it was; every other document is written, the stand-up linking it.
 
-    So no meeting is written, nor a document that links one; the day and the transcripts
-    that no meeting links are, as before. The run counts those held back.
+    "It should be flagged and reported loudly in logs, but I do not understand why we
+    should stop everything" (the user, 2026-10-29, plan 044). The stand-up names the
+    transcript, whose last copy names it back, and its participants as its drawer gives
+    them; the warning on links counts the missing file alone, as on a clean run.
     """
     run()
-    before = {each.path: each for each in run.files()}
+    record = "transcripts/current/2026-10-27 Tue/1.org"
+    kept = run.docs / run.by_id("t-20261027-1").path
+    before = kept.read_bytes()
     run.edit("todo.org", "A note of the Tuesday", "An edited note of the Tuesday")
+    run.edit("todo.org", "My own note before", "My own edited note before")
     run.edit("transcripts/misc/a.org", "one word only", "one edited word only")
-    (run.root / "transcripts/current/2026-10-27 Tue/1.org").write_bytes(NOT_UTF8)
-    outcome = run()
-    assert [(each.where, each.reason) for each in outcome.problems] == [
-        ("transcripts/current/2026-10-27 Tue/1.org", "not UTF-8")
+    (run.root / record).write_bytes(NOT_UTF8)
+    with capture_logs() as logged:
+        outcome = run()
+    assert [(each.where, each.reason, each.held_back) for each in outcome.problems] == [
+        (record, "not UTF-8", "t-20261027-1")
     ]
-    after = {each.path: each for each in run.files()}
-    held = [path for path, each in before.items() if each.matter.type == "meeting"]
-    held += [path for path, each in before.items() if each.matter.links]
-    assert {path: after[path] for path in held} == {path: before[path] for path in held}
-    # Of them, the documents read: all but the transcript not read.
-    assert outcome.held_back == len(set(held)) - 1
+    assert kept.read_bytes() == before
     assert "An edited note of the Tuesday" in run.by_id("d-20261027").body
     assert "one edited word only" in run.by_title("WAITING Notes").body
+    standup = run.by_id(STANDUP)
+    assert "My own edited note before" in standup.body
+    assert [(each.relation, each.ref) for each in standup.matter.links] == [
+        ("transcript", "t-20261027-1")
+    ]
+    assert [each.name for each in standup.matter.people] == ["Alex Example", "Sam Sample"]
+    assert one_way(run.files()) == []
+    warned = [each for each in logged if each["event"] == "worklog.unlinked"]
+    assert [(each["meetings"], each["first"]) for each in warned] == [
+        (1, "meetings/2026-10-27 Tue/2.org")
+    ]
+
+
+def test_a_transcript_retitled_while_a_file_is_not_read_keeps_one_file(run: Run) -> None:
+    """Its old file, of its old title, is retired; a deleted one stays, as nothing else goes.
+
+    The dry run counts that one file. One faulty file leaves no stale copy of another
+    document beside its new one: "I do not see why one faulty could hold back other
+    meetings" (the user, 2026-10-29, plan 044).
+    """
+    run()
+    old = run.docs / run.by_id("t-20261027-1").path
+    gone = run.docs / run.by_title("Notes on the ledger").path
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    (run.root / "transcripts/current/2026-10-21 Wed/notes on x.org").unlink()
+    run.edit(
+        "transcripts/current/2026-10-27 Tue/1.org",
+        "#+TITLE: Payments stand-up, 27 October",
+        "#+TITLE: Stand-up, Tuesday",
+    )
+    assert run.plan().to_remove == 1
+    outcome = run()
+    assert [each.where for each in outcome.problems] == ["transcripts/misc/a.org"]
+    assert [each.path for each in run.files() if each.matter.id == "t-20261027-1"] == [
+        "worklog/transcripts/t-20261027-1-stand-up-tuesday.md"
+    ]
+    assert (old.exists(), gone.exists(), outcome.changes.removed) == (False, True, 1)
+
+
+# An entry with an :ID:, which keeps its id when retitled, and the words of its body.
+RUNBOOK, ROLLED_BACK = "Payout gateway rollback runbook", "rolling back the payout gateway"
+
+
+@pytest.mark.parametrize("title", [RUNBOOK, RUNBOOK.replace(" ", "\u200b", 1)])
+def test_an_entry_retitled_while_a_file_is_not_read_keeps_one_file(run: Run, title: str) -> None:
+    """Its old file is retired where it lies, though its old title held an invisible blank.
+
+    The front matter's title drops a zero-width space that the file's name turned into a
+    dash. The dry run counts that one file; nothing else goes.
+    """
+    run.edit("todo.org", f"* {RUNBOOK}", f"* {title}")
+    run()
+    (entry,) = [each for each in run.files() if ROLLED_BACK in each.body]
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    run.edit("todo.org", f"* {title}", f"* {title} v2")
+    assert run.plan().to_remove == 1
+    outcome = run()
+    (now,) = [each for each in run.files() if each.matter.id == entry.matter.id]
+    assert (now.path != entry.path, ROLLED_BACK in now.body) == (True, True)
+    assert (outcome.changes.removed, [each.where for each in outcome.problems]) == (
+        1,
+        ["transcripts/misc/a.org"],
+    )
+
+
+def test_two_files_of_one_id_from_an_earlier_run_leave_one_while_a_file_is_not_read(
+    run: Run,
+) -> None:
+    """As an earlier rule could leave, a copy under an older title's name: retired.
+
+    Every file of a written document's id is known, the last one read too.
+    """
+    run()
+    (entry,) = [each for each in run.files() if ROLLED_BACK in each.body]
+    older = run.docs / "worklog/entries" / f"{entry.matter.id}-an-older-title.md"
+    older.write_bytes((run.docs / entry.path).read_bytes())
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    assert run.plan().to_remove == 1
+    outcome = run()
+    assert [each.path for each in run.files() if each.matter.id == entry.matter.id] == [entry.path]
+    assert (older.exists(), outcome.changes.removed) == (False, 1)
+
+
+def test_an_entry_retitled_whose_conversion_fails_keeps_its_old_file(run: Run) -> None:
+    """Not written, it keeps its last copy: no file of its id is retired."""
+    run()
+    (entry,) = [each for each in run.files() if ROLLED_BACK in each.body]
+    run.edit("todo.org", f"* {RUNBOOK}", f"* {RUNBOOK} v2")
+    outcome = run(failing=f"{RUNBOOK} v2")
+    assert [each.where for each in outcome.problems] == [f"todo.org, {entry.matter.id}"]
+    assert [each.path for each in run.files() if each.matter.id == entry.matter.id] == [entry.path]
+    assert outcome.changes.removed == 0
+
+
+def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path: Path) -> None:
+    """Named by its path alone, as listed reports it, it keeps its id and its last copy.
+
+    The stand-up still links it, so the warning on links counts the missing file alone:
+    "It should be flagged and reported loudly in logs" (the user, 2026-10-29, plan 044).
+    """
+    run()
+    record = run.root / "transcripts/current/2026-10-27 Tue/1.org"
+    kept = run.docs / run.by_id("t-20261027-1").path
+    before = kept.read_bytes()
+    outside = tmp_path / "elsewhere.org"
+    outside.write_bytes(record.read_bytes())
+    record.unlink()
+    record.symlink_to(outside)
+    with capture_logs() as logged:
+        outcome = run()
+    assert [(each.where, each.reason, each.held_back) for each in outcome.problems] == [
+        ("transcripts/current/2026-10-27 Tue/1.org", "links outside the work log", "t-20261027-1")
+    ]
+    assert kept.read_bytes() == before
+    assert [(each.relation, each.ref) for each in run.by_id(STANDUP).matter.links] == [
+        ("transcript", "t-20261027-1")
+    ]
+    warned = [each for each in logged if each["event"] == "worklog.unlinked"]
+    assert [(each["meetings"], each["first"]) for each in warned] == [
+        (1, "meetings/2026-10-27 Tue/2.org")
+    ]
+
+
+def test_a_meeting_linking_a_new_file_not_read_links_it_once_it_is_read(run: Run) -> None:
+    """Written without the link while the file has no copy, so that no link is one way.
+
+    The next clean run links both. "I do not see why one faulty could hold back other
+    meetings" (the user, 2026-10-29, plan 044).
+    """
+    run()
+    new = "transcripts/current/2026-10-27 Tue/3.org"
+    meeting = f"*** Retro\n:PROPERTIES:\n:MEETING: [[./{new}]]\n:END:\n"
+    run.edit("todo.org", "** From <2026-10-05 Mon>", f"{meeting}** From <2026-10-05 Mon>")
+    (run.root / new).write_bytes(NOT_UTF8)
+    settle(run.root / new)
+    outcome = run()
+    assert [(each.where, each.held_back) for each in outcome.problems] == [(new, "t-20261027-3")]
+    assert run.by_id("m-20261027-retro").matter.links == ()
+    assert one_way(run.files()) == []
+    (run.root / new).write_text("#+TITLE: Retro\nSam Sample: Done.\n", "utf-8")
+    settle(run.root / new)
+    assert run().problems == ()
+    pairs = {
+        identifier: [(each.relation, each.ref) for each in run.by_id(identifier).matter.links]
+        for identifier in ("m-20261027-retro", "t-20261027-3")
+    }
+    assert pairs == {
+        "m-20261027-retro": [("transcript", "t-20261027-3")],
+        "t-20261027-3": [("summary", "m-20261027-retro")],
+    }
+    assert one_way(run.files()) == []
+
+
+def test_past_the_bound_a_meeting_s_link_waits_and_the_rest_is_written(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """At 3 by a patch, the stand-up's transcript is past it: its last copy stays.
+
+    The stand-up is written without the link, which the warning counts; the day too.
+    "No need to change anything" (the user, 2026-10-29, plan 044) on the bound: what its
+    problem holds back changes, no other document.
+    """
+    run()
+    kept = run.docs / run.by_id("t-20261027-1").path
+    before = kept.read_bytes()
+    run.edit("todo.org", "A note of the Tuesday", "An edited note of the Tuesday")
+    monkeypatch.setattr(files, "TRANSCRIPT_COUNT", 3)
+    with capture_logs() as logged:
+        outcome = run()
+    assert [(each.where, each.reason, each.held_back) for each in outcome.problems] == [
+        ("transcripts, meetings", "over 3 transcripts", "the transcripts not read under it")
+    ]
+    assert kept.read_bytes() == before
+    assert run.by_id(STANDUP).matter.links == ()
+    assert "An edited note of the Tuesday" in run.by_id("d-20261027").body
+    warned = [each for each in logged if each["event"] == "worklog.unlinked"]
+    assert [(each["meetings"], each["first"]) for each in warned] == [
+        (2, "transcripts/current/2026-10-27 Tue/1.org")
+    ]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root lists every folder")
+def test_a_folder_or_an_html_file_not_read_holds_back_what_is_under_it(
+    run: Run, tmp_path: Path
+) -> None:
+    """A folder not listed, a folder and an HTML file linking out: no id, each said.
+
+    A path and a reason do not tell the last two from a file, so each holds back the
+    transcripts not read under it, as does the first, though its name ends in .org; and
+    every document read is written.
+    """
+    run()
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "call.html").write_text("<p>Words.</p>\n", "utf-8")
+    (run.root / "transcripts/misc/out").symlink_to(outside)
+    (run.root / "transcripts/misc/out.html").symlink_to(outside / "call.html")
+    locked = run.root / "meetings/locked.org"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        outcome = run()
+    finally:
+        locked.chmod(0o700)
+    under = "the transcripts not read under it"
+    assert sorted((each.where, each.held_back) for each in outcome.problems) == [
+        ("meetings/locked.org", under),
+        ("transcripts/misc/out", under),
+        ("transcripts/misc/out.html", under),
+    ]
+    assert outcome.documents == DOCUMENTS
 
 
 def test_a_meeting_s_file_keeps_its_sections_as_headings_from_level_one(run: Run) -> None:
@@ -963,7 +1176,7 @@ def test_a_linked_meeting_and_its_transcript_name_each_other(run: Run) -> None:
     }
 
 
-def test_linked_transcripts_archived_keep_their_links_and_their_meetings_starts(
+def test_linked_transcripts_archived_keep_their_links_and_dates(
     run: Run,
 ) -> None:
     """Both day folders moved under archive/, as the user archives them; todo.org unchanged.
@@ -993,26 +1206,27 @@ def test_linked_transcripts_archived_keep_their_links_and_their_meetings_starts(
     ]
 
 
-def test_a_transcript_added_dates_and_links_its_meeting_without_converting_it(run: Run) -> None:
-    """todo.org unchanged: the stand-up is kept, its start and link its transcript's.
+def test_a_transcript_added_links_its_meeting_without_converting_it(run: Run) -> None:
+    """todo.org unchanged: the stand-up is kept, its link its transcript's, its dates its day.
 
-    Without the transcript, it begins at its day and links nothing; once the transcript
-    is back, pandoc converts that alone, and the meeting's body is as it was. Gone
-    again, the meeting is kept, at its day.
+    Without the transcript, it links nothing; once the transcript is back, pandoc
+    converts that alone, and the meeting's body is as it was. Gone again, the meeting is
+    kept. Its dates never move: "it's usually enough to have the day" (the user,
+    2026-10-29, plan 044).
     """
     record = run.root / "transcripts/current/2026-10-27 Tue/1.org"
     text = record.read_bytes()
     record.unlink()
     run()
     alone = run.by_id(STANDUP)
-    day, began = datetime(2026, 10, 27, tzinfo=UTC), datetime(2026, 10, 27, 9, 31, tzinfo=UTC)
+    day = datetime(2026, 10, 27, tzinfo=UTC)
     assert (alone.matter.created, alone.matter.updated, alone.matter.links) == (day, day, ())
     record.write_bytes(text)
     settle(record)
     with capture_logs() as logged:
         run()
     linked = run.by_id(STANDUP)
-    assert (linked.matter.created, linked.matter.updated) == (began, began)
+    assert (linked.matter.created, linked.matter.updated) == (day, day)
     assert [(each.relation, each.ref) for each in linked.matter.links] == [
         ("transcript", "t-20261027-1")
     ]
@@ -1025,6 +1239,36 @@ def test_a_transcript_added_dates_and_links_its_meeting_without_converting_it(ru
     run()
     again = run.by_id(STANDUP).matter
     assert (again.created, again.updated, again.links, run.runs[-1]) == (day, day, (), [VERSION])
+
+
+def test_a_file_dated_by_a_time_takes_its_day_without_a_conversion(run: Run) -> None:
+    """The stand-up and its transcript, as plan 042 dated them, at their first turn's time.
+
+    Their revisions unchanged, both are kept and written again at their day, as at the
+    one move from those dates: "I think it's usually enough to have the day" (the user,
+    2026-10-29, plan 044).
+    """
+    run()
+    began, day = datetime(2026, 10, 27, 9, 31, tzinfo=UTC), datetime(2026, 10, 27, tzinfo=UTC)
+    identifiers = (STANDUP, "t-20261027-1")
+    for identifier in identifiers:
+        old = run.by_id(identifier)
+        dated = copy.replace(old.matter, created=began, updated=began)
+        (run.docs / old.path).write_text(dump(dated, old.body), "utf-8")
+    with capture_logs() as logged:
+        run()
+    outcomes = {
+        each["id"]: each["outcome"] for each in logged if each["event"] == "worklog.document"
+    }
+    dates = {
+        identifier: (run.by_id(identifier).matter.created, run.by_id(identifier).matter.updated)
+        for identifier in identifiers
+    }
+    assert ([outcomes[each] for each in identifiers], dates) == (
+        ["kept", "kept"],
+        dict.fromkeys(identifiers, (day, day)),
+    )
+    assert run.runs[-1] == [VERSION]
 
 
 def test_a_link_to_a_missing_file_warns_once_and_holds_nothing_back(run: Run) -> None:
@@ -1073,7 +1317,7 @@ def test_a_meeting_room_s_link_is_never_logged(run: Run, value: str) -> None:
 
 
 def test_same_titled_meetings_of_one_day_are_numbered(run: Run) -> None:
-    """Neither has a transcript, so both start at the day: numbered in reading order."""
+    """Numbered in the journal's order: "you can not infer any order" (the user, plan 044)."""
     run()
     found = [each for each in run.files() if each.matter.title == "One-to-one"]
     names = {each.matter.id: each.matter.people[0].name for each in found}

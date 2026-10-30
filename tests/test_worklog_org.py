@@ -9,7 +9,8 @@ Plan 042's outline, days' titles and links to files are expected as org's own pa
 reads the same made-up lines (Emacs 31.1, ``org-element``), and its archiving writes
 ``:ARCHIVE_OLPATH:``; its journal's days and meetings, their ids and participants, as its
 "Days and meetings: the rule", "What archiving does", "Ids" and "Participants" say, its
-question 1's sample first.
+question 1's sample first; plan 044's numbers, in the journal's order, and dates, by
+the day alone, as the user's words that its tests quote ask.
 """
 
 from __future__ import annotations
@@ -32,15 +33,15 @@ from kb_mcp.sources.worklog.domain.worklog import (
     TRANSCRIBED,
     Document,
     Source,
+    held_back,
     journal,
     linked_back,
     meeting_ids,
     participants,
     revision,
     speakers,
-    start,
+    transcript_ids,
     transcripts,
-    turns,
     writable,
 )
 
@@ -79,11 +80,24 @@ def transcript(path: str, text: str = "Words.\n", modified: datetime = MODIFIED)
     return Source(path=PurePosixPath("transcripts", path), text=text, modified=modified)
 
 
+def transcribed(
+    sources: list[Source], *, archives: bool = True
+) -> tuple[list[Document], list[str]]:
+    """Return the transcripts of ``sources``, every one read, and the warnings on their ids."""
+    ids, warnings = transcript_ids([each.path for each in sources], archives=archives)
+    return transcripts(sources, ids, archives=archives), warnings
+
+
+def by_path(documents: list[Document]) -> dict[PurePosixPath, str]:
+    """Return each transcript's id by its path, as ``journal`` takes those found."""
+    return {each.source.path: each.id for each in documents}
+
+
 def one(text: str) -> dict[str, str]:
     """Return each entry's id by title, for a todo.org declaring TODO WAITING | DONE."""
     return {
         each.title: each.id
-        for each in journal(todo(DECLARED + text), None, archives=True, transcripts=())[0]
+        for each in journal(todo(DECLARED + text), None, archives=True, transcripts={})[0]
     }
 
 
@@ -618,7 +632,7 @@ def test_same_titled_entries_are_numbered_in_reading_order() -> None:
         todo("* Retro\none\n* Retro\ntwo\n* Retro\nthree\n"),
         Source(path=PurePosixPath("todo.org_archive"), text="* Retro\nfour\n", modified=MODIFIED),
         archives=True,
-        transcripts=(),
+        transcripts={},
     )
     base = f"e-{sha('Retro')}"
     assert [each.id for each in found] == [base, f"{base}-2", f"{base}-3", f"{base}-4"]
@@ -629,7 +643,7 @@ def test_same_titled_entries_are_numbered_in_reading_order() -> None:
         ),
         None,
         archives=True,
-        transcripts=(),
+        transcripts={},
     )
     assert all(ENTRY_ID.fullmatch(each.id) for each in dated)  # neither numbered
     assert dated[0].id != dated[1].id
@@ -690,7 +704,7 @@ def test_an_entry_describes_its_title_status_labels_and_file() -> None:
             modified=MODIFIED,
         ),
         archives=True,
-        transcripts=(),
+        transcripts={},
     )
     assert [
         (each.title, each.status, each.labels, each.breadcrumb, each.type) for each in found
@@ -708,7 +722,7 @@ def test_without_archives_the_archive_file_and_archived_entries_are_left_out() -
         todo("* Old :ARCHIVE:\n* Kept\n** Gone :ARCHIVE:\n"),
         Source(path=PurePosixPath("todo.org_archive"), text="* Vendor\n", modified=MODIFIED),
         archives=False,
-        transcripts=(),
+        transcripts={},
     )
     assert [each.title for each in found] == ["Kept"]
     assert "#+OPTIONS: arch:nil " in found[0].text
@@ -722,7 +736,7 @@ def test_entry_events_stop_at_the_file_time_in_its_own_zone() -> None:
         todo("* x\n[2026-10-01 Thu]\n[2026-10-22 Thu 17:30]\n<2026-10-22 Thu 18:30>\n", modified),
         None,
         archives=True,
-        transcripts=(),
+        transcripts={},
     )
     assert found.dates(None) == (
         datetime(2026, 10, 1, tzinfo=UTC),
@@ -732,7 +746,7 @@ def test_entry_events_stop_at_the_file_time_in_its_own_zone() -> None:
 
 def test_an_undated_entry_dates_from_its_file_and_its_earlier_creation() -> None:
     """Updated is the file's time; created the existing file's, else that time too."""
-    (found,), _ = journal(todo("* Undated\n"), None, archives=True, transcripts=())
+    (found,), _ = journal(todo("* Undated\n"), None, archives=True, transcripts={})
     earlier = datetime(2026, 10, 1, tzinfo=UTC)
     assert found.dates(None) == (MODIFIED, MODIFIED)
     assert found.dates(earlier) == (earlier, MODIFIED)
@@ -759,6 +773,7 @@ FITTING, PAST = "a" * 56, "a" * 57
         ("meetings/2026-10-27 Tue/1.org", "t-20261027-meeting-1"),
         ("meetings/archive/2026/2026-10/2026-10-27 Tue/1.org", "t-20261027-meeting-1"),
         ("meetings/2026-10-27 Tue/notes on x.org", "t-20261027-meeting-notes-on-x"),
+        ("meetings/2026-10-27 Tue/Vendor call.org", "t-20261027-meeting-vendor-call"),
         (f"meetings/2026-10-27 Tue/{FITTING}.org", f"t-20261027-meeting-{FITTING}"),
         (f"meetings/2026-10-27 Tue/{PAST}.org", f"t-20261027-meeting-{sha(f'{PAST}.org')}"),
         ("meetings/2026-10-27 Tue/会議.org", f"t-20261027-meeting-{sha('会議.org')}"),
@@ -771,9 +786,11 @@ def test_transcript_ids_name_the_day_and_the_name_else_a_slug_else_a_digest(
     """t-YYYYMMDD-, meeting- under meetings/, then the name, its slug, or its digest.
 
     Without a day, the digest of the name alone, meeting- before it under meetings/: no
-    folder, so a move under archive/ keeps every id.
+    folder, so a move under archive/ keeps every id. A name, a number or words, is a
+    handle alone: "Do not give too much value to a filename that is just an opaque slug"
+    (the user, 2026-10-29, plan 044).
     """
-    (found,), warnings = transcripts(
+    (found,), warnings = transcribed(
         [Source(path=PurePosixPath(path), text="", modified=MODIFIED)], archives=True
     )
     assert (found.id, warnings) == (expected, [])
@@ -782,7 +799,7 @@ def test_transcript_ids_name_the_day_and_the_name_else_a_slug_else_a_digest(
 
 def test_one_day_s_first_file_in_both_folders_takes_two_ids() -> None:
     """meetings/<day>/1.org and transcripts/current/<day>/1.org: distinct, no warning."""
-    found, warnings = transcripts(
+    found, warnings = transcribed(
         [
             Source(path=PurePosixPath("meetings/2026-10-27 Tue/1.org"), text="", modified=MODIFIED),
             Source(
@@ -803,7 +820,7 @@ def test_a_copy_keeps_the_id_and_the_other_takes_its_whole_path() -> None:
     """The first in path order keeps it; one warning names both files."""
     copy = "archive/2026/2026-10/2026-10-20 Tue/1.org"
     original = "current/2026-10-20 Tue/1.org"
-    found, warnings = transcripts([transcript(original), transcript(copy)], archives=True)
+    found, warnings = transcribed([transcript(original), transcript(copy)], archives=True)
     assert [(str(each.source.path), each.id) for each in found] == [
         (f"transcripts/{copy}", "t-20261020-1"),
         (f"transcripts/{original}", f"t-{sha(f'/transcripts/{original}')}"),
@@ -813,9 +830,52 @@ def test_a_copy_keeps_the_id_and_the_other_takes_its_whole_path() -> None:
     assert f"transcripts/{original}" in warnings[0]
 
 
+def test_two_files_of_one_id_take_the_same_ids_when_the_first_is_not_read() -> None:
+    """The ids come from the paths found, read or not: the copy's, then the original's.
+
+    So a file not read hands no other its id: "I do not see why one faulty could hold
+    back other meetings" (the user, 2026-10-29, plan 044).
+    """
+    archived = transcript("archive/2026/2026-10/2026-10-20 Tue/1.org")
+    current = transcript("current/2026-10-20 Tue/1.org")
+    whole = f"t-{sha('/transcripts/current/2026-10-20 Tue/1.org')}"
+    ids, warnings = transcript_ids([archived.path, current.path], archives=True)
+    assert ids == {archived.path: "t-20261020-1", current.path: whole}
+    assert len(warnings) == 1
+    (alone,) = transcripts([current], ids, archives=True)
+    assert alone.id == whole
+
+
+def test_only_an_org_file_under_the_two_folders_takes_an_id() -> None:
+    """Read or not; not a folder, an HTML file, the journal's files or the bound's problem.
+
+    A problem names a file or a folder linking out by its path alone, which ends in .org
+    for a transcript.
+    """
+    paths = [
+        "transcripts/current/2026-10-27 Tue/1.org",
+        "meetings/out.org",
+        "transcripts/current/out",
+        "meetings/2026-10-27 Tue/2.html",
+        "notes/2026-10-27 Tue/1.org",
+        "todo.org",
+        "todo.org_archive",
+        "transcripts, meetings",
+        ".",
+    ]
+    ids, warnings = transcript_ids([PurePosixPath(each) for each in paths], archives=True)
+    assert (ids, warnings) == (
+        {
+            PurePosixPath("transcripts/current/2026-10-27 Tue/1.org"): "t-20261027-1",
+            PurePosixPath("meetings/out.org"): f"t-{sha('meeting-out.org')}",
+        },
+        [],
+    )
+
+
 def test_a_whole_path_digest_is_never_another_file_s_digest() -> None:
     """Written from the root, /transcripts/..., with a / that no name holds."""
-    found, warnings = transcripts(
+    found, warnings = transcribed(
         [
             transcript("aa/a.org"),
             transcript("misc/a.org"),
@@ -841,7 +901,7 @@ def test_archiving_one_of_two_files_of_one_id_never_hands_it_the_other_s() -> No
     archived = "archive/2026/2026-10/vendor-b/notes.org"
     for other in (vendor_b, archived):
         for paths in ([vendor_a, other], [other, vendor_a]):
-            found, warnings = transcripts([transcript(path) for path in paths], archives=True)
+            found, warnings = transcribed([transcript(path) for path in paths], archives=True)
             ids = {each.source.path.parts[-2]: each.id for each in found}
             assert ids == {
                 "vendor-a": f"t-{sha('notes.org')}",
@@ -852,7 +912,7 @@ def test_archiving_one_of_two_files_of_one_id_never_hands_it_the_other_s() -> No
 
 def test_two_undated_files_of_one_name_get_distinct_ids() -> None:
     """The digest below the first folder is shared; the second takes its whole path's."""
-    found, warnings = transcripts(
+    found, warnings = transcribed(
         [transcript("misc/a.org"), transcript("other/a.org"), transcript("a.org")],
         archives=True,
     )
@@ -873,13 +933,13 @@ def test_a_transcript_title_is_its_title_else_heading_else_day_and_name(
     path: str, text: str, title: str
 ) -> None:
     """#+TITLE; else its first heading's title, keywords its own; else Transcript, day, name."""
-    (found,), _ = transcripts([transcript(path, text)], archives=True)
+    (found,), _ = transcribed([transcript(path, text)], archives=True)
     assert found.title == title
 
 
 def test_a_transcript_describes_its_status_labels_folders_and_day() -> None:
     """Status current; its #+FILETAGS and ARCHIVE when archived; its folders; its day."""
-    found, _ = transcripts(
+    found, _ = transcribed(
         [
             transcript("archive/2026/2026-09/2026-09-15 Tue/1.org", "#+FILETAGS: :a:\n"),
             transcript("misc/a.org", "Said on [2026-10-01 Thu 10:00], then [2026-10-03 Sat].\n"),
@@ -901,7 +961,7 @@ def test_a_transcript_describes_its_status_labels_folders_and_day() -> None:
 
 def test_without_archives_archived_transcripts_are_left_out() -> None:
     """Those under transcripts/archive/ alone."""
-    found, _ = transcripts(
+    found, _ = transcribed(
         [transcript("archive/2026/x/1.org"), transcript("current/archive/1.org")],
         archives=False,
     )
@@ -953,23 +1013,27 @@ def test_a_long_participants_value_is_split_in_time_that_grows_with_it() -> None
     assert time.perf_counter() - began < SPLIT_S
 
 
-def test_meeting_ids_name_the_day_and_the_title_numbered_by_start_then_order() -> None:
-    """The later start takes --2; equal starts, the order given; no slug, the title's digest."""
-    early, late = TUESDAY.replace(hour=9), TUESDAY.replace(hour=14)
-    assert meeting_ids(
-        TUESDAY,
-        [("Payments stand-up", late), ("Payments stand-up", early), ("Café: 1/1", TUESDAY)],
-    ) == ["m-20261027-payments-stand-up--2", "m-20261027-payments-stand-up", "m-20261027-cafe-1-1"]
-    assert meeting_ids(TUESDAY, [("Retro", late)] * 3) == [
+def test_meeting_ids_name_the_day_and_the_title_numbered_in_the_order_given() -> None:
+    """The second of one id takes --2, the third --3; no slug, the title's digest.
+
+    In the order given, the journal's, never by a time: "you can not infer any order"
+    (the user, 2026-10-29, plan 044).
+    """
+    assert meeting_ids(TUESDAY, ["Payments stand-up", "Payments stand-up", "Café: 1/1"]) == [
+        "m-20261027-payments-stand-up",
+        "m-20261027-payments-stand-up--2",
+        "m-20261027-cafe-1-1",
+    ]
+    assert meeting_ids(TUESDAY, ["Retro"] * 3) == [
         "m-20261027-retro",
         "m-20261027-retro--2",
         "m-20261027-retro--3",
     ]
-    assert meeting_ids(TUESDAY, [("会議", TUESDAY), ("", TUESDAY)]) == [
+    assert meeting_ids(TUESDAY, ["会議", ""]) == [
         f"m-20261027-{sha('会議')}",
         f"m-20261027-{sha('')}",
     ]
-    long = meeting_ids(TUESDAY, [(LONG, TUESDAY), (LONG, TUESDAY)])
+    long = meeting_ids(TUESDAY, [LONG, LONG])
     assert long == [f"m-20261027-{'a' * 60}", f"m-20261027-{'a' * 60}--2"]
     assert all(WORKLOG_ID.fullmatch(each) for each in long)
 
@@ -978,22 +1042,20 @@ def test_one_slug_s_ids_never_depend_on_another_s_meetings() -> None:
     """Stand-up 2 keeps stand-up-2 beside two Stand-ups, in whichever order they come.
 
     In the order that archiving the first Stand-up alone leaves, the two Stand-ups swap,
-    the cost that the plan's "Ids" states; titles of one slug are numbered as one title.
+    the cost that plan 044's "Numbers" states, since "you can not infer any order" (the
+    user, 2026-10-29); titles of one slug are numbered as one title.
     """
-    first, second, other = ("Stand-up", TUESDAY), ("Stand-up", TUESDAY), ("Stand-up 2", TUESDAY)
-    assert meeting_ids(TUESDAY, [first, second, other]) == [
+    assert meeting_ids(TUESDAY, ["Stand-up", "Stand-up", "Stand-up 2"]) == [
         "m-20261027-stand-up",
         "m-20261027-stand-up--2",
         "m-20261027-stand-up-2",
     ]
-    assert meeting_ids(TUESDAY, [second, other, first]) == [
+    assert meeting_ids(TUESDAY, ["Stand-up", "Stand-up 2", "Stand-up"]) == [
         "m-20261027-stand-up",
         "m-20261027-stand-up-2",
         "m-20261027-stand-up--2",
     ]
-    assert meeting_ids(
-        TUESDAY, [("Réunion d'équipe", TUESDAY), ("Reunion d\u2019equipe", TUESDAY)]
-    ) == [
+    assert meeting_ids(TUESDAY, ["Réunion d'équipe", "Reunion d\u2019equipe"]) == [
         "m-20261027-reunion-d-equipe",
         "m-20261027-reunion-d-equipe--2",
     ]
@@ -1059,30 +1121,31 @@ def test_a_bare_transcript_s_speakers_are_on_any_line_but_org_s_own() -> None:
     assert speakers(lines(BARE)) == ("Alex", "Sam", "Kim", "Jo (lead)", AT_BOUND)
 
 
-def test_a_turn_s_time_is_as_written_or_none() -> None:
-    """The bracket before the name, whatever it holds; none without one."""
-    assert turns(lines("[9:31] Alex: x\nSam: y\n[01:02:03.5] Kim: z\n")) == [
-        ("9:31", "Alex"),
-        (None, "Sam"),
-        ("01:02:03.5", "Kim"),
-    ]
+def test_a_turn_s_time_is_passed_over_whatever_it_holds() -> None:
+    """The bracket before the name, or none, names its speaker alone.
+
+    "You can not know when the meeting is held in the day" (the user, 2026-10-29, plan
+    044): a turn's time dates nothing.
+    """
+    assert speakers(lines("[9:31] Alex: x\nSam: y\n[01:02:03.5] Kim: z\n")) == (
+        "Alex",
+        "Sam",
+        "Kim",
+    )
 
 
 @pytest.mark.parametrize(
-    ("text", "began"),
+    "text",
     [
-        ("[09:31] Alex: x\n[09:40] Sam: y\n", TUESDAY.replace(hour=9, minute=31)),
-        ("[09:31:05] Alex: x\n", TUESDAY.replace(hour=9, minute=31, second=5)),
-        ("[00:05] Alex: x\n", TUESDAY.replace(minute=5)),  # an offset, read as a time
-        ("Alex: x\n[10:00] Sam: y\nOn <2026-10-27 Tue 14:00>.\n", TUESDAY.replace(hour=14)),
-        ("[9:31] Alex: x\nOn [2026-10-27 Tue 14:00].\n", TUESDAY.replace(hour=14)),
-        ("[25:00] Alex: x\n", TUESDAY),
-        (
-            "[09:31 AM] Alex: x\n<2026-10-26 Mon 08:00> <2026-10-27 Tue 16:00> [2026-10-27 15:00]",
-            TUESDAY.replace(hour=15),
-        ),
-        (QUOTED, TUESDAY.replace(hour=9, minute=31)),
-        ("", TUESDAY),
+        "[09:31] Alex: x\n[09:40] Sam: y\n",
+        "[09:31:05] Alex: x\n",
+        "[00:05] Alex: x\n",  # an offset from the start of the recording
+        "Alex: x\n[10:00] Sam: y\nOn <2026-10-27 Tue 14:00>.\n",
+        "[9:31] Alex: x\nOn [2026-10-27 Tue 14:00].\n",
+        "[25:00] Alex: x\n",
+        "[09:31 AM] Alex: x\n<2026-10-26 Mon 08:00> <2026-10-27 Tue 16:00> [2026-10-27 15:00]",
+        QUOTED,
+        "",
     ],
     ids=[
         "turn",
@@ -1096,30 +1159,36 @@ def test_a_turn_s_time_is_as_written_or_none() -> None:
         "empty",
     ],
 )
-def test_a_transcript_begins_at_its_first_turn_else_its_day_s_timestamp_else_its_day(
-    text: str, began: datetime
-) -> None:
-    """The first turn's time, strictly HH:MM or HH:MM:SS; else its day's first timestamp.
+def test_a_dated_transcript_is_its_day_whatever_its_turns_and_timestamps(text: str) -> None:
+    """Created and updated at the midnight UTC of the day that its folder's name gives.
 
-    Active or inactive, the timestamps of another day left out; else its day at midnight.
+    Neither a turn's time nor a timestamp dates it: "You can not know when the meeting is
+    held in the day, only the day it was held, and I am happy enough with that" (the
+    user, 2026-10-29, plan 044). Saved the next day, its timestamps of its day are
+    events, which date nothing either.
     """
-    assert start(TUESDAY, lines(text)) == began
+    saved = TUESDAY + timedelta(days=1)
+    (found,), _ = transcribed([transcript("2026-10-27 Tue/1.org", text, saved)], archives=True)
+    assert found.dates(None) == (TUESDAY, TUESDAY)
 
 
-def test_a_transcript_names_its_speakers_and_a_dated_one_begins_at_its_first_turn() -> None:
-    """Undated, it has no start: its dates are its events'."""
-    found, _ = transcripts(
+def test_a_transcript_names_its_speakers_and_a_dated_one_is_its_day() -> None:
+    """Dated, its first turn's time dates nothing; undated, its dates are its events'.
+
+    "it's usually enough to have the day" (the user, 2026-10-29, plan 044); an undated
+    one has none to take.
+    """
+    found, _ = transcribed(
         [
             transcript("current/2026-10-27 Tue/1.org", QUOTED),
             transcript("misc/a.org", "[09:31] Alex: Said on [2026-10-01 Thu 10:00].\n"),
         ],
         archives=True,
     )
-    assert [(each.people, each.start) for each in found] == [
-        (("Alex Example", "You", "Unverified", "Sam Sample"), TUESDAY.replace(hour=9, minute=31)),
-        (("Alex",), None),
+    assert [(each.people, each.dates(None)) for each in found] == [
+        (("Alex Example", "You", "Unverified", "Sam Sample"), (TUESDAY, TUESDAY)),
+        (("Alex",), (datetime(2026, 10, 1, 10, tzinfo=UTC),) * 2),
     ]
-    assert found[1].dates(None) == (datetime(2026, 10, 1, 10, tzinfo=UTC),) * 2
 
 
 # Plan 042's question 1, the journal's shape on a made-up sample.
@@ -1156,7 +1225,7 @@ def test_the_plan_s_sample_is_a_day_a_meeting_and_a_range() -> None:
 
     Each begins at level 1.
     """
-    (record,), _ = transcripts(
+    (record,), _ = transcribed(
         [
             Source(
                 path=PurePosixPath("meetings/2026-10-27 Tue/1.org"),
@@ -1166,7 +1235,7 @@ def test_the_plan_s_sample_is_a_day_a_meeting_and_a_range() -> None:
         ],
         archives=True,
     )
-    found, _ = journal(todo(DECLARED + SAMPLE), None, archives=True, transcripts=[record])
+    found, _ = journal(todo(DECLARED + SAMPLE), None, archives=True, transcripts=by_path([record]))
     assert [(each.type, each.id, each.title, each.breadcrumb) for each in found] == [
         ("entry", f"e-{sha(CONDENSED)}", CONDENSED, ("todo.org", "Entries")),
         ("day", "d-20261027", "<2026-10-27 Tue>", ("todo.org", "Entries")),
@@ -1212,7 +1281,7 @@ def test_the_journal_s_own_lines_are_an_entry_only_when_they_hold_text(
 ) -> None:
     """Whatever the journal's title; blank lines, a planning line and a drawer make none."""
     found, _ = journal(
-        todo(f"* Notes\n{own}\n** <2026-10-27 Tue>\n"), None, archives=True, transcripts=()
+        todo(f"* Notes\n{own}\n** <2026-10-27 Tue>\n"), None, archives=True, transcripts={}
     )
     assert [each.title for each in found if each.type == "entry"] == entries
     assert [each.id for each in found if each.type == "day"] == ["d-20261027"]
@@ -1226,7 +1295,7 @@ def test_a_day_is_a_date_alone_at_level_one_or_two() -> None:
         ),
         None,
         archives=True,
-        transcripts=(),
+        transcripts={},
     )
     assert [(each.type, each.title, each.breadcrumb) for each in found] == [
         ("entry", "Notes", ("todo.org",)),
@@ -1252,7 +1321,7 @@ def test_a_meeting_is_a_child_of_a_day_with_a_meeting_s_property() -> None:
             ":ARCHIVE_OLPATH: Entries/<2026-10-27 Tue>/Notes\n:END:\n"
         ),
         archives=True,
-        transcripts=(),
+        transcripts={},
     )
     assert [each.title for each in found] == ["<2026-10-27 Tue>", "Linked", "Named"]
     assert [line for line in body(found[0]) if line.startswith("*")] == [
@@ -1276,7 +1345,7 @@ def test_days_meetings_and_entries_take_the_tags_of_the_headings_above_them() ->
         ),
         None,
         archives=True,
-        transcripts=(),
+        transcripts={},
     )
     assert [(each.type, each.labels) for each in found] == [
         ("entry", ("work", "condensed")),
@@ -1299,7 +1368,7 @@ def test_a_day_takes_the_labels_of_each_of_its_headings_each_from_its_file() -> 
             ":PROPERTIES:\n:PARTICIPANTS: Sam\n:ARCHIVE_OLPATH: Entries/<2026-10-28 Wed>\n:END:\n"
         ),
         archives=True,
-        transcripts=(),
+        transcripts={},
     )
     assert [(each.type, each.labels) for each in found] == [
         ("day", ("offsite", "work", "late", "old", "ARCHIVE")),
@@ -1307,28 +1376,41 @@ def test_a_day_takes_the_labels_of_each_of_its_headings_each_from_its_file() -> 
     ]
 
 
-def test_same_titled_meetings_are_numbered_by_their_transcripts_starts() -> None:
-    """The meeting without a transcript starts at its day, first; then by each transcript's."""
+# A transcript whose first turn has a time, which dates nothing.
+TURN_AT_9_31 = "[09:31] Alex: Morning.\n"
+# Two transcripts of 27 October, named without a number, whose first turns would order
+# them the other way round; and the ids that their names give.
+RETRO, KICK_OFF = "2026-10-27 Tue/retro notes.org", "2026-10-27 Tue/kick-off.org"
+NAMED = {RETRO: "t-20261027-retro-notes", KICK_OFF: "t-20261027-kick-off"}
+
+
+@pytest.mark.parametrize(
+    "linked",
+    [(RETRO, KICK_OFF), (KICK_OFF, RETRO), (None, None), (RETRO, None), (None, KICK_OFF)],
+)
+def test_same_titled_meetings_are_numbered_in_the_journal_s_order(
+    linked: tuple[str | None, str | None],
+) -> None:
+    """The first Stand-up, then --2, whichever transcript each links, if any.
+
+    Neither a turn's time nor a file's name orders them: "the data do not enable you to
+    reconstruct any meeting time" and "do not assume that all meeting transcript file
+    names contain a number" (the user, 2026-10-29, plan 044).
+    """
     lines = ["* Entries", "** <2026-10-27 Tue>"]
-    for value in (
-        ":MEETING: [[./transcripts/2026-10-27 Tue/late.org]]",
-        ":MEETING: [[file:transcripts/2026-10-27 Tue/early.org][Record]]",
-        ":PARTICIPANTS: Sam Sample",
-    ):
+    for path in linked:
+        value = ":PARTICIPANTS: Sam" if path is None else f":MEETING: [[./transcripts/{path}]]"
         lines += ["*** Stand-up", ":PROPERTIES:", value, ":END:"]
-    read, _ = transcripts(
-        [transcript("2026-10-27 Tue/early.org"), transcript("2026-10-27 Tue/late.org")],
+    read, _ = transcribed(
+        [transcript(RETRO, "[16:00] Alex: Late.\n"), transcript(KICK_OFF, "[08:00] Sam: Early.\n")],
         archives=True,
     )
-    early, late = (
-        copy.replace(each, start=TUESDAY.replace(hour=hour))
-        for each, hour in zip(read, (9, 14), strict=True)
-    )
-    found, _ = journal(todo("\n".join(lines)), None, archives=True, transcripts=[late, early])
-    assert [(each.id, each.start, each.links) for each in found if each.type == "meeting"] == [
-        ("m-20261027-stand-up--3", late.start, (("transcript", late.id),)),
-        ("m-20261027-stand-up--2", early.start, (("transcript", early.id),)),
-        ("m-20261027-stand-up", TUESDAY, ()),
+    found, _ = journal(todo("\n".join(lines)), None, archives=True, transcripts=by_path(read))
+    assert [(each.id, each.links) for each in found if each.type == "meeting"] == [
+        (identifier, () if path is None else (("transcript", NAMED[path]),))
+        for identifier, path in zip(
+            ["m-20261027-stand-up", "m-20261027-stand-up--2"], linked, strict=True
+        )
     ]
 
 
@@ -1357,14 +1439,15 @@ def test_same_titled_meetings_are_numbered_by_their_transcripts_starts() -> None
 def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
     value: str, unlinked: str | None
 ) -> None:
-    """From the folder of its file, and starts with it; a file not read, up, or none: no link.
+    """From the folder of its file; a file not read, up, or none: no link.
 
     A link that reaches no transcript read is named, for the run's warning, by the file
     that it names in brackets or after file: or ./, else by the meeting's id: never as
-    written, which may hold a passcode, whatever case its scheme takes.
+    written, which may hold a passcode, whatever case its scheme takes. Linked or not,
+    the meeting is its day, whatever its transcript's first turn: "it's usually enough
+    to have the day" (the user, 2026-10-29, plan 044).
     """
-    (record,), _ = transcripts([transcript("2026-10-27 Tue/1.org")], archives=True)
-    record = copy.replace(record, start=TUESDAY.replace(hour=9, minute=31))
+    (record,), _ = transcribed([transcript("2026-10-27 Tue/1.org", TURN_AT_9_31)], archives=True)
     found, named = journal(
         todo(
             "* Entries\n** <2026-10-27 Tue>\n*** Stand-up\n"
@@ -1372,17 +1455,14 @@ def test_a_meeting_links_to_the_transcript_read_that_its_property_names(
         ),
         None,
         archives=True,
-        transcripts=[record],
+        transcripts=by_path([record]),
     )
     (meeting,) = [each for each in found if each.type == "meeting"]
     if unlinked is None:
-        assert (meeting.links, meeting.start, named) == (
-            (("transcript", record.id),),
-            record.start,
-            [],
-        )
+        assert (meeting.links, named) == ((("transcript", record.id),), [])
     else:
-        assert (meeting.links, meeting.start, named) == ((), TUESDAY, [unlinked])
+        assert (meeting.links, named) == ((), [unlinked])
+    assert meeting.dates(None) == (TUESDAY, TUESDAY)
 
 
 @pytest.mark.parametrize(
@@ -1404,12 +1484,13 @@ def test_a_link_to_a_transcript_moved_under_archive_reaches_it_by_its_id(
     """Org rewrites no link when a file moves, and the move keeps its id.
 
     Under transcripts/ or meetings/, a link that reaches no file read reaches the
-    transcript of the id that its path gives; elsewhere, or of another id, none.
+    transcript of the id that its path gives; elsewhere, or of another id, none. The
+    meeting is its day either way: "it's usually enough to have the day" (the user,
+    2026-10-29, plan 044).
     """
-    (record,), _ = transcripts(
-        [transcript("archive/2026/2026-10/2026-10-27 Tue/1.org")], archives=True
+    (record,), _ = transcribed(
+        [transcript("archive/2026/2026-10/2026-10-27 Tue/1.org", TURN_AT_9_31)], archives=True
     )
-    record = copy.replace(record, start=TUESDAY.replace(hour=9, minute=31))
     found, named = journal(
         todo(
             "* Entries\n** <2026-10-27 Tue>\n*** Stand-up\n"
@@ -1417,33 +1498,68 @@ def test_a_link_to_a_transcript_moved_under_archive_reaches_it_by_its_id(
         ),
         None,
         archives=True,
-        transcripts=[record],
+        transcripts=by_path([record]),
     )
     (meeting,) = [each for each in found if each.type == "meeting"]
     if unlinked is None:
-        assert (meeting.links, meeting.start, named) == (
-            (("transcript", record.id),),
-            record.start,
-            [],
-        )
+        assert (meeting.links, named) == ((("transcript", record.id),), [])
     else:
-        assert (meeting.links, meeting.start, named) == ((), TUESDAY, [unlinked])
+        assert (meeting.links, named) == ((), [unlinked])
+    assert meeting.dates(None) == (TUESDAY, TUESDAY)
 
 
-def test_a_meeting_linking_another_day_s_transcript_starts_at_its_own_day() -> None:
-    """A recurring meeting's heading copied with its link: the link kept, the date its day's."""
-    (record,), _ = transcripts([transcript("2026-10-21 Wed/1.org")], archives=True)
-    record = copy.replace(record, start=datetime(2026, 10, 21, 9, tzinfo=UTC))
+@pytest.mark.parametrize(
+    "value",
+    [
+        "[[./transcripts/current/2026-10-27 Tue/1.org]]",
+        "[[./transcripts/2026-10-27 Tue/1.org]]",
+    ],
+)
+def test_a_meeting_links_the_transcript_found_read_or_not(value: str) -> None:
+    """By the id that its path gives, as when read, or that a moved file's path gives.
+
+    The link needs the id alone: "I do not see why one faulty could hold back other
+    meetings" (the user, 2026-10-29, plan 044). Nothing is named for the warning.
+    """
+    found = PurePosixPath("transcripts/current/2026-10-27 Tue/1.org")
+    ids, _ = transcript_ids([found], archives=True)
+    documents, named = journal(
+        todo(
+            "* Entries\n** <2026-10-27 Tue>\n*** Stand-up\n"
+            f":PROPERTIES:\n:MEETING: {value}\n:END:\n"
+        ),
+        None,
+        archives=True,
+        transcripts=ids,
+    )
+    (meeting,) = [each for each in documents if each.type == "meeting"]
+    assert (meeting.links, named) == ((("transcript", "t-20261027-1"),), [])
+
+
+def test_a_meeting_linking_another_day_s_transcript_is_at_its_own_day() -> None:
+    """A recurring meeting's heading copied with its link: the link kept, the date its day's.
+
+    Each meeting is its day: "it's usually enough to have the day" (the user, plan 044).
+    """
+    (record,), _ = transcribed([transcript("2026-10-21 Wed/1.org", TURN_AT_9_31)], archives=True)
     text = "".join(
         f"** {day}\n*** Weekly sync\n:PROPERTIES:\n"
         ":MEETING: [[./transcripts/2026-10-21 Wed/1.org]]\n:END:\n"
         for day in ("<2026-10-21 Wed>", "<2026-10-28 Wed>")
     )
-    found, _ = journal(todo(f"* Entries\n{text}"), None, archives=True, transcripts=[record])
+    found, _ = journal(
+        todo(f"* Entries\n{text}"), None, archives=True, transcripts=by_path([record])
+    )
     linked = (("transcript", record.id),)
-    assert [(each.id, each.start, each.links) for each in found if each.type == "meeting"] == [
-        ("m-20261021-weekly-sync", record.start, linked),
-        ("m-20261028-weekly-sync", datetime(2026, 10, 28, tzinfo=UTC), linked),
+    wednesday, next_wednesday = (
+        datetime(2026, 10, 21, tzinfo=UTC),
+        datetime(2026, 10, 28, tzinfo=UTC),
+    )
+    assert [
+        (each.id, each.dates(None), each.links) for each in found if each.type == "meeting"
+    ] == [
+        ("m-20261021-weekly-sync", (wednesday, wednesday), linked),
+        ("m-20261028-weekly-sync", (next_wednesday, next_wednesday), linked),
     ]
 
 
@@ -1456,35 +1572,33 @@ def test_only_a_meeting_s_link_that_reaches_nothing_is_returned_in_meetings_orde
         "*** First\n:PROPERTIES:\n:MEETING: [[./first.org]]\n:END:\n"
         "** <2026-10-27 Tue>\n*** Second\n:PROPERTIES:\n:MEETING: [[../second.org]]\n:END:\n"
     )
-    _, unlinked = journal(todo(text), None, archives=False, transcripts=())
+    _, unlinked = journal(todo(text), None, archives=False, transcripts={})
     assert unlinked == ["first.org", "m-20261027-second"]
 
 
-# The transcript that no meeting of SAMPLE links.
-ALONE = f"t-{sha('alone.org')}"
-
-
 @pytest.mark.parametrize(
-    ("unread", "linked", "kinds"),
+    ("unread", "every"),
     [
-        (set(), set(), ["entry", "day", "meeting", "transcript", "transcript"]),
-        (set(), {ALONE}, ["entry", "day", "meeting", "transcript", "transcript"]),
-        ({"todo.org"}, set(), []),
-        ({"todo.org_archive"}, set(), []),
-        ({"transcripts/misc/x.org"}, set(), ["entry", "day", "transcript"]),
-        ({"transcripts/misc/x.org"}, {ALONE}, ["entry", "day"]),
-        ({"transcripts, meetings"}, set(), ["entry", "day", "transcript"]),
+        (set(), True),
+        ({"todo.org"}, False),
+        ({"todo.org_archive"}, False),
+        ({"."}, False),
+        ({"transcripts/misc/x.org"}, True),
+        ({"meetings/2026-10-27 Tue/1.org"}, True),
+        ({"transcripts/current"}, True),
+        ({"transcripts, meetings"}, True),
     ],
 )
-def test_a_file_not_read_holds_back_each_document_that_draws_on_it(
-    unread: set[str], linked: set[str], kinds: list[str]
+def test_a_file_not_read_holds_back_every_document_for_the_journal_s_alone(
+    unread: set[str], *, every: bool
 ) -> None:
-    """The journal's files: every one; another: the meetings and what links one.
+    """The journal's files, or the folder itself: none written; any other: each one read.
 
-    Nor a document whose file links one, as the mirror holds it, though it links none
-    now: the meeting that its file names keeps its file, which names it back.
+    A file not read builds no document, which keeps its last copy, and holds back no
+    other, links and all: "I do not see why one faulty could hold back other meetings"
+    (the user, 2026-10-29, plan 044).
     """
-    read, _ = transcripts(
+    read, _ = transcribed(
         [
             Source(
                 path=PurePosixPath("meetings/2026-10-27 Tue/1.org"),
@@ -1495,11 +1609,46 @@ def test_a_file_not_read_holds_back_each_document_that_draws_on_it(
         ],
         archives=True,
     )
-    found, _ = journal(todo(DECLARED + SAMPLE), None, archives=True, transcripts=read)
+    found, _ = journal(todo(DECLARED + SAMPLE), None, archives=True, transcripts=by_path(read))
     documents = [*found, *linked_back(read, found)]
-    written = writable(documents, unread, linked)
-    assert [each.type for each in written] == kinds
-    assert all(each.links == () for each in written if unread)
+    assert [each.type for each in documents] == [
+        "entry",
+        "day",
+        "meeting",
+        "transcript",
+        "transcript",
+    ]
+    assert writable(documents, unread) == (documents if every else [])
+
+
+@pytest.mark.parametrize(
+    ("where", "held"),
+    [
+        ("todo.org", "every document"),
+        ("todo.org_archive", "every document"),
+        (".", "every document"),
+        ("transcripts/current/2026-10-27 Tue/1.org", "t-20261027-1"),
+        ("meetings/out.org", f"t-{sha('meeting-out.org')}"),
+        ("transcripts/current/2026-10-27 Tue", "the transcripts not read under it"),
+        ("meetings/out.html", "the transcripts not read under it"),
+        ("transcripts, meetings", "the transcripts not read under it"),
+    ],
+)
+def test_a_file_not_read_says_what_it_held_back(where: str, held: str) -> None:
+    """Every document for the journal's files; a transcript's id; else what is under it.
+
+    "It should be flagged and reported loudly in logs" (the user, 2026-10-29, plan 044).
+    A path and a reason do not tell a folder from a file: a folder, an HTML file and an
+    org file linking out read alike, the last a transcript of an id.
+    """
+    ids, _ = transcript_ids(
+        [
+            PurePosixPath("transcripts/current/2026-10-27 Tue/1.org"),
+            PurePosixPath("meetings/out.org"),
+        ],
+        archives=True,
+    )
+    assert held_back(where, ids) == held
 
 
 def test_the_work_log_s_relations_are_among_the_front_matter_s() -> None:
@@ -1509,14 +1658,14 @@ def test_the_work_log_s_relations_are_among_the_front_matter_s() -> None:
 
 def test_a_transcript_links_back_to_each_meeting_that_links_to_it() -> None:
     """By summary, in the meetings' order; a transcript that no meeting names, to none."""
-    read, _ = transcripts(
+    read, _ = transcribed(
         [transcript("2026-10-27 Tue/1.org"), transcript("2026-10-27 Tue/2.org")], archives=True
     )
     lines = ["* Entries", "** <2026-10-27 Tue>"]
     for title in ("Stand-up", "Retro"):
         value = "[[./transcripts/2026-10-27 Tue/1.org]]"
         lines += [f"*** {title}", ":PROPERTIES:", f":MEETING: {value}", ":END:"]
-    found, _ = journal(todo("\n".join(lines)), None, archives=True, transcripts=read)
+    found, _ = journal(todo("\n".join(lines)), None, archives=True, transcripts=by_path(read))
     assert [(each.id, each.links) for each in linked_back(read, found)] == [
         ("t-20261027-1", (("summary", "m-20261027-stand-up"), ("summary", "m-20261027-retro"))),
         ("t-20261027-2", ()),
@@ -1544,7 +1693,7 @@ ARCHIVED = (
 
 def test_archived_headings_join_their_day_or_the_meeting_their_path_names() -> None:
     """A meeting alone is one of its day; else the meeting named next, else the day, at level 2."""
-    found, _ = journal(todo(DECLARED + JOINED), archived(ARCHIVED), archives=True, transcripts=())
+    found, _ = journal(todo(DECLARED + JOINED), archived(ARCHIVED), archives=True, transcripts={})
     assert [(each.type, each.id, each.labels) for each in found] == [
         ("day", "d-20261027", ()),
         ("meeting", "m-20261027-stand-up", ()),
@@ -1609,7 +1758,7 @@ def test_an_archived_task_joins_the_meeting_whose_title_its_path_holds_as_org_wr
         todo(f"* Entries\n** <2026-10-27 Tue>\n{SLASHED}"),
         archived(FROM_SLASHED),
         archives=True,
-        transcripts=(),
+        transcripts={},
     )
     held = {
         each.title: [line for line in body(each) if not line.startswith(":")][1:] for each in found
@@ -1633,7 +1782,7 @@ def test_an_archived_task_joins_the_meeting_whose_title_its_path_holds_as_org_wr
 
 def test_a_day_that_archived_headings_alone_name_takes_its_title_from_their_path() -> None:
     """Archived, from the archive file, its journal the path's part before it."""
-    found, _ = journal(todo(""), archived(ARCHIVED), archives=True, transcripts=())
+    found, _ = journal(todo(""), archived(ARCHIVED), archives=True, transcripts={})
     day = found[0]
     assert (day.id, day.title, day.breadcrumb, day.labels) == (
         "d-20261027",
@@ -1652,10 +1801,10 @@ def test_without_archives_archived_days_and_meetings_are_left_out() -> None:
         "** <2026-10-27 Tue>\n*** Kept\n:PROPERTIES:\n:PARTICIPANTS: Sam\n:END:\n"
         "*** Gone :ARCHIVE:\n:PROPERTIES:\n:PARTICIPANTS: Kim\n:END:\n"
     )
-    kept, _ = journal(todo(text), archived(ARCHIVED), archives=False, transcripts=())
+    kept, _ = journal(todo(text), archived(ARCHIVED), archives=False, transcripts={})
     assert [each.id for each in kept] == ["d-20261027", "m-20261027-kept"]
     assert "#+OPTIONS: arch:nil " in kept[0].text
-    every, _ = journal(todo(text), archived(ARCHIVED), archives=True, transcripts=())
+    every, _ = journal(todo(text), archived(ARCHIVED), archives=True, transcripts={})
     assert [(each.id, each.labels) for each in every] == [
         ("d-20261026", ("ARCHIVE",)),
         ("m-20261026-old", ("ARCHIVE",)),

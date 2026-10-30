@@ -31,13 +31,14 @@ kb-mcp check
 - Names beginning with `.` or `#`, or ending in `~`, are passed over: hidden files, and
   Emacs's lock, autosave and backup files. A link is followed only inside the folder.
 - A file over 32 MiB, a link out of the folder, or a file that is not UTF-8 is named by
-  its path, never by its content, and the run removes nothing, nor writes what draws on
-  it, until it is fixed: for a transcript, every meeting, so that an edited meeting
-  stays as it was and a new one has no file yet, though its day names it.
-  `worklog.nothing_removed` says how many documents were held back. Past 20,000
-  transcripts in the two folders, the first in path order are read and the rest are a
-  problem, so that no meeting is written: count them before a first run, with
-  `find transcripts meetings -name '*.org' | wc -l` in the folder.
+  its path, never by its content, in a warning, `worklog.problem`, that says what it
+  held back, at each run until it is fixed, and `sync` exits 1. The run removes
+  nothing, nor writes what the file builds: for `todo.org` or its archive, every
+  document; for a transcript, its own, whose last copy stays, while its meeting is
+  written and links it as before. Past 20,000 transcripts in the two folders, the first
+  in path order are read and the rest are a problem, which holds back those files
+  alone: a meeting that links one is written without the link. Count them before a
+  first run, with `find transcripts meetings -name '*.org' | wc -l` in the folder.
 
 Keywords are those `todo.org` declares, as org reads them: put the line that your Emacs
 configuration holds in the file, such as `#+TODO: TODO WAITING | DONE`, else only `TODO`
@@ -89,10 +90,10 @@ A note of the day.
   under `archive/`, reaches it by the id that its path gives, which the move kept. A
   `:TRANSCRIPT:` URL is no link here.
 - A transcript's people are its speakers: each line such as
-  `[09:31] Alex Example: Morning.`, the time optional, read inside the file's
-  `#+begin_quote` blocks when it has any, so that your notes outside them name nobody;
-  else on every line, where a line of prose such as `Decision: we wait` reads as a
-  speaker too.
+  `[09:31] Alex Example: Morning.`, the time optional and dating nothing, read inside
+  the file's `#+begin_quote` blocks when it has any, so that your notes outside them
+  name nobody; else on every line, where a line of prose such as `Decision: we wait`
+  reads as a speaker too.
 - Archiving keeps all this: org writes a day archived at level 1 of `todo.org_archive`,
   and a meeting or a task archived alone with `:ARCHIVE_OLPATH:` naming its day, which
   it joins again, or its meeting. Every part of one date, `todo.org` first, makes one
@@ -110,27 +111,31 @@ property may swap files when reordered.
 
 A day's id is `d-` and its date, `d-20261027`. A meeting's is `m-`, its day's date and
 its title's slug, `m-20261027-payments-stand-up`; a second meeting of one day and slug
-takes `--2`, by start time, then in order: two dashes, which no slug holds, so that
-`Stand-up 2`, `stand-up-2`, keeps its id beside two `Stand-up`. Archiving a day or a
-meeting keeps its id, but for two meetings of one day and one slug, such as two of one
-title, or `Réunion d'équipe` and `Reunion d'equipe`: they swap ids when the order of
-their start times changes, or, neither with a transcript, the order in which they are
-read, `todo.org` first, then the archive in the order org appended to it. So archiving
-the first alone, or the second alone and its day later, swaps them, as does giving the
-first a transcript while the second has none. A title of another slug avoids it.
-Renaming a meeting gives it a new id.
+takes `--2`, a third `--3`, in the order in which they are read, `todo.org` first, then
+the archive in the order org appended to it, never by a time or a transcript: two
+dashes, which no slug holds, so that `Stand-up 2`, `stand-up-2`, keeps its id beside
+two `Stand-up`. Archiving a day or a meeting keeps its id, but for two meetings of one
+day and one slug, such as two of one title, or `Réunion d'équipe` and
+`Reunion d'equipe`: they swap ids whenever that order changes, with transcripts or
+without. So reordering them, archiving the first alone, or the second alone and its
+day later, swaps them, each time; linking a transcript swaps nothing. A title of
+another slug avoids it. Renaming a meeting gives it a new id.
 
 A transcript's id is the day that begins its folder's name (or its own) and its name:
 `transcripts/current/2026-10-20 Tue/1.org` is `t-20261020-1`, kept when the file moves
 under `transcripts/archive/`. A name holding other characters than ASCII letters,
 digits, `_` and `-` takes its slug, as a file name does: `notes on x.org` of 21 October
 is `t-20261021-notes-on-x`. A file under `meetings/` takes `meeting-` before its name,
-so that `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. A file without a day
-takes a digest of its name. Of two files of one id, such as a copy and its original,
-or two `notes.org` in two folders, the file whose folder comes first by name keeps it,
-then the first in path order, and a warning names both. So archiving one, with its
-folder, never hands its id to the other, unless the two folders have one name, as a
-copy's may.
+so that `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. A name is a handle
+alone, a number or words: `meetings/2026-10-27 Tue/Vendor call.org` is
+`t-20261027-meeting-vendor-call`, and no order or time is read from it. A file without
+a day takes a digest of its name. Of two files of one id, such as a copy and its
+original, or two `notes.org` in two folders, the file whose folder comes first by name
+keeps it, then whose own name does, then the first in path order, read or not, and a
+warning names both; while the first is not read, a link to the id reaches the copy that
+the id last named, which may be the other file's. So
+archiving one, with its folder, never hands its id to the other, unless the two folders
+have one name, as a copy's may.
 
 ## 4. Mirror it
 
@@ -161,19 +166,19 @@ Dates, as `created` and `updated`:
 
 - An entry: its earliest and latest timestamps (a timestamp after the file's last change
   is a plan, and does not count).
-- A day, a meeting and a transcript: when it happened. A day at its date's midnight; a
-  transcript at its first turn's time, when it reads strictly as `HH:MM` or `HH:MM:SS`,
-  else at its earliest timestamp on its day, else at its day's midnight; a meeting when
-  its transcript starts on the meeting's day, else at its day's midnight. A meeting
-  copied with its link to another day's transcript, as a recurring meeting may be,
-  keeps the link and its own day, and that transcript names both meetings. Times are
-  read as written, as UTC, as org's timestamps are: a caption tool that writes an
-  offset from the start, `00:05`, dates its transcript at five past midnight.
+- A day, a meeting, and a transcript whose folder's name or its own begins with a date:
+  their day, at its midnight UTC, whatever their lines hold. The work log gives the day
+  a meeting was held, never its time, so a turn's time, such as `[09:31]`, and a
+  timestamp of the day date nothing. `read` and search show such a date as
+  `2026-10-27 00:00 UTC`, which stands for the day. A meeting copied with its link to
+  another day's transcript, as a recurring meeting may be, keeps the link and its own
+  day, and that transcript names both meetings.
+- A transcript without a day, such as `transcripts/misc/a.org`: as an entry.
 
 A document whose text did not change is not converted again, and an entry's file keeps
 its dates, so an edit to one entry moves no other. A day's, a meeting's and a dated
 transcript's dates and links are found afresh at each run: a transcript saved later
-dates and links its meeting without converting it again. pandoc converts each document;
+links its meeting without converting it again. pandoc converts each document;
 a transcript's lines stay apart.
 
 `sync` then rebuilds the index, by default in hybrid mode, which needs the embedding
@@ -192,25 +197,31 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
 - A day or a meeting archived keeps its id and its file, but for the swaps of two
   meetings of one slug above. A meeting renamed takes a new id, as an entry without
   `:ID:` does.
-- A transcript added or removed changes the links and dates of the meeting whose
-  `:MEETING:` names it, whose file is written again without a conversion; one moved
+- A transcript added or removed changes the link of the meeting whose `:MEETING:`
+  names it, whose file is written again without a conversion; one moved
   under `archive/`, its id kept, changes neither.
-- A `:MEETING:` that links no transcript read, through `..`, absolute, of another type,
-  or to a file not read, such as one outside `transcripts/` and `meetings/`, or one
-  there whose id no transcript read has, leaves its meeting without a link. The run
+- A `:MEETING:` that links no transcript found, through `..`, absolute, of another
+  type, or to a file not found, such as one outside `transcripts/` and `meetings/`, or
+  one there whose id no transcript found has, leaves its meeting without a link. The run
   warns once, `worklog.unlinked`, with how many and the first: the file that its link
   names when it is in brackets or begins `file:` or `./`, else the meeting's id, a path
   alone included, since any text, a meeting room's URL among them, reads as one; never
   the link itself ([sync's telemetry](../reference/telemetry/sync.md)). It goes on: the
   warning holds no removal back.
-- A document removed loses its file, unless the run reported a problem (a file not
-  read, a conversion that failed): then every file stays, until a run reads the work
-  log whole. A document whose conversion fails before it has a file is named in no
-  other's `links` until a run converts it.
-- A file not read also holds back the files that draw on it, which stay as they were:
-  for `todo.org` or its archive, every file; for a transcript, every meeting's and each
-  that links a meeting, or whose file does, so that a link stays written on both files.
-  The others are written as usual.
+- A document removed loses its file, unless the run reported a problem (a file not read,
+  a conversion that failed): then every file stays, but the old one of an entry or a
+  transcript written again under a new title, until a run reads the work log whole, and
+  the warning says why at each run. So, meanwhile, a meeting renamed, or an entry
+  renamed without `:ID:`, is found under its old id and its new, and one deleted stays,
+  its file still naming the transcript or the meetings that no longer name it back. A
+  document not read, or whose conversion fails, before it has a file is named in no
+  other's `links` until a run reads and converts it.
+- A file not read also holds back the files that it builds, which stay as they were: for
+  `todo.org` or its archive, every file; for a transcript, its own; for a folder that
+  cannot be listed, the transcripts under it, but one whose id a file elsewhere takes,
+  whose copy then replaces it. The others are written as usual. A meeting that links a
+  transcript not read names it, whose last copy names the meeting back; a link added or
+  removed meanwhile is written on the meeting alone until a run reads the transcript.
 - `archives = false` removes, at the next run, the files of what the archive file holds,
   of `transcripts/archive/` and `meetings/archive/`, and of the headings tagged
   `ARCHIVE`; a meeting that links an archived transcript then links nothing, and is
@@ -246,8 +257,9 @@ word-by-word record, which they should prefer when quoting and check a summary a
 Its text comes to them as untrusted reference data, as a page's does. `browse` lists
 spaces and projects, not the work log:
 `search(sort="updated", filters={"source": "worklog"})` lists its entries by their last
-change, but its days, meetings and dated transcripts by when they happened, so that an
-edit to an old meeting does not surface there and a day written ahead sorts first.
+change, but its days, meetings and dated transcripts by their day, so that an edit to
+an old meeting does not surface there and a day written ahead sorts first; one day's
+documents tie, and come by path.
 
 ## 7. Join a speaker to a colleague
 

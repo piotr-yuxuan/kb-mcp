@@ -42,7 +42,7 @@ flowchart LR
 |---|---|---|---|---|
 | `download` | the site, GET only | `<data>/raw/` | a lock, and each snapshot renamed into place | the document is counted and skipped; the run goes on |
 | `mirror` | the raw store | `<data>/docs/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is reported, its last good file kept; a damaged cache is replaced |
-| the work log, in `sync` | its folder, in place | `<data>/docs/worklog/` | each file renamed into place | the file or document is named by its path; no file is removed |
+| the work log, in `sync` | its folder, in place | `<data>/docs/worklog/` | each file renamed into place | the file or document is named by its path; no file is removed but the old one of a document written again under another title's path |
 | `index` | the mirror; the user's alias file, if any; the endpoint, for new texts | `<data>/index.sqlite`, `<data>/vectors.sqlite` | the index built aside, then renamed into place; the vector store pruned under its lock, its deletions one transaction | the file is skipped and named; a name that could be several people is joined to none, and named; without the endpoint, or with an alias file refused, the old index stays; a prune it cannot trust deletes nothing |
 | `serve` | the index; the endpoint, for queries; the reranking server, when on | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why; without the reranker, it keeps its order and says why |
 
@@ -187,7 +187,7 @@ pandoc reads, with pandoc's version and options
 ([`revision`](../../src/kb_mcp/sources/worklog/domain/worklog.py),
 [`Pandoc.org_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py)): a
 document whose file holds that revision keeps its body and its dates, but a day, a meeting
-or a dated transcript, dated afresh by when it happened; another is converted again
+or a dated transcript, dated afresh by its day; another is converted again
 ([`Pandoc.org_markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py)).
 
 - **Writes**, into `<data>/docs/worklog/` alone, through the mirror's
@@ -198,10 +198,13 @@ or a dated transcript, dated afresh by when it happened; another is converted ag
   ([`listed`](../../src/kb_mcp/sources/worklog/adapters/files.py)), is
   over 32 MiB or is not UTF-8
   ([`source`](../../src/kb_mcp/sources/worklog/adapters/files.py)), or a
-  conversion that fails, is named by its path, never by its content; the run goes on,
-  writes no file that draws on a file not read
+  conversion that fails, is named by its path, never by its content, with what it holds
+  back ([`held_back`](../../src/kb_mcp/sources/worklog/domain/worklog.py));
+  the run goes on, writes no file that a file not read builds, every one for `todo.org`
+  or its archive, else that file's own
   ([`writable`](../../src/kb_mcp/sources/worklog/domain/worklog.py)),
-  and then removes no file, so that the last good copy of each stays.
+  and then removes no file but the old one of a document written again under another
+  title's path, so that the last good copy of each stays.
 - **Offline**, everything: the work log is on this machine.
 
 ## Index: from Markdown to words and vectors
