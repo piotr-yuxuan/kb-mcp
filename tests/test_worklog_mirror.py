@@ -966,8 +966,9 @@ def test_a_folder_or_an_html_file_not_read_holds_back_what_is_under_it(
 ) -> None:
     """A folder not listed, a folder and an HTML file linking out: no id, each said.
 
-    A path and a reason do not tell them from a file, so each holds back the transcripts
-    not read under it, and every document read is written.
+    A path and a reason do not tell the last two from a file, so each holds back the
+    transcripts not read under it, as does the first, though its name ends in .org; and
+    every document read is written.
     """
     run()
     outside = tmp_path / "elsewhere"
@@ -975,7 +976,7 @@ def test_a_folder_or_an_html_file_not_read_holds_back_what_is_under_it(
     (outside / "call.html").write_text("<p>Words.</p>\n", "utf-8")
     (run.root / "transcripts/misc/out").symlink_to(outside)
     (run.root / "transcripts/misc/out.html").symlink_to(outside / "call.html")
-    locked = run.root / "meetings/locked"
+    locked = run.root / "meetings/locked.org"
     locked.mkdir()
     locked.chmod(0)
     try:
@@ -984,7 +985,7 @@ def test_a_folder_or_an_html_file_not_read_holds_back_what_is_under_it(
         locked.chmod(0o700)
     under = "the transcripts not read under it"
     assert sorted((each.where, each.held_back) for each in outcome.problems) == [
-        ("meetings/locked", under),
+        ("meetings/locked.org", under),
         ("transcripts/misc/out", under),
         ("transcripts/misc/out.html", under),
     ]

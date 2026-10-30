@@ -136,10 +136,11 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
                 unread.append((str(relative), str(error)))
         found = {each.path: each for each in sources}
         # A file linking out is a problem, never listed: its path names it all the same.
-        ids, warnings = transcript_ids(
-            [*listing.paths, *(PurePosixPath(each.path) for each in listing.problems)],
-            archives=archives,
-        )
+        # A folder not listed, though its name may end in .org, names none.
+        out = [
+            PurePosixPath(each.path) for each in listing.problems if each.reason == files.LINKS_OUT
+        ]
+        ids, warnings = transcript_ids([*listing.paths, *out], archives=archives)
         problems = [
             Problem(where=where, reason=reason, held_back=held_back(where, ids))
             for where, reason in unread
