@@ -145,11 +145,9 @@ def _record_json(path: Path) -> object:
     # as is one that no read reaches, such as a folder in its place.
     try:
         return _decode(path)
-    except ValueError:
-        message = f"{path.name}: not JSON"
-        raise RepresentationError(message) from None
-    except OSError as error:
-        message = f"{path.name}: not read: {type(error).__name__}"
+    except UNREADABLE as error:
+        why = "not JSON" if isinstance(error, ValueError) else f"not read: {type(error).__name__}"
+        message = f"{path.name}: {why}"
         raise RepresentationError(message) from None
 
 
