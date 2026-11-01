@@ -347,8 +347,10 @@ whose bytes differ, through a hidden file renamed into place. Then, when nothing
 reported, it removes every file that its source owns
 ([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py): documents and
 trees) and no longer wants, such as the file of a document gone or moved, or the old name
-of one whose title changed, and an attached file that no placed document of either source
-wants ([`attached`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py)). When
+of one whose title changed. Then it removes an attached file that no placed document of
+either source wants ([`attached`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py))
+and no document's file left links
+([`unlinked`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py)). When
 something was reported of this source, it removes only
 the files of documents confirmed gone, and the old file of a document that moved once
 its new file is built, so that the last good copy of every other stays.
