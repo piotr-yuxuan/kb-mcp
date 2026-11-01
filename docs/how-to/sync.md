@@ -92,10 +92,11 @@ run; each repeats, and takes `confluence`, `jira` or `worklog`. The index is reb
 whatever the choice: `sync --include worklog` refreshes the work log alone, and search
 still finds every page and issue mirrored. `sync --include confluence` prepares
 Confluence alone, so Jira's files whose links depend on Confluence's pages are rewritten
-only when Jira is prepared. A source included without its table, or a run left with none,
-is refused, saying why. The work log reads no period: an option of
-the period given while it runs is said to be ignored by it (`--since: ignored by
-worklog`), and settings that no source taken uses are said not applied, never refused.
+only when Jira is prepared, and what they attach stays until then. A source included
+without its table, or a run left with none, is refused, saying why. The work log reads
+no period: an option of the period given while it runs is said to be ignored by it
+(`--since: ignored by worklog`), and settings that no source taken uses are said not
+applied, never refused.
 
 ## 4. Look before running
 

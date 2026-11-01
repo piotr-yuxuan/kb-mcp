@@ -5,8 +5,8 @@ renamed into place, so that a reader never sees half of it, and only when its by
 differ, so that a run that changes nothing leaves every file and its time as they were.
 Each step removes only the files it owns, as its source's ``owned`` finds them:
 Confluence's mirror those under ``confluence/``, Jira's those under ``jira/``, each the
-attached files under ``assets/`` that no document wants, the work log's step those under
-``worklog/``.
+attached files under ``assets/`` that no document wants or links, the work log's step
+those under ``worklog/``.
 """
 
 from __future__ import annotations

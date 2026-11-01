@@ -1,7 +1,8 @@
 """The files of the mirror that Confluence's and Jira's prepares own, and so may remove.
 
 Each source owns its documents, under its own folder, and Confluence each space's tree;
-the attached files under ``assets/`` are theirs together.
+the attached files under ``assets/`` are theirs together, and a document's file holds
+on to those that it links.
 """
 
 from __future__ import annotations
@@ -42,3 +43,19 @@ def attached(docs: Path) -> set[PurePosixPath]:
     if assets.is_dir():
         found = [path for path in assets.iterdir() if ASSET_NAME.fullmatch(path.name)]
     return regular_files(docs, found)
+
+
+def unlinked(docs: Path, candidates: set[PurePosixPath]) -> set[PurePosixPath]:
+    """Return those of these attached files that no file of either source under ``docs`` links.
+
+    A file not rebuilt, the other source's or one that failed to convert, still links
+    what its document wanted when it was written. Its link holds the attached file's
+    name, a digest, so a mention of it holds the file too. Reads no file without a
+    candidate.
+    """
+    left = set(candidates)
+    for source in ATLASSIAN if left else ():
+        for relative in owned(docs, source):
+            text = (docs / relative).read_bytes()
+            left = {each for each in left if each.name.encode() not in text}
+    return left

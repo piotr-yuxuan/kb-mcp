@@ -853,6 +853,102 @@ def test_an_unreadable_issue_holds_back_jira_s_removals_and_every_attached_file_
     assert [relative for relative in stale if relative in sandbox.files()] == []
 
 
+# An image that the next revision of a document attaches in place of its first.
+THIRD_IMAGE = b"\x89PNG the next image"
+
+
+def issue_with_the_next_image(sandbox: Sandbox, summary: str) -> str:
+    """Store PRB-1's next revision, its file another; give the file that its last copy links."""
+    with sandbox.store.writing():
+        next_image = sandbox.store.put_blob(THIRD_IMAGE)
+        updated = issue_responses(summary, "2026-10-21T09:00:00.000+0000")
+        sandbox.store.put(Issue, updated, FETCHED, {"10000": next_image})
+    return f"assets/{digest(OTHER_IMAGE)}.png"
+
+
+def test_a_file_that_a_kept_issue_links_stays_while_pandoc_fails_on_its_next_revision(
+    sandbox: Sandbox,
+) -> None:
+    """The last good copy of a document keeps its image, whichever source's prepare runs.
+
+    No placed document wants the issue's first image, its next revision attaching another,
+    yet the file not rebuilt still links it. Built at last, it no longer does: the image
+    goes with Jira's prepare.
+    """
+    sandbox.run()
+    before = sandbox.files()
+    image = issue_with_the_next_image(sandbox, "Failing ideas")
+    outcomes = sandbox.run(markdown=failing_on("Failing ideas"))
+    assert outcomes["confluence"].problems == ()
+    assert [problem.reason for problem in outcomes["jira"].problems] == ["pandoc: exit status 9"]
+    assert each(outcomes, lambda outcome: outcome.changes.removed) == {"confluence": 0, "jira": 0}
+    files = sandbox.files()
+    assert files["jira/PRB/PRB-1.md"] == before["jira/PRB/PRB-1.md"]
+    assert image in files
+    assert image.removeprefix("assets/") in sandbox.text("jira/PRB/PRB-1.md")
+    outcomes = sandbox.run()
+    assert each(outcomes, lambda outcome: outcome.changes.removed) == {"confluence": 0, "jira": 1}
+    assert image not in sandbox.files()
+
+
+def test_a_file_that_a_page_not_rebuilt_links_outlives_the_hold_of_its_source_s_problem(
+    sandbox: Sandbox,
+) -> None:
+    """Page 300 fails: Jira's prepare, which has no problem, leaves its image to its file.
+
+    Both documents that attach the image take another: no placed document wants it.
+    """
+    sandbox.run()
+    before = sandbox.files()
+    with sandbox.store.writing():
+        next_image = sandbox.store.put_blob(THIRD_IMAGE)
+        leaf = [v2_attachment(id="att400", title="leaf.png", pageId="300")]
+        failing = page_responses("300", "Leaf", 3, "<p>Failing leaf.</p>", leaf)
+        sandbox.store.put(Page, failing, FETCHED, {"att400": next_image})
+        sandbox.store.put(
+            BlogPost, post_responses("<p>News.</p>", 2), FETCHED, {"att700": next_image}
+        )
+    outcomes = sandbox.run(markdown=failing_on("Failing leaf."))
+    assert [problem.where for problem in outcomes["confluence"].problems] == [
+        "confluence/pages/300/000003"
+    ]
+    assert outcomes["jira"].problems == ()
+    assert each(outcomes, lambda outcome: outcome.changes.removed) == {"confluence": 0, "jira": 0}
+    files = sandbox.files()
+    assert files["confluence/MFS/300-leaf.md"] == before["confluence/MFS/300-leaf.md"]
+    assert f"assets/{digest(IMAGE)}.png" in files
+
+
+def test_a_file_that_the_source_not_prepared_links_stays_until_it_is_prepared(
+    sandbox: Sandbox,
+) -> None:
+    """With no problem at all, Confluence's prepare leaves the image of Jira's file not rebuilt.
+
+    As ``sync --include confluence`` after a download does; Jira's prepare then takes it.
+    """
+    sandbox.run()
+    image = issue_with_the_next_image(sandbox, "Other ideas")
+    assert sandbox.run(sources=("confluence",))["confluence"].changes.removed == 0
+    assert image in sandbox.files()
+    assert sandbox.run(sources=("jira",))["jira"].changes.removed == 1
+    assert image not in sandbox.files()
+
+
+def test_a_file_that_a_stale_document_alone_links_goes_with_that_document(
+    sandbox: Sandbox,
+) -> None:
+    """The issue gone from the store, Jira's prepare removes its file, then its file's image."""
+    sandbox.run()
+    image = f"assets/{digest(OTHER_IMAGE)}.png"
+    shutil.rmtree(sandbox.store.root / "jira" / "issues" / "10000")
+    outcomes = sandbox.run()
+    assert each(outcomes, lambda outcome: outcome.changes.removed) == {
+        "confluence": 0,
+        "jira": len(["PRB-1.md", image]),
+    }
+    assert image not in sandbox.files()
+
+
 def test_each_source_prunes_its_own_conversions_alone(sandbox: Sandbox) -> None:
     """Plan 030, criterion 11: Leaf edited, Confluence's prepare prunes Leaf's old conversion.
 

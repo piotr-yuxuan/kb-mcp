@@ -8,8 +8,9 @@ changed. Pandoc's conversions come through the source's rows of the cache of
 ``conversions``, which converts only what it has not converted before. What cannot be
 read or converted is reported by the source it belongs to, and a source that reports
 anything removes none of its files and none of its conversions, so that the last good
-copy of each stays. Reading, building and writing are each a span; each document built
-is counted and timed, never a span, as ``docs/reference/telemetry/mirror.md`` lists it.
+copy of each stays; an attached file stays while any document's file links it. Reading,
+building and writing are each a span; each document built is counted and timed, never a
+span, as ``docs/reference/telemetry/mirror.md`` lists it.
 """
 
 from __future__ import annotations
@@ -41,7 +42,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
 )
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, ConfluenceDocument, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH
-from kb_mcp.sources.atlassian.prepare.adapters.owned import attached, owned
+from kb_mcp.sources.atlassian.prepare.adapters.owned import attached, owned, unlinked
 from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
     Context,
     MarkupError,
@@ -325,11 +326,13 @@ def mirror(
     they attach, and each space's tree when pages are among them. The source then
     removes its files that are no longer wanted, and prunes its conversions that this
     run did not use, unless it reports a problem. An attached file that no placed
-    document wants goes too, unless any problem was found, of either source: a document
-    that cannot be read or placed wants none of its files. The task named after the
-    source, as ``confluence documents``, reports the documents' files built, each by its
-    path. The spans ``mirror.read``, ``mirror.build`` and ``mirror.write`` hold reading
-    the store, building the files and writing them, the prune included; ``mirror.placed``
+    document wants goes next, while no file left of either source links it and no
+    problem was found, of either source: a document that cannot be read or placed wants
+    none of its files, and a last good copy links what its document wanted. The task
+    named after the source, as ``confluence documents``, reports the documents' files
+    built, each by its path. The spans ``mirror.read``, ``mirror.build`` and
+    ``mirror.write`` hold reading the store, building the files and writing them, the
+    prune included; ``mirror.placed``
     and ``mirror.written`` say at INFO, with the source, how many of its documents were
     placed, and files written and conversions run, reused and pruned, ``mirror.document``
     at DEBUG each document built, by its path, id and title.
@@ -398,16 +401,19 @@ def mirror(
     written = sum(1 for each in own if each.path in wanted)
     # A moved document's old file goes once its new one is built, never before.
     gone = [old for old, new in retired.items() if new is None or new in wanted]
-    # The attached files that no placed document wants, while no problem was found.
-    spare = set() if any(found.values()) else attached(docs) - set(assets)
     with TRACER.start_as_current_span("mirror.write"):
         changes = sync(
-            docs,
-            wanted,
-            lambda folder: owned(folder, source) | spare,
-            remove=not problems,
-            retired=gone,
+            docs, wanted, lambda folder: owned(folder, source), remove=not problems, retired=gone
         )
+        # Once the source's files are as they stay, what no placed document wants and no
+        # file links, while no problem was found.
+        swept = sync(
+            docs,
+            {},
+            lambda folder: unlinked(folder, attached(folder) - set(assets)),
+            remove=not any(found.values()),
+        )
+        changes = replace(changes, removed=changes.removed + swept.removed)
         pruned = conversions.prune(remove=not problems)
     log.info(
         "mirror.written",
