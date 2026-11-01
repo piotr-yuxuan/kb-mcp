@@ -160,7 +160,7 @@ whichever source wrote them; [sources](sources.md#three-roles-not-a-bundle) say 
   each source by name in `cli` and `config`, on which `sync` dispatched since plan 017,
   which treats a new source as a change to the core.
 - **Settled** by the maintainer, in
-  [plan 030](../work/plans/030-sources-as-equals.md#settled-by-the-user).
+  [plan 030](../work/changelog/030-sources-as-equals.md#settled-by-the-user).
 
 ## A list, not entry points
 
@@ -181,7 +181,7 @@ which the entry takes as a parameter ([`main`](../../src/kb_mcp/cli/main.py)).
   ms, on a command that a shell's completion runs at every Tab, for what no distribution
   yet needs. Choosing a source's roles in the settings.
 - **Settled** by the maintainer, in
-  [plan 030](../work/plans/030-sources-as-equals.md#the-registry-a-list-in-the-code).
+  [plan 030](../work/changelog/030-sources-as-equals.md#the-registry-a-list-in-the-code).
 
 ## Markdown beside MCP
 
@@ -247,7 +247,7 @@ Every run still reads the store and builds every document's HTML.
   034](../work/changelog/034-incremental-fetch.md#questions-for-the-user)'s fourth
   question, "Cache pandoc's output", built by [plan
   039](../work/changelog/039-conversion-cache.md#decisions), and its rows parted by source
-  by [plan 030](../work/plans/030-sources-as-equals.md#confluence-and-jira-prepared-apart-from-029).
+  by [plan 030](../work/changelog/030-sources-as-equals.md#confluence-and-jira-prepared-apart-from-029).
 
 ## People, a generic key
 
