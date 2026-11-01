@@ -66,9 +66,9 @@ def load_settings(
     Before the guard, ``refuse_former_name`` judges what the program's former name left,
     from what exists under ``home``: the former settings file is read in place of the
     default one when that is missing, so that its values are judged too, but for its
-    keys renamed since, which the stop names. The settings file given and the data
-    directory are compared with the defaults once resolved, so that any path naming a
-    default is taken for it.
+    keys renamed since, which the stop names, as it does of a file given under the former
+    name. The settings file given and the data directory are compared with the defaults
+    once resolved, so that any path naming a default is taken for it.
     """
     defaults = {
         place: at_home(place, home)

@@ -53,6 +53,10 @@ KEYS = [
     "site to accounts.atlassian.site",
     "email to accounts.atlassian.email",
 ]
+# A token at the top of a former file: no file may hold it, so it is not renamed to a key.
+NOT_RENAMED = (
+    "api_token: delete it, and set KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN in the environment"
+)
 # The page that says the same as the stop, line for line.
 PAGE = ROOT / "docs" / "how-to" / "move-to-kb-mcp.md"
 
@@ -451,6 +455,58 @@ def test_a_value_that_the_former_file_holds_and_a_setting_refuses_names_the_file
     assert str(refused.value).startswith(
         "search_mode (~/.config/atlassian-offline-mcp/config.toml): "
     )
+
+
+def test_a_token_at_the_top_of_the_former_file_is_named_by_its_variable(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Followed, the advice leads to a run that goes on: no file may hold a secret.
+
+    Renaming it to its table would meet the next refusal, of a secret in a file. Never its
+    value; its line is on the page.
+    """
+    place(home, FORMER_FILE, f'{SIGNING_IN}api_token = "{SITE}"\n')
+    advice = refusal(home).advice.splitlines()
+    assert advice[3:7] == [*KEYS, NOT_RENAMED]
+    assert SITE not in "\n".join(advice)
+    assert NOT_RENAMED in PAGE.read_text(encoding="utf-8").splitlines()
+
+    place(home, FORMER_FILE, f'api_token = "{SITE}"\n')
+    assert main(["check"]) == ExitStatus.REFUSED
+    assert NOT_RENAMED in capsys.readouterr().err.splitlines()
+
+
+def test_a_former_file_given_by_its_path_holding_the_site_gets_the_stop_s_advice(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """An MCP client's entry may pass it: the stop's advice, not the refusal of a moved key.
+
+    Rule 4 names the file given, and its keys renamed since are named, as of rule 1's
+    file, whichever folder holds it; no file need be under the former default.
+    """
+    where = Path("other/atlassian-offline-mcp/config.toml")
+    place(home, where, SIGNING_IN)
+    assert main(["check", "--config", str(home / where)]) == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    said = err.splitlines()
+    assert said[1:4] == KEYS
+    assert "the settings file (--config)" in said
+    assert [line for line in BY_HAND if line not in said] == []
+    assert "moved, as" not in err
+    assert SITE not in err
+
+
+def test_a_token_in_a_file_given_under_the_former_name_is_named_by_its_variable(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Rule 4's file as rule 1's: its token too is left unread, and named."""
+    where = Path("atlassian-offline-mcp.toml")
+    place(home, where, f'api_token = "{SITE}"\n')
+    assert main(["check", "--config", str(home / where)]) == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    assert NOT_RENAMED in err.splitlines()
+    assert "a secret, read from" not in err
+    assert SITE not in err
 
 
 def test_an_empty_former_file_stops_as_before_plan_030(tmp_path: Path) -> None:

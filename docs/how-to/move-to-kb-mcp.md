@@ -35,8 +35,8 @@ former name left in what it would use:
   `KB_MCP_ACCOUNTS__ATLASSIAN__SITE`, `…__EMAIL` and `…__API_TOKEN`;
 - a setting whose path holds a folder or a file whose name begins with the former name,
   such as `data_dir = "~/atlassian-offline-mcp"`, or a `--config` naming a file in such
-  a folder, or such a file; a data directory given through a link is judged where it
-  leads; a site or an e-mail is never judged.
+  a folder, or such a file, whose keys renamed since are named too; a data directory
+  given through a link is judged where it leads; a site or an e-mail is never judged.
 
 Where a former place and its new one both exist, the new one is used and nothing stops.
 A run given `--config` and `--data-dir` elsewhere uses neither former place. `--help`,
@@ -86,7 +86,13 @@ Then, by hand, as docs/how-to/move-to-kb-mcp.md says:
 
 Keys and variables are named, and settings with their layer, never with their values.
 The layer of a value that the former settings file holds is that file's path, also when
-a setting refuses the value, before anything is said to move.
+a setting refuses the value, before anything is said to move. A token left at a file's
+top, which no run ever took from there, is named by the variable that alone sets it,
+under the heading of the keys:
+
+```text
+api_token: delete it, and set KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN in the environment
+```
 
 ## 3. Move the files
 
