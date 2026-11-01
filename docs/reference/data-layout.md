@@ -30,7 +30,7 @@ no location and is not for commands.
 | `<data>/vectors.sqlite.lock` | `vectors`, by `vector_store.lock_of` | `index`, `eval`, `sync` (023) | `index`, `eval`, `sync` (023) |
 | `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011); its indexes, `index` and `sync` (023) |
 | `<data>/session/` | `session` | `login` (004) | a run signed in by the saved session (004, 015) |
-| `<data>/runs/` | `runs` | `download` (004), `sync` (017) | the user, and `doctor` (004) |
+| `<data>/runs/` | `runs` | `download` (004), `sync` (017) | the user |
 
 No code builds these paths otherwise.
 
