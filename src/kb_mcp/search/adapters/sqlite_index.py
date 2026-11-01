@@ -841,7 +841,7 @@ class Reader:
 def reading(path: Path, vectors: Callable[[Reader], Pieces] = Reader.pieces) -> Iterator[Reader]:
     """Open the index at ``path`` read-only, for one use; never write to it.
 
-    ``vectors`` gives its reader's search by meaning the vectors, read at each by default.
+    ``vectors`` gives ``Reader.nearest`` what it searches: by default, read at each search.
     Raise UnavailableIndexError when there is none, or when this version cannot read it.
     Another schema names ``prepare``, then ``index`` or ``embed``, not ``index`` alone: a
     new schema can come with a new format of the mirror's files, which ``index`` would
