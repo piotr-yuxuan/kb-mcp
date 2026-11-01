@@ -195,10 +195,18 @@ def test_a_registry_whose_settings_are_not_its_table_s_is_refused_naming_it(
     assert stopped.value.code == ExitStatus.OK
 
 
-def test_a_table_that_cannot_be_built_by_default_is_refused_naming_its_source() -> None:
+def test_a_table_that_cannot_be_built_by_default_is_refused_naming_its_source(
+    tmp_path: Path,
+) -> None:
     """Refused as the model is composed: not a validation error of no source at a first read."""
-    with pytest.raises(TypeError, match=r"^sources\.memo: a setting without a default: folder$"):
+    said = r"^sources\.memo: a setting without a default: folder$"
+    with pytest.raises(TypeError, match=said):
         settings_model({"memo": Required}, {})
+    memo = replace(
+        WORKLOG, name="memo", settings=("folder",), table=f"{__name__}:{Required.__name__}"
+    )
+    with pytest.raises(TypeError, match=said):
+        main(["check", "--config", str(tmp_path / "none.toml")], (*SOURCES, memo))
 
 
 @pytest.mark.parametrize(
