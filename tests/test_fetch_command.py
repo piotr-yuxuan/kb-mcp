@@ -16,6 +16,7 @@ from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.sources.atlassian.declared import JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
@@ -589,6 +590,16 @@ def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
     assert "--since" not in jira
     assert all(flag in both for flag in ("--since SINCE", "--until UNTIL", "--max-file-mb"))
     assert "worklog:" not in said_of
+
+
+def test_a_source_alone_keeps_its_options_in_its_own_group(capsys: CaptureFixture[str]) -> None:
+    """No other source shares them, so no group of several sources, under this registry."""
+    with pytest.raises(SystemExit):
+        main(["fetch", "--help"], (JIRA, WORKLOG))
+    said_of = " ".join(capsys.readouterr().out.split())
+    assert "several sources" not in said_of
+    _, jira = said_of.split(" jira: Jira, on the Atlassian site", 1)
+    assert all(flag in jira for flag in ("--project PROJECT", "--since SINCE", "--until UNTIL"))
 
 
 def test_each_flag_of_the_registry_is_declared_alike_by_each_source_that_declares_it() -> None:

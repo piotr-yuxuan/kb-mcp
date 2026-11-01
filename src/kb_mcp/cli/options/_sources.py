@@ -20,10 +20,19 @@ READ = {
 }
 
 
-def source_group(parser: argparse.ArgumentParser, declared: Declared) -> argparse._ArgumentGroup:
-    """Add a source's group to the help: what it is, what it reads, and how."""
-    types = "; ".join(f"{each.name}, {READ[each.read]}" for each in declared.types)
-    return parser.add_argument_group(declared.name, f"{declared.summary}: {types}.")
+def source_groups(
+    parser: argparse.ArgumentParser, sources: Sequence[Declared]
+) -> dict[str, argparse._ArgumentGroup]:
+    """Add a group per source to the help, what it is, what it reads and how; give each by name."""
+    return {
+        declared.name: parser.add_argument_group(
+            declared.name,
+            f"{declared.summary}: "
+            + "; ".join(f"{each.name}, {READ[each.read]}" for each in declared.types)
+            + ".",
+        )
+        for declared in sources
+    }
 
 
 def add_source_options(
@@ -39,24 +48,18 @@ def add_source_options(
     Raises ValueError, naming the source, for an option that takes a flag of the
     command's own, as the registry's rules do.
     """
-    declaring: dict[str, list[Declared]] = {}
-    for declared in sources:
-        for flag in declared.options:
-            declaring.setdefault(flag, []).append(declared)
-    groups = {declared.name: source_group(parser, declared) for declared in sources}
+    groups = source_groups(parser, sources)
+    options = {flag: option for declared in sources for flag, option in declared.options.items()}
+    declaring = {flag: [each for each in sources if flag in each.options] for flag in options}
     several = sorted({each.name for found in declaring.values() if found[1:] for each in found})
     shared = (
         parser.add_argument_group("several sources", f"The options of {', '.join(several)}.")
         if several
         else None
     )
-    actions: list[argparse.Action] = []
-    flags: dict[str, str] = {}
-    for flag, found in declaring.items():
-        option = found[0].options[flag]
-        group = shared if found[1:] else groups[found[0].name]
-        try:
-            added = group.add_argument(
+    try:
+        added = {
+            flag: (shared if declaring[flag][1:] else groups[declaring[flag][0].name]).add_argument(
                 flag,
                 dest=flag,
                 metavar=flag.lstrip("-").replace("-", "_").upper(),
@@ -64,13 +67,14 @@ def add_source_options(
                 type=option.type,
                 help=option.help,
             )
-        except argparse.ArgumentError as error:
-            message = f"source {found[0].name!r}: option {flag}: a flag of the command's own"
-            raise ValueError(message) from error
-        actions.append(added)
-        if option.setting:
-            flags[added.dest] = option.setting
-    return tuple(actions), flags
+            for flag, option in options.items()
+        }
+    except argparse.ArgumentError as error:
+        flag = error.argument_name
+        message = f"source {declaring[flag][0].name!r}: option {flag}: a flag of the command's own"
+        raise ValueError(message) from error
+    flags = {added[flag].dest: option.setting for flag, option in options.items() if option.setting}
+    return tuple(added.values()), flags
 
 
 def choice_refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:

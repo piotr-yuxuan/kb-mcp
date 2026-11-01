@@ -8,7 +8,8 @@ whatever the store holds, and each read in place when it is configured, or those
 Each is taken once, in the registry's order, whatever the order typed. A source's options
 and light checks are its fetch's: each source taken says what the summary says of it, by
 its declaration; an option that no setting holds, given, is said ignored by each source
-taken that does not declare it. The exit status ranks how the rows ended.
+taken that does not declare it. The exit status ranks how the rows ended. Beside them,
+``accounts_to_check``: which sign-ins ``doctor`` checks, by the same settings.
 """
 
 from __future__ import annotations

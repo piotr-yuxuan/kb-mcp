@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.domain.sources import PREPARE, prepare_described
 from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
-from kb_mcp.cli.options._sources import choice_refused, left_unapplied, source_group
+from kb_mcp.cli.options._sources import choice_refused, left_unapplied, source_groups
 from kb_mcp.sources.registry import accounts_of
 
 if TYPE_CHECKING:
@@ -44,7 +44,8 @@ def register(
             " its place and why; elsewhere, those that it found reading the other source's,"
             " by that source, which fail nothing of its own. For the work log: documents;"
             " changes; html, the HTML transcripts left out; warnings; problems, each with what"
-            " it held back; in a dry run, documents, to_convert, to_remove, html and problems."
+            " it held back; in a dry run, documents, to_convert, to_remove, html, warnings and"
+            " problems."
         ),
     )
     actions, flags = add_settings_options(parser)
@@ -62,8 +63,7 @@ def register(
         action="store_true",
         help="count what a run would convert and remove, where a source can tell; write nothing",
     )
-    for declared in sources:
-        source_group(parser, declared)
+    source_groups(parser, sources)
     parser.set_defaults(
         command=Command(
             PREPARE,

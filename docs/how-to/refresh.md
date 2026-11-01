@@ -117,7 +117,7 @@ Each command's exit status says what its next step can rely on:
 | Status | Means | The next step |
 |---|---|---|
 | 0 | every row done | runs |
-| 1 | a row failed, the others ran; or the run stopped on a cache it could not use, or a path that is no folder, with no rows written | can run on what the store or the mirror holds, once you have read why |
+| 1 | a row failed, the others ran; or the run stopped, with no rows written, on a cache of conversions that it could not use, or on a `<data>/docs` or `<data>/raw` that is no folder | can run on what the store or the mirror holds, once you have read why |
 | 2 | refused before any row | should not: nothing ran, and it is yours to fix |
 | 3 | to sign in again | should not, until you have |
 | 130 | stopped by Ctrl-C | should not |

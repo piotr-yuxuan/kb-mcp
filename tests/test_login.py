@@ -220,10 +220,15 @@ def test_a_second_account_signs_in_by_its_own_run_and_reads_none_of_the_first(
     assert "accounts.drive.folder: not set; add it to the settings\n" in err.replace("'", "\n")
     assert "--site" not in err.partition("run.refused")[2]
     monkeypatch.setenv("KB_MCP_ACCOUNTS__DRIVE__FOLDER", "/made/up")
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL", "someone@example.invalid")
     assert main(["login", "drive", *given, "--site", SITE], TWO_ACCOUNTS) == 0
     out, err = capsys.readouterr()
     assert json.loads(out)["site"] == "/made/up"
     assert f"accounts.atlassian.site: {SITE} (not applied: atlassian not named)\n" in err
+    assert (
+        "ignored: accounts.atlassian.email (KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL): atlassian not"
+        in err
+    )
     assert "--site" not in err.split("kb-mcp login")[1]
 
 

@@ -60,7 +60,7 @@ from tests.test_worklog_mirror import FIXTURE, Counting, settle, snapshot
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from datetime import datetime
 
     from _pytest.capture import CaptureFixture
@@ -704,26 +704,23 @@ def test_the_text_gives_a_row_per_source_then_its_counts(
     )
 
 
+@pytest.mark.parametrize("step", ["fetch", "prepare"])
 @pytest.mark.parametrize("registry", [SOURCES, (WORKLOG,), (CONFLUENCE, WORKLOG)])
 def test_the_sources_offered_are_the_registry_s(
-    registry: tuple[Declared, ...], capsys: CaptureFixture[str]
+    step: str, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
 ) -> None:
     """Each name that the registry declares is taken; each other is refused by argparse.
 
     By ``prepare`` every source, by ``fetch`` those that have a fetcher.
     """
-    offered = {
-        "prepare": [each.name for each in registry],
-        "fetch": [each.name for each in registry if each.fetcher is not None],
-    }
-    for step, names in offered.items():
-        for name in names:
-            assert parser(sources=registry).parse_args([step, name]).source == [name]
-        for name in (each.name for each in SOURCES if each.name not in names):
-            with pytest.raises(SystemExit) as stopped:
-                parser(sources=registry).parse_args([step, name])
-            assert stopped.value.code == ExitStatus.REFUSED
-            assert f"invalid choice: '{name}'" in capsys.readouterr().err
+    names = [each.name for each in registry if step == "prepare" or each.fetcher is not None]
+    for name in names:
+        assert parser(sources=registry).parse_args([step, name]).source == [name]
+    for name in (each.name for each in SOURCES if each.name not in names):
+        with pytest.raises(SystemExit) as stopped:
+            parser(sources=registry).parse_args([step, name])
+        assert stopped.value.code == ExitStatus.REFUSED
+        assert f"invalid choice: '{name}'" in capsys.readouterr().err
 
 
 def test_a_dry_run_of_the_site_plans_and_writes_nothing(
@@ -1031,29 +1028,29 @@ def test_ctrl_c_once_every_row_ended_still_exits_130(
     assert [each["source"] for each in logged_as(logged, "prepare.interrupted")] == [None]
 
 
+def ending(*statuses: ExitStatus) -> Callable[..., Outcome]:
+    """Give a download that ends as told, once each, then stops as Ctrl-C would."""
+    left = iter(statuses)
+
+    def download(*_: object) -> Outcome:
+        for status in left:
+            return Outcome(report=Report(), failed_targets=[], status=status)
+        raise KeyboardInterrupt
+
+    return download
+
+
 def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """A failed fetch and one to sign in again exit 3, whichever comes first; Ctrl-C, 130."""
-    ended = iter((ExitStatus.FAILED, ExitStatus.SIGN_IN_AGAIN))
-    monkeypatch.setattr(
-        fetcher,
-        "download",
-        lambda *_: Outcome(report=Report(), failed_targets=[], status=next(ended)),
-    )
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, JIRA, options=SINCE)
+    monkeypatch.setattr(fetcher, "download", ending(ExitStatus.FAILED, ExitStatus.SIGN_IN_AGAIN))
     ran = run_each("fetch", taken)
     assert [row.outcome for row in ran.sources] == ["failed", "sign in"]
     assert ran.exit_status == ExitStatus.SIGN_IN_AGAIN
-    answers = iter((ExitStatus.SIGN_IN_AGAIN,))
-
-    def then_stopped(*_: object) -> Outcome:
-        for status in answers:
-            return Outcome(report=Report(), failed_targets=[], status=status)
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(fetcher, "download", then_stopped)
+    monkeypatch.setattr(fetcher, "download", ending(ExitStatus.SIGN_IN_AGAIN))
     ran = run_each("fetch", taken)
     assert [row.outcome for row in ran.sources] == ["sign in", "interrupted"]
     assert ran.exit_status == ExitStatus.INTERRUPTED

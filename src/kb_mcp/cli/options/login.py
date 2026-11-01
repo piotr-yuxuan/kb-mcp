@@ -21,8 +21,8 @@ def in_the_browser(
 ) -> dict[str, str]:
     """``login`` signs in in a browser, whatever the account's other settings say.
 
-    Another account's first setting, which the declaration reads for whichever is named, is
-    not applied either.
+    Another account's are not applied at all, the first among them, which the declaration
+    reads for whichever is named.
     """
     accounts = accounts_of(arguments.sources)
     named = accounts.pop(arguments.account)
