@@ -220,8 +220,9 @@ name `atlassian`: `[accounts.atlassian]` holds `site`, `email` and `api_token`, 
 from `KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN` alone. So the core knows no Atlassian setting,
 and another sign-in is another account. `--site`, which
 [`add_settings_options`](../../src/kb_mcp/cli/options/_common.py) gives every parser but
-`completion`'s, replaces `accounts.atlassian.site` until plan 032 generates flags. The
-places `session/` and `runs/` stay `config`'s
+`completion`'s, replaces `accounts.atlassian.site` until plan 032 generates flags: so the
+core still offers it under a registry without that account, as only a test gives, where it
+exits 2, `not a setting`. The places `session/` and `runs/` stay `config`'s
 ([`Settings.parts`](../../src/kb_mcp/config/domain/settings.py)), which the data guard
 judges.
 
