@@ -355,9 +355,9 @@ def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
 ) -> None:
     """A page whose space is not listed is reported by its place in the store.
 
-    Each such page is the warning mirror.not_mirrored, then mirror.nothing_removed warns
-    that Confluence removed none of its files; the run's log file holds both. Its row
-    fails, Jira's is done.
+    Each such page is the warning mirror.not_mirrored, by each source's prepare, as each
+    places every document, then mirror.nothing_removed warns that Confluence removed none
+    of its files; the run's log file holds both. Its row fails, Jira's is done.
     """
     store = RawStore(home / "data" / "raw")
     stamp = {"number": 1, "createdAt": "2026-10-20T21:52:41Z"}
@@ -377,12 +377,14 @@ def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
     assert ("warning", "mirror.nothing_removed") in warnings
     assert "confluence/pages/196845/000001" in captured.err
     assert "space not listed" in captured.err
-    (problem,) = logged_as(home, "mirror.not_mirrored")
-    assert {key: problem[key] for key in ("level", "where", "reason")} == {
-        "level": "warning",
-        "where": "confluence/pages/196845/000001",
-        "reason": "space not listed",
-    }
+    for problem in logged_as(home, "mirror.not_mirrored"):
+        assert {key: problem[key] for key in ("level", "source", "where", "reason")} == {
+            "level": "warning",
+            "source": "confluence",
+            "where": "confluence/pages/196845/000001",
+            "reason": "space not listed",
+        }
+    assert len(logged_as(home, "mirror.not_mirrored")) == len(["confluence", "jira"])
     (kept,) = logged_as(home, "mirror.nothing_removed")
     assert (kept["level"], kept["source"], kept["problems"]) == ("warning", "confluence", 1)
     assert main(arguments(home, "--format", "json")) == SOME_FAILED

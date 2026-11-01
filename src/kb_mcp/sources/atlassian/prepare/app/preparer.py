@@ -70,16 +70,21 @@ def prepare_kinds(
 
     The data folder's cache of pandoc's conversions is open for this mirror alone, on the
     rows of ``source``. What it could not mirror is a warning, ``mirror.not_mirrored``,
-    by its place and the reason, never its content, as is that the source then removed
-    none of its files, ``mirror.nothing_removed``.
+    by the source that it belongs to, its place and the reason, never its content, as is
+    that the source then removed none of its files, ``mirror.nothing_removed``. What it
+    could not read of another source is said alike, since its own files may then link
+    around that source's document, and fails nothing of its own.
     """
     log = structlog.get_logger()
     with conversions.opened(
         settings.conversions, pandoc.html_converter, pandoc.markdown, source=source
     ) as cache:
         mirrored = mirror(RawStore(settings.raw), settings.docs, site, cache, kinds)
-    for problem in mirrored.problems:
-        log.warning("mirror.not_mirrored", where=problem.where, reason=problem.reason)
+    for name, problems in {source: mirrored.problems, **mirrored.elsewhere}.items():
+        for problem in problems:
+            log.warning(
+                "mirror.not_mirrored", source=name, where=problem.where, reason=problem.reason
+            )
     if mirrored.problems:
         log.warning("mirror.nothing_removed", source=source, problems=len(mirrored.problems))
     return Prepared(outcome="failed" if mirrored.problems else "done", mirrored=mirrored)

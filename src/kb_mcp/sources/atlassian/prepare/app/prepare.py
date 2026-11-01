@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 from opentelemetry import trace
+from pydantic import Field
 
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
@@ -96,7 +97,10 @@ class Outcome(Record):
     """What a run did: documents mirrored, conversions, files changed, placeholders, problems.
 
     ``converted`` counts the conversions pandoc ran, ``reused`` those the cache gave: a
-    document's file and a space's tree are one each.
+    document's file and a space's tree are one each. ``problems`` are the source's own;
+    ``elsewhere`` holds, by source, those that it found reading another's, which fail
+    nothing of its own, though a link or an image of its files may then not reach that
+    source's document.
     """
 
     documents: int
@@ -105,11 +109,13 @@ class Outcome(Record):
     changes: Changes
     unsupported: Counter[str]
     problems: tuple[Problem, ...]
+    elsewhere: dict[str, tuple[Problem, ...]] = Field(default_factory=dict)
 
     def text(self, summary: Summary) -> str:
         """Write the counts of documents, of conversions run and reused, of files, of problems.
 
-        In detail, what the mirror does not show, by name, comes before the problems.
+        In detail, what the mirror does not show, by name, comes before the problems;
+        those of another source follow, when any.
         """
         unsupported = sorted(self.unsupported.items()) if summary == "detailed" else []
         return (
@@ -121,6 +127,10 @@ class Outcome(Record):
             f"files removed: {self.changes.removed}\n"
             + "".join(f"not shown, {name}: {count}\n" for name, count in unsupported)
             + f"problems: {len(self.problems)}\n"
+            + "".join(
+                f"problems of {name}, read here: {len(each)}\n"
+                for name, each in self.elsewhere.items()
+            )
         )
 
 
@@ -325,7 +335,8 @@ def mirror(
     source's files, but only those of ``kinds`` are built and written, with the files
     they attach, and each space's tree when pages are among them. The source then
     removes its files that are no longer wanted, and prunes its conversions that this
-    run did not use, unless it reports a problem. An attached file that no placed
+    run did not use, unless it reports a problem, those that it found reading the other
+    source's coming back apart from its own. An attached file that no placed
     document wants goes next, while no file left of either source links it and no
     problem was found, of either source: a document that cannot be read or placed wants
     none of its files, and a last good copy links what its document wanted. The task
@@ -432,4 +443,5 @@ def mirror(
         changes=changes,
         unsupported=unsupported,
         problems=tuple(problems),
+        elsewhere={name: tuple(each) for name, each in found.items() if each and name != source},
     )

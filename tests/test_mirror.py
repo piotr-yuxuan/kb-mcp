@@ -27,7 +27,10 @@ from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED
+from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_kinds
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
+from tests.composed import MODEL
 from tests.mirrors import mirrored
 from tests.samples import (
     v1_user,
@@ -46,6 +49,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kb_mcp.sources.atlassian.prepare.app.prepare import Outcome
+    from kb_mcp.sources.atlassian.prepare.app.preparer import Prepared
 
 SITE = "https://site.example.invalid"
 FETCHED = datetime(2026, 10, 22, 8, 15, tzinfo=UTC)
@@ -947,6 +951,69 @@ def test_a_file_that_a_stale_document_alone_links_goes_with_that_document(
         "jira": len(["PRB-1.md", image]),
     }
     assert image not in sandbox.files()
+
+
+def space_damaged(sandbox: Sandbox) -> None:
+    """Make the record of the space unreadable, as a disk or an editor might."""
+    (sandbox.store.root / "confluence" / "spaces" / SPACE_ID / "space.json").write_text(
+        "{}", "utf-8"
+    )
+
+
+def issue_damaged(sandbox: Sandbox) -> None:
+    """Make the newest snapshot of the issue unreadable."""
+    folder = max((sandbox.store.root / "jira" / "issues" / "10000").iterdir())
+    (folder / jira_v3.ISSUE).write_text("{}", "utf-8")
+
+
+def prepared(sandbox: Sandbox, source: str) -> tuple[Prepared, list[dict[str, object]]]:
+    """Prepare one source as its role does; give how it ended, and what it warned."""
+    settings = MODEL(data_dir=sandbox.data)
+    with capture_logs() as events:
+        done = prepare_kinds(settings, SITE, Pandoc.find(), source, PREPARED[source])
+    return done, [each for each in events if each["log_level"] == "warning"]
+
+
+def test_a_prepare_of_jira_says_what_it_could_not_read_of_confluence(crossed: Sandbox) -> None:
+    """The space unreadable changes Jira's file: its link to Leaf falls back on the site.
+
+    So Jira's prepare, which has no problem of its own and whose row is done, says each
+    of Confluence's, by Confluence, and that it removed nothing is not said.
+    """
+    crossed.run()
+    _, linked_body = load(crossed.text("jira/PRB/PRB-1.md"), "issue")
+    assert "[the leaf](../../confluence/MFS/300-leaf.md)" in linked_body
+    space_damaged(crossed)
+    done, warned = prepared(crossed, "jira")
+    assert (done.outcome, done.mirrored.problems) == ("done", ())
+    _, body = load(crossed.text("jira/PRB/PRB-1.md"), "issue")
+    assert f"[the leaf]({SITE}/wiki/spaces/MFS/pages/300/Leaf)" in body
+    theirs = done.mirrored.elsewhere["confluence"]
+    assert theirs
+    assert [(each["event"], each["source"], each["where"], each["reason"]) for each in warned] == [
+        ("mirror.not_mirrored", "confluence", problem.where, problem.reason) for problem in theirs
+    ]
+
+
+def test_a_prepare_of_confluence_says_what_it_could_not_read_of_jira(crossed: Sandbox) -> None:
+    """The issue unreadable, Confluence's prepare fails nothing of its own, and says it."""
+    crossed.run()
+    issue_damaged(crossed)
+    done, warned = prepared(crossed, "confluence")
+    assert (done.outcome, done.mirrored.problems) == ("done", ())
+    (theirs,) = done.mirrored.elsewhere["jira"]
+    assert theirs.where.startswith("jira/issues/10000/")
+    assert [(each["event"], each["source"], each["where"]) for each in warned] == [
+        ("mirror.not_mirrored", "jira", theirs.where)
+    ]
+    assert "problems of jira, read here: 1\n" in done.text("short")
+
+
+def test_a_prepare_of_a_source_with_no_problem_anywhere_says_nothing(crossed: Sandbox) -> None:
+    """Nothing is said of another source when its documents all read."""
+    done, warned = prepared(crossed, "jira")
+    assert (done.mirrored.elsewhere, warned) == ({}, [])
+    assert "read here" not in done.text("short")
 
 
 def test_each_source_prunes_its_own_conversions_alone(sandbox: Sandbox) -> None:

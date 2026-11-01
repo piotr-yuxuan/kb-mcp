@@ -439,7 +439,8 @@ jira, each with its step, mirror, its source, its outcome (done, failed) and its
 result: documents, how many are mirrored; converted, the conversions pandoc ran, and
 reused, those the cache gave, a document's file and a space's tree being one each;
 changes, the files written, unchanged and removed; unsupported, what the mirror does
-not show, by name; problems, each by its place and why.
+not show, by name; problems, each by its place and why; elsewhere, those that it found
+reading the other source's, by that source, which fail nothing of its own.
 ```
 
 ## `model`

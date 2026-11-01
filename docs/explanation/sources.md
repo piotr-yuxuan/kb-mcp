@@ -279,13 +279,17 @@ package, but each is a source: a row, a report and a set of files of its own.
   depend on Confluence's pages are rewritten only when Jira is prepared.
 - **What each owns.** Confluence writes and removes under `docs/confluence/`, Jira under
   `docs/jira/`. `docs/assets/` is theirs together: each writes the files of its own
-  documents, and removes a file that no placed document of either wants
-  ([`attached`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py)).
+  documents, and removes a file that no placed document of either wants and no document
+  file left links, since the last good copy of a document not rebuilt still shows it
+  ([`unlinked`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py)).
 - **Problems.** Each reports the problems of its own kinds. A snapshot or listing that
   cannot be read stops the removals of the source that it belongs to, and every removal
   under `docs/assets/`, since the files wanted are then unknown; each source's conversion
   problems stop its own removals alone. So an issue that pandoc fails on keeps its file, and
-  Confluence's stale pages still go.
+  Confluence's stale pages still go. What a prepare could not read of the other source
+  fails nothing of its own, yet its files may then link the document's address on the site:
+  it says so, by that source, under a row that stays done
+  ([`prepare_kinds`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
 - **The conversion cache.** Each prepare looks up and prunes its own rows
   ([`Conversions`](../../src/kb_mcp/mirror/adapters/conversions.py)), keyed by source and
   key, so that a text that both convert is a row of each, which neither prune takes from the
