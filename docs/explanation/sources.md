@@ -68,7 +68,8 @@ does not apply, and what its summary says.
   preparer reads the kinds that it converts, and the source whose rows of the cache of
   conversions it reads ([`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
   Git, once re-planned, will name one fetcher and two preparers, which is why a
-  declaration's preparers are a tuple.
+  declaration's preparers are a tuple. Until then no source names two, and two would share
+  one row's name, `prepare git`, told apart by their order alone: that plan names them.
 - **A source keeps a store when it has a fetcher**, so no field says so.
 - **Later plans add their fields**: plan 031, to the account, the runs of its login and
   checks; 032 its flag rows; 033 a description and examples.
