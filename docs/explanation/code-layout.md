@@ -61,7 +61,7 @@ Each context but the kernel holds the same layers, as sub-packages, from the top
 | Layer | What it holds |
 |---|---|
 | `main` | The entry point: the parser, built from every declaration (in `cli` only) |
-| `commands` | One run per subcommand, with its result as text; `_shared`, the entry of every run but `completion`'s, that loads the settings, refuses what it can before anything is asked, says what it ignores, asks before a run that writes, runs the chosen one and writes its result; `_embedding`, which the runs that embed share (in `cli` only) |
+| `commands` | One run per subcommand, with its result as text; `_shared`, the entry of every run but `completion`'s, that loads the settings, refuses what it can before anything is asked, says what it ignores, asks before a run that writes, runs the chosen one and writes its result; `_embedding`, which the runs that build the index share (in `cli` only) |
 | `options` | One light declaration per subcommand: its help, its options, the run it names, the settings it reads, whether it writes, and the pure checks that refuse a run before anything is asked (in `cli` only) |
 | `app` | Use cases: they combine effects and rules, and know nothing of the command line |
 | `adapters` | Effects: the network, the browser, files, SQLite, subprocesses, the terminal |

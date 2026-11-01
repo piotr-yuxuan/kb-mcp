@@ -1,6 +1,6 @@
-"""What the runs that embed share: the endpoint, how the index is built, the prefixes.
+"""What the runs that build the index share, how it is built, and those that embed: the endpoint.
 
-Apart from the entry, so that a run that embeds nothing loads none of this.
+Apart from the entry, so that a run that builds no index loads none of this.
 """
 
 from __future__ import annotations

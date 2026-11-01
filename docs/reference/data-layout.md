@@ -24,12 +24,12 @@ no location and is not for commands.
 | `<data>/raw/` | `raw` | `fetch` (004) | `prepare` (005) |
 | `<data>/docs/` | `docs` | `prepare` (005) | agents, and `index` (006), `embed` (031) |
 | `<data>/conversions.sqlite` | `conversions` | `prepare` (039) | `prepare` (039) |
-| `<data>/index.sqlite` | `index` | `index` (006), `embed` (031) | the MCP server (006) |
+| `<data>/index.sqlite` | `index` | `index` (006), `embed` (031) | the MCP server (006), `embed`'s prune (023) |
 | `<data>/aliases.toml` | `aliases` | the user (043) | `index`, `embed` (043), [below](#the-alias-file) |
-| `<data>/vectors.sqlite` | `vectors` | `embed`, `eval` (011) | `embed`, `eval` (011) |
-| `<data>/vectors.sqlite.lock` | `vectors`, by `vector_store.lock_of` | `embed`, `eval` (023) | `embed`, `eval` (023) |
-| `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011); its indexes, `embed` (023) |
-| `<data>/session/` | `session` | `login` (004) | a run signed in by the saved session (004, 015) |
+| `<data>/vectors.sqlite` | `vectors` | `embed`, `eval`, `eval-rerank` (011) | `embed`, `eval`, `eval-rerank` (011) |
+| `<data>/vectors.sqlite.lock` | `vectors`, by `vector_store.lock_of` | `embed`, `eval`, `eval-rerank` (023) | `embed`, `eval`, `eval-rerank` (023) |
+| `<data>/eval/` | `evaluations` | the user, `eval`, `eval-rerank` (011) | `eval`, `eval-rerank` (011); its indexes, `embed` (023) |
+| `<data>/session/` | `session` | `login`, a `fetch` whose site renews its cookies (004) | a run signed in by the saved session (004, 015) |
 | `<data>/runs/` | `runs` | `fetch` (004) | the user |
 
 No code builds these paths otherwise.

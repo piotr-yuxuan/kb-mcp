@@ -318,7 +318,9 @@ def test_a_prepare_without_a_site_runs_and_says_what_it_costs(
 ) -> None:
     """Its documents get no address: said once, of a source of that account alone."""
     config = settings_file(home, worklog)
-    line = "accounts.atlassian.site: not set; these documents get no address on the site\n"
+    line = (
+        "accounts.atlassian.site: not set; any documents of confluence, jira get no address there\n"
+    )
     assert main(command(home, config, "prepare", "--yes")) == ExitStatus.OK
     assert capsys.readouterr().err.count(line) == 1
     assert main(command(home, config, "prepare", "--yes", "worklog")) == ExitStatus.OK

@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 
 
 def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
-    """Refuse what a sign-in cannot be checked with, by each account's ``refused``: the first."""
+    """Refuse what a sign-in to check cannot run with, by its account's ``refused``: the first."""
     faults = (
         account.refused({}, settings)
-        for account in accounts_of(arguments.sources).values()
+        for account in accounts_to_check(arguments.sources, settings).values()
         if account.refused is not None
     )
     return next((fault for fault in faults if fault is not None), None)

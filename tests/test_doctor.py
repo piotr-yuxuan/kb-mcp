@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 SITE = "https://sandbox.example.invalid"
 SOME_FAILED = 1
+REFUSED = 2
 NOT_SIGNED_IN = 3
 # A source of the Atlassian account configured, with no site set.
 A_SOURCE = "KB_MCP_SOURCES__JIRA__PROJECTS"
@@ -180,3 +181,17 @@ def test_a_sign_in_not_checked_is_said_so_and_the_settings_that_choose_it_are_re
     monkeypatch.setenv(A_SOURCE, '["PRB"]')
     assert main([*options, "--summary", "detailed"]) == SOME_FAILED
     assert f"{A_SOURCE}): not read by doctor" not in capsys.readouterr().err
+
+
+def test_a_token_without_its_email_refuses_only_a_sign_in_that_is_checked(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Neither a site nor a source: not checked, exit 0. With a source of it: exit 2."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", "token-sentinel-7f2b")
+    options = ["doctor", "--config", str(tmp_path / "none.toml")]
+    assert main(options) == 0
+    assert "its sign-in not checked" in capsys.readouterr().err
+    monkeypatch.setenv(A_SOURCE, '["PRB"]')
+    assert main(options) == REFUSED
+    assert "accounts.atlassian.email: not set" in capsys.readouterr().err

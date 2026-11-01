@@ -232,8 +232,8 @@ and gives each piece a vector.
   ([`opened`](../../src/kb_mcp/search/adapters/vector_store.py)). A build
   by meaning holds the store's lock shared until its index is in place
   ([`shared`](../../src/kb_mcp/search/adapters/vector_store.py)); then
-  [`refresh`](../../src/kb_mcp/search/app/indexing.py), which `index` and
-  `embed` run alike, prunes the store (below).
+  [`refresh`](../../src/kb_mcp/search/app/indexing.py), which `index` and `embed` run alike,
+  prunes the store (below), for such a build alone.
 - **Joins** the documents' people into persons, once every file is read, in the same
   transaction
   ([`Writer.join`](../../src/kb_mcp/search/adapters/sqlite_index.py)):

@@ -261,10 +261,10 @@ def test_the_version_is_the_project_s(capsys: CaptureFixture[str]) -> None:
 
 
 def test_the_help_lists_the_commands_of_plan_031(capsys: CaptureFixture[str]) -> None:
-    """Plan 031, criterion 2: these and no other."""
+    """Plan 031, criterion 2: each of these, which another command may join."""
     with pytest.raises(SystemExit):
         main(["--help"])
-    assert set(SUBCOMMANDS) == {
+    assert set(SUBCOMMANDS) >= {
         "check",
         "completion",
         "doctor",

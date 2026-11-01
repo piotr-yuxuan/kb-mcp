@@ -156,11 +156,12 @@ def prepare_described(
     site, a prepare still runs, its documents without an address there.
     """
     taken, left = chosen_to_prepare(arguments, settings)
-    unset = dict.fromkeys(
-        declared.account.paths[0]
-        for declared in taken
-        if declared.account is not None and settings[declared.account.paths[0]] is None
-    )
+    accounts = {each.account.name: each.account for each in taken if each.account is not None}
+    unset = [
+        (account.paths[0], ", ".join(each.name for each in taken if each.account == account))
+        for account in accounts.values()
+        if settings[account.paths[0]] is None
+    ]
     return (
         *(
             source_line(declared, settings)
@@ -169,5 +170,8 @@ def prepare_described(
             for declared in taken
         ),
         *(f"source {name}: left out, {why}" for name, why in left.items()),
-        *(f"{path}: not set; these documents get no address on the site" for path in unset),
+        *(
+            f"{path}: not set; any documents of {names} get no address there"
+            for path, names in unset
+        ),
     )
