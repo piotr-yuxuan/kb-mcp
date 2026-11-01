@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from argcomplete.completers import DirectoriesCompleter, FilesCompleter
 
@@ -20,6 +21,11 @@ from kb_mcp.cli.options._common import (
     add_yes_option,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from kb_mcp.sources.declaration import Declared
+
 RUN = "kb_mcp.cli.commands.evaluate_agents"
 
 
@@ -31,7 +37,10 @@ def positive(value: str) -> int:
     return int(value)
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    _sources: Sequence[Declared],
+) -> None:
     """Add ``eval-agents`` and its four steps to the command."""
     parser = subparsers.add_parser(
         "eval-agents",

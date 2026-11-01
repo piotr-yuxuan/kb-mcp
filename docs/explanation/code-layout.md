@@ -98,7 +98,7 @@ another: contracts J and I.
 
 ## The contracts
 
-`pyproject.toml` declares ten contracts:
+`pyproject.toml` declares eleven contracts:
 
 | | What it protects |
 |---|---|
@@ -112,6 +112,7 @@ another: contracts J and I.
 | H | Only `observability` and `cli` use Rich, which draws on the terminal, and requests, which OpenTelemetry's exporters bring: the rest reaches the network by httpx. It counts indirect imports, so what the other contexts import of `observability` reaches neither. It names every other context, so a new one joins its list as it joins A's order, and `observability.adapters.progress`, through which they all report progress, so that it never imports the display that draws it |
 | I | No source imports another, `sources.atlassian` and `sources.worklog`: a new source's package joins its list |
 | J | Within each source, preparing may use fetching, never the reverse. It is exhaustive: a source's package holds its roles alone |
+| K | Only `sources.atlassian` uses lxml and Playwright, so that an extra can hold them later: every other context, the modules beside the sources' packages and `sources.worklog` import neither, but the commands of `login` and `mirror`, which call the Atlassian package directly until plan 031. It names every other context, so a new one, or a new source, joins its list, as H's does |
 
 A orders the contexts, which B, applied per context, does not; C and D carry the order
 of the layers across contexts, which B cannot; I keeps the sources apart, and J the
@@ -161,12 +162,12 @@ table is one:
 | Class | Why it stays a dataclass |
 |---|---|
 | `cli.domain.command.Command` | G: `--help` imports it |
-| `cli.domain.sync.Source` | G: `--help` imports it |
 | `kernel.endpoint.Service` | G: `--help` imports it |
 | `kernel.output.Output` | G: `--help` imports it |
 | `sources.atlassian.fetch.domain.period.Period` | G: `--help` imports it |
 | `sources.declaration.Account` | G: `--help` imports it |
 | `sources.declaration.Declared` | G: `--help` imports it |
+| `sources.declaration.Option` | G: `--help` imports it |
 | `sources.declaration.ResourceType` | G: `--help` imports it |
 | `evaluation.app.reranked.Arms` | It holds a live client, the reranker's |
 | `search.adapters.embedding.ApiEmbedder` | It holds a live client, its `Endpoint` |

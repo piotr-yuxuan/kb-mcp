@@ -4,8 +4,8 @@ Both declarations name this module, a ``Fetcher``: ``preflight`` and ``fetch`` r
 source that a run is for from its declaration, by its kinds, and fetch that source's
 targets alone, its table's spaces or projects, over the period that its options give.
 ``fetch_targets`` downloads one source's targets, or plans their download, and says
-what went wrong as ``download``'s events do; ``download`` and ``sync``'s Atlassian step
-run it too, for each source apart.
+what went wrong as ``download``'s events do; ``download``'s command runs it too, for
+each source apart.
 """
 
 from __future__ import annotations

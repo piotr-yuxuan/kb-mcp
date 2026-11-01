@@ -6,28 +6,32 @@ import argparse
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
+from kb_mcp.cli.domain.sync import given
 from kb_mcp.cli.options._common import (
     SIGN_IN,
     SITE,
     add_output_options,
     add_settings_options,
     add_yes_option,
-    email_without_token,
     signed_in_by,
+)
+from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY
+from kb_mcp.sources.atlassian.declared import (
+    MAX_FILE_MB,
+    PERIOD,
+    SINCE,
+    UNTIL,
+    email_without_token,
+    period_refused,
     site_not_set,
     token_without_email,
 )
-from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY
-from kb_mcp.sources.atlassian.fetch.domain.period import (
-    DEFAULT_MAX_FILE_MB,
-    EPOCH,
-    PeriodError,
-    moment,
-    period_rule,
-)
+from kb_mcp.sources.atlassian.fetch.domain.period import DEFAULT_MAX_FILE_MB, period_rule
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Mapping, Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 
 def key_of(pattern_name: str) -> Callable[[str], str]:
@@ -43,22 +47,6 @@ def key_of(pattern_name: str) -> Callable[[str], str]:
     return check
 
 
-def period_refused(arguments: argparse.Namespace) -> str | None:
-    """Refuse a largest file under 1 MB, or an option of the period that does not read.
-
-    Whether one reads does not depend on when the run starts, so the epoch stands for it.
-    """
-    if arguments.max_file_mb is not None and arguments.max_file_mb < 1:
-        return "--max-file-mb: at least 1"
-    try:
-        for option, text in (("--since", arguments.since), ("--until", arguments.until)):
-            if text is not None:
-                moment(text, EPOCH, option)
-    except PeriodError as error:
-        return str(error)
-    return None
-
-
 def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
     """Refuse what no download can run with, before anything is asked: the first found.
 
@@ -70,7 +58,7 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
         site_not_set(arguments, settings),
         token_without_email(arguments, settings),
         None if named else "nothing to download: name a --space or a --project",
-        period_refused(arguments),
+        period_refused(given(arguments, (option.flag for option in PERIOD))),
     ]
     return next((fault for fault in faults if fault is not None), None)
 
@@ -80,31 +68,10 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
     return (*signed_in_by(arguments, settings), period_rule(since=arguments.since is not None))
 
 
-def add_period_options(
-    parser: argparse.ArgumentParser, *, max_file_mb: int | None
-) -> tuple[argparse.Action, ...]:
-    """Add --since, --until and --max-file-mb, the largest file by default this many MB.
-
-    Return their actions. Without a default, --max-file-mb is None unless given, and the
-    download takes ``DEFAULT_MAX_FILE_MB``.
-    """
-    since = parser.add_argument(
-        "--since",
-        help="12h, 7d, 6mo, an ISO date or time, or all; by default, each target's last fetch",
-    )
-    until = parser.add_argument(
-        "--until", help="12h, 7d, or an ISO date or time, excluded; by default, now"
-    )
-    largest = parser.add_argument(
-        "--max-file-mb",
-        type=int,
-        default=max_file_mb,
-        help=f"the largest file kept, in MB; {DEFAULT_MAX_FILE_MB} by default",
-    )
-    return since, until, largest
-
-
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    _sources: Sequence[Declared],
+) -> None:
     """Add ``download`` to the command."""
     parser = subparsers.add_parser(
         "download",
@@ -129,7 +96,16 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     project = parser.add_argument(
         "--project", action="append", type=key_of("project"), help="a project key; repeat"
     )
-    period = add_period_options(parser, max_file_mb=DEFAULT_MAX_FILE_MB)
+    period = (
+        parser.add_argument(SINCE.flag, help=SINCE.help),
+        parser.add_argument(UNTIL.flag, help=UNTIL.help),
+        parser.add_argument(
+            MAX_FILE_MB.flag,
+            type=MAX_FILE_MB.type,
+            default=DEFAULT_MAX_FILE_MB,
+            help=MAX_FILE_MB.help,
+        ),
+    )
     parser.add_argument(
         "--dry-run", action="store_true", help="say what a run would fetch, and fetch nothing"
     )

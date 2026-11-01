@@ -1,9 +1,8 @@
 """The rows of a run of sources: a row per step and source, and the run's exit status.
 
 ``sync``, ``mirror`` and ``download`` give them. They are records, so not in
-``cli.domain.sync``, which ``--help`` imports, nor in ``sync``'s use case, whose steps
-reach every source's code, so that a command writes rows without importing what it does
-not run.
+``cli.domain.sync``, which ``--help`` imports, nor in ``sync``'s use case, which reaches
+the index, so that a command writes rows without importing what it does not run.
 """
 
 from __future__ import annotations

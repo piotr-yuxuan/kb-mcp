@@ -10,15 +10,20 @@ from kb_mcp.cli.options._common import (
     SITE,
     add_output_options,
     add_settings_options,
-    email_without_token,
-    token_without_email,
 )
+from kb_mcp.sources.atlassian.declared import email_without_token, token_without_email
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    _sources: Sequence[Declared],
+) -> None:
     """Add ``doctor`` to the command."""
     parser = subparsers.add_parser(
         "doctor",

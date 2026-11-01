@@ -19,7 +19,7 @@ its trace too large.
 | `mirror.not_mirrored` | warning | `where`, `reason` | Something is not mirrored, by its place in the raw store, never its content: the run exits 1 |
 | `mirror.nothing_removed` | warning | `source`, `problems` | A source with problems removes none of its files, nor an attached file, so that each last good copy stays. An attached file also stays, without this warning, while reading the store finds a problem of the other source's, such as a snapshot or listing that cannot be read |
 | `mirror.cache_replaced` | warning | `reason` | The cache of conversions was damaged, no database, of a format that SQLite cannot read or may not write, or with a schema that names other columns, as a file of plan 039's, without `source`, has: deleted and started empty, so that the run converts everything; `reason`, SQLite's error name, `integrity_check`, or `UnicodeDecodeError` when SQLite's report quotes a name of the schema that is no longer UTF-8, never content |
-| `mirror.pandoc_missing` | error | `reason` | Pandoc went from PATH once the run began: exit 1 |
+| `mirror.pandoc_missing` | error | `reason` | Pandoc went from PATH once the run began: exit 1; in `sync`, each of Confluence's and Jira's rows fails, the run exiting as its rows rank |
 
 ## Spans
 

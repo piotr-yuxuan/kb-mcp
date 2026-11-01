@@ -159,11 +159,11 @@ After a progress bar, it ends with the window of the space, from the start of 20
 now, and what it would fetch:
 
 ```text
-download confluence: done
+fetch confluence: done
   space <KEY>: from 2000-01-01T00:00:00+00:00 to <now>, given
   confluence pages: to fetch: 13
   failures: 0
-mirror confluence: not run
+prepare confluence: not run
 index: not run
 ```
 
@@ -186,11 +186,11 @@ and ends its summary with `Proceed? [y/N]`: answer `y`. A space of tens of pages
 minute or so. It ends with a row per step, and that step's counts:
 
 ```text
-download confluence: done
+fetch confluence: done
   confluence pages: fetched: 13
   files: downloaded: 10
   failures: 0
-mirror confluence: done
+prepare confluence: done
   documents: 13
   converted by pandoc: 14
   reused from the cache: 0

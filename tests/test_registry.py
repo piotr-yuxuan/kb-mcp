@@ -161,3 +161,60 @@ def test_a_source_that_the_registry_leaves_out_has_no_setting(
     assert err == f"ignored: {variable}: names no setting\n"
     assert main(none) == ExitStatus.OK
     assert f"sources.{left_out}." in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("left_out", ["worklog", "confluence"])
+def test_a_source_that_the_registry_leaves_out_cannot_be_synced(
+    tmp_path: Path, capsys: CaptureFixture[str], left_out: str
+) -> None:
+    """Criterion 3: ``sync --include`` of it exits 2, argparse naming the choice refused.
+
+    With every source registered, the same name is a choice, here refused as not
+    configured, by the run's own check.
+    """
+    registry = tuple(each for each in SOURCES if each.name != left_out)
+    given = ["sync", "--yes", "--config", str(tmp_path / "none.toml"), "--include", left_out]
+    with pytest.raises(SystemExit) as stopped:
+        main(given, registry)
+    assert stopped.value.code == ExitStatus.REFUSED
+    assert f"invalid choice: '{left_out}'" in capsys.readouterr().err
+    assert main(given) == ExitStatus.REFUSED
+    assert f"--include {left_out}: not configured" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("role", "path", "said"),
+    [
+        ("fetcher", "kb_mcp.sources.atlassian.fetch.app.absent", "does not load"),
+        ("fetcher", "kb_absent.fetcher", "does not load"),
+        ("fetcher", "not a module path", "does not load"),
+        ("fetcher", "kb_mcp.sources.atlassian.declared", "not a Fetcher"),
+        ("preparers", "kb_mcp.sources.atlassian.fetch.app.fetcher", "not a Preparer"),
+    ],
+)
+def test_a_role_that_does_not_load_refuses_the_sync_of_its_source_naming_the_path(
+    tmp_path: Path, capsys: CaptureFixture[str], role: str, path: str, said: str
+) -> None:
+    """Criterion 3: a declaration naming a role that does not load, or is not the role.
+
+    ``sync --include`` of it exits 2 before any row, naming the source and the path;
+    with the registry's own declaration, the same run goes on, its fetch to sign in,
+    no session being saved.
+    """
+    named = path if role == "fetcher" else (path,)
+    registry = (replace(CONFLUENCE, **{role: named}), JIRA, WORKLOG)
+    config = tmp_path / "config.toml"
+    config.write_text(
+        '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n'
+        '[sources.confluence]\nspaces = ["MFS"]\n',
+        "utf-8",
+    )
+    data = tmp_path / "data"
+    given = ["sync", "--yes", "--config", str(config), "--data-dir", str(data)]
+    given += ["--include", "confluence", "--dry-run", "--format", "json"]
+    assert main(given, registry) == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    assert "sync.refused" in err
+    assert f"source 'confluence': {path}: {said}" in err
+    assert not data.exists()
+    assert main(given) == ExitStatus.SIGN_IN_AGAIN

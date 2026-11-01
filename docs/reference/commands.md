@@ -39,8 +39,8 @@ positional arguments:
     model        check the embedding model and its endpoint
     reranker     check the reranking server and its model
     serve        serve the mirror over MCP on stdio
-    sync         bring the configured sources up to date: download, mirror, the work
-                 log, then the index
+    sync         bring the configured sources up to date: fetch each, prepare each,
+                 then the index
 
 options:
   -h, --help     show this help message and exit
@@ -567,13 +567,15 @@ options:
   --allow-remote-embeddings
                         let this run send the mirror's text to an embedding endpoint
                         off this machine
-  --dry-run             say what a run would fetch and what the work log would change;
-                        write nothing
+  --dry-run             say what the run would fetch, and change where a source can
+                        tell; write nothing
 
-With --format json: exit_status, the run's; steps, a row per step and source (download
-of confluence then of jira, mirror of confluence then of jira, worklog, index), each
-with its step, its source, null for the index, its outcome (done, failed, sign in,
-interrupted, not run) and its result, as its own command gives it.
+With --format json: exit_status, the run's; steps, a row per step and source, the
+fetch of each source that has a fetcher, then the prepare of each, then the index,
+each with its step (fetch, prepare, index), its source, null for the index, its
+outcome (done, failed, sign in, interrupted, not run) and its result, null when it
+gave none: a fetch's or a prepare's outcome, and what the source's own command gives,
+under downloaded or mirrored; the index's, as index gives it.
 ```
 
 ## Exit statuses

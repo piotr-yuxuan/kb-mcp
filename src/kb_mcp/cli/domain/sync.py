@@ -1,39 +1,27 @@
 """What ``sync`` chooses and says, as pure functions of its arguments and settings.
 
-A source is configured when its table names what it covers: a space, a project or a
-folder. ``sync`` takes every source configured, ``--include NAME`` those named alone,
-``--exclude NAME`` all but those. Confluence and Jira share a step, one download, then a
-mirror of each; the work log has its own, which reads no period, so that the period's
-options it ignores are said. A row names its step and its source; the exit status ranks
-how the rows ended.
+The sources are the registry's, which the arguments hold (``sources``). A source is
+configured when its first setting, which names what it covers, is set. ``sync`` takes
+every source configured, ``--include NAME`` those named alone, ``--exclude NAME`` all
+but those. Each source taken says what the summary says of it, by its declaration; an
+option given is said ignored by each source taken that does not declare it. A row names
+its step and its source; the exit status ranks how the rows ended.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.fetch.domain.period import period_rule
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
-    from kb_mcp.kernel.names import SourceName
+    from kb_mcp.sources.declaration import Declared
 
-# The steps of a sync, in their order: Confluence's and Jira's together, the work log's.
-type Step = Literal["atlassian", "worklog"]
 # How a step ended, as its row says.
 type Outcome = Literal["done", "failed", "sign in", "interrupted", "not run"]
-# The options of a download's period, by their dest, and as typed.
-PERIOD = {"since": "--since", "until": "--until", "max_file_mb": "--max-file-mb"}
-# The settings that the Atlassian sources share: their account's, the site and its sign-in.
-SITE_SETTINGS = (
-    "accounts.atlassian.site",
-    "accounts.atlassian.email",
-    "accounts.atlassian.api_token",
-)
 # How the run ends, by the first of these outcomes that it had, else OK: interrupted, then
 # to sign in again, then failed.
 RANKED: tuple[tuple[Outcome, ExitStatus], ...] = (
@@ -43,58 +31,46 @@ RANKED: tuple[tuple[Outcome, ExitStatus], ...] = (
 )
 
 
-@dataclass(frozen=True)
-class Source:
-    """A source as ``sync`` knows it: its name, its step, its table's settings, its options.
-
-    Its first setting names what it covers, which makes it configured; ``options`` are
-    the dests of the period's options that it uses.
-    """
-
-    name: SourceName
-    step: Step
-    settings: tuple[str, ...]
-    options: tuple[str, ...]
-
-
-SOURCES = (
-    Source("confluence", "atlassian", ("sources.confluence.spaces",), tuple(PERIOD)),
-    Source("jira", "atlassian", ("sources.jira.projects",), tuple(PERIOD)),
-    Source("worklog", "worklog", ("sources.worklog.path", "sources.worklog.archives"), ()),
-)
-
-
 def label(step: str, source: str | None) -> str:
-    """Name a row: its step, then its source, unless it has none or the step bears its name."""
-    return step if source in {None, step} else f"{step} {source}"
+    """Name a row: its step, then its source, unless it has none."""
+    return step if source is None else f"{step} {source}"
+
+
+def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, object]:
+    """Give the value of each option by its flag, None when not given, unless a default.
+
+    argparse keeps an option's value under its flag, its dashes before dropped and
+    within made underscores.
+    """
+    return {flag: getattr(arguments, flag.lstrip("-").replace("-", "_")) for flag in flags}
 
 
 def chosen(
     arguments: argparse.Namespace, settings: Mapping[str, object]
-) -> tuple[tuple[Source, ...], dict[SourceName, str]]:
+) -> tuple[tuple[Declared, ...], dict[str, str]]:
     """Return the sources that a run takes, in their order, and why each other is left out."""
     included = set(arguments.include or ())
     excluded = set(arguments.exclude or ())
-    taken: list[Source] = []
-    left: dict[SourceName, str] = {}
-    for source in SOURCES:
-        if included and source.name not in included:
-            left[source.name] = "not included"
-        elif source.name in excluded:
-            left[source.name] = "excluded"
-        elif not settings[source.settings[0]]:
-            left[source.name] = "not configured"
+    taken: list[Declared] = []
+    left: dict[str, str] = {}
+    for declared in arguments.sources:
+        if included and declared.name not in included:
+            left[declared.name] = "not included"
+        elif declared.name in excluded:
+            left[declared.name] = "excluded"
+        elif not settings[declared.paths[0]]:
+            left[declared.name] = "not configured"
         else:
-            taken.append(source)
+            taken.append(declared)
     return tuple(taken), left
 
 
 def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
     """Say each source taken, with its settings, each left out and why, and the options ignored.
 
-    With Confluence or Jira taken, the rule of where their windows start follows the
-    sources. An option of the period given is ignored by each source taken that does not
-    use it.
+    The lines that a source taken says follow, each once, as its declaration's
+    ``described`` gives them. An option given is ignored by each source taken that does
+    not declare it.
     """
     taken, left = chosen(arguments, settings)
     values = {
@@ -102,14 +78,17 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
         for setting, value in settings.items()
     }
     lines: list[str] = []
-    for source in taken:
-        shown = (f"{setting.rpartition('.')[2]} {values[setting]}" for setting in source.settings)
-        lines.append(f"source {source.name}: {', '.join(shown)}")
+    said: list[str] = []
+    for declared in taken:
+        shown = (f"{path.rpartition('.')[2]} {values[path]}" for path in declared.paths)
+        lines.append(f"source {declared.name}: {', '.join(shown)}")
+        options = given(arguments, declared.options)
+        said += declared.described(options, settings) if declared.described else ()
     lines += [f"source {name}: left out, {why}" for name, why in left.items()]
-    if any(source.step == "atlassian" for source in taken):
-        lines.append(period_rule(since=arguments.since is not None))
-    for dest, option in PERIOD.items():
-        ignoring = [source.name for source in taken if dest not in source.options]
-        if getattr(arguments, dest) is not None and ignoring:
-            lines.append(f"{option}: ignored by {', '.join(ignoring)}")
-    return tuple(lines)
+    lines += said
+    flags = dict.fromkeys(flag for declared in arguments.sources for flag in declared.options)
+    for flag, value in given(arguments, flags).items():
+        ignoring = [declared.name for declared in taken if flag not in declared.options]
+        if value is not None and ignoring:
+            lines.append(f"{flag}: ignored by {', '.join(ignoring)}")
+    return tuple(dict.fromkeys(lines))

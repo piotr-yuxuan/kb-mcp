@@ -97,7 +97,7 @@ place where it would outlive a run:
   ([`test_no_run_at_debug_says_or_leaves_a_secret`](../../tests/test_secrets.py)).
 - **With its email, as one header.** A token without its email is refused before the
   run begins, with exit status 2
-  ([`token_without_email`](../../src/kb_mcp/cli/options/_common.py)).
+  ([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)).
   With it, it becomes the header of Basic auth, held by
   [`ApiToken`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py),
   whose representation leaves the header out.

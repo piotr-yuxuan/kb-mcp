@@ -69,7 +69,7 @@ from pathlib import Path
 from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import add_output_options
 
-def register(subparsers):
+def register(subparsers, _sources):
     parser = subparsers.add_parser("extra", help="a command added by a module pair")
     config = parser.add_argument("--config", type=Path)
     where = parser.add_argument("--where", dest="data_dir")

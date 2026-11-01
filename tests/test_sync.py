@@ -1,11 +1,14 @@
 """``sync`` as plan 017 defines it: the sources it takes, what it says, its steps, its status.
 
 The expectations come from the plan's "What sync does" and "Choosing sources", and its
-criteria 3 to 6, 11 and 12. The Atlassian sources are served by plan 004's scripted site,
-the work log is the invented fixture; each test has a scratch home, and terminals are
-injected or ``--yes`` given. Each test searches by words alone, which need no embedding
-endpoint, rather than rely on the default; one whose requirement is meaning, or the
-defaults, sets or removes the mode itself.
+criteria 3 to 6, 11 and 12, and from plan 030's "``sync`` through the registry": a row
+for each source's fetch, then for each source's prepare, then the index, each with its
+role's result, and the sources, their options and light checks the declarations'. The
+Atlassian sources are served by plan 004's scripted site, the work log is the invented
+fixture; each test has a scratch home, and terminals are injected or ``--yes`` given.
+Each test searches by words alone, which need no embedding endpoint, rather than rely on
+the default; one whose requirement is meaning, or the defaults, sets or removes the mode
+itself.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ import sqlite3
 import time
 from collections import Counter
 from contextlib import closing
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -26,14 +30,13 @@ from pydantic_core import to_json
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.app import sync as sync_app
-from kb_mcp.cli.app.sync import Atlassian, Context, Index, Worklog, sync
+from kb_mcp.cli.app.sync import Index, sync
 from kb_mcp.cli.domain.rows import Row
-from kb_mcp.cli.domain.sync import SOURCES, chosen
+from kb_mcp.cli.domain.sync import chosen
 from kb_mcp.cli.main import main, parser
 from kb_mcp.cli.options.sync import refused
 from kb_mcp.config.domain.settings import DEFAULT_MODEL, Settings
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.names import SOURCE_NAMES
 from kb_mcp.mirror.adapters import pandoc as pandoc_adapter
 from kb_mcp.mirror.adapters.mirror_files import Changes
 from kb_mcp.mirror.adapters.pandoc import (
@@ -43,33 +46,39 @@ from kb_mcp.mirror.adapters.pandoc import (
 )
 from kb_mcp.search.adapters import sqlite_index, vector_store
 from kb_mcp.search.app.indexing import Indexing
+from kb_mcp.sources.atlassian.declared import CONFLUENCE
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
-from kb_mcp.sources.atlassian.fetch.app.download import Outcome, Report, Targets
+from kb_mcp.sources.atlassian.fetch.app.download import Outcome, Report
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
 from kb_mcp.sources.atlassian.prepare.app import prepare as mirror_app
 from kb_mcp.sources.atlassian.prepare.app import preparer
+from kb_mcp.sources.registry import SOURCES
+from kb_mcp.sources.roles import Run
+from kb_mcp.sources.worklog.declared import WORKLOG
+from kb_mcp.sources.worklog.prepare.app import preparer as worklog_preparer
 from tests.composed import MODEL
 from tests.endpoint import DIGEST, Scripted, scripted, serving
 from tests.mirrors import fillers
 from tests.reference import Emitted, documented, pattern, undocumented
 from tests.test_cli import logged_as as logged_in_files
-from tests.test_download import CAP, PAGES, SITE, FakeSite
+from tests.test_download import PAGES, SITE, FakeSite
 from tests.test_question import QUESTION, Terminal
 from tests.test_refresh import FIRST, SECOND, WEEK, RefreshSite, stored_pages
 from tests.test_worklog_mirror import FIXTURE, Counting, settle, snapshot
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from datetime import datetime
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
     from opentelemetry.sdk.metrics.export import Metric
 
+    from kb_mcp.sources.declaration import Declared
     from tests.conftest import InMemory
 
 # Each setting that chooses a source, as the declaration's functions take them.
@@ -89,6 +98,8 @@ ALL = ["confluence", "jira", "worklog"]
 # meetings and six transcripts, one of them under meetings/.
 WORKLOG_KINDS = {"entry": 13, "day": 2, "meeting": 8, "transcript": 6}
 WORKLOG_DOCUMENTS = sum(WORKLOG_KINDS.values())
+# The period of a fetch that covers what the scripted sites serve: the week before FIRST.
+SINCE = {"--since": (FIRST - WEEK).isoformat()}
 
 
 def arguments(*given: str) -> argparse.Namespace:
@@ -218,7 +229,7 @@ def test_the_work_log_alone_ignores_nothing_when_given_nothing_to_ignore(
     assert main(command(home, config, "--include", "worklog", "--yes")) == 0
     captured = capsys.readouterr()
     assert "ignored" not in captured.err
-    assert captured.out.startswith(f"worklog: done\n  documents: {WORKLOG_DOCUMENTS}\n")
+    assert captured.out.startswith(f"prepare worklog: done\n  documents: {WORKLOG_DOCUMENTS}\n")
 
 
 def test_sync_asks_once_after_naming_each_source_taken_and_left_out(
@@ -257,10 +268,12 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> FakeSite:
 def test_json_is_one_document_with_a_row_per_step(
     home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """exit_status, then each download, each mirror, the work log and the index, with its result.
+    """exit_status, then each source's fetch, each source's prepare, then the index.
 
-    Each row names its source, none for the index: Confluence's and Jira's downloads are
-    a row each, the file that fails, a page's, failing Confluence's alone.
+    Plan 030: the rows run from ``fetch confluence`` to ``prepare worklog``, then
+    ``index``, each naming its source, none for the index, the file that fails, a
+    page's, failing Confluence's fetch alone. A row's result is its role's: its outcome,
+    and what the source's own command gives.
     """
     config = settings_file(home, worklog, atlassian=True)
     given = ("--yes", "--since", "2026-10-02", "--format", "json")
@@ -268,14 +281,16 @@ def test_json_is_one_document_with_a_row_per_step(
     document = json.loads(capsys.readouterr().out)
     assert document["exit_status"] == status == ExitStatus.FAILED  # one file fails
     assert [(row["step"], row["source"], row["outcome"]) for row in document["steps"]] == [
-        ("download", "confluence", "failed"),
-        ("download", "jira", "done"),
-        ("mirror", "confluence", "done"),
-        ("mirror", "jira", "done"),
-        ("worklog", "worklog", "done"),
+        ("fetch", "confluence", "failed"),
+        ("fetch", "jira", "done"),
+        ("prepare", "confluence", "done"),
+        ("prepare", "jira", "done"),
+        ("prepare", "worklog", "done"),
         ("index", None, "done"),
     ]
-    assert document["steps"][4]["result"]["documents"] == WORKLOG_DOCUMENTS
+    roles = document["steps"][:-1]
+    assert [row["result"]["outcome"] for row in roles] == [row["outcome"] for row in roles]
+    assert document["steps"][4]["result"]["mirrored"]["documents"] == WORKLOG_DOCUMENTS
     assert signed_in.asked
 
 
@@ -297,12 +312,13 @@ def test_a_first_sync_without_since_fetches_the_last_week_of_each_target(
 ) -> None:
     """Nothing covered no longer refuses the run: each target covers the 7 days before it.
 
-    The line before the run states the rule, since the store is not read before then.
+    The line before the run states the rule, since the store is not read before then,
+    once though both sources taken say it.
     """
     config = settings_file(home, None, atlassian=True)
     assert main(command(home, config, "--yes")) != ExitStatus.REFUSED
     rule = "period: since each target's last fetch; the last 7 days for one never fetched\n"
-    assert rule in capsys.readouterr().err
+    assert capsys.readouterr().err.count(rule) == 1
     assert signed_in.asked
     periods = RawStore((home / "data" / "raw").resolve()).coverage().periods
     assert set(periods) == {
@@ -312,15 +328,30 @@ def test_a_first_sync_without_since_fetches_the_last_week_of_each_target(
     assert {each.end - each.start for each in periods.values()} == {WEEK}
 
 
-def context(settings: Settings, now: datetime, pandoc: Pandoc | None = None) -> Context:
-    """Give a sync's context at ``now``."""
-    return Context(
-        settings=settings,
-        pandoc=pandoc or Pandoc.find(),
-        now=lambda: now,
-        sleep=lambda _: None,
-        dry_run=False,
-    )
+def runs(
+    settings: Settings,
+    now: datetime,
+    *declared: Declared,
+    options: Mapping[str, object] | None = None,
+    dry_run: bool = False,
+) -> list[Run]:
+    """Give a run of each source, at ``now``, as sync's command builds it from the settings.
+
+    Each source's options are those of ``options`` that it declares, None when not given.
+    """
+    return [
+        Run(
+            declared=each,
+            settings=settings,
+            table=getattr(settings.sources, each.name),
+            account=None if each.account is None else getattr(settings.accounts, each.account.name),
+            options={flag: (options or {}).get(flag) for flag in each.options},
+            now=lambda: now,
+            sleep=lambda _: None,
+            dry_run=dry_run,
+        )
+        for each in declared
+    ]
 
 
 def by_words(settings: Settings) -> Index:
@@ -356,8 +387,8 @@ def test_the_index_step_prunes_and_a_deferred_prune_leaves_it_done(tmp_path: Pat
         )
     )
     with vector_store.shared(settings.vectors):
-        deferred = sync(context(settings, FIRST), [step])
-    done = sync(context(settings, FIRST), [step])
+        deferred = sync([], step, lambda: FIRST, dry_run=False)
+    done = sync([], step, lambda: FIRST, dry_run=False)
     rows = [json.loads(to_json(synced))["steps"] for synced in (deferred, done)]
     assert [(row["outcome"], row["result"]["pruned"]["outcome"]) for [row] in rows] == [
         ("done", "deferred"),
@@ -371,11 +402,11 @@ def logged_as(logged: list[dict[str, object]], event: str) -> list[dict[str, obj
 
 
 def chosen_settings(tmp_path: Path, worklog: Path) -> Settings:
-    """Give settings with a site, a data folder with a saved session, and the work log."""
+    """Give settings with a site, a data folder with a saved session, MFS and the work log."""
     settings = MODEL(
         accounts={"atlassian": {"site": SITE}},
         data_dir=tmp_path / "data",
-        sources={"worklog": {"path": worklog}},
+        sources={"confluence": {"spaces": ["MFS"]}, "worklog": {"path": worklog}},
     )
     write_cookies(settings.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     return settings
@@ -387,51 +418,40 @@ def test_a_later_sync_catches_up_on_an_old_page_edited_today_and_nothing_stored(
     """A first sync over a week; a second, with no --since, fetches the edited page alone."""
     settings = chosen_settings(tmp_path, worklog)
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
-    first = Atlassian(
-        targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
-        sources=("confluence",),
-    )
-    assert sync(context(settings, FIRST), [first]).exit_status == ExitStatus.OK
+    first = runs(settings, FIRST, CONFLUENCE, options=SINCE)
+    assert sync(first, by_words(settings), lambda: FIRST, dry_run=False).exit_status == 0
     assert "1003" not in stored_pages(settings)
     edited = {"number": 4, "createdAt": "2026-10-23T08:00:00.000Z"}
     later = RefreshSite(listing={**PAGES, "1003": {**PAGES["1003"], "version": edited}})
     monkeypatch.setattr(http, "client", lambda *_: later.client())
     synced = sync(
-        context(settings, SECOND),
-        [
-            Atlassian(
-                targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP),
-                sources=("confluence",),
-            )
-        ],
+        runs(settings, SECOND, CONFLUENCE), by_words(settings), lambda: SECOND, dry_run=False
     )
     assert synced.exit_status == ExitStatus.OK
     fetched = synced.steps[0].result
-    assert isinstance(fetched, Outcome)
-    assert fetched.report.counts["confluence pages: fetched"] == 1
+    assert isinstance(fetched, fetcher.Fetched)
+    assert isinstance(fetched.downloaded, Outcome)
+    assert fetched.downloaded.report.counts["confluence pages: fetched"] == 1
     assert stored_pages(settings)["1003"] == "000004"
 
 
 def test_the_site_asking_to_sign_in_still_lets_the_work_log_run_exit_3(
     tmp_path: Path, worklog: Path
 ) -> None:
-    """No session saved: the download says to sign in; the mirror, work log and index run."""
-    settings = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
-    steps = [
-        Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
-            sources=("confluence",),
-        ),
-        Worklog(folder=worklog, archives=True),
-        by_words(settings),
-    ]
+    """No session saved: the fetch says to sign in; each prepare and the index run."""
+    settings = MODEL(
+        accounts={"atlassian": {"site": SITE}},
+        data_dir=tmp_path / "data",
+        sources={"confluence": {"spaces": ["MFS"]}, "worklog": {"path": worklog}},
+    )
+    taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
     with capture_logs() as logged:
-        synced = sync(context(settings, FIRST), steps)
-    assert [(row.step, row.outcome) for row in synced.steps] == [
-        ("download", "sign in"),
-        ("mirror", "done"),
-        ("worklog", "done"),
-        ("index", "done"),
+        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+    assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
+        ("fetch", "confluence", "sign in"),
+        ("prepare", "confluence", "done"),
+        ("prepare", "worklog", "done"),
+        ("index", None, "done"),
     ]
     assert synced.exit_status == ExitStatus.SIGN_IN_AGAIN
     assert logged_as(logged, "download.sign_in_needed")
@@ -441,26 +461,20 @@ def test_the_site_asking_to_sign_in_still_lets_the_work_log_run_exit_3(
 def test_ctrl_c_in_the_download_exits_130_and_no_later_step_runs(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The download interrupted; the mirror, the work log and the index not run."""
+    """The fetch interrupted; each prepare and the index not run."""
 
     def interrupted(*_: object) -> Outcome:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(fetcher, "download", interrupted)
     settings = chosen_settings(tmp_path, worklog)
-    steps = [
-        Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
-            sources=("confluence",),
-        ),
-        Worklog(folder=worklog, archives=True),
-    ]
-    synced = sync(context(settings, FIRST), [*steps, by_words(settings)])
-    assert [(row.step, row.outcome) for row in synced.steps] == [
-        ("download", "interrupted"),
-        ("mirror", "not run"),
-        ("worklog", "not run"),
-        ("index", "not run"),
+    taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
+    synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+    assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
+        ("fetch", "confluence", "interrupted"),
+        ("prepare", "confluence", "not run"),
+        ("prepare", "worklog", "not run"),
+        ("index", None, "not run"),
     ]
     assert synced.exit_status == ExitStatus.INTERRUPTED
     assert not settings.docs.exists()
@@ -470,7 +484,7 @@ def test_ctrl_c_in_the_download_exits_130_and_no_later_step_runs(
 def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The mirror fails, said by place; the work log and the index still run."""
+    """Confluence's prepare fails, said by place; the work log's and the index still run."""
     problem = mirror_app.Problem(
         where="confluence/pages/1001/000001", reason="pandoc: exit status 9"
     )
@@ -492,20 +506,14 @@ def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
         ),
     )
     settings = chosen_settings(tmp_path, worklog)
-    steps = [
-        Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
-            sources=("confluence",),
-        ),
-        Worklog(folder=worklog, archives=True),
-    ]
+    taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
     with capture_logs() as logged:
-        synced = sync(context(settings, FIRST), [*steps, by_words(settings)])
-    assert [(row.step, row.outcome) for row in synced.steps] == [
-        ("download", "done"),
-        ("mirror", "failed"),
-        ("worklog", "done"),
-        ("index", "done"),
+        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+    assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
+        ("fetch", "confluence", "done"),
+        ("prepare", "confluence", "failed"),
+        ("prepare", "worklog", "done"),
+        ("index", None, "done"),
     ]
     assert synced.exit_status == ExitStatus.FAILED
     (said,) = logged_as(logged, "mirror.not_mirrored")
@@ -526,14 +534,14 @@ def test_an_index_that_cannot_be_written_fails_its_row_and_keeps_the_others(
         raise sqlite3.OperationalError(message)
 
     settings = chosen_settings(tmp_path, worklog)
-    steps = [Worklog(folder=worklog, archives=True), by_words(settings)]
-    assert sync(context(settings, FIRST), steps).exit_status == ExitStatus.OK
+    taken = runs(settings, FIRST, WORKLOG)
+    assert sync(taken, by_words(settings), lambda: FIRST, dry_run=False).exit_status == 0
     before = settings.index.read_bytes()
     monkeypatch.setattr(sqlite_index.Writer, "add", full)
     with capture_logs() as logged:
-        synced = sync(context(settings, FIRST), steps)
+        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
     assert [(row.step, row.outcome) for row in synced.steps] == [
-        ("worklog", "done"),
+        ("prepare", "done"),
         ("index", "failed"),
     ]
     assert synced.exit_status == ExitStatus.FAILED
@@ -567,12 +575,12 @@ def test_sync_and_its_dry_run_leave_the_work_log_as_it_was(
     assert main(command(home, config, "--yes")) == 0
     assert main(command(home, config, "--yes")) == 0
     assert snapshot(worklog) == before
-    second = capsys.readouterr().out.split("worklog: done\n")[-1]
+    second = capsys.readouterr().out.split("prepare worklog: done\n")[-1]
     assert "files written: 0\n" in second
 
 
 def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
-    tmp_path: Path, worklog: Path, telemetry: InMemory
+    tmp_path: Path, worklog: Path, telemetry: InMemory, monkeypatch: MonkeyPatch
 ) -> None:
     """Until the next clean run; the logs say that nothing was removed, and what was held.
 
@@ -581,8 +589,8 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     user, 2026-10-29, plan 044).
     """
     settings = chosen_settings(tmp_path, worklog)
-    step = Worklog(folder=worklog, archives=True)
-    sync(context(settings, FIRST), [step])
+    taken, step = runs(settings, FIRST, WORKLOG), by_words(settings)
+    sync(taken, step, lambda: FIRST, dry_run=False)
     gone = next((settings.docs / "worklog/transcripts").glob("*waiting-notes.md"))
     (worklog / "transcripts/misc/a.org").unlink()
     todo = worklog / "todo.org"
@@ -590,22 +598,28 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     failing = Counting(path=Pandoc.find().path, failing="failing")
     telemetry.spans.clear()
     telemetry.measured()
-    with capture_logs() as logged:
-        synced = sync(context(settings, FIRST, failing), [step])
+    with monkeypatch.context() as patch, capture_logs() as logged:
+        patch.setattr(Pandoc, "find", lambda: failing)
+        synced = sync(taken, step, lambda: FIRST, dry_run=False)
     assert (synced.steps[0].outcome, synced.exit_status) == ("failed", ExitStatus.FAILED)
     (kept,) = logged_as(logged, "worklog.nothing_removed")
     assert {key: kept[key] for key in kept if key not in {"event", "log_level"}} == {"problems": 1}
     (problem,) = logged_as(logged, "worklog.problem")
     assert problem["where"] == f"todo.org, {problem['held_back']}"
     assert re.fullmatch(r"e-[0-9a-f]{16}", problem["held_back"])
-    assert [each["outcome"] for each in logged_as(logged, "sync.step")] == ["failed"]
+    steps = [(each["step"], each["outcome"]) for each in logged_as(logged, "sync.step")]
+    assert steps == [("prepare worklog", "failed"), ("index", "done")]
     spans = telemetry.spans.get_finished_spans()
-    (row,) = [span for span in spans if span.name == "sync.step"]
+    (row,) = [
+        span
+        for span in spans
+        if span.name == "sync.step" and span.attributes["kb_mcp.step"] == "prepare"
+    ]
     assert row.attributes["kb_mcp.outcome"] == "failed"
     assert by_kind_and_outcome(telemetry.measured()).get(("entry", "failed")) == 1
     assert gone.exists()
     todo.write_text(todo.read_text("utf-8").replace("Drafted, failing, on", "Drafted on"), "utf-8")
-    assert sync(context(settings, FIRST), [step]).exit_status == ExitStatus.OK
+    assert sync(taken, step, lambda: FIRST, dry_run=False).exit_status == ExitStatus.OK
     assert not gone.exists()
 
 
@@ -624,11 +638,12 @@ def test_a_transcript_not_read_is_said_loudly_with_what_it_held_back(
     captured = capsys.readouterr()
     (said,) = [line for line in captured.err.splitlines() if "worklog.problem" in line]
     assert all(part in said for part in (where, "not UTF-8", "held_back=t-20261027-1"))
-    (row,) = [each for each in json.loads(captured.out)["steps"] if each["step"] == "worklog"]
-    assert row["result"]["problems"] == [
+    (row,) = [each for each in json.loads(captured.out)["steps"] if each["source"] == "worklog"]
+    assert row["result"]["mirrored"]["problems"] == [
         {"where": where, "reason": "not UTF-8", "held_back": "t-20261027-1"}
     ]
     assert "held_back" not in row["result"]
+    assert "held_back" not in row["result"]["mirrored"]
 
 
 def test_the_text_gives_a_row_per_step_then_its_counts(
@@ -642,7 +657,7 @@ def test_the_text_gives_a_row_per_step_then_its_counts(
     config = settings_file(home, worklog)
     assert main(command(home, config, "--dry-run")) == 0
     assert capsys.readouterr().out == (
-        "worklog: done\n"
+        "prepare worklog: done\n"
         f"  documents: {WORKLOG_DOCUMENTS}\n"
         f"  to convert: {WORKLOG_DOCUMENTS}\n"
         "  files to remove: 0\n"
@@ -652,7 +667,7 @@ def test_the_text_gives_a_row_per_step_then_its_counts(
     )
     assert main(command(home, config, "--yes")) == 0
     assert re.fullmatch(
-        "worklog: done\n"
+        "prepare worklog: done\n"
         f"  documents: {WORKLOG_DOCUMENTS}\n"
         f"  files written: {WORKLOG_DOCUMENTS}\n"
         "  files unchanged: 0\n"
@@ -666,34 +681,51 @@ def test_the_text_gives_a_row_per_step_then_its_counts(
     )
 
 
-def test_the_sources_are_the_names_that_the_options_offer() -> None:
-    """--include and --exclude offer the kernel's names; sync's records bear the same."""
-    assert tuple(source.name for source in SOURCES) == SOURCE_NAMES
+@pytest.mark.parametrize("flag", ["--include", "--exclude"])
+@pytest.mark.parametrize("registry", [SOURCES, (WORKLOG,), (CONFLUENCE, WORKLOG)])
+def test_the_sources_offered_are_the_registry_s(
+    flag: str, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
+) -> None:
+    """Plan 030: --include and --exclude take the names of the registry's declarations.
+
+    Each name that the registry declares is taken; each other is refused by argparse.
+    """
+    names = [each.name for each in registry]
+    for name in names:
+        assert getattr(parser(sources=registry).parse_args(["sync", flag, name]), flag[2:]) == [
+            name
+        ]
+    for name in (each.name for each in SOURCES if each.name not in names):
+        with pytest.raises(SystemExit) as stopped:
+            parser(sources=registry).parse_args(["sync", flag, name])
+        assert stopped.value.code == ExitStatus.REFUSED
+        assert f"invalid choice: '{name}'" in capsys.readouterr().err
 
 
 def test_a_dry_run_of_the_site_plans_and_writes_nothing(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """Each download planned, mirror and index not run; the data folder holds the session alone."""
+    """Each fetch planned, each prepare and the index not run; the session alone is written."""
     config = settings_file(home, None, atlassian=True)
     given = ("--dry-run", "--since", "2026-10-02", "--format", "json")
     assert main(command(home, config, *given)) == ExitStatus.OK
     rows = json.loads(capsys.readouterr().out)["steps"]
     assert [(row["step"], row["source"], row["outcome"]) for row in rows] == [
-        ("download", "confluence", "done"),
-        ("download", "jira", "done"),
-        ("mirror", "confluence", "not run"),
-        ("mirror", "jira", "not run"),
+        ("fetch", "confluence", "done"),
+        ("fetch", "jira", "done"),
+        ("prepare", "confluence", "not run"),
+        ("prepare", "jira", "not run"),
         ("index", None, "not run"),
     ]
-    assert "confluence pages: to fetch" in rows[0]["result"]["report"]["counts"]
-    assert "jira issues: to fetch" in rows[1]["result"]["report"]["counts"]
-    windows = [each for row in rows[:2] for each in row["result"]["windows"]]
+    fetched = [row["result"]["downloaded"] for row in rows[:2]]
+    assert "confluence pages: to fetch" in fetched[0]["report"]["counts"]
+    assert "jira issues: to fetch" in fetched[1]["report"]["counts"]
+    windows = [each for each_fetched in fetched for each in each_fetched["windows"]]
     assert [(each["target"]["key"], each["reason"], each["coverage"]) for each in windows] == [
         ("MFS", "given", None),
         ("PRB", "given", None),
     ]
-    assert [row["result"]["dry_run"] for row in rows[:2]] == [True, True]
+    assert [each["dry_run"] for each in fetched] == [True, True]
     assert sorted(path.name for path in (home / "data").iterdir()) == ["session"]
     assert signed_in.asked
 
@@ -701,13 +733,13 @@ def test_a_dry_run_of_the_site_plans_and_writes_nothing(
 def test_a_dry_run_of_the_site_says_each_target_s_window_under_its_row(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """Short as it is: under each download's row, its target's window and why, then counts."""
+    """Short as it is: under each fetch's row, its target's window and why, then counts."""
     config = settings_file(home, None, atlassian=True)
     assert main(command(home, config, "--dry-run", "--since", "2026-10-02")) == ExitStatus.OK
-    confluence, jira = capsys.readouterr().out.split("download jira: done\n")
-    download_step, space, *_ = confluence.splitlines()
+    confluence, jira = capsys.readouterr().out.split("fetch jira: done\n")
+    fetch_step, space, *_ = confluence.splitlines()
     project, *_ = jira.splitlines()
-    assert download_step == "download confluence: done"
+    assert fetch_step == "fetch confluence: done"
     assert space.startswith("  space MFS: from 2026-10-02T00:00:00+00:00 to ")
     assert project.startswith("  project PRB: from 2026-10-02T00:00:00+00:00 to ")
     assert space.endswith(", given")
@@ -720,20 +752,20 @@ def test_a_dry_run_of_the_site_says_each_target_s_window_under_its_row(
         (
             ("--exclude", "worklog"),
             [
-                ("download", "confluence"),
-                ("download", "jira"),
-                ("mirror", "confluence"),
-                ("mirror", "jira"),
+                ("fetch", "confluence"),
+                ("fetch", "jira"),
+                ("prepare", "confluence"),
+                ("prepare", "jira"),
                 ("index", None),
             ],
             True,
         ),
         (
             ("--exclude", "confluence"),
-            [("download", "jira"), ("mirror", "jira"), ("worklog", "worklog"), ("index", None)],
+            [("fetch", "jira"), ("prepare", "jira"), ("prepare", "worklog"), ("index", None)],
             False,
         ),
-        (("--include", "worklog"), [("worklog", "worklog"), ("index", None)], False),
+        (("--include", "worklog"), [("prepare", "worklog"), ("index", None)], False),
     ],
 )
 def test_the_sources_chosen_are_the_steps_run(
@@ -750,7 +782,7 @@ def test_the_sources_chosen_are_the_steps_run(
     rows = json.loads(capsys.readouterr().out)["steps"]
     assert [(row["step"], row["source"]) for row in rows] == steps
     assert any("/wiki/" in url.path for url in signed_in.asked) is confluence
-    assert (home / "data" / "docs" / "worklog").exists() is (("worklog", "worklog") in steps)
+    assert (home / "data" / "docs" / "worklog").exists() is (("prepare", "worklog") in steps)
 
 
 def test_a_source_left_out_is_not_mirrored_though_its_documents_are_stored(
@@ -767,8 +799,8 @@ def test_a_source_left_out_is_not_mirrored_though_its_documents_are_stored(
     rows = json.loads(capsys.readouterr().out)["steps"]
     steps = [(row["step"], row["source"], row["outcome"]) for row in rows]
     assert steps == [
-        ("download", "jira", "done"),
-        ("mirror", "jira", "done"),
+        ("fetch", "jira", "done"),
+        ("prepare", "jira", "done"),
         ("index", None, "done"),
     ]
     assert not page.exists()
@@ -782,7 +814,7 @@ def test_archives_off_leaves_the_archived_documents_out_of_a_sync(
     config = settings_file(home, worklog)
     config.write_text(config.read_text("utf-8") + "archives = false\n", "utf-8")
     assert main(command(home, config, "--yes", "--format", "json")) == 0
-    result = json.loads(capsys.readouterr().out)["steps"][0]["result"]
+    result = json.loads(capsys.readouterr().out)["steps"][0]["result"]["mirrored"]
     archived = ["vendor", "old incident", "1.org", "incident review", "capacity planning"]
     assert result["documents"] == WORKLOG_DOCUMENTS - len(archived)
     labels = [
@@ -798,9 +830,8 @@ def test_the_settings_of_sources_left_out_are_said_not_applied(
     config = settings_file(home, worklog, atlassian=True)
     assert main(command(home, config, "--yes", "--include", "worklog")) == 0
     said = capsys.readouterr().err
-    assert (
-        "ignored: accounts.atlassian.site (config.toml): no Atlassian source in this sync\n" in said
-    )
+    unsigned = "no source of the atlassian account in this sync"
+    assert f"ignored: accounts.atlassian.site (config.toml): {unsigned}\n" in said
     assert "ignored: sources.jira.projects (config.toml): jira not included\n" in said
 
 
@@ -830,18 +861,20 @@ def test_a_second_sync_reuses_every_conversion_and_the_work_log_adds_none(
         main(command(home, config, *given, *output))
         rows.append(capsys.readouterr().out)
     first, second = (json.loads(row)["steps"][2] for row in rows[:2])
-    assert (first["step"], first["outcome"], first["result"]["reused"]) == ("mirror", "done", 0)
-    converted = first["result"]["converted"]
-    assert converted > first["result"]["documents"] > 0  # a tree among them
-    assert (second["result"]["converted"], second["result"]["reused"]) == (0, converted)
-    documents = first["result"]["documents"]
+    mirrored = first["result"]["mirrored"]
+    assert (first["step"], first["outcome"], mirrored["reused"]) == ("prepare", "done", 0)
+    converted = mirrored["converted"]
+    assert converted > mirrored["documents"] > 0  # a tree among them
+    again = second["result"]["mirrored"]
+    assert (again["converted"], again["reused"]) == (0, converted)
+    documents = mirrored["documents"]
     assert (
-        f"mirror confluence: done\n  documents: {documents}\n"
+        f"prepare confluence: done\n  documents: {documents}\n"
         f"  converted by pandoc: 0\n  reused from the cache: {converted}\n"
     ) in rows[2]
     jira = json.loads(rows[0])["steps"][3]
-    assert (jira["step"], jira["source"], jira["outcome"]) == ("mirror", "jira", "done")
-    total = converted + jira["result"]["converted"]
+    assert (jira["step"], jira["source"], jira["outcome"]) == ("prepare", "jira", "done")
+    total = converted + jira["result"]["mirrored"]["converted"]
     with closing(sqlite3.connect(home / "data" / "conversions.sqlite")) as cache:
         assert cache.execute("SELECT count(*) FROM conversions").fetchone() == (total,)
 
@@ -852,25 +885,23 @@ def test_a_damaged_cache_is_replaced_and_every_step_runs_exit_0(
     """Plan 039, criterion 8: the mirror converts all again, reusing nothing, said once."""
     settings = chosen_settings(tmp_path, worklog)
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
-    steps = [
-        Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
-            sources=("confluence",),
-        ),
-        Worklog(folder=worklog, archives=True),
-    ]
-    first = sync(context(settings, FIRST), steps).steps[1].result
-    assert isinstance(first, mirror_app.Outcome)
+    taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
+    first = sync(taken, by_words(settings), lambda: FIRST, dry_run=False).steps[1].result
+    assert isinstance(first, preparer.Prepared)
+    assert isinstance(first.mirrored, mirror_app.Outcome)
     settings.conversions.write_bytes(hashlib.shake_256(b"cache").digest(8192))
     with capture_logs() as logged:
-        synced = sync(context(settings, FIRST), steps)
+        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
     assert synced.exit_status == ExitStatus.OK
-    assert [(row.step, row.outcome) for row in synced.steps] == [
-        ("download", "done"),
-        ("mirror", "done"),
-        ("worklog", "done"),
+    assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
+        ("fetch", "confluence", "done"),
+        ("prepare", "confluence", "done"),
+        ("prepare", "worklog", "done"),
+        ("index", None, "done"),
     ]
-    mirrored = synced.steps[1].result
+    result = synced.steps[1].result
+    assert isinstance(result, preparer.Prepared)
+    mirrored, first = result.mirrored, first.mirrored
     assert isinstance(mirrored, mirror_app.Outcome)
     assert (mirrored.converted, mirrored.reused) == (first.converted, 0)
     replaced = logged_as(logged, "mirror.cache_replaced")
@@ -886,17 +917,16 @@ def test_other_arguments_for_pandoc_convert_the_mirror_again(
     """
     settings = chosen_settings(tmp_path, worklog)
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
-    steps = [
-        Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
-            sources=("confluence",),
-        )
-    ]
-    first = sync(context(settings, FIRST), steps).steps[1].result
+    taken = runs(settings, FIRST, CONFLUENCE, options=SINCE)
+    first = sync(taken, by_words(settings), lambda: FIRST, dry_run=False).steps[1].result
+    assert isinstance(first, preparer.Prepared)
+    first = first.mirrored
     assert isinstance(first, mirror_app.Outcome)
     more = (*pandoc_adapter.ARGUMENTS, "--columns=72")
     monkeypatch.setattr(pandoc_adapter, "ARGUMENTS", more)
-    again = sync(context(settings, FIRST), steps).steps[1].result
+    again = sync(taken, by_words(settings), lambda: FIRST, dry_run=False).steps[1].result
+    assert isinstance(again, preparer.Prepared)
+    again = again.mirrored
     assert isinstance(again, mirror_app.Outcome)
     assert (again.converted, again.reused) == (first.converted, 0)
     assert first.converted > 0
@@ -905,14 +935,14 @@ def test_other_arguments_for_pandoc_convert_the_mirror_again(
 def test_the_text_of_a_full_sync_gives_each_command_s_counts_under_its_row(
     home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """Each download's counts, as download writes them, indented under its source's row."""
+    """Each fetch's counts, as download writes them, indented under its source's row."""
     config = settings_file(home, worklog, atlassian=True)
     assert main(command(home, config, "--yes", "--since", "2026-10-02")) == ExitStatus.FAILED
     out = capsys.readouterr().out
-    assert out.startswith("download confluence: failed\n  confluence blogposts: fetched: 1\n")
-    assert "  failures: 1\ndownload jira: done\n  files: downloaded: 1\n" in out
-    assert "  failures: 0\nmirror confluence: done\n  documents: " in out
-    assert "\nmirror jira: done\n  documents: " in out
+    assert out.startswith("fetch confluence: failed\n  confluence blogposts: fetched: 1\n")
+    assert "  failures: 1\nfetch jira: done\n  files: downloaded: 1\n" in out
+    assert "  failures: 0\nprepare confluence: done\n  documents: " in out
+    assert "\nprepare jira: done\n  documents: " in out
     assert signed_in.asked
 
 
@@ -928,9 +958,9 @@ def test_with_the_work_log_alone_the_index_still_holds_every_page(
     given = ("--yes", "--include", "worklog", "--format", "json")
     assert main(command(home, config, *given)) == ExitStatus.OK
     rows = json.loads(capsys.readouterr().out)["steps"]
-    assert [(row["step"], row["outcome"]) for row in rows] == [
-        ("worklog", "done"),
-        ("index", "done"),
+    assert [(row["step"], row["source"], row["outcome"]) for row in rows] == [
+        ("prepare", "worklog", "done"),
+        ("index", None, "done"),
     ]
     assert rows[-1]["result"]["report"]["types"] == first
     assert not signed_in.asked
@@ -982,9 +1012,9 @@ def test_an_index_not_built_fails_its_row_and_keeps_the_others(
         status = main(command(home, config, "--yes", "--format", "json"))
     rows = json.loads(capsys.readouterr().out)["steps"]
     assert status == ExitStatus.FAILED
-    assert [(row["step"], row["outcome"]) for row in rows] == [
-        ("worklog", "done"),
-        ("index", "failed"),
+    assert [(row["step"], row["source"], row["outcome"]) for row in rows] == [
+        ("prepare", "worklog", "done"),
+        ("index", None, "failed"),
     ]
     assert rows[-1]["result"] is None
     assert [line["level"] for line in logged_in_files(home, "index.not_built")] == ["error"]
@@ -1017,7 +1047,7 @@ def interrupting(*_: object) -> None:
 def test_ctrl_c_in_the_mirror_marks_it_interrupted_and_the_work_log_not_run(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The download done, the mirror interrupted, the work log not run: exit 130."""
+    """The fetch done, Confluence's prepare interrupted, the work log's not run: exit 130."""
     monkeypatch.setattr(
         fetcher,
         "download",
@@ -1025,23 +1055,18 @@ def test_ctrl_c_in_the_mirror_marks_it_interrupted_and_the_work_log_not_run(
     )
     monkeypatch.setattr(preparer, "mirror", interrupting)
     settings = chosen_settings(tmp_path, worklog)
-    steps = [
-        Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
-            sources=("confluence",),
-        ),
-        Worklog(folder=worklog, archives=True),
-    ]
+    taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
     with capture_logs() as logged:
-        synced = sync(context(settings, FIRST), steps)
-    assert [(row.step, row.outcome) for row in synced.steps] == [
-        ("download", "done"),
-        ("mirror", "interrupted"),
-        ("worklog", "not run"),
+        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+    assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
+        ("fetch", "confluence", "done"),
+        ("prepare", "confluence", "interrupted"),
+        ("prepare", "worklog", "not run"),
+        ("index", None, "not run"),
     ]
     assert synced.exit_status == ExitStatus.INTERRUPTED
     stopped = logged_as(logged, "sync.interrupted")
-    assert [each["step"] for each in stopped] == ["mirror confluence"]
+    assert [each["step"] for each in stopped] == ["prepare confluence"]
 
 
 def test_ctrl_c_once_every_step_ended_still_exits_130(
@@ -1049,14 +1074,19 @@ def test_ctrl_c_once_every_step_ended_still_exits_130(
 ) -> None:
     """Every row kept as it ended, and the run interrupted."""
 
-    def ended_then_stopped(_context: Context, _step: Worklog, add: Callable[[Row], None]) -> None:
-        add(Row(step="worklog", source="worklog", outcome="done", result=None))
+    def ended_then_stopped(
+        _step: Index, _now: Callable[[], datetime], add: Callable[[Row], None], **_: bool
+    ) -> None:
+        add(Row(step="index", source=None, outcome="done", result=None))
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(sync_app, "worklog", ended_then_stopped)
+    monkeypatch.setattr(sync_app, "index", ended_then_stopped)
     settings = chosen_settings(tmp_path, worklog)
-    synced = sync(context(settings, FIRST), [Worklog(folder=worklog, archives=True)])
-    assert [(row.step, row.outcome) for row in synced.steps] == [("worklog", "done")]
+    synced = sync(runs(settings, FIRST, WORKLOG), by_words(settings), lambda: FIRST, dry_run=False)
+    assert [(row.step, row.outcome) for row in synced.steps] == [
+        ("prepare", "done"),
+        ("index", "done"),
+    ]
     assert synced.exit_status == ExitStatus.INTERRUPTED
 
 
@@ -1079,17 +1109,18 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
             problems=(problem,),
         ),
     )
-    settings = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
-    atlassian = Atlassian(
-        targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
-        sources=("confluence",),
+    settings = MODEL(
+        accounts={"atlassian": {"site": SITE}},
+        data_dir=tmp_path / "data",
+        sources={"confluence": {"spaces": ["MFS"]}, "worklog": {"path": worklog}},
     )
-    synced = sync(context(settings, FIRST), [atlassian, Worklog(folder=worklog, archives=True)])
-    assert [row.outcome for row in synced.steps] == ["sign in", "failed", "done"]
+    taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
+    synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+    assert [row.outcome for row in synced.steps] == ["sign in", "failed", "done", "done"]
     assert synced.exit_status == ExitStatus.SIGN_IN_AGAIN
-    monkeypatch.setattr(sync_app, "worklog", interrupting)
-    synced = sync(context(settings, FIRST), [atlassian, Worklog(folder=worklog, archives=True)])
-    assert [row.outcome for row in synced.steps] == ["sign in", "failed", "interrupted"]
+    monkeypatch.setattr(worklog_preparer, "prepare", interrupting)
+    synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+    assert [row.outcome for row in synced.steps] == ["sign in", "failed", "interrupted", "not run"]
     assert synced.exit_status == ExitStatus.INTERRUPTED
 
 
@@ -1113,7 +1144,7 @@ def test_with_a_site_source_an_email_without_a_token_alone_is_not_applied(
     config = settings_file(home, None, atlassian=True)
     assert main(command(home, config, "--dry-run", "--since", "2026-10-02")) == ExitStatus.OK
     said = capsys.readouterr().err
-    assert "no Atlassian source" not in said
+    assert "no source of the atlassian account" not in said
     assert (
         "accounts.atlassian.email: someone@example.invalid (not applied: without an API token"
         in said
@@ -1134,33 +1165,29 @@ def test_without_a_site_source_the_sign_in_s_settings_are_not_applied(
         ("accounts.atlassian.email", "KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL"),
         ("accounts.atlassian.api_token", "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"),
     ):
-        assert f"ignored: {setting} ({variable}): no Atlassian source in this sync\n" in said
+        unsigned = "no source of the atlassian account in this sync"
+        assert f"ignored: {setting} ({variable}): {unsigned}\n" in said
     assert "token-sentinel-7f2b" not in said
 
 
 def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Another run writing the store: the download failed, said; mirror and work log run."""
+    """Another run writing the store: the fetch failed, said; each prepare runs."""
 
     def busy(*_: object) -> Outcome:
         raise StoreBusyError
 
     monkeypatch.setattr(fetcher, "download", busy)
     settings = chosen_settings(tmp_path, worklog)
-    steps = [
-        Atlassian(
-            targets=Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK),
-            sources=("confluence",),
-        ),
-        Worklog(folder=worklog, archives=True),
-    ]
+    taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
     with capture_logs() as logged:
-        synced = sync(context(settings, FIRST), steps)
-    assert [(row.step, row.outcome) for row in synced.steps] == [
-        ("download", "failed"),
-        ("mirror", "done"),
-        ("worklog", "done"),
+        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+    assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
+        ("fetch", "confluence", "failed"),
+        ("prepare", "confluence", "done"),
+        ("prepare", "worklog", "done"),
+        ("index", None, "done"),
     ]
     assert synced.exit_status == ExitStatus.FAILED
     assert logged_as(logged, "download.store_busy")
@@ -1302,9 +1329,13 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
     assert {point.attributes["kb_mcp.kind"]: point.count for point in timed} == WORKLOG_KINDS
     assert "kb_mcp.mirror.conversion.duration" not in second
     rows = {span.attributes["kb_mcp.step"]: span for span in spans if span.name == "sync.step"}
-    assert list(rows) == ["worklog", "index"]
-    row = rows["worklog"]
-    assert row.attributes["kb_mcp.outcome"] == "done"
+    assert list(rows) == ["prepare", "index"]
+    row = rows["prepare"]
+    assert (row.attributes["kb_mcp.source"], row.attributes["kb_mcp.outcome"]) == (
+        "worklog",
+        "done",
+    )
+    assert "kb_mcp.source" not in rows["index"].attributes
     (root,) = [span for span in spans if span.name == "sync"]
     assert row.parent is not None
     assert row.parent.span_id == root.context.span_id
@@ -1340,23 +1371,17 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     on an empty mirror, none after a run, and one file to remove once a transcript is
     deleted.
     """
-    settings, step = chosen_settings(tmp_path, worklog), Worklog(folder=worklog, archives=True)
-    dry = Context(
-        settings=settings,
-        pandoc=Pandoc.find(),
-        now=lambda: FIRST,
-        sleep=lambda _: None,
-        dry_run=True,
-    )
+    settings = chosen_settings(tmp_path, worklog)
+    dry, step = runs(settings, FIRST, WORKLOG, dry_run=True), by_words(settings)
     with capture_logs() as planned:
-        sync(dry, [step])
+        sync(dry, step, lambda: FIRST, dry_run=True)
     with capture_logs() as fresh:
-        sync(context(settings, FIRST), [step])
+        sync(runs(settings, FIRST, WORKLOG), step, lambda: FIRST, dry_run=False)
     with capture_logs() as unchanged:
-        sync(context(settings, FIRST), [step])
+        sync(runs(settings, FIRST, WORKLOG), step, lambda: FIRST, dry_run=False)
     (worklog / "transcripts/misc/a.org").unlink()
     with capture_logs() as planned_again:
-        sync(dry, [step])
+        sync(dry, step, lambda: FIRST, dry_run=True)
     (read,) = logged_as(fresh, "worklog.read")
     counts = ("entries", "days", "meetings", "transcripts", "html", "problems")
     assert tuple(read[each] for each in counts) == (13, 2, 8, 6, 1, 0)
@@ -1378,3 +1403,198 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     assert kept == {"kept"}
     assert ended_with(planned, "to_convert", "to_remove", "problems") == (every, 0, 0)
     assert ended_with(planned_again, "to_convert", "to_remove", "problems") == (0, 1, 0)
+
+
+def test_every_role_s_preflight_runs_before_the_first_row(
+    home: Path, tmp_path: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 030: a work log that is not a folder refuses the run before any fetch.
+
+    Its preparer's preflight refuses it, so that Confluence's and Jira's fetchers, whose
+    rows come first, ask the site nothing.
+    """
+    config = settings_file(home, tmp_path / "absent", atlassian=True)
+    assert main(command(home, config, "--yes", "--since", "2026-10-02")) == ExitStatus.REFUSED
+    assert "sources.worklog.path: not a folder" in capsys.readouterr().err
+    assert signed_in.asked == []
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ((), {}, "accounts.atlassian.site: not set; add it to the settings or pass --site"),
+        (
+            ("--site", SITE),
+            {"KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": "token-sentinel-7f2b"},
+            "accounts.atlassian.email: not set; an API token signs in with its account's email",
+        ),
+        (("--site", SITE, "--max-file-mb", "0"), {}, "--max-file-mb: at least 1"),
+        (("--site", SITE, "--until", "soon"), {}, "--until: a length before now"),
+    ],
+)
+def test_the_site_s_light_checks_refuse_a_sync_of_its_sources_alone(
+    home: Path,
+    worklog: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    case: tuple[tuple[str, ...], dict[str, str], str],
+) -> None:
+    """Plan 030: Confluence's and Jira's declarations refuse a run of either, by name.
+
+    No site, an API token without its email, or an option of the period that does not
+    read, exit 2 before anything is asked; a sync of the work log alone asks the site's
+    declarations nothing, and says the period's options ignored.
+    """
+    given, variables, said = case
+    for name, value in variables.items():
+        monkeypatch.setenv(name, value)
+    config = settings_file(home, worklog)
+    config.write_text(config.read_text("utf-8") + '[sources.jira]\nprojects = ["PRB"]\n', "utf-8")
+    assert main(command(home, config, "--yes", *given)) == ExitStatus.REFUSED
+    assert said in capsys.readouterr().err
+    assert main(command(home, config, "--dry-run", "--include", "worklog", *given)) == 0
+    assert said not in capsys.readouterr().err
+
+
+def test_a_source_s_own_light_checks_are_asked_when_it_is_taken(
+    home: Path, worklog: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 030: sync asks each source taken what it refuses, says and does not apply.
+
+    By its declaration's functions, given its options and the settings: here the work
+    log's, in a registry of the test's own.
+    """
+    config = settings_file(home, worklog)
+    config.write_text(config.read_text("utf-8") + "archives = false\n", "utf-8")
+
+    def said(_options: Mapping[str, object], _settings: Mapping[str, object]) -> tuple[str, ...]:
+        return ("read in place, as declared",)
+
+    def unused(_options: Mapping[str, object], settings: Mapping[str, object]) -> dict[str, str]:
+        assert settings["sources.worklog.archives"] is False
+        return {"sources.worklog.archives": "a declaration's reason"}
+
+    checked = replace(WORKLOG, described=said, unapplied=unused)
+    assert main(command(home, config, "--dry-run"), (*SOURCES[:2], checked)) == ExitStatus.OK
+    err = capsys.readouterr().err
+    assert "  read in place, as declared\n" in err
+    assert "(not applied: a declaration's reason)" in err
+
+    refusing = replace(WORKLOG, refused=lambda _options, _settings: "a declaration's refusal")
+    refused_run = main(command(home, config, "--dry-run"), (*SOURCES[:2], refusing))
+    assert refused_run == ExitStatus.REFUSED
+    assert "a declaration's refusal" in capsys.readouterr().err
+    left_out = main(command(home, config, "--dry-run", "--exclude", "worklog"), (refusing,))
+    assert left_out == ExitStatus.REFUSED
+    assert "a declaration's refusal" not in capsys.readouterr().err
+
+
+def test_each_preparer_that_a_source_declares_is_a_row_of_its_own(
+    tmp_path: Path, worklog: Path
+) -> None:
+    """Plan 030: a declaration's preparers are a tuple: each runs, in its order, a row each.
+
+    The same preparer twice here, the second finding its files written by the first.
+    """
+    settings = chosen_settings(tmp_path, worklog)
+    twice = replace(WORKLOG, preparers=WORKLOG.preparers * 2)
+    synced = sync(runs(settings, FIRST, twice), by_words(settings), lambda: FIRST, dry_run=False)
+    assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
+        ("prepare", "worklog", "done"),
+        ("prepare", "worklog", "done"),
+        ("index", None, "done"),
+    ]
+    written = [row.result.mirrored.changes.written for row in synced.steps[:2]]
+    assert written == [WORKLOG_DOCUMENTS, 0]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (ExitStatus.OK, "done", ExitStatus.FAILED),
+        (ExitStatus.SIGN_IN_AGAIN, "sign in", ExitStatus.SIGN_IN_AGAIN),
+    ],
+)
+def test_pandoc_gone_fails_each_preparer_s_row_and_the_run_exits_as_its_rows_rank(
+    tmp_path: Path,
+    worklog: Path,
+    monkeypatch: MonkeyPatch,
+    case: tuple[ExitStatus, str, ExitStatus],
+) -> None:
+    """Plan 030's departure: no role but a preparer needs pandoc, so the fetch still runs.
+
+    Gone from PATH after the entry's check, it fails each preparer's row alone, each
+    saying so, and the run exits 1, or 3 when a fetch needs sign-in.
+    """
+    ended, fetched, status = case
+    monkeypatch.setattr(Pandoc, "find", missing)
+    monkeypatch.setattr(
+        fetcher,
+        "download",
+        lambda *_: Outcome(report=Report(), failed_targets=[], status=ended),
+    )
+    settings = chosen_settings(tmp_path, worklog)
+    taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
+    with capture_logs() as logged:
+        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+    assert [(row.step, row.source, row.outcome) for row in synced.steps[:3]] == [
+        ("fetch", "confluence", fetched),
+        ("prepare", "confluence", "failed"),
+        ("prepare", "worklog", "failed"),
+    ]
+    assert synced.exit_status == status
+    assert len(logged_as(logged, "mirror.pandoc_missing")) == 1
+    assert len(logged_as(logged, "worklog.pandoc_failed")) == 1
+    assert not (settings.docs / "worklog").exists()
+
+
+def test_pandoc_giving_no_version_fails_the_work_log_s_row_writing_nothing(
+    tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """No revision can be named: the row fails, an error says why, and the run goes on."""
+    monkeypatch.setattr(Pandoc, "org_converter", lambda _: unconverted())
+    settings = chosen_settings(tmp_path, worklog)
+    taken = runs(settings, FIRST, WORKLOG)
+    with capture_logs() as logged:
+        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+    assert [(row.step, row.source) for row in synced.steps] == [
+        ("prepare", "worklog"),
+        ("index", None),
+    ]
+    assert (synced.steps[0].outcome, synced.exit_status) == ("failed", ExitStatus.FAILED)
+    (said,) = logged_as(logged, "worklog.pandoc_failed")
+    assert said["reason"] == "pandoc: exit status 9"
+    assert not (settings.docs / "worklog").exists()
+
+
+def test_only_a_run_that_writes_says_that_its_problems_held_removals_back(
+    tmp_path: Path, worklog: Path
+) -> None:
+    """A file not read is a problem of both; a dry run, which removes nothing, says no more."""
+    (worklog / "transcripts/misc/a.org").write_bytes(b"* Caf\xe9\n")
+    settings = chosen_settings(tmp_path, worklog)
+    step = by_words(settings)
+    with capture_logs() as dry:
+        sync(runs(settings, FIRST, WORKLOG, dry_run=True), step, lambda: FIRST, dry_run=True)
+    with capture_logs() as real:
+        sync(runs(settings, FIRST, WORKLOG), step, lambda: FIRST, dry_run=False)
+    assert logged_as(dry, "worklog.problem")
+    assert not logged_as(dry, "worklog.nothing_removed")
+    assert logged_as(real, "worklog.problem")
+    assert logged_as(real, "worklog.nothing_removed")
+
+
+def test_sync_offers_each_option_that_its_sources_declare_once(
+    capsys: CaptureFixture[str],
+) -> None:
+    """Plan 030: the period's options are Confluence's and Jira's, each flag once.
+
+    Each is read as its declaration types it; a registry of the work log alone, which
+    declares none, offers none.
+    """
+    arguments = parser().parse_args(["sync", "--since", "7d", "--max-file-mb", "2"])
+    assert (arguments.since, arguments.max_file_mb) == ("7d", 2)
+    with pytest.raises(SystemExit) as stopped:
+        parser(sources=(WORKLOG,)).parse_args(["sync", "--since", "7d"])
+    assert stopped.value.code == ExitStatus.REFUSED
+    assert "unrecognized arguments: --since 7d" in capsys.readouterr().err

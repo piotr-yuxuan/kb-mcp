@@ -14,6 +14,9 @@ from kb_mcp.cli.options._common import (
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 # Every setting, by its path, in the model's order: check shows them all.
 EVERY_SETTING = (
@@ -38,7 +41,10 @@ EVERY_SETTING = (
 )
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    _sources: Sequence[Declared],
+) -> None:
     """Add ``check`` to the command."""
     parser = subparsers.add_parser(
         "check",

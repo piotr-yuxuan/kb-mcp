@@ -49,10 +49,9 @@ flowchart LR
 ## Sync: the stages in one command
 
 [`sync`](../../src/kb_mcp/cli/app/sync.py) runs, in this order, the stages
-that a refresh needs: one download of every space and project that the settings' tables
-name, then `mirror`
-([`atlassian`](../../src/kb_mcp/cli/app/sync.py)); the work log's step
-([`worklog`](../../src/kb_mcp/cli/app/sync.py)); then the index, from the
+that a refresh needs: the fetch of each source taken that has a fetcher, a download of
+the spaces or projects that its table names; the prepare of each, `mirror` for
+Confluence's and Jira's, the work log's step for its own; then the index, from the
 whole mirror, whichever sources the run took
 ([`index`](../../src/kb_mcp/cli/app/sync.py)). Each calls the same function
 as its own command:
@@ -60,8 +59,8 @@ as its own command:
 [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py),
 [`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) and
 [`index_mirror`](../../src/kb_mcp/search/app/indexing.py). A source is a
-record that names its table and its step
-([`SOURCES`](../../src/kb_mcp/cli/domain/sync.py)), and `--include` and
+declaration that names its table and its roles
+([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and `--include` and
 `--exclude` choose among those configured
 ([`chosen`](../../src/kb_mcp/cli/domain/sync.py));
 [sources](sources.md#modular-and-no-more) says why no interface spans them.

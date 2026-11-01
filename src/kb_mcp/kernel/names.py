@@ -1,4 +1,4 @@
-"""The names of the mirror: its sources, and the rules of its ids, keys and revisions.
+"""The names of the mirror: the rules of its sources' names, ids, keys and revisions.
 
 A value that breaks a rule is refused where a domain type is built, by ``require``,
 with a ``RefusedError`` that names the field and the rule, never the value.
@@ -7,11 +7,7 @@ with a ``RefusedError`` that names the field and the rule, never the value.
 from __future__ import annotations
 
 import re
-from typing import Literal
 
-# The sources of the mirror, as sync's --include and --exclude name them.
-type SourceName = Literal["confluence", "jira", "worklog"]
-SOURCE_NAMES: tuple[SourceName, ...] = ("confluence", "jira", "worklog")
 # A source's name, and a type of its documents, as the front matter names them.
 SOURCE_NAME = re.compile(r"[a-z][a-z0-9]*")
 TYPE_NAME = re.compile(r"[a-z]+")

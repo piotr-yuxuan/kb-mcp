@@ -10,7 +10,9 @@ from kb_mcp.cli.options._common import add_output_options, add_settings_options
 from kb_mcp.kernel.names import MODEL_NAME
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 
 def reranker_name(value: str) -> str:
@@ -28,7 +30,10 @@ def reranker_named(
     return {"rerank.model": "replaced by the model named"} if arguments.name else {}
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    _sources: Sequence[Declared],
+) -> None:
     """Add ``reranker`` to the command."""
     parser = subparsers.add_parser(
         "reranker",

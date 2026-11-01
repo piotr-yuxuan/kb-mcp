@@ -14,9 +14,15 @@ from kb_mcp.cli.options._common import (
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    _sources: Sequence[Declared],
+) -> None:
     """Add ``mirror`` to the command."""
     parser = subparsers.add_parser(
         "mirror",

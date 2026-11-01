@@ -20,7 +20,9 @@ from kb_mcp.kernel.chunking import CHUNKINGS
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 
 def models_named(arguments: argparse.Namespace, _settings: Mapping[str, object]) -> dict[str, str]:
@@ -28,7 +30,10 @@ def models_named(arguments: argparse.Namespace, _settings: Mapping[str, object])
     return {"model": "replaced by --model"} if arguments.model else {}
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    _sources: Sequence[Declared],
+) -> None:
     """Add ``eval`` to the command."""
     parser = subparsers.add_parser(
         "eval",

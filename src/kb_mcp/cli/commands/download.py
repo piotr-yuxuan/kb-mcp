@@ -10,32 +10,20 @@ import structlog
 
 from kb_mcp.cli.commands._rows import rows_text
 from kb_mcp.cli.domain.rows import Row, Synced
-from kb_mcp.cli.domain.sync import PERIOD, RANKED
+from kb_mcp.cli.domain.sync import RANKED, given
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
+from kb_mcp.sources.atlassian.declared import PERIOD
 from kb_mcp.sources.atlassian.fetch.app.download import read_targets
 from kb_mcp.sources.atlassian.fetch.app.fetcher import fetch_targets
 from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Sequence
 
-    from kb_mcp.cli.domain.sync import Outcome as RowOutcome
+    from kb_mcp.cli.domain.sync import Outcome
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources.atlassian.fetch.app.download import Outcome, Targets
-
-
-def targets_of(
-    arguments: argparse.Namespace, spaces: Sequence[str], projects: Sequence[str], now: datetime
-) -> Targets:
-    """Read what a run downloads of these spaces and projects from the period's options.
-
-    The options were checked before the run, and read as ``read_targets`` reads them.
-    """
-    options = {option: getattr(arguments, dest) for dest, option in PERIOD.items()}
-    return read_targets(spaces, projects, options, now)
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Synced | None]:
@@ -54,8 +42,11 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sync
     sources = settings.sources
     rows: list[Row] = []
     try:
-        targets = targets_of(
-            arguments, sources.confluence.spaces, sources.jira.projects, datetime.now(UTC)
+        targets = read_targets(
+            sources.confluence.spaces,
+            sources.jira.projects,
+            given(arguments, (option.flag for option in PERIOD)),
+            datetime.now(UTC),
         )
         for source, each in targets.by_source().items():
             fetched = fetch_targets(
@@ -75,16 +66,11 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sync
     except KeyboardInterrupt:
         structlog.get_logger().warning("download.interrupted", counts=str(settings.runs))
         return ExitStatus.INTERRUPTED, None
-    outcomes: set[RowOutcome] = {row.outcome for row in rows}
+    outcomes: set[Outcome] = {row.outcome for row in rows}
     status = next((status for outcome, status in RANKED if outcome in outcomes), ExitStatus.OK)
     return status, Synced(exit_status=status, steps=tuple(rows))
 
 
-def outcome_text(outcome: Outcome, summary: Summary) -> str:
-    """Write one source's counts under its row, as the outcome's own ``text`` does."""
-    return outcome.text(summary)
-
-
 def text(synced: Synced, summary: Summary) -> str:
     """Write a row per source, as ``sync`` writes its rows: how it ended, then its counts."""
-    return rows_text(synced, summary, {"download": outcome_text})
+    return rows_text(synced, summary, {})

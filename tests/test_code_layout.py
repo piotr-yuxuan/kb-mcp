@@ -1,7 +1,8 @@
 """Where the code's imports may go and what stays a dataclass, past Import Linter's reach.
 
 Each contract of ``pyproject.toml`` carries, as its id, the letter that the layout page
-gives it; contract I lists the package of each source that the registry declares.
+gives it; contract I lists the package of each source that the registry declares, and
+K every context and source but the Atlassian package.
 """
 
 from __future__ import annotations
@@ -142,3 +143,25 @@ def test_contract_i_lists_the_package_of_each_registered_source_once() -> None:
     assert set(held) == {each.name for each in SOURCES}
     (independent,) = [contract for contract in CONTRACTS if contract.get("id") == "I"]
     assert sorted(independent["modules"]) == sorted(set(held.values()))
+
+
+def test_contract_k_names_every_context_and_source_but_the_atlassian_package() -> None:
+    """Plan 030: K keeps lxml and Playwright within ``sources.atlassian`` alone.
+
+    A forbidden contract cannot leave one package out of a wildcard, so K names each
+    context but ``sources``, and each module and package of ``sources`` but
+    ``atlassian``, each once: a new context, or a new source, left out of K fails it.
+    """
+    contexts = {
+        f"{kb_mcp.__name__}.{each.name}"
+        for each in pkgutil.iter_modules(kb_mcp.__path__)
+        if each.ispkg and each.name != "sources"
+    }
+    beside = {
+        f"{sources.__name__}.{each.name}"
+        for each in pkgutil.iter_modules(sources.__path__)
+        if each.name != "atlassian"
+    }
+    (contract,) = [contract for contract in CONTRACTS if contract.get("id") == "K"]
+    assert sorted(contract["source_modules"]) == sorted(contexts | beside)
+    assert sorted(contract["forbidden_modules"]) == ["lxml", "playwright"]

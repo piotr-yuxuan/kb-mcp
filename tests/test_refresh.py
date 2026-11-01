@@ -12,7 +12,6 @@ import pytest
 from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
-from kb_mcp.cli.commands import download as download_command
 from kb_mcp.cli.main import main
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.sources.atlassian.fetch.adapters import http
@@ -1094,7 +1093,7 @@ def test_a_space_whose_catch_up_starts_after_until_is_skipped_and_said_so(
     outcome = download(chosen, early, lambda: SECOND, lambda _: None)
     assert not [url for url in fake.asked if url.path.startswith("/wiki/api/v2/spaces")]
     assert RawStore(chosen.raw).coverage() == before
-    detailed = download_command.outcome_text(outcome, "detailed")
+    detailed = outcome.text("detailed")
     assert "space MFS: skipped, after --until; coverage held\n" in detailed
     [window] = to_jsonable_python(outcome)["windows"]
     assert (window["start"], window["end"], window["reason"], window["coverage"]) == (

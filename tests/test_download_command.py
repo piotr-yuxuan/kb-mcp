@@ -13,7 +13,6 @@ import pytest
 from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
-from kb_mcp.cli.commands import download as download_command
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.exit_status import ExitStatus
@@ -445,10 +444,7 @@ def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
     ] == [(50, 7, 4, 3, reason)]
     tasks = [(each["done"], each["total"]) for each in events if each.get("task") == "documents"]
     assert tasks[-1] == (3, 3)
-    assert (
-        download_command.outcome_text(outcome, "short")
-        == "confluence pages: fetched: 3\nfailures: 0\n"
-    )
+    assert outcome.text("short") == "confluence pages: fetched: 3\nfailures: 0\n"
     [window] = to_jsonable_python(outcome)["windows"]
     assert (window["target"], window["end"], window["reason"], window["coverage"]) == (
         {"source": "confluence", "key": "MFS"},
@@ -465,7 +461,7 @@ def test_without_since_the_detail_counts_what_is_new_or_changed_since_the_last_f
 ) -> None:
     """A catch-up, or a first fetch: not what is in the period, which can be a whole space."""
     outcome, _, _ = counted(tmp_path, monkeypatch, None, first_fetch=first_fetch)
-    detailed = download_command.outcome_text(outcome, "detailed")
+    detailed = outcome.text("detailed")
     assert "confluence pages: new or changed since the last fetch: 3\n" in detailed
     assert "confluence pages: fetched: 3\n" in detailed
     assert "in the period" not in detailed
@@ -477,7 +473,7 @@ def test_with_since_the_detail_counts_what_is_in_the_period_and_stored(
 ) -> None:
     """Given --since, the period is the user's: what is in it, and what was stored already."""
     outcome, _, _ = counted(tmp_path, monkeypatch, SINCE, first_fetch=False)
-    detailed = download_command.outcome_text(outcome, "detailed")
+    detailed = outcome.text("detailed")
     assert "confluence pages: in the period: 7\n" in detailed
     assert "confluence pages: already stored: 4\n" in detailed
     assert "confluence pages: fetched: 3\n" in detailed

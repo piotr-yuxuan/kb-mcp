@@ -56,12 +56,16 @@ class Version(argparse.Action):
 
 def parser(
     parser_class: type[argparse.ArgumentParser] = argparse.ArgumentParser,
+    sources: Sequence[Declared] = SOURCES,
 ) -> argparse.ArgumentParser:
     """Return the command's parser, of this class, with every subcommand declared.
 
-    Its help ends with who asks before acting, the subcommands whose declaration says
-    they write, and every exit status with what it means. What it parses holds
-    ``commands``, every subcommand's name, whose old log files a run removes.
+    Each declaration is given the registry, ``sources``, ``SOURCES`` unless a test gives
+    one of its own, as ``sync``'s takes its sources and their options. Its help ends
+    with who asks before acting, the subcommands whose declaration says they write, and
+    every exit status with what it means. What it parses holds ``commands``, every
+    subcommand's name, whose old log files a run removes, and ``sources``, the registry,
+    which a run and its declaration's checks read.
     """
     program = parser_class(
         prog=PROGRAM,
@@ -76,8 +80,8 @@ def parser(
     # A module whose name begins with _ is shared by declarations, not one of them.
     found = sorted(module.name for module in pkgutil.iter_modules(options.__path__))
     for name in (name for name in found if not name.startswith("_")):
-        importlib.import_module(f"{options.__name__}.{name}").register(subparsers)
-    program.set_defaults(commands=frozenset(subparsers.choices))
+        importlib.import_module(f"{options.__name__}.{name}").register(subparsers, sources)
+    program.set_defaults(commands=frozenset(subparsers.choices), sources=tuple(sources))
     writing = ", ".join(
         name
         for name, declared in subparsers.choices.items()
@@ -99,14 +103,15 @@ def main(argv: Sequence[str] | None = None, sources: Sequence[Declared] = SOURCE
 
     ``sources`` is the registry, ``SOURCES`` unless a test gives one of its own: first
     refused, raising ValueError, when it breaks a rule of every registry, then handed to
-    the entry, whose settings hold each of its sources' tables. When the shell asks for
-    completions, argcomplete answers them and exits instead, as --help and --version do.
-    A command that is not ``observed``, ``completion``, is run as they are: its run alone
-    is imported, and writes its output. Else, from then on, events and records go to
-    stderr from WARNING, never to stdout, until the run's settings are read.
+    the parser and to the entry, whose settings hold each of its sources' tables. When
+    the shell asks for completions, argcomplete answers them and exits instead, as
+    --help and --version do. A command that is not ``observed``, ``completion``, is run
+    as they are: its run alone is imported, and writes its output. Else, from then on,
+    events and records go to stderr from WARNING, never to stdout, until the run's
+    settings are read.
     """
     refuse(sources)
-    program = parser()
+    program = parser(sources=sources)
     argcomplete.autocomplete(program)
     # Agents start the command with no arguments, which serves MCP over stdio.
     given = list(sys.argv[1:] if argv is None else argv) or ["serve"]

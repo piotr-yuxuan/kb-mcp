@@ -83,18 +83,19 @@ before anything is written.
 
 Then what sync cannot run with. Its
 [`refused`](../../src/kb_mcp/cli/options/sync.py) takes the sources by
-[`chosen`](../../src/kb_mcp/cli/domain/sync.py), from the three records of
-[`SOURCES`](../../src/kb_mcp/cli/domain/sync.py), and refuses the first of
+[`chosen`](../../src/kb_mcp/cli/domain/sync.py), from the registry's declarations,
+[`SOURCES`](../../src/kb_mcp/sources/registry.py), and refuses the first of
 these that it finds: a source that `--include` names and the settings do not configure;
 nothing to sync, no source being both configured and chosen; an embedding endpoint off
 this machine without `--allow-remote-embeddings`, or over plain http even with it
 ([`endpoint_by_meaning`](../../src/kb_mcp/cli/options/_common.py)), except
-in a dry run, which builds no index; and, with Confluence or Jira taken, a site not set
-([`site_not_set`](../../src/kb_mcp/cli/options/_common.py)), an API token
+in a dry run, which builds no index; and what each source taken refuses by its
+declaration, with Confluence or Jira a site not set
+([`site_not_set`](../../src/kb_mcp/sources/atlassian/declared.py)), an API token
 without its email
-([`token_without_email`](../../src/kb_mcp/cli/options/_common.py)) or an
+([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)) or an
 option of the period that does not read
-([`period_refused`](../../src/kb_mcp/cli/options/download.py)). `enter`
+([`period_refused`](../../src/kb_mcp/sources/atlassian/declared.py)). `enter`
 adds pandoc missing from `PATH`. Each is exit 2, said on stderr alone: no run has
 started, so there is no log file.
 
@@ -117,30 +118,28 @@ settings loaded.
 ### 3. The steps of a sync
 
 [`run`](../../src/kb_mcp/cli/commands/sync.py) turns the settings into
-steps, each a small frozen record:
-[`Atlassian`](../../src/kb_mcp/cli/app/sync.py), holding the
-[`Targets`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) that
-[`targets_of`](../../src/kb_mcp/cli/commands/download.py) reads from the
-period's options, here one space and `--since`; and
+a [`Run`](../../src/kb_mcp/sources/roles.py) for each source taken, a small frozen
+record: its declaration, the settings, its table and its account's, its options'
+values by flag, here `--since`, the clock and the pause, which tests replace; and an
 [`Index`](../../src/kb_mcp/cli/app/sync.py), holding the
 [`Indexing`](../../src/kb_mcp/search/app/indexing.py) that
 [`indexing_of`](../../src/kb_mcp/cli/commands/_embedding.py) reads from the
-settings. No work log is configured, so there is no
-[`Worklog`](../../src/kb_mcp/cli/app/sync.py) step. A
-[`Context`](../../src/kb_mcp/cli/app/sync.py) carries what every step needs:
-the settings, pandoc ([`Pandoc.find`](../../src/kb_mcp/mirror/adapters/pandoc.py)),
-the clock and the pause, which tests replace.
+settings. No work log is configured, so no run is of it.
 
-[`sync`](../../src/kb_mcp/cli/app/sync.py) first refuses what it can before
-any step: an `--until` before `--since`.
+[`sync`](../../src/kb_mcp/cli/app/sync.py) loads each role that a source's
+declaration names ([`loaded`](../../src/kb_mcp/cli/app/sync.py)), then refuses what
+it can before any row: here an `--until` before `--since`, which the fetcher's
+[`preflight`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) finds from the
+[`Targets`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) of the
+period's options, one space here.
 [`Targets.windows`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
 asks [`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
 from the coverage that the raw store holds, for each target's window and why it starts
 there, here `given`; a `--since` that does not come before the windows' end raises
 [`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py):
-exit 2, naming both options. Then each step runs in turn,
-[`atlassian`](../../src/kb_mcp/cli/app/sync.py) (a download, then the
-mirror) and [`index`](../../src/kb_mcp/cli/app/sync.py), each row within
+exit 2, naming both options. Then each row runs in turn, the fetch of each source
+that has a fetcher, then the prepare of each, then
+[`index`](../../src/kb_mcp/cli/app/sync.py), each row within
 a span `sync.step` and kept by
 [`Rows.add`](../../src/kb_mcp/cli/app/sync.py). A step runs even when the
 one before it failed, as it reads what is on disk. The exit status is the first outcome
@@ -149,7 +148,7 @@ interrupted, then sign in, then failed; else 0.
 
 ### 4. The source and the site's port
 
-[`atlassian`](../../src/kb_mcp/cli/app/sync.py) calls
+The fetcher's [`fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) calls
 [`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), which
 opens the [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
 under `<data>/raw/` and takes its lock
@@ -291,8 +290,8 @@ The layout: [snapshots](../reference/data-layout.md#snapshots).
 
 ### 7. HTML, pandoc and front matter
 
-Back in [`atlassian`](../../src/kb_mcp/cli/app/sync.py),
-[`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the raw store,
+Then the preparer's [`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py),
+through [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py), reads the raw store,
 whatever the download did.
 [`read_catalogue`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the spaces,
 users and listings into a
@@ -429,8 +428,8 @@ and the row is `done` only when the report is
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) writes it on stdout,
 as one JSON document with `--format json`, else as
 [`text`](../../src/kb_mcp/cli/commands/sync.py) writes it: each row, then
-its step's counts as its own command writes them
-([`TEXTS`](../../src/kb_mcp/cli/commands/sync.py)).
+its counts as its own command writes them, by its role's
+[`Result.text`](../../src/kb_mcp/sources/roles.py), or as `index` does.
 [`observed`](../../src/kb_mcp/observability/app/observed.py) ends the run:
 `run.end`, the exit status on the root span, the run's duration.
 
@@ -550,7 +549,7 @@ document fetched, and a call of a tool is one trace:
 | Span | Opened by |
 |---|---|
 | `sync`, the run's root | [`observed`](../../src/kb_mcp/observability/app/observed.py), after the command's name |
-| `sync.step`, one a row | [`atlassian`](../../src/kb_mcp/cli/app/sync.py), [`worklog`](../../src/kb_mcp/cli/app/sync.py) and [`index`](../../src/kb_mcp/cli/app/sync.py) |
+| `sync.step`, one a row | [`sync`](../../src/kb_mcp/cli/app/sync.py) and [`index`](../../src/kb_mcp/cli/app/sync.py) |
 | `download.space`, `download.probes`, `download.users` | [`Download.space`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.users`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
 | `download.document`, a trace of its own linked to the run's | [`Download.fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
 | `GET` and `POST`, one a request | [`Recorded`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |

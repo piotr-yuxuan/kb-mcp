@@ -50,8 +50,8 @@ The steps, in order:
 
    The mirror keeps pandoc's conversions in `<data>/conversions.sqlite`: the first run
    converts every document, taking as long as a mirror always has, and each run after
-   it only what changed; each mirror's row says how many were `converted by pandoc` and
-   how many `reused from the cache`. Deleting the file starts again, converting
+   it only what changed; each prepare's row says how many were `converted by pandoc`
+   and how many `reused from the cache`. Deleting the file starts again, converting
    everything once and downloading nothing: do so after installing a pandoc rebuilt
    under the same version line, the one change that the cache cannot see. A damaged
    file is replaced by the run itself, which converts everything and says so in its log
@@ -107,13 +107,14 @@ this machine is not refused. It writes nothing, and does not ask.
 
 ## 5. Read the result
 
-A row per step says how it ended: `done`, `failed`, `sign in`, `interrupted` or `not
-run`, then that step's counts as its own command gives them; `--summary detailed` gives
+A row per step and source, from `fetch confluence` to `prepare worklog`, then `index`,
+says how it ended: `done`, `failed`, `sign in`, `interrupted` or `not run`, then that
+step's counts as its own command gives them; `--summary detailed` gives
 all of them, the download's beginning with each target's window and what became of its
 coverage. A download counts what it fetches: with `--since`, the documents in the
 period and those already stored; without, those new or changed since the last fetch.
 `--format json` writes one document: `exit_status`, and `steps`, each with its `step`,
-`outcome` and `result`.
+`source`, `outcome` and `result`.
 
 The exit status is 2 when refused before any step, 130 when interrupted, else 3 when a
 step needs you to sign in again, else 1 when a step failed or you answered no, else 0.

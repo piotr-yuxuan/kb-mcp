@@ -1,23 +1,23 @@
-"""``sync``'s steps: each Atlassian source's download and mirror, the work log's, the index.
+"""``sync``'s run: each source's roles, as its declaration names them, then the index.
 
-Each step runs even when an earlier one failed, since the next reads what is on disk;
-Ctrl-C stops the run, and no later step runs, as does a cache of pandoc's conversions
-that the mirror cannot use, such as one locked past the wait, or one that breaks during
-the mirror. What can be refused is refused before the
-first step: an --until before --since, and a work log that is not a folder. A dry
-run plans each download and counts the work log, and writes nothing. Each row is a span,
-``sync.step``, within which its step's own spans and events are recorded, those of
-``download``, ``mirror``, the work log or ``index``, as
-``docs/reference/telemetry/sync.md`` says. ``mirror``'s command makes its rows here too,
-one per source, by ``prepare_source``.
+The sources taken come as runs, one each, in the registry's order. Each role is loaded
+by the module path that its source's declaration names; then every role's ``preflight``
+says what it cannot go on with, before the first row. Then every fetcher runs, a row
+for each source that has one, then every preparer, a row for each of a source's, then
+the index, from the whole mirror. Each row runs even when an earlier one failed, since
+the next reads what is on disk; Ctrl-C stops the run, and no later row runs, as does a
+cache of pandoc's conversions that a preparer cannot use, such as one locked past the
+wait, or one that breaks as it prepares. In a dry run each role says what it would do,
+as its own run does, and the index does not run. Each row is a span, ``sync.step``,
+naming its step and its source, within which its role's own spans and events are
+recorded, those of the source's commands, or ``index``'s, as
+``docs/reference/telemetry/sync.md`` says.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from datetime import datetime
-from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+import pkgutil
+from typing import TYPE_CHECKING
 
 import structlog
 from opentelemetry import trace
@@ -25,73 +25,30 @@ from pydantic import ConfigDict, Field
 
 from kb_mcp.cli.domain.rows import Row, Synced
 from kb_mcp.cli.domain.sync import RANKED, Outcome, label
-from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.adapters.pandoc import Pandoc
 from kb_mcp.search.app.indexing import Indexing, refresh
-from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.fetch.app.download import Targets
-from kb_mcp.sources.atlassian.fetch.app.fetcher import fetch_targets
-from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED
-from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_kinds
-from kb_mcp.sources.worklog.prepare.app.preparer import prepare_folder
+from kb_mcp.sources.roles import Fetcher, Preparer
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
+    from datetime import datetime
+
+    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.roles import Result, Run
 
 
 TRACER = trace.get_tracer(__name__)
 
 
 class SyncRefusedError(ValueError):
-    """What a sync cannot run with, found before its first step; the message names it."""
-
-
-class Atlassian(Record):
-    """Confluence's and Jira's step: what to download, then the sources to mirror, in order.
-
-    The targets are downloaded a source at a time, as ``Targets.by_source`` gives them.
-    Each source of ``sources`` is one of ``PREPARED``.
-    """
-
-    targets: Targets
-    sources: tuple[str, ...]
-
-    @property
-    def rows(self) -> tuple[tuple[str, str | None], ...]:
-        """Give the step's rows, each its step and source: each download, then each mirror."""
-        return (
-            *(("download", source) for source in self.targets.by_source()),
-            *(("mirror", source) for source in self.sources),
-        )
-
-
-class Worklog(Record):
-    """The work log's step: its folder, read in place, and whether archives are mirrored."""
-
-    rows: ClassVar[tuple[tuple[str, str | None], ...]] = (("worklog", "worklog"),)
-
-    folder: Path
-    archives: bool
+    """What a sync cannot run with, found before its first row; the message names it."""
 
 
 class Index(Record):
     """The index's step: how it is built, from the whole mirror, whatever sources were taken."""
 
-    rows: ClassVar[tuple[tuple[str, str | None], ...]] = (("index", None),)
-
     indexing: Indexing
-
-
-class Context(Record):
-    """What every step needs: the settings, pandoc, the clock, the pause, and a dry run."""
-
-    settings: Settings
-    pandoc: Pandoc
-    now: Callable[[], datetime]
-    sleep: Callable[[float], None]
-    dry_run: bool
 
 
 class Rows(Record):
@@ -110,71 +67,32 @@ class Rows(Record):
         self.added.append(row)
 
 
-def prepare_source(settings: Settings, pandoc: Pandoc, source: str) -> Row:
-    """Mirror one Atlassian source, of ``PREPARED``, from the raw store; give its row.
+def loaded[R: (Fetcher, Preparer)](declared: Declared, path: str, role: type[R]) -> R:
+    """Load a role by the module path that its source's declaration names.
 
-    It mirrors as ``prepare_kinds`` does, through the source's rows of the cache, with
-    the site of the Atlassian account.
+    Raises ``SyncRefusedError``, naming the source and the path, for a path that does
+    not load, or for what it names that lacks the role's methods.
     """
-    site = settings.accounts.atlassian.site
-    prepared = prepare_kinds(settings, site, pandoc, source, PREPARED[source])
-    return Row(step="mirror", source=source, outcome=prepared.outcome, result=prepared.mirrored)
+    try:
+        found = pkgutil.resolve_name(path)
+    except (ImportError, AttributeError, ValueError) as error:
+        message = f"source {declared.name!r}: {path}: does not load: {error}"
+        raise SyncRefusedError(message) from error
+    if not isinstance(found, role):
+        message = f"source {declared.name!r}: {path}: not a {role.__name__}"
+        raise SyncRefusedError(message)
+    return found
 
 
-def atlassian(context: Context, step: Atlassian, add: Callable[[Row], None]) -> None:
-    """Download each source's targets, or plan it, then mirror each source, unless a dry run.
-
-    Confluence's spaces are downloaded, then Jira's projects, each a row of its own, before
-    any mirror; each mirror runs whatever the downloads did, since it reads what is
-    stored, a row of its own. What went wrong is said by the events of ``fetch_targets``
-    and of ``prepare_kinds``.
-    """
-    settings = context.settings
-    for source, targets in step.targets.by_source().items():
-        with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "download"}):
-            fetched = fetch_targets(
-                settings, targets, context.now, context.sleep, dry_run=context.dry_run
-            )
-            add(
-                Row(
-                    step="download",
-                    source=source,
-                    outcome=fetched.outcome,
-                    result=fetched.downloaded,
-                )
-            )
-    for source in step.sources:
-        with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "mirror"}):
-            if context.dry_run:
-                add(Row(step="mirror", source=source, outcome="not run", result=None))
-            else:
-                add(prepare_source(settings, context.pandoc, source))
-
-
-def worklog(context: Context, step: Worklog, add: Callable[[Row], None]) -> None:
-    """Mirror the work log, or count what mirroring it would do, as ``prepare_folder`` does."""
-    with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "worklog"}):
-        prepared = prepare_folder(
-            step.folder,
-            context.settings.docs,
-            context.pandoc,
-            archives=step.archives,
-            dry_run=context.dry_run,
-        )
-        add(
-            Row(
-                step="worklog", source="worklog", outcome=prepared.outcome, result=prepared.mirrored
-            )
-        )
-
-
-def index(context: Context, step: Index, add: Callable[[Row], None]) -> None:
-    """Build the index from the whole mirror, unless a dry run; its problems as index says."""
+def index(
+    step: Index, now: Callable[[], datetime], add: Callable[[Row], None], *, dry_run: bool
+) -> None:
+    """Build the index from the whole mirror at ``now``, unless a dry run, as index does."""
     with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "index"}):
-        if context.dry_run:
+        if dry_run:
             add(Row(step="index", source=None, outcome="not run", result=None))
             return
-        indexed = refresh(step.indexing, context.now())
+        indexed = refresh(step.indexing, now())
         add(
             Row(
                 step="index",
@@ -185,39 +103,52 @@ def index(context: Context, step: Index, add: Callable[[Row], None]) -> None:
         )
 
 
-def sync(context: Context, steps: Sequence[Atlassian | Worklog | Index]) -> Synced:
-    """Run the steps in their order; return a row per step and the exit status they rank.
+def sync(runs: Sequence[Run], step: Index, now: Callable[[], datetime], *, dry_run: bool) -> Synced:
+    """Run each source's roles, then the index; return a row each, and the status they rank.
 
-    Raises ``SyncRefusedError`` for a work log that is not a folder, and PeriodError for
-    an --until before --since, both before the first step. Ctrl-C ends the step it
-    stops as interrupted, and each later one as not run; the run is interrupted even
-    when Ctrl-C comes once every step has ended. The status is the first of
-    ``RANKED``'s outcomes that the run had, else OK. ``sync.start`` and ``sync.end`` say
-    at INFO the rows planned and how each ended; ``sync.interrupted``, a warning, which
-    row Ctrl-C stopped.
+    Raises ``SyncRefusedError`` for a role that does not load, and for what a role's
+    ``preflight`` refuses, both before the first row. A row's result is its role's;
+    each fetcher runs, in the order of ``runs``, then each preparer, then the index,
+    which a dry run leaves not run. Ctrl-C ends the row it stops as interrupted, and
+    each later one as not run; the run is interrupted even when Ctrl-C comes once every
+    row has ended. The status is the first of ``RANKED``'s outcomes that the run had,
+    else OK. ``sync.start`` and ``sync.end`` say at INFO the rows planned and how each
+    ended; ``sync.interrupted``, a warning, which row Ctrl-C stopped.
     """
-    for step in steps:
-        if isinstance(step, Atlassian):
-            step.targets.windows(RawStore(context.settings.raw).coverage(), context.now())
-        elif isinstance(step, Worklog) and not step.folder.is_dir():
-            message = "sources.worklog.path: not a folder"
-            raise SyncRefusedError(message)
+    fetchers = [
+        (run, loaded(run.declared, run.declared.fetcher, Fetcher))
+        for run in runs
+        if run.declared.fetcher is not None
+    ]
+    preparers = [
+        (run, loaded(run.declared, path, Preparer))
+        for run in runs
+        for path in run.declared.preparers
+    ]
+    planned: list[tuple[str, Run, Callable[[Run], str | None], Callable[[Run], Result]]] = [
+        *(("fetch", run, role.preflight, role.fetch) for run, role in fetchers),
+        *(("prepare", run, role.preflight, role.prepare) for run, role in preparers),
+    ]
+    refusal = next((said for _, run, check, _ in planned if (said := check(run))), None)
+    if refusal is not None:
+        raise SyncRefusedError(refusal)
     log = structlog.get_logger()
-    planned = [row for step in steps for row in step.rows]
-    log.info("sync.start", steps=[label(*row) for row in planned], dry_run=context.dry_run)
+    named = [*((name, run.declared.name) for name, run, _, _ in planned), ("index", None)]
+    log.info("sync.start", steps=[label(*row) for row in named], dry_run=dry_run)
     rows = Rows()
     outcomes: set[Outcome] = set()
     try:
-        for step in steps:
-            if isinstance(step, Atlassian):
-                atlassian(context, step, rows.add)
-            elif isinstance(step, Worklog):
-                worklog(context, step, rows.add)
-            else:
-                index(context, step, rows.add)
+        for name, run, _, act in planned:
+            attributes = {"kb_mcp.step": name, "kb_mcp.source": run.declared.name}
+            with TRACER.start_as_current_span("sync.step", attributes=attributes):
+                result = act(run)
+                rows.add(
+                    Row(step=name, source=run.declared.name, outcome=result.outcome, result=result)
+                )
+        index(step, now, rows.add, dry_run=dry_run)
     except KeyboardInterrupt:
         stopped = len(rows.added)
-        interrupted = label(*planned[stopped]) if stopped < len(planned) else None
+        interrupted = label(*named[stopped]) if stopped < len(named) else None
         log.warning("sync.interrupted", step=interrupted)
         outcomes.add("interrupted")
         rows.added.extend(
@@ -227,7 +158,7 @@ def sync(context: Context, steps: Sequence[Atlassian | Worklog | Index]) -> Sync
                 outcome="interrupted" if number == stopped else "not run",
                 result=None,
             )
-            for number, (name, source) in enumerate(planned[stopped:], stopped)
+            for number, (name, source) in enumerate(named[stopped:], stopped)
         )
     outcomes.update(row.outcome for row in rows.added)
     status = next((status for outcome, status in RANKED if outcome in outcomes), ExitStatus.OK)

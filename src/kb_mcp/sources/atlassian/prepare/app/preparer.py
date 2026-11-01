@@ -4,8 +4,7 @@ Both declarations name this module, a ``Preparer``: ``prepare`` reads from the
 declaration of the source that a run is for the kinds that it converts, and the source
 whose rows of the cache of conversions it reads, finds pandoc, then mirrors those kinds
 alone; a dry run leaves the mirror as it is. ``prepare_kinds`` mirrors and says what it
-could not, as ``mirror``'s events do; ``mirror`` and ``sync``'s Atlassian step run it
-too.
+could not, as ``mirror``'s events do; ``mirror``'s command runs it too.
 """
 
 from __future__ import annotations

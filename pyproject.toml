@@ -197,3 +197,29 @@ type = "layers"
 containers = ["kb_mcp.sources.*"]
 layers = ["(declared)", "(prepare)", "(fetch)", "(settings)"]
 exhaustive = true
+
+[[tool.importlinter.contracts]]
+id = "K"
+name = "Only the Atlassian package uses lxml and Playwright"
+type = "forbidden"
+source_modules = [
+  "kb_mcp.cli",
+  "kb_mcp.evaluation",
+  "kb_mcp.mcp",
+  "kb_mcp.search",
+  "kb_mcp.sources.declaration",
+  "kb_mcp.sources.registry",
+  "kb_mcp.sources.roles",
+  "kb_mcp.sources.worklog",
+  "kb_mcp.mirror",
+  "kb_mcp.config",
+  "kb_mcp.observability",
+  "kb_mcp.kernel",
+]
+forbidden_modules = ["lxml", "playwright"]
+ignore_imports = [
+  "kb_mcp.cli.commands.login -> kb_mcp.sources.atlassian.fetch.adapters.browser",
+  "kb_mcp.cli.commands.login -> kb_mcp.sources.atlassian.fetch.app.login",
+  "kb_mcp.cli.commands.mirror -> kb_mcp.sources.atlassian.prepare.app.prepare",
+  "kb_mcp.cli.commands.mirror -> kb_mcp.sources.atlassian.prepare.app.preparer",
+]

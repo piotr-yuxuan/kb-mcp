@@ -455,4 +455,6 @@ def test_the_work_log_s_text_is_what_sync_writes_under_its_row(
     capsys.readouterr()  # what the prepare logged, outside a run, which has no log file
     assert main(given) == ExitStatus.OK
     out = capsys.readouterr().out
-    assert out.startswith(row_text("worklog", result.outcome, result.text("detailed")) + "index:")
+    assert out.startswith(
+        row_text("prepare worklog", result.outcome, result.text("detailed")) + "index:"
+    )
