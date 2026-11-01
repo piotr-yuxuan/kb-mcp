@@ -35,6 +35,7 @@ from kb_mcp.sources.worklog.settings import WorklogSource
 from tests.composed import MODEL
 
 if TYPE_CHECKING:
+    from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
 HOME = Path("/home/someone")
@@ -934,6 +935,38 @@ def test_a_secret_in_the_file_is_refused_by_name_never_by_value(
     with pytest.raises(SettingsError) as refused:
         loaded_from(tmp_path, f'{key} = "{SENTINEL}"\n')
     assert str(refused.value) == f"{key} ({FILE}): a secret, read from {variable} alone"
+
+
+def test_a_secret_written_under_its_table_is_refused_by_name_never_by_value(
+    tmp_path: Path,
+) -> None:
+    """Under ``[accounts.atlassian]``, as at its dotted path."""
+    with pytest.raises(SettingsError) as refused:
+        loaded_from(tmp_path, f'[accounts.atlassian]\napi_token = "{SENTINEL}"\n')
+    variable = "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"
+    assert str(refused.value) == (
+        f"accounts.atlassian.api_token ({FILE}): a secret, read from {variable} alone"
+    )
+
+
+@pytest.mark.parametrize("table", ["[accounts.atlassian]", "[accounts]"])
+def test_an_empty_table_that_holds_a_secret_writes_none_and_loads(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], table: str
+) -> None:
+    """Its only line commented out, it names no value: every command runs, as of any table.
+
+    The token stays the environment's, the stronger layer.
+    """
+    text = f'{table}\n# site = "https://x.atlassian.net"\n'
+    config = tmp_path / FILE
+    config.write_text(text, "utf-8")
+    assert main(["check", "--config", str(config)]) == ExitStatus.OK
+    assert capsys.readouterr().err == ""
+    variable = "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"
+    monkeypatch.setenv(variable, SENTINEL)
+    loaded = loaded_from(tmp_path, text)
+    assert loaded.settings.accounts.atlassian.api_token.get_secret_value() == SENTINEL
+    assert loaded.layer("accounts.atlassian.api_token") == variable
 
 
 @pytest.mark.parametrize(

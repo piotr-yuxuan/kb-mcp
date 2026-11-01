@@ -623,7 +623,10 @@ def entries_of(
 
 
 def file_entries(values: Mapping[str, object], layer: str, model: type[Settings]) -> list[Entry]:
-    """Give the settings file's values as entries; refuse a moved or unknown one, a secret."""
+    """Give the settings file's values as entries; refuse a moved or unknown one, a secret.
+
+    An empty table that holds a secret writes no value of it: only one written is refused.
+    """
     entries = [
         entry
         for name, value in values.items()
@@ -638,7 +641,7 @@ def file_entries(values: Mapping[str, object], layer: str, model: type[Settings]
         if entry.path not in paths:
             message = f"{setting} ({layer}): not a setting"
             raise SettingsError(message)
-        if paths[entry.path] == "secret":
+        if paths[entry.path] == "secret" and not entry.implicit:
             message = f"{setting} ({layer}): a secret, read from {variable(entry.path)} alone"
             raise SettingsError(message)
     return entries
