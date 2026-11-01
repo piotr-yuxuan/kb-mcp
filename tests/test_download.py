@@ -506,7 +506,8 @@ def test_a_run_of_no_source_or_of_both_is_refused_before_anything_is_written(
     """Plan 030: a fetch is of one source, whose report is its own; asked nothing, no report."""
     fake = FakeSite()
     chosen = saved_session(tmp_path, monkeypatch, fake)
-    with pytest.raises(ValueError, match="values to unpack"):
+    said = f"a fetch is of one source: spaces {spaces}, projects {projects}"
+    with pytest.raises(ValueError, match=f"^{re.escape(said)}$"):
         download(chosen, targets(spaces, projects), lambda: NOW, no_sleep)
     assert fake.asked == []
     assert not chosen.runs.exists()

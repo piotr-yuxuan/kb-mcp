@@ -699,8 +699,14 @@ class Targets(Record):
 
         Raises ValueError for targets of no source, or of both: a fetch is of one source.
         """
-        (source,) = self.by_source()
-        return source
+        apart = self.by_source()
+        if len(apart) != 1:
+            message = (
+                f"a fetch is of one source: spaces {list(self.spaces)},"
+                f" projects {list(self.projects)}"
+            )
+            raise ValueError(message)
+        return next(iter(apart))
 
 
 def read_targets(
