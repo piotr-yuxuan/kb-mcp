@@ -75,7 +75,7 @@ token.
 ## 4. Sign in
 
 ```bash
-kb-mcp login
+kb-mcp login atlassian
 ```
 
 Like every command that writes under the data directory, it first says what it will do,

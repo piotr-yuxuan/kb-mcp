@@ -26,7 +26,6 @@ import httpx
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
-from kb_mcp.cli.commands import login as login_command
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError, PandocMissingError
@@ -36,6 +35,7 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from kb_mcp.sources.atlassian.fetch.domain.content import Page
 from kb_mcp.sources.worklog.prepare.app import preparer as worklog_preparer
 from tests.collector import Collector, collecting
@@ -516,9 +516,17 @@ def test_login_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """Signed in, then a window closed: the browser is a stand-in, which signs in nowhere."""
-    arguments = ["login", "--yes", "--config", str(tmp_path / "none.toml"), "--site", SITE]
+    arguments = [
+        "login",
+        "atlassian",
+        "--yes",
+        "--config",
+        str(tmp_path / "none.toml"),
+        "--site",
+        SITE,
+    ]
     emitted = Emitted()
-    monkeypatch.setattr(login_command, "login", lambda *_, **__: None)
+    monkeypatch.setattr(login_module, "login", lambda *_, **__: None)
     with emitted.gathering(telemetry, "login"):
         assert main(arguments) == 0
 
@@ -526,7 +534,7 @@ def test_login_records_as_documented(
         message = "the sign-in window was closed"
         raise SignInFailedError(message)
 
-    monkeypatch.setattr(login_command, "login", closed)
+    monkeypatch.setattr(login_module, "login", closed)
     with emitted.gathering(telemetry, "login"):
         assert main(arguments) == ExitStatus.SIGN_IN_AGAIN
     assert undocumented("login", emitted) == []

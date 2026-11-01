@@ -159,9 +159,9 @@ def model_name(value: str) -> str:
 def of_atlassian(sources: Sequence[Declared], refused: Refused | None = None) -> Refused | None:
     """Give what a command of the Atlassian package refuses, under this registry.
 
-    ``doctor`` and ``login`` read that package's settings by name until plan 031 moves
-    them, so a registry without both its sources is refused before they read one; any
-    other, as ``refused`` says.
+    ``doctor`` reads that package's settings by name until plan 031 moves them, so a
+    registry without both its sources is refused before it reads one; any other, as
+    ``refused`` says.
     """
     if {CONFLUENCE.name, JIRA.name} <= {declared.name for declared in sources}:
         return refused

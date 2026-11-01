@@ -162,7 +162,7 @@ class Required(BaseModel):
 
 @pytest.mark.parametrize(
     "command",
-    [["doctor"], ["login", "--yes"]],
+    [["doctor"]],
     ids=lambda command: command[0],
 )
 @pytest.mark.parametrize(

@@ -32,6 +32,7 @@ ATLASSIAN = Account(
     name="atlassian",
     table="kb_mcp.sources.atlassian.settings:AtlassianAccount",
     settings=("site", "email", "api_token"),
+    login="kb_mcp.sources.atlassian.fetch.app.login:signed_in",
 )
 # The account's settings, by path: the site, then those of a sign-in by API token, its
 # email and the token.

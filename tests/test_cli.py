@@ -106,6 +106,7 @@ SETTINGS = {".".join(path) for path, kind in setting_paths(MODEL).items() if kin
 SUBCOMMANDS = parser(Declaring).subcommands
 # What a subcommand needs besides its options to be parsed: its positional arguments.
 POSITIONALS = {
+    "login": ["atlassian"],
     "eval": ["golden.yaml"],
     "eval-agents": ["grade", "runs"],
     "eval-rerank": ["golden.yaml"],

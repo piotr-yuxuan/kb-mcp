@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from kb_mcp.cli.commands import login as login_command
 from kb_mcp.cli.commands import model as model_command
 from kb_mcp.cli.commands._shared import enter
 from kb_mcp.cli.domain.command_line import command_line
@@ -27,6 +26,7 @@ from kb_mcp.cli.domain.summary import values_of
 from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import DEFAULT_MODEL
 from kb_mcp.observability.app.observed import early
+from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from kb_mcp.sources.registry import SOURCES
 from tests.endpoint import nothing_listening
 from tests.test_settings import user_log_folder
@@ -56,7 +56,7 @@ OWN_OPTIONS = {
     "prepare": [],
     "embed": ["--allow-remote-embeddings"],
     "eval": ["golden.yaml", "--model", "tiny", "--model", "qwen3-embedding:0.6b"],
-    "login": ["--chrome", "chrome", "--keep-extensions"],
+    "login": ["--chrome", "chrome", "--keep-extensions", "atlassian"],
 }
 # What the command to copy never carries, by plan 015: the output's options and the
 # question's.
@@ -94,11 +94,11 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
 
     Neither is among the settings that its summary shows.
     """
-    monkeypatch.setattr(login_command, "login", lambda *_, **__: None)
+    monkeypatch.setattr(login_module, "login", lambda *_, **__: None)
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
     monkeypatch.setenv(CREDENTIAL, SECRETS[CREDENTIAL])
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--summary", summary]
-    assert main(["login", *options]) == 0
+    assert main(["login", "atlassian", *options]) == 0
     out, err = capsys.readouterr()
     ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
     assert ignored == [
@@ -683,7 +683,7 @@ def test_the_command_to_copy_carries_each_path_absolute(
     monkeypatch.chdir(home)
     paths = {"--config": "cfg/c.toml", "--chrome": "bin/chrome"}
     given = [item for option, path in paths.items() for item in (option, path)]
-    assert main(["login", "--yes", "--site", SITE, *given]) == 0
+    assert main(["login", "atlassian", "--yes", "--site", SITE, *given]) == 0
     err = capsys.readouterr().err
     argv = shlex.split(err[err.index("kb-mcp login") :].replace("\\\n", ""))
     assert {option: argv[argv.index(option) + 1] for option in paths} == {

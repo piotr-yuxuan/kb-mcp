@@ -15,6 +15,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Callable, Mapping
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
@@ -29,6 +30,13 @@ if TYPE_CHECKING:
 # How a role ended: done, failed, the sign-in no longer holding, or not run, as a
 # preparer that a dry run leaves alone.
 type Outcome = Literal["done", "failed", "sign in", "not run"]
+
+
+class SignedIn(Record):
+    """The site signed in to, and the folder that keeps its session."""
+
+    site: str
+    session: Path
 
 
 class Run(Record):

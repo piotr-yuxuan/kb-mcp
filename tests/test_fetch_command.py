@@ -185,8 +185,8 @@ def test_without_a_session_each_source_is_to_sign_in_before_any_request(
     assert rows == ["confluence: sign in", "jira: sign in"]
     needed = logged_as(home, "fetch.sign_in_needed")
     assert [(each["source"], each["hint"]) for each in needed] == [
-        ("confluence", "run kb-mcp login"),
-        ("jira", "run kb-mcp login"),
+        ("confluence", "run kb-mcp login atlassian"),
+        ("jira", "run kb-mcp login atlassian"),
     ]
     assert fake.asked == []
 
@@ -318,9 +318,9 @@ def test_without_a_session_the_user_is_told_to_sign_in(
     assert main(command(home, "--site", SITE, "--space", "MFS", "--since", "7d")) == SIGN_IN_NEEDED
     err = capsys.readouterr().err
     assert ("error", "fetch.sign_in_needed") in said(err)
-    assert "run kb-mcp login" in err
+    assert "run kb-mcp login atlassian" in err
     (needed,) = logged_as(home, "fetch.sign_in_needed")
-    assert (needed["level"], needed["hint"]) == ("error", "run kb-mcp login")
+    assert (needed["level"], needed["hint"]) == ("error", "run kb-mcp login atlassian")
 
 
 def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(

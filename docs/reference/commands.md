@@ -438,6 +438,10 @@ usage: kb-mcp login [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [
                     -v | --log-level {debug,info,warning,error}]
                     [--format {text,json}] [--summary {short,detailed}] [-y]
                     [--chrome CHROME] [--keep-extensions]
+                    {atlassian}
+
+positional arguments:
+  {atlassian}           the sign-in
 
 options:
   -h, --help            show this help message and exit

@@ -117,7 +117,7 @@ Every other setting keeps its default. The data, the mirror included, go to
 The command reads the site as you, with a session that you open once in Chrome:
 
 ```bash
-kb-mcp login
+kb-mcp login atlassian
 ```
 
 Before it acts, it says what it will do: each setting that it reads, then the same

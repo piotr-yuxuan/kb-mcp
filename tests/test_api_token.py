@@ -17,10 +17,10 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from kb_mcp.cli.commands import login as login_command
 from kb_mcp.cli.main import main
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from tests.endpoint import Scripted, serving
 from tests.test_cli import logged_as, the_log_file
 from tests.test_download import SITE, FakeSite
@@ -196,9 +196,9 @@ def test_login_with_a_token_signs_in_in_the_browser(
     if email is None:
         monkeypatch.delenv(EMAIL)
     signed_in: list[str] = []
-    monkeypatch.setattr(login_command, "login", lambda _, site, *__, **___: signed_in.append(site))
+    monkeypatch.setattr(login_module, "login", lambda _, site, *__, **___: signed_in.append(site))
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE]
-    assert main(["login", *options]) == 0
+    assert main(["login", "atlassian", *options]) == 0
     assert signed_in == [SITE]
     ignored = f"ignored: accounts.atlassian.api_token ({CREDENTIAL}): login signs in in a browser\n"
     assert ignored in capsys.readouterr().err

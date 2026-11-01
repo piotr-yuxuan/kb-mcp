@@ -50,7 +50,7 @@ WRITING = {
     "eval": ([GOLDEN], "evaluate"),
     "embed": ([], "embed"),
     "index": ([], "index"),
-    "login": (["--site", SITE], "login"),
+    "login": (["atlassian", "--site", SITE], "login"),
     "prepare": ([], "sources"),
     "sync": ([], "sync"),
 }
@@ -82,7 +82,7 @@ REFUSED_FIRST = [
         WITHOUT_EMAIL,
         "accounts.atlassian.email: not set",
     ),
-    (["login"], {}, "accounts.atlassian.site: not set"),
+    (["login", "atlassian"], {}, "accounts.atlassian.site: not set"),
     (["embed"], ELSEWHERE, "embedding_url: not an address of this machine"),
     (["embed", "--allow-remote-embeddings"], IN_CLEAR, "over https only"),
     (["eval", GOLDEN], ELSEWHERE, "embedding_url: not an address of this machine"),

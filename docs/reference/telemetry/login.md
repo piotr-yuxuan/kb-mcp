@@ -1,7 +1,7 @@
 # login
 
-What `login` records, besides what every command does ([README](README.md)). A run is a
-trace of one span, `login`: the sign-in happens in a Chrome window, which records
+What `login atlassian` records, besides what every command does ([README](README.md)). A
+run is a trace of one span, `login`: the sign-in happens in a Chrome window, which records
 nothing. What to do in the window is a line on stderr for the user, not an event.
 
 ## Events
