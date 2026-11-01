@@ -29,6 +29,8 @@ the command and those who change its code, unless it is marked for contributors.
 - [Sign in with an API token kept by sops](how-to/api-token-with-sops.md): a token in
   place of the browser's session, encrypted at rest and given to the command in its
   environment alone.
+- [Add a source](how-to/add-a-source.md), for contributors: a new source of documents, its
+  package, its declaration, its table, its preparer and one line of the registry.
 - [Shell completions](how-to/shell-completions.md): subcommands, options and their
   values completed by bash or zsh.
 - [Coding agents](how-to/agents.md): the MCP server and the mirror's files, for Claude
@@ -88,8 +90,9 @@ the command and those who change its code, unless it is marked for contributors.
 - [A walkthrough of the code](explanation/code-walkthrough.md), for contributors: one
   `sync` of a Confluence space, then one `search` by an agent, followed through the
   functions and classes of `src/` that take each step.
-- [Sources](explanation/sources.md): why Confluence, Jira and the work log are put
-  together as they are, and why the work log is read in place.
+- [Sources](explanation/sources.md): why a source is a declaration of three roles rather
+  than a bundle, how the registry composes the settings and `sync`, what every source's
+  documents share, and why the work log is read in place.
 - [Credentials](explanation/credentials.md): the browser session, the API token and the
   embedding endpoint's key: where each is kept and sent, what agents get, what is never
   logged, and what none of it guards against.

@@ -14,6 +14,7 @@ The run followed has a settings file that names the site and one space, and Olla
 this machine as the embedding endpoint, the example of any OpenAI-compatible API:
 
 ```toml
+[accounts.atlassian]
 site = "https://<your-site>.atlassian.net"
 
 [sources.confluence]
@@ -155,7 +156,7 @@ under `<data>/raw/` and takes its lock
 ([`RawStore.writing`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)):
 a second run stops at once with
 [`StoreBusyError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
-and sync's download row fails while the next steps run.
+and sync's fetch row fails while the next steps run.
 
 The sign-in comes from
 [`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py): an
@@ -229,7 +230,8 @@ no `--since` and asks again for what failed, as `download.coverage` says; writes
 the tombstones; writes back the
 cookies that the site renewed
 ([`SavedSession.keep`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py));
-and saves the run's report under `<data>/runs/`, even when the run was stopped.
+and saves the run's report under `<data>/runs/`, named by its source, even when the run
+was stopped.
 
 ### 5. Strict reading
 
@@ -292,7 +294,9 @@ The layout: [snapshots](../reference/data-layout.md#snapshots).
 
 Then the preparer's [`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py),
 through [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py), reads the raw store,
-whatever the download did.
+whatever the download did. It runs for Confluence here, and reads from `run.declared` the
+kinds that it converts: Jira's issues are placed too, so that a link to one reaches its
+file, and only pages and blog posts are built.
 [`read_catalogue`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the spaces,
 users and listings into a
 [`Catalogue`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py);
@@ -322,7 +326,8 @@ document's file:
 - [`document_html`](../../src/kb_mcp/sources/atlassian/prepare/domain/layout.py) lays
   out the title, the body and the attachments (and an issue's comments).
 - [`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)
-  gives that HTML's Markdown from the cache of conversions that `atlassian` opened
+  gives that HTML's Markdown from the rows of its source in the cache of conversions, which
+  [`prepare_kinds`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py) opened
   ([`opened`](../../src/kb_mcp/mirror/adapters/conversions.py)), or has
   [`Pandoc.markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py) write it
   as GitHub's Markdown, one process a document, and keeps it. `--sandbox` is among
@@ -339,10 +344,12 @@ go on. The space's tree, `_tree.md`, is written from the listings
 ([`Catalogue.tree`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py)). Last,
 [`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py) writes each file
 whose bytes differ, through a hidden file renamed into place. Then, when nothing was
-reported, it removes every file that it owns
-([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py): documents,
-trees and assets) and no longer wants, such as the file of a document gone or moved, or
-the old name of one whose title changed. When something was reported, it removes only
+reported, it removes every file that its source owns
+([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py): documents and
+trees) and no longer wants, such as the file of a document gone or moved, or the old name
+of one whose title changed, and an attached file that no placed document of either source
+wants ([`attached`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py)). When
+something was reported of this source, it removes only
 the files of documents confirmed gone, and the old file of a document that moved once
 its new file is built, so that the last good copy of every other stays.
 

@@ -12,7 +12,7 @@ in [the trade-offs](trade-offs.md#cookies-and-api-tokens).
 | Secret | Given by | Kept by the program | Sent to |
 |---|---|---|---|
 | the session's cookies | `login`, in a Chrome window | `<data>/session/cookies.json`, beside the window's own profile | the site's host alone |
-| the API token, with its email | `KB_MCP_API_TOKEN`, in one run's environment | nowhere | the site's host alone, as Basic auth |
+| the API token, with its email | `KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN`, in one run's environment | nowhere | the site's host alone, as Basic auth |
 | the embedding key | `KB_MCP_EMBEDDING_API_KEY`, in one run's environment | nowhere | the embedding endpoint alone, as a bearer token |
 
 A run signs in by the token when one is set, else by the saved session

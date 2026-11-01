@@ -96,8 +96,8 @@ that is already a link is not missing: the run uses where it leads, and nothing 
 moved; remove a link that leads nowhere, then run `check` again. Once the settings file
 is moved, its former folder, `~/.config/atlassian-offline-mcp`, may be removed. The data
 directory's files hold no path of their own: the index, the vectors, the conversions,
-the raw store, the sign-in and the aliases keep working where they are moved, and the
-next run rebuilds and converts nothing.
+the raw store, the sign-in and the aliases keep working where they are moved, and moving
+them makes the next run rebuild nothing.
 
 ## 4. Rename the keys, the variables and the settings
 
@@ -170,7 +170,27 @@ was.
   without the variable, is no longer pruned: remove it once its logs are no longer
   wanted.
 
-## 8. Check again
+## 8. What runs do differently
+
+The mirror stays the same, byte for byte, but what a run says and keeps has changed since
+the former name:
+
+- **The first prepare converts everything once.** The cache of conversions holds its rows
+  by source now, so a file of the former columns is replaced, `mirror.cache_replaced`
+  saying so; each run after it converts what changed, as before. Nothing is downloaded
+  again.
+- **A report per source.** A download's report is
+  `<data>/runs/<time>-confluence.json` or `<time>-jira.json`, one for each source that it
+  fetches, where it was `<time>.json`. Reports already there stay as they are. No code
+  reads them; a script of yours may.
+- **A row per source and step.** `sync`, `download` and `mirror` write a row for each
+  source and step, under `steps` with `--format json`. `sync --include confluence`
+  prepares Confluence alone: [bring every source up to
+  date](sync.md#3-choose-among-the-sources) says what that leaves.
+- **A stray `.md` file under the mirror is read.** The index reports it as a file without
+  front matter, and exits 1, where it was ignored: move it out of `docs/`.
+
+## 9. Check again
 
 ```bash
 kb-mcp check

@@ -10,6 +10,7 @@ does. It is the one command to run when the mirror and search should be current;
 Each source is configured by its table in `~/.config/kb-mcp/config.toml`:
 
 ```toml
+[accounts.atlassian]
 site = "https://<your-site>.atlassian.net"
 
 [sources.confluence]
@@ -22,7 +23,8 @@ projects = ["PLAT"]
 path = "~/todo"  # absolute or under ~
 ```
 
-A table that names nothing (no space, no project, no folder) leaves its source out.
+Confluence and Jira sign in with the Atlassian account, on its site. A table that names
+nothing (no space, no project, no folder) leaves its source out.
 `sync` takes its keys from the tables alone: `--space` and `--project` belong to
 `download`, for a one-off run. The work log has its own guide: [mirror the work
 log](work-log.md).
@@ -88,8 +90,10 @@ kb-mcp sync --exclude worklog --since 7d
 `--include` takes the sources named alone, `--exclude` all but those, never both in one
 run; each repeats, and takes `confluence`, `jira` or `worklog`. The index is rebuilt
 whatever the choice: `sync --include worklog` refreshes the work log alone, and search
-still finds every page and issue mirrored. A source included without its table, or a
-run left with none, is refused, saying why. The work log reads no period: an option of
+still finds every page and issue mirrored. `sync --include confluence` prepares
+Confluence alone, so Jira's files whose links depend on Confluence's pages are rewritten
+only when Jira is prepared. A source included without its table, or a run left with none,
+is refused, saying why. The work log reads no period: an option of
 the period given while it runs is said to be ignored by it (`--since: ignored by
 worklog`), and settings that no source taken uses are said not applied, never refused.
 

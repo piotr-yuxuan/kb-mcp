@@ -89,6 +89,7 @@ Then create `~/.config/kb-mcp/config.toml` in your editor, with your site
 and your space:
 
 ```toml
+[accounts.atlassian]
 site = "https://<your-site>.atlassian.net"
 
 [sources.confluence]
@@ -104,7 +105,7 @@ kb-mcp check
 You should see the two settings that the file gives:
 
 ```text
-site: https://<your-site>.atlassian.net
+accounts.atlassian.site: https://<your-site>.atlassian.net
 sources.confluence.spaces: <KEY>
 ```
 
@@ -124,7 +125,7 @@ command in full, to copy. Its first lines:
 
 ```text
 login, with these settings:
-  site: https://<your-site>.atlassian.net
+  accounts.atlassian.site: https://<your-site>.atlassian.net
 ```
 
 It ends with `Proceed? [y/N]`: answer `y`. Chrome opens on your site, in a window of
@@ -152,7 +153,7 @@ command in full, one option per line, to copy. Its first lines:
 
 ```text
 sync, with these settings:
-  site: https://<your-site>.atlassian.net
+  accounts.atlassian.site: https://<your-site>.atlassian.net
 ```
 
 After a progress bar, it ends with the window of the space, from the start of 2000 to
@@ -179,7 +180,7 @@ It starts as the dry run did:
 
 ```text
 sync, with these settings:
-  site: https://<your-site>.atlassian.net
+  accounts.atlassian.site: https://<your-site>.atlassian.net
 ```
 
 and ends its summary with `Proceed? [y/N]`: answer `y`. A space of tens of pages takes a

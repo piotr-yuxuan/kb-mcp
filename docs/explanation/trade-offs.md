@@ -133,6 +133,56 @@ naming its path, never its value.
 - **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions), at the
   maintainer's request.
 
+## Three roles, not a bundle
+
+A source is a declaration that names its roles, a fetcher, if any, and its preparers, each
+behind one interface ([`Fetcher`](../../src/kb_mcp/sources/roles.py),
+[`Preparer`](../../src/kb_mcp/sources/roles.py)), and the server reads documents alone,
+whichever source wrote them; [sources](sources.md#three-roles-not-a-bundle) say how.
+
+- **Why.** The roles vary apart: git is fetched once and prepared twice, persons are a
+  preparation over every source's documents, and tools per source would bring back the
+  several calls and merges that one interface in front of many tools avoids. A declaration
+  also lets a new source be a package and one line, Confluence, Jira and the work log
+  treated alike.
+- **Cost.** More to read for a source that has one of each: a declaration, a table and a
+  module per role. Confluence and Jira, one fetcher and one preparer between them, read
+  which of them they run for from the declaration, each prepare placing every document:
+  0.41 s more per prepare of both on a store of 1,474 documents. Two sign-in checks, holds
+  on the store and reports per fetch of both. A preparer that converts finds pandoc for
+  itself, so pandoc gone mid-run fails its row where it used to stop the run. And the
+  server's words for sources stay Atlassian-shaped until a fourth source needs otherwise:
+  a new source's hits name a ref that `read` does not look up
+  ([`ENTRIES`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and its path, which they
+  show too, opens them.
+- **Rejected.** One bundle per source, which suits a system where the three come as one,
+  such as Google Drive, Notion or SharePoint, and fits neither git nor persons. Keeping
+  each source by name in `cli` and `config`, on which `sync` dispatched since plan 017,
+  which treats a new source as a change to the core.
+- **Settled** by the maintainer, in
+  [plan 030](../work/plans/030-sources-as-equals.md#settled-by-the-user).
+
+## A list, not entry points
+
+The sources are a list in the code, [`SOURCES`](../../src/kb_mcp/sources/registry.py),
+which the entry takes as a parameter ([`main`](../../src/kb_mcp/cli/main.py)).
+
+- **Why.** It is a monorepo for speed and convenience, by the maintainer's word, with
+  packaging to come later by extras. A list is read at a glance, and a test registers a
+  source of its own by passing one line
+  ([`registry`](../../tests/test_memo_source.py)). A test still holds contract I to the
+  list, which Import Linter cannot read
+  ([`test_contract_i_lists_the_package_of_each_registered_source_once`](../../tests/test_code_layout.py)).
+- **Cost.** A source of another distribution cannot register itself: until entry points
+  come, it needs a line here. A declaration is what an entry point would name, so that
+  adding them changes the registry's module alone. One source type has one instance, its
+  name a table, a folder and the front matter's `source`.
+- **Rejected.** Entry points now: about 10 ms more on every `--help`, 95.9 ms against 106.3
+  ms, on a command that a shell's completion runs at every Tab, for what no distribution
+  yet needs. Choosing a source's roles in the settings.
+- **Settled** by the maintainer, in
+  [plan 030](../work/plans/030-sources-as-equals.md#the-registry-a-list-in-the-code).
+
 ## Markdown beside MCP
 
 The mirror is a folder of Markdown files, one per document with its front matter, under
@@ -157,7 +207,7 @@ The mirror is a folder of Markdown files, one per document with its front matter
 the SHA-256 of pandoc's version line, its arguments and the HTML it was given
 ([`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)),
 so that a run converts only the HTML that it has not converted before. Once its files
-are written, a run deletes the conversions that it did not use
+are written, each source's prepare deletes those of its rows that it did not use
 ([`Conversions.prune`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 Every run still reads the store and builds every document's HTML.
 
@@ -174,10 +224,11 @@ Every run still reads the store and builds every document's HTML.
   from no cache, and wrote no file; [the tests](../../tests/test_mirror.py) find the
   bytes of a mirror from no cache after each kind of change.
 - **Cost.** A file of about the Markdown's size, 3 MB on that store. Reading the store
-  and building every document's HTML remain at each run, the 2.3 seconds there. A run
-  that reports a problem deletes no conversion, as it removes no file: a store that
-  reports one at every run keeps each edited document's old conversion, about 2 KB,
-  until a run ends clean. The one input that the key misses is a pandoc rebuilt under
+  and building every document's HTML remain at each run, the 2.3 seconds there. A
+  source that reports a problem deletes none of its conversions, as it removes none of
+  its files: a store that reports one at every run keeps each edited document's old
+  conversion, about 2 KB, until a run ends clean. A text that Confluence and Jira both
+  convert is a row of each. The one input that the key misses is a pandoc rebuilt under
   the same version line, such as another package of one release: delete the file, which
   costs one conversion of everything and downloads nothing. A damaged file costs the
   same, as the run replaces it, says so, and converts everything
@@ -190,11 +241,13 @@ Every run still reads the store and builds every document's HTML.
   forgot; a cache wrapped around pandoc outside the mirror, which would count its
   conversions only after the mirror's own event, and copy its rule on problems;
   `mirror --rebuild`, which deleting the file replaces; the work log in the cache, whose
-  revisions already skip what has not changed.
+  revisions already skip what has not changed; a file per source, where a column keeps
+  one file, which the data guard already judges.
 - **Settled** by the maintainer's answer to [plan
   034](../work/changelog/034-incremental-fetch.md#questions-for-the-user)'s fourth
-  question, "Cache pandoc's output", and built by [plan
-  039](../work/changelog/039-conversion-cache.md#decisions).
+  question, "Cache pandoc's output", built by [plan
+  039](../work/changelog/039-conversion-cache.md#decisions), and its rows parted by source
+  by [plan 030](../work/plans/030-sources-as-equals.md#confluence-and-jira-prepared-apart-from-029).
 
 ## People, a generic key
 
@@ -729,7 +782,7 @@ merges them and keeps each value's layer.
 
 Each value of the program, a document, a setting's layer or a run's outcome, is a
 [`Record`](../../src/kb_mcp/kernel/record.py): a Pydantic model built by keyword,
-checked where it is built, and frozen unless it accumulates. Twelve classes stay
+checked where it is built, and frozen unless it accumulates. Fifteen classes stay
 dataclasses, each for the reason that [the code's layout](code-layout.md#records) gives.
 
 - **Why.** The maintainer prefers Pydantic to dataclasses, except where it is
