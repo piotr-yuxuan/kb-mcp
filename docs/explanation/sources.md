@@ -69,7 +69,7 @@ does not apply, and what its summary says.
   conversions it reads ([`prepare_kinds`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
   Git, once re-planned, will name one fetcher and two preparers, which is why a
   declaration's preparers are a tuple. Until then no source names two, and two would share
-  one row's name, `prepare git`, told apart by their order alone: that plan names them.
+  one row's name, `git`, told apart by their order alone: that plan names them.
 - **A source keeps a store when it has a fetcher**, so no field says so.
 - **Later plans add their fields**: 032 its flag rows; 033 a description and examples.
 
