@@ -48,8 +48,8 @@ class ResourceType:
 
     A source's types are read whole: no role reads some of them until a plan chooses among
     them, and a role whose removals cover them all may refuse some, as Atlassian's preparer
-    does. Only the name and the options are read so far: plan 033 reads ``summary``, for
-    help, and plan 034 ``read``, for its coverage.
+    does. The name, the options and ``read`` are read so far, the last in the help of
+    ``fetch`` and ``prepare``, each source's group: plan 033 reads ``summary``, for help.
     """
 
     name: str
@@ -93,14 +93,14 @@ class Declared:
     """A source: its name, what it is, the types it reads, its settings, table and roles.
 
     ``name`` is its table, ``[sources.<name>]``, its folder of the mirror and the front
-    matter's ``source``. ``summary`` waits for plan 033's help, which reads it. ``types``
-    are all that it reads, whole. ``settings`` are its table's settings, by name, in their
-    order: the first names what it covers, which makes it configured. ``table`` is the
-    Pydantic model of its table, by module path. ``preparers`` name the modules that
-    write its documents, in their order, and ``fetcher`` the one that brings its
-    system's changes into its store, None for a source read in place. ``account``, if
-    any, is what its fetcher signs in with. ``refused``, ``unapplied`` and
-    ``described``, if any, are its light checks.
+    matter's ``source``. ``summary`` opens its group in the help of ``fetch`` and
+    ``prepare``. ``types`` are all that it reads, whole. ``settings`` are its table's
+    settings, by name, in their order: the first names what it covers, which makes it
+    configured. ``table`` is the Pydantic model of its table, by module path.
+    ``preparers`` name the modules that write its documents, in their order, and
+    ``fetcher`` the one that brings its system's changes into its store, None for a
+    source read in place. ``account``, if any, is what its fetcher signs in with.
+    ``refused``, ``unapplied`` and ``described``, if any, are its light checks.
     """
 
     name: str

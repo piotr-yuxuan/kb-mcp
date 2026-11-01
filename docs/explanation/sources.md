@@ -141,9 +141,10 @@ end only where searched by time. Choosing among a source's types waits for one w
 fetching apart, such as Jira's boards: until then a source's types are read whole. The
 Atlassian fetcher lists every kind of a space, and its preparer, which removes the files
 of every kind of its source, refuses a declaration that names some of them
-([`preflight`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)). So only a
-type's name and options are read so far: plan 033 reads the summaries, plan 034 how each
-is read.
+([`preflight`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)). So a type's
+name, its options and how it is read are read so far, the last in the groups of `fetch
+--help` and `prepare --help`, each opening with its source's summary: plan 033 reads a
+type's summary.
 
 ## The registry, a list in the code
 
