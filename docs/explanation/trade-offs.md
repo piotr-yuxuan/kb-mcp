@@ -60,7 +60,7 @@ server never fetches from the site.
 - **Settled** by the programme with the maintainer, before plan 001; catching up without
   dates by [plan 007](../work/changelog/007-incremental-refresh.md#decisions); the
   commands that the user composes by
-  [plan 031](../work/plans/031-composable-commands.md#settled-by-the-user), which removed
+  [plan 031](../work/changelog/031-composable-commands.md#settled-by-the-user), which removed
   the `sync` of [plan 017](../work/changelog/017-modular-sources.md#what-sync-does); the
   catch-up from the last fetch, a project's end exact, by
   [plan 034](../work/changelog/034-incremental-fetch.md#decisions).
