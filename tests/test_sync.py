@@ -1511,7 +1511,9 @@ def test_a_sync_is_a_dry_run_by_its_runs_alone(tmp_path: Path, worklog: Path) ->
     ]
     assert logged_as(real, "sync.start")[0]["dry_run"] is False
     assert settings.index.exists()
-    assert [row.step for row in sync([], step, lambda: FIRST).steps] == ["index"]
+    assert [(row.step, row.outcome) for row in sync([], step, lambda: FIRST).steps] == [
+        ("index", "done")
+    ]
 
 
 def test_each_preparer_that_a_source_declares_is_a_row_of_its_own(
