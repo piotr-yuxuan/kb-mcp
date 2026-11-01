@@ -82,6 +82,8 @@ Then, by hand, as docs/how-to/move-to-kb-mcp.md says:
   again
 - another search engine over the mirror: each collection on ~/atlassian-offline-mcp/docs/
   added again on ~/kb-mcp/docs/
+- scripts, aliases, crontabs and agents' setups: each command that went, sync, download
+  and mirror, and index for search by meaning, as that page's section 9 says
 ```
 
 Keys and variables are named, and settings with their layer, never with their values.
@@ -183,21 +185,58 @@ The mirror stays the same, byte for byte, but what a run says and keeps has chan
 the former name:
 
 - **The first prepare converts everything once.** The cache of conversions holds its rows
-  by source now, so a file of the former columns is replaced, `mirror.cache_replaced`
+  by source now, so a file of the former columns is replaced, `prepare.cache_replaced`
   saying so; each run after it converts what changed, as before. Nothing is downloaded
   again.
 - **A report per source.** A download's report is
   `<data>/runs/<time>-confluence.json` or `<time>-jira.json`, one for each source that it
   fetches, where it was `<time>.json`. Reports already there stay as they are. No code
   reads them; a script of yours may.
-- **A row per source and step.** `sync`, `download` and `mirror` write a row for each
-  source and step, under `steps` with `--format json`. `sync --include confluence`
-  prepares Confluence alone: [bring every source up to
-  date](refresh.md#3-take-some-of-the-sources) says what that leaves.
+- **A row per source.** `fetch` and `prepare` write a row for each source, under `sources`
+  with `--format json`. `prepare confluence` prepares Confluence alone: [bring every source
+  up to date](refresh.md#3-take-some-of-the-sources) says what that leaves.
 - **A stray `.md` file under the mirror is read.** The index reports it as a file without
   front matter, and exits 1, where it was ignored: move it out of `docs/`.
 
-## 9. Check again
+## 9. The commands that moved
+
+Scripts, aliases, crontabs and agents' setups may name commands that went. The parser
+refuses each, exit 2, and its message lists the commands. What replaces each:
+
+| Was | Now |
+|---|---|
+| `sync` | the chain that you compose: `fetch && prepare && index && embed`, as [bring every source up to date](refresh.md) says |
+| `sync --include worklog` | `prepare worklog && index`, or `embed` for search by meaning |
+| `sync --include` or `--exclude` of a site's source | the sources named: `fetch jira`, `prepare jira` |
+| `sync --dry-run` | `fetch --dry-run` and `prepare --dry-run` |
+| `download` | `fetch` |
+| `mirror` | `prepare confluence jira`, since `prepare` alone takes the work log too |
+| `index`, for search by meaning | `embed`, which takes `--allow-remote-embeddings`; `index` builds by words alone, asks no endpoint, and refuses that flag |
+| `login` | `login atlassian` |
+
+`index` after an `embed` replaces the index with one of words alone, whatever
+`search_mode` says, until the next `embed`: a script that wants search by meaning ends with
+`embed`.
+
+What reads a run's output follows:
+
+- **JSON.** A result's `steps`, each with its `step`, are `sources`, each with its `source`,
+  `outcome` and `result`, whose `downloaded` and `mirrored` stay. `index`'s result by meaning
+  is `embed`'s; `index`'s has no pieces, `model` and `pruned` null.
+- **Log files, spans and metrics.** A run's log file and root span take its command's name,
+  `fetch` or `prepare`, for instance. Events, spans and instruments named `download.`,
+  `kb_mcp.download.`, `mirror.` and `kb_mcp.mirror.` are named `fetch.`, `kb_mcp.fetch.`,
+  `prepare.` and `kb_mcp.prepare.`; `sync.` is gone, for each command's `start`, `source`,
+  `interrupted`, `end` and `refused`. `fetch.interrupted` names the source that it stopped,
+  where `download.interrupted` named the folder of the reports. A build of the index keeps
+  its names, `index.` and `kb_mcp.index.`, under whichever command runs it. Log files of the
+  retired commands go after their 30 days, as every command's.
+- **Dashboards.** Those of [observe with Grafana](observe-with-grafana.md) are `fetch`,
+  `prepare`, `index` and `embed`, where they were `download`, `mirror`, `index` and `sync`.
+- **`doctor`.** A machine with neither a site nor a Confluence or Jira source gets the
+  machine's checks alone, exit 0, where it failed `site: not set`.
+
+## 10. Check again
 
 ```bash
 kb-mcp check

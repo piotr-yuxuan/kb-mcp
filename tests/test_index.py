@@ -945,3 +945,23 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     assert "━" not in shown
     assert piped.stdout == out == quiet
     assert json.loads(out)["report"]["types"] == {"page": FILLERS}
+
+
+def test_an_index_that_cannot_be_written_exits_1_and_keeps_the_one_in_place(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """The database's error while indexing, as of a full disk, simulated: said, nothing lost."""
+
+    def full(*_: object) -> None:
+        message = "database or disk is full"
+        raise sqlite3.OperationalError(message)
+
+    write(data / "docs", page("196845", "Kafka"), BODY)
+    assert index(data, capsys)[0] == 0
+    before = (data / "index.sqlite").read_bytes()
+    monkeypatch.setattr(sqlite_index.Writer, "add", full)
+    status, _, err = index(data, capsys)
+    assert status == 1
+    assert ("error", "index.not_built") in said(err)
+    assert "database or disk is full" in err
+    assert (data / "index.sqlite").read_bytes() == before

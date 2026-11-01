@@ -73,6 +73,8 @@ BY_HAND = (
     "  again",
     "- another search engine over the mirror: each collection on ~/atlassian-offline-mcp/docs/",
     "  added again on ~/kb-mcp/docs/",
+    "- scripts, aliases, crontabs and agents' setups: each command that went, sync, download",
+    "  and mirror, and index for search by meaning, as that page's section 9 says",
 )
 
 

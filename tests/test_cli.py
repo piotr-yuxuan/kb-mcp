@@ -260,6 +260,44 @@ def test_the_version_is_the_project_s(capsys: CaptureFixture[str]) -> None:
     assert capsys.readouterr().out == f"kb-mcp {project['version']}\n"
 
 
+def test_the_help_lists_the_commands_of_plan_031(capsys: CaptureFixture[str]) -> None:
+    """Plan 031, criterion 2: these and no other."""
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    assert set(SUBCOMMANDS) == {
+        "check",
+        "completion",
+        "doctor",
+        "embed",
+        "eval",
+        "eval-agents",
+        "eval-rerank",
+        "fetch",
+        "index",
+        "login",
+        "model",
+        "prepare",
+        "reranker",
+        "serve",
+    }
+    said = capsys.readouterr().out
+    assert all(name in said for name in SUBCOMMANDS)
+
+
+@pytest.mark.parametrize("name", ["sync", "download", "mirror"])
+def test_a_command_that_went_is_refused_naming_the_choices(
+    name: str, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 031: no alias stays; the parser's message lists what there is, exit 2."""
+    with pytest.raises(SystemExit) as stopped:
+        main([name])
+    assert stopped.value.code == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    assert f"invalid choice: '{name}'" in err
+    assert "'fetch'" in err
+    assert "'prepare'" in err
+
+
 def test_the_help_says_who_asks_and_what_each_exit_status_means() -> None:
     """The commands that write ask first, by name; every status of the one enum is listed.
 
@@ -1170,14 +1208,22 @@ def test_a_run_removes_every_command_s_log_files_past_30_days_but_not_another_pr
 ) -> None:
     """``check`` removes ``doctor``'s and ``serve``'s as its own, by plan 016.
 
-    A command that is rarely run, such as ``doctor``, so keeps none past 30 days. A file
-    of the same shape named after no command, another program's in a shared folder,
-    stays, as does a command's of yesterday.
+    A command that is rarely run, such as ``doctor``, so keeps none past 30 days, nor does
+    one that plan 031 removed, whose files hold titles and queries. A file of the same shape
+    named after no command, another program's in a shared folder, stays, as does a command's
+    of yesterday.
     """
     folder = user_log_folder(home.resolve())
     folder.mkdir(parents=True)
     old = "20200101T000000Z"
-    gone = [f"check-{old}-7.jsonl", f"doctor-{old}-8.jsonl", f"serve-{old}-9.jsonl"]
+    gone = [
+        f"check-{old}-7.jsonl",
+        f"doctor-{old}-8.jsonl",
+        f"serve-{old}-9.jsonl",
+        f"download-{old}-10.jsonl",
+        f"mirror-{old}-11.jsonl",
+        f"sync-{old}-12.jsonl",
+    ]
     kept = [
         f"backup-{old}-7.jsonl",
         f"index-{datetime.now(UTC) - timedelta(days=1):%Y%m%dT%H%M%SZ}-7.jsonl",
