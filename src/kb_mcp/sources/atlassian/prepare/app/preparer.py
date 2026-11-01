@@ -16,7 +16,7 @@ import structlog
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.prepare.app.prepare import KINDS, Outcome, mirror
+from kb_mcp.sources.atlassian.prepare.app.prepare import KINDS, SOURCE_OF, Outcome, mirror
 from kb_mcp.sources.roles import Result
 
 if TYPE_CHECKING:
@@ -36,8 +36,22 @@ class Prepared(Result):
         return "" if self.mirrored is None else self.mirrored.text(summary)
 
 
-def preflight(_run: Run) -> None:
-    """Refuse nothing: the raw store is read as it is, whatever it holds."""
+def kinds_of(run: Run) -> tuple[type[Page | BlogPost | Issue], ...]:
+    """Give the kinds that the declaration of the source that a run is for names by its types."""
+    names = {each.name for each in run.declared.types}
+    return tuple(kind for kind in KINDS if kind.kind in names)
+
+
+def preflight(run: Run) -> str | None:
+    """Refuse a declaration whose types are not all the kinds of one source, by its name.
+
+    A prepare removes the files of all of them, those of a kind that it did not build too.
+    The raw store is read as it is, whatever it holds.
+    """
+    if kinds_of(run) in SOURCE_OF:
+        return None
+    named = ", ".join(each.name for each in run.declared.types)
+    return f"source {run.declared.name!r}: types {named}: not all the kinds of one source"
 
 
 def prepare(run: Run) -> Prepared:
@@ -54,9 +68,7 @@ def prepare(run: Run) -> Prepared:
     except PandocMissingError as error:
         structlog.get_logger().error("mirror.pandoc_missing", reason=str(error))
         return Prepared(outcome="failed", mirrored=None)
-    names = {each.name for each in run.declared.types}
-    kinds = tuple(kind for kind in KINDS if kind.kind in names)
-    return prepare_kinds(run.settings, run.account.site, pandoc, run.declared.name, kinds)
+    return prepare_kinds(run.settings, run.account.site, pandoc, run.declared.name, kinds_of(run))
 
 
 def prepare_kinds(

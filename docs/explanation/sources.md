@@ -138,7 +138,12 @@ beside it):
 ([`register`](../../src/kb_mcp/cli/options/download.py)) until plan 032 generates flags
 from the settings. Plan 034 needs how each type is read: coverage per target, an exact
 end only where searched by time. Choosing among a source's types waits for one worth
-fetching apart, such as Jira's boards.
+fetching apart, such as Jira's boards: until then a source's types are read whole. The
+Atlassian fetcher lists every kind of a space, and its preparer, which removes the files
+of every kind of its source, refuses a declaration that names some of them
+([`preflight`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)). So only a
+type's name and options are read so far: plan 033 reads the summaries, plan 034 how each
+is read.
 
 ## The registry, a list in the code
 

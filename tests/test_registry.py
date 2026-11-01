@@ -107,6 +107,38 @@ def test_each_source_prepares_the_kinds_that_its_declaration_names() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("types", "named"),
+    [(CONFLUENCE.types[:1], "pages"), (CONFLUENCE.types[1:], "blogposts")],
+    ids=["pages", "blog posts"],
+)
+def test_a_source_that_names_some_of_its_kinds_is_refused_and_no_file_removed(
+    tmp_path: Path, capsys: CaptureFixture[str], types: tuple[ResourceType, ...], named: str
+) -> None:
+    """Plan 030: Atlassian's preparer removes the files of all of a source's kinds.
+
+    So a registry that names the pages alone would remove every blog post: ``sync`` is
+    refused before any row, naming the source and its types.
+    """
+    registry = (replace(CONFLUENCE, types=types), JIRA, WORKLOG)
+    config = tmp_path / "config.toml"
+    config.write_text(
+        '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n'
+        '[sources.confluence]\nspaces = ["MFS"]\n',
+        "utf-8",
+    )
+    data = tmp_path / "data"
+    post = data / "docs" / "confluence" / "MFS" / "blog" / "600-news.md"
+    post.parent.mkdir(parents=True)
+    post.write_text("kept", "utf-8")
+    given = ["sync", "--yes", "--include", "confluence", "--config", str(config)]
+    assert main([*given, "--data-dir", str(data)], registry) == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    assert "sync.refused" in err
+    assert f"source 'confluence': types {named}: not all the kinds of one source" in err
+    assert post.read_text("utf-8") == "kept"
+
+
 def declaring(*options: Option) -> Declared:
     """Give the work log's declaration, its entries taking these options."""
     return replace(

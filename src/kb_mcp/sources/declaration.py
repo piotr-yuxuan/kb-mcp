@@ -41,7 +41,13 @@ class Option:
 
 @dataclass(frozen=True)
 class ResourceType:
-    """A kind of thing that a source reads: its name, what it is, how it is read, its options."""
+    """A kind of thing that a source reads: its name, what it is, how it is read, its options.
+
+    A source's types are read whole: no role reads some of them until a plan chooses among
+    them, and a role whose removals cover them all may refuse some, as Atlassian's preparer
+    does. Only the name and the options are read so far: plan 033 reads ``summary``, for
+    help, and plan 034 ``read``, for its coverage.
+    """
 
     name: str
     summary: str
@@ -73,8 +79,9 @@ class Declared:
     """A source: its name, what it is, the types it reads, its settings, table and roles.
 
     ``name`` is its table, ``[sources.<name>]``, its folder of the mirror and the front
-    matter's ``source``. ``settings`` are its table's settings, by name, in their order:
-    the first names what it covers, which makes it configured. ``table`` is the
+    matter's ``source``. ``summary`` waits for plan 033's help, which reads it. ``types``
+    are all that it reads, whole. ``settings`` are its table's settings, by name, in their
+    order: the first names what it covers, which makes it configured. ``table`` is the
     Pydantic model of its table, by module path. ``preparers`` name the modules that
     write its documents, in their order, and ``fetcher`` the one that brings its
     system's changes into its store, None for a source read in place. ``account``, if

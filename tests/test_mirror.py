@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 import pytest
 from structlog.testing import capture_logs
 
+from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import load
 from kb_mcp.mirror.adapters.mirror_files import sync
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
@@ -27,7 +28,7 @@ from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
-from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED
+from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, mirror
 from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_kinds
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
 from tests.composed import MODEL
@@ -790,6 +791,29 @@ def test_either_source_first_writes_the_same_files(crossed: Sandbox, tmp_path: P
     _, leaf = load(crossed.text("confluence/MFS/300-leaf.md"), "leaf")
     assert "[PRB-1](../../jira/PRB/PRB-1.md)" in leaf
     assert [path for path in files if path.startswith("assets/")] == [f"assets/{digest(IMAGE)}.png"]
+
+
+@pytest.mark.parametrize(
+    "kinds",
+    [(Page,), (BlogPost,), (Page, Issue), ()],
+    ids=["pages", "blog posts", "two sources' kinds", "none"],
+)
+def test_kinds_other_than_all_of_a_source_s_are_refused_and_no_file_removed(
+    sandbox: Sandbox, kinds: tuple[type[Page | BlogPost | Issue], ...]
+) -> None:
+    """Plan 030: a source's files are removed whichever kinds it built, so it builds them all.
+
+    A prepare of the pages alone would otherwise remove every blog post.
+    """
+    sandbox.run()
+    before = sandbox.files()
+    path = sandbox.docs.parent / "conversions.sqlite"
+    with (
+        conversions.opened(path, lambda: "a writer", str, source="confluence") as cache,
+        pytest.raises(KeyError),
+    ):
+        mirror(sandbox.store, sandbox.docs, None, cache, kinds)
+    assert sandbox.files() == before
 
 
 def test_a_file_that_both_sources_attach_stays_while_either_wants_it(crossed: Sandbox) -> None:

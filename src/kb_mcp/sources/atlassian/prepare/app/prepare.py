@@ -76,6 +76,9 @@ PREPARED: dict[str, tuple[type[Page | BlogPost | Issue], ...]] = {
     source: tuple(kind for kind in KINDS if kind.source == source)
     for source in dict.fromkeys(kind.source for kind in KINDS)
 }
+# Each source by all of its kinds, which a prepare takes whole: it removes the files of them
+# all (``owned``), so a prepare of some of them would remove the files of the others.
+SOURCE_OF = {kinds: source for source, kinds in PREPARED.items()}
 # A comment's headings sit under its own third-level heading.
 COMMENT_SHIFT = 3
 UNKNOWN_AUTHOR = "unknown author"
@@ -331,7 +334,9 @@ def mirror(
 ) -> Outcome:
     """Mirror one source's documents, those of ``kinds``, from the raw store into ``docs``.
 
-    ``conversions`` writes HTML as Markdown, through the source's rows of the cache.
+    ``kinds`` are all of one source's, as ``PREPARED`` gives them; any other raises KeyError,
+    a caller's error, before anything is read. ``conversions`` writes HTML as Markdown,
+    through the source's rows of the cache.
     Every document of the store is placed, so that links and images reach the other
     source's files, but only those of ``kinds`` are built and written, with the files
     they attach, and each space's tree when pages are among them. The source then
@@ -350,8 +355,7 @@ def mirror(
     at DEBUG each document built, by its path, id and title.
     """
     log = structlog.get_logger()
-    # One source's kinds: none, or two sources', is a caller's error.
-    (source,) = {kind.source for kind in kinds}
+    source = SOURCE_OF[kinds]
     # The problems found, by the source they belong to: the catalogue's are Confluence's.
     found: dict[str, list[Problem]] = {kind.source: [] for kind in KINDS}
     problems = found[source]
