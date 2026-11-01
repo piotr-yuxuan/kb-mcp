@@ -492,13 +492,17 @@ def settings_model(
     ``sources`` gives each source's table by its name, which names its table,
     ``[sources.<name>]``, and ``accounts`` each account's alike, ``[accounts.<name>]``;
     the tables of each follow one another in name order, each described by its
-    docstring. Raises TypeError, naming the table, for one that holds a setting of a type
+    docstring. Raises TypeError, naming the table, for a name that a model already holds,
+    such as ``json``, which its field would shadow, one that holds a setting of a type
     that has no kind, or one without a default, since a source left unset still has its
     table, before any value is read.
     """
     places = {"accounts": (Accounts, accounts), "sources": (Sources, sources)}
-    for place, (_, tables) in places.items():
+    for place, (base, tables) in places.items():
         for name, table in tables.items():
+            if hasattr(base, name):
+                message = f"{place}.{name}: a name that a model already holds"
+                raise TypeError(message)
             try:
                 setting_paths(table)
                 table()

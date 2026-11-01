@@ -2,9 +2,10 @@
 
 The expectations come from plan 030: the registry lists Confluence, Jira and the work
 log in name order; any registry that the entry is given is refused, naming the
-declaration, for a name off the rule, ``assets``, a name declared twice, an account that
-two declarations name differently, no setting, settings that are not its table's, or an
-option that another source declares otherwise, or that is ``sync``'s own; each
+declaration, for a name off the rule, ``assets``, a name declared twice, a name that a
+model holds, an account that two declarations name differently, no setting, no role,
+settings that are not its table's, or an option that another source declares otherwise,
+or that is ``sync``'s own; an option's value takes no name that the program holds; each
 declaration names its table, whose settings are the declaration's; Confluence and Jira
 sign in with one account,
 ``[accounts.atlassian]`` (question 1); and a source, or an account, that a registry
@@ -13,6 +14,7 @@ leaves out has no setting (criterion 3).
 
 from __future__ import annotations
 
+import json
 import pkgutil
 import re
 from dataclasses import replace
@@ -28,7 +30,7 @@ from kb_mcp.sources.atlassian.declared import ATLASSIAN, CONFLUENCE, JIRA, SINCE
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED
 from kb_mcp.sources.declaration import Option, ResourceType
-from kb_mcp.sources.registry import SOURCES
+from kb_mcp.sources.registry import SOURCES, refuse
 from kb_mcp.sources.worklog.declared import WORKLOG
 
 if TYPE_CHECKING:
@@ -239,6 +241,41 @@ def test_a_table_that_cannot_be_built_by_default_is_refused_naming_its_source(
     )
     with pytest.raises(TypeError, match=said):
         main(["check", "--config", str(tmp_path / "none.toml")], (*SOURCES, memo))
+
+
+@pytest.mark.parametrize("name", ["json", "copy", "schema"])
+def test_a_name_that_a_model_holds_is_refused_naming_it(tmp_path: Path, name: str) -> None:
+    """Its field would shadow the attribute, as Pydantic warns: no warning on every run."""
+    registry = (*SOURCES, replace(WORKLOG, name=name))
+    with pytest.raises(TypeError, match=rf"^sources\.{name}: a name that a model already holds$"):
+        main(["check", "--config", str(tmp_path / "none.toml")], registry)
+
+
+def test_a_source_that_names_no_role_is_refused_naming_it(tmp_path: Path) -> None:
+    """A run of it would have no row, its absence said by nothing; a fetcher alone has a row."""
+    with pytest.raises(ValueError, match=r"^source 'worklog': names no role, neither fetcher nor"):
+        main(
+            ["check", "--config", str(tmp_path / "none.toml")],
+            (CONFLUENCE, JIRA, replace(WORKLOG, preparers=())),
+        )
+    refuse((replace(CONFLUENCE, preparers=()),))
+
+
+@pytest.mark.parametrize(
+    "flag", ["--sources", "--command", "--commands", "--dry_run", "--level", "--quiet"]
+)
+def test_an_option_takes_no_name_that_the_program_holds(
+    tmp_path: Path, capsys: CaptureFixture[str], flag: str
+) -> None:
+    """Its flag is another's name for what the program holds: its value replaces none of it."""
+    folder = tmp_path / "log"
+    folder.mkdir()
+    config = tmp_path / "config.toml"
+    config.write_text(f"[sources.worklog]\npath = {json.dumps(str(folder))}\n", "utf-8")
+    registry = (CONFLUENCE, JIRA, declaring(Option(flag=flag, help="one of the source's own")))
+    given = ["sync", flag, "kept", "--dry-run", "--config", str(config)]
+    assert main([*given, "--data-dir", str(tmp_path / "data")], registry) == ExitStatus.OK
+    assert f"{flag} kept" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

@@ -158,11 +158,14 @@ Its rules hold for any registry that the entry is given
 ([`refuse`](../../src/kb_mcp/sources/registry.py)), and refuse, naming the declaration: a
 name off `[a-z][a-z0-9]*` ([`SOURCE_NAME`](../../src/kb_mcp/kernel/names.py)), or `assets`;
 two of one name; two declarations naming one account differently; a source naming no
-setting; an option that another source declares otherwise, or that takes a flag of
-`sync`'s own ([`register`](../../src/kb_mcp/cli/options/sync.py)). Once the arguments are
-parsed, so that `--help` imports no table, the entry also refuses a table whose settings
-are not those that its declaration names ([`tables`](../../src/kb_mcp/sources/registry.py)),
-or that cannot be built by default
+setting, or neither a fetcher nor a preparer; an option that another source declares
+otherwise, or that takes a flag of `sync`'s own
+([`register`](../../src/kb_mcp/cli/options/sync.py)). An option's value is kept under its
+flag itself ([`add_option`](../../src/kb_mcp/cli/options/_common.py)), so no flag takes a
+name that the program holds. Once the arguments are parsed, so that `--help` imports no
+table, the entry also refuses a table whose settings are not those that its declaration
+names ([`tables`](../../src/kb_mcp/sources/registry.py)), whose name a model already holds,
+such as `json`, or that cannot be built by default
 ([`settings_model`](../../src/kb_mcp/config/domain/settings.py)). These are a programmer's
 errors, raised, not exits. A name is a table, a folder of the mirror, a command argument
 from plan 031 on and the front matter's `source`, so one source type has one instance: two

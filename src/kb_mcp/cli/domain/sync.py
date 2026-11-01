@@ -39,10 +39,9 @@ def label(step: str, source: str | None) -> str:
 def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, object]:
     """Give the value of each option by its flag, None when not given, unless a default.
 
-    argparse keeps an option's value under its flag, its dashes before dropped and
-    within made underscores.
+    ``add_option`` keeps an option's value under its flag itself.
     """
-    return {flag: getattr(arguments, flag.lstrip("-").replace("-", "_")) for flag in flags}
+    return {flag: getattr(arguments, flag) for flag in flags}
 
 
 def chosen(

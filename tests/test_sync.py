@@ -32,7 +32,7 @@ from structlog.testing import capture_logs
 from kb_mcp.cli.app import sync as sync_app
 from kb_mcp.cli.app.sync import Index, sync
 from kb_mcp.cli.domain.rows import Row
-from kb_mcp.cli.domain.sync import chosen
+from kb_mcp.cli.domain.sync import chosen, given
 from kb_mcp.cli.main import main, parser
 from kb_mcp.cli.options.sync import refused
 from kb_mcp.config.domain.settings import DEFAULT_MODEL, Settings
@@ -1593,7 +1593,7 @@ def test_sync_offers_each_option_that_its_sources_declare_once(
     declares none, offers none.
     """
     arguments = parser().parse_args(["sync", "--since", "7d", "--max-file-mb", "2"])
-    assert (arguments.since, arguments.max_file_mb) == ("7d", 2)
+    assert given(arguments, ("--since", "--max-file-mb")) == {"--since": "7d", "--max-file-mb": 2}
     with pytest.raises(SystemExit) as stopped:
         parser(sources=(WORKLOG,)).parse_args(["sync", "--since", "7d"])
     assert stopped.value.code == ExitStatus.REFUSED

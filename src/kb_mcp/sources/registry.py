@@ -35,8 +35,9 @@ def refuse(sources: Iterable[Declared]) -> None:
     ``source``, so one source type has one instance: a name matches ``SOURCE_NAME``, is
     not ``assets``, and is declared once. An account's name is its table, which the
     sources naming it share: each names it alike. A source names a setting, its first
-    saying whether it is configured. An option is one flag of ``sync``, which the sources
-    declaring it share: each declares it alike.
+    saying whether it is configured, and a role, a fetcher or a preparer, or a run of it
+    would have no row. An option is one flag of ``sync``, which the sources declaring it
+    share: each declares it alike.
     """
     seen: set[str] = set()
     accounts: dict[str, Account] = {}
@@ -58,6 +59,9 @@ def refuse(sources: Iterable[Declared]) -> None:
         seen.add(declared.name)
         if not declared.settings:
             message = f"source {declared.name!r}: names no setting"
+            raise ValueError(message)
+        if declared.fetcher is None and not declared.preparers:
+            message = f"source {declared.name!r}: names no role, neither fetcher nor preparer"
             raise ValueError(message)
         for option in (option for kind in declared.types for option in kind.options):
             first, known = options.setdefault(option.flag, (declared.name, option))

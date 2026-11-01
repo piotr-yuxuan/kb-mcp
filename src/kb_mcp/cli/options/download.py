@@ -10,6 +10,7 @@ from kb_mcp.cli.domain.sync import given
 from kb_mcp.cli.options._common import (
     SIGN_IN,
     SITE,
+    add_option,
     add_output_options,
     add_settings_options,
     add_yes_option,
@@ -66,7 +67,8 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 
 def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
     """Say how the run signs in, and where each target's window starts, by the rule."""
-    return (*signed_in_by(arguments, settings), period_rule(since=arguments.since is not None))
+    since = getattr(arguments, SINCE.flag) is not None
+    return (*signed_in_by(arguments, settings), period_rule(since=since))
 
 
 def register(
@@ -98,14 +100,9 @@ def register(
         "--project", action="append", type=key_of("project"), help="a project key; repeat"
     )
     period = (
-        parser.add_argument(SINCE.flag, help=SINCE.help),
-        parser.add_argument(UNTIL.flag, help=UNTIL.help),
-        parser.add_argument(
-            MAX_FILE_MB.flag,
-            type=MAX_FILE_MB.type,
-            default=DEFAULT_MAX_FILE_MB,
-            help=MAX_FILE_MB.help,
-        ),
+        add_option(parser, SINCE),
+        add_option(parser, UNTIL),
+        add_option(parser, MAX_FILE_MB, DEFAULT_MAX_FILE_MB),
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="say what a run would fetch, and fetch nothing"

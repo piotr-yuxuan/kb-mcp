@@ -9,6 +9,7 @@ from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.domain.sync import chosen, described, given
 from kb_mcp.cli.options._common import (
     add_embedding_options,
+    add_option,
     add_output_options,
     add_settings_options,
     add_yes_option,
@@ -91,10 +92,7 @@ def add_run_options(
     """
     options = {flag: option for declared in sources for flag, option in declared.options.items()}
     try:
-        added = tuple(
-            parser.add_argument(option.flag, type=option.type, help=option.help)
-            for option in options.values()
-        )
+        added = tuple(add_option(parser, option) for option in options.values())
         remote = add_embedding_options(parser)
         parser.add_argument(
             "--dry-run",
