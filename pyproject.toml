@@ -207,6 +207,7 @@ source_modules = [
   "kb_mcp.evaluation",
   "kb_mcp.mcp",
   "kb_mcp.search",
+  "kb_mcp.sources.atlassian.settings",
   "kb_mcp.sources.declaration",
   "kb_mcp.sources.registry",
   "kb_mcp.sources.roles",

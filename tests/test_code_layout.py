@@ -36,6 +36,22 @@ CONTRACTS = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["tool"][
 KEPT = re.compile(r"^\| `([\w.]+)` \| ", re.MULTILINE)
 # A row of the layout page's table of contracts: its letter.
 LETTER = re.compile(r"^\| ([A-Z]) \| ", re.MULTILINE)
+# What knows no source by name: plan 030's criterion 6.
+NAMELESS = ("cli/app", "cli/domain", "config", "mirror")
+SOURCE_NAMED = re.compile(r"\b(?:confluence|jira|worklog)\b|sources\.atlassian", re.IGNORECASE)
+# The lines of NAMELESS that name one all the same, by file.
+NAMING = {
+    # A docstring's example of a setting's path.
+    "cli/domain/command.py": 1,
+    # MOVED: plan 015's message for its moved keys, which name their tables.
+    "config/domain/settings.py": 2,
+    # A docstring: who records the instruments.
+    "mirror/adapters/instruments.py": 1,
+    # A docstring: which step owns which folder.
+    "mirror/adapters/mirror_files.py": 2,
+    # Docstrings of the front matter's Atlassian-shaped keys, which question 3 keeps.
+    "mirror/domain/mirror.py": 3,
+}
 # OpenTelemetry's SDK, exporters and instrumentation, which plan 016 keeps within
 # observability: elsewhere code uses the API alone. Import Linter forbids root packages
 # only, and the API and the SDK share theirs, opentelemetry.
@@ -150,7 +166,9 @@ def test_contract_k_names_every_context_and_source_but_the_atlassian_package() -
 
     A forbidden contract cannot leave one package out of a wildcard, so K names each
     context but ``sources``, and each module and package of ``sources`` but
-    ``atlassian``, each once: a new context, or a new source, left out of K fails it.
+    ``atlassian``, each once: a new context, or a new source, left out of K fails it. Of
+    ``atlassian`` it names the module that every command loads by its path, which no
+    import from ``cli`` shows it, the account's and the sources' tables.
     """
     contexts = {
         f"{kb_mcp.__name__}.{each.name}"
@@ -163,5 +181,22 @@ def test_contract_k_names_every_context_and_source_but_the_atlassian_package() -
         if each.name != "atlassian"
     }
     (contract,) = [contract for contract in CONTRACTS if contract.get("id") == "K"]
-    assert sorted(contract["source_modules"]) == sorted(contexts | beside)
+    every_command_loads = {f"{sources.__name__}.atlassian.settings"}
+    assert sorted(contract["source_modules"]) == sorted(contexts | beside | every_command_loads)
     assert sorted(contract["forbidden_modules"]) == ["lxml", "playwright"]
+
+
+def test_no_context_above_the_sources_names_one_but_the_plan_s_exceptions() -> None:
+    """Plan 030's criterion 6 stays true: only the registry brings a source to a run.
+
+    The use cases, ``config`` and ``mirror`` know a source by no name, nor import the
+    Atlassian package, which no contract keeps them from: ``cli.commands`` calls it until
+    plan 031. Each file may hold the lines that it holds, each for the reason noted.
+    """
+    found = {
+        path.relative_to(PACKAGE).as_posix(): lines
+        for root in NAMELESS
+        for path in sorted((PACKAGE / root).rglob("*.py"))
+        if (lines := sum(map(bool, map(SOURCE_NAMED.search, path.read_text("utf-8").splitlines()))))
+    }
+    assert found == NAMING
