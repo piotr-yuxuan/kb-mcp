@@ -138,7 +138,7 @@ def test_a_source_that_names_some_of_its_kinds_is_refused_and_no_file_removed(
     assert main([*given, "--data-dir", str(data)], registry) == ExitStatus.REFUSED
     err = capsys.readouterr().err
     assert "sync.refused" in err
-    assert f"source 'confluence': types {named}: not all the kinds of one source" in err
+    assert f"source 'confluence': prepare: types {named}: not all the kinds of one" in err
     assert post.read_text("utf-8") == "kept"
 
 

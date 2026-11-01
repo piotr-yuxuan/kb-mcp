@@ -118,7 +118,8 @@ def sync(runs: Sequence[Run], step: Index, now: Callable[[], datetime], *, dry_r
     """Run each source's roles, then the index; return a row each, and the status they rank.
 
     Raises ``SyncRefusedError`` for a role that does not load, and for what a role's
-    ``preflight`` refuses, both before the first row. A row's result is its role's;
+    ``preflight`` refuses, after its source's name and its step, both before the first
+    row. A row's result is its role's;
     each fetcher runs, in the order of ``runs``, then each preparer, then the index,
     which a dry run leaves not run. Ctrl-C ends the row it stops as interrupted, and
     each later one as not run; the run is interrupted even when Ctrl-C comes once every
@@ -146,7 +147,14 @@ def sync(runs: Sequence[Run], step: Index, now: Callable[[], datetime], *, dry_r
             for run, role in preparers
         ),
     ]
-    refusal = next((said for each in planned if (said := each.preflight(each.run))), None)
+    refusal = next(
+        (
+            f"source {each.run.declared.name!r}: {each.step}: {said}"
+            for each in planned
+            if (said := each.preflight(each.run))
+        ),
+        None,
+    )
     if refusal is not None:
         raise SyncRefusedError(refusal)
     log = structlog.get_logger()

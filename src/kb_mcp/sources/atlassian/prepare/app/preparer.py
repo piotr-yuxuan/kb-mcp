@@ -51,7 +51,7 @@ def preflight(run: Run) -> str | None:
     if kinds_of(run) in SOURCE_OF:
         return None
     named = ", ".join(each.name for each in run.declared.types)
-    return f"source {run.declared.name!r}: types {named}: not all the kinds of one source"
+    return f"types {named}: not all the kinds of one source"
 
 
 def prepare(run: Run) -> Prepared:

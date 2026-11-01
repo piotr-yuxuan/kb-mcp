@@ -260,7 +260,7 @@ def test_a_folder_of_notes_that_is_not_one_is_refused_before_any_row(
     (config.parent / "notes").rmdir()
     given = ["sync", "--include", "memo", "--yes", "--config", str(config)]
     assert main(given, registry) == ExitStatus.REFUSED
-    assert "sources.memo.folder: not a folder" in capsys.readouterr().err
+    assert "source 'memo': prepare: sources.memo.folder: not a folder" in capsys.readouterr().err
     assert not (config.parent / "data" / "docs").exists()
 
 

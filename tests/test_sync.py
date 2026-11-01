@@ -303,7 +303,7 @@ def test_an_until_before_since_exits_2_by_name_before_any_get(
     assert main(command(home, config, "--yes", *backwards)) == ExitStatus.REFUSED
     err = capsys.readouterr().err
     assert "sync.refused" in err
-    assert "--until: must come after --since" in err
+    assert "source 'confluence': fetch: --until: must come after --since" in err
     assert signed_in.asked == []
 
 
@@ -558,7 +558,7 @@ def test_a_work_log_that_is_not_a_folder_is_refused_before_any_step(
     assert main(command(home, config, "--yes")) == ExitStatus.REFUSED
     err = capsys.readouterr().err
     assert "sync.refused" in err
-    assert "sources.worklog.path: not a folder" in err
+    assert "source 'worklog': prepare: sources.worklog.path: not a folder" in err
     assert not (home / "data").exists()
 
 

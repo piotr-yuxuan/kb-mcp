@@ -349,7 +349,7 @@ def test_a_damaged_record_of_what_answered_as_gone_refuses_sync_before_its_first
     assert main(given) == ExitStatus.REFUSED
     err = capsys.readouterr().err
     assert "sync.refused" in err
-    assert "tombstones.json: not JSON" in err
+    assert "source 'confluence': fetch: tombstones.json: not JSON" in err
     assert "run.failed" not in err
     assert "Traceback" not in err
     assert not (data / "docs").exists()
