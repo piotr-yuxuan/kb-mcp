@@ -4,8 +4,9 @@ The expectations come from plan 030: the registry lists Confluence, Jira and the
 log in name order; any registry that the entry is given is refused, naming the
 declaration, for a name off the rule, ``assets``, a name declared twice, a name that a
 model holds, an account that two declarations name differently, no setting, no role,
-settings that are not its table's, or an option that another source declares otherwise,
-or that is ``sync``'s own; an option's value takes no name that the program holds; each
+settings that are not its table's, or an option that is no flag, that another source
+declares otherwise, or that is ``sync``'s own; an option's value takes no name that the
+program holds; each
 declaration names its table, whose settings are the declaration's; Confluence and Jira
 sign in with one account,
 ``[accounts.atlassian]`` (question 1); and a source, or an account, that a registry
@@ -393,6 +394,20 @@ def test_an_option_that_takes_a_flag_of_sync_s_own_is_refused_naming_it(flag: st
         ValueError, match=rf"^source 'worklog': option {flag}: a flag of sync's own"
     ):
         main(["--help"], registry)
+
+
+@pytest.mark.parametrize("flag", ["since2", "", "-", "--", "--two words", "-since"])
+def test_an_option_whose_flag_has_not_a_flag_s_shape_is_refused_naming_it(flag: str) -> None:
+    """Argparse would take it for a positional, and every command, ``--help`` too, would die."""
+    registry = (CONFLUENCE, JIRA, declaring(Option(flag=flag, help="another")))
+    with pytest.raises(ValueError, match=rf"^source 'worklog': option {flag!r}: a flag is"):
+        main(["--help"], registry)
+
+
+@pytest.mark.parametrize("flag", ["-s", "--since2", "--max-size-mb"])
+def test_a_flag_of_one_dash_and_a_letter_or_of_two_and_a_word_is_a_flag(flag: str) -> None:
+    """As argparse reads them, an option's value kept under its flag."""
+    refuse((CONFLUENCE, JIRA, declaring(Option(flag=flag, help="another"))))
 
 
 def test_confluence_and_jira_sign_in_with_one_atlassian_account() -> None:

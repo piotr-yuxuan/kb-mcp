@@ -10,6 +10,7 @@ imports no table.
 from __future__ import annotations
 
 import pkgutil
+import re
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.names import SOURCE_NAME
@@ -26,6 +27,8 @@ SOURCES = (CONFLUENCE, JIRA, WORKLOG)
 # The mirror's folder of the files that Confluence's and Jira's documents attach,
 # docs/assets/, which no source's folder may be.
 ASSETS = "assets"
+# A flag of an option: one dash and a letter, or two and a lower-case word.
+FLAG = re.compile(r"-[a-z]|--[a-z][a-z0-9_-]*")
 
 
 def refuse(sources: Iterable[Declared]) -> None:
@@ -37,7 +40,8 @@ def refuse(sources: Iterable[Declared]) -> None:
     sources naming it share: each names it alike. A source names a setting, its first
     saying whether it is configured, and a role, a fetcher or a preparer, or a run of it
     would have no row. An option is one flag of ``sync``, which the sources declaring it
-    share: each declares it alike.
+    share: each declares it alike, and it matches ``FLAG``, or argparse would read it as
+    a positional, and no command would start.
     """
     seen: set[str] = set()
     accounts: dict[str, Account] = {}
@@ -64,6 +68,11 @@ def refuse(sources: Iterable[Declared]) -> None:
             message = f"source {declared.name!r}: names no role, neither fetcher nor preparer"
             raise ValueError(message)
         for option in (option for kind in declared.types for option in kind.options):
+            if not FLAG.fullmatch(option.flag):
+                message = (
+                    f"source {declared.name!r}: option {option.flag!r}: a flag is {FLAG.pattern}"
+                )
+                raise ValueError(message)
             first, known = options.setdefault(option.flag, (declared.name, option))
             if known != option:
                 message = (
