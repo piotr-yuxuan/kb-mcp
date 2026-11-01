@@ -16,7 +16,7 @@ from kb_mcp.config.domain.settings import Ignored
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
     from pathlib import Path
 
     from kb_mcp.cli.domain.command import Command
@@ -52,6 +52,16 @@ def setting_line(loaded: Loaded, setting: str, *, detailed: bool) -> str:
     else:
         shown = "(not set)" if value is None else str(value)
     return f"{setting}: {shown}" + (f" [{loaded.layer(setting)}]" if detailed else "")
+
+
+def ignored_lines(ignored: Iterable[Ignored]) -> str:
+    """Write each value ignored, a line each: its setting, if any, its layer, why; not its value."""
+    return "".join(
+        f"ignored: {each.layer}: {each.why}\n"
+        if each.setting is None
+        else f"ignored: {each.setting} ({each.layer}): {each.why}\n"
+        for each in ignored
+    )
 
 
 def before(
@@ -111,12 +121,7 @@ def before(
         ),
     ]
     warned = ignored if output.level != "error" or then == "ask" else []
-    noted = "".join(
-        f"ignored: {each.layer}: {each.why}\n"
-        if each.setting is None
-        else f"ignored: {each.setting} ({each.layer}): {each.why}\n"
-        for each in warned
-    )
+    noted = ignored_lines(warned)
     endpoint = loaded.settings.telemetry.endpoint
     telemetry = (
         ""

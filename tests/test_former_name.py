@@ -239,6 +239,34 @@ def test_plan_027_s_names_of_the_sign_in_name_no_setting_and_are_said(
     assert err == f"ignored: {name}: names no setting\n"
 
 
+@pytest.mark.parametrize(
+    "command",
+    [("download", "--space", "MFS", "--since", "7d"), ("sync",)],
+    ids=["download", "sync"],
+)
+def test_a_run_refused_for_want_of_the_site_says_plan_027_s_names_that_it_ignored(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], command: tuple[str, ...]
+) -> None:
+    """The page's own case: a sops command sets ``KB_MCP_SITE``, and is told the site is not set.
+
+    The run says what it ignored before it refuses, naming the variable and never its value;
+    -q leaves that out, as for a run, and keeps the refusal, an error.
+    """
+    monkeypatch.setenv("KB_MCP_SITE", SITE)
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
+    given = [*command, "--yes", "--config", str(home / "none.toml")]
+    assert main(given) == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    said = err.index("ignored: KB_MCP_SITE: names no setting\n")
+    assert said < err.index("run.refused")
+    assert "accounts.atlassian.site: not set" in err
+    assert SITE not in err
+    assert main([*given, "-q"]) == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    assert "ignored:" not in err
+    assert "run.refused" in err
+
+
 @pytest.mark.parametrize("target", [Path("nowhere"), FORMER_DATA])
 def test_a_link_at_the_new_data_directory_is_followed(home: Path, target: Path) -> None:
     """The run's data directory is where ``~/kb-mcp`` leads, named or not: nothing stops."""

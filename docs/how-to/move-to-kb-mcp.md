@@ -124,8 +124,9 @@ for the server, a `sops exec-env` command, whose `KB_MCP_SITE="$ATLASSIAN_SITE"`
 [an API token kept by sops](api-token-with-sops.md) shows. The sign-in's variables that
 the rename first gave, `KB_MCP_SITE`, `KB_MCP_EMAIL` and `KB_MCP_API_TOKEN`, name no
 setting since its settings moved to `[accounts.atlassian]`: each run says it ignored
-them; rename them alike. For each setting named, move the folder or file that it names,
-then change it in its layer: the settings file, a variable, or a flag in a script.
+them, a run refused for want of the site first of all; rename them alike. For each
+setting named, move the folder or file that it names, then change it in its layer: the
+settings file, a variable, or a flag in a script.
 
 ## 5. Coding agents
 

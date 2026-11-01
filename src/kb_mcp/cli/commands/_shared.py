@@ -12,7 +12,7 @@ import structlog
 from pydantic_core import to_json, to_jsonable_python
 
 from kb_mcp.cli.adapters.question import ask
-from kb_mcp.cli.domain.summary import before, values_of
+from kb_mcp.cli.domain.summary import before, ignored_lines, values_of
 from kb_mcp.config.app.settings import load_settings
 from kb_mcp.config.domain.settings import SettingsError, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus
@@ -41,12 +41,14 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
     the run is imported, as does what the command refuses of them and of its arguments, a program
     that it needs missing from PATH, or a file that it reads missing or a folder, a pipe
     being read: each is an error, the event ``settings.refused`` or ``run.refused`` with
-    its reason, on stderr alone, as a run that never started has no log file. Else the
-    values ignored go to stderr, after the summary of a command that writes and before
-    the command to copy. Such a command then asks, unless told not to, and is refused
-    where no one can answer: declined, it exits 1, refused, 2, both before the run is
-    imported. The run gets the settings loaded, with each one's layer, a flag's being
-    its option. It returns its status, then its result, or None when it has none to
+    its reason, on stderr alone, as a run that never started has no log file. Before
+    ``run.refused`` go the values that the settings loaded ignored, one of which may be
+    why, such as a variable that names no setting, unless at the level error, as for a
+    run. Else the values ignored go to stderr, after the summary of a command that writes
+    and before the command to copy. Such a command then asks, unless told not to, and is
+    refused where no one can answer: declined, it exits 1, refused, 2, both before the
+    run is imported. The run gets the settings loaded, with each one's layer, a flag's
+    being its option. It returns its status, then its result, or None when it has none to
     write, such as ``serve``, whose output is the protocol. The result goes to stdout as
     one JSON document, secrets masked, or as its module's ``text`` writes it, unless -q.
     The run's status is returned.
@@ -97,6 +99,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
         None,
     )
     if refusal is not None:
+        sys.stderr.write(ignored_lines(loaded.ignored if output.level != "error" else ()))
         structlog.get_logger().error("run.refused", reason=refusal)
         return ExitStatus.REFUSED
     said, then = before(arguments, loaded, output, lambda path: path.expanduser().absolute())
