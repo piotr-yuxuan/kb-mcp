@@ -32,7 +32,7 @@ class Prepared(Result):
     mirrored: Outcome | Planned | None
 
     def text(self, summary: Summary) -> str:
-        """Write the work log's counts as ``sync`` does; nothing when it could not run."""
+        """Write the work log's counts; nothing when it could not run."""
         return "" if self.mirrored is None else self.mirrored.text(summary)
 
 

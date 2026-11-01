@@ -1,0 +1,95 @@
+"""``embed``: build the search index again with vectors, by the setting's model, then prune."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from functools import partial
+from typing import TYPE_CHECKING
+
+from kb_mcp.cli.commands import index as index_command
+from kb_mcp.cli.commands._embedding import indexing_of, open_endpoint, prefixes_said
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.search.app.indexing import refresh
+
+if TYPE_CHECKING:
+    import argparse
+
+    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.kernel.output import Summary
+    from kb_mcp.search.app.indexing import Indexed
+    from kb_mcp.search.app.pruning import Pruned
+
+# Bytes in a megabyte, as the summary says the vector store's size.
+MB = 1_000_000
+# A vector store made by an earlier version, converted to give freed space back.
+CONVERTED = "; converted, as made by an earlier version, so that it gives freed space back"
+# One whose conversion failed, its reason given, which the next prune tries again.
+SHRINKS_NOT = (
+    "; made by an earlier version, it is not yet converted to give freed space back ({}):"
+    " the next prune tries again, given about the store's size free on disk"
+)
+
+
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Indexed | None]:
+    """Build the index with vectors; exit 1 when a file or a piece was left out, or none built.
+
+    The endpoint must answer with the setting's model, whatever ``search_mode`` says,
+    which this run does not read; when it does not, the index in place stays, with its
+    vectors, and nothing is given. Nothing built is an error; each file skipped and each
+    piece that the endpoint refused is a warning, as is the count of files that the
+    index lacks.
+    """
+    settings = loaded.settings
+    opening = partial(open_endpoint, arguments, settings)
+    indexed = refresh(indexing_of(settings, opening), datetime.now(UTC))
+    return ExitStatus.OK if indexed and indexed.report.whole else ExitStatus.FAILED, indexed
+
+
+def prune_text(pruned: Pruned | None, summary: Summary) -> str:
+    """Say what the prune that followed the build did.
+
+    Short gives the vectors deleted and the vector store's size. Detailed gives the
+    vectors kept, of which for the evaluation alone, those deleted, the store's size
+    before and after, and whether it gives space back; or why it did not prune.
+    """
+    if pruned is None:
+        return ""
+    if summary == "short":
+        if pruned.outcome != "pruned":
+            return f"vectors pruned: none, {pruned.outcome}\n"
+        return f"vectors pruned: {pruned.deleted}\nvector store: {pruned.bytes_after / MB:.1f} MB\n"
+    if pruned.outcome != "pruned":
+        place = f" ({pruned.file})" if pruned.file else ""
+        return f"vector store not pruned, {pruned.outcome}: {pruned.reason}{place}\n"
+    written = (
+        f"kept {pruned.kept} vectors ({pruned.kept_for_evaluation} for the evaluation"
+        f" alone), pruned {pruned.deleted}; the vector store from"
+        f" {pruned.bytes_before / MB:.1f} to {pruned.bytes_after / MB:.1f} MB in"
+        f" {pruned.seconds:.1f} s"
+    )
+    if pruned.converted:
+        written += CONVERTED
+    if not pruned.shrinks:
+        written += SHRINKS_NOT.format(pruned.reason)
+    elif not pruned.reclaimed:
+        written += f"; space not reclaimed: {pruned.reason}"
+    return f"{written}\n"
+
+
+def text(indexed: Indexed, summary: Summary) -> str:
+    """Write what ``index`` writes, then the pieces by meaning; then what the prune did.
+
+    Short gives their count and the texts embedded now, detailed the model with its
+    prefixes too.
+    """
+    report = indexed.report
+    written = index_command.text(indexed, summary)
+    if summary == "short":
+        written += f"pieces: {report.pieces}\nembedded now: {report.embedded}\n"
+    else:
+        written += (
+            f"{report.pieces} pieces by meaning, with {indexed.model}"
+            f" ({prefixes_said(indexed.model)}); {report.embedded} embedded now,"
+            " the others kept\n"
+        )
+    return written + prune_text(indexed.pruned, summary)

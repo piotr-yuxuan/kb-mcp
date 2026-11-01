@@ -21,7 +21,7 @@ import pytest
 from pydantic_core import to_json
 from structlog.testing import capture_logs
 
-from kb_mcp.cli.commands import index as index_command
+from kb_mcp.cli.commands import embed as embed_command
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.evaluation.app.evaluation import Target, evaluate
@@ -519,8 +519,8 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     [size] = measured["kb_mcp.vectors.bytes"].data.data_points
     assert size.value == done.bytes_after
     assert json.loads(to_json(indexed))["pruned"] == done.model_dump()
-    assert f"vectors pruned: {deleted}\nvector store: " in index_command.text(indexed, "short")
-    detailed = index_command.text(indexed, "detailed")
+    assert f"vectors pruned: {deleted}\nvector store: " in embed_command.text(indexed, "short")
+    detailed = embed_command.text(indexed, "detailed")
     assert f"kept {len(stored(fresh))} vectors ({len(alone)} for the evaluation alone)" in detailed
     assert f", pruned {deleted}; the vector store from " in detailed
 
@@ -577,9 +577,9 @@ def command(
     with serving(Scripted()) as url:
         settings = f'model = "tiny"\nembedding_url = {json.dumps(url)}\nsearch_mode = "{mode}"\n'
         config.write_text(settings, encoding="utf-8")
-        status = main(
-            ["index", "--yes", "--format", "json", "--config", str(config), "--data-dir", str(data)]
-        )
+        command_name = "index" if mode == "lexical" else "embed"
+        options = ["--yes", "--format", "json", "--config", str(config), "--data-dir", str(data)]
+        status = main([command_name, *options])
     out, err = capsys.readouterr()
     return status, json.loads(out), err
 
@@ -689,8 +689,8 @@ def test_a_prune_during_a_build_is_deferred_and_done_by_the_next(data: Path) -> 
     deferred = pruned(indexed)
     assert (deferred.outcome, deferred.deleted, deferred.reason) == ("deferred", 0, DEFERRED)
     assert indexed is not None
-    assert index_command.text(indexed, "short").endswith("vectors pruned: none, deferred\n")
-    said_fully = index_command.text(indexed, "detailed")
+    assert embed_command.text(indexed, "short").endswith("vectors pruned: none, deferred\n")
+    said_fully = embed_command.text(indexed, "detailed")
     assert said_fully.endswith(f"vector store not pruned, deferred: {DEFERRED}\n")
     assert other in stored(data / "vectors.sqlite")
     done = pruned(refresh(indexing(data), MOMENT))
@@ -845,9 +845,9 @@ def test_each_outcome_is_said_short_and_in_detail() -> None:
         Pruned(outcome="failed", reason="database is locked"): "failed: database is locked",
     }
     for done, why in cases.items():
-        assert index_command.prune_text(done, "short") == f"vectors pruned: none, {done.outcome}\n"
-        assert index_command.prune_text(done, "detailed") == f"vector store not pruned, {why}\n"
-    assert index_command.prune_text(None, "short") == ""
+        assert embed_command.prune_text(done, "short") == f"vectors pruned: none, {done.outcome}\n"
+        assert embed_command.prune_text(done, "detailed") == f"vector store not pruned, {why}\n"
+    assert embed_command.prune_text(None, "short") == ""
 
 
 def test_an_index_by_words_alone_in_place_holds_the_prune_back(data: Path) -> None:
@@ -883,7 +883,7 @@ def test_a_store_made_before_023_is_converted_and_said_so_once(data: Path) -> No
         True,
     )
     assert indexed is not None
-    assert index_command.text(indexed, "detailed").endswith(f"{index_command.CONVERTED}\n")
+    assert embed_command.text(indexed, "detailed").endswith(f"{embed_command.CONVERTED}\n")
     assert not pruned(refresh(indexing(data), MOMENT)).converted
 
 
@@ -903,8 +903,8 @@ def test_a_store_not_yet_converted_is_said_so_with_the_reason(
     monkeypatch.setattr(vector_store.VectorStore, "prune", lambda *_: swept)
     indexed = refresh(indexing(data), MOMENT)
     assert indexed is not None
-    said_fully = index_command.text(indexed, "detailed")
-    assert said_fully.endswith(f"{index_command.SHRINKS_NOT.format('disk is full')}\n")
+    said_fully = embed_command.text(indexed, "detailed")
+    assert said_fully.endswith(f"{embed_command.SHRINKS_NOT.format('disk is full')}\n")
 
 
 def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: MonkeyPatch) -> None:
@@ -923,7 +923,7 @@ def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: Mo
     done = pruned(indexed)
     assert (done.outcome, done.reclaimed, done.reason) == ("pruned", False, "disk is full")
     assert indexed is not None
-    assert "; space not reclaimed: disk is full\n" in index_command.text(indexed, "detailed")
+    assert "; space not reclaimed: disk is full\n" in embed_command.text(indexed, "detailed")
 
 
 def test_pieces_that_the_endpoint_refused_do_not_hold_the_prune_back(data: Path) -> None:
@@ -986,3 +986,11 @@ def test_a_file_named_in_bytes_that_are_not_utf_8_is_said_all_the_same(
     status, result, _ = held_back(data, capsys)
     assert (status, result["outcome"]) == (0, "held back")
     assert result["file"] == f"{folder}/w\ufffd\ufffd.sqlite"
+
+
+def test_what_a_prune_says_to_run_is_what_prunes_and_what_has_vectors() -> None:
+    """Plan 031: ``embed``. ``index`` prunes nothing, and replaces an index with vectors."""
+    assert "the next embed prunes it" in DEFERRED
+    assert "rebuild the index with embed," in UNREADABLE
+    assert "index prunes" not in DEFERRED
+    assert "with index" not in UNREADABLE

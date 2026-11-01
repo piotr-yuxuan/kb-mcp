@@ -1,7 +1,8 @@
 # A walkthrough of the code
 
-For contributors: one run of `sync` over one Confluence space, then one `search` that an
-agent makes over MCP, followed through the code in the order in which it runs. Each
+For contributors: one `fetch`, `prepare` and `embed` over one Confluence space, then one
+`search` that an agent makes over MCP, followed through the code in the order in which it
+runs. Each
 step names the function or class that takes it and links its module, so that the page
 reads best beside the code, one link at a time. Links name functions, never lines:
 lines move, and [the docs' checks](../../tests/test_docs.py) fail once a linked name is
@@ -10,7 +11,7 @@ sits where it does; [the internals](internals.md), what each stage reads and wri
 how a failure stays within one document; [the data layout](../reference/data-layout.md),
 the formats.
 
-The run followed has a settings file that names the site and one space, and Ollama on
+The runs followed have a settings file that names the site and one space, and Ollama on
 this machine as the embedding endpoint, the example of any OpenAI-compatible API:
 
 ```toml
@@ -22,7 +23,7 @@ spaces = ["ENG"]
 ```
 
 ```bash
-kb-mcp sync --since 2026-01-01
+kb-mcp fetch --since 2026-01-01 && kb-mcp prepare && kb-mcp embed
 ```
 
 The space was never downloaded: without `--since`, its first run would take its last 7
@@ -30,7 +31,7 @@ days, and `--since` reaches back to the start of the year. The search settings
 keep their defaults: `search_mode` hybrid, `chunking` windows, and the model
 [`DEFAULT_MODEL`](../../src/kb_mcp/config/domain/settings.py).
 
-## Part 1: a sync
+## Part 1: the chain
 
 ### 1. The entry point and the parser
 
@@ -38,20 +39,21 @@ keep their defaults: `search_mode` hybrid, `chunking` windows, and the model
 [`main`](../../src/kb_mcp/cli/main.py), as `__main__.py` does for
 `python -m kb_mcp`. `main` first builds the parser with
 [`parser`](../../src/kb_mcp/cli/main.py), which imports each module of
-`cli/options/` whose name does not begin with `_` and calls its `register`. Sync's
-[`register`](../../src/kb_mcp/cli/options/sync.py) adds its options and
+`cli/options/` whose name does not begin with `_` and calls its `register`. Fetch's
+[`register`](../../src/kb_mcp/cli/options/fetch.py) adds its options and the names of the
+sources that it can take, from the registry's declarations, and
 sets one default, `command`, a
 [`Command`](../../src/kb_mcp/cli/domain/command.py): the module that runs
 it, named as a string and not imported; the settings it reads; that it writes, and so
 asks first; and three pure functions of the arguments and settings,
-[`refused`](../../src/kb_mcp/cli/options/sync.py),
-[`unapplied`](../../src/kb_mcp/cli/options/sync.py) and
-[`described`](../../src/kb_mcp/cli/domain/sync.py).
+[`refused`](../../src/kb_mcp/cli/options/fetch.py),
+[`unapplied`](../../src/kb_mcp/cli/options/fetch.py) and
+[`fetch_described`](../../src/kb_mcp/cli/domain/sources.py).
 
 Nothing heavier is imported to parse: argcomplete runs the program at every Tab, and
 answers before any run is imported ([why argparse and
 argcomplete](trade-offs.md#argparse-with-argcomplete)). With no arguments at all, `main`
-parses `serve`, which is how agents start it (part 2). Once parsed, `sync` is observed:
+parses `serve`, which is how agents start it (part 2). Once parsed, `fetch` is observed:
 [`early`](../../src/kb_mcp/observability/app/observed.py) sends warnings
 to stderr until the settings are read, and `main` imports the
 [`ENTRY`](../../src/kb_mcp/cli/main.py) shared by every observed command.
@@ -82,28 +84,28 @@ synchronised folder, or inside a git tree, the run stops with
 [`UnsafeDataDirError`](../../src/kb_mcp/config/app/settings.py), exit 2,
 before anything is written.
 
-Then what sync cannot run with. Its
-[`refused`](../../src/kb_mcp/cli/options/sync.py) takes the sources by
-[`chosen`](../../src/kb_mcp/cli/domain/sync.py), from the registry's declarations,
+Then what fetch cannot run with. Its
+[`refused`](../../src/kb_mcp/cli/options/fetch.py) takes the sources by
+[`chosen`](../../src/kb_mcp/cli/domain/sources.py), from the registry's declarations,
 [`SOURCES`](../../src/kb_mcp/sources/registry.py), and refuses the first of
-these that it finds: a source that `--include` names and the settings do not configure;
-nothing to sync, no source being both configured and chosen; an embedding endpoint off
-this machine without `--allow-remote-embeddings`, or over plain http even with it
-([`endpoint_by_meaning`](../../src/kb_mcp/cli/options/_common.py)), except
-in a dry run, which builds no index; and what each source taken refuses by its
+these that it finds: a source named that the settings do not configure;
+nothing to fetch, no source being configured; and what each source taken refuses by its
 declaration, with Confluence or Jira a site not set
 ([`site_not_set`](../../src/kb_mcp/sources/atlassian/declared.py)), an API token
 without its email
 ([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)) or an
 option of the period that does not read
-([`period_refused`](../../src/kb_mcp/sources/atlassian/declared.py)). `enter`
-adds pandoc missing from `PATH`. Each is exit 2, said on stderr alone: no run has
+([`period_refused`](../../src/kb_mcp/sources/atlassian/declared.py)). For `prepare`, `enter`
+adds pandoc missing from `PATH`, and for `embed` its
+[`endpoint_elsewhere`](../../src/kb_mcp/cli/options/_common.py) refuses an embedding endpoint
+off this machine without `--allow-remote-embeddings`, or over plain http even with it. Each
+is exit 2, said on stderr alone: no run has
 started, so there is no log file.
 
 Then [`before`](../../src/kb_mcp/cli/domain/summary.py) writes the summary
-on stderr: each setting that sync reads, with its value, a secret only as set or not
+on stderr: each setting that the command reads, with its value, a secret only as set or not
 ([`setting_line`](../../src/kb_mcp/cli/domain/summary.py)); the sources
-taken and left out ([`described`](../../src/kb_mcp/cli/domain/sync.py));
+taken and left out ([`fetch_described`](../../src/kb_mcp/cli/domain/sources.py));
 each value ignored, and why; and the command to copy
 ([`command_line`](../../src/kb_mcp/cli/domain/command_line.py)).
 [`ask`](../../src/kb_mcp/cli/adapters/question.py) asks `Proceed? [y/N]`;
@@ -111,24 +113,22 @@ each value ignored, and why; and the command to copy
 
 Only now does the run begin.
 [`observed`](../../src/kb_mcp/observability/app/observed.py) opens its log
-file, its telemetry when an endpoint is set, and the trace's root span, named `sync`, and
-logs `run.start`; `enter` then imports `cli.commands.sync` and calls its
-[`run`](../../src/kb_mcp/cli/commands/sync.py) with the arguments and the
+file, its telemetry when an endpoint is set, and the trace's root span, named after the
+command, and logs `run.start`; `enter` then imports `cli.commands.sources`, which `fetch` and
+`prepare` share, and calls its
+[`run`](../../src/kb_mcp/cli/commands/sources.py) with the arguments and the
 settings loaded.
 
-### 3. The steps of a sync
+### 3. A row per source
 
-[`run`](../../src/kb_mcp/cli/commands/sync.py) turns the settings into
+[`run`](../../src/kb_mcp/cli/commands/sources.py) turns the settings into
 a [`Run`](../../src/kb_mcp/sources/roles.py) for each source taken, a small frozen
 record: its declaration, the settings, its table and its account's, its options'
-values by flag, here `--since`, the clock and the pause, which tests replace; and an
-[`Index`](../../src/kb_mcp/cli/app/sync.py), holding the
-[`Indexing`](../../src/kb_mcp/search/app/indexing.py) that
-[`indexing_of`](../../src/kb_mcp/cli/commands/_embedding.py) reads from the
-settings. No work log is configured, so no run is of it.
+values by flag, here `--since`, the clock and the pause, which tests replace. No work log is
+configured, so no run is of it.
 
-[`sync`](../../src/kb_mcp/cli/app/sync.py) loads each role that a source's
-declaration names ([`loaded`](../../src/kb_mcp/cli/app/sync.py)), then refuses what
+[`run_each`](../../src/kb_mcp/cli/app/sources.py) loads each role that a source's
+declaration names ([`loaded`](../../src/kb_mcp/cli/app/sources.py)), then refuses what
 it can before any row: here an `--until` before `--since`, which the fetcher's
 [`preflight`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) finds from the
 [`Targets`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) of the
@@ -138,13 +138,10 @@ asks [`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
 from the coverage that the raw store holds, for each target's window and why it starts
 there, here `given`; a `--since` that does not come before the windows' end raises
 [`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py):
-exit 2, naming both options. Then each row runs in turn, the fetch of each source
-that has a fetcher, then the prepare of each, then
-[`index`](../../src/kb_mcp/cli/app/sync.py), each row within
-a span `sync.step` and kept by
-[`Rows.add`](../../src/kb_mcp/cli/app/sync.py). A step runs even when the
+exit 2, naming both options. Then each row runs in turn, each source's role within a span
+`fetch.source`, or `prepare.source` once the next command runs. A row runs even when the
 one before it failed, as it reads what is on disk. The exit status is the first outcome
-of [`RANKED`](../../src/kb_mcp/cli/domain/sync.py) that a row had:
+of [`RANKED`](../../src/kb_mcp/cli/domain/sources.py) that a row had:
 interrupted, then sign in, then failed; else 0.
 
 ### 4. The source and the site's port
@@ -156,7 +153,7 @@ under `<data>/raw/` and takes its lock
 ([`RawStore.writing`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)):
 a second run stops at once with
 [`StoreBusyError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
-and sync's fetch row fails while the next steps run.
+and its row fails while the next one runs.
 
 The sign-in comes from
 [`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py): an
@@ -217,7 +214,7 @@ the page in its storage format with its labels, the page as the site renders it,
 its attachments. Updated within the window and its revision stored,
 [`Download.complete`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
 fetches only the files that its snapshot should have and lacks. The progress and the
-counts are of what is fetched, apart from what is listed, as `download.listed` says.
+counts are of what is fetched, apart from what is listed, as `fetch.listed` says.
 
 Once the space is listed,
 [`Download.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
@@ -226,7 +223,7 @@ asks after the documents gone from their listing, and
 names the authors seen. Last, `download` extends the coverage of each target listed whole
 ([`Coverage.extended`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
 a project's only to its earliest document not stored whole, so that the next run needs
-no `--since` and asks again for what failed, as `download.coverage` says; writes it, each
+no `--since` and asks again for what failed, as `fetch.coverage` says; writes it, each
 change of the tombstones having been written where it was made, and a fetch of projects
 rewriting none; writes back the
 cookies that the site renewed
@@ -263,8 +260,8 @@ The latter builds a [`Page`](../../src/kb_mcp/sources/atlassian/fetch/domain/con
 and its files through
 [`attachment`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py):
 frozen records of the fetch's domain, each checking its own rules. A snapshot that the
-adapter refuses is stored all the same, raw, so that `mirror` reads it once the adapter
-is fixed, without a download ([raw first](trade-offs.md#raw-first), [strict
+adapter refuses is stored all the same, raw, so that `prepare` reads it once the adapter
+is fixed, without a fetch ([raw first](trade-offs.md#raw-first), [strict
 reading](trade-offs.md#strict-reading-a-module-per-representation)).
 
 ### 6. The snapshot
@@ -358,9 +355,12 @@ its new file is built, so that the last good copy of every other stays.
 
 ### 8. Pieces and their embeddings
 
-[`index`](../../src/kb_mcp/cli/app/sync.py) calls
-[`index_mirror`](../../src/kb_mcp/search/app/indexing.py), as the `index`
-command does. It opens the embedding endpoint first, by
+`embed`'s [`run`](../../src/kb_mcp/cli/commands/embed.py) takes the
+[`Indexing`](../../src/kb_mcp/search/app/indexing.py) that
+[`indexing_of`](../../src/kb_mcp/cli/commands/_embedding.py) reads from the settings, and
+[`refresh`](../../src/kb_mcp/search/app/indexing.py) calls
+[`index_mirror`](../../src/kb_mcp/search/app/indexing.py), as `index` does, by words alone. It
+opens the embedding endpoint first, by
 [`open_endpoint`](../../src/kb_mcp/cli/commands/_embedding.py), then
 [`endpoint`](../../src/kb_mcp/search/adapters/model_api.py), the only way to
 a client: [`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py) refuses
@@ -425,21 +425,21 @@ chunking), and renames the file over `<data>/index.sqlite` once complete. On any
 the new file goes and the old index stays: an endpoint that does not answer, or lacks the
 model, raises [`ModelError`](../../src/kb_mcp/search/adapters/model_api.py),
 which [`index_mirror`](../../src/kb_mcp/search/app/indexing.py) logs as
-`index.not_built`, with the hint to search by words alone. A file skipped or a piece
+`index.not_built`, with the hint to index by words alone. A file skipped or a piece
 refused is named in the [`Report`](../../src/kb_mcp/search/app/indexing.py),
-and the row is `done` only when the report is
+and the run exits 0 only when the report is
 [`Report.whole`](../../src/kb_mcp/search/app/indexing.py).
 
 ### 10. The result
 
-[`sync`](../../src/kb_mcp/cli/app/sync.py) returns a
-[`Synced`](../../src/kb_mcp/cli/domain/rows.py), the status and a
-[`Row`](../../src/kb_mcp/cli/domain/rows.py) per step.
+[`run_each`](../../src/kb_mcp/cli/app/sources.py) returns a
+[`Ran`](../../src/kb_mcp/cli/domain/rows.py), the status and a
+[`Row`](../../src/kb_mcp/cli/domain/rows.py) per source.
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) writes it on stdout,
 as one JSON document with `--format json`, else as
-[`text`](../../src/kb_mcp/cli/commands/sync.py) writes it: each row, then
-its counts as its own command writes them, by its role's
-[`Result.text`](../../src/kb_mcp/sources/roles.py), or as `index` does.
+[`text`](../../src/kb_mcp/cli/commands/sources.py) writes it: each row, then
+its counts, by its role's [`Result.text`](../../src/kb_mcp/sources/roles.py). `embed` has one
+result, written by its own [`text`](../../src/kb_mcp/cli/commands/embed.py).
 [`observed`](../../src/kb_mcp/observability/app/observed.py) ends the run:
 `run.end`, the exit status on the root span, the run's duration.
 
@@ -553,23 +553,23 @@ sends the text to the agent.
 
 Plan 016's telemetry opens each span in the code that does the work, so that a trace
 reads in the order of this page. With a telemetry endpoint set ([observe runs with
-Grafana](../how-to/observe-with-grafana.md)), a sync is one trace, apart from each
-document fetched, and a call of a tool is one trace:
+Grafana](../how-to/observe-with-grafana.md)), each command of the chain is one trace, apart
+from each document fetched, and a call of a tool is one trace:
 
 | Span | Opened by |
 |---|---|
-| `sync`, the run's root | [`observed`](../../src/kb_mcp/observability/app/observed.py), after the command's name |
-| `sync.step`, one a row | [`sync`](../../src/kb_mcp/cli/app/sync.py) and [`index`](../../src/kb_mcp/cli/app/sync.py) |
-| `download.space`, `download.probes`, `download.users` | [`Download.space`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.users`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
-| `download.document`, a trace of its own linked to the run's | [`Download.fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
+| `fetch`, `prepare`, `embed`, the run's root | [`observed`](../../src/kb_mcp/observability/app/observed.py), after the command's name |
+| `fetch.source`, `prepare.source`, one a row | [`run_each`](../../src/kb_mcp/cli/app/sources.py) |
+| `fetch.space`, `fetch.probes`, `fetch.users` | [`Download.space`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.users`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
+| `fetch.document`, a trace of its own linked to the run's | [`Download.fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
 | `GET` and `POST`, one a request | [`Recorded`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
-| `mirror.read`, `mirror.build`, `mirror.write` | [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) |
+| `prepare.read`, `prepare.build`, `prepare.write` | [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) |
 | `index.files`, `index.embed` | [`build_index`](../../src/kb_mcp/search/app/indexing.py) |
 | `embeddings <model>`, one an embedding | [`embeddings`](../../src/kb_mcp/search/adapters/embedding.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
 | `tools/call search`, a call's root | the MCP SDK; [`Library.search`](../../src/kb_mcp/mcp/app/tools.py) adds the mode, the documents found and whether words stood in for meaning |
 | `search.lexical`, `search.semantic` | [`ranking`](../../src/kb_mcp/mcp/app/tools.py) |
 
-In the index's row, the model's connection comes first, its `GET` and probe before
+In `embed`'s trace, the model's connection comes first, its `GET` and probe before
 `index.files`; within `index.embed`, a `GET` of the digest frames the embeddings. Every
 span and its attributes are listed in [telemetry](../reference/telemetry/README.md), a
 page per command; [observability](observability.md#a-trace-per-document) says why a
@@ -581,7 +581,7 @@ Each step has its tests, which say what the code must do in the requirement's wo
 [`test_settings.py`](../../tests/test_settings.py),
 [`test_summary.py`](../../tests/test_summary.py) and
 [`test_question.py`](../../tests/test_question.py) for step 2;
-[`test_sync.py`](../../tests/test_sync.py) for 2, 3 and 10;
+[`test_sources.py`](../../tests/test_sources.py) for 2, 3 and 10;
 [`test_download.py`](../../tests/test_download.py),
 [`test_http.py`](../../tests/test_http.py) and
 [`test_raw_store.py`](../../tests/test_raw_store.py) for 4 to 6;

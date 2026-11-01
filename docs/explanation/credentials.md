@@ -63,8 +63,8 @@ what the window sees and what it keeps:
 - **Renewed as it is used.** The site renews the cookies as it answers, and a run
   signed in by the session writes them back
   ([`SavedSession.keep`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
-  Once they no longer hold, the next run stops with exit status 3, and you run `login`
-  again.
+  Once they no longer hold, the next run stops with exit status 3, and you run
+  `login atlassian` again.
 
 Why a file: the session must outlive the run that made it, and no browser stays open
 between runs to hold it. The profile stays too, since the next `login` opens it again,
@@ -112,7 +112,7 @@ place where it would outlive a run:
   [`test_a_run_with_the_token_leaves_a_saved_session_as_it_was`](../../tests/test_api_token.py)).
   A token that the site refuses stops the run with exit status 3, naming the two
   variables to check
-  ([`test_a_download_refused_by_the_site_exits_3_naming_the_variables`](../../tests/test_api_token.py)).
+  ([`test_a_fetch_refused_by_the_site_exits_3_naming_the_variables`](../../tests/test_api_token.py)).
 
 To revoke it, see [revoke the token](../how-to/api-token-with-sops.md#revoke-the-token).
 
@@ -229,8 +229,8 @@ What a run logs is for you, on this machine, and may hold titles and queries
 
 End to end,
 [`test_no_run_at_debug_says_or_leaves_a_secret`](../../tests/test_secrets.py) runs
-`sync` by the token, then by the session, `index`, and a `serve` that answers one
-search, all at debug, each secret a sentinel that is really sent: the token, its Basic
+`fetch` by the token, then by the session, `prepare`, `embed`, and a `serve` that answers
+one search, all at debug, each secret a sentinel that is really sent: the token, its Basic
 form and the key are in no file of the home or the data directory, nor on stdout or
 stderr, and the cookie is in `cookies.json` alone.
 [`test_no_secret_reaches_the_files_stderr_or_telemetry_at_debug`](../../tests/test_telemetry.py)

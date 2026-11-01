@@ -1,14 +1,14 @@
 # Add a source
 
-For contributors: how to add a source of documents, so that the settings, `check`, `sync`
+For contributors: how to add a source of documents, so that the settings, `check`, `prepare`
 and search know it. A source is a package and one line of the registry; [sources](../explanation/sources.md)
 says why. The example here is a folder of text files, read in place, under the name `notes`.
 [`kb_memo`](../../tests/fixtures/memo_source/kb_memo/declared.py), in the tests, is the same
 source, outside `src/`, which [its test](../../tests/test_memo_source.py) registers and runs.
 
 You need a checkout whose checks pass, as [your first change](../tutorials/first-change.md)
-shows, and pandoc on `PATH`: `sync` refuses a run without it, whichever sources it takes
-([`register`](../../src/kb_mcp/cli/options/sync.py) names it among its programs).
+shows, and pandoc on `PATH`: `prepare` refuses a run without it, whichever sources it takes
+([`register`](../../src/kb_mcp/cli/options/prepare.py) names it among its programs).
 
 ## 1. Choose its name
 
@@ -47,7 +47,7 @@ Create `src/kb_mcp/sources/notes/prepare/app/__init__.py`:
 
 The table is a Pydantic model of `[sources.notes]`. Its first setting names what the source
 covers: a source whose first setting is not set is left out, as not configured
-([`chosen`](../../src/kb_mcp/cli/domain/sync.py)). `TABLE` refuses a misspelt key, and
+([`chosen`](../../src/kb_mcp/cli/domain/sources.py)). `TABLE` refuses a misspelt key, and
 `LocalPath` reads a folder, absolute or under `~`
 ([`TABLE`](../../src/kb_mcp/config/domain/settings.py),
 [`LocalPath`](../../src/kb_mcp/config/domain/settings.py)). A setting is text, a flag, a
@@ -86,7 +86,7 @@ The declaration is data ([`Declared`](../../src/kb_mcp/sources/declaration.py)),
 standard library alone, since `--help` imports it: it names the table and the roles by
 module path. Each resource type says what the source reads and how
 ([`ResourceType`](../../src/kb_mcp/sources/declaration.py)). A source that signs in also
-names its `account`, and one with a fetcher its `fetcher`; a light check that `sync` asks
+names its `account`, and one with a fetcher its `fetcher`; a light check that `fetch` asks
 before anything else goes in `refused`, as Confluence's does
 ([`CONFLUENCE`](../../src/kb_mcp/sources/atlassian/declared.py)). Create
 `src/kb_mcp/sources/notes/declared.py`:
@@ -115,7 +115,7 @@ NOTES = Declared(
 ## 5. Write its preparer
 
 A preparer has two functions ([`Preparer`](../../src/kb_mcp/sources/roles.py)): `preflight`,
-what it cannot go on with, read before any source starts, which `sync` says after the
+what it cannot go on with, read before any source starts, which `prepare` says after the
 source's name and the step, and `prepare`, which writes the
 documents through the mirror and gives a [`Result`](../../src/kb_mcp/sources/roles.py), its
 counts and how they read as text. Mind what the writer and the front matter ask:
@@ -249,10 +249,10 @@ and add it to the registry, in name order:
 SOURCES = (CONFLUENCE, JIRA, NOTES, WORKLOG)
 ```
 
-That one line makes `[sources.notes]` a setting, `--include notes` a choice of `sync`, and
+That one line makes `[sources.notes]` a setting, `notes` a choice of `prepare`, and
 its `preparers` part of each run that takes it
 ([`settings_model`](../../src/kb_mcp/config/domain/settings.py),
-[`sync`](../../src/kb_mcp/cli/app/sync.py)).
+[`run_each`](../../src/kb_mcp/cli/app/sources.py)).
 
 ## 7. Give it its place in the contracts
 
@@ -304,7 +304,7 @@ if TYPE_CHECKING:
 
 
 def test_a_note_is_mirrored_found_and_gone_with_its_file(tmp_path: Path) -> None:
-    """Sync writes it under its folder alone, search finds it, and its removal takes its file."""
+    """Prepare writes it under its folder alone, search finds it, and its removal takes its file."""
     notes, data = tmp_path / "notes", tmp_path / "data"
     notes.mkdir()
     note = notes / "orchard.txt"
@@ -315,8 +315,9 @@ def test_a_note_is_mirrored_found_and_gone_with_its_file(tmp_path: Path) -> None
         f"[sources.notes]\nfolder = {json.dumps(str(notes))}\n",
         "utf-8",
     )
-    given = ["sync", "--include", "notes", "--yes", "--config", str(config)]
+    given = ["prepare", "notes", "--yes", "--config", str(config)]
     assert main(given) == ExitStatus.OK
+    assert main(["index", "--yes", "--config", str(config)]) == ExitStatus.OK
     (file,) = (data / "docs").rglob("*.md")
     assert file.parent == data / "docs" / "notes"
     assert "orchard" in Library(data / "index.sqlite", data / "docs").search("quillwort")
@@ -332,8 +333,9 @@ def test_a_note_is_mirrored_found_and_gone_with_its_file(tmp_path: Path) -> None
 
 Some tests name the registry whole, or give every setting by its path, so they name a new
 source too: those of `tests/test_registry.py`, `tests/test_roles.py`, `tests/test_settings.py`,
-`tests/test_cli.py` and `tests/test_sync.py` that do fail until they do, each naming what it
-lacks, such as `KeyError: 'sources.notes.folder'`. Run them all, and give each its line:
+`tests/test_cli.py`, `tests/test_sources.py`, `tests/test_summary.py` and `tests/test_docs.py`
+that do fail until they do, each naming what it lacks, such as
+`KeyError: 'sources.notes.folder'`. Run them all, and give each its line:
 
 ```bash
 uv run pytest -n auto
@@ -341,8 +343,8 @@ uv run pytest -n auto
 
 ## 9. Generate the reference
 
-The reference of settings and commands comes from the code, and `sync`'s choices and the new
-table have changed. Write the pages again, and commit what changes:
+The reference of settings and commands comes from the code, and `prepare`'s choices and the
+new table have changed. Write the pages again, and commit what changes:
 
 ```bash
 uv run python -m tests.reference_pages
@@ -382,21 +384,24 @@ search_mode: lexical
 sources.notes.folder: /home/you/notes-try/notes
 ```
 
-`sync` takes it alone, the one source that this file configures, with no fetch row, as it
-has no fetcher:
+`prepare` takes it, the one source read in place that this file configures, after each
+source that keeps a store, each with nothing to do; `fetch` does not offer it, as it has no
+fetcher. Then `index` reads the mirror:
 
 ```bash
-uv run kb-mcp sync --yes --config ~/notes-try/config.toml
+uv run kb-mcp prepare --yes --config ~/notes-try/config.toml
+uv run kb-mcp index --yes --config ~/notes-try/config.toml
 ```
 
+Its last row, after those of each store:
+
 ```text
-prepare notes: done
+notes: done
   written: 1
   unchanged: 0
   removed: 0
-index: done
-  documents: 1
-  sections: 1
+documents: 1
+sections: 1
 ```
 
 Remove `~/notes-try` once you have seen it.

@@ -22,8 +22,8 @@ the command and those who change its code, unless it is marked for contributors.
   in your browser and a first download, on the user's machine.
 - [Move to kb-mcp](how-to/move-to-kb-mcp.md): a machine set up under the program's former
   name moved, its settings, data and variables, and what other programs keep of it.
-- [Bring every source up to date](how-to/sync.md): `sync`, which downloads and mirrors
-  each source that the settings name, then rebuilds the index, in one command.
+- [Bring every source up to date](how-to/refresh.md): `fetch`, `prepare`, `index` and
+  `embed`, each one step, which you compose.
 - [Mirror the work log](how-to/work-log.md): a folder of org files mirrored as Markdown
   beside Confluence and Jira, read in place, indexed and served to agents.
 - [Sign in with an API token kept by sops](how-to/api-token-with-sops.md): a token in
@@ -69,14 +69,14 @@ the command and those who change its code, unless it is marked for contributors.
   settings and variables, and what every command records. Then a page per command for
   what it records besides: [`check`](reference/telemetry/check.md),
   [`completion`](reference/telemetry/completion.md),
-  [`doctor`](reference/telemetry/doctor.md),
-  [`download`](reference/telemetry/download.md), [`eval`](reference/telemetry/eval.md),
+  [`doctor`](reference/telemetry/doctor.md), [`embed`](reference/telemetry/embed.md),
+  [`eval`](reference/telemetry/eval.md),
   [`eval-agents`](reference/telemetry/eval-agents.md),
   [`eval-rerank`](reference/telemetry/eval-rerank.md),
+  [`fetch`](reference/telemetry/fetch.md),
   [`index`](reference/telemetry/index.md), [`login`](reference/telemetry/login.md),
-  [`mirror`](reference/telemetry/mirror.md), [`model`](reference/telemetry/model.md),
-  [`reranker`](reference/telemetry/reranker.md), [`serve`](reference/telemetry/serve.md)
-  and [`sync`](reference/telemetry/sync.md).
+  [`model`](reference/telemetry/model.md), [`prepare`](reference/telemetry/prepare.md),
+  [`reranker`](reference/telemetry/reranker.md) and [`serve`](reference/telemetry/serve.md).
 
 ## Explanation
 
@@ -88,10 +88,10 @@ the command and those who change its code, unless it is marked for contributors.
   layers within each, the contracts that keep them, the records and the classes that
   stay dataclasses, and where a new module goes.
 - [A walkthrough of the code](explanation/code-walkthrough.md), for contributors: one
-  `sync` of a Confluence space, then one `search` by an agent, followed through the
-  functions and classes of `src/` that take each step.
+  `fetch`, `prepare` and `embed` of a Confluence space, then one `search` by an agent,
+  followed through the functions and classes of `src/` that take each step.
 - [Sources](explanation/sources.md): why a source is a declaration of three roles rather
-  than a bundle, how the registry composes the settings and `sync`, what every source's
+  than a bundle, how the registry composes the settings and commands, what every source's
   documents share, and why the work log is read in place.
 - [Credentials](explanation/credentials.md): the browser session, the API token and the
   embedding endpoint's key: where each is kept and sent, what agents get, what is never

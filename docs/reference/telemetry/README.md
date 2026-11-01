@@ -4,7 +4,7 @@ What a run records of itself: its log file, what it says on stderr, and, once an
 endpoint is set, its traces, metrics and logs sent by OpenTelemetry. This page gives the
 file, its fields, the levels, the settings and the variables, then what every command
 records, but `completion`, which records nothing. Beside it, a page per command, named
-after it, such as [download.md](download.md), lists what that command records besides;
+after it, such as [fetch.md](fetch.md), lists what that command records besides;
 a command added adds its page, and no list here.
 
 A change to an event, a span or an instrument changes its page in the same commit: the
@@ -16,13 +16,13 @@ OpenTelemetry's [naming](https://opentelemetry.io/docs/specs/semconv/general/nam
 advises for an application's own names: its name as Python writes it, since `kb` alone
 also reads as kilobyte, which a size in bytes would make misleading. Prometheus writes
 the dots as underscores: `kb_mcp_run_duration_seconds`. Spans and events are named after
-what they record, such as `sync.step`.
+what they record, such as `fetch.source`.
 
 ## The log file
 
 Each run, once its settings are read, unless it is then refused or declined, writes one
 file, `<logs.dir>/<command>-<start>-<pid>.jsonl`, the start in UTC as `%Y%m%dT%H%M%SZ`,
-such as `download-20261022T210509Z-4242.jsonl`; a step's command names its file, as
+such as `fetch-20261022T210509Z-4242.jsonl`; a step's command names its file, as
 `eval-agents` does for `eval-agents call`. `--help`, `--version`, a completion and
 `completion`, which reads no settings, write none.
 
@@ -138,8 +138,8 @@ status stays its own.
 
 A run is one trace, whose root span is named after the command, but `serve`, each of
 whose requests is a trace, and `completion`, which records nothing. Grafana's
-dashboards, an overview and one each for `download`, `mirror`, `index`, `serve`, `eval`,
-`eval-agents` and `sync`, are in `deploy/lgtm/dashboards/`.
+dashboards, an overview and one each for `fetch`, `prepare`, `index`, `embed`, `serve`,
+`eval` and `eval-agents`, are in `deploy/lgtm/dashboards/`.
 
 ## Events
 

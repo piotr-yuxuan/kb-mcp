@@ -126,6 +126,7 @@ source_modules = [
   "kb_mcp.mcp",
   "kb_mcp.evaluation",
   "kb_mcp.cli.commands.serve",
+  "kb_mcp.cli.commands.embed",
   "kb_mcp.cli.commands.index",
   "kb_mcp.cli.commands.evaluate",
   "kb_mcp.cli.commands.model",
@@ -218,9 +219,3 @@ source_modules = [
   "kb_mcp.kernel",
 ]
 forbidden_modules = ["lxml", "playwright"]
-ignore_imports = [
-  "kb_mcp.cli.commands.login -> kb_mcp.sources.atlassian.fetch.adapters.browser",
-  "kb_mcp.cli.commands.login -> kb_mcp.sources.atlassian.fetch.app.login",
-  "kb_mcp.cli.commands.mirror -> kb_mcp.sources.atlassian.prepare.app.prepare",
-  "kb_mcp.cli.commands.mirror -> kb_mcp.sources.atlassian.prepare.app.preparer",
-]

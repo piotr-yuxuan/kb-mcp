@@ -16,12 +16,15 @@ import pytest
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.mcp.app import responses
+from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from kb_mcp.search.app.indexing import Embedding, build_index
+from kb_mcp.search.app.meaning import Meaning
 from kb_mcp.search.domain.search import Embedded
-from tests.endpoint import DIMENSIONS, Scripted, nothing_listening, serving, tiny
+from tests.answers import parts
+from tests.endpoint import DIMENSIONS, Scripted, connector, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, fillers, page, write
 from tests.test_cli import logged_as
 from tests.test_observed import said
@@ -168,16 +171,55 @@ def config(data: Path, model: str, url: str) -> list[str]:
     return ["--config", str(settings), "--data-dir", str(data)]
 
 
+def test_index_after_embed_asks_nothing_and_leaves_the_vectors_until_the_next_embed(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 031, criterion 5, in the hybrid mode: words alone, each said, the store unchanged.
+
+    ``index`` asks the endpoint nothing, writes no piece and leaves ``vectors.sqlite``
+    byte for byte; its summary says what the index holds, search by meaning waiting for
+    ``embed``; ``status`` and the server's answer name ``embed``, which brings it back
+    and embeds nothing new.
+    """
+    scripted = Scripted()
+    with serving(scripted) as url:
+        options = ["--yes", *config(data, "tiny", url)]
+        assert main(["embed", *options]) == 0
+        store = data / "vectors.sqlite"
+        kept = store.read_bytes()
+        asked = len(scripted.asked)
+        capsys.readouterr()
+        assert main(["index", *options]) == 0
+        assert len(scripted.asked) == asked
+        assert store.read_bytes() == kept
+        assert "this index holds words alone; search by meaning waits for kb-mcp embed" in (
+            capsys.readouterr().err
+        )
+        with reading(data / "index.sqlite") as reader:
+            assert reader.summary().pieces == 0
+        library = Library(data / "index.sqlite", data / "docs", Meaning(connector()), "hybrid")
+        assert (
+            "search by meaning: off, the index holds no vectors; run kb-mcp embed"
+            in (parts(library.status())[1])
+        )
+        assert "then run kb-mcp embed" in parts(library.search("rollback"))[0]
+        capsys.readouterr()
+        assert main(["embed", *options]) == 0
+        assert "embedded now: 0\n" in capsys.readouterr().out
+        with reading(data / "index.sqlite") as reader:
+            assert reader.summary().pieces > 0
+
+
 def test_the_command_embeds_with_the_settings_model(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """``index`` names the model and what it embedded; the next run embeds nothing."""
+    """``embed`` names the model and what it embedded; the next run embeds nothing."""
     detailed = ["--summary", "detailed"]
     with serving(Scripted()) as url:
-        assert main(["index", "--yes", *config(data, "tiny", url), *detailed]) == 0
+        assert main(["embed", "--yes", *config(data, "tiny", url), *detailed]) == 0
         out = capsys.readouterr().out
         assert "pieces by meaning, with tiny (no prefixes known: texts as they are);" in out
-        assert main(["index", "--yes", *config(data, "tiny", url), *detailed]) == 0
+        assert main(["embed", "--yes", *config(data, "tiny", url), *detailed]) == 0
     assert "; 0 embedded now, the others kept" in capsys.readouterr().out
 
 
@@ -186,13 +228,13 @@ def test_the_command_in_short_counts_the_pieces_and_those_embedded_now(
 ) -> None:
     """After the documents and sections: every piece the first time, none the next."""
     with serving(Scripted()) as url:
-        assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
+        assert main(["embed", "--yes", *config(data, "tiny", url)]) == 0
         lines = capsys.readouterr().out.splitlines()
         pieces, embedded = lines[2:4]
         assert pieces.startswith("pieces: ")
         assert pieces != "pieces: 0"
         assert embedded == f"embedded now: {pieces.removeprefix('pieces: ')}"
-        assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
+        assert main(["embed", "--yes", *config(data, "tiny", url)]) == 0
     assert capsys.readouterr().out.splitlines()[2:4] == [pieces, "embedded now: 0"]
 
 
@@ -201,9 +243,9 @@ def test_the_command_reports_its_files_then_its_texts_to_embed(
 ) -> None:
     """In the log file, each task's last event progress: all done; the next run embeds none."""
     with serving(Scripted()) as url:
-        assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
+        assert main(["embed", "--yes", *config(data, "tiny", url)]) == 0
         pieces = int(capsys.readouterr().out.splitlines()[2].removeprefix("pieces: "))
-        assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
+        assert main(["embed", "--yes", *config(data, "tiny", url)]) == 0
     files = FILLER_PAGES + 1
     assert [
         (line["task"], line["done"], line["total"])
@@ -225,18 +267,18 @@ def test_an_endpoint_that_stops_answering_leaves_the_index_in_place(
     which the run's log file holds too.
     """
     with serving(Scripted()) as url:
-        assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
+        assert main(["embed", "--yes", *config(data, "tiny", url)]) == 0
     with reading(data / "index.sqlite") as reader:
         before = reader.summary()
     write(data / "docs", page("196846", "Added since"), BODY)
     capsys.readouterr()
     with nothing_listening() as url:
-        assert main(["index", "--yes", *config(data, "tiny", url)]) == FAILED
+        assert main(["embed", "--yes", *config(data, "tiny", url)]) == FAILED
     err = capsys.readouterr().err
     assert ("error", "index.not_built") in said(err)
     assert "no answer from the embedding endpoint" in err
     assert "ollama serve" in err
-    words_alone = 'set search_mode = "lexical" to index by words alone'
+    words_alone = "run kb-mcp index for an index by words alone"
     assert words_alone in err
     (failed,) = logged_as(data.parent / "home", "index.not_built")
     assert (failed["level"], failed["hint"]) == ("error", words_alone)
@@ -257,7 +299,7 @@ def test_a_piece_the_model_refuses_is_named_and_asked_again(
     refused = "Rollback\nRelease\nThe deploy of the seller service."
     answers = Scripted(refused={refused})
     with serving(answers) as url:
-        assert main(["index", "--yes", *config(data, "tiny", url)]) == FAILED
+        assert main(["embed", "--yes", *config(data, "tiny", url)]) == FAILED
         err = capsys.readouterr().err
         assert ("warning", "index.piece_refused") in said(err)
         assert "confluence/ENG/196845-rollback.md" in err
@@ -266,7 +308,7 @@ def test_a_piece_the_model_refuses_is_named_and_asked_again(
         with reading(data / "index.sqlite") as reader:
             assert len(reader.pieces().documents) == reader.summary().sections - 1
         asked = sum(refused in each for each in answers.asked)
-        assert main(["index", "--yes", *config(data, "tiny", url)]) == FAILED
+        assert main(["embed", "--yes", *config(data, "tiny", url)]) == FAILED
         assert sum(refused in each for each in answers.asked) > asked
 
 
@@ -393,7 +435,7 @@ def test_a_chunking_that_the_kernel_does_not_name_is_refused(
     settings = data.parent / "config.toml"
     settings.write_text('chunking = "window"\n', encoding="utf-8")
     options = ["--yes", "--config", str(settings), "--data-dir", str(data)]
-    assert main(["index", *options]) == REFUSED
+    assert main(["embed", *options]) == REFUSED
     err = capsys.readouterr().err
     assert "chunking (config.toml):" in err
     assert all(f"'{name}'" in err for name in CHUNKINGS)
@@ -409,7 +451,7 @@ def test_the_environment_s_chunking_replaces_the_file_s(
         options = config(data, "tiny", url)
         settings = Path(options[1])
         settings.write_text(f'{settings.read_text("utf-8")}chunking = "section-paths"\n', "utf-8")
-        assert main(["index", "--yes", *options]) == 0
+        assert main(["embed", "--yes", *options]) == 0
     with reading(data / "index.sqlite") as reader:
         embedded = reader.embedded()
     assert embedded is not None
@@ -427,7 +469,7 @@ def test_an_index_cut_by_a_chunking_this_version_lacks_is_refused(data: Path) ->
         connection.commit()
     refused = pytest.raises(
         UnavailableIndexError,
-        match=r"this version reads: rebuild it with `kb-mcp index`$",
+        match=r"this version reads: rebuild it with `kb-mcp embed`$",
     )
     with refused, reading(data / "index.sqlite"):
         pass

@@ -67,14 +67,14 @@ calls home, and no volume, so that `down` discards what it received.
 Tempo drops a trace past 5 MB ([ingestion][tempo-limits]). A first download of thousands
 of documents, each with its requests, would pass it, and the whole run's trace would be
 lost, or kept cut short. So each document fetched is a trace of its own,
-`download.document`, linked to the span of its space or project, while the run's trace
+`fetch.document`, linked to the span of its space or project, while the run's trace
 holds its phases and listings: its size does not grow with the documents, and scripted
 downloads of 3 and 30 documents give run traces of the same number of spans. The files
 that a document already stored lacks are fetched within the run's trace, which only the
 failures of earlier runs make longer. `serve` has no trace of its own, as a server may
 run for days: each message of its protocol is one.
 
-`index` and `eval` stay one trace each, which grows with what they embed: a span
+`embed` and `eval` stay one trace each, which grows with what they embed: a span
 `embeddings <model>` and its `POST` for each batch of 32 pieces, about 520 bytes of OTLP
 a batch, measured, a retry adding a `POST`. Tempo's limit is so passed near 300,000
 pieces embedded in one run, some 50,000 documents at the sandbox's 5.5 pieces a

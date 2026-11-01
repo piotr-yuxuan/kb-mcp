@@ -398,7 +398,7 @@ def test_a_second_run_with_nothing_changed_runs_pandoc_on_nothing(sandbox: Sandb
         "confluence": (0, 0),
         "jira": (0, 0),
     }
-    assert events_named(events, "mirror.written") == [
+    assert events_named(events, "prepare.written") == [
         {
             "source": source,
             "written": 0,
@@ -436,8 +436,8 @@ def test_a_run_with_a_problem_keeps_the_conversion_of_what_it_could_not_read(
         source: ((), count) for source, count in CONVERSIONS.items()
     }
     assert pandoc.runs == []
-    assert [each["pruned"] for each in events_named(damaged, "mirror.written")] == [0, 0]
-    assert [each["pruned"] for each in events_named(mended, "mirror.written")] == [1, 0]
+    assert [each["pruned"] for each in events_named(damaged, "prepare.written")] == [0, 0]
+    assert [each["pruned"] for each in events_named(mended, "prepare.written")] == [1, 0]
 
 
 # Home's view links to the page listed only, never stored, by its address on the site.
@@ -955,7 +955,7 @@ def test_a_file_that_the_source_not_prepared_links_stays_until_it_is_prepared(
 ) -> None:
     """With no problem at all, Confluence's prepare leaves the image of Jira's file not rebuilt.
 
-    As ``sync --include confluence`` after a download does; Jira's prepare then takes it.
+    As ``prepare confluence`` after a fetch does; Jira's prepare then takes it.
     """
     sandbox.run()
     image = issue_with_the_next_image(sandbox, "Other ideas")
@@ -1018,7 +1018,7 @@ def test_a_prepare_of_jira_says_what_it_could_not_read_of_confluence(crossed: Sa
     theirs = done.mirrored.elsewhere["confluence"]
     assert theirs
     assert [(each["event"], each["source"], each["where"], each["reason"]) for each in warned] == [
-        ("mirror.not_mirrored", "confluence", problem.where, problem.reason) for problem in theirs
+        ("prepare.not_mirrored", "confluence", problem.where, problem.reason) for problem in theirs
     ]
 
 
@@ -1031,7 +1031,7 @@ def test_a_prepare_of_confluence_says_what_it_could_not_read_of_jira(crossed: Sa
     (theirs,) = done.mirrored.elsewhere["jira"]
     assert theirs.where.startswith("jira/issues/10000/")
     assert [(each["event"], each["source"], each["where"]) for each in warned] == [
-        ("mirror.not_mirrored", "jira", theirs.where)
+        ("prepare.not_mirrored", "jira", theirs.where)
     ]
     assert "problems of jira, read here: 1\n" in done.text("short")
 
@@ -1054,7 +1054,7 @@ def test_each_source_prunes_its_own_conversions_alone(sandbox: Sandbox) -> None:
     leaf_edited(sandbox)
     with capture_logs() as events:
         sandbox.run(markdown=pandoc.markdown, sources=("confluence",))
-    assert [each["pruned"] for each in events_named(events, "mirror.written")] == [1]
+    assert [each["pruned"] for each in events_named(events, "prepare.written")] == [1]
     pandoc.runs.clear()
     jira = sandbox.run(markdown=pandoc.markdown, sources=("jira",))["jira"]
     assert (jira.converted, jira.reused, pandoc.runs) == (0, CONVERSIONS["jira"], [])
@@ -1083,7 +1083,7 @@ def test_a_cache_of_plan_039_s_columns_is_replaced_once_and_everything_converted
         connection.commit()
     with capture_logs() as events:
         outcomes = sandbox.run()
-    assert events_named(events, "mirror.cache_replaced") == [
+    assert events_named(events, "prepare.cache_replaced") == [
         {"reason": "SQLITE_ERROR", "log_level": "warning"}
     ]
     assert each(outcomes, lambda outcome: (outcome.converted, outcome.reused)) == {

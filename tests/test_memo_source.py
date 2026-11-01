@@ -3,8 +3,8 @@
 Plan 030's criterion 4. ``tests/fixtures/memo_source/`` holds ``kb_memo``, shaped as a
 package of this monorepo would be, its declaration, its table and its preparer, and no
 module of ``src/`` names it: ``SOURCES`` and its declaration, one line, are the whole
-registration. Given them, ``--help`` lists it among ``sync``'s choices and imports none
-of contract G's packages; ``check`` lists its setting; ``sync`` writes under
+registration. Given them, ``--help`` lists it among ``prepare``'s choices and imports none
+of contract G's packages; ``check`` lists its setting; ``prepare`` writes under
 ``docs/memo/`` alone, search finds a note by a word only it holds, a second run writes
 nothing and a note removed takes its file with it. Without that line, its table is not
 a setting. The notes are invented.
@@ -75,24 +75,21 @@ def config(tmp_path: Path) -> Path:
     return path
 
 
-def sync_memo(
+def prepare_memo(
     config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
 ) -> list[dict[str, object]]:
-    """Sync the memo alone, by the user's word; check that it exits 0, and give its rows."""
-    given = ["sync", "--include", "memo", "--yes", "--config", str(config), "--format", "json"]
-    assert main(given, registry) == ExitStatus.OK
-    return json.loads(capsys.readouterr().out)["steps"]
+    """Prepare the memo alone, by the user's word, then index; check each exits 0; give its rows."""
+    given = ["--yes", "--config", str(config), "--format", "json"]
+    assert main(["prepare", "memo", *given], registry) == ExitStatus.OK
+    rows = json.loads(capsys.readouterr().out)["sources"]
+    assert main(["index", *given], registry) == ExitStatus.OK
+    capsys.readouterr()
+    return rows
 
 
 def changes_of(rows: list[dict[str, object]]) -> dict[str, int]:
-    """Give the counts of the prepare's row, the first, and check what the rows name.
-
-    A source read in place has no fetcher, so a prepare, then the index, and each done.
-    """
-    assert [(row["step"], row["source"], row["outcome"]) for row in rows] == [
-        ("prepare", "memo", "done"),
-        ("index", None, "done"),
-    ]
+    """Give the counts of the prepare's row, and check what the rows name: the memo, done."""
+    assert [(row["source"], row["outcome"]) for row in rows] == [("memo", "done")]
     return rows[0]["result"]["changes"]
 
 
@@ -106,7 +103,7 @@ def files_of(docs: Path) -> dict[Path, tuple[bytes, int]]:
 
 
 def test_help_lists_it_and_imports_none_of_the_runs_packages(tmp_path: Path) -> None:
-    """In a fresh interpreter, ``sync --help`` offers it, having imported its declaration alone.
+    """In a fresh interpreter, ``prepare --help`` offers it, having imported its declaration alone.
 
     ``-X importtime`` names each module that the child imports, so that a package it does
     not name never reached ``sys.modules``: neither one of G's, nor the source's table
@@ -122,7 +119,7 @@ def test_help_lists_it_and_imports_none_of_the_runs_packages(tmp_path: Path) -> 
                 "from kb_mcp.cli.main import main\n"
                 "from kb_mcp.sources.registry import SOURCES\n"
                 "from kb_memo.declared import MEMO\n"
-                "main(['sync', '--help'], (*SOURCES, MEMO))\n"
+                "main(['prepare', '--help'], (*SOURCES, MEMO))\n"
             ),
         ],
         stdin=subprocess.DEVNULL,
@@ -138,7 +135,7 @@ def test_help_lists_it_and_imports_none_of_the_runs_packages(tmp_path: Path) -> 
         check=False,
     )
     assert child.returncode == 0
-    assert re.search(r"--include \{(?:\w+,)*memo(?:,\w+)*\}", child.stdout)
+    assert re.search(r"\{(?:\w+,)*memo(?:,\w+)*\}", child.stdout)
     imported = {
         line.rsplit("|", 1)[-1].strip()
         for line in child.stderr.splitlines()
@@ -166,7 +163,7 @@ def test_check_lists_its_setting(
     assert "sources.memo.folder" not in err
 
 
-def test_sync_writes_under_its_folder_alone_and_search_finds_a_note(
+def test_prepare_writes_under_its_folder_alone_and_search_finds_a_note(
     config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
 ) -> None:
     """Each note is a file of ``docs/memo/``, and another source's stays as it was.
@@ -178,7 +175,7 @@ def test_sync_writes_under_its_folder_alone_and_search_finds_a_note(
     data = config.parent / "data"
     write(data / "docs", page("196845", "Kafka"))
     before = files_of(data / "docs")
-    assert changes_of(sync_memo(config, registry, capsys)) == {
+    assert changes_of(prepare_memo(config, registry, capsys)) == {
         "written": 2,
         "unchanged": 0,
         "removed": 0,
@@ -196,7 +193,7 @@ def test_sync_writes_under_its_folder_alone_and_search_finds_a_note(
     assert WORD in read
 
 
-def test_a_second_sync_writes_nothing(
+def test_a_second_prepare_writes_nothing(
     config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
 ) -> None:
     """Each note found unchanged keeps its file, its bytes and its time.
@@ -204,12 +201,12 @@ def test_a_second_sync_writes_nothing(
     A document's times are its note's, never the run's, which would change its bytes.
     """
     docs = config.parent / "data" / "docs"
-    sync_memo(config, registry, capsys)
+    prepare_memo(config, registry, capsys)
     before = files_of(docs)
     for path, (data, _) in before.items():
         matter, _ = load(data.decode(), str(path))
         assert (matter.created, matter.updated, matter.fetched_at) == (NOTED, NOTED, NOTED)
-    assert changes_of(sync_memo(config, registry, capsys)) == {
+    assert changes_of(prepare_memo(config, registry, capsys)) == {
         "written": 0,
         "unchanged": 2,
         "removed": 0,
@@ -223,10 +220,10 @@ def test_a_note_removed_takes_its_file_with_it(
     """Its file goes, and only its; search no longer finds it. Another source's file stays."""
     data = config.parent / "data"
     write(data / "docs", page("196845", "Kafka"))
-    sync_memo(config, registry, capsys)
+    prepare_memo(config, registry, capsys)
     before = files_of(data / "docs")
     (config.parent / "notes" / "orchard.txt").unlink()
-    assert changes_of(sync_memo(config, registry, capsys)) == {
+    assert changes_of(prepare_memo(config, registry, capsys)) == {
         "written": 0,
         "unchanged": 1,
         "removed": 1,
@@ -240,14 +237,11 @@ def test_a_note_removed_takes_its_file_with_it(
 def test_a_dry_run_writes_nothing(
     config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
 ) -> None:
-    """The prepare and the index are not run, and no file of the mirror is made."""
-    given = ["sync", "--include", "memo", "--dry-run", "--config", str(config), "--format", "json"]
+    """The prepare is not run, and no file of the mirror is made."""
+    given = ["prepare", "memo", "--dry-run", "--config", str(config), "--format", "json"]
     assert main(given, registry) == ExitStatus.OK
-    rows = json.loads(capsys.readouterr().out)["steps"]
-    assert [(row["step"], row["outcome"]) for row in rows] == [
-        ("prepare", "not run"),
-        ("index", "not run"),
-    ]
+    rows = json.loads(capsys.readouterr().out)["sources"]
+    assert [(row["source"], row["outcome"]) for row in rows] == [("memo", "not run")]
     assert not (config.parent / "data").exists()
 
 
@@ -258,7 +252,7 @@ def test_a_folder_of_notes_that_is_not_one_is_refused_before_any_row(
     (config.parent / "notes" / "orchard.txt").unlink()
     (config.parent / "notes" / "rota.txt").unlink()
     (config.parent / "notes").rmdir()
-    given = ["sync", "--include", "memo", "--yes", "--config", str(config)]
+    given = ["prepare", "memo", "--yes", "--config", str(config)]
     assert main(given, registry) == ExitStatus.REFUSED
     assert "source 'memo': prepare: sources.memo.folder: not a folder" in capsys.readouterr().err
     assert not (config.parent / "data" / "docs").exists()
@@ -271,7 +265,7 @@ def test_without_that_line_its_table_is_no_setting_and_its_name_no_choice(
     assert main(["check", "--config", str(config)]) == ExitStatus.REFUSED
     assert "sources.memo.folder (config.toml): not a setting" in capsys.readouterr().err
     with pytest.raises(SystemExit) as stopped:
-        main(["sync", "--include", "memo", "--yes", "--config", str(config)])
+        main(["prepare", "memo", "--yes", "--config", str(config)])
     assert stopped.value.code == ExitStatus.REFUSED
     assert "invalid choice: 'memo'" in capsys.readouterr().err
 

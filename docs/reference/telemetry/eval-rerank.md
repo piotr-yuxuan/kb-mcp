@@ -2,7 +2,7 @@
 
 What `eval-rerank` records, besides what every command does ([README](README.md)). A run
 is one trace: its root `eval-rerank`, the reranking server's list of models, the
-connection to the embedding model, the build of its index, as `index` records it, then
+connection to the embedding model, the build of its index, as `embed` records it, then
 the searches and answers of every question in each arm, as `serve` records them, the
 reranked ones through the reranking server. A question is timed, never a span of its
 own.

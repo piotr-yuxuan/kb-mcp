@@ -17,8 +17,8 @@ differ, by how much this page does not say.
 
 ## Before you start
 
-- The mirror is built, by `sync` or `mirror` ([bring every source up to
-  date](sync.md)); this program's index is not needed. Its files are under
+- The mirror is built, by `fetch` then `prepare` ([bring every source up to
+  date](refresh.md)); this program's index is not needed. Its files are under
   `<data>/docs/`, `~/kb-mcp/docs/` unless the setting `data_dir` says
   otherwise.
 - Node.js 22 or later, and npm.
@@ -152,10 +152,10 @@ qmd mcp --http --host 127.0.0.1 --port 8181
 
   It answers `event: message`, then a line `data:` naming `"qmd"` and `"2.8.3"`.
 
-## 7. After each sync
+## 7. After each prepare
 
 ```bash
-kb-mcp sync
+kb-mcp fetch --yes && kb-mcp prepare --yes
 qmd update
 qmd embed --timeout 0
 ```

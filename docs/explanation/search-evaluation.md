@@ -432,14 +432,14 @@ the ranks.
 Every step runs from a checkout of this repository, with `uv`, on any machine: this
 laptop, or another such as the user's machine, whose GPU should change the times. The
 sandbox's commands name `--config <missing-file>`, a path where no file is, so that the
-machine's settings file changes nothing: otherwise `mirror` would write its account's
-site into the mirror's addresses, and `index`, `model check` and `eval` would take its model and
-endpoint, `index` its chunking and mode too. The variables `KB_MCP_…`
+machine's settings file changes nothing: otherwise `prepare` would write its account's
+site into the mirror's addresses, and `embed`, `model check` and `eval` would take its model and
+endpoint, `embed` its chunking too. The variables `KB_MCP_…`
 still apply: leave them unset, but where a command sets them. On your own corpus, your
 settings are the point: leave the flag out. Two things come first:
 
 - **Ollama on the host**, running, with the model pulled: `eval` searches by meaning,
-  and so, by default, does `index`. Install Ollama on the host, not in a container (a
+  and `embed` asks for its vectors. Install Ollama on the host, not in a container (a
   container on macOS cannot use the Mac's GPU), and start it (the Ollama app, `brew
   services start ollama`, or `ollama serve`). Then pull the model and check it:
 
@@ -464,27 +464,27 @@ corpus's pages are in the space `QM`, its tickets in the project `ENG`, its idea
 `PRB`; plan 011's mirror also held the 13 probe pages of plan 001 in `MFS`:
 
 ```bash
-sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'KB_MCP_ACCOUNTS__ATLASSIAN__SITE="$ATLASSIAN_SITE" KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL="$ATLASSIAN_EMAIL" KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN="$ATLASSIAN_API_TOKEN" uv run kb-mcp download --yes --config <missing-file> --data-dir <data> --since 1y --space MFS --space QM --project ENG --project PRB'
+sops exec-env <primary checkout>/atlassian-test-credientials.sops.json 'KB_MCP_ACCOUNTS__ATLASSIAN__SITE="$ATLASSIAN_SITE" KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL="$ATLASSIAN_EMAIL" KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN="$ATLASSIAN_API_TOKEN" uv run kb-mcp fetch --yes --config <missing-file> --data-dir <data> --since 1y --space MFS --space QM --project ENG --project PRB'
 ```
 
 The credentials file lies at the root of the checkout that made it, never in git
 (`.gitignore` excludes `*.sops*`), and only the keys it was encrypted for open it. On
 another machine, bring the file and a key; or make a file of your own for the sandbox's
 account, with a new token, by [the sops how-to](../how-to/api-token-with-sops.md), under
-the same generic names; or skip `download` and `mirror`: copy `<data>/docs` (7 MB)
-from a machine that has it into the new data directory, and go on from `index`.
+the same generic names; or skip `fetch` and `prepare`: copy `<data>/docs` (7 MB)
+from a machine that has it into the new data directory, and go on from `embed`.
 
 ```bash
-uv run kb-mcp mirror --config <missing-file> --data-dir <data>
+uv run kb-mcp prepare confluence jira --config <missing-file> --data-dir <data>
 ```
 
 ```bash
-uv run kb-mcp index --config <missing-file> --data-dir <data>
+uv run kb-mcp embed --config <missing-file> --data-dir <data>
 ```
 
-`index` should report 1,474 documents (263 pages and 1,211 issues), as in plans 011 and
+`embed` should report 1,474 documents (263 pages and 1,211 issues), as in plans 011 and
 018; without `ENG`, 31 questions name tickets that the mirror lacks, which `eval`
-refuses by name. By default it also embeds the mirror's windows, which `eval` then
+refuses by name. It also embeds the mirror's windows, which `eval` then
 finds in `<data>/vectors.sqlite` and does not embed again.
 
 ```bash

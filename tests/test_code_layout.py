@@ -45,8 +45,6 @@ NAMING = {
     "cli/domain/command.py": 1,
     # MOVED: plan 015's message for its moved keys, which name their tables.
     "config/domain/settings.py": 2,
-    # A docstring: who records the instruments.
-    "mirror/adapters/instruments.py": 1,
     # A docstring: which step owns which folder.
     "mirror/adapters/mirror_files.py": 2,
     # Docstrings of the front matter's Atlassian-shaped keys, which question 3 keeps.
@@ -190,8 +188,8 @@ def test_no_context_above_the_sources_names_one_but_the_plan_s_exceptions() -> N
     """Plan 030's criterion 6 stays true: only the registry brings a source to a run.
 
     The use cases, ``config`` and ``mirror`` know a source by no name, nor import the
-    Atlassian package, which no contract keeps them from: ``cli.commands`` calls it until
-    plan 031. Each file may hold the lines that it holds, each for the reason noted.
+    Atlassian package, which no contract keeps them from. Each file may hold the lines that
+    it holds, each for the reason noted.
     """
     found = {
         path.relative_to(PACKAGE).as_posix(): lines

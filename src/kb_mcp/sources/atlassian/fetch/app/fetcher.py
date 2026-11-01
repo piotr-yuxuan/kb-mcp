@@ -3,9 +3,7 @@
 Both declarations name this module, a ``Fetcher``: ``preflight`` and ``fetch`` read the
 source that a run is for from its declaration, by its kinds, and fetch that source's
 targets alone, its table's spaces or projects, over the period that its options give.
-``fetch_targets`` downloads one source's targets, or plans their download, and says
-what went wrong as ``download``'s events do; ``download``'s command runs it too, for
-each source apart.
+``fetch_targets`` downloads them, or plans their download, and says what went wrong.
 """
 
 from __future__ import annotations
@@ -50,7 +48,7 @@ class Fetched(Result):
     downloaded: Outcome | None
 
     def text(self, summary: Summary) -> str:
-        """Write the download's counts as ``download`` does; nothing when it could not start."""
+        """Write the download's counts; nothing when it could not start."""
         return "" if self.downloaded is None else self.downloaded.text(summary)
 
 
@@ -92,14 +90,12 @@ def fetch(run: Run) -> Fetched:
 
     What ``preflight`` refuses may still come once the run began: a period read at a
     later fetch's start, or a record damaged since. It fails this fetch alone, an error,
-    ``download.refused``, naming the source, and the run's next rows go on.
+    ``fetch.refused``, naming the source, and the run's next rows go on.
     """
     try:
         return fetch_targets(run.settings, targets_of(run), run.now, run.sleep, dry_run=run.dry_run)
     except (PeriodError, RepresentationError) as error:
-        structlog.get_logger().error(
-            "download.refused", source=run.declared.name, reason=str(error)
-        )
+        structlog.get_logger().error("fetch.refused", source=run.declared.name, reason=str(error))
         return Fetched(outcome="failed", downloaded=None)
 
 
@@ -114,10 +110,9 @@ def fetch_targets(
     """Download these targets, one source's, or plan their download; say what went wrong.
 
     Another run writing the raw store fails the fetch before it starts, an error,
-    ``download.store_busy``; each target that failed is a warning,
-    ``download.target_failed``, and a sign-in that no longer holds an error,
-    ``download.sign_in_needed``, saying how to sign in again; both errors name the
-    source, since each source's fetch can give them.
+    ``fetch.store_busy``; each target that failed is a warning, ``fetch.target_failed``,
+    and a sign-in that no longer holds an error, ``fetch.sign_in_needed``, saying how to
+    sign in again; both errors name the source, since each source's fetch can give them.
     """
     act = plan if dry_run else download
     source = targets.source
@@ -125,12 +120,12 @@ def fetch_targets(
         downloaded = act(settings, targets, now, sleep)
     except StoreBusyError:
         structlog.get_logger().error(
-            "download.store_busy", source=source, store=str(settings.raw), hint=BUSY
+            "fetch.store_busy", source=source, store=str(settings.raw), hint=BUSY
         )
         return Fetched(outcome="failed", downloaded=None)
     log = structlog.get_logger()
     for target in downloaded.failed_targets:
-        log.warning("download.target_failed", target=target)
+        log.warning("fetch.target_failed", target=target)
     if downloaded.status == ExitStatus.SIGN_IN_AGAIN:
-        log.error("download.sign_in_needed", source=source, hint=sign_in(settings).again)
+        log.error("fetch.sign_in_needed", source=source, hint=sign_in(settings).again)
     return Fetched(outcome=FETCHED[downloaded.status], downloaded=downloaded)

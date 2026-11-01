@@ -106,6 +106,7 @@ SETTINGS = {".".join(path) for path, kind in setting_paths(MODEL).items() if kin
 SUBCOMMANDS = parser(Declaring).subcommands
 # What a subcommand needs besides its options to be parsed: its positional arguments.
 POSITIONALS = {
+    "login": ["atlassian"],
     "eval": ["golden.yaml"],
     "eval-agents": ["grade", "runs"],
     "eval-rerank": ["golden.yaml"],
@@ -115,9 +116,18 @@ POSITIONALS = {
 # The subcommands whose output is their own, by plan 015: the protocol, a script.
 OWN_OUTPUT = {"serve", "completion"}
 # The subcommands that write under the data directory, and so ask first, by plan 015.
-WRITING = {"download", "eval", "eval-agents", "eval-rerank", "index", "login", "mirror", "sync"}
+WRITING = {
+    "embed",
+    "eval",
+    "eval-agents",
+    "eval-rerank",
+    "fetch",
+    "index",
+    "login",
+    "prepare",
+}
 # The subcommands that take --dry-run, by plans 015 and 017.
-DRY_RUN = {"download", "sync"}
+DRY_RUN = {"fetch", "prepare"}
 SECRETS = {
     "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": "token-sentinel-4d1c",
     "KB_MCP_EMBEDDING_API_KEY": "key-sentinel-9a7e",
@@ -187,14 +197,16 @@ def test_each_subcommand_s_command_carries_its_name_and_a_run_that_imports(name:
 
     The run's module need not bear the name: eval's is evaluate. It is named by a
     string and imported only once chosen, so a misspelt one would fail only when run.
-    Its declaration, in ``cli.options``, bears the same module's name.
+    Its declaration, in ``cli.options``, bears the same module's name, or, for a run that
+    several commands share, as ``fetch``'s, the command's.
     """
     command = SUBCOMMANDS[name].get_default("command")
     assert command.name == name
     package, _, module = command.run.rpartition(".")
     assert package == commands.__name__
     assert callable(importlib.import_module(command.run).run)
-    assert callable(importlib.import_module(f"{options.__name__}.{module}").register)
+    declaration = name if module == "sources" else module
+    assert callable(importlib.import_module(f"{options.__name__}.{declaration}").register)
 
 
 @pytest.mark.parametrize("name", sorted(SUBCOMMANDS))
@@ -213,7 +225,7 @@ def test_each_subcommand_reads_settings_by_their_paths_and_declares_each_flag(na
 
 
 @pytest.mark.parametrize("name", sorted(SUBCOMMANDS))
-def test_the_commands_that_write_take_yes_and_download_and_sync_a_dry_run(name: str) -> None:
+def test_the_commands_that_write_take_yes_and_fetch_and_prepare_a_dry_run(name: str) -> None:
     """They ask first, as plans 015 and 017 list them; check, doctor, model, serve never do."""
     command = SUBCOMMANDS[name].get_default("command")
     arguments = parser().parse_args([name, *POSITIONALS.get(name, [])])
@@ -248,12 +260,51 @@ def test_the_version_is_the_project_s(capsys: CaptureFixture[str]) -> None:
     assert capsys.readouterr().out == f"kb-mcp {project['version']}\n"
 
 
+def test_the_help_lists_the_commands_of_plan_031(capsys: CaptureFixture[str]) -> None:
+    """Plan 031, criterion 2: each of these, which another command may join."""
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    assert set(SUBCOMMANDS) >= {
+        "check",
+        "completion",
+        "doctor",
+        "embed",
+        "eval",
+        "eval-agents",
+        "eval-rerank",
+        "fetch",
+        "index",
+        "login",
+        "model",
+        "prepare",
+        "reranker",
+        "serve",
+    }
+    said = capsys.readouterr().out
+    assert all(name in said for name in SUBCOMMANDS)
+
+
+@pytest.mark.parametrize("name", ["sync", "download", "mirror"])
+def test_a_command_that_went_is_refused_naming_the_choices(
+    name: str, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 031: no alias stays; the parser's message lists what there is, exit 2."""
+    with pytest.raises(SystemExit) as stopped:
+        main([name])
+    assert stopped.value.code == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    assert f"invalid choice: '{name}'" in err
+    assert "'fetch'" in err
+    assert "'prepare'" in err
+
+
 def test_the_help_says_who_asks_and_what_each_exit_status_means() -> None:
     """The commands that write ask first, by name; every status of the one enum is listed.
 
-    The help is read with its lines joined, as its width follows the terminal's.
+    The help is read with its lines joined, as its width follows the terminal's, which may
+    break a name at its hyphen.
     """
-    said = " ".join(parser().format_help().split())
+    said = " ".join(parser().format_help().split()).replace("- ", "-")
     assert f"write under the data directory ({', '.join(sorted(WRITING))})" in said
     assert "then ask" in said
     for status in ExitStatus:
@@ -287,7 +338,7 @@ def test_the_help_on_a_terminal_has_no_colour_under_no_color(
         said = read_until(controller, b"\0")
     os.close(controller)
     assert child.returncode == 0
-    assert b"Exit statuses" in said
+    assert b"Exit statuses" in b" ".join(said.split())
     assert (b"\x1b" in said) is coloured
 
 
@@ -301,7 +352,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
     ``sys.modules``.
     """
     environment = {"HOME": str(home), "PATH": os.environ["PATH"]}
-    typed = "kb-mcp download --sp"
+    typed = "kb-mcp fetch --sp"
     completing = {
         "_ARGCOMPLETE": "1",
         "COMP_LINE": typed,
@@ -343,7 +394,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
                     "importtime",
                     "-m",
                     "kb_mcp",
-                    "download",
+                    "fetch",
                     "--help",
                 ],
                 stdin=subprocess.DEVNULL,
@@ -395,7 +446,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
 
 @pytest.mark.parametrize(
     ("line", "offered"),
-    [("dow", {"download"}), ("download --sp", {"--space"}), ("check --format ", {"text", "json"})],
+    [("fet", {"fetch"}), ("fetch --sp", {"--space"}), ("check --format ", {"text", "json"})],
 )
 def test_the_shell_completes_the_command_line(home: Path, line: str, offered: set[str]) -> None:
     """A child called as the shell code calls it offers what may follow the line.
@@ -1157,14 +1208,22 @@ def test_a_run_removes_every_command_s_log_files_past_30_days_but_not_another_pr
 ) -> None:
     """``check`` removes ``doctor``'s and ``serve``'s as its own, by plan 016.
 
-    A command that is rarely run, such as ``doctor``, so keeps none past 30 days. A file
-    of the same shape named after no command, another program's in a shared folder,
-    stays, as does a command's of yesterday.
+    A command that is rarely run, such as ``doctor``, so keeps none past 30 days, nor does
+    one that plan 031 removed, whose files hold titles and queries. A file of the same shape
+    named after no command, another program's in a shared folder, stays, as does a command's
+    of yesterday.
     """
     folder = user_log_folder(home.resolve())
     folder.mkdir(parents=True)
     old = "20200101T000000Z"
-    gone = [f"check-{old}-7.jsonl", f"doctor-{old}-8.jsonl", f"serve-{old}-9.jsonl"]
+    gone = [
+        f"check-{old}-7.jsonl",
+        f"doctor-{old}-8.jsonl",
+        f"serve-{old}-9.jsonl",
+        f"download-{old}-10.jsonl",
+        f"mirror-{old}-11.jsonl",
+        f"sync-{old}-12.jsonl",
+    ]
     kept = [
         f"backup-{old}-7.jsonl",
         f"index-{datetime.now(UTC) - timedelta(days=1):%Y%m%dT%H%M%SZ}-7.jsonl",

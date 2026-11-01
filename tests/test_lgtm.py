@@ -55,7 +55,7 @@ PROVIDERS = PurePosixPath("/otel-lgtm/grafana/conf/provisioning/dashboards")
 # The data sources that the image provisions: each one's uid and type.
 SOURCES = {("prometheus", "prometheus"), ("loki", "loki"), ("tempo", "tempo")}
 # The overview, then one dashboard per operation; a later plan adds its own beside them.
-NAMES = {"overview", "download", "mirror", "index", "serve", "eval"}
+NAMES = {"overview", "fetch", "prepare", "index", "embed", "serve", "eval"}
 # Grafana's longest uid.
 UID_LENGTH = 40
 # Prometheus's names for what it receives over OTLP, by default: the name's words joined
@@ -192,20 +192,20 @@ def test_each_dashboard_is_json_drawing_on_the_image_s_three_sources(path: Path)
     assert {(source["uid"], source["type"]) for source in named} == SOURCES
 
 
-def test_sync_s_dashboard_lists_each_row_with_what_its_span_records() -> None:
+def test_prepare_s_dashboard_lists_each_row_with_what_its_span_records() -> None:
     """Plan 030: Tempo's table of spans shows what its query selects, not every attribute.
 
-    So the query selects what the page says that a ``sync.step`` records: its step, its
-    source and how it ended.
+    So the query selects what the page says that a ``prepare.source`` records: its source
+    and how it ended.
     """
-    board = json.loads((DASHBOARDS / "sync.json").read_text("utf-8"))
+    board = json.loads((DASHBOARDS / "prepare.json").read_text("utf-8"))
     (query,) = [
         target["query"]
         for panel in board["panels"]
         for target in panel["targets"]
-        if "sync.step" in target.get("query", "")
+        if "prepare.source" in target.get("query", "")
     ]
-    _, attributes = documented("sync").spans["sync.step"]
+    _, attributes = documented("prepare").spans["prepare.source"]
     assert "kb_mcp.source" in attributes
     assert set(re.findall(r"span\.(kb_mcp\.\w+)", query)) == attributes
 

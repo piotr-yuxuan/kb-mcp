@@ -241,8 +241,8 @@ def test_plan_027_s_names_of_the_sign_in_name_no_setting_and_are_said(
 
 @pytest.mark.parametrize(
     "command",
-    [("download", "--space", "MFS", "--since", "7d"), ("sync",)],
-    ids=["download", "sync"],
+    [("fetch", "--space", "MFS", "--since", "7d"), ("fetch",)],
+    ids=["a flag", "its setting"],
 )
 def test_a_run_refused_for_want_of_the_site_says_plan_027_s_names_that_it_ignored(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], command: tuple[str, ...]

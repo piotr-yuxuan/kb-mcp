@@ -19,15 +19,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from kb_mcp.cli.commands import login as login_command
 from kb_mcp.cli.commands import model as model_command
 from kb_mcp.cli.commands._shared import enter
 from kb_mcp.cli.domain.command_line import command_line
 from kb_mcp.cli.domain.summary import values_of
 from kb_mcp.cli.main import main, parser
-from kb_mcp.cli.options.index import by_words_alone
 from kb_mcp.config.domain.settings import DEFAULT_MODEL
 from kb_mcp.observability.app.observed import early
+from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from kb_mcp.sources.registry import SOURCES
 from tests.endpoint import nothing_listening
 from tests.test_settings import user_log_folder
@@ -50,14 +49,14 @@ SECRETS = {CREDENTIAL: "token-sentinel-4d1c", KEY: "key-sentinel-9a7e"}
 UNKNOWN = "KB_MCP_UNKNOWN"
 WAIT = 30  # seconds for the server to answer and stop
 # The modules that run the commands that write, by plan 015.
-WRITING = ("download", "evaluate", "index", "login", "mirror")
+WRITING = ("embed", "evaluate", "index", "login", "sources")
 # Each command that writes, with options of its own, as given on its command line.
 OWN_OPTIONS = {
-    "download": ["--space", "ENG", "--space", "OPS", "--since", "7d", "--max-file-mb", "5"],
-    "mirror": [],
-    "index": ["--allow-remote-embeddings"],
+    "fetch": ["--space", "ENG", "--space", "OPS", "--since", "7d", "--max-file-mb", "5"],
+    "prepare": [],
+    "embed": ["--allow-remote-embeddings"],
     "eval": ["golden.yaml", "--model", "tiny", "--model", "qwen3-embedding:0.6b"],
-    "login": ["--chrome", "chrome", "--keep-extensions"],
+    "login": ["--chrome", "chrome", "--keep-extensions", "atlassian"],
 }
 # What the command to copy never carries, by plan 015: the output's options and the
 # question's.
@@ -95,11 +94,11 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
 
     Neither is among the settings that its summary shows.
     """
-    monkeypatch.setattr(login_command, "login", lambda *_, **__: None)
+    monkeypatch.setattr(login_module, "login", lambda *_, **__: None)
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
     monkeypatch.setenv(CREDENTIAL, SECRETS[CREDENTIAL])
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--summary", summary]
-    assert main(["login", *options]) == 0
+    assert main(["login", "atlassian", *options]) == 0
     out, err = capsys.readouterr()
     ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
     assert ignored == [
@@ -111,7 +110,7 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
 
 
 @pytest.mark.parametrize(
-    "command", [["doctor"], ["download", "--yes", "--site", SITE, "--space", "ENG"]]
+    "command", [["doctor", "--site", SITE], ["fetch", "--yes", "--site", SITE, "--space", "ENG"]]
 )
 @pytest.mark.usefixtures("runs")
 def test_an_email_without_a_token_is_ignored(
@@ -119,7 +118,7 @@ def test_an_email_without_a_token_is_ignored(
 ) -> None:
     """Without a token the browser's session signs in; with one, the email is not ignored.
 
-    The download's run is left out: what is ignored is said before it.
+    The fetch's run is left out: what is ignored is said before it.
     """
     monkeypatch.setenv("PATH", str(home))
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
@@ -145,7 +144,7 @@ def test_an_email_without_a_token_is_ignored(
     ],
 )
 @pytest.mark.usefixtures("runs")
-def test_a_download_s_summary_says_how_it_signs_in(
+def test_a_fetch_s_summary_says_how_it_signs_in(
     home: Path,
     monkeypatch: MonkeyPatch,
     capsys: CaptureFixture[str],
@@ -156,9 +155,9 @@ def test_a_download_s_summary_says_how_it_signs_in(
     for variable, value in variables.items():
         monkeypatch.setenv(variable, value)
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--space", "ENG"]
-    assert main(["download", *options]) == 0
+    assert main(["fetch", *options]) == 0
     err = capsys.readouterr().err
-    assert f"\n  sign-in: {sign_in}\n" in err.split("kb-mcp download")[0]
+    assert f"\n  sign-in: {sign_in}\n" in err.split("kb-mcp fetch")[0]
     assert not any(secret in err for secret in SECRETS.values())
 
 
@@ -170,38 +169,33 @@ def test_a_download_s_summary_says_how_it_signs_in(
     ],
 )
 @pytest.mark.usefixtures("runs")
-def test_a_download_s_summary_says_where_its_windows_start(
+def test_a_fetch_s_summary_says_where_its_windows_start(
     home: Path, capsys: CaptureFixture[str], given: list[str], rule: str
 ) -> None:
     """The rule in words, before the run reads the store: from --since, or the last fetch."""
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--space", "ENG"]
-    assert main(["download", *options, *given]) == 0
+    assert main(["fetch", *options, *given]) == 0
     err = capsys.readouterr().err
-    assert f"\n  {rule}\n" in err.split("kb-mcp download")[0]
+    assert f"\n  {rule}\n" in err.split("kb-mcp fetch")[0]
 
 
-def test_an_index_by_words_alone_ignores_the_model_and_the_endpoint_given(
+def test_an_index_says_in_detail_that_it_reads_no_model_and_no_endpoint(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Those that a layer gave: the file's model, the variable's key; not the default address."""
     (home / "data" / "docs").mkdir(parents=True)
     config = home / "config.toml"
-    config.write_text('model = "tiny"\nsearch_mode = "lexical"\n', "utf-8")
+    config.write_text('model = "tiny"\n', "utf-8")
     monkeypatch.setenv(KEY, SECRETS[KEY])
-    assert main(["index", "--yes", "--config", str(config), "--data-dir", str(home / "data")]) == 0
+    options = ["--yes", "--config", str(config), "--data-dir", str(home / "data")]
+    assert main(["index", *options, "--summary", "detailed"]) == 0
     out, err = capsys.readouterr()
     ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
     assert ignored == [
-        "ignored: model (config.toml): the lexical mode embeds nothing",
-        f"ignored: embedding_api_key ({KEY}): the lexical mode embeds nothing",
+        "ignored: model (config.toml): not read by index",
+        f"ignored: embedding_api_key ({KEY}): not read by index",
     ]
     assert SECRETS[KEY] not in out + err
-
-
-@pytest.mark.parametrize("mode", ["semantic", "hybrid"])
-def test_an_index_by_meaning_applies_its_model_and_endpoint(mode: str) -> None:
-    """Outside the lexical mode the index embeds, with the model at the endpoint."""
-    assert by_words_alone(None, {"search_mode": mode}) == {}
 
 
 @pytest.mark.parametrize(
@@ -238,7 +232,7 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
 ) -> None:
     """At its default too, where no value is said to be ignored.
 
-    ``eval``'s --model replaces the model; an index by words alone embeds nothing.
+    ``eval``'s --model replaces the model; a ``prepare`` of the work log alone signs in nowhere.
     """
     monkeypatch.chdir(home)
     (home / "golden.yaml").write_text("", "utf-8")
@@ -247,15 +241,15 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
     err = capsys.readouterr().err
     assert f"\n  model: {DEFAULT_MODEL} (not applied: replaced by --model)\n" in err
     assert "ignored: " not in err
-    monkeypatch.setenv("KB_MCP_SEARCH_MODE", "lexical")
-    assert main(["index", "--yes", "--config", none]) == 0
-    summary = capsys.readouterr().err.split("kb-mcp index")[0]
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(home))
+    assert main(["prepare", "--yes", "--config", none, "worklog"]) == 0
+    summary = capsys.readouterr().err.split("kb-mcp prepare")[0]
     marked = [
         line.strip().partition(": ")[0]
         for line in summary.splitlines()
-        if line.endswith(" (not applied: the lexical mode embeds nothing)")
+        if line.endswith(" (not applied: no source of the atlassian account in this prepare)")
     ]
-    assert marked == ["model", "chunking", "embedding_url", "embedding_api_key"]
+    assert marked == ["accounts.atlassian.site"]
 
 
 def test_settings_that_the_command_never_reads_are_ignored_in_detail_alone(
@@ -350,30 +344,40 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     config.write_text(f'model = "tiny"\n[accounts.atlassian]\nsite = "{SITE}"\n', "utf-8")
     monkeypatch.setenv(UNKNOWN, "1")
     data = (home / "data").resolve()
-    options = ["mirror", "--yes", "--config", str(config), "--data-dir", str(data)]
+    options = ["prepare", "--yes", "--config", str(config), "--data-dir", str(data)]
     command = (
-        "kb-mcp mirror \\\n"
+        "kb-mcp prepare \\\n"
         f"  --config {shlex.quote(str(config))} \\\n"
         f"  --data-dir {shlex.quote(str(data))} \\\n"
         f"  --site {SITE}\n"
     )
     assert main(options) == 0
     assert capsys.readouterr().err == (
-        "mirror, with these settings:\n"
+        "prepare, with these settings:\n"
         f"  accounts.atlassian.site: {SITE}\n"
         f"  data_dir: {data}\n"
+        "  sources.worklog.path: (not set)\n"
+        "  sources.worklog.archives: True (not applied: worklog not configured)\n"
+        "  source confluence: all that its store holds\n"
+        "  source jira: all that its store holds\n"
+        "  source worklog: left out, not configured\n"
         f"ignored: {UNKNOWN}: names no setting\n"
         f"{command}"
     )
     assert main([*options, "--summary", "detailed"]) == 0
     assert capsys.readouterr().err == (
-        "mirror, with these settings:\n"
+        "prepare, with these settings:\n"
         f"  accounts.atlassian.site: {SITE} [config.toml]\n"
         f"  data_dir: {data} [--data-dir]\n"
+        "  sources.worklog.path: (not set) [default]\n"
+        "  sources.worklog.archives: True [default] (not applied: worklog not configured)\n"
         f"  logs.dir: {user_log_folder(home.resolve())} [default]\n"
         "  telemetry.endpoint: (not set) [default]\n"
+        "  source confluence: all that its store holds\n"
+        "  source jira: all that its store holds\n"
+        "  source worklog: left out, not configured\n"
         f"ignored: {UNKNOWN}: names no setting\n"
-        "ignored: model (config.toml): not read by mirror\n"
+        "ignored: model (config.toml): not read by prepare\n"
         f"{command}"
     )
     assert main([*options, "-q"]) == 0
@@ -381,7 +385,7 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     assert len(runs) == len(["short", "detailed", "quiet"])
 
 
-@pytest.mark.parametrize("command", ["mirror", "index"])
+@pytest.mark.parametrize("command", ["prepare", "index"])
 @pytest.mark.usefixtures("runs")
 def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], command: str
@@ -477,15 +481,13 @@ def test_a_command_s_described_lines_end_its_summary(
     def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
         return (f"mirrors {settings['accounts.atlassian.site']}", f"as {arguments.command.name}")
 
-    given = ["mirror", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
+    given = ["prepare", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
     arguments = parser().parse_args(given)
     arguments.command = dataclasses.replace(arguments.command, described=described)
     with early():
         assert enter(arguments, given, SOURCES) == 0
-    summary = capsys.readouterr().err.split("kb-mcp mirror")[0]
-    assert summary.endswith(
-        f"  data_dir: {(home / 'kb-mcp').resolve()}\n  mirrors {SITE}\n  as mirror\n"
-    )
+    summary = capsys.readouterr().err.split("kb-mcp prepare")[0]
+    assert summary.endswith(f"  mirrors {SITE}\n  as prepare\n")
     assert len(runs) == 1
 
 
@@ -501,9 +503,9 @@ def test_the_command_to_copy_is_preceded_by_an_empty_list_that_no_flag_can_say(
     variable = "KB_MCP_SOURCES__JIRA__PROJECTS"
     monkeypatch.setenv(variable, "[]")
     options = ["--yes", "--config", str(config), "--site", SITE, "--space", "ENG"]
-    assert main(["download", *options]) == 0
+    assert main(["fetch", *options]) == 0
     err = capsys.readouterr().err
-    said, _, copied = err.partition("kb-mcp download")
+    said, _, copied = err.partition("kb-mcp fetch")
     assert said.endswith(
         f"not in the command: sources.jira.projects ({variable}): empty, which --project"
         " cannot say\n"
@@ -546,7 +548,7 @@ def test_an_empty_list_that_replaced_no_value_given_is_neither_ignored_nor_named
     for variable, value in variables.items():
         monkeypatch.setenv(variable, value)
     options = ["--yes", "--config", str(config), "--site", SITE, "--space", "ENG", *flags]
-    assert main(["download", *options]) == 0
+    assert main(["fetch", *options]) == 0
     err = capsys.readouterr().err
     assert "ignored: " not in err
     assert "not in the command: " not in err
@@ -556,24 +558,26 @@ def test_an_empty_list_that_replaced_no_value_given_is_neither_ignored_nor_named
 def test_the_command_to_copy_is_followed_by_the_settings_that_no_flag_sets(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Run again elsewhere, the command would index by the defaults: each is named, with its layer.
+    """Run again elsewhere, the command would embed by the defaults: each is named, with its layer.
 
     With every setting at its default but the file's path, which --config carries,
     nothing is named.
     """
-    options = ["index", "--yes", "--config", str(home / "none.toml")]
+    options = ["embed", "--yes", "--config", str(home / "none.toml")]
     assert main(options) == 0
     assert "not in the command" not in capsys.readouterr().err
-    mode, model = "KB_MCP_SEARCH_MODE", "KB_MCP_MODEL"
-    monkeypatch.setenv(mode, "semantic")
+    chunking, model = "KB_MCP_CHUNKING", "KB_MCP_MODEL"
+    monkeypatch.setenv(chunking, "sections")
     monkeypatch.setenv(model, "foo")
     assert main(options) == 0
-    command = f"kb-mcp index \\\n  --config {shlex.quote(str(home / 'none.toml'))}\n"
+    command = f"kb-mcp embed \\\n  --config {shlex.quote(str(home / 'none.toml'))}\n"
     _, found, after = capsys.readouterr().err.partition(command)
     assert found
-    assert [line.rpartition(": ")[0] for line in after.splitlines()] == [
+    assert [
+        line.rpartition(": ")[0] for line in after.splitlines() if line.startswith("not in")
+    ] == [
         f"not in the command: model ({model})",
-        f"not in the command: search_mode ({mode})",
+        f"not in the command: chunking ({chunking})",
     ]
 
 
@@ -678,7 +682,7 @@ def test_the_command_to_copy_carries_each_path_absolute(
     monkeypatch.chdir(home)
     paths = {"--config": "cfg/c.toml", "--chrome": "bin/chrome"}
     given = [item for option, path in paths.items() for item in (option, path)]
-    assert main(["login", "--yes", "--site", SITE, *given]) == 0
+    assert main(["login", "atlassian", "--yes", "--site", SITE, *given]) == 0
     err = capsys.readouterr().err
     argv = shlex.split(err[err.index("kb-mcp login") :].replace("\\\n", ""))
     assert {option: argv[argv.index(option) + 1] for option in paths} == {

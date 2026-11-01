@@ -242,7 +242,7 @@ def test_a_file_of_plan_039_s_two_columns_is_replaced_once(path: Path) -> None:
     with capture_logs() as events:
         assert run(path, Scripted(), TEXTS)[1:] == (4, 0)
         assert run(path, Scripted(), TEXTS)[1:] == (0, 4)
-    assert events_named(events, "mirror.cache_replaced") == [
+    assert events_named(events, "prepare.cache_replaced") == [
         {"reason": "SQLITE_ERROR", "log_level": "warning"}
     ]
 
@@ -266,7 +266,7 @@ def test_a_file_of_random_bytes_is_replaced_and_says_so_by_sqlite_s_error(path: 
     scripted = Scripted()
     with capture_logs() as events:
         assert run(path, scripted, TEXTS)[1:] == (4, 0)
-    assert events_named(events, "mirror.cache_replaced") == [
+    assert events_named(events, "prepare.cache_replaced") == [
         {"reason": "SQLITE_NOTADB", "log_level": "warning"}
     ]
     assert [each.name for each in path.parent.iterdir()] == [path.name]
@@ -283,7 +283,7 @@ def test_a_file_whose_index_root_is_zeroed_is_replaced(path: Path) -> None:
     scripted = Scripted()
     with capture_logs() as events:
         assert run(path, scripted, TEXTS)[1:] == (4, 0)
-    assert events_named(events, "mirror.cache_replaced") == [
+    assert events_named(events, "prepare.cache_replaced") == [
         {"reason": "SQLITE_CORRUPT", "log_level": "warning"}
     ]
     assert scripted.inputs == list(TEXTS)
@@ -306,7 +306,7 @@ def test_an_index_that_leads_one_key_to_another_s_row_is_replaced(path: Path) ->
     path.write_bytes(data)
     with capture_logs() as events:
         assert run(path, Scripted(), TEXTS[2:3]) == (["Markdown of <p>c</p>"], 1, 0)
-    assert events_named(events, "mirror.cache_replaced") == [
+    assert events_named(events, "prepare.cache_replaced") == [
         {"reason": "integrity_check", "log_level": "warning"}
     ]
 
@@ -333,7 +333,7 @@ def test_a_key_changed_in_its_row_alone_is_replaced(path: Path) -> None:
     scripted = Scripted()
     with capture_logs() as events:
         assert run(path, scripted, TEXTS)[1:] == (4, 0)
-    assert events_named(events, "mirror.cache_replaced") == [
+    assert events_named(events, "prepare.cache_replaced") == [
         {"reason": "integrity_check", "log_level": "warning"}
     ]
 
@@ -355,7 +355,7 @@ def test_a_header_that_sqlite_cannot_use_is_replaced(path: Path, offset: int, re
     scripted = Scripted()
     with capture_logs() as events:
         assert run(path, scripted, TEXTS)[1:] == (4, 0)
-    assert events_named(events, "mirror.cache_replaced") == [
+    assert events_named(events, "prepare.cache_replaced") == [
         {"reason": reason, "log_level": "warning"}
     ]
 
@@ -383,7 +383,7 @@ def test_a_schema_whose_text_is_changed_is_replaced(
     scripted = Scripted()
     with capture_logs() as events:
         assert run(path, scripted, TEXTS)[1:] == (4, 0)
-    assert events_named(events, "mirror.cache_replaced") == [
+    assert events_named(events, "prepare.cache_replaced") == [
         {"reason": reason, "log_level": "warning"}
     ]
 
@@ -425,7 +425,7 @@ def test_damage_found_during_a_run_raises_and_deletes_the_file(
     assert list(path.parent.iterdir()) == []
     with capture_logs() as events:
         assert run(path, Scripted(), TEXTS)[1:] == (4, 0)
-    assert events_named(events, "mirror.cache_replaced") == []
+    assert events_named(events, "prepare.cache_replaced") == []
 
 
 def test_a_write_locked_past_the_wait_during_a_run_raises_and_keeps_the_file(
@@ -455,7 +455,7 @@ def test_a_file_locked_past_the_wait_fails_the_run_and_is_kept(
             run(path, Scripted(), TEXTS[:1])
         waited = time.monotonic() - start
     assert waited >= WAIT_S
-    assert events_named(events, "mirror.cache_replaced") == []
+    assert events_named(events, "prepare.cache_replaced") == []
     assert run(path, Scripted(), TEXTS[:1])[1:] == (0, 1)
 
 
@@ -476,7 +476,7 @@ def test_a_sound_file_in_a_folder_the_run_may_not_write_fails_the_run_and_is_kep
             run(path, Scripted(), TEXTS)
     finally:
         path.parent.chmod(0o755)
-    assert events_named(events, "mirror.cache_replaced") == []
+    assert events_named(events, "prepare.cache_replaced") == []
     assert path.read_bytes() == sound
     assert run(path, Scripted(), TEXTS)[1:] == (0, 4)
 

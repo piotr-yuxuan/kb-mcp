@@ -404,7 +404,7 @@ class Settings(BaseSettings):
 
     @property
     def runs(self) -> Path:
-        """The reports of download runs, which hold counts and paths, never content."""
+        """The reports of each source's fetch, which hold counts and paths, never content."""
         return self.data_dir / "runs"
 
     @property

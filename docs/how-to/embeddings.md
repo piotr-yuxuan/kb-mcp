@@ -3,7 +3,7 @@
 How to give search its sense of meaning: an embedding model served on this machine, by
 Ollama or by any other OpenAI-compatible API, and the settings that choose the model,
 the endpoint and the chunking; or how to search by words alone. The
-[coding agents](agents.md) guide links here. What `index` does with the vectors is in
+[coding agents](agents.md) guide links here. What `embed` does with the vectors is in
 [the internals](../explanation/internals.md), and why the program asks a server rather
 than run a model, in [the trade-offs](../explanation/trade-offs.md).
 
@@ -11,14 +11,15 @@ The setting `search_mode` says how `search` and `ask` rank:
 
 | `search_mode` | Ranks by | Needs |
 |---|---|---|
-| `hybrid`, the default | words and meaning, fused | an embedding endpoint, for `index` and the server |
+| `hybrid`, the default | words and meaning, fused | an embedding endpoint, for `embed` and the server |
 | `semantic` | meaning alone | the same |
 | `lexical` | words alone | nothing more |
 
-So by default `index` and the server ask an embedding model. This program runs none
-itself: it asks any OpenAI-compatible embeddings API, by default Ollama at
-`http://127.0.0.1:11434/v1`. Without one, `index` stops and names
-`search_mode = "lexical"`, and the server answers by words, saying why.
+So `embed`, whatever the mode, and by default the server ask an embedding model. This
+program runs none itself: it asks any OpenAI-compatible embeddings API, by default Ollama
+at `http://127.0.0.1:11434/v1`. Without one, `embed` stops and names `kb-mcp index`, which
+builds the index by words alone, asking no endpoint, and the server answers by words,
+saying why.
 
 Hybrid search over windows is the default by the maintainer's choice
 ([plan 025](../work/changelog/025-windows-and-hybrid.md)): on plan 002's sandbox
@@ -51,10 +52,10 @@ downloads a model.
 ## 3. Build the index
 
 ```bash
-kb-mcp index
+kb-mcp embed
 ```
 
-The first `index` with a model embeds every piece of the mirror and keeps the vectors in
+The first `embed` embeds every piece of the mirror and keeps the vectors in
 `<data>/vectors.sqlite`, so later builds embed only the texts that changed. A running
 server reads the new index from its next call on.
 
@@ -63,24 +64,25 @@ pause waits for it to load; `OLLAMA_KEEP_ALIVE` (for instance `1h`) keeps it lon
 
 ## After pulling new weights
 
-Run `index` again after `ollama pull` of a new version of the model: its vectors change.
+Run `embed` again after `ollama pull` of a new version of the model: its vectors change.
 Until then, a server started after the pull says that the index is stale and answers by
 words, while one already running goes on with the new weights against the old vectors
 until the index is rebuilt.
 
 An index built by an earlier version of this program names a model of its own, which
-Ollama does not have: run `index`, rather than pull that model. A folder
+Ollama does not have: run `embed`, rather than pull that model. A folder
 `<data>/models/` left by an earlier version can be deleted.
 
 ## After upgrading to hybrid search over windows
 
-The first `index` after upgrading to these defaults embeds every window of the mirror,
+The first `embed` after upgrading to these defaults embeds every window of the mirror,
 since vectors are kept by text and no window's text is a section's (unless an `eval`
 of `windows` with the same model embedded them already): on the sandbox, 1.11 times
 the tokens of a first build by sections, with Ollama running throughout. The prune
 after it deletes the sections' vectors from `<data>/vectors.sqlite`, unless an
 evaluation's index cut by `sections` keeps them, so that going back embeds them again.
-To keep an earlier version's behaviour instead, set either of these, then run `index`:
+To keep an earlier version's behaviour instead, set either of these, then run `index`
+for the first or `embed` for the second:
 
 ```toml
 search_mode = "lexical"  # words alone, as earlier versions searched: no model
@@ -101,7 +103,7 @@ quarter of the compute.
 model = "embeddinggemma:300m"
 ```
 
-Then pull it, check it and run `index`, which embeds every piece again for the new
+Then pull it, check it and run `embed`, which embeds every piece again for the new
 model. Any model the endpoint serves can be named. The prefixes of `qwen3-embedding`,
 `embeddinggemma`, `embeddinggemma-2`, `nomic-embed-text`, `nomic-embed-text-v2-moe` and
 `snowflake-arctic-embed2` are known; texts for any other model are embedded as they are.
@@ -121,7 +123,7 @@ If the server needs a key, put it in the environment variable
 `KB_MCP_EMBEDDING_API_KEY`; the settings file refuses it. Such a server
 lists no digest of its models as Ollama does, so the vectors follow the model's name
 alone: after changing the weights behind a name, delete `<data>/vectors.sqlite` and run
-`index`.
+`embed`.
 
 ## Reach an endpoint off this machine
 
@@ -131,7 +133,7 @@ machine: a literal loopback address, `127.0.0.1` or `[::1]`, not a name, not eve
 command is given `--allow-remote-embeddings`, on every run, and then only over https:
 
 ```bash
-kb-mcp index --allow-remote-embeddings
+kb-mcp embed --allow-remote-embeddings
 ```
 
 For the MCP server, that means registering it with the flag:
@@ -161,21 +163,24 @@ edit re-embeds more windows than sections, as later windows shift.
 chunking = "sections"
 ```
 
-Run `index` after changing it: a chunking cuts other texts, so the first build embeds
+Run `embed` after changing it: a chunking cuts other texts, so the first build embeds
 every piece again. `search`, `ask` and `status` follow the index, whatever the setting
 says.
 
 ## Search by words alone
 
+Stop at `index`, which asks no endpoint, whatever the mode; `embed` does ask, whatever the
+mode. Then tell the server not to ask either:
+
 ```toml
 search_mode = "lexical"
 ```
 
-Then neither `index` nor the server asks any endpoint, and the index holds no vectors.
+Then the index holds no vectors, and nothing asks any endpoint.
 
 ## When the endpoint does not answer
 
-`index` stops and leaves the index in place, with its vectors. The server answers by
+`embed` stops and leaves the index in place, with its vectors. The server answers by
 words, saying why, and tries the endpoint again 30 seconds later.
 
 ## Measure on your own content

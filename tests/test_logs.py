@@ -114,13 +114,13 @@ def test_events_and_libraries_records_share_the_file_from_debug(tmp_path: Path) 
     """Each line: timestamp in UTC, level, event, logger, run, command, and the event's own."""
     before = datetime.now(UTC)
     with log_file(tmp_path, "download", RUN, NOW, COMMANDS) as path:
-        structlog.get_logger().debug("download.document", id="65601", title="Plan")
+        structlog.get_logger().debug("fetch.document", id="65601", title="Plan")
         logging.getLogger("some.library").info("connected to %s", "the site")
     after = datetime.now(UTC)
     event, record = lines(path)
     assert {key: value for key, value in event.items() if key != "timestamp"} == {
         "level": "debug",
-        "event": "download.document",
+        "event": "fetch.document",
         "logger": __name__,
         "run": RUN,
         "command": "download",
@@ -154,8 +154,8 @@ def test_a_line_within_a_span_carries_its_ids_in_hex_and_one_outside_none(
     """As OTLP's JSON writes them: the trace's in 32 hex digits, the span's in 16."""
     tracer = TracerProvider(shutdown_on_exit=False).get_tracer(__name__)
     with log_file(tmp_path, "download", RUN, NOW, COMMANDS) as path:
-        with tracer.start_as_current_span("download.document") as span:
-            structlog.get_logger().debug("download.document", id="65601")
+        with tracer.start_as_current_span("fetch.document") as span:
+            structlog.get_logger().debug("fetch.document", id="65601")
             logging.getLogger("some.library").info("connected")
         structlog.get_logger().info("run.end")
     inside_event, inside_record, outside = lines(path)
@@ -282,7 +282,7 @@ def test_past_the_cap_a_line_log_capped_ends_the_file(
     monkeypatch.setattr(logs, "CAP", cap)
     with log_file(tmp_path, "download", RUN, NOW, COMMANDS) as path:
         for count in range(1000):
-            structlog.get_logger().debug("download.document", count=f"{count:03}")
+            structlog.get_logger().debug("fetch.document", count=f"{count:03}")
         logging.getLogger("some.library").warning("after the cap")
     written = path.read_text(encoding="utf-8").splitlines()
     *documents, capped = map(json.loads, written)

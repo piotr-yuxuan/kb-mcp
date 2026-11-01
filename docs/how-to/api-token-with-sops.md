@@ -1,7 +1,7 @@
 # Sign in with an API token kept by sops
 
-How to let `download` and `doctor` sign in with an Atlassian API token, rather than the
-browser session that `login` saves, with the token encrypted at rest by
+How to let `fetch` and `doctor` sign in with an Atlassian API token, rather than the
+browser session that `login atlassian` saves, with the token encrypted at rest by
 [sops](https://getsops.io) and given to the command in its environment alone. It suits a
 machine where Chrome cannot open, or a test site with an account of its own.
 
@@ -13,14 +13,15 @@ machine where Chrome cannot open, or a test site with an account of its own.
   and no flag takes it, so that it never reaches the file, your shell's history or a
   command line. The email comes from `KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL` or the settings
   file, the site from `KB_MCP_ACCOUNTS__ATLASSIAN__SITE`, the settings file or `--site`.
-- With a token set, `download`, its dry run and `doctor` sign in with it, as Basic auth
+- With a token set, `fetch`, its dry run and `doctor` sign in with it, as Basic auth
   with the email, sent to the site's host alone, never to another host that a redirect
   leads to. Nothing under `<data>/session/` is read or written. The summary before a
-  download says `sign-in: an API token`; `check` says `accounts.atlassian.api_token: set`,
+  fetch says `sign-in: an API token`; `check` says `accounts.atlassian.api_token: set`,
   never the value.
 - A token without its email is refused before anything is asked (exit 2); a token that
-  the site refuses stops the run (exit 3), naming the two variables to check. `login`
-  always signs in in the browser, and reports a token and an email as ignored.
+  the site refuses stops the run (exit 3), naming the two variables to check.
+  `login atlassian` always signs in in the browser, and reports a token and an email as
+  ignored.
 - Generic names such as `ATLASSIAN_API_TOKEN` are never read, so that a token exported
   for another tool does not change how the command signs in.
 
@@ -67,25 +68,27 @@ sops exec-env ~/secrets/atlassian.sops.json 'KB_MCP_ACCOUNTS__ATLASSIAN__SITE="$
 ```
 
 It says `sign-in: an API token`, then `confluence: signed in` and `jira: signed in`.
-Then download:
+Then fetch:
 
 ```bash
 sops exec-env ~/secrets/atlassian.sops.json 'KB_MCP_ACCOUNTS__ATLASSIAN__SITE="$ATLASSIAN_SITE" \
   KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL="$ATLASSIAN_EMAIL" \
   KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN="$ATLASSIAN_API_TOKEN" \
-  kb-mcp download --yes --space ENG --project PLAT --since 7d'
+  kb-mcp fetch --yes --space ENG --project PLAT --since 7d'
 ```
 
 The single quotes keep your shell from expanding anything: sops runs the quoted text
 with `/bin/sh -c`, whose `NAME="$VALUE"` words set the command's environment. So only
 the variables' names appear on a command line or in your history, never their values.
 
-sops gives the command your terminal, so without `--yes` the download shows its summary
+sops gives the command your terminal, so without `--yes` the fetch shows its summary
 and asks, as it does outside sops. `--yes` runs it without the question, as a script
 needs: where no terminal can answer, a command that writes is refused without it
-(exit 2). `--dry-run` says what the download would fetch, and fetches nothing.
+(exit 2). `--dry-run` says what it would fetch, and fetches nothing.
 
-`mirror` and `index` read only the data directory, and need no token.
+`prepare`, `index` and `embed` reach no site, and need no token. `prepare` reads the site's
+address all the same, for each document's `url` and the links between pages: keep it in the
+settings file, or give it by `--site`.
 
 ## Revoke the token
 

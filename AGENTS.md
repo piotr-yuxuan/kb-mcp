@@ -46,7 +46,7 @@ sops exec-env <primary-checkout>/atlassian-test-credientials.sops.json \
   'KB_MCP_ACCOUNTS__ATLASSIAN__SITE="$ATLASSIAN_SITE" \
   KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL="$ATLASSIAN_EMAIL" \
   KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN="$ATLASSIAN_API_TOKEN" \
-  uv run kb-mcp download --yes --config <scratch>/none.toml \
+  uv run kb-mcp fetch --yes --config <scratch>/none.toml \
   --data-dir <scratch>/data --space MFS --project PRB --since 7d'
 ```
 

@@ -12,20 +12,15 @@ from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
 from kb_mcp.kernel.endpoint import EMBEDDINGS, refused_endpoint
 from kb_mcp.kernel.names import MODEL_NAME
 from kb_mcp.kernel.output import FORMATS, LEVELS, SUMMARIES
-from kb_mcp.sources.atlassian.declared import API_TOKEN, CONFLUENCE, EMAIL, JIRA, SITE
+from kb_mcp.sources.atlassian.declared import SITE
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Mapping
 
-    from kb_mcp.cli.domain.command import Refused
     from kb_mcp.kernel.output import Level
-    from kb_mcp.sources.declaration import Declared, Option
 
 # The level of each -v given, from none: warning, then info, then debug.
 VERBOSITY: tuple[Level, ...] = ("warning", "info", "debug")
-# The Atlassian account's settings of a sign-in by API token, which the commands that
-# reach its site read beside the site: its email and the token.
-SIGN_IN = (EMAIL, API_TOKEN)
 
 
 class Verbose(argparse.Action):
@@ -117,25 +112,6 @@ def add_settings_options(
     return (config, data_dir, site), {"data_dir": "data_dir", "site": SITE}
 
 
-def add_option(
-    parser: argparse.ArgumentParser, option: Option, default: object = None
-) -> argparse.Action:
-    """Add an option that a source declares, as ``given`` reads it; return its action.
-
-    Its value is kept under its flag itself, so that no flag that a source declares takes
-    a name that the program holds, such as ``sources``; help names its value as it would
-    by the flag alone.
-    """
-    return parser.add_argument(
-        option.flag,
-        dest=option.flag,
-        metavar=option.flag.lstrip("-").replace("-", "_").upper(),
-        type=option.type,
-        default=default,
-        help=option.help,
-    )
-
-
 def add_embedding_options(parser: argparse.ArgumentParser) -> argparse.Action:
     """Add --allow-remote-embeddings, never a setting, so that it is given on every run.
 
@@ -154,26 +130,6 @@ def model_name(value: str) -> str:
         message = "the name of an embedding model, such as qwen3-embedding:0.6b"
         raise argparse.ArgumentTypeError(message)
     return value
-
-
-def of_atlassian(sources: Sequence[Declared], refused: Refused | None = None) -> Refused | None:
-    """Give what a command of the Atlassian package refuses, under this registry.
-
-    ``download``, ``mirror``, ``doctor`` and ``login`` read that package's settings by
-    name until plan 031 removes or moves them, so a registry without both its sources is
-    refused before they read one; any other, as ``refused`` says.
-    """
-    if {CONFLUENCE.name, JIRA.name} <= {declared.name for declared in sources}:
-        return refused
-    return lambda _arguments, _settings: (
-        f"{CONFLUENCE.name} and {JIRA.name}: not both in the registry, which this command reads"
-    )
-
-
-def signed_in_by(_arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
-    """Say how the run signs in: by the API token when one is set, else by the saved session."""
-    by = "an API token" if settings[API_TOKEN] is not None else "the session saved by login"
-    return (f"sign-in: {by}",)
 
 
 def endpoint_elsewhere(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:

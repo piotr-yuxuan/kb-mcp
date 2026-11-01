@@ -17,10 +17,10 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from kb_mcp.cli.commands import login as login_command
 from kb_mcp.cli.main import main
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from tests.endpoint import Scripted, serving
 from tests.test_cli import logged_as, the_log_file
 from tests.test_download import SITE, FakeSite
@@ -76,9 +76,9 @@ def served(
 
 
 def download(home: Path, *more: str) -> list[str]:
-    """Give the arguments of a download of the scripted site's space and project."""
+    """Give the arguments of a fetch of the scripted site's space and project."""
     return [
-        "download",
+        "fetch",
         "--yes",
         "--config",
         str(home / "none.toml"),
@@ -127,7 +127,7 @@ def test_a_run_with_the_token_leaves_a_saved_session_as_it_was(
 
 
 @pytest.mark.parametrize("dry_run", [[], ["--dry-run"]])
-def test_a_download_refused_by_the_site_exits_3_naming_the_variables(
+def test_a_fetch_refused_by_the_site_exits_3_naming_the_variables(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], dry_run: list[str]
 ) -> None:
     """A 401: the email and the token to check, by their variables, in an error.
@@ -137,9 +137,9 @@ def test_a_download_refused_by_the_site_exits_3_naming_the_variables(
     served(monkeypatch, lambda _: httpx.Response(401))
     assert main(download(home, *dry_run)) == SIGN_IN_NEEDED
     err = capsys.readouterr().err
-    assert ("error", "download.sign_in_needed") in said(err)
+    assert ("error", "fetch.sign_in_needed") in said(err)
     assert f"check {EMAIL} and {CREDENTIAL}" in err
-    needed = logged_as(home, "download.sign_in_needed")
+    needed = logged_as(home, "fetch.sign_in_needed")
     assert [(each["source"], each["hint"]) for each in needed] == [
         ("confluence", f"check {EMAIL} and {CREDENTIAL}"),
         ("jira", f"check {EMAIL} and {CREDENTIAL}"),
@@ -176,7 +176,7 @@ def test_the_doctor_refused_by_the_site_exits_3_naming_the_variables(
 def test_the_doctor_refuses_a_token_without_its_email_and_asks_nothing(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Exit 2 naming the email, as a download does, before any request: one error alone."""
+    """Exit 2 naming the email, as a fetch does, before any request: one error alone."""
     monkeypatch.delenv(EMAIL)
     sent = served(monkeypatch, FakeSite().handle)
     assert main(["doctor", "--config", str(home / "none.toml"), "--site", SITE]) == REFUSED
@@ -196,9 +196,9 @@ def test_login_with_a_token_signs_in_in_the_browser(
     if email is None:
         monkeypatch.delenv(EMAIL)
     signed_in: list[str] = []
-    monkeypatch.setattr(login_command, "login", lambda _, site, *__, **___: signed_in.append(site))
+    monkeypatch.setattr(login_module, "login", lambda _, site, *__, **___: signed_in.append(site))
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE]
-    assert main(["login", *options]) == 0
+    assert main(["login", "atlassian", *options]) == 0
     assert signed_in == [SITE]
     ignored = f"ignored: accounts.atlassian.api_token ({CREDENTIAL}): login signs in in a browser\n"
     assert ignored in capsys.readouterr().err
@@ -237,7 +237,7 @@ def test_check_shows_no_secret_in_any_format_or_summary(
         (lambda _: httpx.Response(401), ["--summary", "detailed"]),
     ],
 )
-def test_a_download_shows_no_secret_nor_writes_one_in_its_report(
+def test_a_fetch_shows_no_secret_nor_writes_one_in_its_report(
     home: Path,
     monkeypatch: MonkeyPatch,
     capsys: CaptureFixture[str],
@@ -249,7 +249,7 @@ def test_a_download_shows_no_secret_nor_writes_one_in_its_report(
     served(monkeypatch, answer)
     main(download(home, *more))
     out, err = capsys.readouterr()
-    assert "kb-mcp download" in err
+    assert "kb-mcp fetch" in err
     assert shown(out + err) == []
     reports = list((home / "kb-mcp" / "runs").glob("*.json"))
     assert all(shown(report.read_text("utf-8")) == [] for report in reports)
@@ -281,7 +281,7 @@ def test_an_index_that_fails_to_embed_shows_no_key(
     options = ["--yes", "--config", str(home / "none.toml"), "--data-dir", str(home / "data")]
     with serving(Scripted(models={})) as url:
         monkeypatch.setenv("KB_MCP_EMBEDDING_URL", url)
-        assert main(["index", *options, "--summary", "detailed"]) == 1
+        assert main(["embed", *options, "--summary", "detailed"]) == 1
     out, err = capsys.readouterr()
     assert "embedding_api_key: set" in err
     assert ("error", "index.not_built") in said(err)

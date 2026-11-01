@@ -68,27 +68,21 @@ whatever sets the endpoint.
 ## 3. Read the dashboards
 
 Under Dashboards, the folder `kb-mcp` holds an overview and one
-dashboard each for `download`, `mirror`, `index`, `serve`, `eval`, `eval-agents` and
-`sync`, read-only, from `deploy/lgtm/dashboards/`:
+dashboard each for `fetch`, `prepare`, `index`, `embed`, `serve`, `eval` and
+`eval-agents`, read-only, from `deploy/lgtm/dashboards/`:
 
 - **Overview**: the runs of each command, those that failed by their exit status, the
   time spent, the requests to the site by status, the warnings and errors of every run
   from the logs, and the runs as traces.
-- **download, mirror, index, eval**: over the last 24 hours, the runs, the time spent,
-  the documents, files, bytes or pieces by outcome, the time of requests, embeddings or
-  conversions at the 95th percentile, then the runs' warnings and errors and their
-  traces. Each panel sums each run's last value, so a run counts once, whenever it
-  ended.
+- **fetch, prepare, index, embed, eval**: over the last 24 hours, the runs, the time spent,
+  the documents, files, bytes or pieces by outcome, the work log's documents by kind, the
+  time of requests, embeddings or conversions at the 95th percentile, then the runs'
+  warnings and errors and their traces, with each source of a fetch or a prepare as a
+  span. Each panel sums each run's last value, so a run counts once, whenever it ended.
 - **eval-agents**: over the last 24 hours, the steps run, the agents' calls through the
   bridge by surface and tool, those that failed or timed out, the tokens handed over
   and the calls' time by surface, the runs that `grade` judged by surface and outcome,
   each `grade` counting every run again, then the errors and the steps as traces.
-- **sync**: over the last 24 hours, the runs, by exit status too, the time spent, what
-  each step counted (the download's documents and files, the mirror's documents, the
-  work log's by kind, the index's files), the work log's conversion time at the 95th
-  percentile, then the runs' warnings and errors, their traces, and each step as a span.
-  The dashboards of download, mirror and index keep to their own commands' runs: a
-  sync's download, mirror and index count on sync's.
 - **serve**: over the last hour, rates: tool calls per second by tool, their time and
   the answers' size at the 95th percentile, the searches that fell back to words, the
   queries' embedding time, then the warnings and the calls as traces.
@@ -98,16 +92,16 @@ sound run. Each panel opens its query in Explore, under its menu.
 
 ## 4. Search the traces in Tempo
 
-A run is one trace, named after its command; each document that `download` fetches is a
+A run is one trace, named after its command; each document that `fetch` fetches is a
 trace of its own, linked to the run's, and each message of `serve`'s protocol is one
 too. In Explore, choose the source `tempo` and TraceQL; for instance:
 
 | To find | TraceQL |
 |---|---|
-| The runs of a command | `{ resource.service.name = "kb-mcp" && span.kb_mcp.command = "download" }` |
+| The runs of a command | `{ resource.service.name = "kb-mcp" && span.kb_mcp.command = "fetch" }` |
 | The runs that failed | `{ span.kb_mcp.exit_status != 0 }` |
 | One run, by the `run` of its log file | `{ resource.service.instance.id = "<run>" }` |
-| The issues that a download fetched | `{ name = "download.document" && span.kb_mcp.document.kind = "jira issues" }` |
+| The issues that a fetch fetched | `{ name = "fetch.document" && span.kb_mcp.document.kind = "jira issues" }` |
 | The requests refused or failed | `{ span.http.response.status_code >= 400 }` |
 | The slow requests and embeddings | `{ kind = client && duration > 500ms }` |
 | The searches that fell back to words | `{ span.mcp.method.name = "tools/call" && span.kb_mcp.fallback = true }` |
@@ -119,7 +113,7 @@ file in a span carries its `trace_id`, which Tempo's search by trace id opens.
 
 ## 5. Check the dashboards
 
-Once the container has received a run of each command, `sync` included, with a space or
+Once the container has received a run of each command, with a space or
 a project and a work log configured, the opt-in test asks Grafana for
 every dashboard of the folder and every query of their panels: each must answer without
 error, and each panel but those of failures must have data; Loki must hold the runs'

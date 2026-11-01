@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import threading
 import time
@@ -25,17 +26,18 @@ import httpx
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
-from kb_mcp.cli.commands import login as login_command
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
+from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError, PandocMissingError
 from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from kb_mcp.sources.atlassian.fetch.domain.content import Page
+from kb_mcp.sources.worklog.prepare.app import preparer as worklog_preparer
 from tests.collector import Collector, collecting
 from tests.composed import MODEL
 from tests.endpoint import URL, Reranks, Scripted, nothing_listening, serving, tiny
@@ -45,9 +47,10 @@ from tests.samples import v2_space
 from tests.test_download import SITE, FakeSite
 from tests.test_evaluate import GOLDEN
 from tests.test_mirror import FETCHED, SPACE_ID, listing_page, page_responses
-from tests.test_mirror_command import fake_pandoc
+from tests.test_prepare_command import fake_pandoc
 from tests.test_serve import talk
 from tests.test_settings import user_log_folder
+from tests.test_worklog_mirror import FIXTURE as WORKLOG_FIXTURE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -109,10 +112,10 @@ def signed_in(
 def download(data: Path, *options: str) -> list[str]:
     """Give the arguments of a download of the site into ``data``, without settings file."""
     settings = ("--config", str(data.parent / "none.toml"), "--data-dir", str(data))
-    return ["download", "--yes", *settings, "--site", SITE, *options]
+    return ["fetch", "--yes", *settings, "--site", SITE, *options]
 
 
-def test_download_records_as_documented(
+def test_fetch_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """Fetched, failed, unread, skipped, retried; refused, busy, interrupted, signed out.
@@ -128,32 +131,32 @@ def test_download_records_as_documented(
     data = tmp_path / "data"
     fake = FakeSite(changed_labels=True, failing_files=1)
     chosen = signed_in(monkeypatch, fake.handle, data)
-    with emitted.gathering(telemetry, "download"):
+    with emitted.gathering(telemetry, "fetch"):
         whole = download(data, "--space", "MFS", "--project", "PRB", *since)
         assert main(whole) == ExitStatus.FAILED
         assert main(download(data, "--space", "MFS", "--project", "PRB")) == ExitStatus.FAILED
     signed_in(monkeypatch, FakeSite(pages_fail=True).handle, tmp_path / "retried")
-    with emitted.gathering(telemetry, "download"):
+    with emitted.gathering(telemetry, "fetch"):
         assert main(download(tmp_path / "retried", "--space", "MFS", *since)) == ExitStatus.FAILED
     signed_in(monkeypatch, FakeSite(spaces=[]).handle, data)
-    with emitted.gathering(telemetry, "download"):
+    with emitted.gathering(telemetry, "fetch"):
         assert main(download(data, "--space", "NOPE", *since)) == ExitStatus.FAILED
-    with emitted.gathering(telemetry, "download"):
+    with emitted.gathering(telemetry, "fetch"):
         backwards = ("--since", "2026-10-22", "--until", "2026-10-01")
         assert main(download(data, "--space", "MFS", *backwards)) == ExitStatus.REFUSED
-    with emitted.gathering(telemetry, "download"), RawStore(chosen.raw).writing():
+    with emitted.gathering(telemetry, "fetch"), RawStore(chosen.raw).writing():
         assert main(download(data, "--space", "MFS", *since)) == ExitStatus.FAILED
 
     def interrupted(_: float) -> None:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(time, "sleep", interrupted)
-    with emitted.gathering(telemetry, "download"):
+    with emitted.gathering(telemetry, "fetch"):
         assert main(download(data, "--space", "MFS", *since)) == ExitStatus.INTERRUPTED
     (chosen.session / COOKIES).unlink()
-    with emitted.gathering(telemetry, "download"):
+    with emitted.gathering(telemetry, "fetch"):
         assert main(download(data, "--space", "MFS", *since)) == ExitStatus.SIGN_IN_AGAIN
-    assert undocumented("download", emitted) == []
+    assert undocumented("fetch", emitted) == []
 
 
 def test_a_run_s_trace_keeps_its_size_each_document_a_trace_linked_to_it(
@@ -169,10 +172,10 @@ def test_a_run_s_trace_keeps_its_size_each_document_a_trace_linked_to_it(
         data = tmp_path / str(pages)
         signed_in(monkeypatch, FakeSite(many_pages=pages).handle, data)
         emitted = Emitted()
-        with emitted.gathering(telemetry, "download"):
+        with emitted.gathering(telemetry, "fetch"):
             assert main(download(data, "--space", "MFS", "--since", "2026-10-02")) == 0
-        (root,) = (span for span in emitted.spans if span.name == "download")
-        fetched = [span for span in emitted.spans if span.name == "download.document"]
+        (root,) = (span for span in emitted.spans if span.name == "fetch")
+        fetched = [span for span in emitted.spans if span.name == "fetch.document"]
         assert len(fetched) == pages + 1
         for document in fetched:
             assert (document.parent, document.trace_id != root.trace_id) == (0, True)
@@ -182,16 +185,11 @@ def test_a_run_s_trace_keeps_its_size_each_document_a_trace_linked_to_it(
     assert three == thirty
 
 
-def test_mirror_records_as_documented(
-    telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
-) -> None:
-    """Built, failed, unplaced, with a damaged cache; then pandoc gone once the run began.
+def a_store_with_a_page_of_each_ending(data: Path) -> None:
+    """Store a page to build, one that pandoc fails on, and one whose space is not listed.
 
-    A space lists a page, built, and one that pandoc fails on; a third page's space is
-    not listed. The pandoc on PATH passes its input through, unless it holds BREAK. The
-    cache of conversions is random bytes before the first run, which replaces it.
+    The cache of conversions is random bytes, which the first run replaces.
     """
-    data = tmp_path / "data"
     store = RawStore(data / "raw")
     listed = [listing_page("100", "Home", None, None), listing_page("101", "Broken", None, None)]
     with store.writing():
@@ -201,11 +199,23 @@ def test_mirror_records_as_documented(
         elsewhere = page_responses("102", "Elsewhere", 1, "<p>Away.</p>", [], spaceId="999")
         store.put(Page, elsewhere, FETCHED, {})
     (data / "conversions.sqlite").write_bytes(hashlib.shake_256(b"cache").digest(8192))
+
+
+def test_prepare_records_as_documented(
+    telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """Built, failed, unplaced, with a damaged cache; then pandoc gone once the run began.
+
+    The pandoc on PATH passes its input through, unless it holds BREAK. Then the work log,
+    by the real pandoc: whole; a dry run; a problem and two transcripts of one id; a pandoc
+    that gives no version; Ctrl-C; a folder that is none.
+    """
+    data = tmp_path / "data"
+    a_store_with_a_page_of_each_ending(data)
     script = 'input=$(cat); case "$input" in *BREAK*) exit 3;; esac; printf "%s" "$input"'
     folder = fake_pandoc(tmp_path / "bin", script)
-    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
     arguments = [
-        "mirror",
+        "prepare",
         "--yes",
         "--config",
         str(tmp_path / "none.toml"),
@@ -213,35 +223,95 @@ def test_mirror_records_as_documented(
         str(data),
     ]
     emitted = Emitted()
-    with emitted.gathering(telemetry, "mirror"):
-        assert main(arguments) == ExitStatus.FAILED
+    with monkeypatch.context() as patch:
+        patch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+        with emitted.gathering(telemetry, "prepare"):
+            assert main(arguments) == ExitStatus.FAILED
 
-    def gone() -> Pandoc:
-        message = "pandoc: not found on PATH"
-        raise PandocMissingError(message)
+        def gone() -> Pandoc:
+            message = "pandoc: not found on PATH"
+            raise PandocMissingError(message)
 
-    monkeypatch.setattr(Pandoc, "find", gone)
-    with emitted.gathering(telemetry, "mirror"):
-        assert main(arguments) == ExitStatus.FAILED
-    assert undocumented("mirror", emitted) == []
+        patch.setattr(Pandoc, "find", gone)
+        with emitted.gathering(telemetry, "prepare"):
+            assert main(arguments) == ExitStatus.FAILED
+    worklog = tmp_path / "todo"
+    shutil.copytree(WORKLOG_FIXTURE, worklog)
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(worklog))
+    worklog_alone = [*arguments, "worklog"]
+    with emitted.gathering(telemetry, "prepare"):
+        assert main(worklog_alone) == ExitStatus.OK
+    with emitted.gathering(telemetry, "prepare"):
+        assert main([*worklog_alone, "--dry-run"]) == ExitStatus.OK
+    shutil.copytree(worklog / "transcripts/current", worklog / "transcripts/archive/2026/x")
+    (worklog / "transcripts/misc/a.org").write_bytes(b"* Caf\xe9\n")
+    with emitted.gathering(telemetry, "prepare"):
+        assert main(worklog_alone) == ExitStatus.FAILED
+
+    def no_version(_: Pandoc) -> str:
+        message = "pandoc: exit status 9"
+        raise PandocFailedError(message)
+
+    def stopped(*_: object, **__: object) -> None:
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Pandoc, "org_converter", no_version)
+        with emitted.gathering(telemetry, "prepare"):
+            assert main(worklog_alone) == ExitStatus.FAILED
+    with monkeypatch.context() as patch:
+        patch.setattr(worklog_preparer, "mirror_worklog", stopped)
+        with emitted.gathering(telemetry, "prepare"):
+            assert main(worklog_alone) == ExitStatus.INTERRUPTED
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(tmp_path / "absent"))
+    with emitted.gathering(telemetry, "prepare"):
+        assert main(worklog_alone) == ExitStatus.REFUSED
+    assert undocumented("prepare", emitted) == []
 
 
-def by_meaning(data: Path, url: str, mode: str = "hybrid") -> list[str]:
-    """Write settings naming the tiny model at ``url``, in ``mode``; give the options to them."""
+def by_meaning(data: Path, url: str) -> list[str]:
+    """Write settings naming the tiny model at ``url``; give the options to them."""
     settings = data.parent / "config.toml"
     settings.write_text(
-        f'model = "tiny"\nembedding_url = {json.dumps(url)}\nsearch_mode = "{mode}"\n',
+        f'model = "tiny"\nembedding_url = {json.dumps(url)}\n',
         encoding="utf-8",
     )
     return ["--config", str(settings), "--data-dir", str(data)]
 
 
-def test_index_records_as_documented(
+def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None:
+    """By words alone, in the hybrid mode too: a file skipped; whole; then no mirror.
+
+    The mirror holds a page, one with a front matter refused, and the people of PERSONS,
+    two of whose names could be several persons, with an alias whose key none holds. An
+    address off this machine, in the settings, is never asked.
+    """
+    data = tmp_path / "data"
+    fillers(data / "docs", 5)
+    for front in PERSONS:
+        write(data / "docs", front)
+    (data / "aliases.toml").write_text('"Jo Placeholder" = "Robin Example"\n', encoding="utf-8")
+    broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
+    broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
+    options = by_meaning(data, "https://embeddings.example/v1")
+    emitted = Emitted()
+    with emitted.gathering(telemetry, "index"):
+        assert main(["index", "--yes", *options]) == ExitStatus.FAILED
+    broken.unlink()
+    with emitted.gathering(telemetry, "index"):
+        assert main(["index", "--yes", *options]) == ExitStatus.OK
+    empty = tmp_path / "empty"
+    with emitted.gathering(telemetry, "index"):
+        assert main(["index", "--yes", *by_meaning(empty, URL)]) == ExitStatus.FAILED
+    assert undocumented("index", emitted) == []
+    assert not any(name.startswith(("http.", "vectors.")) for name in emitted.events)
+    assert not (data / "vectors.sqlite").exists()
+
+
+def test_embed_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """By meaning: a file skipped and a piece refused, during a prune, whole, during a build.
-
-    Then no endpoint, and no mirror.
+    """A file skipped and a piece refused, during a prune, whole, during a build; no endpoint.
 
     The mirror holds a few pages, one with a front matter refused, and one whose second
     section the endpoint refuses to embed, cut by sections; and the people of PERSONS,
@@ -261,10 +331,10 @@ def test_index_records_as_documented(
     broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
     refused = "Rollback\nRelease\nThe deploy of the seller service."
     emitted = Emitted()
-    with serving(Scripted(refused={refused})) as url, emitted.gathering(telemetry, "index"):
-        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
-    with nothing_listening() as url, emitted.gathering(telemetry, "index"):
-        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
+    with serving(Scripted(refused={refused})) as url, emitted.gathering(telemetry, "embed"):
+        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
+    with nothing_listening() as url, emitted.gathering(telemetry, "embed"):
+        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
     taken = threading.Event()
 
     def prune_briefly() -> None:
@@ -278,22 +348,19 @@ def test_index_records_as_documented(
     pruning = threading.Thread(target=prune_briefly)
     pruning.start()
     assert taken.wait(10)
-    with serving(Scripted()) as url, emitted.gathering(telemetry, "index"):
-        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
+    with serving(Scripted()) as url, emitted.gathering(telemetry, "embed"):
+        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
     pruning.join()
     broken.unlink()
-    with serving(Scripted()) as url, emitted.gathering(telemetry, "index"):
-        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
+    with serving(Scripted()) as url, emitted.gathering(telemetry, "embed"):
+        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
     with (
         vector_store.shared(data / "vectors.sqlite"),
         serving(Scripted()) as url,
-        emitted.gathering(telemetry, "index"),
+        emitted.gathering(telemetry, "embed"),
     ):
-        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
-    with emitted.gathering(telemetry, "index"):
-        empty = tmp_path / "empty"
-        assert main(["index", "--yes", *by_meaning(empty, URL, "lexical")]) == ExitStatus.FAILED
-    assert undocumented("index", emitted) == []
+        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
+    assert undocumented("embed", emitted) == []
     assert emitted.events["index.person_ambiguous"] == {"spelling", "people"}
     assert emitted.events["index.alias_unused"] == {"alias", "key", "reason"}
     assert "people" in emitted.events["index.built"]
@@ -449,9 +516,17 @@ def test_login_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """Signed in, then a window closed: the browser is a stand-in, which signs in nowhere."""
-    arguments = ["login", "--yes", "--config", str(tmp_path / "none.toml"), "--site", SITE]
+    arguments = [
+        "login",
+        "atlassian",
+        "--yes",
+        "--config",
+        str(tmp_path / "none.toml"),
+        "--site",
+        SITE,
+    ]
     emitted = Emitted()
-    monkeypatch.setattr(login_command, "login", lambda *_, **__: None)
+    monkeypatch.setattr(login_module, "login", lambda *_, **__: None)
     with emitted.gathering(telemetry, "login"):
         assert main(arguments) == 0
 
@@ -459,7 +534,7 @@ def test_login_records_as_documented(
         message = "the sign-in window was closed"
         raise SignInFailedError(message)
 
-    monkeypatch.setattr(login_command, "login", closed)
+    monkeypatch.setattr(login_module, "login", closed)
     with emitted.gathering(telemetry, "login"):
         assert main(arguments) == ExitStatus.SIGN_IN_AGAIN
     assert undocumented("login", emitted) == []

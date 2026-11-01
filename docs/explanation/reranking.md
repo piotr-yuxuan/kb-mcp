@@ -11,7 +11,7 @@ tells whether to turn it on there, and at which depth.
 
 ## Two ways a model can read a question
 
-An index by meaning holds a vector per piece of each document, made once when `index`
+An index by meaning holds a vector per piece of each document, made once when `embed`
 runs; a search embeds the question alone, about ten words, and finds the nearest
 vectors. The model that made them, a **bi-encoder**, never reads the question and a
 document together: each is reduced to a vector of its own, before the other is known.

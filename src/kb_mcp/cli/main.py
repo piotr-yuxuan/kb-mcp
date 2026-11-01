@@ -32,6 +32,9 @@ if TYPE_CHECKING:
 ENTRY = "kb_mcp.cli.commands._shared"
 # What observes a run: its logs, from the start on stderr, never on stdout.
 OBSERVED = "kb_mcp.observability.app.observed"
+# The commands that plan 031 removed, whose log files, which hold titles and queries, a
+# run still removes once past their 30 days.
+RETIRED = ("download", "mirror", "sync")
 
 
 class Version(argparse.Action):
@@ -61,11 +64,11 @@ def parser(
     """Return the command's parser, of this class, with every subcommand declared.
 
     Each declaration is given the registry, ``sources``, ``SOURCES`` unless a test gives
-    one of its own, as ``sync``'s takes its sources and their options. Its help ends
+    one of its own, as ``fetch``'s takes its sources and their options. Its help ends
     with who asks before acting, the subcommands whose declaration says they write, and
     every exit status with what it means. What it parses holds ``commands``, every
-    subcommand's name, whose old log files a run removes, and ``sources``, the registry,
-    which a run and its declaration's checks read.
+    subcommand's name and each of ``RETIRED``, whose old log files a run removes, and
+    ``sources``, the registry, which a run and its declaration's checks read.
     """
     program = parser_class(
         prog=PROGRAM,
@@ -81,7 +84,9 @@ def parser(
     found = sorted(module.name for module in pkgutil.iter_modules(options.__path__))
     for name in (name for name in found if not name.startswith("_")):
         importlib.import_module(f"{options.__name__}.{name}").register(subparsers, sources)
-    program.set_defaults(commands=frozenset(subparsers.choices), sources=tuple(sources))
+    program.set_defaults(
+        commands=frozenset({*subparsers.choices, *RETIRED}), sources=tuple(sources)
+    )
     writing = ", ".join(
         name
         for name, declared in subparsers.choices.items()

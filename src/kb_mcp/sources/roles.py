@@ -15,6 +15,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Callable, Mapping
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
@@ -31,14 +32,34 @@ if TYPE_CHECKING:
 type Outcome = Literal["done", "failed", "sign in", "not run"]
 
 
+# What a check concludes: all is well, the user must sign in again, or something fails.
+WELL, SIGN_IN, FAILED = "well", "sign in", "failed"
+
+
+class Verdict(Record):
+    """One check: what it looked at, what it found, and what that means."""
+
+    name: str
+    found: str
+    state: str = WELL
+
+
+class SignedIn(Record):
+    """The site signed in to, and the folder that keeps its session."""
+
+    site: str
+    session: Path
+
+
 class Run(Record):
     """What a role runs with: its source, the settings, its tables and options, a dry run.
 
     ``declared`` is the source that it is run for, its name and resource types, which a
     role serving several sources reads; ``table`` is that source's ``[sources.<name>]``,
     ``account`` its account's table, None for a source that signs in with none.
-    ``options`` holds its options' values by flag, None when not given; ``now`` and
-    ``sleep`` are the clock and the pause between requests.
+    ``options`` holds its options' values by flag, None when not given, and nothing for a
+    preparer, a source's options being its fetch's; ``now`` and ``sleep`` are the clock and
+    the pause between requests.
     """
 
     declared: Declared

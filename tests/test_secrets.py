@@ -1,7 +1,7 @@
 """Never logged: no run at debug says or leaves a secret, from the site to the agent (plan 020).
 
-Plan 020's "Never logged". ``sync`` runs against plan 004's scripted site, signed in by
-an API token, then by the session that ``login`` saved; ``index`` against the scripted
+Plan 020's "Never logged". ``fetch`` runs against plan 004's scripted site, signed in by
+an API token, then by the session that ``login`` saved; ``embed`` against the scripted
 embeddings endpoint; a stdio ``serve``, in a fresh interpreter, answers one ``search``
 by meaning. Every run has the token, its account's email and the endpoint's key in its
 environment, at debug, and the session file holds a cookie: each secret a sentinel, and
@@ -9,7 +9,7 @@ each sent where it belongs, so that a run that never used one proves nothing. Th
 and the credential's base64, which the Basic form holds, and the key, which the Bearer
 form holds as it is, are then in no file of the scratch home or the data directory, nor
 on stdout or stderr; the cookie is in the session file alone. Plan 015's
-``tests/test_api_token.py`` holds the same of ``check`` and ``download``, and plan
+``tests/test_api_token.py`` holds the same of ``check`` and ``fetch``, and plan
 016's ``tests/test_telemetry.py`` of the spans, metrics and records exported.
 """
 
@@ -90,10 +90,10 @@ def left(folder: Path) -> dict[Path, bytes]:
 def test_no_run_at_debug_says_or_leaves_a_secret(
     home: Path, tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Sync by the token, then by the session, index, then serve: each secret used, none shown.
+    """Fetch by the token, then by the session, embed, then serve: each secret used, none shown.
 
-    The site's one attached file that fails makes each sync exit 1. The files are read
-    after the first sync too, as the second replaces its run report, both made within
+    The site's one attached file that fails makes each fetch exit 1. The files are read
+    after the first fetch too, as the second replaces its run report, both made within
     one second. The server, at debug too, may reach the endpoint's port alone; what it
     sends on stdout, the protocol, and its stderr, a file, are read as the in-process
     runs' are.
@@ -113,12 +113,13 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
             "utf-8",
         )
         options = ["--config", str(config), "--data-dir", str(data), "-vv"]
-        assert main(["sync", "--yes", "--since", "2026-10-02", *options]) == ExitStatus.FAILED
+        assert main(["fetch", "--yes", "--since", "2026-10-02", *options]) == ExitStatus.FAILED
+        assert main(["prepare", "--yes", *options]) == ExitStatus.OK
         by_token, files_by_token = list(sent), left(tmp_path)
         with monkeypatch.context() as session_alone:
             session_alone.delenv(CREDENTIAL)
-            assert main(["sync", "--yes", *options]) == ExitStatus.FAILED
-        assert main(["index", "--yes", *options]) == ExitStatus.OK
+            assert main(["fetch", "--yes", *options]) == ExitStatus.FAILED
+        assert main(["embed", "--yes", *options]) == ExitStatus.OK
         port = int(url.rpartition(":")[2].partition("/")[0])
         given = {"ports": [port], "limit": 1.0, "report": str(tmp_path / "report.json")}
         command = StdioServerParameters(
@@ -186,7 +187,7 @@ def test_a_setting_refused_with_a_secret_as_its_value_does_not_echo_it(
     config = home.parent / "config.toml"
     config.write_text(written, "utf-8")
     options = ["--config", str(config), "--data-dir", str(home.parent / "data"), "-vv", *flags]
-    assert main(["sync", "--yes", *options]) == ExitStatus.REFUSED
+    assert main(["fetch", "--yes", *options]) == ExitStatus.REFUSED
     out, err = capsys.readouterr()
     assert ("error", "settings.refused") in said(err)
     assert f"{named}: " in err

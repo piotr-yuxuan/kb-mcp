@@ -1,10 +1,10 @@
 """Downloading the documents of spaces and projects updated in a period.
 
 Each space, project, round of probes and merge of users is a span of the run's trace;
-each document fetched is a trace of its own, ``download.document``, linked to the run's,
+each document fetched is a trace of its own, ``fetch.document``, linked to the run's,
 since Tempo drops a trace past 5 MB, which one trace of all a run's requests could pass.
 What is fetched, failed or skipped is counted and logged, as
-``docs/reference/telemetry/download.md`` lists it.
+``docs/reference/telemetry/fetch.md`` lists it.
 """
 
 from __future__ import annotations
@@ -113,13 +113,13 @@ METER = metrics.get_meter(__name__)
 # What a run did, by outcome: documents fetched or failed; files downloaded, failed or
 # skipped; the bytes of the files downloaded.
 DOCUMENTS = METER.create_counter(
-    "kb_mcp.download.documents", unit="{document}", description="Documents fetched, by outcome"
+    "kb_mcp.fetch.documents", unit="{document}", description="Documents fetched, by outcome"
 )
 FILES = METER.create_counter(
-    "kb_mcp.download.files", unit="{file}", description="Attached files, by outcome"
+    "kb_mcp.fetch.files", unit="{file}", description="Attached files, by outcome"
 )
 BYTES = METER.create_counter(
-    "kb_mcp.download.bytes", unit="By", description="Bytes of the attached files downloaded"
+    "kb_mcp.fetch.bytes", unit="By", description="Bytes of the attached files downloaded"
 )
 
 
@@ -267,12 +267,10 @@ class Download:
 
         The task ``listing`` reports the pages of its listings read, and ``fetch_listed``
         the documents. Return whether the space was listed whole. All is the span
-        ``download.space``, an error when the space could not be listed.
+        ``fetch.space``, an error when the space could not be listed.
         """
         key = target.key
-        with TRACER.start_as_current_span(
-            "download.space", attributes={"kb_mcp.target": key}
-        ) as span:
+        with TRACER.start_as_current_span("fetch.space", attributes={"kb_mcp.target": key}) as span:
             try:
                 found = self.collect(confluence_v2.space_request(key), confluence_v2.listing_page)
                 space = confluence_v2.space(Fields(found[0], "space")) if found else None
@@ -337,11 +335,11 @@ class Download:
         pending until then. Raises SignInNeededError when too many answer gone and the
         session no longer holds; when the site does not answer, nothing is believed. The
         task ``probes`` reports a space's probes, each by its document's id; all is the
-        span ``download.probes``.
+        span ``fetch.probes``.
         """
         canary = (confluence_v2.current_user_request(), confluence_v2.signed_in)
         kept = {each.id for each in self.store.spaces() if not isinstance(each, Unreadable)}
-        with TRACER.start_as_current_span("download.probes"):
+        with TRACER.start_as_current_span("fetch.probes"):
             for space_id, (absent, stored, before) in self.absent.items():
                 known = {k: s for k, s in self.tombstones.items() if s.space_id == space_id}
                 # By the tombstones as they stood before this run: those on their way first.
@@ -421,14 +419,14 @@ class Download:
         The task ``listing`` reports the pages of the search read, and ``fetch_listed``
         the issues found. Return whether the search was read whole, each of its entries
         read: an entry that the adapter refuses has no update time for the coverage to
-        stop at, so it holds the project's. All is the span ``download.project``, an error
+        stop at, so it holds the project's. All is the span ``fetch.project``, an error
         when the search could not be read.
         """
         key = target.key
         start = (window.period.start - JQL_MARGIN).date()
         end = (window.period.end + JQL_MARGIN).date()
         attributes = {"kb_mcp.target": key}
-        with TRACER.start_as_current_span("download.project", attributes=attributes) as span:
+        with TRACER.start_as_current_span("fetch.project", attributes=attributes) as span:
             try:
                 with task("listing") as listing:
                     search = jira_v3.search_request(key, start, end)
@@ -450,7 +448,7 @@ class Download:
     def fetch_listed(self, target: Target, documents: Sequence[Listed], window: Window) -> None:
         """Fetch what a target lists in its window and the store lacks; complete what it has.
 
-        ``download.listed`` says at INFO how many documents the target lists, how many are
+        ``fetch.listed`` says at INFO how many documents the target lists, how many are
         in its window, stored already and to fetch, with the window's start and reason.
         The report counts, by kind, those in the window and those stored when --since gave
         the window; else those new or changed since the last fetch. Those stored get the
@@ -467,7 +465,7 @@ class Download:
         for document in in_window:
             (stored if self.store.has(document) else to_fetch).append(document)
         structlog.get_logger().info(
-            "download.listed",
+            "fetch.listed",
             target=str(target),
             listed=len(documents),
             in_window=len(in_window),
@@ -518,7 +516,7 @@ class Download:
 
         It is not when its fetch failed, its snapshot was refused, or a file it keeps
         failed; a plan counts it to fetch, and fails none. The fetch is a trace of its
-        own, ``download.document``, linked to the span of the run's trace current when it
+        own, ``fetch.document``, linked to the span of the run's trace current when it
         begins, saying the document's id and kind; an error when the fetch fails, which
         is a warning, by the document's id.
         """
@@ -527,7 +525,7 @@ class Download:
             self.report.add(f"{what}: to fetch")
             return True
         with TRACER.start_as_current_span(
-            "download.document",
+            "fetch.document",
             context=Context(),  # no parent: the root of a trace of its own
             links=[trace.Link(trace.get_current_span().get_span_context())],
             attributes={"kb_mcp.document.id": document.id, "kb_mcp.document.kind": what},
@@ -543,7 +541,7 @@ class Download:
                 DOCUMENTS.add(1, {"kb_mcp.outcome": "failed"})
                 span.set_status(StatusCode.ERROR, str(error))
                 structlog.get_logger().warning(
-                    "download.document_failed", id=document.id, kind=what, reason=str(error)
+                    "fetch.document_failed", id=document.id, kind=what, reason=str(error)
                 )
                 return False
             self.report.add(f"{what}: fetched")
@@ -555,7 +553,7 @@ class Download:
 
         A snapshot that its adapter refuses is stored all the same, without files: raw
         first, so that a fixed adapter reads it, and a later run downloads its files.
-        Read, its document's title goes on the current span, and in ``download.document``
+        Read, its document's title goes on the current span, and in ``fetch.document``
         at DEBUG; refused, it is a warning, without the id that it would have given. It is
         whole when read, with every file it keeps.
         """
@@ -564,12 +562,12 @@ class Download:
             document = snapshot.document
             trace.get_current_span().set_attribute("kb_mcp.document.title", document.title)
             structlog.get_logger().debug(
-                "download.document", id=document.id, kind=label(kind), title=document.title
+                "fetch.document", id=document.id, kind=label(kind), title=document.title
             )
         except RepresentationError as error:
             self.report.failed(f"{label(kind)} read", error)
             structlog.get_logger().warning(
-                "download.document_unread", kind=label(kind), reason=str(error)
+                "fetch.document_unread", kind=label(kind), reason=str(error)
             )
             snapshot = None
         blobs, whole = self.files(snapshot.attachments) if snapshot else ({}, False)
@@ -615,20 +613,20 @@ class Download:
             if reason is not None:
                 self.report.add(f"files: skipped, {reason}")
                 FILES.add(1, {"kb_mcp.outcome": "skipped"})
-                log.info("download.file_skipped", **named, reason=reason)
+                log.info("fetch.file_skipped", **named, reason=reason)
                 continue
             try:
                 data = self.site.file(attachment.download, self.max_file_bytes)
             except SiteError as error:
                 self.report.failed("files", error)
                 FILES.add(1, {"kb_mcp.outcome": "failed"})
-                log.warning("download.file_failed", **named, reason=str(error))
+                log.warning("fetch.file_failed", **named, reason=str(error))
                 whole = False
                 continue
             if len(data) != attachment.size:  # a proxy's page, say, in the file's place
                 self.report.add("files failed: not the size listed")
                 FILES.add(1, {"kb_mcp.outcome": "failed"})
-                log.warning("download.file_failed", **named, reason="not the size listed")
+                log.warning("fetch.file_failed", **named, reason="not the size listed")
                 whole = False
                 continue
             blobs[attachment.id] = self.store.put_blob(data)
@@ -640,9 +638,9 @@ class Download:
     def users(self) -> None:
         """Merge the names of the Confluence authors seen into the users kept.
 
-        All is the span ``download.users``.
+        All is the span ``fetch.users``.
         """
-        with TRACER.start_as_current_span("download.users"):
+        with TRACER.start_as_current_span("fetch.users"):
             users: list[object] = []
             authors = sorted(self.authors)
             for chunk in batched(authors, confluence_v2.USERS_PER_REQUEST, strict=False):
@@ -870,7 +868,7 @@ def download(
     target listed whole grows as ``Coverage.extended`` rules. The tombstones are
     Confluence's: a fetch of spaces reads them and keeps each as it finds it, even when
     the run stops, and a fetch of projects neither reads nor rewrites them.
-    ``download.coverage`` says at INFO what became of each finished target's coverage,
+    ``fetch.coverage`` says at INFO what became of each finished target's coverage,
     and why it was held, if it was. The status is
     ``OK`` when nothing failed, ``FAILED`` when something did, and ``SIGN_IN_AGAIN`` when
     the sign-in no longer holds or no session was saved. Raises PeriodError when --since
@@ -914,12 +912,10 @@ def download(
                         reason = (
                             {"reason": "apart from what is covered"} if outcome == "held" else {}
                         )
-                        log.info("download.coverage", target=str(target), outcome=outcome, **reason)
+                        log.info("fetch.coverage", target=str(target), outcome=outcome, **reason)
                     for target, why in run.held.items():
                         extensions[target] = "held"
-                        log.info(
-                            "download.coverage", target=str(target), outcome="held", reason=why
-                        )
+                        log.info("fetch.coverage", target=str(target), outcome="held", reason=why)
                     store.put_coverage(coverage)
         except SignInNeededError:  # from the client: no session was saved
             status = ExitStatus.SIGN_IN_AGAIN

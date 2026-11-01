@@ -36,12 +36,12 @@ STORE_SIZE = METER.create_gauge(
 )
 
 type Outcome = Literal["pruned", "deferred", "held back", "failed"]
-DEFERRED = "a build, or another prune, is using the vector store; the next index prunes it"
+DEFERRED = "a build, or another prune, is using the vector store; the next embed prunes it"
 SKIPPED = "the build skipped a file, so the index lacks documents of the mirror"
 NO_DOCUMENT = "the build indexed no document"
 UNREADABLE = (
     "it cannot say which vectors it reads, built by words alone or by an earlier version, or"
-    " damaged: rebuild the index with index, an evaluation's with eval and its model and"
+    " damaged: rebuild the index with embed, an evaluation's with eval and its model and"
     " chunking, or delete it"
 )
 UNLISTED = (

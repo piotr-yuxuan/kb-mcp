@@ -1,4 +1,4 @@
-"""The ``mirror`` command as the user meets it, and pandoc as the mirror runs it."""
+"""The ``prepare`` command as the user meets it, and pandoc as the mirror runs it."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import os
 import shutil
 import stat
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -38,8 +39,6 @@ from tests.test_mirror import (
 from tests.test_observed import said
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
@@ -76,9 +75,9 @@ def fake_pandoc(folder: Path, script: str) -> Path:
 
 
 def arguments(home: Path, *extra: str) -> list[str]:
-    """Return the command line of ``mirror`` with a scratch settings file and data."""
+    """Return the command line of ``prepare`` with a scratch settings file and data."""
     return [
-        "mirror",
+        "prepare",
         "--yes",
         "--config",
         str(home / "none.toml"),
@@ -88,7 +87,7 @@ def arguments(home: Path, *extra: str) -> list[str]:
     ]
 
 
-def test_without_pandoc_the_mirror_names_it_and_writes_nothing(
+def test_without_pandoc_prepare_names_it_and_writes_nothing(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Refused before anything is asked, exit 2, naming pandoc by run.refused; and no mirror."""
@@ -105,7 +104,7 @@ def test_without_pandoc_the_mirror_names_it_and_writes_nothing(
 def test_pandoc_gone_once_the_run_starts_fails_it_with_an_error(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """On PATH for the entry, gone for the run: exit 1, the error mirror.pandoc_missing.
+    """On PATH for the entry, gone for the run: exit 1, the error prepare.pandoc_missing.
 
     The run's log file holds it with its reason, and no mirror is written.
     """
@@ -118,10 +117,10 @@ def test_pandoc_gone_once_the_run_starts_fails_it_with_an_error(
     monkeypatch.setattr(Pandoc, "find", gone)
     assert main(arguments(home)) == SOME_FAILED
     err = capsys.readouterr().err
-    assert ("error", "mirror.pandoc_missing") in said(err)
+    assert ("error", "prepare.pandoc_missing") in said(err)
     assert message in err
-    (missing,) = logged_as(home, "mirror.pandoc_missing")
-    assert (missing["level"], missing["reason"]) == ("error", message)
+    missing = logged_as(home, "prepare.pandoc_missing")
+    assert [(each["level"], each["reason"]) for each in missing] == [("error", message)] * 2
     assert not (home / "data" / "docs").exists()
 
 
@@ -136,12 +135,10 @@ def test_an_empty_store_mirrors_nothing_and_exits_zero(
 ) -> None:
     """A data directory without a raw store gives an empty mirror, and counts of zero.
 
-    A row each, Confluence's then Jira's, names its source, as sync's rows do.
+    A row each, Confluence's then Jira's, names its source.
     """
     assert main(arguments(home)) == 0
-    assert capsys.readouterr().out == (
-        f"mirror confluence: done\n{NOTHING}mirror jira: done\n{NOTHING}"
-    )
+    assert capsys.readouterr().out == (f"confluence: done\n{NOTHING}jira: done\n{NOTHING}")
 
 
 def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
@@ -160,7 +157,7 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
     assert main(arguments(home)) == 0
     first = capsys.readouterr().out.splitlines()
     names = [
-        "mirror confluence",
+        "confluence",
         "  documents",
         "  converted by pandoc",
         "  reused from the cache",
@@ -175,7 +172,7 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
     written = first[4].removeprefix("  files written: ")
     assert main(arguments(home, "--summary", "detailed")) == 0
     assert capsys.readouterr().out == (
-        "mirror confluence: done\n"
+        "confluence: done\n"
         "  documents: 1\n"
         "  converted by pandoc: 0\n"
         f"  reused from the cache: {converted}\n"
@@ -184,7 +181,7 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
         "  files removed: 0\n"
         "  not shown, element: iframe: 1\n"
         "  problems: 0\n"
-        f"mirror jira: done\n{NOTHING}"
+        f"jira: done\n{NOTHING}"
     )
 
 
@@ -199,7 +196,7 @@ def test_the_command_reports_the_documents_it_builds(
         store.put(Page, page_responses("100", "Home", 1, "<p>Home.</p>", []), FETCHED, {})
         store.put(Page, page_responses("101", "Away", 1, "<p>Away.</p>", []), FETCHED, {})
     assert main(arguments(home)) == 0
-    assert capsys.readouterr().out.startswith("mirror confluence: done\n  documents: 2\n")
+    assert capsys.readouterr().out.startswith("confluence: done\n  documents: 2\n")
     assert [
         (line["task"], line["done"], line["total"]) for line in logged_as(home, "progress")
     ] == [("confluence documents", 2, 2), ("jira documents", 0, 0)]
@@ -244,7 +241,7 @@ def test_the_command_mirrors_both_of_confluence_s_kinds(
     assert (docs / "blog" / "600-news.md").is_file()
 
 
-def test_a_second_mirror_with_nothing_changed_runs_pandoc_on_nothing(
+def test_a_second_prepare_with_nothing_changed_runs_pandoc_on_nothing(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Plan 039, criterion 5: its text and its JSON say that each conversion was reused."""
@@ -256,17 +253,18 @@ def test_a_second_mirror_with_nothing_changed_runs_pandoc_on_nothing(
     assert len(runs.read_text("utf-8").splitlines()) == CONVERSIONS
     assert main(arguments(home)) == 0
     assert capsys.readouterr().out.startswith(
-        "mirror confluence: done\n"
+        "confluence: done\n"
         "  documents: 2\n  converted by pandoc: 0\n  reused from the cache: 3\n"
         "  files written: 0\n"
     )
     assert main(arguments(home, "--format", "json")) == 0
-    first, _ = json.loads(capsys.readouterr().out)["steps"]
-    assert (first["result"]["converted"], first["result"]["reused"]) == (0, CONVERSIONS)
+    first, _ = json.loads(capsys.readouterr().out)["sources"]
+    mirrored = first["result"]["mirrored"]
+    assert (mirrored["converted"], mirrored["reused"]) == (0, CONVERSIONS)
     assert len(runs.read_text("utf-8").splitlines()) == CONVERSIONS
 
 
-def test_a_damaged_cache_is_replaced_and_the_mirror_converts_everything(
+def test_a_damaged_cache_is_replaced_and_prepare_converts_everything(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Plan 039, criterion 8: exit 0, nothing reused, one warning by SQLite's error name.
@@ -283,7 +281,7 @@ def test_a_damaged_cache_is_replaced_and_the_mirror_converts_everything(
     capsys.readouterr()
     assert main(arguments(home)) == 0
     assert "  converted by pandoc: 3\n  reused from the cache: 0\n" in capsys.readouterr().out
-    (replaced,) = logged_as(home, "mirror.cache_replaced")
+    (replaced,) = logged_as(home, "prepare.cache_replaced")
     assert (replaced["level"], replaced["reason"]) == ("warning", "SQLITE_NOTADB")
     assert set(replaced) - STANDARD == {"reason"}
     assert sorted(path.name for path in cache.parent.glob(f"{cache.name}*")) == [cache.name]
@@ -291,7 +289,7 @@ def test_a_damaged_cache_is_replaced_and_the_mirror_converts_everything(
     assert "  converted by pandoc: 0\n  reused from the cache: 3\n" in capsys.readouterr().out
 
 
-def test_a_new_pandoc_converts_again_and_writes_the_bytes_of_a_mirror_from_no_cache(
+def test_a_new_pandoc_converts_again_and_writes_the_bytes_of_a_prepare_from_no_cache(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Plan 039, criterion 6: pandoc's version line changed, as a fake pandoc plays it.
@@ -380,8 +378,8 @@ def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
 ) -> None:
     """A page whose space is not listed is reported by its place in the store.
 
-    Each such page is the warning mirror.not_mirrored, by each source's prepare, as each
-    places every document, then mirror.nothing_removed warns that Confluence removed none
+    Each such page is the warning prepare.not_mirrored, by each source's prepare, as each
+    places every document, then prepare.nothing_removed warns that Confluence removed none
     of its files; the run's log file holds both. Its row fails, Jira's is done.
     """
     store = RawStore(home / "data" / "raw")
@@ -398,12 +396,12 @@ def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
     assert "documents: 0\n" in captured.out
     assert "problems: 1\n" in captured.out
     warnings = said(captured.err)
-    assert ("warning", "mirror.not_mirrored") in warnings
-    assert ("warning", "mirror.nothing_removed") in warnings
+    assert ("warning", "prepare.not_mirrored") in warnings
+    assert ("warning", "prepare.nothing_removed") in warnings
     assert "confluence/pages/196845/000001" in captured.err
     assert "space not listed" in captured.err
     fields = ("level", "source", "where", "reason")
-    told = [{key: each[key] for key in fields} for each in logged_as(home, "mirror.not_mirrored")]
+    told = [{key: each[key] for key in fields} for each in logged_as(home, "prepare.not_mirrored")]
     assert told == [
         {
             "level": "warning",
@@ -412,15 +410,106 @@ def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
             "reason": "space not listed",
         }
     ] * len(["confluence's prepare", "jira's"])
-    (kept,) = logged_as(home, "mirror.nothing_removed")
+    (kept,) = logged_as(home, "prepare.nothing_removed")
     assert (kept["level"], kept["source"], kept["problems"]) == ("warning", "confluence", 1)
     assert main(arguments(home, "--format", "json")) == SOME_FAILED
     document = json.loads(capsys.readouterr().out)
     assert document["exit_status"] == SOME_FAILED
-    rows = [(row["step"], row["source"], row["outcome"]) for row in document["steps"]]
-    assert rows == [("mirror", "confluence", "failed"), ("mirror", "jira", "done")]
-    confluence = document["steps"][0]["result"]
+    rows = [(row["source"], row["outcome"]) for row in document["sources"]]
+    assert rows == [("confluence", "failed"), ("jira", "done")]
+    confluence = document["sources"][0]["result"]["mirrored"]
     assert confluence["documents"] == 0
     assert confluence["problems"] == [
         {"where": "confluence/pages/196845/000001", "reason": "space not listed"}
     ]
+
+
+def worklog_folder(home: Path, monkeypatch: MonkeyPatch) -> Path:
+    """Copy the fixture's work log, and name it by its setting."""
+    folder = home / "todo"
+    shutil.copytree(Path(__file__).parent / "fixtures" / "worklog", folder)
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(folder))
+    return folder
+
+
+def test_without_a_name_each_store_and_each_source_read_in_place_that_is_configured_run(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 031: no site, nor a source's setting, needed of a store; the work log by its own."""
+    assert main(arguments(home)) == 0
+    assert "worklog:" not in capsys.readouterr().out
+    worklog_folder(home, monkeypatch)
+    assert main(arguments(home)) == 0
+    captured = capsys.readouterr()
+    rows = [line for line in captured.out.splitlines() if not line.startswith(" ")]
+    assert rows == ["confluence: done", "jira: done", "worklog: done"]
+    assert "\n  source confluence: all that its store holds\n" in captured.err
+
+
+def test_a_source_read_in_place_named_but_not_configured_is_refused_naming_its_setting(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Before anything is asked: exit 2."""
+    assert main(arguments(home, "worklog")) == BAD_SETTINGS
+    err = capsys.readouterr().err
+    assert "worklog: not configured; set sources.worklog.path" in err
+    assert not (home / "data").exists()
+
+
+def test_names_are_taken_once_each_in_the_registry_s_order(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Whatever the order typed: Confluence before Jira, as links require of a whole store."""
+    assert main(arguments(home, "jira", "confluence", "jira")) == 0
+    rows = [line for line in capsys.readouterr().out.splitlines() if not line.startswith(" ")]
+    assert rows == ["confluence: done", "jira: done"]
+
+
+def test_a_dry_run_counts_the_work_log_and_says_of_the_others_that_it_cannot(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 031, criterion 4: exit 0, nothing written, by the data directory's files."""
+    worklog_folder(home, monkeypatch)
+    command = ["prepare", "--dry-run", "--config", str(home / "none.toml")]
+    command += ["--data-dir", str(home / "data")]
+    assert main(command) == 0
+    out = capsys.readouterr().out
+    assert "confluence: not run\n  not counted: " in out
+    assert "jira: not run\n  not counted: " in out
+    assert "worklog: done\n  documents: " in out
+    assert not (home / "data" / "docs").exists()
+    assert main([*command, "--format", "json"]) == 0
+    rows = json.loads(capsys.readouterr().out)["sources"]
+    assert [(row["source"], row["outcome"]) for row in rows] == [
+        ("confluence", "not run"),
+        ("jira", "not run"),
+        ("worklog", "done"),
+    ]
+    assert rows[0]["result"] == {"outcome": "not run", "mirrored": None}
+
+
+def test_what_a_fetch_reads_is_not_read_by_a_prepare(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A source's list is said not read, in detail, as for any setting; no site is needed."""
+    config = home / "mine.toml"
+    config.write_text('[sources.confluence]\nspaces = ["MFS"]\n', "utf-8")
+    command = ["prepare", "--yes", "--config", str(config), "--data-dir", str(home / "data")]
+    assert main([*command, "--summary", "detailed"]) == 0
+    assert "ignored: sources.confluence.spaces (mine.toml): not read by prepare\n" in (
+        capsys.readouterr().err
+    )
+
+
+def test_the_help_shows_a_group_per_source_with_what_it_reads(
+    capsys: CaptureFixture[str],
+) -> None:
+    """Every registered source, its resource types said; no option of a fetch."""
+    with pytest.raises(SystemExit):
+        main(["prepare", "--help"])
+    said_of = " ".join(capsys.readouterr().out.split())
+    assert "pages, listed whole; blogposts, listed whole." in said_of
+    assert "issues, searched by update time." in said_of
+    assert "entries, read whole, in place; days, read whole, in place;" in said_of
+    assert "--since" not in said_of
+    assert "--space" not in said_of

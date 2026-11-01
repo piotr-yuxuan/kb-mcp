@@ -362,7 +362,7 @@ def status(summary: Summary, docs: Path) -> str:
         (
             f"search by meaning: {summary.model}, {summary.pieces} pieces cut by {summary.chunking}"
             if summary.model
-            else "search by meaning: off, the index holds no vectors"
+            else "search by meaning: off, the index holds no vectors; run kb-mcp embed"
         ),
         f"spaces: {counts(summary.spaces)}",
         f"projects: {counts(summary.projects)}",

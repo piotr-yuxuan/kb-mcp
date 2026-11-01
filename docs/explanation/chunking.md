@@ -2,7 +2,7 @@
 
 An index by meaning holds a vector per piece of each document, and a search by meaning
 finds the pieces nearest the question. How documents are cut into pieces, and what text
-each vector stands for, is the chunking: the setting `chunking`, which `index` cuts by
+each vector stands for, is the chunking: the setting `chunking`, which `embed` cuts by
 and records in the index, so that `search`, `ask` and `status` follow the index, not the
 setting. Plan 019 compared four, on plan 002's sandbox questions, by a rule set before
 the run, which kept `sections`. `windows` ranked best of the four, and is the default
@@ -153,9 +153,9 @@ MB against 38 MB. What it costs:
   percentile was 266 ms on this laptop's CPU, where words alone took 14 ms in plan
   018's run. The user's machine's GPU is not measured yet; [reproducing
   it](search-evaluation.md#reproducing-it) says how.
-- **A model by default.** `index` and the MCP server need the embedding endpoint,
-  Ollama by default, unless `search_mode = "lexical"`: without it, `index` stops and
-  names that setting, and the server answers by words, saying why.
+- **A model by default.** `embed` needs the embedding endpoint, Ollama by default, and so
+  does the MCP server unless `search_mode = "lexical"`: without it, `embed` stops and
+  names `kb-mcp index`, and the server answers by words, saying why.
 - **Evidence.** In hybrid mode, `ask`'s passages held the evidence barely more often
   than by `sections` (0.357 against 0.333, not significant).
 - **Documents found.** `ask`'s passages held fewer of the expected documents: Found@ask
@@ -164,19 +164,19 @@ MB against 38 MB. What it costs:
   0.862). Neither difference was tested.
 - **Edits.** A change to a page re-embeds more windows than sections, as the next
   section shows.
-- **The first `index` after upgrading** embeds every window of the mirror: no window's
+- **The first `embed` after upgrading** embeds every window of the mirror: no window's
   text is a section's, and vectors are kept by text, so none is found in the store
   (unless an `eval` of `windows` with the same model embedded them already). On the
   sandbox that is 1.11 times the tokens of `sections`. The prune after it deletes the
   sections' vectors from `<data>/vectors.sqlite`, unless an evaluation's index cut by
   `sections` keeps them (plan 023).
 
-To go back to either rule's choice: `chunking = "sections"`, then `index`; or
-`search_mode = "lexical"`, which needs no model and embeds nothing.
+To go back to either rule's choice: `chunking = "sections"`, then `embed`; or
+`search_mode = "lexical"`, then `index`, which needs no model and embeds nothing.
 
 ## When pages change
 
-`index` rebuilds the whole index from the mirror each time, but embeds only the texts
+`embed` rebuilds the whole index from the mirror each time, but embeds only the texts
 that `<data>/vectors.sqlite` lacks: vectors are kept by model and text, never by page.
 So what a change costs is the number of texts it makes new, and that depends on the
 chunking:

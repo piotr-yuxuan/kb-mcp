@@ -4,7 +4,7 @@ Standard library alone, since ``--help`` imports every declaration (contract G),
 classes are dataclasses, as ``Command`` is. A declaration names its table, and its
 account's, by module path, ``module:name``, which the entry loads once the arguments are
 parsed; and its roles, each a module that the run using it loads, a ``Fetcher`` or a
-``Preparer`` of ``sources.roles``. Its light checks, which ``sync`` asks before anything
+``Preparer`` of ``sources.roles``. Its light checks, which ``fetch`` asks before anything
 is asked of the user, are functions that it holds.
 """
 
@@ -29,14 +29,17 @@ type Described = Callable[[Mapping[str, object], Mapping[str, object]], tuple[st
 
 @dataclass(frozen=True)
 class Option:
-    """An option of a resource type, which no setting holds: its flag, help and value's type.
+    """An option of a resource type: its flag, help and value's type, and any setting it replaces.
 
-    ``type`` reads the value as typed, as argparse's ``type`` does.
+    ``type`` reads the value as typed, as argparse's ``type`` does. ``setting``, the path
+    of a list that the flag replaces for one run, makes it repeat; without one, no setting
+    holds the option.
     """
 
     flag: str
     help: str
     type: Callable[[str], object] = str
+    setting: str | None = None
 
 
 @dataclass(frozen=True)
@@ -45,8 +48,8 @@ class ResourceType:
 
     A source's types are read whole: no role reads some of them until a plan chooses among
     them, and a role whose removals cover them all may refuse some, as Atlassian's preparer
-    does. Only the name and the options are read so far: plan 033 reads ``summary``, for
-    help, and plan 034 ``read``, for its coverage.
+    does. The name, the options and ``read`` are read so far, the last in the help of
+    ``fetch`` and ``prepare``, each source's group: plan 033 reads ``summary``, for help.
     """
 
     name: str
@@ -57,16 +60,27 @@ class ResourceType:
 
 @dataclass(frozen=True)
 class Account:
-    """What a source's fetcher signs in with: its name, its table's model and settings.
+    """What a source's fetcher signs in with: its name, its table, its login and its checks.
 
     ``name`` is its table, ``[accounts.<name>]``, which every source naming it shares.
     ``table`` names the model by module path; ``settings`` are its settings, by name, in
-    their order.
+    their order, the first where it signs in. ``login`` names by module path, as ``table``
+    does, the run of ``kb-mcp login <name>``: a function of the settings, the browser's
+    path and, by name, ``extensions``, which gives a ``SignedIn`` of ``sources.roles``, or
+    None when no sign-in completed, having said so. ``checks`` names alike ``doctor``'s of
+    it: a function of the settings, which gives a ``Verdict`` each. ``refused`` and
+    ``unapplied``, if any, are its light checks, which ``doctor`` asks with no options:
+    what cannot be signed in with, and what the sign-in does not apply. A path that does not
+    load raises as it does, as a table's: a programmer's error, as no setting can cause it.
     """
 
     name: str
     table: str
     settings: tuple[str, ...]
+    login: str
+    checks: str
+    refused: Refused | None = None
+    unapplied: Unapplied | None = None
 
     @property
     def paths(self) -> tuple[str, ...]:
@@ -79,14 +93,14 @@ class Declared:
     """A source: its name, what it is, the types it reads, its settings, table and roles.
 
     ``name`` is its table, ``[sources.<name>]``, its folder of the mirror and the front
-    matter's ``source``. ``summary`` waits for plan 033's help, which reads it. ``types``
-    are all that it reads, whole. ``settings`` are its table's settings, by name, in their
-    order: the first names what it covers, which makes it configured. ``table`` is the
-    Pydantic model of its table, by module path. ``preparers`` name the modules that
-    write its documents, in their order, and ``fetcher`` the one that brings its
-    system's changes into its store, None for a source read in place. ``account``, if
-    any, is what its fetcher signs in with. ``refused``, ``unapplied`` and
-    ``described``, if any, are its light checks.
+    matter's ``source``. ``summary`` opens its group in the help of ``fetch`` and
+    ``prepare``. ``types`` are all that it reads, whole. ``settings`` are its table's
+    settings, by name, in their order: the first names what it covers, which makes it
+    configured. ``table`` is the Pydantic model of its table, by module path.
+    ``preparers`` name the modules that write its documents, in their order, and
+    ``fetcher`` the one that brings its system's changes into its store, None for a
+    source read in place. ``account``, if any, is what its fetcher signs in with.
+    ``refused``, ``unapplied`` and ``described``, if any, are its light checks.
     """
 
     name: str

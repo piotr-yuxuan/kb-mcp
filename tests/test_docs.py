@@ -54,7 +54,7 @@ PAGES = (
     "docs/how-to/golden-questions.md",
     "docs/how-to/reranking.md",
     "docs/how-to/shell-completions.md",
-    "docs/how-to/sync.md",
+    "docs/how-to/refresh.md",
     "docs/how-to/sso-machine.md",
     "docs/how-to/work-log.md",
     "docs/tutorials/first-mirror.md",
@@ -95,7 +95,7 @@ SHELL_WORD = re.compile(
 # Words that end one command and begin the next: a pipe or a list.
 SEPARATORS = frozenset({"|", "|&", "||", "&", "&&", ";"})
 # A redirection, which the shell takes out of a command's words: `<`, or an output
-# redirection with its file, such as `2>sync.log` or `2>&1`, or without it, such as `>`,
+# redirection with its file, such as `2>fetch.log` or `2>&1`, or without it, such as `>`,
 # the next word then being its file. A placeholder such as `<missing-file>` stays an
 # argument.
 REDIRECTION = re.compile(r"[\d&]?>>?&?(?P<file>.*)|<<?")
@@ -424,11 +424,11 @@ def test_each_documented_command_line_of_the_program_parses(checkout: frozenset[
 
 
 def test_the_check_of_documented_commands_refuses_a_prefix_of_an_option() -> None:
-    """The command's parser takes ``--dry`` for sync's ``--dry-run``; the check's does not."""
-    assert parser().parse_args(["sync", "--dry"]).dry_run is True
+    """The command's parser takes ``--dry`` for fetch's ``--dry-run``; the check's does not."""
+    assert parser().parse_args(["fetch", "--dry"]).dry_run is True
     said = io.StringIO()
     with pytest.raises(SystemExit) as stopped, contextlib.redirect_stderr(said):
-        parser(Unabbreviated).parse_args(["sync", "--dry"])
+        parser(Unabbreviated).parse_args(["fetch", "--dry"])
     assert stopped.value.code == ExitStatus.REFUSED
     assert said.getvalue().endswith("unrecognized arguments: --dry\n")
 
@@ -437,33 +437,33 @@ def test_the_check_of_documented_commands_refuses_a_prefix_of_an_option() -> Non
     ("line", "expected"),
     [
         (
-            "kb-mcp check && kb-mcp sync --simulate",
-            [["check"], ["sync", "--simulate"]],
+            "kb-mcp check && kb-mcp fetch --simulate",
+            [["check"], ["fetch", "--simulate"]],
         ),
-        ("cd ~&& kb-mcp sync --simulate", [["sync", "--simulate"]]),
+        ("cd ~&& kb-mcp fetch --simulate", [["fetch", "--simulate"]]),
         (
-            "kb-mcp sync --since 7d&&kb-mcp syncs",
-            [["sync", "--since", "7d"], ["syncs"]],
+            "kb-mcp fetch --since 7d&&kb-mcp fetches",
+            [["fetch", "--since", "7d"], ["fetches"]],
         ),
-        ("kb-mcp sync|kb-mcp syncs", [["sync"], ["syncs"]]),
+        ("kb-mcp fetch|kb-mcp fetches", [["fetch"], ["fetches"]]),
         (
-            "kb-mcp sync --format json 2>/dev/null | jq .exit_status",
-            [["sync", "--format", "json"]],
+            "kb-mcp fetch --format json 2>/dev/null | jq .exit_status",
+            [["fetch", "--format", "json"]],
         ),
         (
-            "kb-mcp sync 2>&1 | tee x; kb-mcp check &>check.log",
-            [["sync"], ["check"]],
+            "kb-mcp fetch 2>&1 | tee x; kb-mcp check &>check.log",
+            [["fetch"], ["check"]],
         ),
-        ("kb-mcp sync >&2", [["sync"]]),
-        ("kb-mcp sync 2>sync.log --simulate", [["sync", "--simulate"]]),
-        ("kb-mcp sync &>sync.log --simulate", [["sync", "--simulate"]]),
-        ("kb-mcp sync 2>&1 --simulate", [["sync", "--simulate"]]),
-        ("kb-mcp sync > sync.log --simulate", [["sync", "--simulate"]]),
+        ("kb-mcp fetch >&2", [["fetch"]]),
+        ("kb-mcp fetch 2>fetch.log --simulate", [["fetch", "--simulate"]]),
+        ("kb-mcp fetch &>fetch.log --simulate", [["fetch", "--simulate"]]),
+        ("kb-mcp fetch 2>&1 --simulate", [["fetch", "--simulate"]]),
+        ("kb-mcp fetch > fetch.log --simulate", [["fetch", "--simulate"]]),
         (
-            "kb-mcp sync --summary detailed#x # look first, it's cheap",
-            [["sync", "--summary", "detailed#x"]],
+            "kb-mcp fetch --summary detailed#x # look first, it's cheap",
+            [["fetch", "--summary", "detailed#x"]],
         ),
-        ("# kb-mcp sync asks before it writes", []),
+        ("# kb-mcp fetch asks before it writes", []),
         (
             "kb-mcp search '>5 minutes' ';' '#x' --simulate",
             [["search", ">5 minutes", ";", "#x", "--simulate"]],
@@ -477,8 +477,8 @@ def test_the_check_of_documented_commands_refuses_a_prefix_of_an_option() -> Non
             [["downlod", "--yes"]],
         ),
         (
-            "sops exec-env ~/a.sops.json 'kb-mcp check; kb-mcp sync'",
-            [["check"], ["sync"]],
+            "sops exec-env ~/a.sops.json 'kb-mcp check; kb-mcp fetch'",
+            [["check"], ["fetch"]],
         ),
         (
             """sops exec-env ~/a.sops.json 'A="$B" uv run kb-mcp check' | tee x""",
@@ -503,14 +503,14 @@ def test_the_check_of_documented_commands_reads_a_line_as_a_shell_does(
 @pytest.mark.parametrize(
     ("line", "refusal"),
     [
-        ("time kb-mcp sync", "names the program"),
-        ("uv run --no-sync kb-mcp sync", "names the program"),
-        ("sops exec-env ~/a.sops.json 'time kb-mcp sync' >x", "names the program"),
+        ("time kb-mcp fetch", "names the program"),
+        ("uv run --no-sync kb-mcp fetch", "names the program"),
+        ("sops exec-env ~/a.sops.json 'time kb-mcp fetch' >x", "names the program"),
         (
             "claude mcp add kb-mcp -- ~/.local/bin/kb-mcp serve",
             "names the program",
         ),
-        ("kb-mcp sync --since '7d", "No closing quotation"),
+        ("kb-mcp fetch --since '7d", "No closing quotation"),
     ],
 )
 def test_the_check_of_documented_commands_refuses_a_line_it_cannot_read(
@@ -642,7 +642,7 @@ def test_each_page_that_pulls_the_default_model_pulls_the_one_the_settings_name(
     """Each ``ollama pull`` in a bash block of those pages names the default model.
 
     So the learner who follows the tutorial, or the guide, word for word has the model
-    that ``sync`` and ``index`` embed with. A line that pulls another is cited, and so is
+    that ``embed`` embeds with. A line that pulls another is cited, and so is
     a page that pulls none.
     """
     pulled = {

@@ -329,7 +329,7 @@ def prepared(
     refs = ((question.id, path) for question in questions for path in question.paths)
     missing = next(((id_, path) for id_, path in refs if not library.resolve(path)), None)
     if missing:
-        message = f"{name}: {missing[0]}: {missing[1]} is not in its index; run index again"
+        message = f"{name}: {missing[0]}: {missing[1]} is not in its index; run embed again"
         raise EvaluationError(message)
     # Untimed: the first search by meaning reads the index's vectors.
     library.ranked(questions[0].text, "hybrid")

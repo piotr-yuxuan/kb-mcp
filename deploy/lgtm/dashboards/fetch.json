@@ -1,7 +1,7 @@
 {
-  "uid": "kb-mcp-download",
-  "title": "download",
-  "description": "The download runs in the time range: what they fetched, and their requests.",
+  "uid": "kb-mcp-fetch",
+  "title": "fetch",
+  "description": "The fetch runs in the time range: what they fetched, and their requests.",
   "tags": [
     "kb-mcp"
   ],
@@ -43,7 +43,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"download\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"fetch\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -88,7 +88,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(kb_mcp_run_duration_seconds_sum{job=\"kb-mcp\", kb_mcp_command=\"download\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_run_duration_seconds_sum{job=\"kb-mcp\", kb_mcp_command=\"fetch\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -133,7 +133,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(last_over_time(kb_mcp_download_bytes_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"download\"}[$__range]))",
+          "expr": "sum(last_over_time(kb_mcp_fetch_bytes_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"fetch\"}[$__range]))",
           "instant": true,
           "range": false
         }
@@ -178,7 +178,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(http_client_request_duration_seconds_bucket{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"download\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(http_client_request_duration_seconds_bucket{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"fetch\"}[$__range])))",
           "instant": true,
           "range": false
         }
@@ -223,7 +223,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_download_documents_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"download\"}[$__range]))",
+          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_fetch_documents_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"fetch\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{kb_mcp_outcome}}"
@@ -269,7 +269,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_download_files_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"download\"}[$__range]))",
+          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_fetch_files_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"fetch\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{kb_mcp_outcome}}"
@@ -315,7 +315,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (http_response_status_code) (last_over_time(http_client_request_duration_seconds_count{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"download\"}[$__range]))",
+          "expr": "sum by (http_response_status_code) (last_over_time(http_client_request_duration_seconds_count{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"fetch\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{http_response_status_code}}"
@@ -361,7 +361,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (error_type) (last_over_time(http_client_request_duration_seconds_count{job=\"kb-mcp\", error_type!=\"\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"download\"}[$__range]))",
+          "expr": "sum by (error_type) (last_over_time(http_client_request_duration_seconds_count{job=\"kb-mcp\", error_type!=\"\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"fetch\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{error_type}}"
@@ -407,7 +407,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"kb-mcp\"} | command=\"download\" | severity_number >= 13",
+          "expr": "{service_name=\"kb-mcp\"} | command=\"fetch\" | severity_number >= 13",
           "queryType": "range"
         }
       ],
@@ -441,7 +441,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"kb-mcp\" && span.kb_mcp.command = \"download\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && span.kb_mcp.command = \"fetch\" }",
           "limit": 20,
           "tableType": "traces"
         }
@@ -469,7 +469,35 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"kb-mcp\" && name = \"download.document\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && name = \"fetch.document\" }",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 24,
+        "h": 10
+      },
+      "type": "table",
+      "title": "Sources, as spans",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"kb-mcp\" && name = \"fetch.source\" } | select(span.kb_mcp.source, span.kb_mcp.outcome)",
           "limit": 20,
           "tableType": "traces"
         }

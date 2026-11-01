@@ -5,13 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.options._common import (
-    add_embedding_options,
-    add_output_options,
-    add_settings_options,
-    add_yes_option,
-    endpoint_by_meaning,
-)
+from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
 
 if TYPE_CHECKING:
     import argparse
@@ -19,27 +13,12 @@ if TYPE_CHECKING:
 
     from kb_mcp.sources.declaration import Declared
 
-# What the index's build reads, beside the data directory; sync's index step reads them too.
-INDEX_SETTINGS = ("model", "search_mode", "chunking", "embedding_url", "embedding_api_key")
 
-
-def by_words_alone(
-    _arguments: argparse.Namespace, settings: Mapping[str, object]
-) -> dict[str, str]:
-    """By words alone, the lexical mode embeds nothing: model, endpoint, chunking unused."""
-    if settings["search_mode"] != "lexical":
-        return {}
-    return dict.fromkeys(
-        ("model", "embedding_url", "embedding_api_key", "chunking"),
-        "the lexical mode embeds nothing",
-    )
-
-
-def pruning_said(_arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
-    """By meaning, the build is followed by a prune of the vector store: say it first."""
-    if settings["search_mode"] == "lexical":
-        return ()
-    return ("then: the vector store keeps only the vectors that the index and eval's read",)
+def meaning_waits(
+    _arguments: argparse.Namespace, _settings: Mapping[str, object]
+) -> tuple[str, ...]:
+    """Say first, whatever the mode, that this index holds words alone until ``embed`` runs."""
+    return ("then: this index holds words alone; search by meaning waits for kb-mcp embed",)
 
 
 def register(
@@ -49,29 +28,23 @@ def register(
     """Add ``index`` to the command."""
     parser = subparsers.add_parser(
         "index",
-        help="build the search index from the mirror",
+        help="build the search index of the mirror's words",
         epilog=(
-            "With --format json: report, the documents by type, the sections, the files"
-            " skipped, the pieces by meaning, the texts embedded now and the files with a"
-            " piece refused; index, its path; model, the one that embedded, null by words"
-            " alone; pruned, what the prune of the vector store kept and deleted, or why it"
-            " did not prune, null by words alone."
+            "With --format json: report, the documents by type, the sections and the files"
+            " skipped; index, its path; model and pruned, null."
         ),
     )
     actions, flags = add_settings_options(parser)
     add_output_options(parser)
     add_yes_option(parser)
-    remote = add_embedding_options(parser)
     parser.set_defaults(
         command=Command(
             "index",
             "kb_mcp.cli.commands.index",
-            reads=("data_dir", *INDEX_SETTINGS),
+            reads=("data_dir",),
             flags=flags,
-            actions=(*actions, remote),
+            actions=actions,
             writes=True,
-            unapplied=by_words_alone,
-            refused=endpoint_by_meaning,
-            described=pruning_said,
+            described=meaning_waits,
         )
     )

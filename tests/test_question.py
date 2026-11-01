@@ -46,16 +46,16 @@ GOLDEN = str(Path(__file__).parents[1] / "sandbox" / "golden.yaml")
 # Each command that writes, by plan 015: what it needs besides options to be parsed and
 # to pass its declaration's checks, and the module that runs it.
 WRITING = {
-    "download": (["--site", SITE, "--space", "MFS"], "download"),
+    "fetch": (["--site", SITE, "--space", "MFS"], "sources"),
     "eval": ([GOLDEN], "evaluate"),
+    "embed": ([], "embed"),
     "index": ([], "index"),
-    "login": (["--site", SITE], "login"),
-    "mirror": ([], "mirror"),
-    "sync": ([], "sync"),
+    "login": (["atlassian", "--site", SITE], "login"),
+    "prepare": ([], "sources"),
 }
-# The work log's folder, which every test's environment names, so that sync has a source.
+# The work log's folder, which every test's environment names, so that prepare has a source.
 WORKLOG_PATH = "KB_MCP_SOURCES__WORKLOG__PATH"
-# Jira's projects, so that sync has an Atlassian source too.
+# Jira's projects, so that fetch has an Atlassian source too.
 PROJECTS = {"KB_MCP_SOURCES__JIRA__PROJECTS": '["PRB"]'}
 # An embedding endpoint off this machine, over https and over http.
 ELSEWHERE = {"KB_MCP_EMBEDDING_URL": "https://embeddings.example/v1"}
@@ -66,34 +66,32 @@ WITHOUT_EMAIL = {"KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": "token-sentinel-4d1c"}
 # What plan 015 refuses without the network, before anything is asked: a command that
 # writes and its arguments, the variables set, and what the refusal names.
 REFUSED_FIRST = [
-    (["download", "--space", "MFS"], {}, "accounts.atlassian.site: not set"),
-    (["download", "--site", SITE], {}, "nothing to download"),
-    (["download", *WRITING["download"][0], "--max-file-mb", "0"], {}, "--max-file-mb"),
-    (["download", *WRITING["download"][0], "--since", "yesterday"], {}, "--since"),
-    (["download", *WRITING["download"][0], "--until", "soon"], {}, "--until"),
-    (["download", *WRITING["download"][0], "--since", "7m"], {}, "--since"),
-    (["download", *WRITING["download"][0], "--since", "0d"], {}, "--since"),
-    (["download", *WRITING["download"][0], "--since", "0h"], {}, "--since"),
-    (["download", *WRITING["download"][0], "--until", "all"], {}, "--until"),
-    (["download", *WRITING["download"][0]], WITHOUT_EMAIL, "accounts.atlassian.email: not set"),
+    (["fetch", "--space", "MFS"], {}, "accounts.atlassian.site: not set"),
+    (["fetch", "--site", SITE], {}, "nothing to fetch"),
+    (["fetch", *WRITING["fetch"][0], "--max-file-mb", "0"], {}, "--max-file-mb"),
+    (["fetch", *WRITING["fetch"][0], "--since", "yesterday"], {}, "--since"),
+    (["fetch", *WRITING["fetch"][0], "--until", "soon"], {}, "--until"),
+    (["fetch", *WRITING["fetch"][0], "--since", "7m"], {}, "--since"),
+    (["fetch", *WRITING["fetch"][0], "--since", "0d"], {}, "--since"),
+    (["fetch", *WRITING["fetch"][0], "--since", "0h"], {}, "--since"),
+    (["fetch", *WRITING["fetch"][0], "--until", "all"], {}, "--until"),
+    (["fetch", *WRITING["fetch"][0]], WITHOUT_EMAIL, "accounts.atlassian.email: not set"),
     (
-        ["download", *WRITING["download"][0], "--dry-run"],
+        ["fetch", *WRITING["fetch"][0], "--dry-run"],
         WITHOUT_EMAIL,
         "accounts.atlassian.email: not set",
     ),
-    (["login"], {}, "accounts.atlassian.site: not set"),
-    (["index"], BY_MEANING | ELSEWHERE, "embedding_url: not an address of this machine"),
-    (["index", "--allow-remote-embeddings"], BY_MEANING | IN_CLEAR, "over https only"),
+    (["login", "atlassian"], {}, "accounts.atlassian.site: not set"),
+    (["embed"], ELSEWHERE, "embedding_url: not an address of this machine"),
+    (["embed", "--allow-remote-embeddings"], IN_CLEAR, "over https only"),
     (["eval", GOLDEN], ELSEWHERE, "embedding_url: not an address of this machine"),
     (["eval", "missing.yaml"], {}, "missing.yaml: not a file"),
     (["eval", str(Path(__file__).parent)], {}, f"{Path(__file__).parent}: not a file"),
-    (["mirror"], {"PATH": ""}, "pandoc: not found on PATH"),
-    (["sync", "--include", "jira"], {}, "--include jira: not configured"),
-    (["sync", "--exclude", "worklog"], {}, "nothing to sync"),
-    (["sync"], PROJECTS, "accounts.atlassian.site: not set"),
-    (["sync", "--site", SITE, "--since", "yesterday"], PROJECTS, "--since"),
-    (["sync", "--site", SITE], PROJECTS | WITHOUT_EMAIL, "accounts.atlassian.email: not set"),
-    (["sync"], {"PATH": ""}, "pandoc: not found on PATH"),
+    (["prepare"], {"PATH": ""}, "pandoc: not found on PATH"),
+    (["fetch", "jira"], {}, "jira: not configured"),
+    (["fetch"], PROJECTS, "accounts.atlassian.site: not set"),
+    (["fetch", "--site", SITE, "--since", "yesterday"], PROJECTS, "--since"),
+    (["fetch", "--site", SITE], PROJECTS | WITHOUT_EMAIL, "accounts.atlassian.email: not set"),
 ]
 
 
@@ -117,7 +115,7 @@ class Interrupting(Terminal):
 def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     """Give each test a scratch home directory, so that none reads or writes the user's.
 
-    Its work log is the home itself, so that sync has a source to take.
+    Its work log is the home itself, so that prepare has a source to take.
     """
     scratch = tmp_path / "home"
     scratch.mkdir()
@@ -167,12 +165,12 @@ def test_on_terminals_yes_lets_the_run_go_on(
     """The summary and the command come first, then the question, then the run."""
     stderr = Terminal()
     given(monkeypatch, Terminal(answer), stderr)
-    assert main(command_line(home, "mirror")) == 0
+    assert main(command_line(home, "prepare")) == 0
     assert len(runs) == 1
     said = stderr.getvalue()
-    assert said.startswith("mirror, with these settings:\n")
+    assert said.startswith("prepare, with these settings:\n")
     assert said.endswith(QUESTION)
-    assert f"kb-mcp mirror \\\n  --config {home / 'none.toml'}" in said
+    assert f"kb-mcp prepare \\\n  --config {home / 'none.toml'}" in said
 
 
 @pytest.mark.parametrize("answer", ["n\n", "\n", "yess\n", ""])
@@ -241,12 +239,12 @@ def test_quiet_leaves_out_the_summary_of_a_refusal_but_keeps_it_for_a_question(
     """-q says the refusal alone; with a question to answer, the summary is still shown."""
     refused = io.StringIO()
     given(monkeypatch, io.StringIO(), refused)
-    assert main(command_line(home, "mirror", "-q")) == REFUSED
+    assert main(command_line(home, "prepare", "-q")) == REFUSED
     assert refused.getvalue() == REFUSAL
     asked = Terminal()
     given(monkeypatch, Terminal("n\n"), asked)
-    assert main(command_line(home, "mirror", "-q")) == DECLINED
-    assert asked.getvalue().startswith("mirror, with these settings:\n")
+    assert main(command_line(home, "prepare", "-q")) == DECLINED
+    assert asked.getvalue().startswith("prepare, with these settings:\n")
     assert QUESTION in asked.getvalue()
     assert runs == []
 
@@ -255,9 +253,9 @@ def test_quiet_leaves_out_the_summary_of_a_refusal_but_keeps_it_for_a_question(
     ("name", "skip"),
     [
         *((name, "--yes") for name in sorted(WRITING)),
-        ("mirror", "-y"),
-        ("download", "--dry-run"),
-        ("sync", "--dry-run"),
+        ("prepare", "-y"),
+        ("fetch", "--dry-run"),
+        ("prepare", "--dry-run"),
     ],
 )
 def test_yes_or_a_dry_run_runs_without_reading_stdin(
@@ -299,11 +297,11 @@ def test_a_yes_variable_skips_nothing_and_is_said_to_be_ignored(
     monkeypatch.setenv("KB_MCP_YES", "1")
     asked = Terminal()
     given(monkeypatch, Terminal("n\n"), asked)
-    assert main(command_line(home, "mirror", *level)) == DECLINED
+    assert main(command_line(home, "prepare", *level)) == DECLINED
     assert "ignored: KB_MCP_YES: names no setting\n" in asked.getvalue()
     assert QUESTION in asked.getvalue()
     given(monkeypatch, io.StringIO(), io.StringIO())
-    assert main(command_line(home, "mirror")) == REFUSED
+    assert main(command_line(home, "prepare")) == REFUSED
     assert runs == []
 
 
@@ -313,7 +311,7 @@ def test_yes_in_the_settings_file_is_refused(
     """Only the flag skips the question: ``yes`` is no setting."""
     config = home / "config.toml"
     config.write_text("yes = true\n", "utf-8")
-    assert main(["mirror", "--config", str(config)]) == REFUSED
+    assert main(["prepare", "--config", str(config)]) == REFUSED
     err = capsys.readouterr().err
     assert said_on(err) == [("error", "settings.refused")]
     assert "yes (config.toml): not a setting" in err
@@ -321,7 +319,7 @@ def test_yes_in_the_settings_file_is_refused(
 
 
 @pytest.mark.parametrize("terminal", [True, False])
-def test_a_download_declined_or_refused_asks_the_site_nothing(
+def test_a_fetch_declined_or_refused_asks_the_site_nothing(
     home: Path, monkeypatch: MonkeyPatch, *, terminal: bool
 ) -> None:
     """Nothing is spent before the question: no request, no file, the session as it was."""
@@ -332,7 +330,7 @@ def test_a_download_declined_or_refused_asks_the_site_nothing(
     before = tree(home)
     given(monkeypatch, Terminal("n\n"), Terminal() if terminal else io.StringIO())
     options = ["--site", SITE, "--space", "MFS", "--since", "7d"]
-    status = main(["download", "--config", str(home / "none.toml"), *options])
+    status = main(["fetch", "--config", str(home / "none.toml"), *options])
     assert status == (DECLINED if terminal else REFUSED)
     assert fake.asked == []
     assert tree(home) == before
@@ -369,15 +367,20 @@ def test_what_needs_no_network_is_refused_before_anything_is_asked(
     assert tree(home) == before
 
 
-@pytest.mark.parametrize("name", ["download", "sync"])
-def test_back_is_no_option_of_download_nor_sync(
-    name: str, home: Path, capsys: CaptureFixture[str]
-) -> None:
-    """Plan 034 removed it, since --since 1y or all says the same: unknown, and not in --help."""
+@pytest.mark.parametrize("name", ["fetch"])
+def test_back_is_no_option_of_fetch(name: str, home: Path, capsys: CaptureFixture[str]) -> None:
+    """Plan 034 removed it, since --since 1y or all says the same: unknown, and not in --help.
+
+    Typed as a user types it, the parser reads its value as a source's name, and refuses that.
+    """
     with pytest.raises(SystemExit) as stopped:
         main([name, "--config", str(home / "none.toml"), "--back", "1y"])
     assert stopped.value.code == REFUSED
-    assert "unrecognized arguments: --back 1y" in capsys.readouterr().err
+    assert "argument source: invalid choice: '1y'" in capsys.readouterr().err
+    with pytest.raises(SystemExit) as stopped:
+        main([name, "--config", str(home / "none.toml"), "--back=1y"])
+    assert stopped.value.code == REFUSED
+    assert "unrecognized arguments: --back=1y" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         main([name, "--help"])
     assert "--back" not in capsys.readouterr().out

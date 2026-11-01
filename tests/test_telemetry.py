@@ -225,7 +225,7 @@ def test_no_secret_reaches_the_files_stderr_or_telemetry_at_debug(
     exporter = InMemoryLogRecordExporter()
     provider = LoggerProvider(shutdown_on_exit=False)
     provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
-    root, sink = logging.getLogger(), Exported(provider, "download")
+    root, sink = logging.getLogger(), Exported(provider, "fetch")
 
     def site(request: httpx.Request) -> httpx.Response:
         if "authorization" in request.headers:
@@ -397,7 +397,7 @@ def test_a_run_is_one_trace_whose_root_holds_its_records_and_says_its_command_an
 
 
 @pytest.mark.parametrize(("dry", "options"), [(True, ["--dry-run"]), (False, [])])
-def test_a_download_s_root_says_whether_it_is_a_dry_run(
+def test_a_fetch_s_root_says_whether_it_is_a_dry_run(
     tmp_path: Path, *, dry: bool, options: list[str]
 ) -> None:
     """The flag's value, not whether the command takes it.
@@ -407,7 +407,7 @@ def test_a_download_s_root_says_whether_it_is_a_dry_run(
     collector = Collector()
     with collecting(collector) as endpoint:
         arguments = [
-            "download",
+            "fetch",
             "--yes",
             *options,
             *check(tmp_path, endpoint)[1:],
@@ -424,7 +424,7 @@ def test_a_download_s_root_says_whether_it_is_a_dry_run(
     assert ran.status == ExitStatus.REFUSED
     (root,) = collector.spans()
     assert attributes(root.attributes) == {
-        "kb_mcp.command": "download",
+        "kb_mcp.command": "fetch",
         "kb_mcp.dry_run": dry,
         "kb_mcp.exit_status": ExitStatus.REFUSED,
     }

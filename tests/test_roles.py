@@ -28,7 +28,6 @@ from typing import TYPE_CHECKING
 import pytest
 from structlog.testing import capture_logs
 
-from kb_mcp.cli.domain.sync import label
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
@@ -48,7 +47,7 @@ from tests.samples import v2_space
 from tests.test_download import SITE, FakeSite
 from tests.test_mirror import FETCHED, SPACE_ID, issue_responses, listing_page, page_responses
 from tests.test_refresh import FIRST, WEEK
-from tests.test_sync import WORKLOG_DOCUMENTS
+from tests.test_sources import WORKLOG_DOCUMENTS
 from tests.test_worklog_mirror import FIXTURE, settle
 
 if TYPE_CHECKING:
@@ -148,7 +147,7 @@ def run_of(
 ) -> Run:
     """Give a run of a declaration's roles, its tables from the settings, at FIRST.
 
-    Each option that it declares is held, as ``sync``'s command gives them: None when not
+    Each option that it declares is held, as ``fetch``'s command gives them: None when not
     among ``options``.
     """
     account = declared.account
@@ -201,7 +200,7 @@ def cached(settings: Settings) -> set[str]:
 
 
 def row_text(name: str, outcome: str, text: str) -> str:
-    """Write a row as ``sync`` and ``mirror`` write it: its name and outcome, then its text."""
+    """Write a row as ``fetch`` and ``prepare`` write it: its name and outcome, then its text."""
     return f"{name}: {outcome}\n" + indent(text, "  ")
 
 
@@ -234,7 +233,7 @@ def test_confluence_and_jira_share_their_roles_and_the_work_log_has_no_fetcher()
 def test_help_imports_the_declarations_and_no_module_that_they_name(home: Path) -> None:
     """A declaration names its roles and tables by module path: ``--help`` loads none.
 
-    Neither the command's help nor ``sync``'s, which lists the sources; ``-X importtime``
+    Neither the command's help nor ``fetch``'s, which lists the sources; ``-X importtime``
     names each module that the child imports.
     """
     environment = {"HOME": str(home), "PATH": os.environ["PATH"]}
@@ -249,7 +248,7 @@ def test_help_imports_the_declarations_and_no_module_that_they_name(home: Path) 
             check=False,
         ),
         subprocess.run(
-            [sys.executable, "-X", "importtime", "-m", "kb_mcp", "sync", "--help"],
+            [sys.executable, "-X", "importtime", "-m", "kb_mcp", "fetch", "--help"],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -327,10 +326,10 @@ def test_the_fetcher_refuses_an_until_before_since_before_any_request(
     assert site.asked == []
 
 
-def test_a_damaged_record_of_what_answered_as_gone_refuses_sync_before_its_first_row(
+def test_a_damaged_record_of_what_answered_as_gone_refuses_fetch_before_its_first_row(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """As ``download`` refuses it: exit 2, an event naming the file, no traceback, no request.
+    """Exit 2, an event naming the file, no traceback, no request.
 
     The fetch reads the record before its first request, so its preflight reads it too.
     A site and a token, made up, leave nothing else to stop the run.
@@ -345,10 +344,10 @@ def test_a_damaged_record_of_what_answered_as_gone_refuses_sync_before_its_first
         "utf-8",
     )
     monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", "made-up")
-    given = ["sync", "--yes", "--config", str(config), "--data-dir", str(data)]
+    given = ["fetch", "--yes", "--config", str(config), "--data-dir", str(data)]
     assert main(given) == ExitStatus.REFUSED
     err = capsys.readouterr().err
-    assert "sync.refused" in err
+    assert "fetch.refused" in err
     assert "source 'confluence': fetch: tombstones.json: not JSON" in err
     assert "run.failed" not in err
     assert "Traceback" not in err
@@ -365,7 +364,7 @@ def test_a_record_that_no_read_reaches_refuses_the_run_as_a_damaged_one(
 ) -> None:
     """A folder in its place: exit 2, naming the file, no traceback, nothing asked of the site.
 
-    In ``sync``, by its preflight, and in ``download``, by its first fetch.
+    In ``fetch``, by its preflight, with or without a source named.
     """
     data = home / "data"
     (data / "raw" / name).mkdir(parents=True)
@@ -377,7 +376,7 @@ def test_a_record_that_no_read_reaches_refuses_the_run_as_a_damaged_one(
     )
     monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", "made-up")
     given = ["--yes", "--config", str(config), "--data-dir", str(data)]
-    for command in (["sync"], ["download", "--space", "MFS"]):
+    for command in (["fetch"], ["fetch", "confluence"]):
         assert main([*command, *given]) == ExitStatus.REFUSED
         err = capsys.readouterr().err
         assert f"{name}: not read: IsADirectoryError" in err
@@ -423,26 +422,25 @@ def test_a_fetch_of_confluence_keeps_each_tombstone_that_it_finds(
 
 
 @pytest.mark.parametrize(
-    ("given", "rows"),
+    ("given", "status"),
     [
-        (
-            ("--yes", "--exclude", "confluence"),
-            ["fetch jira", "prepare jira", "prepare worklog", "index"],
-        ),
-        (("--dry-run", "--include", "jira"), ["fetch jira", "prepare jira", "index"]),
+        (("fetch", "jira", "--yes"), ExitStatus.SIGN_IN_AGAIN),
+        (("fetch", "jira", "--dry-run"), ExitStatus.SIGN_IN_AGAIN),
+        (("prepare", "jira", "--yes"), ExitStatus.OK),
+        (("prepare", "worklog", "--yes"), ExitStatus.OK),
     ],
-    ids=["a run", "a dry run"],
+    ids=["a fetch of Jira", "a dry run of Jira", "a prepare of Jira", "a prepare of the work log"],
 )
-def test_a_record_of_confluence_s_stops_no_sync_without_confluence(
+def test_a_record_of_confluence_s_stops_no_run_without_confluence(
     home: Path,
     worklog: Path,
     capsys: CaptureFixture[str],
     given: tuple[str, ...],
-    rows: list[str],
+    status: ExitStatus,
 ) -> None:
-    """Jira's rows and the work log's run, though the record of what answered as gone is damaged.
+    """Each gives the row of the source that it names, on a damaged record of what is gone.
 
-    With neither token nor session, the fetch's row asks to sign in, found before any request.
+    With neither token nor session, a fetch's row asks to sign in, found before any request.
     """
     data = home / "data"
     (data / "raw").mkdir(parents=True)
@@ -456,10 +454,10 @@ def test_a_record_of_confluence_s_stops_no_sync_without_confluence(
         "utf-8",
     )
     arguments = [*given, "--format", "json", "--config", str(config), "--data-dir", str(data)]
-    assert main(["sync", *arguments]) == ExitStatus.SIGN_IN_AGAIN
+    assert main(arguments) == status
     out, err = capsys.readouterr()
-    assert "sync.refused" not in err
-    assert [label(row["step"], row["source"]) for row in json.loads(out)["steps"]] == rows
+    assert ".refused" not in err
+    assert [row["source"] for row in json.loads(out)["sources"]] == [given[1]]
     assert stones.read_text("utf-8") == "not json"
 
 
@@ -491,7 +489,7 @@ def test_what_a_preflight_refuses_once_the_run_began_fails_the_fetch_saying_why(
         fetched = fetcher_of(CONFLUENCE).fetch(run_of(CONFLUENCE, signed_in(settings), options))
     assert isinstance(fetched, Fetched)
     assert (fetched.outcome, fetched.downloaded) == ("failed", None)
-    (refused,) = [each for each in events if each["event"] == "download.refused"]
+    (refused,) = [each for each in events if each["event"] == "fetch.refused"]
     assert refused["log_level"] == "error"
     assert refused["source"] == "confluence"
     assert said in refused["reason"]
@@ -502,20 +500,20 @@ def test_what_a_preflight_refuses_once_the_run_began_fails_the_fetch_saying_why(
 def test_the_fetch_s_text_is_what_download_writes(
     home: Path, settings: Settings, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Confluence's fetch writes the counts that ``download --space MFS`` writes under its row.
+    """Confluence's fetch writes the counts that ``fetch --space MFS`` writes under its row.
 
     A file of the scripted site fails, which fails both.
     """
     fetched = fetcher_of(CONFLUENCE).fetch(run_of(CONFLUENCE, signed_in(settings), SINCE))
     assert fetched.outcome == "failed"
     other = signed_in(settings_of(home / "other", worklog))
-    command = ["download", "--yes", "--config", str(home / "none.toml"), "--space", "MFS"]
+    command = ["fetch", "--yes", "--config", str(home / "none.toml"), "--space", "MFS"]
     period = ["--since", SINCE["--since"]]
     given = [*command, "--data-dir", str(other.data_dir), "--site", SITE, *period]
     capsys.readouterr()  # what the fetch logged, outside a run, which has no log file
     assert main(given) == ExitStatus.FAILED
     indented = "".join(f"  {line}\n" for line in fetched.text("short").splitlines())
-    assert capsys.readouterr().out == f"download confluence: failed\n{indented}"
+    assert capsys.readouterr().out == f"confluence: failed\n{indented}"
 
 
 def test_the_atlassian_preparer_mirrors_the_kinds_of_the_source_that_it_runs_for(
@@ -538,17 +536,17 @@ def test_the_atlassian_preparer_mirrors_the_kinds_of_the_source_that_it_runs_for
     )
 
 
-def test_the_atlassian_preparer_writes_and_says_what_mirror_does(
+def test_the_atlassian_preparer_writes_and_says_what_prepare_does(
     home: Path, stored: Settings, capsys: CaptureFixture[str]
 ) -> None:
-    """Confluence's prepare, then Jira's, write mirror's files, byte for byte, and its rows."""
+    """Confluence's role, then Jira's, write the command's files, byte for byte, and its rows."""
     other = home / "other"
     shutil.copytree(stored.raw, other / "raw")
     said = ""
     for declared in (CONFLUENCE, JIRA):
         result = preparer_of(declared).prepare(run_of(declared, stored))
-        said += row_text(f"mirror {declared.name}", result.outcome, result.text("detailed"))
-    command = ["mirror", "--yes", "--config", str(home / "none.toml"), "--summary", "detailed"]
+        said += row_text(declared.name, result.outcome, result.text("detailed"))
+    command = ["prepare", "--yes", "--config", str(home / "none.toml"), "--summary", "detailed"]
     capsys.readouterr()  # what the prepares logged, outside a run, which has no log file
     assert main([*command, "--data-dir", str(other), "--site", SITE]) == ExitStatus.OK
     assert capsys.readouterr().out == said
@@ -556,9 +554,10 @@ def test_the_atlassian_preparer_writes_and_says_what_mirror_does(
 
 
 def test_a_dry_run_leaves_the_atlassian_prepare_alone(stored: Settings) -> None:
-    """Nothing is converted nor written, and the result has no counts to write."""
+    """Nothing is converted nor written, and the result says that it counts nothing."""
     result = preparer_of(CONFLUENCE).prepare(run_of(CONFLUENCE, stored, dry_run=True))
-    assert (result.outcome, result.text("detailed")) == ("not run", "")
+    assert result.outcome == "not run"
+    assert result.text("detailed").startswith("not counted: ")
     assert not stored.docs.exists()
 
 
@@ -582,7 +581,7 @@ def test_pandoc_gone_fails_each_preparer_that_converts_and_writes_nothing(
         ("failed", ""),
     ]
     assert [(each["event"], each["log_level"], each["reason"]) for each in logged] == [
-        ("mirror.pandoc_missing", "error", message),
+        ("prepare.pandoc_missing", "error", message),
         ("worklog.pandoc_failed", "error", message),
     ]
     assert not stored.docs.exists()
@@ -617,21 +616,19 @@ def test_the_work_log_s_preparer_counts_in_a_dry_run_then_mirrors_its_folder(
     assert folders(settings.docs) == {"worklog"}
 
 
-def test_the_work_log_s_text_is_what_sync_writes_under_its_row(
+def test_the_work_log_s_text_is_what_prepare_writes_under_its_row(
     home: Path, settings: Settings, worklog: Path, tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The prepare's text, under its row, is what ``sync --include worklog`` writes there."""
+    """The prepare's text, under its row, is what ``prepare worklog`` writes there."""
     result = preparer_of(WORKLOG).prepare(run_of(WORKLOG, settings))
     copied = tmp_path / "copied"
     shutil.copytree(worklog, copied)
     settle(copied)
     config = home / "config.toml"
     config.write_text(f'[sources.worklog]\npath = "{copied}"\n', "utf-8")
-    command = ["sync", "--yes", "--config", str(config), "--include", "worklog"]
+    command = ["prepare", "--yes", "--config", str(config), "worklog"]
     given = [*command, "--data-dir", str(home / "other"), "--summary", "detailed"]
     capsys.readouterr()  # what the prepare logged, outside a run, which has no log file
     assert main(given) == ExitStatus.OK
     out = capsys.readouterr().out
-    assert out.startswith(
-        row_text("prepare worklog", result.outcome, result.text("detailed")) + "index:"
-    )
+    assert out.startswith(row_text("worklog", result.outcome, result.text("detailed")))

@@ -479,7 +479,7 @@ def test_a_corrupt_coverage_record_is_refused_by_the_command(
     (data / "raw").mkdir(parents=True)
     (data / "raw" / "coverage.json").write_text("[{}]", "utf-8")
     options = [
-        "download",
+        "fetch",
         "--yes",
         "--config",
         str(home / "none.toml"),
@@ -668,11 +668,11 @@ def exactly(start: datetime, end: datetime) -> Coverage:
 
 
 def said_coverage(events: list[dict[str, object]]) -> list[tuple[object, ...]]:
-    """Give what ``download.coverage`` said, target by target: the outcome, and why if held."""
+    """Give what ``fetch.coverage`` said, target by target: the outcome, and why if held."""
     return [
         (event["target"], event["outcome"], *([event["reason"]] if "reason" in event else []))
         for event in events
-        if event["event"] == "download.coverage"
+        if event["event"] == "fetch.coverage"
     ]
 
 

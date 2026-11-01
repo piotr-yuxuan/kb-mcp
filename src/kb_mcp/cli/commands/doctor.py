@@ -1,24 +1,30 @@
-"""``doctor``: check the machine, the data directory and the sign-in, by session or token."""
+"""``doctor``: check the machine, the data directory and each sign-in, by session or token."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from kb_mcp.cli.app.doctor import doctor
+from kb_mcp.cli.domain.sources import accounts_to_check
+from kb_mcp.cli.domain.summary import values_of
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.fetch.app.doctor import FAILED, SIGN_IN, WELL, doctor
+from kb_mcp.sources.roles import FAILED, SIGN_IN, WELL
 
 if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources.atlassian.fetch.app.doctor import Verdict
+    from kb_mcp.sources.roles import Verdict
 
 
-def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, list[Verdict]]:
-    """Give each check's verdict; exit 1 if one fails, 3 to sign in again."""
-    settings = loaded.settings
-    verdicts = doctor(settings)
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, list[Verdict]]:
+    """Give each check's verdict; exit 1 if one fails, 3 to sign in again.
+
+    A machine that uses no sign-in, as ``accounts_to_check`` judges, gets the machine's alone.
+    """
+    accounts = accounts_to_check(arguments.sources, values_of(loaded))
+    verdicts = doctor(loaded.settings, accounts.values())
     states = {verdict.state for verdict in verdicts}
     if SIGN_IN in states:
         return ExitStatus.SIGN_IN_AGAIN, verdicts

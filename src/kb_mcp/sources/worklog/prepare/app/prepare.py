@@ -13,7 +13,7 @@ its archive, else its own, so that the last good copy of each file stays, and ea
 problem says what it held back; a meeting whose link reaches no transcript found is a
 warning, not a problem. Reading, building and writing are each a span; each document is
 counted, and each conversion timed, by its kind, as
-``docs/reference/telemetry/sync.md`` lists them.
+``docs/reference/telemetry/prepare.md`` lists them.
 """
 
 from __future__ import annotations
