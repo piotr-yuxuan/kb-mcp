@@ -982,6 +982,48 @@ def test_a_secret_written_under_its_table_is_refused_by_name_never_by_value(
     )
 
 
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("KB_MCP_ACCOUNTS__ATLASSIAN", f'{{"api_token": "{SENTINEL}"}}'),
+        ("KB_MCP_ACCOUNTS", f'{{"atlassian": {{"api_token": "{SENTINEL}"}}}}'),
+        ("kb_mcp_accounts__atlassian", f'{{"api_token": "{SENTINEL}"}}'),
+    ],
+)
+def test_a_secret_written_by_a_table_s_variable_is_refused_naming_its_own_never_its_value(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], name: str, value: str
+) -> None:
+    """Criterion 5: the token comes from ``KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN`` alone."""
+    monkeypatch.setenv(name, value)
+    with pytest.raises(SettingsError) as refused:
+        loaded_from(tmp_path, "")
+    assert str(refused.value) == (
+        f"accounts.atlassian.api_token ({name}): a secret, read from"
+        " KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN alone"
+    )
+    config = tmp_path / "none.toml"
+    assert main(["check", "--config", str(config)]) == ExitStatus.REFUSED
+    out, err = capsys.readouterr()
+    assert SENTINEL not in out
+    assert SENTINEL not in err
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("KB_MCP_ACCOUNTS__ATLASSIAN", "{}"),
+        ("KB_MCP_ACCOUNTS__ATLASSIAN", '{"site": "https://x.atlassian.net"}'),
+        ("KB_MCP_ACCOUNTS", "{}"),
+    ],
+)
+def test_a_table_s_variable_that_writes_no_secret_loads(
+    tmp_path: Path, monkeypatch: MonkeyPatch, name: str, value: str
+) -> None:
+    """A table's variable may give the table whole, but for the value of its secret."""
+    monkeypatch.setenv(name, value)
+    assert loaded_from(tmp_path, "").settings.accounts.atlassian.api_token is None
+
+
 @pytest.mark.parametrize("table", ["[accounts.atlassian]", "[accounts]"])
 def test_an_empty_table_that_holds_a_secret_writes_none_and_loads(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], table: str

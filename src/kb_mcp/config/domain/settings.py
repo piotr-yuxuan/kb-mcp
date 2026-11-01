@@ -650,11 +650,22 @@ def entries_of(
     return [Entry(path=path, value=value, layer=layer)]
 
 
-def file_entries(values: Mapping[str, object], layer: str, model: type[Settings]) -> list[Entry]:
-    """Give the settings file's values as entries; refuse a moved or unknown one, a secret.
+def refuse_secrets(entries: Iterable[Entry], paths: Mapping[tuple[str, ...], Kind]) -> None:
+    """Raise SettingsError for a secret that these entries write, naming its own variable.
 
-    An empty table that holds a secret writes no value of it: only one written is refused.
+    A secret comes from that variable alone, so no other layer may write it: the settings
+    file, or the variable of a table above it. An empty table that holds one writes no
+    value of it: only one written is refused, by its setting and layer, never its value.
     """
+    for entry in entries:
+        if paths.get(entry.path) == "secret" and not entry.implicit:
+            setting = ".".join(entry.path)
+            message = f"{setting} ({entry.layer}): a secret, read from {variable(entry.path)} alone"
+            raise SettingsError(message)
+
+
+def file_entries(values: Mapping[str, object], layer: str, model: type[Settings]) -> list[Entry]:
+    """Give the settings file's values as entries; refuse a moved or unknown one, then a secret."""
     entries = [
         entry
         for name, value in values.items()
@@ -669,9 +680,7 @@ def file_entries(values: Mapping[str, object], layer: str, model: type[Settings]
         if entry.path not in paths:
             message = f"{setting} ({layer}): not a setting"
             raise SettingsError(message)
-        if paths[entry.path] == "secret" and not entry.implicit:
-            message = f"{setting} ({layer}): a secret, read from {variable(entry.path)} alone"
-            raise SettingsError(message)
+    refuse_secrets(entries, paths)
     return entries
 
 
@@ -695,7 +704,8 @@ def environment_entries(
     ``EnvSettingsSource`` of the model and of this environment, reads them, and each
     value read is an entry of its variable; a table or a list is the JSON that the scan
     decoded, its keys as written, since the source merges into it the variables below
-    it, those that name no setting included.
+    it, those that name no setting included. A secret written in that JSON is refused,
+    as in the settings file: only a variable of its own gives one.
     """
     paths = setting_paths(model)
     scanned: list[tuple[tuple[str, ...], str]] = []
@@ -735,6 +745,7 @@ def environment_entries(
             decoded[name] if name in decoded else reduce(getitem, path, found), path, name, model
         )
     ]
+    refuse_secrets((entry for entry in entries if entry.layer in decoded), paths)
     return entries, ignored
 
 
