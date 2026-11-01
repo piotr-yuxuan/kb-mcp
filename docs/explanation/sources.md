@@ -256,8 +256,12 @@ the work log's to its domain
 `docs/`, but those under `assets/`, where an attached `x.md` is an asset, and those with a
 name beginning with `_` or `.` on their path. A mirror that the program wrote holds the same
 documents as under the patterns of three sources that it replaced; a stray `.md` file is
-now read, and the index reports it as a file without front matter. Nothing served follows
-the order in which it yields them, sorted by path: search breaks its ties by path.
+now read, and the index reports it as a file without front matter. It yields them sorted by
+path, and search breaks its ties by path, so one thing served follows that order alone: where
+two spellings of one person tie, on one account's documents of one second or by their counts,
+the first in the order of the documents names the person
+([`joined`](../../src/kb_mcp/search/domain/people.py)). So such a name can change at the first
+index since the rule.
 
 **Each source says which files it may remove**, in its `owned.py`
 ([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py),
