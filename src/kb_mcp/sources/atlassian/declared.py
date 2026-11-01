@@ -13,6 +13,9 @@ from typing import TYPE_CHECKING
 from kb_mcp.sources.atlassian.fetch.domain.period import (
     DEFAULT_MAX_FILE_MB,
     EPOCH,
+    MAX_FILE_MB_FLAG,
+    SINCE_FLAG,
+    UNTIL_FLAG,
     PeriodError,
     moment,
     period_rule,
@@ -33,12 +36,12 @@ SITE, EMAIL, API_TOKEN = ATLASSIAN.paths
 # The options of a fetch's period: from when, until when, and the largest file kept.
 SINCE, UNTIL, MAX_FILE_MB = PERIOD = (
     Option(
-        flag="--since",
+        flag=SINCE_FLAG,
         help="12h, 7d, 6mo, an ISO date or time, or all; by default, each target's last fetch",
     ),
-    Option(flag="--until", help="12h, 7d, or an ISO date or time, excluded; by default, now"),
+    Option(flag=UNTIL_FLAG, help="12h, 7d, or an ISO date or time, excluded; by default, now"),
     Option(
-        flag="--max-file-mb",
+        flag=MAX_FILE_MB_FLAG,
         help=f"the largest file kept, in MB; {DEFAULT_MAX_FILE_MB} by default",
         type=int,
     ),

@@ -61,7 +61,13 @@ from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     too_many_gone,
 )
 from kb_mcp.sources.atlassian.fetch.domain.files import MEBIBYTE, skip_reason
-from kb_mcp.sources.atlassian.fetch.domain.period import DEFAULT_MAX_FILE_MB, moment
+from kb_mcp.sources.atlassian.fetch.domain.period import (
+    DEFAULT_MAX_FILE_MB,
+    MAX_FILE_MB_FLAG,
+    SINCE_FLAG,
+    UNTIL_FLAG,
+    moment,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
@@ -704,15 +710,16 @@ def read_targets(
 
     ``options`` holds each by its flag, as typed, None when not given: --since and
     --until read as ``moment`` reads them, at ``now``; --max-file-mb not given is
-    ``DEFAULT_MAX_FILE_MB``.
+    ``DEFAULT_MAX_FILE_MB``. Raises KeyError for one that it does not hold, so that a flag
+    renamed cannot read as not given.
     """
-    since, until = options.get("--since"), options.get("--until")
+    since, until = options[SINCE_FLAG], options[UNTIL_FLAG]
     return Targets(
         spaces=list(spaces),
         projects=list(projects),
-        max_file_bytes=(options.get("--max-file-mb") or DEFAULT_MAX_FILE_MB) * MEBIBYTE,
-        since=moment(since, now, "--since") if since else None,
-        until=moment(until, now, "--until") if until else None,
+        max_file_bytes=(options[MAX_FILE_MB_FLAG] or DEFAULT_MAX_FILE_MB) * MEBIBYTE,
+        since=moment(since, now, SINCE_FLAG) if since else None,
+        until=moment(until, now, UNTIL_FLAG) if until else None,
     )
 
 

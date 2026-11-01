@@ -144,14 +144,18 @@ def run_of(
     *,
     dry_run: bool = False,
 ) -> Run:
-    """Give a run of a declaration's roles, its tables from the settings, at FIRST."""
+    """Give a run of a declaration's roles, its tables from the settings, at FIRST.
+
+    Each option that it declares is held, as ``sync``'s command gives them: None when not
+    among ``options``.
+    """
     account = declared.account
     return Run(
         declared=declared,
         settings=settings,
         table=getattr(settings.sources, declared.name),
         account=None if account is None else getattr(settings.accounts, account.name),
-        options=options or {},
+        options={**dict.fromkeys(declared.options), **(options or {})},
         now=lambda: FIRST,
         sleep=lambda _: None,
         dry_run=dry_run,

@@ -24,6 +24,8 @@ EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 LONGEST = timedelta(days=100 * 365)
 # How far back a target never covered starts without --since.
 FIRST_FETCH = timedelta(days=7)
+# The options of a fetch's period, by flag: from when, until when, the largest file kept.
+SINCE_FLAG, UNTIL_FLAG, MAX_FILE_MB_FLAG = "--since", "--until", "--max-file-mb"
 # The largest file that a download keeps when no --max-file-mb says, in MB: an option of
 # the period, as the commands add it.
 DEFAULT_MAX_FILE_MB = 50
