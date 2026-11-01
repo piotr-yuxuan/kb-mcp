@@ -15,6 +15,7 @@ import sys
 import time
 import tomllib
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -64,8 +65,8 @@ ROOT = Path(__file__).parents[1]
 PROGRAM = "kb-mcp"
 VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]["version"]
 # The limit that telemetry has at a run's end, as plan 016 injects it for the bounded exit,
-# and the time that a run then takes at most, when the endpoint refuses and when it
-# never answers.
+# and the time that the end then takes at most, from ``run.end`` to the exit, when the
+# endpoint refuses and when it never answers.
 LIMIT_S = 1.0
 REFUSING_S = 2.0
 SILENT_S = 3.0
@@ -93,12 +94,13 @@ SECRETS = (SENTINEL, KEY_SENTINEL, ENCODED, COOKIE)
 
 @dataclass(frozen=True)
 class Ran:
-    """A run of the command in a fresh interpreter: what it said, how long it took, what it left."""
+    """A run of the command in a fresh interpreter: what it said, when it ended, what it left."""
 
     status: int
     err: str
-    seconds: float
+    ended: datetime
     threads: list[str]
+    connections: int
     providers: list[str]
     sdk: bool
 
@@ -115,7 +117,6 @@ def guarded(
     report = home / "report.json"
     ports = [port] if port else []
     given = {"ports": ports, "limit": limit, "report": str(report), "arguments": arguments}
-    began = time.monotonic()
     child = subprocess.run(
         [sys.executable, "-m", "tests.guarded"],
         input=json.dumps(given),
@@ -125,13 +126,14 @@ def guarded(
         cwd=ROOT,
         check=False,
     )
-    seconds = time.monotonic() - began
+    ended = datetime.now(UTC)
     left = json.loads(report.read_text("utf-8")) if report.exists() else {}
     return Ran(
         child.returncode,
         child.stderr,
-        seconds,
+        ended,
         left.get("threads", []),
+        left.get("connections", 0),
         left.get("providers", []),
         left.get("sdk", False),
     )
@@ -154,6 +156,16 @@ def logged(home: Path) -> list[dict[str, object]]:
     """Give the lines of the one log file that a run left in the scratch home's log folder."""
     (path,) = user_log_folder(home).iterdir()
     return [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+
+
+def ending_s(home: Path, ran: Ran) -> float:
+    """Give the seconds from a run's ``run.end``, its work done, to its process's exit.
+
+    What telemetry's limits bound, and no more: an interpreter's start and imports come
+    before it, 0.2 to 0.8 s alone, but over 3 s at a load of 30, which no limit bounds.
+    """
+    (end,) = (line for line in logged(home) if line["event"] == "run.end")
+    return (ran.ended - datetime.fromisoformat(str(end["timestamp"]))).total_seconds()
 
 
 def test_an_exported_record_has_the_event_as_body_its_fields_and_the_span_around_it(
@@ -454,13 +466,16 @@ def test_an_endpoint_that_refuses_ends_check_in_bounded_time_with_one_warning(
 ) -> None:
     """Nothing listens there: the run goes on without telemetry, and says so once.
 
-    Before, as every run with an endpoint, it says that telemetry is on.
+    Before, as every run with an endpoint, it says that telemetry is on. It connects
+    once, and its end waits for nothing: past the probe, each export would retry until
+    the limit, or some 8 s by the SDK's own defaults.
     """
     with nothing_listening() as dead:
         endpoint = dead.removesuffix("/v1")
         ran = guarded(tmp_path, port_of(endpoint), check(tmp_path, endpoint), {}, LIMIT_S)
     assert ran.status == 0
-    assert ran.seconds < REFUSING_S
+    assert ending_s(tmp_path, ran) < REFUSING_S
+    assert ran.connections == 1
     on, undelivered = ran.err.splitlines()
     assert on == f"telemetry: on, to {endpoint} (config.toml)"
     assert said(undelivered) == [("warning", "telemetry.undelivered")]
@@ -474,13 +489,15 @@ def test_an_endpoint_that_never_answers_ends_check_in_bounded_time_with_one_warn
     """It takes the connection, and the exports, but never answers: the run drops them.
 
     Neither stderr nor the collector gets a record of the SDK's own: stderr says that
-    telemetry is on, then that it went undelivered.
+    telemetry is on, then that it went undelivered. Its end takes one limit, in all, then
+    its exit: without it, each export would wait for its own 5 s, or 10 s by the SDK's
+    own defaults, and with a limit for each signal in turn, three limits.
     """
     collector = Collector(silent=True)
     with collecting(collector) as endpoint:
         ran = guarded(tmp_path, port_of(endpoint), check(tmp_path, endpoint), {}, LIMIT_S)
     assert ran.status == 0
-    assert ran.seconds < 3 * LIMIT_S
+    assert ending_s(tmp_path, ran) < SILENT_S
     on, undelivered = ran.err.splitlines()
     assert on == f"telemetry: on, to {endpoint} (config.toml)"
     assert said(undelivered) == [("warning", "telemetry.undelivered")]
