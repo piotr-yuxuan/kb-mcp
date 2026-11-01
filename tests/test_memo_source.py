@@ -152,10 +152,18 @@ def test_help_lists_it_and_imports_none_of_the_runs_packages(tmp_path: Path) -> 
 def test_check_lists_its_setting(
     config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
 ) -> None:
-    """Its table is composed into the settings, read from the file."""
+    """Its table is composed into the settings, read from the file, and read by ``check``.
+
+    In detail too, whose every setting not read is said to be ignored.
+    """
     assert main(["check", "--config", str(config)], registry) == ExitStatus.OK
     folder = config.parent / "notes"
     assert f"sources.memo.folder: {folder}\n" in capsys.readouterr().out
+    detailed = ["check", "--config", str(config), "--summary", "detailed"]
+    assert main(detailed, registry) == ExitStatus.OK
+    out, err = capsys.readouterr()
+    assert f"sources.memo.folder: {folder} " in out
+    assert "sources.memo.folder" not in err
 
 
 def test_sync_writes_under_its_folder_alone_and_search_finds_a_note(

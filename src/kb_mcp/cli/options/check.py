@@ -5,12 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.options._common import (
-    SIGN_IN,
-    SITE,
-    add_output_options,
-    add_settings_options,
-)
+from kb_mcp.cli.options._common import add_output_options, add_settings_options
+from kb_mcp.sources.registry import accounts_of
 
 if TYPE_CHECKING:
     import argparse
@@ -18,20 +14,17 @@ if TYPE_CHECKING:
 
     from kb_mcp.sources.declaration import Declared
 
-# Every setting, by its path, in the model's order: check shows them all.
-EVERY_SETTING = (
+# The core's settings, by path, in the model's order, before the accounts' and the
+# sources', then after them: check shows them all.
+BEFORE_THE_REGISTRY = (
     "data_dir",
     "model",
     "search_mode",
     "chunking",
     "embedding_url",
     "embedding_api_key",
-    SITE,
-    *SIGN_IN,
-    "sources.confluence.spaces",
-    "sources.jira.projects",
-    "sources.worklog.path",
-    "sources.worklog.archives",
+)
+AFTER_THE_REGISTRY = (
     "logs.dir",
     "telemetry.endpoint",
     "rerank.enabled",
@@ -43,9 +36,9 @@ EVERY_SETTING = (
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    _sources: Sequence[Declared],
+    sources: Sequence[Declared],
 ) -> None:
-    """Add ``check`` to the command."""
+    """Add ``check`` to the command, which reads every setting of the registry's model."""
     parser = subparsers.add_parser(
         "check",
         help="validate the settings and the data directory",
@@ -60,7 +53,12 @@ def register(
         command=Command(
             "check",
             "kb_mcp.cli.commands.check",
-            reads=EVERY_SETTING,
+            reads=(
+                *BEFORE_THE_REGISTRY,
+                *(path for account in accounts_of(sources).values() for path in account.paths),
+                *(path for declared in sources for path in declared.paths),
+                *AFTER_THE_REGISTRY,
+            ),
             flags=flags,
             actions=actions,
         )
