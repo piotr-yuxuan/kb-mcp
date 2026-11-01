@@ -28,10 +28,8 @@ from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
-from kb_mcp.sources.atlassian.prepare.app import preparer
-from kb_mcp.sources.atlassian.prepare.app.prepare import mirror
-from kb_mcp.sources.registry import SOURCES
-from kb_mcp.sources.roles import Run
+from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, mirror
+from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_kinds
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
 from tests.composed import MODEL
 from tests.mirrors import mirrored_source
@@ -997,21 +995,9 @@ def issue_damaged(sandbox: Sandbox) -> None:
 
 def prepared(sandbox: Sandbox, source: str) -> tuple[Prepared, list[dict[str, object]]]:
     """Prepare one source as its role does; give how it ended, and what it warned."""
-    settings = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=sandbox.data)
-    declared = next(each for each in SOURCES if each.name == source)
+    settings = MODEL(data_dir=sandbox.data)
     with capture_logs() as events:
-        done = preparer.prepare(
-            Run(
-                declared=declared,
-                settings=settings,
-                table=getattr(settings.sources, source),
-                account=settings.accounts.atlassian,
-                options={},
-                now=lambda: FETCHED,
-                sleep=lambda _: None,
-                dry_run=False,
-            )
-        )
+        done = prepare_kinds(settings, SITE, Pandoc.find(), source, PREPARED[source])
     return done, [each for each in events if each["log_level"] == "warning"]
 
 

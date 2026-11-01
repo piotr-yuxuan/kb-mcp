@@ -325,7 +325,7 @@ document's file:
   out the title, the body and the attachments (and an issue's comments).
 - [`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)
   gives that HTML's Markdown from the rows of its source in the cache of conversions, which
-  [`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py) opened
+  [`prepare_kinds`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py) opened
   ([`opened`](../../src/kb_mcp/mirror/adapters/conversions.py)), or has
   [`Pandoc.markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py) write it
   as GitHub's Markdown, one process a document, and keeps it. `--sandbox` is among

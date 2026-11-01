@@ -3,6 +3,7 @@
 Both declarations name this module, a ``Fetcher``: ``preflight`` and ``fetch`` read the
 source that a run is for from its declaration, by its kinds, and fetch that source's
 targets alone, its table's spaces or projects, over the period that its options give.
+``fetch_targets`` downloads them, or plans their download, and says what went wrong.
 """
 
 from __future__ import annotations
@@ -21,6 +22,10 @@ from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
 from kb_mcp.sources.roles import Result
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from datetime import datetime
+
+    from kb_mcp.config.domain.settings import Settings
     from kb_mcp.kernel.output import Summary
     from kb_mcp.sources import roles
     from kb_mcp.sources.atlassian.fetch.app.download import Targets
@@ -81,28 +86,42 @@ def preflight(run: Run) -> str | None:
 
 
 def fetch(run: Run) -> Fetched:
-    """Download what changed of the run's source, or in a dry run plan it; say what went wrong.
+    """Download what changed of the run's source, or in a dry run plan it, by ``fetch_targets``.
+
+    What ``preflight`` refuses may still come once the run began: a period read at a
+    later fetch's start, or a record damaged since. It fails this fetch alone, an error,
+    ``fetch.refused``, naming the source, and the run's next rows go on.
+    """
+    try:
+        return fetch_targets(run.settings, targets_of(run), run.now, run.sleep, dry_run=run.dry_run)
+    except (PeriodError, RepresentationError) as error:
+        structlog.get_logger().error("fetch.refused", source=run.declared.name, reason=str(error))
+        return Fetched(outcome="failed", downloaded=None)
+
+
+def fetch_targets(
+    settings: Settings,
+    targets: Targets,
+    now: Callable[[], datetime],
+    sleep: Callable[[float], None],
+    *,
+    dry_run: bool,
+) -> Fetched:
+    """Download these targets, one source's, or plan their download; say what went wrong.
 
     Another run writing the raw store fails the fetch before it starts, an error,
     ``fetch.store_busy``; each target that failed is a warning, ``fetch.target_failed``,
     and a sign-in that no longer holds an error, ``fetch.sign_in_needed``, saying how to
     sign in again; both errors name the source, since each source's fetch can give them.
-    What ``preflight`` refuses may still come once the run began: a period read at a
-    later fetch's start, or a record damaged since. It fails this fetch alone, an error,
-    ``fetch.refused``, naming the source, and the run's next rows go on.
     """
-    settings = run.settings
-    source = run.declared.name
-    act = plan if run.dry_run else download
+    act = plan if dry_run else download
+    source = targets.source
     try:
-        downloaded = act(settings, targets_of(run), run.now, run.sleep)
+        downloaded = act(settings, targets, now, sleep)
     except StoreBusyError:
         structlog.get_logger().error(
             "fetch.store_busy", source=source, store=str(settings.raw), hint=BUSY
         )
-        return Fetched(outcome="failed", downloaded=None)
-    except (PeriodError, RepresentationError) as error:
-        structlog.get_logger().error("fetch.refused", source=source, reason=str(error))
         return Fetched(outcome="failed", downloaded=None)
     log = structlog.get_logger()
     for target in downloaded.failed_targets:

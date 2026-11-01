@@ -66,7 +66,7 @@ does not apply, and what its summary says.
   reads the kinds of the source that it runs for from `run.declared`
   ([`targets_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), as their one
   preparer reads the kinds that it converts, and the source whose rows of the cache of
-  conversions it reads ([`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
+  conversions it reads ([`prepare_kinds`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
   Git, once re-planned, will name one fetcher and two preparers, which is why a
   declaration's preparers are a tuple. Until then no source names two, and two would share
   one row's name, `prepare git`, told apart by their order alone: that plan names them.
@@ -91,7 +91,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   log that is not a folder
   ([its preparer's](../../src/kb_mcp/sources/worklog/prepare/app/preparer.py)).
 - **`fetch`** brings a system's changes into the store that it owns, raw first
-  ([`fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). A source
+  ([`fetch_targets`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). A source
   read in place has no fetcher: the work log's preparer reads its folder, and its
   `preflight` checks it.
 - **`prepare`** writes the source's documents through the mirror. In a dry run the
@@ -313,7 +313,7 @@ package, but each is a source: a row, a report and a set of files of its own.
   Confluence's stale pages still go. What a prepare could not read of the other source
   fails nothing of its own, yet its files may then link the document's address on the site:
   it says so, by that source, under a row that stays done
-  ([`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
+  ([`prepare_kinds`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
 - **The conversion cache.** Each prepare looks up and prunes its own rows
   ([`Conversions`](../../src/kb_mcp/mirror/adapters/conversions.py)), keyed by source and
   key, so that a text that both convert is a row of each, which neither prune takes from the

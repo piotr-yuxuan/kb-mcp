@@ -19,17 +19,9 @@ if TYPE_CHECKING:
 def in_the_browser(
     arguments: argparse.Namespace, _settings: Mapping[str, object]
 ) -> dict[str, str]:
-    """``login`` signs in in a browser, whatever the account's other settings say.
-
-    Another account's are not used at all.
-    """
-    unused: dict[str, str] = {}
-    for name, account in accounts_of(arguments.sources).items():
-        if name == arguments.account:
-            unused |= dict.fromkeys(account.paths[1:], "login signs in in a browser")
-        else:
-            unused |= dict.fromkeys(account.paths, f"{name} not named")
-    return unused
+    """``login`` signs in in a browser, whatever the account's other settings say."""
+    account = accounts_of(arguments.sources)[arguments.account]
+    return dict.fromkeys(account.paths[1:], "login signs in in a browser")
 
 
 def site_not_set(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:

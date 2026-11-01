@@ -331,14 +331,14 @@ def test_a_bug_in_the_database_s_use_is_not_taken_for_a_failure_to_write(
         index_mirror(indexing, MOMENT)
 
 
+@pytest.mark.parametrize("mode", ["lexical", "hybrid"])
 def test_by_words_alone_no_endpoint_is_asked_even_one_elsewhere(
-    data: Path, capsys: CaptureFixture[str]
+    data: Path, capsys: CaptureFixture[str], mode: str
 ) -> None:
     """``index`` never opens the endpoint, so an address off this machine is no matter."""
     write(data / "docs", page("196845", "Kafka"))
-    for mode in ("lexical", "hybrid"):
-        remote = f'search_mode = "{mode}"\nembedding_url = "https://embeddings.example/v1"\n'
-        assert index(data, capsys, remote)[0] == 0
+    remote = f'search_mode = "{mode}"\nembedding_url = "https://embeddings.example/v1"\n'
+    assert index(data, capsys, remote)[0] == 0
 
 
 @pytest.mark.parametrize("mode", ["hybrid", "lexical"])
