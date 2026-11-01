@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import SearchMode
     from kb_mcp.search.adapters.embedding import Embedder
-    from kb_mcp.search.adapters.sqlite_index import Reader
+    from kb_mcp.search.domain.indexes import SearchReader
     from kb_mcp.search.domain.search import Sort
 
 # Where "Mixed notes" comes by words for "4002 revert release": after the issue and
@@ -440,7 +440,7 @@ class Ordered(Meaning):
         super().__init__(connector())
         self.order = order
 
-    def nearest(self, reader: Reader, query: str, filters: Filters) -> Nearest:
+    def nearest(self, reader: SearchReader, query: str, filters: Filters) -> Nearest:
         """Give the scripted documents, the first nearest."""
         del reader, query, filters
         return Nearest(

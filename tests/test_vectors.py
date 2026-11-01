@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import threading
+import time
 from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,13 +19,13 @@ from kb_mcp.cli.main import main
 from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.mcp.app import responses
 from kb_mcp.mcp.app.tools import Library
-from kb_mcp.search.adapters import vector_store
+from kb_mcp.search.adapters import sqlite_index, vector_store
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
 from kb_mcp.search.domain.indexes import UnavailableIndexError
-from kb_mcp.search.domain.search import Embedded
+from kb_mcp.search.domain.search import Embedded, Filters
 from tests.answers import parts
 from tests.endpoint import DIMENSIONS, Scripted, connector, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, fillers, page, write
@@ -39,6 +41,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.kernel.chunking import Chunking
     from kb_mcp.search.adapters.embedding import ApiEmbedder
+    from kb_mcp.search.domain.search import Pieces
 
 BODY = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
 FILLER_PAGES = 5
@@ -133,6 +136,52 @@ def test_a_rebuild_embeds_only_the_pieces_that_changed(data: Path) -> None:
     build(data, counting())
     with reading(data / "index.sqlite") as reader:
         assert np.array_equal(reader.pieces().matrix, kept)
+
+
+def test_a_handle_reads_an_index_s_vectors_once_a_build(
+    data: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Searches at once wait for one read; only the next build's search reads them again."""
+    build(data, counting())
+    reads: list[str] = []
+    read = sqlite_index.Reader.pieces
+
+    def slowly(reader: sqlite_index.Reader) -> Pieces:
+        reads.append(reader.build())
+        time.sleep(0.2)
+        return read(reader)
+
+    monkeypatch.setattr(sqlite_index.Reader, "pieces", slowly)
+    index = SqliteIndex(data / "index.sqlite")
+    query = tiny().query("deploy")
+
+    def search() -> None:
+        with index.reading() as reader:
+            assert reader.nearest(query, Filters(), 3)
+
+    threads = [threading.Thread(target=search) for _ in range(3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    search()
+    assert len(reads) == 1
+    build(data, counting())
+    search()
+    search()
+    (first, second) = reads
+    assert first != second
+
+
+def test_a_reader_without_a_handle_searches_alike(data: Path) -> None:
+    """Opened by the path alone, as a prune opens one: the same documents, the same places."""
+    build(data, counting())
+    query = tiny().query("deploy")
+    with reading(data / "index.sqlite") as reader:
+        alone = reader.nearest(query, Filters(), 3)
+    with SqliteIndex(data / "index.sqlite").reading() as reader:
+        assert reader.nearest(query, Filters(), 3) == alone
+    assert alone
 
 
 def test_another_fingerprint_reuses_no_vector(data: Path) -> None:

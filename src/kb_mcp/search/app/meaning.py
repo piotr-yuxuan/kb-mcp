@@ -1,4 +1,4 @@
-"""Search by meaning over an index: its model, connected once a build, and its vectors.
+"""Search by meaning over an index: the query embedded by its model, connected once a build.
 
 The model is the one the index names, never the setting, and only while the endpoint's
 fingerprint for it is the index's: vectors of other weights would not compare with the
@@ -8,7 +8,6 @@ answers by words and says why.
 
 from __future__ import annotations
 
-import json
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -21,8 +20,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from kb_mcp.search.adapters.embedding import Embedder
-    from kb_mcp.search.adapters.sqlite_index import Reader
-    from kb_mcp.search.domain.search import Embedded, Filters, Pieces
+    from kb_mcp.search.domain.indexes import SearchReader
+    from kb_mcp.search.domain.search import Embedded, Filters
 
 # The documents nearest a query that a search by meaning gives, at most.
 DEPTH = 100
@@ -54,37 +53,29 @@ class Meaning:
         self._connect = connect
         self._clock = clock
         self._lock = threading.Lock()  # the SDK runs tools in worker threads
-        # The build of the index last searched and its vectors; its connection; and why
-        # there is none, and until when that stands.
-        self._built: tuple[str, Pieces] | None = None
+        # The build of the index last searched; its connection; and why there is none,
+        # and until when that stands.
+        self._built: str | None = None
         self._embedder: Embedder | None = None
         self._failure = ("", 0.0)
 
-    def nearest(self, reader: Reader, query: str, filters: Filters) -> Nearest:
+    def nearest(self, reader: SearchReader, query: str, filters: Filters) -> Nearest:
         """Find the documents passing the filters whose best piece is nearest the query."""
         embedded = reader.embedded()
         if embedded is None:
             return Nearest(found={}, reason=NO_VECTORS)
         try:
-            embedder, pieces = self.prepared(reader, embedded)
+            embedder = self.prepared(reader, embedded)
             fresh = embedder.fingerprint == embedded.fingerprint
             vector = embedder.query(query) if fresh else None
         except ModelError as error:
             return Nearest(found={}, reason=str(error))
         if vector is None:
             return Nearest(found={}, reason=STALE.format(name=embedded.model))
-        kept = reader.kept(filters)
-        allowed = None if kept is None else set(json.loads(kept))
-        found = pieces.nearest(vector, allowed, DEPTH)
-        return Nearest(
-            found={
-                path: (score, pieces.sections[index], pieces.offsets[index], pieces.ends[index])
-                for path, (score, index) in found.items()
-            }
-        )
+        return Nearest(found=reader.nearest(vector, filters, DEPTH))
 
-    def prepared(self, reader: Reader, embedded: Embedded) -> tuple[Embedder, Pieces]:
-        """Give the connection to an index's model and its vectors, each made once a build.
+    def prepared(self, reader: SearchReader, embedded: Embedded) -> Embedder:
+        """Give the connection to an index's model, made once a build.
 
         A connection that failed is not tried again for QUIET_S seconds, nor before the
         build changes once it succeeded, even when its fingerprint is not the index's.
@@ -92,8 +83,8 @@ class Meaning:
         """
         with self._lock:
             build = reader.build()
-            if self._built is None or self._built[0] != build:
-                self._built = (build, reader.pieces())
+            if self._built != build:
+                self._built = build
                 self._embedder, self._failure = None, ("", 0.0)
             if self._embedder is None:
                 reason, until = self._failure
@@ -104,4 +95,4 @@ class Meaning:
                 except ModelError as error:
                     self._failure = (str(error), self._clock() + QUIET_S)
                     raise
-            return self._embedder, self._built[1]
+            return self._embedder
