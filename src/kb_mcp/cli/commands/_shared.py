@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import pkgutil
 import shutil
 import sys
 from pathlib import Path
@@ -19,6 +18,7 @@ from kb_mcp.config.domain.settings import SettingsError, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.output import Output
 from kb_mcp.observability.app.observed import Invocation, observed
+from kb_mcp.sources.registry import tables
 
 # What run.start names in place of an argument's value that the command keeps out of logs.
 UNLOGGED = "[not logged]"
@@ -76,14 +76,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
         option: (setting, getattr(arguments, dest))
         for dest, (option, setting) in command.setting_flags().items()
     }
-    model = settings_model(
-        {each.name: pkgutil.resolve_name(each.table) for each in sources},
-        {
-            each.account.name: pkgutil.resolve_name(each.account.table)
-            for each in sources
-            if each.account is not None
-        },
-    )
+    model = settings_model(*tables(sources))
     try:
         loaded = load_settings(arguments.config, flags, Path.home().resolve(), model)
     except SettingsError as error:

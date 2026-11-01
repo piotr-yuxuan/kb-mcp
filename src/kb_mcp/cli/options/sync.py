@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
@@ -14,9 +15,9 @@ from kb_mcp.cli.options._common import (
     endpoint_by_meaning,
 )
 from kb_mcp.cli.options.index import INDEX_SETTINGS, by_words_alone
+from kb_mcp.sources.registry import accounts_of
 
 if TYPE_CHECKING:
-    import argparse
     from collections.abc import Mapping, Sequence
 
     from kb_mcp.sources.declaration import Declared
@@ -88,7 +89,8 @@ def register(
     ``--include`` and ``--exclude`` take the sources' names; each option that a source
     declares is added once, and none has a default, so that one given is told from one
     not given. The settings read are each account's, once, the data directory, each
-    source's, then the index's.
+    source's, then the index's. Raises ValueError, naming the source, for an option that
+    takes a flag of ``sync``'s own, as the registry's other rules do.
     """
     parser = subparsers.add_parser(
         "sync",
@@ -121,27 +123,28 @@ def register(
         help="sync every configured source but this one; repeat for more",
     )
     options = {flag: option for declared in sources for flag, option in declared.options.items()}
-    declared_options = tuple(
-        parser.add_argument(option.flag, type=option.type, help=option.help)
-        for option in options.values()
-    )
-    remote = add_embedding_options(parser)
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="say what the run would fetch, and change where a source can tell; write nothing",
-    )
-    accounts = {
-        declared.account.name: declared.account
-        for declared in sources
-        if declared.account is not None
-    }
+    try:
+        declared_options = tuple(
+            parser.add_argument(option.flag, type=option.type, help=option.help)
+            for option in options.values()
+        )
+        remote = add_embedding_options(parser)
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="say what the run would fetch, and change where a source can tell; write nothing",
+        )
+    except argparse.ArgumentError as error:
+        flag = error.argument_name
+        named = next(declared.name for declared in sources if flag in declared.options)
+        message = f"source {named!r}: option {flag}: a flag of sync's own"
+        raise ValueError(message) from error
     parser.set_defaults(
         command=Command(
             "sync",
             "kb_mcp.cli.commands.sync",
             reads=(
-                *(path for account in accounts.values() for path in account.paths),
+                *(path for account in accounts_of(sources).values() for path in account.paths),
                 "data_dir",
                 *(path for declared in sources for path in declared.paths),
                 *INDEX_SETTINGS,

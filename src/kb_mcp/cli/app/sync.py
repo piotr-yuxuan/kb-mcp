@@ -71,11 +71,13 @@ def loaded[R: (Fetcher, Preparer)](declared: Declared, path: str, role: type[R])
     """Load a role by the module path that its source's declaration names.
 
     Raises ``SyncRefusedError``, naming the source and the path, for a path that does
-    not load, or for what it names that lacks the role's methods.
+    not load, whatever its import raises, such as a syntax error in a module of the
+    source's or its own error at import, or for what it names that lacks the role's
+    methods.
     """
     try:
         found = pkgutil.resolve_name(path)
-    except (ImportError, AttributeError, ValueError) as error:
+    except Exception as error:
         message = f"source {declared.name!r}: {path}: does not load: {error}"
         raise SyncRefusedError(message) from error
     if not isinstance(found, role):

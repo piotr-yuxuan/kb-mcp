@@ -2,9 +2,11 @@
 
 The expectations come from plan 030: the registry lists Confluence, Jira and the work
 log in name order; any registry that the entry is given is refused, naming the
-declaration, for a name off the rule, ``assets``, a name declared twice, or an account
-that two declarations name differently; each declaration names its table, whose
-settings are the declaration's; Confluence and Jira sign in with one account,
+declaration, for a name off the rule, ``assets``, a name declared twice, an account that
+two declarations name differently, no setting, settings that are not its table's, or an
+option that another source declares otherwise, or that is ``sync``'s own; each
+declaration names its table, whose settings are the declaration's; Confluence and Jira
+sign in with one account,
 ``[accounts.atlassian]`` (question 1); and a source, or an account, that a registry
 leaves out has no setting (criterion 3).
 """
@@ -20,9 +22,11 @@ import pytest
 from pydantic import BaseModel
 
 from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import TABLE, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.declared import ATLASSIAN, CONFLUENCE, JIRA
+from kb_mcp.sources.atlassian.declared import ATLASSIAN, CONFLUENCE, JIRA, SINCE
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+from kb_mcp.sources.declaration import Option, ResourceType
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.worklog.declared import WORKLOG
 
@@ -93,6 +97,113 @@ def test_a_registry_with_two_declarations_of_one_name_is_refused_naming_it(
     registry = (*SOURCES, replace(JIRA, table=WORKLOG.table))
     with pytest.raises(ValueError, match=r"^source 'jira': declared twice$"):
         main(["check", "--config", str(tmp_path / "none.toml")], registry)
+
+
+def declaring(*options: Option) -> Declared:
+    """Give the work log's declaration, its entries taking these options."""
+    return replace(
+        WORKLOG,
+        types=(
+            ResourceType(name="entries", summary="its entries", read="in place", options=options),
+        ),
+    )
+
+
+class Required(BaseModel):
+    """A table that cannot be built by default: a source left unset still has its table."""
+
+    model_config = TABLE
+
+    folder: str
+
+
+def test_a_registry_with_a_source_that_names_no_setting_is_refused_naming_it(
+    tmp_path: Path,
+) -> None:
+    """Its first setting says whether it is configured: any run would have nothing to read."""
+    registry = (CONFLUENCE, JIRA, replace(WORKLOG, settings=()))
+    with pytest.raises(ValueError, match=r"^source 'worklog': names no setting$"):
+        main(["check", "--config", str(tmp_path / "none.toml")], registry)
+
+
+@pytest.mark.parametrize(
+    ("registry", "said"),
+    [
+        pytest.param(
+            (CONFLUENCE, JIRA, replace(WORKLOG, settings=("path", "archive"))),
+            "source 'worklog': kb_mcp.sources.worklog.settings:WorklogSource: holds"
+            " ('path', 'archives'), not the settings named, ('path', 'archive')",
+            id="a setting the table lacks",
+        ),
+        pytest.param(
+            (CONFLUENCE, JIRA, replace(WORKLOG, settings=("archives", "path"))),
+            "source 'worklog': kb_mcp.sources.worklog.settings:WorklogSource: holds"
+            " ('path', 'archives'), not the settings named, ('archives', 'path')",
+            id="the first setting another",
+        ),
+        pytest.param(
+            (
+                replace(CONFLUENCE, account=replace(ATLASSIAN, settings=("site",))),
+                replace(JIRA, account=replace(ATLASSIAN, settings=("site",))),
+                WORKLOG,
+            ),
+            "account 'atlassian': kb_mcp.sources.atlassian.settings:AtlassianAccount: holds"
+            " ('site', 'email', 'api_token'), not the settings named, ('site',)",
+            id="an account's",
+        ),
+    ],
+)
+def test_a_registry_whose_settings_are_not_its_table_s_is_refused_naming_it(
+    tmp_path: Path, registry: tuple[Declared, ...], said: str
+) -> None:
+    """By the entry, which loads the tables: ``--help`` loads none, and is not refused."""
+    with pytest.raises(ValueError, match=rf"^{re.escape(said)}$"):
+        main(["check", "--config", str(tmp_path / "none.toml")], registry)
+    with pytest.raises(SystemExit) as stopped:
+        main(["--help"], registry)
+    assert stopped.value.code == ExitStatus.OK
+
+
+def test_a_table_that_cannot_be_built_by_default_is_refused_naming_its_source() -> None:
+    """Refused as the model is composed: not a validation error of no source at a first read."""
+    with pytest.raises(TypeError, match=r"^sources\.memo: a setting without a default: folder$"):
+        settings_model({"memo": Required}, {})
+
+
+@pytest.mark.parametrize(
+    "option",
+    [Option(flag=SINCE.flag, help=SINCE.help, type=int), Option(flag=SINCE.flag, help="another")],
+    ids=["another type", "other help"],
+)
+def test_a_flag_that_two_sources_declare_otherwise_is_refused_naming_both(
+    tmp_path: Path, option: Option
+) -> None:
+    """One flag of ``sync``: one definition would change for every source."""
+    registry = (CONFLUENCE, JIRA, declaring(option))
+    with pytest.raises(
+        ValueError, match=r"^source 'worklog': option --since declared otherwise by 'confluence'$"
+    ):
+        main(["check", "--config", str(tmp_path / "none.toml")], registry)
+
+
+def test_a_flag_that_two_sources_declare_alike_is_one_option(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The work log taking ``--since`` as Confluence does: one flag, which each reads."""
+    registry = (CONFLUENCE, JIRA, declaring(SINCE))
+    given = ["sync", "--since", "7d", "--dry-run", "--config", str(tmp_path / "none.toml")]
+    assert main(given, registry) == ExitStatus.REFUSED
+    assert "nothing to sync" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("flag", ["--yes", "--dry-run", "--config", "--allow-remote-embeddings"])
+def test_an_option_that_takes_a_flag_of_sync_s_own_is_refused_naming_it(flag: str) -> None:
+    """In every command, as the registry's other rules: ``--help`` builds every parser."""
+    registry = (CONFLUENCE, JIRA, declaring(Option(flag=flag, help="another")))
+    with pytest.raises(
+        ValueError, match=rf"^source 'worklog': option {flag}: a flag of sync's own"
+    ):
+        main(["--help"], registry)
 
 
 def test_confluence_and_jira_sign_in_with_one_atlassian_account() -> None:
@@ -218,3 +329,32 @@ def test_a_role_that_does_not_load_refuses_the_sync_of_its_source_naming_the_pat
     assert f"source 'confluence': {path}: {said}" in err
     assert not data.exists()
     assert main(given) == ExitStatus.SIGN_IN_AGAIN
+
+
+@pytest.mark.parametrize(
+    ("body", "said"),
+    [
+        ("def broken(:\n", "invalid syntax"),
+        ('raise RuntimeError("at its import")\n', "at its import"),
+    ],
+    ids=["a syntax error", "its own error at import"],
+)
+def test_a_role_whose_module_breaks_on_import_refuses_the_sync_naming_the_path(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], body: str, said: str
+) -> None:
+    """Criterion 3 and ``sources.md``: whatever its import raises, exit 2, not a traceback."""
+    (tmp_path / "kb_broken.py").write_text(body, "utf-8")
+    monkeypatch.syspath_prepend(tmp_path)
+    registry = (replace(CONFLUENCE, preparers=("kb_broken",)), JIRA, WORKLOG)
+    config = tmp_path / "config.toml"
+    config.write_text(
+        '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n'
+        '[sources.confluence]\nspaces = ["MFS"]\n',
+        "utf-8",
+    )
+    given = ["sync", "--yes", "--config", str(config), "--data-dir", str(tmp_path / "data")]
+    assert main([*given, "--include", "confluence"], registry) == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    assert "sync.refused" in err
+    assert "source 'confluence': kb_broken: does not load:" in err
+    assert said in err

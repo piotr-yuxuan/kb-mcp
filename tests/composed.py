@@ -6,11 +6,10 @@ loaded by its module path, composed by ``settings_model``.
 
 from __future__ import annotations
 
-import pkgutil
 from typing import TYPE_CHECKING
 
 from kb_mcp.config.domain.settings import settings_model
-from kb_mcp.sources.registry import SOURCES
+from kb_mcp.sources.registry import SOURCES, tables
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -21,15 +20,7 @@ if TYPE_CHECKING:
 
 def model_of(sources: Iterable[Declared]) -> type[Settings]:
     """Compose the settings' model of a registry, each table loaded by its module path."""
-    declared = tuple(sources)
-    return settings_model(
-        {each.name: pkgutil.resolve_name(each.table) for each in declared},
-        {
-            each.account.name: pkgutil.resolve_name(each.account.table)
-            for each in declared
-            if each.account is not None
-        },
-    )
+    return settings_model(*tables(sources))
 
 
 MODEL = model_of(SOURCES)

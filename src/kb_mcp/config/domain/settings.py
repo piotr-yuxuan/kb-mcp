@@ -493,15 +493,21 @@ def settings_model(
     ``[sources.<name>]``, and ``accounts`` each account's alike, ``[accounts.<name>]``;
     the tables of each follow one another in name order, each described by its
     docstring. Raises TypeError, naming the table, for one that holds a setting of a type
-    that has no kind, before any value is read.
+    that has no kind, or one without a default, since a source left unset still has its
+    table, before any value is read.
     """
     places = {"accounts": (Accounts, accounts), "sources": (Sources, sources)}
     for place, (_, tables) in places.items():
         for name, table in tables.items():
             try:
                 setting_paths(table)
+                table()
             except TypeError as error:
                 message = f"{place}.{name}: {error}"
+                raise TypeError(message) from None
+            except ValidationError as error:
+                without = [".".join(map(str, each["loc"])) for each in error.errors()]
+                message = f"{place}.{name}: a setting without a default: {', '.join(without)}"
                 raise TypeError(message) from None
     composed = {
         place: create_model(
