@@ -70,7 +70,9 @@ READ_CHARS = 12_000
 CHARS_LIMITS = (1, 40_000)
 LONGEST = {"query": LONGEST_QUERY, "ref": 300, "value": 100, "cursor": 100}
 VALUES_SHOWN = 100
-CURSOR_TIME = "%Y%m%dT%H%M%SZ"
+# The hex digits of the index's build that a cursor names, as many as a time took: the
+# whole id would take a reranking's deepest past LONGEST["cursor"], from an offset of 100.
+CURSOR_BUILD = 16
 NO_WORDS = (
     "The query has no words to search."
     ' Give words, or sort="updated" or "created" to list the newest by that date.'
@@ -516,21 +518,21 @@ def instant(name: str, value: str | None) -> datetime | None:
         raise UnanswerableError(message) from None
 
 
-def start_of(cursor: str | None, built_at: datetime) -> int:
-    """Read a cursor that an answer gave: an offset, for the index built at that time."""
+def start_of(cursor: str | None, build: str) -> int:
+    """Read a cursor that an answer gave: an offset, for that build of the index."""
     if cursor is None:
         return 0
     offset, _, built = cursor.partition("@")
     if not offset.isascii() or not offset.isdigit() or not built:
         message = "cursor: give the one that the previous answer ended with"
         raise UnanswerableError(message)
-    if built != built_at.strftime(CURSOR_TIME):
+    if built != build[:CURSOR_BUILD]:
         message = "cursor: the index was rebuilt since; call again without the cursor"
         raise UnanswerableError(message)
     return int(offset)
 
 
-def continued(cursor: str | None, built_at: datetime) -> tuple[int, tuple[int, ...] | None]:
+def continued(cursor: str | None, build: str) -> tuple[int, tuple[int, ...] | None]:
     """Read a cursor of search or ask: its offset, and the order of the documents reranked.
 
     The order is None for no cursor, a first page, and empty for a cursor that carries
@@ -541,12 +543,12 @@ def continued(cursor: str | None, built_at: datetime) -> tuple[int, tuple[int, .
     except ValueError:
         message = "cursor: give the one that the previous answer ended with"
         raise UnanswerableError(message) from None
-    return start_of(base, built_at), order
+    return start_of(base, build), order
 
 
-def cursor_at(offset: int, built_at: datetime) -> str:
+def cursor_at(offset: int, build: str) -> str:
     """Write the cursor that continues a list at ``offset``, for this build of the index."""
-    return f"{offset}@{built_at.strftime(CURSOR_TIME)}"
+    return f"{offset}@{build[:CURSOR_BUILD]}"
 
 
 def clamp(value: int, limits: tuple[int, int]) -> int:
@@ -622,8 +624,8 @@ class Library:
         bounded(query=(query, LONGEST["query"]), cursor=(cursor, LONGEST["cursor"]))
         planned = plan(query)
         with self._reading() as reader:
-            built_at = reader.built_at()
-            (offset, order), size = continued(cursor, built_at), clamp(limit, SEARCH_LIMITS)
+            built_at, build = reader.built_at(), reader.build()
+            (offset, order), size = continued(cursor, build), clamp(limit, SEARCH_LIMITS)
             kept = narrowed(reader, given)
             if not planned.words and sort == "relevance":
                 return responses.answer(NO_WORDS)
@@ -663,7 +665,7 @@ class Library:
                 items.append(responses.hit(number, entry, passage, opening, held.get(entry.path)))
 
         def more(count: int) -> str:
-            after = cursor_at(offset + count, built_at) + written(ranked.order)
+            after = cursor_at(offset + count, build) + written(ranked.order)
             return responses.call(
                 self.search, query=query, filters=filters, sort=sort, limit=limit, cursor=after
             )
@@ -711,8 +713,8 @@ class Library:
         bounded(question=(question, LONGEST["query"]), cursor=(cursor, LONGEST["cursor"]))
         planned = plan(question)
         with self._reading() as reader:
-            built_at = reader.built_at()
-            offset, order = continued(cursor, built_at)
+            built_at, build = reader.built_at(), reader.build()
+            offset, order = continued(cursor, build)
             kept = narrowed(reader, given)
             asked = Asked(
                 query=question,
@@ -744,7 +746,7 @@ class Library:
         ]
 
         def more(count: int) -> str:
-            after = cursor_at(offset + count, built_at) + written(ranked.order)
+            after = cursor_at(offset + count, build) + written(ranked.order)
             return responses.call(self.ask, question=question, filters=filters, cursor=after)
 
         allowed = responses.BUDGET - responses.tokens(ranked.note + person)
@@ -863,8 +865,8 @@ class Library:
                 keys += [f"project {key}" for key, _ in reader.values("project")]
                 message = "browse: give either space or project, one of:"
                 raise UnanswerableError(responses.refusal(message, keys[:VALUES_SHOWN], len(keys)))
-            built_at = reader.built_at()
-            offset = start_of(cursor, built_at)
+            built_at, build = reader.built_at(), reader.build()
+            offset = start_of(cursor, build)
             narrowed = Filters(
                 space=canonical(reader, "space", space),
                 project=canonical(reader, "project", project),
@@ -884,7 +886,7 @@ class Library:
         items = responses.tree(pairs[offset : offset + size], len(base))
 
         def more(count: int) -> str:
-            after = cursor_at(offset + count, built_at)
+            after = cursor_at(offset + count, build)
             return responses.call(
                 self.browse, space=space, project=project, parent=parent, limit=limit, cursor=after
             )

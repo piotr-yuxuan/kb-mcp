@@ -25,10 +25,10 @@ from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
 from kb_mcp.search.domain.indexes import UnavailableIndexError
-from kb_mcp.search.domain.search import Embedded, Filters
+from kb_mcp.search.domain.search import Embedded, Filters, sections
 from tests.answers import parts
 from tests.endpoint import DIMENSIONS, Scripted, connector, nothing_listening, serving, tiny
-from tests.mirrors import MOMENT, fillers, page, write
+from tests.mirrors import MOMENT, fillers, location, page, write
 from tests.test_cli import logged_as
 from tests.test_observed import said
 
@@ -136,6 +136,35 @@ def test_a_rebuild_embeds_only_the_pieces_that_changed(data: Path) -> None:
     build(data, counting())
     with reading(data / "index.sqlite") as reader:
         assert np.array_equal(reader.pieces().matrix, kept)
+
+
+def test_pieces_are_read_by_path_section_and_start_whatever_their_rowids(data: Path) -> None:
+    """An updated index and a whole build number rows otherwise, and give one matrix."""
+    embedded = Embedded(model="tiny", fingerprint="f", dimensions=1)
+    first, second = page("1", "First"), page("2", "Second")
+    cut = sections("# Top\n\nOne two.\n\n## Next\n\nThree.\n")
+    with sqlite_index.building(data / "index.sqlite", MOMENT, embedded) as writer:
+        rows = {front: writer.add(location(front), front, cut) for front in (second, first)}
+        # Each piece's vector says when it was written.
+        written = [(second, 0, 0), (first, 1, 6), (first, 0, 4), (second, 1, 0), (first, 1, 0)]
+        writer.add_pieces(
+            (
+                rows[front] + number,
+                start,
+                start + 1,
+                f"k{at}",
+                vector_store.as_bytes(np.array([at], dtype=np.float32)),
+            )
+            for at, (front, number, start) in enumerate(written)
+        )
+    with reading(data / "index.sqlite") as reader:
+        pieces = reader.pieces()
+    assert [pieces.paths[each] for each in pieces.documents] == [
+        *[location(first)] * 3,
+        *[location(second)] * 2,
+    ]
+    assert pieces.sections == (1, 2, 2, 1, 2)
+    assert pieces.matrix.reshape(-1).tolist() == [2, 4, 1, 0, 3]
 
 
 def test_a_handle_reads_an_index_s_vectors_once_a_build(

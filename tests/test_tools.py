@@ -39,6 +39,7 @@ from tests.test_people import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
@@ -287,7 +288,7 @@ def test_an_unknown_value_is_refused_with_the_valid_ones(
         ({"filters": {"created_before": "2026-13-01"}}, "created_before: an ISO 8601 date"),
         ({"query": "x" * 501}, "query: at most 500 characters"),
         ({"query": "kafka", "cursor": "8"}, "cursor: give the one"),
-        ({"query": "kafka", "cursor": "8@20200101T000000Z"}, "cursor: the index was rebuilt"),
+        ({"query": "kafka", "cursor": "8@0123456789abcdef"}, "cursor: the index was rebuilt"),
     ],
 )
 def test_arguments_that_cannot_be_served_are_refused(
@@ -296,6 +297,29 @@ def test_arguments_that_cannot_be_served_are_refused(
     """Each refusal names what would do."""
     with pytest.raises(UnanswerableError, match=re.escape(message)):
         varied.search(**arguments)
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda library, cursor=None: library.search("lorem", limit=2, cursor=cursor),
+        lambda library, cursor=None: library.ask("lorem", cursor=cursor),
+        lambda library, cursor=None: library.browse(space="ENG", limit=2, cursor=cursor),
+    ],
+    ids=["search", "ask", "browse"],
+)
+def test_a_cursor_is_refused_by_a_build_of_the_same_second(
+    tmp_path: Path, call: Callable[..., str]
+) -> None:
+    """``index`` then ``embed`` can write two builds in one second: a cursor names its own."""
+    library = built(tmp_path, [])
+    found = continuation(call(library))
+    assert found is not None
+    cursor = found[1]["cursor"]
+    assert parts(call(library, cursor))[1]
+    build_index(tmp_path / "docs", tmp_path / "index.sqlite", MOMENT)
+    with pytest.raises(UnanswerableError, match="cursor: the index was rebuilt"):
+        call(library, cursor)
 
 
 def test_a_query_without_words_asks_for_words(varied: Library) -> None:

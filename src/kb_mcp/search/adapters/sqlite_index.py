@@ -170,6 +170,7 @@ WHERE (d.path IN (SELECT value FROM json_each(:paths))
        OR d.key IN (SELECT value FROM json_each(:keys))
        OR (d.source IN ('confluence', 'worklog') AND d.id IN (SELECT value FROM json_each(:ids))))
   AND (:kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept)))
+ORDER BY d.path
 """
 RECENT = """
 SELECT d.* FROM documents d
@@ -192,13 +193,14 @@ FROM sections s JOIN documents d ON d.rowid = s.document
 WHERE d.path = :path
 ORDER BY s.number
 """
-# Every piece with its document, its section, and its span within the document's body.
+# Every piece with its document, its section, and its span within the document's body; by
+# what no rowid changes, so that an updated index and a whole build give one matrix.
 PIECES = """
 SELECT d.rowid AS document, d.path, d.updated, s.number,
        s.start + length(s.head) + p.start AS offset,
        s.start + length(s.head) + p.stop AS finish, p.vector
 FROM pieces p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
-ORDER BY p.rowid
+ORDER BY d.path, s.number, p.start
 """
 TEXT = """
 SELECT s.start, s.head || s.body AS text FROM sections s JOIN documents d ON d.rowid = s.document
@@ -634,7 +636,7 @@ class Reader:
         ids: Iterable[str] = (),
         filters: Filters | None = None,
     ) -> list[Entry]:
-        """Find the documents of these paths, issue keys, and page or work-log ids, in no order.
+        """Find the documents of these paths, issue keys, and page or work-log ids, by path.
 
         An issue's id is never looked up, since a page may have the same.
         """

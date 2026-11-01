@@ -171,6 +171,17 @@ def test_a_document_is_found_by_its_key_or_id(written: Written) -> None:
         assert reader.entries(paths=["jira/PROJ/PROJ-8.md"]) == []
 
 
+def test_documents_found_come_by_path_whatever_order_they_were_written_in(
+    written: Written,
+) -> None:
+    """Of two documents of one key, the first by path comes first, as the tools take it."""
+    other = page("1002", "Another upgrade", key=UPGRADE.key)
+    index = written([Document(front=UPGRADE, body=UPGRADE_BODY), Document(front=other, body="")])
+    with index.reading() as reader:
+        found = [each.path for each in reader.entries(keys=["PROJ-7"])]
+    assert found == sorted((location(other), UPGRADE_PATH))
+
+
 def test_the_passage_is_the_section_that_best_matches(written: Written) -> None:
     """By its heading and body, with a snippet of its body; a title alone gives the first."""
     with written(BOTH).reading() as reader:
@@ -381,6 +392,20 @@ def test_nearest_gives_a_document_its_best_piece(written: Written) -> None:
         assert (number, reader.text(path, start, end)) == (2, "east text")
         _, number, start, end = reader.nearest(query(UP), Filters(), 10)[path]
         assert (number, reader.text(path, start, end)) == (3, "up text")
+
+
+def test_of_a_document_s_tied_pieces_the_first_in_its_body_is_its_best(written: Written) -> None:
+    """By section number, then start, whatever order the pieces were written in."""
+    compass = page("2001", "Compass")
+    pieces = tuple(
+        piece_of(NEAR_BODY, text, f"k-{text}", NORTH)
+        for text in ("up text", "more words", "east text")
+    )
+    path = location(compass)
+    index = written([Document(front=compass, body=NEAR_BODY, pieces=pieces)], EMBEDDED)
+    with index.reading() as reader:
+        _, number, start, end = reader.nearest(query(NORTH), Filters(), 10)[path]
+        assert (number, reader.text(path, start, end)) == (2, "east text")
 
 
 def test_nearest_orders_documents_and_cuts_at_its_depth(

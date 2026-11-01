@@ -71,7 +71,7 @@ class WordsReader(Protocol):
         ids: Iterable[str] = (),
         filters: Filters | None = None,
     ) -> list[Entry]:
-        """Find the documents of these paths, issue keys, and page or work-log ids, in no order.
+        """Find the documents of these paths, issue keys, and page or work-log ids, by path.
 
         An issue's id is never looked up, since a page may have the same.
         """
@@ -152,9 +152,10 @@ class VectorReader(Protocol):
     ) -> dict[str, tuple[Score, int, int, int]]:
         """Give at most ``depth`` documents passing the filters, nearest a unit vector first.
 
-        A document is as near as its best piece. Each path comes with its score, the
-        cosine of that piece, then the piece's section number, and its start and end in
-        the body. Ties go to the newest update, then the path, before the cut.
+        A document is as near as its best piece, of pieces tied the first by section
+        number and start. Each path comes with its score, the cosine of that piece, then
+        the piece's section number, and its start and end in the body. Ties go to the
+        newest update, then the path, before the cut.
         """
 
 
