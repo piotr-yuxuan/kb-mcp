@@ -7,8 +7,9 @@ of the four folders; each command line of the program in a bash block parses, as
 015 and 017 first checked on their own pages; a page that names Ollama says that any
 OpenAI-compatible API works; Docker's command follows each of Podman's; the reference
 of the MCP server names, as plan 019 first checked, each tool and prompt that a server
-lists over stdio, with their parameters; and the tutorial of a first mirror and the
-guide to embeddings pull the model that the settings default to.
+lists over stdio, with their parameters; the tutorial of a first mirror and the guide
+to embeddings pull the model that the settings default to; and the how-to for adding a
+source gives the code of the memo source that the tests run, under its own names.
 """
 
 from __future__ import annotations
@@ -18,10 +19,12 @@ import ast
 import contextlib
 import io
 import itertools
+import json
 import posixpath
 import re
 import shlex
 import sys
+import tomllib
 from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, override
@@ -34,6 +37,7 @@ from mcp.client.stdio import StdioServerParameters
 from kb_mcp.cli.main import parser
 from kb_mcp.config.domain.settings import DEFAULT_MODEL
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.sources.registry import SOURCES
 from tests.test_serve import talk
 
 if TYPE_CHECKING:
@@ -55,6 +59,13 @@ PAGES = (
     "docs/how-to/work-log.md",
     "docs/tutorials/first-mirror.md",
 )
+# The how-to for adding a source, whose package is the tests' memo source under another
+# name, each of its files by the page's words: what the page gives is then what they run.
+ADD_A_SOURCE = ROOT / "docs" / "how-to" / "add-a-source.md"
+NOTES_PACKAGE = "kb_mcp.sources.notes"
+MEMO_PACKAGE = ROOT / "tests" / "fixtures" / "memo_source" / "kb_memo"
+MEMO_NAMES = {"kb_memo": NOTES_PACKAGE, "memo": "notes", "Memo": "Notes", "MEMO": "NOTES"}
+CREATED = re.compile(r"Create\s+`([^`~]+)`[^`:]*:\n\n```python\n(.*?)```", re.DOTALL)
 # Folders whose Markdown is seeded into the sandbox site: its content, not pages here.
 SEEDED = frozenset({"sandbox/corpus", "sandbox/jira"})
 # Markdown as GitHub reads it, tables included, so that code is never read as a link.
@@ -650,3 +661,64 @@ def test_each_page_that_pulls_the_default_model_pulls_the_one_the_settings_name(
         for line, model in lines
         if model != DEFAULT_MODEL
     ] == []
+
+
+def code_of(text: str) -> str:
+    """Give a module's syntax tree, its docstrings, worded for their reader, left out."""
+    tree = ast.parse(text)
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef)
+            and ast.get_docstring(node) is not None
+        ):
+            node.body = node.body[1:]
+    return ast.dump(tree)
+
+
+def test_the_how_to_for_a_source_gives_the_code_of_the_memo_that_the_tests_run() -> None:
+    """Each of its files, under the page's names, is the memo package's, file for file.
+
+    ``tests/test_memo_source.py`` registers and runs that package, so a change that it
+    must follow, such as a key added to the front matter or to a role's result, cannot
+    leave the page telling a contributor to write what fails. A file created, or one that
+    it lacks, is named.
+    """
+    folder = f"src/{NOTES_PACKAGE.replace('.', '/')}/"
+    created = {
+        path.removeprefix(folder): body
+        for path, body in CREATED.findall(ADD_A_SOURCE.read_text("utf-8"))
+        if path.startswith(folder)
+    }
+    memo = {
+        path.relative_to(MEMO_PACKAGE).as_posix(): re.sub(
+            "|".join(MEMO_NAMES),
+            lambda found: MEMO_NAMES[found[0]],
+            path.read_text("utf-8"),
+        )
+        for path in MEMO_PACKAGE.rglob("*.py")
+    }
+    assert sorted(created) == sorted(memo)
+    assert [path for path, body in memo.items() if code_of(created[path]) != code_of(body)] == []
+
+
+def test_the_how_to_for_a_source_gives_the_checkout_s_registry_and_contracts_and_its_own() -> None:
+    """Its lines of steps 6 and 7 are those of the checkout, with the new source among them.
+
+    Each in the order that the registry's rule and the contract's list keep; so a source
+    added, or a contract's list changed, is said on the page too.
+    """
+    page = ADD_A_SOURCE.read_text("utf-8")
+    line = re.search(r"^SOURCES = \((.*)\)$", page, re.MULTILINE)
+    assert line is not None
+    names = line[1].lower().split(", ")
+    assert names == sorted(names)
+    assert [name for name in names if name != "notes"] == [each.name for each in SOURCES]
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))
+    contracts = {each.get("id"): each for each in pyproject["tool"]["importlinter"]["contracts"]}
+    listed = re.search(r"^modules = (\[.*\])$", page, re.MULTILINE)
+    assert listed is not None
+    modules = json.loads(listed[1])
+    assert NOTES_PACKAGE in modules
+    assert [each for each in modules if each != NOTES_PACKAGE] == contracts["I"]["modules"]
+    assert f'"{NOTES_PACKAGE}",' in page.splitlines()
+    assert "kb_mcp.sources.worklog" in contracts["K"]["source_modules"]
