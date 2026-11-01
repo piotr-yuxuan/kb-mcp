@@ -70,17 +70,34 @@ def targets_of(run: Run) -> Targets:
 
 
 def preflight(run: Run) -> str | None:
-    """Say why the fetch cannot start: an --until before --since, or a coverage not read."""
+    """Say why the fetch cannot start: an --until before --since, or a store's record not read.
+
+    Those are the records that a download reads before its first request: what is
+    covered, and what answered as gone.
+    """
+    store = RawStore(run.settings.raw)
     try:
-        targets_of(run).windows(RawStore(run.settings.raw).coverage(), run.now())
+        targets_of(run).windows(store.coverage(), run.now())
+        store.tombstones()
     except (PeriodError, RepresentationError) as error:
         return str(error)
     return None
 
 
 def fetch(run: Run) -> Fetched:
-    """Download what changed of the run's source, or in a dry run plan it, by ``fetch_targets``."""
-    return fetch_targets(run.settings, targets_of(run), run.now, run.sleep, dry_run=run.dry_run)
+    """Download what changed of the run's source, or in a dry run plan it, by ``fetch_targets``.
+
+    What ``preflight`` refuses may still come once the run began: a period read at a
+    later fetch's start, or a record damaged since. It fails this fetch alone, an error,
+    ``download.refused``, naming the source, and the run's next rows go on.
+    """
+    try:
+        return fetch_targets(run.settings, targets_of(run), run.now, run.sleep, dry_run=run.dry_run)
+    except (PeriodError, RepresentationError) as error:
+        structlog.get_logger().error(
+            "download.refused", source=run.declared.name, reason=str(error)
+        )
+        return Fetched(outcome="failed", downloaded=None)
 
 
 def fetch_targets(

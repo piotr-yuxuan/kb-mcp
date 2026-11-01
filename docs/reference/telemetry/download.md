@@ -23,7 +23,7 @@ already stored lacks are fetched in the run's trace, in its space's or project's
 | `download.file_failed` | warning | `id`, `file_name`, `reason` | An attached file cannot be downloaded, or is not the size listed |
 | `download.target_failed` | warning | `target` | A space or a project named cannot be listed |
 | `download.coverage` | info | `target`, `outcome`, `reason` | A target finished or skipped: its coverage `extended` to its window's end, joined with it, or, for a project's entry from before plan 034 that the window starts at or before, replaced by it; a project's `capped` at the update time of its earliest document not stored whole; or `held` as it was, `reason` saying why: `entries refused` (a search entry that the adapter refuses), `after --until` (a catch-up that would start after it), `apart from what is covered` |
-| `download.refused` | error | `reason` | The period or a setting is refused, before any request: exit 2 |
+| `download.refused` | error | `reason` | The period or a setting is refused, before any request: exit 2. In `sync`, where a fetcher's preflight refused them before the first row, one that comes once the run began also names its `source`, and fails that fetch's row alone |
 | `download.store_busy` | error | `source`, `store`, `hint` | Another run writes the raw store: the source's fetch fails, exit 1 |
 | `download.interrupted` | warning | `counts` | Ctrl-C stopped the download, whose counts are saved there: exit 130 |
 | `download.sign_in_needed` | error | `source`, `hint` | The session or the token no longer opens the site for the source's fetch: exit 3 |

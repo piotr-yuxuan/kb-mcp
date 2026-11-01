@@ -321,6 +321,69 @@ def test_the_fetcher_refuses_an_until_before_since_before_any_request(
     assert site.asked == []
 
 
+def test_a_damaged_record_of_what_answered_as_gone_refuses_sync_before_its_first_row(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """As ``download`` refuses it: exit 2, an event naming the file, no traceback, no request.
+
+    The fetch reads the record before its first request, so its preflight reads it too.
+    A site and a token, made up, leave nothing else to stop the run.
+    """
+    data = home / "data"
+    (data / "raw").mkdir(parents=True)
+    (data / "raw" / "tombstones.json").write_text("not json", "utf-8")
+    config = home / "config.toml"
+    config.write_text(
+        f'[accounts.atlassian]\nsite = "{SITE}"\nemail = "someone@example.invalid"\n'
+        '[sources.confluence]\nspaces = ["MFS"]\n',
+        "utf-8",
+    )
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", "made-up")
+    given = ["sync", "--yes", "--config", str(config), "--data-dir", str(data)]
+    assert main(given) == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    assert "sync.refused" in err
+    assert "tombstones.json: not JSON" in err
+    assert "run.failed" not in err
+    assert "Traceback" not in err
+    assert not (data / "docs").exists()
+
+
+@pytest.mark.parametrize(
+    ("damaged", "options", "said"),
+    [
+        (True, SINCE, "tombstones.json: not JSON"),
+        (False, {"--since": "2026-10-20", "--until": "2026-10-01"}, "--until: must come after"),
+    ],
+    ids=["a record damaged since", "a period read at a later fetch's start"],
+)
+def test_what_a_preflight_refuses_once_the_run_began_fails_the_fetch_saying_why(
+    settings: Settings,
+    site: FakeSite,
+    *,
+    damaged: bool,
+    options: Mapping[str, object],
+    said: str,
+) -> None:
+    """Its row fails, naming the source, where the run's other rows then go on.
+
+    Not an exception out of the run, as a run that cannot read a record has no row to
+    rank; nothing is asked of the site.
+    """
+    if damaged:
+        settings.raw.mkdir(parents=True)
+        (settings.raw / "tombstones.json").write_text("not json", "utf-8")
+    with capture_logs() as events:
+        fetched = fetcher_of(CONFLUENCE).fetch(run_of(CONFLUENCE, signed_in(settings), options))
+    assert isinstance(fetched, Fetched)
+    assert (fetched.outcome, fetched.downloaded) == ("failed", None)
+    (refused,) = [each for each in events if each["event"] == "download.refused"]
+    assert refused["log_level"] == "error"
+    assert refused["source"] == "confluence"
+    assert said in refused["reason"]
+    assert site.asked == []
+
+
 @pytest.mark.usefixtures("site")
 def test_the_fetch_s_text_is_what_download_writes(
     home: Path, settings: Settings, worklog: Path, capsys: CaptureFixture[str]
