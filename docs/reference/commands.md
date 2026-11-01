@@ -25,7 +25,7 @@ positional arguments:
   command
     check        validate the settings and the data directory
     completion   print the code that completes the command in bash and zsh
-    doctor       check the machine and the sign-in
+    doctor       check the machine and each sign-in
     embed        build the search index again with vectors, then prune the vector
                  store
     eval         measure search and ask on golden questions, by mode, model and

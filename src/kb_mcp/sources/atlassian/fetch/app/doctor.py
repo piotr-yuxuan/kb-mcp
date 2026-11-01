@@ -1,40 +1,17 @@
-"""Checks of the machine and the sign-in that a download needs, each with a verdict."""
+"""Checks of the site and the sign-in that a download needs, each with a verdict."""
 
 from __future__ import annotations
 
-import shutil
-import sys
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
-from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, http, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.http import SignInNeededError, Site, SiteError
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
+from kb_mcp.sources.roles import FAILED, SIGN_IN, Verdict
 
 if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Settings
-
-# What a check concludes: all is well, the user must sign in again, or something fails.
-WELL, SIGN_IN, FAILED = "well", "sign in", "failed"
-
-
-class Verdict(Record):
-    """One check: what it looked at, what it found, and what that means."""
-
-    name: str
-    found: str
-    state: str = WELL
-
-
-def pandoc() -> Verdict:
-    """Say where the pandoc that the mirror needs is on PATH, or that there is none."""
-    found = shutil.which("pandoc")
-    return (
-        Verdict(name="pandoc", found=found)
-        if found
-        else Verdict(name="pandoc", found="not found on PATH", state=FAILED)
-    )
 
 
 def public_trust(site: str) -> Verdict:
@@ -81,21 +58,15 @@ def access(settings: Settings) -> list[Verdict]:
     return verdicts
 
 
-def doctor(settings: Settings) -> list[Verdict]:
-    """Run every check, and return each one's verdict."""
-    verdicts = [
-        Verdict(name="python", found=sys.version.split()[0]),
-        pandoc(),
-        Verdict(name="data directory", found=f"{settings.data_dir}: allowed"),
-    ]
+def checks(settings: Settings) -> list[Verdict]:
+    """Say whether a site is set, whether it answers, and whether the sign-in still opens it."""
     site = settings.accounts.atlassian.site
     if site is None:
         return [
-            *verdicts,
             Verdict(
                 name="site",
                 found="not set: add accounts.atlassian.site to the settings or pass --site",
                 state=FAILED,
             ),
         ]
-    return [*verdicts, public_trust(site), *access(settings)]
+    return [public_trust(site), *access(settings)]

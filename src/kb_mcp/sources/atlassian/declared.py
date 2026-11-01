@@ -28,11 +28,36 @@ if TYPE_CHECKING:
     import re
     from collections.abc import Callable, Mapping
 
+
+def site_not_set(_given: object, settings: Mapping[str, object]) -> str | None:
+    """Refuse a run that reaches the site when none is set."""
+    if settings[SITE] is not None:
+        return None
+    return f"{SITE}: not set; add it to the settings or pass --site"
+
+
+def token_without_email(_given: object, settings: Mapping[str, object]) -> str | None:
+    """Refuse an API token without the email of its account, with which it signs in."""
+    if settings[API_TOKEN] is None or settings[EMAIL] is not None:
+        return None
+    return f"{EMAIL}: not set; an API token signs in with its account's email"
+
+
+def email_without_token(_given: object, settings: Mapping[str, object]) -> dict[str, str]:
+    """Without an API token, the browser's session signs in, and an email goes unused."""
+    if settings[API_TOKEN] is not None:
+        return {}
+    return {EMAIL: "without an API token, the browser's session signs in"}
+
+
 ATLASSIAN = Account(
     name="atlassian",
     table="kb_mcp.sources.atlassian.settings:AtlassianAccount",
     settings=("site", "email", "api_token"),
     login="kb_mcp.sources.atlassian.fetch.app.login:signed_in",
+    checks="kb_mcp.sources.atlassian.fetch.app.doctor:checks",
+    refused=token_without_email,
+    unapplied=email_without_token,
 )
 # The account's settings, by path: the site, then those of a sign-in by API token, its
 # email and the token.
@@ -79,27 +104,6 @@ PROJECT = Option(
 )
 FETCHER = "kb_mcp.sources.atlassian.fetch.app.fetcher"
 PREPARER = "kb_mcp.sources.atlassian.prepare.app.preparer"
-
-
-def site_not_set(_given: object, settings: Mapping[str, object]) -> str | None:
-    """Refuse a run that reaches the site when none is set."""
-    if settings[SITE] is not None:
-        return None
-    return f"{SITE}: not set; add it to the settings or pass --site"
-
-
-def token_without_email(_given: object, settings: Mapping[str, object]) -> str | None:
-    """Refuse an API token without the email of its account, with which it signs in."""
-    if settings[API_TOKEN] is None or settings[EMAIL] is not None:
-        return None
-    return f"{EMAIL}: not set; an API token signs in with its account's email"
-
-
-def email_without_token(_given: object, settings: Mapping[str, object]) -> dict[str, str]:
-    """Without an API token, the browser's session signs in, and an email goes unused."""
-    if settings[API_TOKEN] is not None:
-        return {}
-    return {EMAIL: "without an API token, the browser's session signs in"}
 
 
 def period_refused(options: Mapping[str, object]) -> str | None:

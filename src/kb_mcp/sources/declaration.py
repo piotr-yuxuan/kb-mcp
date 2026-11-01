@@ -60,20 +60,26 @@ class ResourceType:
 
 @dataclass(frozen=True)
 class Account:
-    """What a source's fetcher signs in with: its name, its table's model and settings, its login.
+    """What a source's fetcher signs in with: its name, its table, its login and its checks.
 
     ``name`` is its table, ``[accounts.<name>]``, which every source naming it shares.
     ``table`` names the model by module path; ``settings`` are its settings, by name, in
     their order, the first where it signs in. ``login`` names by module path, as ``table``
     does, the run of ``kb-mcp login <name>``: a function of the settings, the browser's
     path and, by name, ``extensions``, which gives a ``SignedIn`` of ``sources.roles``, or
-    None when no sign-in completed, having said so.
+    None when no sign-in completed, having said so. ``checks`` names alike ``doctor``'s of
+    it: a function of the settings, which gives a ``Verdict`` each. ``refused`` and
+    ``unapplied``, if any, are its light checks, which ``doctor`` asks with no options:
+    what cannot be signed in with, and what the sign-in does not apply.
     """
 
     name: str
     table: str
     settings: tuple[str, ...]
     login: str
+    checks: str
+    refused: Refused | None = None
+    unapplied: Unapplied | None = None
 
     @property
     def paths(self) -> tuple[str, ...]:

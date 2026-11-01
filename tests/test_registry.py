@@ -160,29 +160,6 @@ class Required(BaseModel):
     folder: str
 
 
-@pytest.mark.parametrize(
-    "command",
-    [["doctor"]],
-    ids=lambda command: command[0],
-)
-@pytest.mark.parametrize(
-    "registry",
-    [(WORKLOG,), (CONFLUENCE, WORKLOG), (JIRA, WORKLOG)],
-    ids=lambda registry: "+".join(each.name for each in registry),
-)
-def test_a_command_of_the_atlassian_package_is_refused_without_its_sources(
-    tmp_path: Path, capsys: CaptureFixture[str], command: list[str], registry: tuple[Declared, ...]
-) -> None:
-    """Until plan 031: exit 2, saying why, not a KeyError of a setting that it reads by name."""
-    data = tmp_path / "data"
-    given = [*command, "--config", str(tmp_path / "none.toml"), "--data-dir", str(data)]
-    assert main(given, registry) == ExitStatus.REFUSED
-    err = capsys.readouterr().err
-    assert "run.refused" in err
-    assert "confluence and jira: not both in the registry" in err
-    assert not data.exists()
-
-
 def test_a_registry_with_a_source_that_names_no_setting_is_refused_naming_it(
     tmp_path: Path,
 ) -> None:

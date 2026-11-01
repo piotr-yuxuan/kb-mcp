@@ -12,20 +12,16 @@ from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
 from kb_mcp.kernel.endpoint import EMBEDDINGS, refused_endpoint
 from kb_mcp.kernel.names import MODEL_NAME
 from kb_mcp.kernel.output import FORMATS, LEVELS, SUMMARIES
-from kb_mcp.sources.atlassian.declared import API_TOKEN, CONFLUENCE, EMAIL, JIRA, SITE
+from kb_mcp.sources.atlassian.declared import SITE
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Mapping
 
-    from kb_mcp.cli.domain.command import Refused
     from kb_mcp.kernel.output import Level
-    from kb_mcp.sources.declaration import Declared, Option
+    from kb_mcp.sources.declaration import Option
 
 # The level of each -v given, from none: warning, then info, then debug.
 VERBOSITY: tuple[Level, ...] = ("warning", "info", "debug")
-# The Atlassian account's settings of a sign-in by API token, which the commands that
-# reach its site read beside the site: its email and the token.
-SIGN_IN = (EMAIL, API_TOKEN)
 
 
 class Verbose(argparse.Action):
@@ -154,20 +150,6 @@ def model_name(value: str) -> str:
         message = "the name of an embedding model, such as qwen3-embedding:0.6b"
         raise argparse.ArgumentTypeError(message)
     return value
-
-
-def of_atlassian(sources: Sequence[Declared], refused: Refused | None = None) -> Refused | None:
-    """Give what a command of the Atlassian package refuses, under this registry.
-
-    ``doctor`` reads that package's settings by name until plan 031 moves them, so a
-    registry without both its sources is refused before it reads one; any other, as
-    ``refused`` says.
-    """
-    if {CONFLUENCE.name, JIRA.name} <= {declared.name for declared in sources}:
-        return refused
-    return lambda _arguments, _settings: (
-        f"{CONFLUENCE.name} and {JIRA.name}: not both in the registry, which this command reads"
-    )
 
 
 def endpoint_elsewhere(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
