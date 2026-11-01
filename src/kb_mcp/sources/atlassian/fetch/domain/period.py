@@ -45,7 +45,7 @@ class Period:
     def __post_init__(self) -> None:
         """Refuse a period that ends before it starts."""
         if not self.start < self.end:
-            message = "--until: must come after --since"
+            message = f"{UNTIL_FLAG}: must come after {SINCE_FLAG}"
             raise PeriodError(message)
 
     def __contains__(self, moment: datetime) -> bool:
@@ -59,7 +59,7 @@ def moment(text: str, now: datetime, option: str) -> datetime:
     ``all``, for ``--since`` alone, is the epoch: everything. A time is given in UTC,
     whatever offset it carries, so that the dates searched hold it in every time zone.
     """
-    if option == "--since" and text == "all":
+    if option == SINCE_FLAG and text == "all":
         return EPOCH
     ago = AGO.fullmatch(text)
     if ago and int(ago[1]) * UNITS[ago[2]] <= LONGEST:
@@ -69,7 +69,7 @@ def moment(text: str, now: datetime, option: str) -> datetime:
         # A time at the calendar's edge, once in UTC, can fall out of it.
         return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).astimezone(UTC)
     except ValueError, OverflowError:
-        everything = ", or all" if option == "--since" else ""
+        everything = ", or all" if option == SINCE_FLAG else ""
         message = (
             f"{option}: a length before now (12h, 7d, 2w, 6mo, 1y), an ISO date or time{everything}"
         )
@@ -78,8 +78,8 @@ def moment(text: str, now: datetime, option: str) -> datetime:
 
 def period(since: str, until: str | None, now: datetime) -> Period:
     """Read ``--since`` and ``--until``; without ``--until`` the period ends now."""
-    end = now if until is None else moment(until, now, "--until")
-    return Period(moment(since, now, "--since"), end)
+    end = now if until is None else moment(until, now, UNTIL_FLAG)
+    return Period(moment(since, now, SINCE_FLAG), end)
 
 
 def period_rule(*, since: bool) -> str:
