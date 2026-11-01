@@ -70,7 +70,8 @@ class Account:
     None when no sign-in completed, having said so. ``checks`` names alike ``doctor``'s of
     it: a function of the settings, which gives a ``Verdict`` each. ``refused`` and
     ``unapplied``, if any, are its light checks, which ``doctor`` asks with no options:
-    what cannot be signed in with, and what the sign-in does not apply.
+    what cannot be signed in with, and what the sign-in does not apply. A path that does not
+    load raises as it does, as a table's: a programmer's error, as no setting can cause it.
     """
 
     name: str

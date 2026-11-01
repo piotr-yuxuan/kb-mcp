@@ -369,7 +369,14 @@ def test_what_needs_no_network_is_refused_before_anything_is_asked(
 
 @pytest.mark.parametrize("name", ["fetch"])
 def test_back_is_no_option_of_fetch(name: str, home: Path, capsys: CaptureFixture[str]) -> None:
-    """Plan 034 removed it, since --since 1y or all says the same: unknown, and not in --help."""
+    """Plan 034 removed it, since --since 1y or all says the same: unknown, and not in --help.
+
+    Typed as a user types it, the parser reads its value as a source's name, and refuses that.
+    """
+    with pytest.raises(SystemExit) as stopped:
+        main([name, "--config", str(home / "none.toml"), "--back", "1y"])
+    assert stopped.value.code == REFUSED
+    assert "argument source: invalid choice: '1y'" in capsys.readouterr().err
     with pytest.raises(SystemExit) as stopped:
         main([name, "--config", str(home / "none.toml"), "--back=1y"])
     assert stopped.value.code == REFUSED

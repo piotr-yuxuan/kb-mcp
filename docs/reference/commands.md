@@ -374,14 +374,14 @@ options:
   --dry-run             say what a run would fetch, and fetch nothing
 
 confluence:
-  Confluence, on the Atlassian site: the pages and blog posts of its spaces: pages,
-  listed whole; blogposts, listed whole.
+  Confluence, on the Atlassian site: the pages and blog posts of its spaces, with
+  their files: pages, listed whole; blogposts, listed whole.
 
   --space SPACE         a space key, in place of the setting's; repeat for more
 
 jira:
-  Jira, on the Atlassian site: the issues of its projects: issues, searched by
-  update time.
+  Jira, on the Atlassian site: the issues of its projects, with their comments and
+  files: issues, searched by update time.
 
   --project PROJECT     a project key, in place of the setting's; repeat for more
 
@@ -525,16 +525,17 @@ options:
                         tell; write nothing
 
 confluence:
-  Confluence, on the Atlassian site: the pages and blog posts of its spaces: pages,
-  listed whole; blogposts, listed whole.
+  Confluence, on the Atlassian site: the pages and blog posts of its spaces, with
+  their files: pages, listed whole; blogposts, listed whole.
 
 jira:
-  Jira, on the Atlassian site: the issues of its projects: issues, searched by
-  update time.
+  Jira, on the Atlassian site: the issues of its projects, with their comments and
+  files: issues, searched by update time.
 
 worklog:
-  The user's work log: org files read in place, never written: entries, in place;
-  days, in place; meetings, in place; transcripts, in place.
+  The user's work log: org files read in place, never written: entries, read whole,
+  in place; days, read whole, in place; meetings, read whole, in place; transcripts,
+  read whole, in place.
 
 With --format json: exit_status, the run's; sources, a row per source taken, in the
 registry's order, each with its source, its outcome (done, failed, interrupted, not
@@ -544,7 +545,9 @@ for Confluence and Jira, converted, the conversions pandoc ran, and reused, thos
 cache gave, a document's file and a space's tree being one each; changes, the files
 written, unchanged and removed; unsupported, what the mirror does not show, by name;
 problems, each by its place and why; elsewhere, those that it found reading the other
-source's, by that source, which fail nothing of its own.
+source's, by that source, which fail nothing of its own. For the work log: documents;
+changes; html, the HTML transcripts left out; warnings; problems, each with what it
+held back; in a dry run, documents, to_convert, to_remove, html and problems.
 ```
 
 ## `reranker`

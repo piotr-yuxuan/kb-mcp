@@ -571,17 +571,24 @@ def test_a_source_without_a_fetcher_is_no_choice(
 def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
     capsys: CaptureFixture[str],
 ) -> None:
-    """Each with its resource types and how each is read, then its own options; none of the log."""
+    """Each with its resource types, how each is read, and the options that it alone declares.
+
+    Those that both declare, in a group of their own; none of the work log.
+    """
     with pytest.raises(SystemExit):
         main(["fetch", "--help"])
     said_of = " ".join(capsys.readouterr().out.split())
-    assert "confluence: Confluence, on the Atlassian site" in said_of
-    assert "pages, listed whole; blogposts, listed whole." in said_of
-    assert "jira: Jira, on the Atlassian site" in said_of
-    assert "issues, searched by update time." in said_of
-    assert "several sources: The options of confluence, jira." in said_of
+    _, confluence = said_of.split(" confluence: Confluence, on the Atlassian site", 1)
+    confluence, jira = confluence.split(" jira: Jira, on the Atlassian site", 1)
+    jira, both = jira.split(" several sources: The options of confluence, jira.", 1)
+    assert "pages, listed whole; blogposts, listed whole." in confluence
+    assert "--space SPACE" in confluence
+    assert "--project" not in confluence
+    assert "issues, searched by update time." in jira
+    assert "--project PROJECT" in jira
+    assert "--since" not in jira
+    assert all(flag in both for flag in ("--since SINCE", "--until UNTIL", "--max-file-mb"))
     assert "worklog:" not in said_of
-    assert said_of.index("--space") < said_of.index("--project") < said_of.index("--until", 700)
 
 
 def test_each_flag_of_the_registry_is_declared_alike_by_each_source_that_declares_it() -> None:

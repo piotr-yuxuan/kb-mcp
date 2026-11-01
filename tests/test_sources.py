@@ -293,6 +293,16 @@ def test_a_command_asks_once_after_naming_each_source_taken_and_left_out(
     assert not (home / "data").exists()
 
 
+def test_an_index_with_nothing_prepared_says_so_and_names_the_command(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """``prepare`` done with no document leaves no mirror, which ``index`` says, exit 1."""
+    config = settings_file(home, None)
+    assert main(command(home, config, "prepare", "--yes", "jira")) == ExitStatus.OK
+    assert main(command(home, config, "index", "--yes")) == ExitStatus.FAILED
+    assert "nothing is prepared yet; `kb-mcp prepare` writes it" in capsys.readouterr().err
+
+
 def test_a_machine_with_the_work_log_alone_has_nothing_to_fetch_and_something_to_prepare(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:

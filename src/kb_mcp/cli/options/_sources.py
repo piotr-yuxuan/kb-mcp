@@ -13,7 +13,11 @@ if TYPE_CHECKING:
     from kb_mcp.sources.declaration import Declared
 
 # How a resource type is read, in the words of its source's group.
-READ = {"listed": "listed whole", "searched": "searched by update time", "in place": "in place"}
+READ = {
+    "listed": "listed whole",
+    "searched": "searched by update time",
+    "in place": "read whole, in place",
+}
 
 
 def source_group(parser: argparse.ArgumentParser, declared: Declared) -> argparse._ArgumentGroup:

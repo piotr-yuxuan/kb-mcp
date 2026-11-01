@@ -39,7 +39,7 @@ or `jira issues`; `target`, as `space MFS` or `project PRB`.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `fetch.source` | internal | `kb_mcp.source`, `kb_mcp.outcome` | A source's row: its source and how it ended |
+| `fetch.source` | internal | `kb_mcp.source`, `kb_mcp.outcome` | A source's row: its source and how it ended, no outcome on one that Ctrl-C stopped |
 | `fetch.space` | internal | `kb_mcp.target` | A space, by its key: listed, stored, its documents fetched; an error when it cannot be listed |
 | `fetch.project` | internal | `kb_mcp.target` | A project, by its key: searched, its issues fetched; an error when the search cannot be read |
 | `fetch.probes` | internal | | The documents that a space no longer lists, probed |

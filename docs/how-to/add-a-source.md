@@ -392,6 +392,8 @@ uv run kb-mcp prepare --yes --config ~/notes-try/config.toml
 uv run kb-mcp index --yes --config ~/notes-try/config.toml
 ```
 
+Its last row, after those of each store:
+
 ```text
 notes: done
   written: 1

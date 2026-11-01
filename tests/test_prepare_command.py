@@ -510,8 +510,6 @@ def test_the_help_shows_a_group_per_source_with_what_it_reads(
     said_of = " ".join(capsys.readouterr().out.split())
     assert "pages, listed whole; blogposts, listed whole." in said_of
     assert "issues, searched by update time." in said_of
-    assert (
-        "entries, in place; days, in place; meetings, in place; transcripts, in place." in said_of
-    )
+    assert "entries, read whole, in place; days, read whole, in place;" in said_of
     assert "--since" not in said_of
     assert "--space" not in said_of

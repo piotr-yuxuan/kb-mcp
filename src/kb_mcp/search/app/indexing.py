@@ -154,7 +154,7 @@ def build_index(
     INFO once the index is complete.
     """
     if not docs.is_dir():
-        message = f"no mirror at {docs}: build it with `kb-mcp prepare`"
+        message = f"no mirror at {docs}: nothing is prepared yet; `kb-mcp prepare` writes it"
         raise MirrorMissingError(message)
     report = Report()
     model = embedding.embedder if embedding else None

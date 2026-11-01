@@ -150,7 +150,8 @@ def described(options: Mapping[str, object], settings: Mapping[str, object]) -> 
 
 CONFLUENCE = Declared(
     name="confluence",
-    summary="Confluence, on the Atlassian site: the pages and blog posts of its spaces",
+    summary="Confluence, on the Atlassian site: the pages and blog posts of its spaces,"
+    " with their files",
     types=(
         ResourceType(
             name="pages", summary="a space's pages", read="listed", options=(SPACE, *PERIOD)
@@ -173,7 +174,8 @@ CONFLUENCE = Declared(
 )
 JIRA = Declared(
     name="jira",
-    summary="Jira, on the Atlassian site: the issues of its projects",
+    summary="Jira, on the Atlassian site: the issues of its projects,"
+    " with their comments and files",
     types=(
         ResourceType(
             name="issues",

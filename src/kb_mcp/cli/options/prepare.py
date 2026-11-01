@@ -42,7 +42,9 @@ def register(
             " a space's tree being one each; changes, the files written, unchanged and"
             " removed; unsupported, what the mirror does not show, by name; problems, each by"
             " its place and why; elsewhere, those that it found reading the other source's,"
-            " by that source, which fail nothing of its own."
+            " by that source, which fail nothing of its own. For the work log: documents;"
+            " changes; html, the HTML transcripts left out; warnings; problems, each with what"
+            " it held back; in a dry run, documents, to_convert, to_remove, html and problems."
         ),
     )
     actions, flags = add_settings_options(parser)
