@@ -4,7 +4,8 @@ Only this module knows SQL. ``building`` writes a new index beside the old one a
 renames it into place once complete; ``reading`` opens one read-only for one use, so
 that a replaced file is read from the next use on. An index built with a model also
 holds the vector of each piece of each section, with its key in the vector store, and
-names the model.
+names the model. ``SqliteIndex`` is one file as ``search.domain.indexes`` declares an
+index.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import json
 import os
 import sqlite3
 import tempfile
+import threading
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -27,6 +29,7 @@ from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.domain import people
+from kb_mcp.search.domain.indexes import UnavailableIndexError
 from kb_mcp.search.domain.search import (
     Activity,
     Embedded,
@@ -40,7 +43,10 @@ from kb_mcp.search.domain.search import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Mapping
+    from collections.abc import Callable, Iterable, Iterator, Mapping
+    from contextlib import AbstractContextManager
+
+    from numpy.typing import NDArray
 
     from kb_mcp.kernel.chunking import Chunking
     from kb_mcp.search.domain.search import Section, Sort
@@ -285,10 +291,6 @@ VALUES = {
     " 2 DESC, 1",
     "type": "SELECT type, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
 }
-
-
-class UnavailableIndexError(Exception):
-    """No index to read, or one that this version cannot read; the message says why."""
 
 
 class DuplicateDocumentError(ValueError):
@@ -568,9 +570,10 @@ class Reader:
     A list is bounded by a limit, or else by what one space, project or filter holds.
     """
 
-    def __init__(self, connection: sqlite3.Connection) -> None:
-        """Read through an open, read-only connection."""
+    def __init__(self, connection: sqlite3.Connection, vectors: Callable[[Reader], Pieces]) -> None:
+        """Read through an open, read-only connection; ``vectors`` gives what meaning searches."""
         self._connection = connection
+        self._vectors = vectors
         self._kept: dict[Filters, str | None] = {}
 
     def kept(self, filters: Filters) -> str | None:
@@ -784,6 +787,22 @@ class Reader:
             matrix=matrix.astype(np.float32).reshape(len(rows), dimensions),
         )
 
+    def nearest(
+        self, vector: NDArray[np.float32], filters: Filters, depth: int
+    ) -> dict[str, tuple[Score, int, int, int]]:
+        """Give at most ``depth`` documents passing the filters, nearest a unit vector first.
+
+        Each path comes with its score, then its best piece's section number, and its
+        start and end in the body.
+        """
+        kept = self.kept(filters)
+        allowed = None if kept is None else set(json.loads(kept))
+        pieces = self._vectors(self)
+        return {
+            path: (score, pieces.sections[index], pieces.offsets[index], pieces.ends[index])
+            for path, (score, index) in pieces.nearest(vector, allowed, depth).items()
+        }
+
     def heading(self, path: str, number: int) -> str:
         """Give the heading of a document's section."""
         row = self._connection.execute(
@@ -819,9 +838,10 @@ class Reader:
 
 
 @contextmanager
-def reading(path: Path) -> Iterator[Reader]:
+def reading(path: Path, vectors: Callable[[Reader], Pieces] = Reader.pieces) -> Iterator[Reader]:
     """Open the index at ``path`` read-only, for one use; never write to it.
 
+    ``vectors`` gives its reader's search by meaning the vectors, read at each by default.
     Raise UnavailableIndexError when there is none, or when this version cannot read it.
     Another schema names ``prepare``, then ``index`` or ``embed``, not ``index`` alone: a
     new schema can come with a new format of the mirror's files, which ``index`` would
@@ -849,6 +869,32 @@ def reading(path: Path) -> Iterator[Reader]:
         if meta.get("chunking", "") not in {"", *CHUNKINGS}:
             message = f"{unread} `kb-mcp embed`"
             raise UnavailableIndexError(message)
-        yield Reader(connection)
+        yield Reader(connection, vectors)
     finally:
         connection.close()
+
+
+class SqliteIndex:
+    """One index file, in this process: the words index and the vector index together.
+
+    It opens a reader per use, by ``reading``, and keeps the vectors of the last build
+    read, so that a search reads them once a build.
+    """
+
+    def __init__(self, path: Path) -> None:
+        """Name the index at ``path``, which need not be there yet."""
+        self._path = path
+        self._lock = threading.Lock()  # the SDK runs tools in worker threads
+        self._kept: tuple[str, Pieces] | None = None  # a build and its vectors
+
+    def reading(self) -> AbstractContextManager[Reader]:
+        """Open one use of the index, as ``reading`` does, its vectors kept here."""
+        return reading(self._path, self._vectors)
+
+    def _vectors(self, reader: Reader) -> Pieces:
+        """Give the vectors of the build that ``reader`` reads, from memory once read."""
+        with self._lock:
+            build = reader.build()
+            if self._kept is None or self._kept[0] != build:
+                self._kept = (build, reader.pieces())
+            return self._kept[1]

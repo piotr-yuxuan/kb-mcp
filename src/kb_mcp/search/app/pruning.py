@@ -20,6 +20,7 @@ from opentelemetry import metrics, trace
 
 from kb_mcp.kernel.record import Record
 from kb_mcp.search.adapters import sqlite_index, vector_store
+from kb_mcp.search.domain.indexes import UnavailableIndexError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -146,7 +147,7 @@ def prune(
                     outcome="held back", reason=UNLISTED, file=shown(error.filename or path)
                 )
                 return said(unlisted, span, started)
-            except sqlite_index.UnavailableIndexError, sqlite3.DatabaseError:
+            except UnavailableIndexError, sqlite3.DatabaseError:
                 held_back = Pruned(outcome="held back", reason=UNREADABLE, file=shown(path))
                 return said(held_back, span, started)
             read = keys.pop(index)

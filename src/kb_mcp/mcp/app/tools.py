@@ -28,10 +28,11 @@ from kb_mcp.kernel.names import WORKLOG_ID
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from kb_mcp.mcp.app import responses
-from kb_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
+from kb_mcp.search.adapters.sqlite_index import reading
 from kb_mcp.search.app.meaning import Nearest
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS, UNIT, around
+from kb_mcp.search.domain.indexes import UnavailableIndexError
 from kb_mcp.search.domain.reranking import (
     BODY,
     HEADING,

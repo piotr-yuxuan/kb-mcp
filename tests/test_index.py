@@ -19,8 +19,9 @@ import pytest
 from kb_mcp.cli.main import main
 from kb_mcp.mirror.domain.mirror import Link, PersonRole
 from kb_mcp.search.adapters import sqlite_index
-from kb_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
+from kb_mcp.search.adapters.sqlite_index import reading
 from kb_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
+from kb_mcp.search.domain.indexes import UnavailableIndexError
 from kb_mcp.search.domain.people import (
     UNHELD,
     Ambiguity,

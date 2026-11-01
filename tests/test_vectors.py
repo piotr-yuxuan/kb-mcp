@@ -19,9 +19,10 @@ from kb_mcp.mcp.app import responses
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.adapters.model_api import ModelError
-from kb_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
+from kb_mcp.search.adapters.sqlite_index import reading
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
+from kb_mcp.search.domain.indexes import UnavailableIndexError
 from kb_mcp.search.domain.search import Embedded
 from tests.answers import parts
 from tests.endpoint import DIMENSIONS, Scripted, connector, nothing_listening, serving, tiny
