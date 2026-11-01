@@ -705,20 +705,26 @@ def test_the_how_to_for_a_source_gives_the_checkout_s_registry_and_contracts_and
     """Its lines of steps 6 and 7 are those of the checkout, with the new source among them.
 
     Each in the order that the registry's rule and the contract's list keep; so a source
-    added, or a contract's list changed, is said on the page too.
+    added, or a contract's list changed, is said on the page too. The page's own source
+    aside on both sides, as a reader who follows it registers that source.
     """
     page = ADD_A_SOURCE.read_text("utf-8")
     line = re.search(r"^SOURCES = \((.*)\)$", page, re.MULTILINE)
     assert line is not None
     names = line[1].lower().split(", ")
     assert names == sorted(names)
-    assert [name for name in names if name != "notes"] == [each.name for each in SOURCES]
+    registered = [each.name for each in SOURCES]
+    assert [name for name in names if name != "notes"] == [
+        name for name in registered if name != "notes"
+    ]
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))
     contracts = {each.get("id"): each for each in pyproject["tool"]["importlinter"]["contracts"]}
     listed = re.search(r"^modules = (\[.*\])$", page, re.MULTILINE)
     assert listed is not None
     modules = json.loads(listed[1])
     assert NOTES_PACKAGE in modules
-    assert [each for each in modules if each != NOTES_PACKAGE] == contracts["I"]["modules"]
+    assert [each for each in modules if each != NOTES_PACKAGE] == [
+        each for each in contracts["I"]["modules"] if each != NOTES_PACKAGE
+    ]
     assert f'"{NOTES_PACKAGE}",' in page.splitlines()
     assert "kb_mcp.sources.worklog" in contracts["K"]["source_modules"]
