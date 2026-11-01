@@ -40,7 +40,8 @@ def values_of(loaded: Loaded) -> dict[str, object]:
 def setting_line(loaded: Loaded, setting: str, *, detailed: bool) -> str:
     """Write a setting, by its path joined by dots, and its value; in detail, its layer too.
 
-    A secret is said to be set or not, never shown; a list is joined.
+    A secret is said to be set or not, never shown; a list is joined, one left at None
+    as one empty.
     """
     path = tuple(setting.split("."))
     value = reduce(getattr, path, loaded.settings)
@@ -48,7 +49,7 @@ def setting_line(loaded: Loaded, setting: str, *, detailed: bool) -> str:
     if kind == "secret":
         shown = "not set" if value is None else "set"
     elif kind == "list":
-        shown = ", ".join(value) or "(none)"
+        shown = ", ".join(value or ()) or "(none)"
     else:
         shown = "(not set)" if value is None else str(value)
     return f"{setting}: {shown}" + (f" [{loaded.layer(setting)}]" if detailed else "")

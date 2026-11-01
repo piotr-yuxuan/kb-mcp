@@ -16,6 +16,7 @@ from pydantic_settings import EnvSettingsSource
 from kb_mcp.cli.main import main
 from kb_mcp.config.app.settings import UnsafeDataDirError, load_settings
 from kb_mcp.config.domain.settings import (
+    TABLE,
     Entry,
     Ignored,
     Loaded,
@@ -198,6 +199,9 @@ def test_each_setting_is_read_by_its_kind() -> None:
         (Annotated[SecretStr, Field(min_length=1)] | None, "secret"),
         (Literal["a", "b"] | None, "value"),
         (Annotated[Path, Field(description="a path")], "path"),
+        (tuple[Annotated[str, Field(min_length=1)], ...], "list"),
+        (tuple[Literal["a", "b"], ...], "list"),
+        (tuple[Annotated[Literal["a", "b"], Field(description="a choice")], ...] | None, "list"),
     ],
 )
 def test_a_setting_s_kind_is_seen_through_none_and_annotated(annotation: object, kind: str) -> None:
@@ -208,10 +212,27 @@ def test_a_setting_s_kind_is_seen_through_none_and_annotated(annotation: object,
 
 @pytest.mark.parametrize(
     "annotation",
-    [list[str], frozenset[str], dict[str, str], ConfluenceSource | None, SecretStr | int],
+    [
+        list[str],
+        frozenset[str],
+        dict[str, str],
+        ConfluenceSource | None,
+        SecretStr | int,
+        tuple[int, ...],
+        tuple[Path, ...],
+        tuple[SecretStr, ...],
+        tuple[str, int],
+        tuple[str | None, ...],
+        tuple[Literal[1, 2], ...],
+        tuple[Annotated[int, Field(ge=0)], ...],
+    ],
 )
 def test_a_setting_of_a_type_that_has_no_kind_is_refused(annotation: object) -> None:
-    """Read as text, a list would not be parsed as JSON, and a secret taken from the file."""
+    """Read as text, a list would not be parsed as JSON, and a secret taken from the file.
+
+    A list is of text, each item as it is shown: a number or a path would not join, and a
+    path would keep its ``~``, and pass the rules of a path's setting.
+    """
     model = create_model("Table", setting=(annotation, None))
     with pytest.raises(TypeError, match="a type that has no kind"):
         setting_paths(model)
@@ -242,6 +263,18 @@ def test_a_source_s_table_with_a_type_that_has_no_kind_is_refused_naming_it() ->
     table = create_model("Memo", folder=(list[str], []))
     with pytest.raises(TypeError, match=r"^sources\.memo: a setting of a type that has no kind"):
         settings_model({"memo": table}, {})
+
+
+def test_a_table_inside_a_source_s_table_is_refused_naming_it() -> None:
+    """Plan 030: a source's settings are values, each shown, given and judged by its path."""
+    inner = create_model("Inner", value=(str, "a"), __config__=TABLE)
+    table = create_model("Outer", first=(str | None, None), inner=(inner, inner()))
+    for place, tables in (
+        ("sources", ({"outer": table}, {})),
+        ("accounts", ({}, {"outer": table})),
+    ):
+        with pytest.raises(TypeError, match=rf"^{place}\.outer: a table inside a table: inner$"):
+            settings_model(*tables)
 
 
 @pytest.mark.parametrize(

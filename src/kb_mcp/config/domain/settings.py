@@ -438,22 +438,35 @@ TEXT_KINDS: dict[object, Kind] = {
 }
 
 
+def bare(annotation: object) -> object:
+    """Give a type without its alias and ``Annotated``, which say nothing of its kind."""
+    if isinstance(annotation, TypeAliasType):
+        return bare(annotation.__value__)
+    if get_origin(annotation) is Annotated:
+        return bare(get_args(annotation)[0])
+    return annotation
+
+
 def kind_of(annotation: object) -> Kind:
     """Give the kind of a setting that is no table by its type; refuse a type of no kind.
 
     An alias, ``Annotated`` and ``| None`` are looked through: ``LocalPath | None`` is a
-    path. Another type, such as ``list[str]`` or a table that may be None, raises
-    TypeError, so that the environment never reads a setting by the wrong kind.
+    path. A list is a tuple of text, each item ``str`` or a ``Literal`` of it, since it is
+    shown joined and no rule of a path reads its items. Another type, such as
+    ``list[str]``, ``tuple[Path, ...]`` or a table that may be None, raises TypeError, so
+    that the environment never reads a setting by the wrong kind.
     """
-    if isinstance(annotation, TypeAliasType):
-        return kind_of(annotation.__value__)
+    annotation = bare(annotation)
     origin, arguments = get_origin(annotation), get_args(annotation)
-    if origin is Annotated:
-        return kind_of(arguments[0])
     others = [argument for argument in arguments if argument is not NoneType]
     if origin is Union and len(others) == 1:
         return kind_of(others[0])
-    if origin is tuple:
+    if origin is tuple and all(
+        item is str
+        or (get_origin(item) is Literal and all(isinstance(each, str) for each in get_args(item)))
+        for item in map(bare, arguments)
+        if item is not Ellipsis
+    ):
         return "list"
     if origin is Literal:
         return "value"
@@ -494,8 +507,9 @@ def settings_model(
     the tables of each follow one another in name order, each described by its
     docstring. Raises TypeError, naming the table, for a name that a model already holds,
     such as ``json``, which its field would shadow, one that holds a setting of a type
-    that has no kind, or one without a default, since a source left unset still has its
-    table, before any value is read.
+    that has no kind, one without a default, since a source left unset still has its
+    table, or one that holds a table, as a declaration's settings are values, each said
+    by its path, all before any value is read.
     """
     places = {"accounts": (Accounts, accounts), "sources": (Sources, sources)}
     for place, (base, tables) in places.items():
@@ -504,7 +518,7 @@ def settings_model(
                 message = f"{place}.{name}: a name that a model already holds"
                 raise TypeError(message)
             try:
-                setting_paths(table)
+                kinds = setting_paths(table)
                 table()
             except TypeError as error:
                 message = f"{place}.{name}: {error}"
@@ -513,6 +527,10 @@ def settings_model(
                 without = [".".join(map(str, each["loc"])) for each in error.errors()]
                 message = f"{place}.{name}: a setting without a default: {', '.join(without)}"
                 raise TypeError(message) from None
+            inner = [".".join(path) for path, kind in kinds.items() if kind == "table"]
+            if inner:
+                message = f"{place}.{name}: a table inside a table: {', '.join(inner)}"
+                raise TypeError(message)
     composed = {
         place: create_model(
             base.__name__,

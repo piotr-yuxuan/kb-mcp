@@ -50,7 +50,10 @@ covers: a source whose first setting is not set is left out, as not configured
 ([`chosen`](../../src/kb_mcp/cli/domain/sync.py)). `TABLE` refuses a misspelt key, and
 `LocalPath` reads a folder, absolute or under `~`
 ([`TABLE`](../../src/kb_mcp/config/domain/settings.py),
-[`LocalPath`](../../src/kb_mcp/config/domain/settings.py)). Create
+[`LocalPath`](../../src/kb_mcp/config/domain/settings.py)). A setting is text, a flag, a
+number, a choice, a path, a secret, or a list of text, `tuple[str, ...]`; anything else,
+such as a list of paths or a table inside the table, is refused as the settings are
+composed, naming the source ([`kind_of`](../../src/kb_mcp/config/domain/settings.py)). Create
 `src/kb_mcp/sources/notes/settings.py`:
 
 ```python

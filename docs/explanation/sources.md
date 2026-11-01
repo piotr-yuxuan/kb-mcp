@@ -207,7 +207,8 @@ setting's path. So `config` imports no source: each table lives in its package
 it uses ([`site_address`](../../src/kb_mcp/sources/atlassian/settings.py)). The file, the
 environment (`KB_MCP_SOURCES__CONFLUENCE__SPACES`), the flags, layers, secrets and messages
 work as for the core's settings, and a table with a setting of a type of no known kind is
-refused, naming its source. Raw tables validated when their source runs were rejected:
+refused, naming its source, as is a list of other than text, which no summary can show and
+no rule of a path reads, and a table inside a table. Raw tables validated when their source runs were rejected:
 they would let a misspelt key pass until then. `sync` takes its keys from the tables alone,
 and `--include` and `--exclude` choose among them. What a run does not apply, such as the
 period's options for the work log, is said, not refused: the same settings serve every run.

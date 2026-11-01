@@ -243,6 +243,87 @@ def test_a_table_that_cannot_be_built_by_default_is_refused_naming_its_source(
         main(["check", "--config", str(tmp_path / "none.toml")], (*SOURCES, memo))
 
 
+class Numbers(BaseModel):
+    """A table with a list of numbers, which no summary can join."""
+
+    model_config = TABLE
+
+    values: tuple[int, ...] = ()
+
+
+class Folders(BaseModel):
+    """A table with a list of paths, whose ``~`` no rule would judge."""
+
+    model_config = TABLE
+
+    values: tuple[Path, ...] = ()
+
+
+class Inner(BaseModel):
+    """A table inside another."""
+
+    model_config = TABLE
+
+    value: str = "a"
+
+
+class Outer(BaseModel):
+    """A table holding a table, whose path holds no value to show."""
+
+    model_config = TABLE
+
+    values: tuple[str, ...] = ()
+    inner: Inner = Inner()
+
+
+class Tags(BaseModel):
+    """A table with a list that may be None, which is its default."""
+
+    model_config = TABLE
+
+    values: tuple[str, ...] | None = None
+    more: tuple[str, ...] | None = None
+
+
+@pytest.mark.parametrize(
+    ("table", "said"),
+    [
+        (Numbers, "a setting of a type that has no kind"),
+        (Folders, "a setting of a type that has no kind"),
+        (Outer, "a table inside a table: inner"),
+    ],
+    ids=["numbers", "paths", "a table"],
+)
+@pytest.mark.parametrize(
+    "command", [["check"], ["sync", "--include", "added", "--yes"]], ids=["check", "sync"]
+)
+def test_a_table_that_a_command_could_not_read_is_refused_naming_its_source(
+    tmp_path: Path, table: type[BaseModel], said: str, command: list[str]
+) -> None:
+    """Criterion 4's promise: by the entry, before any value is read, and no traceback later.
+
+    Named ``values`` in each, so that a declaration's ``settings`` are the table's.
+    """
+    config = tmp_path / "config.toml"
+    config.write_text('[sources.added]\nvalues = ["a"]\n', "utf-8")
+    settings = tuple(table.model_fields)
+    added = replace(WORKLOG, name="added", settings=settings, table=f"{__name__}:{table.__name__}")
+    with pytest.raises(TypeError, match=rf"^sources\.added: {said}"):
+        main([*command, "--config", str(config), "--data-dir", str(tmp_path / "data")], (added,))
+
+
+def test_a_list_left_at_none_reads_as_no_value(tmp_path: Path, capsys: CaptureFixture[str]) -> None:
+    """A list that may be None is a list: unset, ``check`` says so, and runs on."""
+    config = tmp_path / "config.toml"
+    config.write_text('[sources.added]\nvalues = ["a"]\n', "utf-8")
+    added = replace(
+        WORKLOG, name="added", settings=("values", "more"), table=f"{__name__}:{Tags.__name__}"
+    )
+    given = ["check", "--summary", "detailed", "--config", str(config)]
+    assert main([*given, "--data-dir", str(tmp_path / "data")], (added,)) == ExitStatus.OK
+    assert "sources.added.more: (none) [default]" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("name", ["json", "copy", "schema"])
 def test_a_name_that_a_model_holds_is_refused_naming_it(tmp_path: Path, name: str) -> None:
     """Its field would shadow the attribute, as Pydantic warns: no warning on every run."""
