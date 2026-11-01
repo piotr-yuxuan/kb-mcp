@@ -116,18 +116,18 @@ POSITIONALS = {
 OWN_OUTPUT = {"serve", "completion"}
 # The subcommands that write under the data directory, and so ask first, by plan 015.
 WRITING = {
-    "download",
     "embed",
     "eval",
     "eval-agents",
     "eval-rerank",
+    "fetch",
     "index",
     "login",
     "mirror",
     "sync",
 }
 # The subcommands that take --dry-run, by plans 015 and 017.
-DRY_RUN = {"download", "sync"}
+DRY_RUN = {"fetch", "sync"}
 SECRETS = {
     "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": "token-sentinel-4d1c",
     "KB_MCP_EMBEDDING_API_KEY": "key-sentinel-9a7e",
@@ -197,14 +197,16 @@ def test_each_subcommand_s_command_carries_its_name_and_a_run_that_imports(name:
 
     The run's module need not bear the name: eval's is evaluate. It is named by a
     string and imported only once chosen, so a misspelt one would fail only when run.
-    Its declaration, in ``cli.options``, bears the same module's name.
+    Its declaration, in ``cli.options``, bears the same module's name, or, for a run that
+    several commands share, as ``fetch``'s, the command's.
     """
     command = SUBCOMMANDS[name].get_default("command")
     assert command.name == name
     package, _, module = command.run.rpartition(".")
     assert package == commands.__name__
     assert callable(importlib.import_module(command.run).run)
-    assert callable(importlib.import_module(f"{options.__name__}.{module}").register)
+    declaration = name if module == "sources" else module
+    assert callable(importlib.import_module(f"{options.__name__}.{declaration}").register)
 
 
 @pytest.mark.parametrize("name", sorted(SUBCOMMANDS))
@@ -312,7 +314,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
     ``sys.modules``.
     """
     environment = {"HOME": str(home), "PATH": os.environ["PATH"]}
-    typed = "kb-mcp download --sp"
+    typed = "kb-mcp fetch --sp"
     completing = {
         "_ARGCOMPLETE": "1",
         "COMP_LINE": typed,
@@ -354,7 +356,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
                     "importtime",
                     "-m",
                     "kb_mcp",
-                    "download",
+                    "fetch",
                     "--help",
                 ],
                 stdin=subprocess.DEVNULL,
@@ -406,7 +408,7 @@ def test_declaring_the_command_imports_none_of_the_runs_packages(home: Path) -> 
 
 @pytest.mark.parametrize(
     ("line", "offered"),
-    [("dow", {"download"}), ("download --sp", {"--space"}), ("check --format ", {"text", "json"})],
+    [("fet", {"fetch"}), ("fetch --sp", {"--space"}), ("check --format ", {"text", "json"})],
 )
 def test_the_shell_completes_the_command_line(home: Path, line: str, offered: set[str]) -> None:
     """A child called as the shell code calls it offers what may follow the line.

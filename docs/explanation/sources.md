@@ -53,7 +53,7 @@ A source is data that names the code of its roles
 `--help` builds the whole parser, as a completion does at every Tab, so a declaration
 stays light, and names the rest by module path, which the entry loads for its tables
 ([`enter`](../../src/kb_mcp/cli/commands/_shared.py)) and a run for its roles
-([`loaded`](../../src/kb_mcp/cli/app/sync.py)). Within a package, the declaration sits
+([`loaded`](../../src/kb_mcp/cli/app/sources.py)). Within a package, the declaration sits
 above the preparers, they above the fetcher, it above the tables: both roles read the
 tables, and the declaration imports neither role ([contract
 J](code-layout.md#the-contracts)). A declaration's light checks are functions that it
@@ -79,7 +79,7 @@ does not apply, and what its summary says.
 A role takes a [`Run`](../../src/kb_mcp/sources/roles.py), the source that it runs for and
 all that it reads, and gives a [`Result`](../../src/kb_mcp/sources/roles.py). Any object
 with a role's methods is one, and each source's is the module of its role, its functions
-the methods, since none holds state. [`loaded`](../../src/kb_mcp/cli/app/sync.py) checks
+the methods, since none holds state. [`loaded`](../../src/kb_mcp/cli/app/sources.py) checks
 it against the runtime-checkable protocol. A role may use the interfaces, the mirror,
 `config`'s rules of a table ([`TABLE`](../../src/kb_mcp/config/domain/settings.py),
 [`LocalPath`](../../src/kb_mcp/config/domain/settings.py)), `observability` and the
@@ -92,7 +92,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   log that is not a folder
   ([its preparer's](../../src/kb_mcp/sources/worklog/prepare/app/preparer.py)).
 - **`fetch`** brings a system's changes into the store that it owns, raw first
-  ([`fetch_targets`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). A source
+  ([`fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). A source
   read in place has no fetcher: the work log's preparer reads its folder, and its
   `preflight` checks it.
 - **`prepare`** writes the source's documents through the mirror. In a dry run the
@@ -135,9 +135,9 @@ beside it):
 | `jira` | `issues` | searched by update time, per project | the same |
 | `worklog` | `entries`, `days`, `meetings`, `transcripts` | read whole, in place | none |
 
-`--space` and `--project` replace a setting for one run, so they stay `download`'s
-([`register`](../../src/kb_mcp/cli/options/download.py)) until plan 032 generates flags
-from the settings. Plan 034 needs how each type is read: coverage per target, an exact
+`--space` and `--project` replace a setting for one run
+([`SPACE`](../../src/kb_mcp/sources/atlassian/declared.py), by its `setting`), until plan
+032 generates flags from the settings. Plan 034 needs how each type is read: coverage per target, an exact
 end only where searched by time. Choosing among a source's types waits for one worth
 fetching apart, such as Jira's boards: until then a source's types are read whole. The
 Atlassian fetcher lists every kind of a space, and its preparer, which removes the files
@@ -173,7 +173,7 @@ from plan 031 on and the front matter's `source`, so one source type has one ins
 Confluence sites or two work logs cannot be configured, and allowing them later (named
 instances, `docs/<instance>/`) moves an existing source's files once. A run that cannot
 load a role, whatever its import raises, exits 2, naming the declaration and the path
-([`loaded`](../../src/kb_mcp/cli/app/sync.py)); a test loads every role of `SOURCES`
+([`loaded`](../../src/kb_mcp/cli/app/sources.py)); a test loads every role of `SOURCES`
 ([`test_each_fetcher_that_the_registry_names_loads_as_a_fetcher`](../../tests/test_roles.py)).
 
 `--help` imports the registry and the declarations, so contract G holds them to the
@@ -330,7 +330,7 @@ package, but each is a source: a row, a report and a set of files of its own.
 three steps: every `preflight`, then every fetcher, every preparer, then the index. Each row
 runs even when an earlier one failed, since the next reads what is on disk, Ctrl-C stops
 the rest, and the rows rank the exit status
-([`RANKED`](../../src/kb_mcp/cli/domain/sync.py)). Rows run from `fetch confluence` to
+([`RANKED`](../../src/kb_mcp/cli/domain/sources.py)). Rows run from `fetch confluence` to
 `prepare worklog`, then `index`, each with its result's text
 ([`Row`](../../src/kb_mcp/cli/domain/rows.py)); [the index](../../src/kb_mcp/cli/app/sync.py)
 stays apart, being no source.

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from kb_mcp.cli.commands._rows import rows_text
-from kb_mcp.cli.domain.rows import Row, Synced
+from kb_mcp.cli.domain.rows import Synced, SyncRow
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED
@@ -42,7 +42,7 @@ def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Syn
         for source, kinds in PREPARED.items()
     }
     rows = tuple(
-        Row(step="mirror", source=source, outcome=each.outcome, result=each.mirrored)
+        SyncRow(step="mirror", source=source, outcome=each.outcome, result=each.mirrored)
         for source, each in prepared.items()
     )
     status = ExitStatus.FAILED if any(row.outcome == "failed" for row in rows) else ExitStatus.OK

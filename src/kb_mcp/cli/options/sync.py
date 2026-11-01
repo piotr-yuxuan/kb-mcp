@@ -6,7 +6,8 @@ import argparse
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.domain.sync import chosen, described, given
+from kb_mcp.cli.domain.sources import given
+from kb_mcp.cli.domain.sync import chosen, described
 from kb_mcp.cli.options._common import (
     add_embedding_options,
     add_option,
@@ -153,6 +154,12 @@ def register(
         help="sync every configured source but this one; repeat for more",
     )
     declared_options, remote = add_run_options(parser, sources)
+    replacing = {
+        action.dest: option.setting
+        for action in declared_options
+        for option in (declared.options.get(action.option_strings[0]) for declared in sources)
+        if option is not None and option.setting
+    }
     parser.set_defaults(
         command=Command(
             "sync",
@@ -163,7 +170,7 @@ def register(
                 *(path for declared in sources for path in declared.paths),
                 *INDEX_SETTINGS,
             ),
-            flags=flags,
+            flags={**flags, **replacing},
             actions=(*actions, include, exclude, *declared_options, remote),
             writes=True,
             dry_run=True,

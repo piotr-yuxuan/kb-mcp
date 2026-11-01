@@ -72,10 +72,10 @@ declaration that names its table and its roles
   project with nowhere to start
   ([`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py)),
   or a work log that is not a folder
-  ([`SyncRefusedError`](../../src/kb_mcp/cli/app/sync.py)). Ctrl-C ends
+  ([`SourcesRefusedError`](../../src/kb_mcp/cli/app/sources.py)). Ctrl-C ends
   the step it stops and runs no later one. The exit status ranks how the steps ended:
   interrupted, then to sign in again, then failed
-  ([`RANKED`](../../src/kb_mcp/cli/domain/sync.py)).
+  ([`RANKED`](../../src/kb_mcp/cli/domain/sources.py)).
 - **Offline**, all but its download: `sync --include worklog` reads nothing from the
   site.
 

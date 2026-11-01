@@ -333,7 +333,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_download_documents_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"sync\"}[$__range]))",
+          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_fetch_documents_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"sync\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{kb_mcp_outcome}}"
@@ -379,7 +379,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_download_files_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"sync\"}[$__range]))",
+          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_fetch_files_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"sync\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{kb_mcp_outcome}}"

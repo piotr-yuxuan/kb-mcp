@@ -529,8 +529,8 @@ def test_a_run_of_projects_alone_does_nothing_of_confluence_s(
     assert [what for what in outcome.report.counts if "confluence" in what] == []
     assert [url.path for url in fake.asked if url.path.startswith("/wiki/")] == []
     spans = {span.name for span in telemetry.spans.get_finished_spans()}
-    assert "download.project" in spans
-    assert spans & {"download.space", "download.probes", "download.users"} == set()
+    assert "fetch.project" in spans
+    assert spans & {"fetch.space", "fetch.probes", "fetch.users"} == set()
 
 
 def test_an_expired_session_stops_the_run_before_anything_is_stored(

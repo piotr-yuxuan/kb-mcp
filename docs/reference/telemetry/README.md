@@ -4,7 +4,7 @@ What a run records of itself: its log file, what it says on stderr, and, once an
 endpoint is set, its traces, metrics and logs sent by OpenTelemetry. This page gives the
 file, its fields, the levels, the settings and the variables, then what every command
 records, but `completion`, which records nothing. Beside it, a page per command, named
-after it, such as [download.md](download.md), lists what that command records besides;
+after it, such as [fetch.md](fetch.md), lists what that command records besides;
 a command added adds its page, and no list here.
 
 A change to an event, a span or an instrument changes its page in the same commit: the

@@ -94,7 +94,7 @@ sops](api-token-with-sops.md).
 ## 5. Download
 
 ```bash
-kb-mcp download --space ENG --space OPS --project PLAT --since 7d
+kb-mcp fetch --space ENG --space OPS --project PLAT --since 7d
 ```
 
 `--since` takes a length before now (`12h`, `7d`, `2w`, `6mo`, `1y`), an ISO date

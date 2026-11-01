@@ -55,7 +55,7 @@ PROVIDERS = PurePosixPath("/otel-lgtm/grafana/conf/provisioning/dashboards")
 # The data sources that the image provisions: each one's uid and type.
 SOURCES = {("prometheus", "prometheus"), ("loki", "loki"), ("tempo", "tempo")}
 # The overview, then one dashboard per operation; a later plan adds its own beside them.
-NAMES = {"overview", "download", "mirror", "index", "embed", "serve", "eval"}
+NAMES = {"overview", "fetch", "mirror", "index", "embed", "serve", "eval"}
 # Grafana's longest uid.
 UID_LENGTH = 40
 # Prometheus's names for what it receives over OTLP, by default: the name's words joined

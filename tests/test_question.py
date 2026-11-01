@@ -46,7 +46,7 @@ GOLDEN = str(Path(__file__).parents[1] / "sandbox" / "golden.yaml")
 # Each command that writes, by plan 015: what it needs besides options to be parsed and
 # to pass its declaration's checks, and the module that runs it.
 WRITING = {
-    "download": (["--site", SITE, "--space", "MFS"], "download"),
+    "fetch": (["--site", SITE, "--space", "MFS"], "sources"),
     "eval": ([GOLDEN], "evaluate"),
     "embed": ([], "embed"),
     "index": ([], "index"),
@@ -67,18 +67,18 @@ WITHOUT_EMAIL = {"KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": "token-sentinel-4d1c"}
 # What plan 015 refuses without the network, before anything is asked: a command that
 # writes and its arguments, the variables set, and what the refusal names.
 REFUSED_FIRST = [
-    (["download", "--space", "MFS"], {}, "accounts.atlassian.site: not set"),
-    (["download", "--site", SITE], {}, "nothing to download"),
-    (["download", *WRITING["download"][0], "--max-file-mb", "0"], {}, "--max-file-mb"),
-    (["download", *WRITING["download"][0], "--since", "yesterday"], {}, "--since"),
-    (["download", *WRITING["download"][0], "--until", "soon"], {}, "--until"),
-    (["download", *WRITING["download"][0], "--since", "7m"], {}, "--since"),
-    (["download", *WRITING["download"][0], "--since", "0d"], {}, "--since"),
-    (["download", *WRITING["download"][0], "--since", "0h"], {}, "--since"),
-    (["download", *WRITING["download"][0], "--until", "all"], {}, "--until"),
-    (["download", *WRITING["download"][0]], WITHOUT_EMAIL, "accounts.atlassian.email: not set"),
+    (["fetch", "--space", "MFS"], {}, "accounts.atlassian.site: not set"),
+    (["fetch", "--site", SITE], {}, "nothing to fetch"),
+    (["fetch", *WRITING["fetch"][0], "--max-file-mb", "0"], {}, "--max-file-mb"),
+    (["fetch", *WRITING["fetch"][0], "--since", "yesterday"], {}, "--since"),
+    (["fetch", *WRITING["fetch"][0], "--until", "soon"], {}, "--until"),
+    (["fetch", *WRITING["fetch"][0], "--since", "7m"], {}, "--since"),
+    (["fetch", *WRITING["fetch"][0], "--since", "0d"], {}, "--since"),
+    (["fetch", *WRITING["fetch"][0], "--since", "0h"], {}, "--since"),
+    (["fetch", *WRITING["fetch"][0], "--until", "all"], {}, "--until"),
+    (["fetch", *WRITING["fetch"][0]], WITHOUT_EMAIL, "accounts.atlassian.email: not set"),
     (
-        ["download", *WRITING["download"][0], "--dry-run"],
+        ["fetch", *WRITING["fetch"][0], "--dry-run"],
         WITHOUT_EMAIL,
         "accounts.atlassian.email: not set",
     ),
@@ -257,7 +257,7 @@ def test_quiet_leaves_out_the_summary_of_a_refusal_but_keeps_it_for_a_question(
     [
         *((name, "--yes") for name in sorted(WRITING)),
         ("mirror", "-y"),
-        ("download", "--dry-run"),
+        ("fetch", "--dry-run"),
         ("sync", "--dry-run"),
     ],
 )
@@ -333,7 +333,7 @@ def test_a_download_declined_or_refused_asks_the_site_nothing(
     before = tree(home)
     given(monkeypatch, Terminal("n\n"), Terminal() if terminal else io.StringIO())
     options = ["--site", SITE, "--space", "MFS", "--since", "7d"]
-    status = main(["download", "--config", str(home / "none.toml"), *options])
+    status = main(["fetch", "--config", str(home / "none.toml"), *options])
     assert status == (DECLINED if terminal else REFUSED)
     assert fake.asked == []
     assert tree(home) == before
@@ -370,15 +370,15 @@ def test_what_needs_no_network_is_refused_before_anything_is_asked(
     assert tree(home) == before
 
 
-@pytest.mark.parametrize("name", ["download", "sync"])
+@pytest.mark.parametrize("name", ["fetch", "sync"])
 def test_back_is_no_option_of_download_nor_sync(
     name: str, home: Path, capsys: CaptureFixture[str]
 ) -> None:
     """Plan 034 removed it, since --since 1y or all says the same: unknown, and not in --help."""
     with pytest.raises(SystemExit) as stopped:
-        main([name, "--config", str(home / "none.toml"), "--back", "1y"])
+        main([name, "--config", str(home / "none.toml"), "--back=1y"])
     assert stopped.value.code == REFUSED
-    assert "unrecognized arguments: --back 1y" in capsys.readouterr().err
+    assert "unrecognized arguments: --back=1y" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         main([name, "--help"])
     assert "--back" not in capsys.readouterr().out

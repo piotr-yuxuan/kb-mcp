@@ -365,7 +365,7 @@ def test_a_record_that_no_read_reaches_refuses_the_run_as_a_damaged_one(
 ) -> None:
     """A folder in its place: exit 2, naming the file, no traceback, nothing asked of the site.
 
-    In ``sync``, by its preflight, and in ``download``, by its first fetch.
+    In ``sync`` and in ``fetch``, by the preflight.
     """
     data = home / "data"
     (data / "raw" / name).mkdir(parents=True)
@@ -377,7 +377,7 @@ def test_a_record_that_no_read_reaches_refuses_the_run_as_a_damaged_one(
     )
     monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", "made-up")
     given = ["--yes", "--config", str(config), "--data-dir", str(data)]
-    for command in (["sync"], ["download", "--space", "MFS"]):
+    for command in (["sync"], ["fetch", "confluence"]):
         assert main([*command, *given]) == ExitStatus.REFUSED
         err = capsys.readouterr().err
         assert f"{name}: not read: IsADirectoryError" in err
@@ -491,7 +491,7 @@ def test_what_a_preflight_refuses_once_the_run_began_fails_the_fetch_saying_why(
         fetched = fetcher_of(CONFLUENCE).fetch(run_of(CONFLUENCE, signed_in(settings), options))
     assert isinstance(fetched, Fetched)
     assert (fetched.outcome, fetched.downloaded) == ("failed", None)
-    (refused,) = [each for each in events if each["event"] == "download.refused"]
+    (refused,) = [each for each in events if each["event"] == "fetch.refused"]
     assert refused["log_level"] == "error"
     assert refused["source"] == "confluence"
     assert said in refused["reason"]
@@ -502,20 +502,20 @@ def test_what_a_preflight_refuses_once_the_run_began_fails_the_fetch_saying_why(
 def test_the_fetch_s_text_is_what_download_writes(
     home: Path, settings: Settings, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Confluence's fetch writes the counts that ``download --space MFS`` writes under its row.
+    """Confluence's fetch writes the counts that ``fetch --space MFS`` writes under its row.
 
     A file of the scripted site fails, which fails both.
     """
     fetched = fetcher_of(CONFLUENCE).fetch(run_of(CONFLUENCE, signed_in(settings), SINCE))
     assert fetched.outcome == "failed"
     other = signed_in(settings_of(home / "other", worklog))
-    command = ["download", "--yes", "--config", str(home / "none.toml"), "--space", "MFS"]
+    command = ["fetch", "--yes", "--config", str(home / "none.toml"), "--space", "MFS"]
     period = ["--since", SINCE["--since"]]
     given = [*command, "--data-dir", str(other.data_dir), "--site", SITE, *period]
     capsys.readouterr()  # what the fetch logged, outside a run, which has no log file
     assert main(given) == ExitStatus.FAILED
     indented = "".join(f"  {line}\n" for line in fetched.text("short").splitlines())
-    assert capsys.readouterr().out == f"download confluence: failed\n{indented}"
+    assert capsys.readouterr().out == f"confluence: failed\n{indented}"
 
 
 def test_the_atlassian_preparer_mirrors_the_kinds_of_the_source_that_it_runs_for(

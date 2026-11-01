@@ -128,7 +128,7 @@ values by flag, here `--since`, the clock and the pause, which tests replace; an
 settings. No work log is configured, so no run is of it.
 
 [`sync`](../../src/kb_mcp/cli/app/sync.py) loads each role that a source's
-declaration names ([`loaded`](../../src/kb_mcp/cli/app/sync.py)), then refuses what
+declaration names ([`loaded`](../../src/kb_mcp/cli/app/sources.py)), then refuses what
 it can before any row: here an `--until` before `--since`, which the fetcher's
 [`preflight`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) finds from the
 [`Targets`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) of the
@@ -144,7 +144,7 @@ that has a fetcher, then the prepare of each, then
 a span `sync.step` and kept by
 [`Rows.add`](../../src/kb_mcp/cli/app/sync.py). A step runs even when the
 one before it failed, as it reads what is on disk. The exit status is the first outcome
-of [`RANKED`](../../src/kb_mcp/cli/domain/sync.py) that a row had:
+of [`RANKED`](../../src/kb_mcp/cli/domain/sources.py) that a row had:
 interrupted, then sign in, then failed; else 0.
 
 ### 4. The source and the site's port

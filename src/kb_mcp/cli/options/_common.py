@@ -118,20 +118,20 @@ def add_settings_options(
 
 
 def add_option(
-    parser: argparse.ArgumentParser, option: Option, default: object = None
+    parser: argparse.ArgumentParser | argparse._ArgumentGroup, option: Option
 ) -> argparse.Action:
     """Add an option that a source declares, as ``given`` reads it; return its action.
 
     Its value is kept under its flag itself, so that no flag that a source declares takes
     a name that the program holds, such as ``sources``; help names its value as it would
-    by the flag alone.
+    by the flag alone. One that replaces a setting repeats.
     """
     return parser.add_argument(
         option.flag,
         dest=option.flag,
         metavar=option.flag.lstrip("-").replace("-", "_").upper(),
+        action="append" if option.setting else "store",
         type=option.type,
-        default=default,
         help=option.help,
     )
 
@@ -159,21 +159,15 @@ def model_name(value: str) -> str:
 def of_atlassian(sources: Sequence[Declared], refused: Refused | None = None) -> Refused | None:
     """Give what a command of the Atlassian package refuses, under this registry.
 
-    ``download``, ``mirror``, ``doctor`` and ``login`` read that package's settings by
-    name until plan 031 removes or moves them, so a registry without both its sources is
-    refused before they read one; any other, as ``refused`` says.
+    ``mirror``, ``doctor`` and ``login`` read that package's settings by name until plan
+    031 removes or moves them, so a registry without both its sources is refused before
+    they read one; any other, as ``refused`` says.
     """
     if {CONFLUENCE.name, JIRA.name} <= {declared.name for declared in sources}:
         return refused
     return lambda _arguments, _settings: (
         f"{CONFLUENCE.name} and {JIRA.name}: not both in the registry, which this command reads"
     )
-
-
-def signed_in_by(_arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
-    """Say how the run signs in: by the API token when one is set, else by the saved session."""
-    by = "an API token" if settings[API_TOKEN] is not None else "the session saved by login"
-    return (f"sign-in: {by}",)
 
 
 def endpoint_elsewhere(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:

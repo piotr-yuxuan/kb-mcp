@@ -16,7 +16,6 @@ recorded, those of the source's commands, or ``index``'s, as
 
 from __future__ import annotations
 
-import pkgutil
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -24,8 +23,10 @@ import structlog
 from opentelemetry import trace
 from pydantic import ConfigDict, Field
 
-from kb_mcp.cli.domain.rows import Row, Synced
-from kb_mcp.cli.domain.sync import RANKED, Outcome, label
+from kb_mcp.cli.app.sources import SourcesRefusedError, loaded
+from kb_mcp.cli.domain.rows import Synced, SyncRow
+from kb_mcp.cli.domain.sources import RANKED, Outcome
+from kb_mcp.cli.domain.sync import label
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
 from kb_mcp.search.app.indexing import Indexing, refresh
@@ -35,14 +36,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import datetime
 
-    from kb_mcp.sources.declaration import Declared
-
 
 TRACER = trace.get_tracer(__name__)
-
-
-class SyncRefusedError(ValueError):
-    """What a sync cannot run with, found before its first row; the message names it."""
 
 
 class Index(Record):
@@ -65,9 +60,9 @@ class Rows(Record):
 
     model_config = ConfigDict(frozen=False)
 
-    added: list[Row] = Field(default_factory=list)
+    added: list[SyncRow] = Field(default_factory=list)
 
-    def add(self, row: Row) -> None:
+    def add(self, row: SyncRow) -> None:
         """Keep a row that ended within its step's span: log it, and set its outcome there."""
         trace.get_current_span().set_attribute("kb_mcp.outcome", row.outcome)
         structlog.get_logger().info(
@@ -76,36 +71,17 @@ class Rows(Record):
         self.added.append(row)
 
 
-def loaded[R: (Fetcher, Preparer)](declared: Declared, path: str, role: type[R]) -> R:
-    """Load a role by the module path that its source's declaration names.
-
-    Raises ``SyncRefusedError``, naming the source and the path, for a path that does
-    not load, whatever its import raises, such as a syntax error in a module of the
-    source's or its own error at import, or for what it names that lacks the role's
-    methods.
-    """
-    try:
-        found = pkgutil.resolve_name(path)
-    except Exception as error:
-        message = f"source {declared.name!r}: {path}: does not load: {error}"
-        raise SyncRefusedError(message) from error
-    if not isinstance(found, role):
-        message = f"source {declared.name!r}: {path}: not a {role.__name__}"
-        raise SyncRefusedError(message)
-    return found
-
-
 def index(
-    step: Index, now: Callable[[], datetime], add: Callable[[Row], None], *, dry_run: bool
+    step: Index, now: Callable[[], datetime], add: Callable[[SyncRow], None], *, dry_run: bool
 ) -> None:
     """Build the index from the whole mirror at ``now``, unless a dry run, as index does."""
     with TRACER.start_as_current_span("sync.step", attributes={"kb_mcp.step": "index"}):
         if dry_run:
-            add(Row(step="index", source=None, outcome="not run", result=None))
+            add(SyncRow(step="index", source=None, outcome="not run", result=None))
             return
         indexed = refresh(step.indexing, now())
         add(
-            Row(
+            SyncRow(
                 step="index",
                 source=None,
                 outcome="done" if indexed and indexed.report.whole else "failed",
@@ -119,7 +95,7 @@ def sync(runs: Sequence[Run], step: Index, now: Callable[[], datetime]) -> Synce
 
     Each run's ``dry_run`` is what its role reads; the index and the events follow the
     runs, the index not run when any of them is dry, so that no second flag can disagree.
-    Raises ``SyncRefusedError`` for a role that does not load, and for what a role's
+    Raises ``SourcesRefusedError`` for a role that does not load, and for what a role's
     ``preflight`` refuses, after its source's name and its step, both before the first
     row. A row's result is its role's;
     each fetcher runs, in the order of ``runs``, then each preparer, then the index,
@@ -158,7 +134,7 @@ def sync(runs: Sequence[Run], step: Index, now: Callable[[], datetime]) -> Synce
         None,
     )
     if refusal is not None:
-        raise SyncRefusedError(refusal)
+        raise SourcesRefusedError(refusal)
     log = structlog.get_logger()
     dry_run = any(run.dry_run for run in runs)
     named = [*((each.step, each.run.declared.name) for each in planned), ("index", None)]
@@ -171,7 +147,9 @@ def sync(runs: Sequence[Run], step: Index, now: Callable[[], datetime]) -> Synce
             attributes = {"kb_mcp.step": each.step, "kb_mcp.source": source}
             with TRACER.start_as_current_span("sync.step", attributes=attributes):
                 result = each.act(each.run)
-                rows.add(Row(step=each.step, source=source, outcome=result.outcome, result=result))
+                rows.add(
+                    SyncRow(step=each.step, source=source, outcome=result.outcome, result=result)
+                )
         index(step, now, rows.add, dry_run=dry_run)
     except KeyboardInterrupt:
         stopped = len(rows.added)
@@ -179,7 +157,7 @@ def sync(runs: Sequence[Run], step: Index, now: Callable[[], datetime]) -> Synce
         log.warning("sync.interrupted", step=interrupted)
         outcomes.add("interrupted")
         rows.added.extend(
-            Row(
+            SyncRow(
                 step=name,
                 source=source,
                 outcome="interrupted" if number == stopped else "not run",

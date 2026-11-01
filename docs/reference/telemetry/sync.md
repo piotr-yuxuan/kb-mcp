@@ -3,7 +3,7 @@
 What `sync` records, besides what every command does ([README](README.md)). A run is one
 trace: its root `sync`, then a span per row, `sync.step`, in which the row's role records
 what its source's own command does: Confluence's and Jira's fetch what
-[download.md](download.md) lists, their prepare what [mirror.md](mirror.md) lists, the
+[fetch.md](fetch.md) lists, their prepare what [mirror.md](mirror.md) lists, the
 work log's prepare what this page lists, and the index what [index.md](index.md) or [embed.md](embed.md) lists,
 reading the alias file as `index` does. The task `work-log documents` reports each
 work-log document, by its title, as the README says of tasks.

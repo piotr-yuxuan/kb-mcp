@@ -69,11 +69,11 @@ the command and those who change its code, unless it is marked for contributors.
   settings and variables, and what every command records. Then a page per command for
   what it records besides: [`check`](reference/telemetry/check.md),
   [`completion`](reference/telemetry/completion.md),
-  [`doctor`](reference/telemetry/doctor.md),
-  [`download`](reference/telemetry/download.md), [`embed`](reference/telemetry/embed.md),
+  [`doctor`](reference/telemetry/doctor.md), [`embed`](reference/telemetry/embed.md),
   [`eval`](reference/telemetry/eval.md),
   [`eval-agents`](reference/telemetry/eval-agents.md),
   [`eval-rerank`](reference/telemetry/eval-rerank.md),
+  [`fetch`](reference/telemetry/fetch.md),
   [`index`](reference/telemetry/index.md), [`login`](reference/telemetry/login.md),
   [`mirror`](reference/telemetry/mirror.md), [`model`](reference/telemetry/model.md),
   [`reranker`](reference/telemetry/reranker.md), [`serve`](reference/telemetry/serve.md)

@@ -162,7 +162,7 @@ class Required(BaseModel):
 
 @pytest.mark.parametrize(
     "command",
-    [["doctor"], ["mirror", "--yes"], ["download", "--yes"], ["login", "--yes"]],
+    [["doctor"], ["mirror", "--yes"], ["login", "--yes"]],
     ids=lambda command: command[0],
 )
 @pytest.mark.parametrize(

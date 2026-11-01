@@ -78,11 +78,11 @@ def test_the_console_shows_what_is_of_its_level_or_above_one_line_each() -> None
     """An event's level, name and fields; a library's record alike; below the level, nothing."""
     console = piped()
     with drawn(console, logging.INFO):
-        structlog.get_logger().debug("download.document", id="65601")
-        structlog.get_logger().info("download.listed", pages=3)
+        structlog.get_logger().debug("fetch.document", id="65601")
+        structlog.get_logger().info("fetch.listed", pages=3)
         logging.getLogger("some.library").warning("retrying %s", "the site")
     first, second = written(console).splitlines()
-    assert "[info     ] download.listed" in first
+    assert "[info     ] fetch.listed" in first
     assert "pages=3" in first
     assert "[warning  ] retrying the site" in second
     assert "[some.library]" in second
@@ -96,7 +96,7 @@ def test_the_site_s_text_reaches_the_console_inert_on_one_line() -> None:
     """
     console = Console(file=io.StringIO(), force_terminal=True, color_system="truecolor")
     with drawn(console):
-        structlog.get_logger().warning("download.skipped", title=TITLE)
+        structlog.get_logger().warning("fetch.skipped", title=TITLE)
         logging.getLogger("some.library").warning("skipped %s", TITLE)
     out = written(console)
     for control in ("\x07", "\N{RIGHT-TO-LEFT OVERRIDE}", "\x1b[31mnotes"):
@@ -113,7 +113,7 @@ def test_on_a_terminal_a_text_is_cut_to_its_width_and_piped_it_is_whole() -> Non
     console = piped()
     for each in (terminal, console):
         with drawn(each):
-            structlog.get_logger().warning("download.skipped", title=title)
+            structlog.get_logger().warning("fetch.skipped", title=title)
     assert f"title={'A' * 39}…" in written(terminal)
     assert title not in written(terminal)
     assert f"title={title}" in written(console)
@@ -156,7 +156,7 @@ def test_the_console_is_coloured_on_a_terminal_without_no_color_alone(
     monkeypatch.setenv("NO_COLOR", no_color)
     console = Console(file=io.StringIO(), force_terminal=terminal, color_system="standard")
     with drawn(console):
-        structlog.get_logger().warning("download.skipped", id="65601")
+        structlog.get_logger().warning("fetch.skipped", id="65601")
     assert ("\x1b" in written(console)) is coloured
 
 

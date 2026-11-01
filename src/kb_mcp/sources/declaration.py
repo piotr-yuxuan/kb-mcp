@@ -4,7 +4,7 @@ Standard library alone, since ``--help`` imports every declaration (contract G),
 classes are dataclasses, as ``Command`` is. A declaration names its table, and its
 account's, by module path, ``module:name``, which the entry loads once the arguments are
 parsed; and its roles, each a module that the run using it loads, a ``Fetcher`` or a
-``Preparer`` of ``sources.roles``. Its light checks, which ``sync`` asks before anything
+``Preparer`` of ``sources.roles``. Its light checks, which ``fetch`` asks before anything
 is asked of the user, are functions that it holds.
 """
 
@@ -29,14 +29,17 @@ type Described = Callable[[Mapping[str, object], Mapping[str, object]], tuple[st
 
 @dataclass(frozen=True)
 class Option:
-    """An option of a resource type, which no setting holds: its flag, help and value's type.
+    """An option of a resource type: its flag, help and value's type, and any setting it replaces.
 
-    ``type`` reads the value as typed, as argparse's ``type`` does.
+    ``type`` reads the value as typed, as argparse's ``type`` does. ``setting``, the path
+    of a list that the flag replaces for one run, makes it repeat; without one, no setting
+    holds the option.
     """
 
     flag: str
     help: str
     type: Callable[[str], object] = str
+    setting: str | None = None
 
 
 @dataclass(frozen=True)

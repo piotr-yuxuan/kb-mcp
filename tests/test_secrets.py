@@ -9,7 +9,7 @@ each sent where it belongs, so that a run that never used one proves nothing. Th
 and the credential's base64, which the Basic form holds, and the key, which the Bearer
 form holds as it is, are then in no file of the scratch home or the data directory, nor
 on stdout or stderr; the cookie is in the session file alone. Plan 015's
-``tests/test_api_token.py`` holds the same of ``check`` and ``download``, and plan
+``tests/test_api_token.py`` holds the same of ``check`` and ``fetch``, and plan
 016's ``tests/test_telemetry.py`` of the spans, metrics and records exported.
 """
 

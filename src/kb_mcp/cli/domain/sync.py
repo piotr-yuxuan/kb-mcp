@@ -10,38 +10,20 @@ its step and its source; the exit status ranks how the rows ended.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.cli.domain.sources import given
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Mapping
 
     from kb_mcp.sources.declaration import Declared
-
-# How a step ended, as its row says.
-type Outcome = Literal["done", "failed", "sign in", "interrupted", "not run"]
-# How the run ends, by the first of these outcomes that it had, else OK: interrupted, then
-# to sign in again, then failed.
-RANKED: tuple[tuple[Outcome, ExitStatus], ...] = (
-    ("interrupted", ExitStatus.INTERRUPTED),
-    ("sign in", ExitStatus.SIGN_IN_AGAIN),
-    ("failed", ExitStatus.FAILED),
-)
 
 
 def label(step: str, source: str | None) -> str:
     """Name a row: its step, then its source, unless it has none."""
     return step if source is None else f"{step} {source}"
-
-
-def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, object]:
-    """Give the value of each option by its flag, None when not given, unless a default.
-
-    ``add_option`` keeps an option's value under its flag itself.
-    """
-    return {flag: getattr(arguments, flag) for flag in flags}
 
 
 def chosen(
@@ -85,7 +67,12 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
         said += declared.described(options, settings) if declared.described else ()
     lines += [f"source {name}: left out, {why}" for name, why in left.items()]
     lines += said
-    flags = dict.fromkeys(flag for declared in arguments.sources for flag in declared.options)
+    flags = dict.fromkeys(
+        flag
+        for declared in arguments.sources
+        for flag, option in declared.options.items()
+        if option.setting is None
+    )
     for flag, value in given(arguments, flags).items():
         ignoring = [declared.name for declared in taken if flag not in declared.options]
         if value is not None and ignoring:

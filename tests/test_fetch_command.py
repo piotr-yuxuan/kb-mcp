@@ -1,4 +1,4 @@
-"""The download command as the user meets it: its refusals, messages and exit statuses."""
+"""The fetch command as the user meets it: its refusals, messages and exit statuses."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 import re
 import time
 from collections import Counter
+from copy import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -14,7 +15,6 @@ from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
@@ -26,6 +26,8 @@ from kb_mcp.sources.atlassian.fetch.app.download import (
     Targets,
     download,
 )
+from kb_mcp.sources.registry import SOURCES, refuse
+from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 from tests.samples import v2_page
 from tests.test_cli import logged_as
@@ -38,6 +40,8 @@ if TYPE_CHECKING:
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
+
+    from kb_mcp.config.domain.settings import Settings
 
 REFUSED = 2
 SOME_FAILED = 1
@@ -56,8 +60,8 @@ def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
 
 
 def command(home: Path, *options: str) -> list[str]:
-    """Return the arguments of a download with no settings file."""
-    return ["download", "--yes", "--config", str(home / "none.toml"), *options]
+    """Return the arguments of a fetch with no settings file."""
+    return ["fetch", "--yes", "--config", str(home / "none.toml"), *options]
 
 
 @pytest.fixture
@@ -85,12 +89,12 @@ def test_a_download_shows_what_it_fetched_by_kind_its_files_and_failures(
     """
     assert main(signed_in) == SOME_FAILED
     assert capsys.readouterr().out == (
-        "download confluence: failed\n"
+        "confluence: failed\n"
         "  confluence blogposts: fetched: 1\n"
         "  confluence pages: fetched: 2\n"
         "  files: downloaded: 1\n"
         "  failures: 1\n"
-        "download jira: done\n"
+        "jira: done\n"
         "  files: downloaded: 1\n"
         "  jira issues: fetched: 1\n"
         "  failures: 0\n"
@@ -106,11 +110,11 @@ def test_a_download_in_detail_shows_each_window_every_count_then_the_failures(
     --since, and the coverage of each target grew.
     """
     assert main([*signed_in, "--summary", "detailed"]) == SOME_FAILED
-    confluence, jira = capsys.readouterr().out.split("download jira: done\n")
+    confluence, jira = capsys.readouterr().out.split("jira: done\n")
     row, space, *counts, failures = confluence.splitlines()
     project, *issues, none_failed = jira.splitlines()
     since = "from 2026-10-02T00:00:00+00:00 to "
-    assert row == "download confluence: failed"
+    assert row == "confluence: failed"
     assert space.startswith(f"  space MFS: {since}")
     assert project.startswith(f"  project PRB: {since}")
     assert space.endswith(", given; coverage extended")
@@ -178,8 +182,8 @@ def test_without_a_session_each_source_is_to_sign_in_before_any_request(
     options = ("--site", SITE, "--space", "MFS", "--project", "PRB", "--since", "7d")
     assert main(command(home, *options)) == SIGN_IN_NEEDED
     rows = [line for line in capsys.readouterr().out.splitlines() if not line.startswith(" ")]
-    assert rows == ["download confluence: sign in", "download jira: sign in"]
-    needed = logged_as(home, "download.sign_in_needed")
+    assert rows == ["confluence: sign in", "jira: sign in"]
+    needed = logged_as(home, "fetch.sign_in_needed")
     assert [(each["source"], each["hint"]) for each in needed] == [
         ("confluence", "run kb-mcp login"),
         ("jira", "run kb-mcp login"),
@@ -202,7 +206,7 @@ def test_a_stopped_download_says_why_in_short(
     monkeypatch.setattr(fetcher, "download", lambda *_: stopped)
     assert main(command(home, "--site", SITE, "--space", "MFS")) == SOME_FAILED
     assert capsys.readouterr().out == (
-        "download confluence: failed\n"
+        "confluence: failed\n"
         "  confluence pages: fetched: 3\n"
         "  runs: stopped, too many failures in a row: 1\n"
         "  failures: 5\n"
@@ -218,10 +222,10 @@ def test_a_dry_run_shows_what_it_would_fetch(
     windows say nothing of the coverage, which a dry run does not write.
     """
     assert main([*signed_in, "--dry-run"]) == 0
-    confluence, jira = capsys.readouterr().out.split("download jira: done\n")
+    confluence, jira = capsys.readouterr().out.split("jira: done\n")
     row, space, *pages = confluence.splitlines(keepends=True)
     project, *issues = jira.splitlines(keepends=True)
-    assert row == "download confluence: done\n"
+    assert row == "confluence: done\n"
     assert space.startswith("  space MFS: from 2026-10-02T00:00:00+00:00 to ")
     assert space.endswith(", given\n")
     assert project.startswith("  project PRB: from 2026-10-02T00:00:00+00:00 to ")
@@ -243,12 +247,13 @@ def test_a_download_gives_its_counts_failed_keys_and_status_as_json(
     assert main([*signed_in, "--format", "json"]) == SOME_FAILED
     document = json.loads(capsys.readouterr().out)
     assert document["exit_status"] == SOME_FAILED
-    rows = document["steps"]
-    assert [(row["step"], row["source"], row["outcome"]) for row in rows] == [
-        ("download", "confluence", "failed"),
-        ("download", "jira", "done"),
+    rows = document["sources"]
+    assert [sorted(row) for row in rows] == [["outcome", "result", "source"]] * 2
+    assert [(row["source"], row["outcome"]) for row in rows] == [
+        ("confluence", "failed"),
+        ("jira", "done"),
     ]
-    confluence, jira = (row["result"] for row in rows)
+    confluence, jira = (row["result"]["downloaded"] for row in rows)
     assert confluence["report"]["counts"]["confluence pages: fetched"] == len(["1001", "1002"])
     assert jira["report"]["counts"]["jira issues: fetched"] == 1
     assert [each["failed_targets"] for each in (confluence, jira)] == [[], []]
@@ -275,10 +280,10 @@ def test_a_download_without_a_site_is_refused_by_name(
     assert "site: not set" in err
 
 
-def test_a_download_of_nothing_is_refused(home: Path, capsys: CaptureFixture[str]) -> None:
+def test_a_fetch_of_nothing_is_refused(home: Path, capsys: CaptureFixture[str]) -> None:
     """Without a space or a project, there is nothing to do."""
     assert main(command(home, "--site", SITE, "--since", "7d")) == REFUSED
-    assert "nothing to download" in capsys.readouterr().err
+    assert "nothing to fetch" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(("option", "value"), [("--space", "not a key"), ("--project", "prb")])
@@ -295,13 +300,13 @@ def test_a_key_that_is_not_one_is_refused_by_the_options(
 def test_a_period_that_ends_before_it_starts_is_refused(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The option at fault is named, by the error download.refused, in the log file too."""
+    """The option at fault is named, by the error fetch.refused, in the log file too."""
     options = ("--site", SITE, "--space", "MFS", "--since", "2026-10-22", "--until", "2026-10-01")
     assert main(command(home, *options)) == REFUSED
     err = capsys.readouterr().err
-    assert ("error", "download.refused") in said(err)
+    assert ("error", "fetch.refused") in said(err)
     assert "--until" in err
-    (refused,) = logged_as(home, "download.refused")
+    (refused,) = logged_as(home, "fetch.refused")
     assert refused["level"] == "error"
     assert "--until" in str(refused["reason"])
 
@@ -309,12 +314,12 @@ def test_a_period_that_ends_before_it_starts_is_refused(
 def test_without_a_session_the_user_is_told_to_sign_in(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """No saved session: exit 3, and the command to run, by download.sign_in_needed."""
+    """No saved session: exit 3, and the command to run, by fetch.sign_in_needed."""
     assert main(command(home, "--site", SITE, "--space", "MFS", "--since", "7d")) == SIGN_IN_NEEDED
     err = capsys.readouterr().err
-    assert ("error", "download.sign_in_needed") in said(err)
+    assert ("error", "fetch.sign_in_needed") in said(err)
     assert "run kb-mcp login" in err
-    (needed,) = logged_as(home, "download.sign_in_needed")
+    (needed,) = logged_as(home, "fetch.sign_in_needed")
     assert (needed["level"], needed["hint"]) == ("error", "run kb-mcp login")
 
 
@@ -323,7 +328,7 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
 ) -> None:
     """The user's own key is shown to them, and never written to the run report.
 
-    It is the warning download.target_failed, which the run's log file holds too.
+    It is the warning fetch.target_failed, which the run's log file holds too.
     """
     chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
@@ -332,9 +337,9 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     options = ("--site", SITE, "--space", "NOPE", "--since", "7d", "--summary", "detailed")
     assert main(command(home, *options)) == SOME_FAILED
     captured = capsys.readouterr()
-    assert ("warning", "download.target_failed") in said(captured.err)
+    assert ("warning", "fetch.target_failed") in said(captured.err)
     assert "space NOPE: not found" in captured.err
-    (failed,) = logged_as(home, "download.target_failed")
+    (failed,) = logged_as(home, "fetch.target_failed")
     assert (failed["level"], failed["target"]) == ("warning", "space NOPE: not found")
     assert "  confluence spaces failed: not found: 1\n" in captured.out
     [report] = chosen.runs.iterdir()
@@ -343,23 +348,25 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     assert json.loads(report.read_text("utf-8"))["status"] == SOME_FAILED
 
 
-def test_ctrl_c_exits_130_and_says_where_the_counts_are(
+def test_ctrl_c_exits_130_and_says_which_source_it_stopped(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """An interrupted run is the shell's 130, not a failure: download.interrupted warns."""
+    """An interrupted run is the shell's 130, not a failure: fetch.interrupted warns.
+
+    Its row says so, and a later one is not run.
+    """
 
     def interrupted(*_: object) -> None:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(fetcher, "download", interrupted)
-    options = ("--site", SITE, "--space", "MFS", "--since", "7d")
+    options = ("--site", SITE, "--space", "MFS", "--project", "PRB", "--since", "7d")
     assert main(command(home, *options)) == INTERRUPTED
-    runs = str(Settings(data_dir=(home / "kb-mcp").resolve()).runs)
-    err = capsys.readouterr().err
-    assert ("warning", "download.interrupted") in said(err)
-    assert runs in err
-    (interrupted,) = logged_as(home, "download.interrupted")
-    assert (interrupted["level"], interrupted["counts"]) == ("warning", runs)
+    captured = capsys.readouterr()
+    assert ("warning", "fetch.interrupted") in said(captured.err)
+    assert captured.out == "confluence: interrupted\njira: not run\n"
+    (interrupted,) = logged_as(home, "fetch.interrupted")
+    assert (interrupted["level"], interrupted["source"]) == ("warning", "confluence")
 
 
 def test_a_busy_store_exits_1_with_its_reason(
@@ -373,9 +380,9 @@ def test_a_busy_store_exits_1_with_its_reason(
     with RawStore(chosen.raw).writing():
         assert main(command(home, *options)) == SOME_FAILED
     err = capsys.readouterr().err
-    assert ("error", "download.store_busy") in said(err)
+    assert ("error", "fetch.store_busy") in said(err)
     assert "another run is writing it; try again once that run ends" in err
-    (busy,) = logged_as(home, "download.store_busy")
+    (busy,) = logged_as(home, "fetch.store_busy")
     assert (busy["level"], busy["store"]) == ("error", str(chosen.raw))
 
 
@@ -437,7 +444,7 @@ def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
     JSON, and the run report names no target.
     """
     outcome, events, chosen = counted(tmp_path, monkeypatch, since, first_fetch=first_fetch)
-    listed = [event for event in events if event["event"] == "download.listed"]
+    listed = [event for event in events if event["event"] == "fetch.listed"]
     assert [
         (each["listed"], each["in_window"], each["stored"], each["to_fetch"], each["reason"])
         for each in listed
@@ -478,3 +485,110 @@ def test_with_since_the_detail_counts_what_is_in_the_period_and_stored(
     assert "confluence pages: already stored: 4\n" in detailed
     assert "confluence pages: fetched: 3\n" in detailed
     assert "new or changed" not in detailed
+
+
+@pytest.mark.usefixtures("signed_in")
+def test_options_before_the_names_keep_their_values_with_no_question(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 031, criterion 3: the file, the period, --yes and a source's name, in this order."""
+    config = home / "mine.toml"
+    config.write_text('[sources.confluence]\nspaces = ["MFS"]\n', "utf-8")
+    given = ("fetch", "--yes", "--config", str(config), "--site", SITE, "--since", "2026-10-02")
+    assert main([*given, "confluence"]) == SOME_FAILED
+    captured = capsys.readouterr()
+    assert captured.out.startswith("confluence: failed\n")
+    assert "jira:" not in captured.out
+    assert f"--config {config}" in captured.err
+    assert "--since 2026-10-02" in captured.err
+
+
+def test_names_are_taken_once_each_in_the_registry_s_order(
+    signed_in: list[str], capsys: CaptureFixture[str]
+) -> None:
+    """Whatever the order typed: Confluence first, as Jira's links read it."""
+    assert main([*signed_in, "jira", "confluence", "jira"]) == SOME_FAILED
+    rows = [line for line in capsys.readouterr().out.splitlines() if not line.startswith(" ")]
+    assert rows == ["confluence: failed", "jira: done"]
+
+
+def test_names_split_by_an_option_are_refused_by_the_parser(
+    signed_in: list[str], capsys: CaptureFixture[str]
+) -> None:
+    """Argparse takes one run of names: exit 2, nothing fetched."""
+    with pytest.raises(SystemExit) as stopped:
+        main([*signed_in, "confluence", "--summary", "short", "jira"])
+    assert stopped.value.code == REFUSED
+    assert "unrecognized arguments: jira" in capsys.readouterr().err
+
+
+def test_a_flag_of_a_source_not_named_is_said_not_applied(
+    signed_in: list[str], capsys: CaptureFixture[str]
+) -> None:
+    """``--project`` replaces Jira's setting, which this run does not read: said, and not copied."""
+    assert main([*signed_in, "confluence"]) == SOME_FAILED
+    err = capsys.readouterr().err
+    assert "\n  sources.jira.projects: PRB (not applied: jira not named)\n" in err
+    assert "ignored: sources.jira.projects (--project): jira not named\n" in err
+    assert "--project" not in err.split("kb-mcp fetch")[1]
+
+
+def test_a_source_named_but_not_configured_is_refused_naming_its_setting(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Before anything is asked: exit 2."""
+    assert main(command(home, "--site", SITE, "--space", "MFS", "jira")) == REFUSED
+    assert "jira: not configured; set sources.jira.projects" in capsys.readouterr().err
+
+
+def test_without_a_name_each_source_configured_runs_and_the_others_are_said_left_out(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Jira has no project; the work log is read in place: each named, with why."""
+    monkeypatch.setattr(
+        fetcher,
+        "download",
+        lambda *_: Outcome(report=Report(), failed_targets=[], status=ExitStatus.OK),
+    )
+    assert main(command(home, "--site", SITE, "--space", "MFS")) == 0
+    captured = capsys.readouterr()
+    assert captured.out.splitlines()[0] == "confluence: done"
+    assert "jira:" not in captured.out
+    assert "\n  source jira: left out, not configured\n" in captured.err
+    assert "\n  source worklog: left out, read in place, it has nothing to fetch\n" in captured.err
+
+
+@pytest.mark.parametrize("name", ["worklog", "memo"])
+def test_a_source_without_a_fetcher_is_no_choice(
+    home: Path, capsys: CaptureFixture[str], name: str
+) -> None:
+    """Argparse refuses the work log, and a source of the tests read in place alike: exit 2."""
+    memo = replace(WORKLOG, name="memo")
+    with pytest.raises(SystemExit) as stopped:
+        main(command(home, name), (*SOURCES, memo))
+    assert stopped.value.code == REFUSED
+    assert f"invalid choice: {name!r} (choose from 'confluence', 'jira')" in capsys.readouterr().err
+
+
+def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
+    capsys: CaptureFixture[str],
+) -> None:
+    """Each with its resource types and how each is read, then its own options; none of the log."""
+    with pytest.raises(SystemExit):
+        main(["fetch", "--help"])
+    said_of = " ".join(capsys.readouterr().out.split())
+    assert "confluence: Confluence, on the Atlassian site" in said_of
+    assert "pages, listed whole; blogposts, listed whole." in said_of
+    assert "jira: Jira, on the Atlassian site" in said_of
+    assert "issues, searched by update time." in said_of
+    assert "several sources: The options of confluence, jira." in said_of
+    assert "worklog:" not in said_of
+    assert said_of.index("--space") < said_of.index("--project") < said_of.index("--until", 700)
+
+
+def test_each_flag_of_the_registry_is_declared_alike_by_each_source_that_declares_it() -> None:
+    """Options that several sources share are added once, so each must mean one thing."""
+    refuse(SOURCES)
+    by_flag = [option for declared in SOURCES for option in declared.options.values()]
+    for option in by_flag:
+        assert {each for each in by_flag if each.flag == option.flag} == {option}

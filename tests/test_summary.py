@@ -49,10 +49,10 @@ SECRETS = {CREDENTIAL: "token-sentinel-4d1c", KEY: "key-sentinel-9a7e"}
 UNKNOWN = "KB_MCP_UNKNOWN"
 WAIT = 30  # seconds for the server to answer and stop
 # The modules that run the commands that write, by plan 015.
-WRITING = ("download", "embed", "evaluate", "index", "login", "mirror")
+WRITING = ("embed", "evaluate", "index", "login", "mirror", "sources")
 # Each command that writes, with options of its own, as given on its command line.
 OWN_OPTIONS = {
-    "download": ["--space", "ENG", "--space", "OPS", "--since", "7d", "--max-file-mb", "5"],
+    "fetch": ["--space", "ENG", "--space", "OPS", "--since", "7d", "--max-file-mb", "5"],
     "mirror": [],
     "embed": ["--allow-remote-embeddings"],
     "eval": ["golden.yaml", "--model", "tiny", "--model", "qwen3-embedding:0.6b"],
@@ -110,7 +110,7 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
 
 
 @pytest.mark.parametrize(
-    "command", [["doctor"], ["download", "--yes", "--site", SITE, "--space", "ENG"]]
+    "command", [["doctor"], ["fetch", "--yes", "--site", SITE, "--space", "ENG"]]
 )
 @pytest.mark.usefixtures("runs")
 def test_an_email_without_a_token_is_ignored(
@@ -118,7 +118,7 @@ def test_an_email_without_a_token_is_ignored(
 ) -> None:
     """Without a token the browser's session signs in; with one, the email is not ignored.
 
-    The download's run is left out: what is ignored is said before it.
+    The fetch's run is left out: what is ignored is said before it.
     """
     monkeypatch.setenv("PATH", str(home))
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
@@ -155,9 +155,9 @@ def test_a_download_s_summary_says_how_it_signs_in(
     for variable, value in variables.items():
         monkeypatch.setenv(variable, value)
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--space", "ENG"]
-    assert main(["download", *options]) == 0
+    assert main(["fetch", *options]) == 0
     err = capsys.readouterr().err
-    assert f"\n  sign-in: {sign_in}\n" in err.split("kb-mcp download")[0]
+    assert f"\n  sign-in: {sign_in}\n" in err.split("kb-mcp fetch")[0]
     assert not any(secret in err for secret in SECRETS.values())
 
 
@@ -174,9 +174,9 @@ def test_a_download_s_summary_says_where_its_windows_start(
 ) -> None:
     """The rule in words, before the run reads the store: from --since, or the last fetch."""
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--space", "ENG"]
-    assert main(["download", *options, *given]) == 0
+    assert main(["fetch", *options, *given]) == 0
     err = capsys.readouterr().err
-    assert f"\n  {rule}\n" in err.split("kb-mcp download")[0]
+    assert f"\n  {rule}\n" in err.split("kb-mcp fetch")[0]
 
 
 def test_an_index_says_in_detail_that_it_reads_no_model_and_no_endpoint(
@@ -496,9 +496,9 @@ def test_the_command_to_copy_is_preceded_by_an_empty_list_that_no_flag_can_say(
     variable = "KB_MCP_SOURCES__JIRA__PROJECTS"
     monkeypatch.setenv(variable, "[]")
     options = ["--yes", "--config", str(config), "--site", SITE, "--space", "ENG"]
-    assert main(["download", *options]) == 0
+    assert main(["fetch", *options]) == 0
     err = capsys.readouterr().err
-    said, _, copied = err.partition("kb-mcp download")
+    said, _, copied = err.partition("kb-mcp fetch")
     assert said.endswith(
         f"not in the command: sources.jira.projects ({variable}): empty, which --project"
         " cannot say\n"
@@ -541,7 +541,7 @@ def test_an_empty_list_that_replaced_no_value_given_is_neither_ignored_nor_named
     for variable, value in variables.items():
         monkeypatch.setenv(variable, value)
     options = ["--yes", "--config", str(config), "--site", SITE, "--space", "ENG", *flags]
-    assert main(["download", *options]) == 0
+    assert main(["fetch", *options]) == 0
     err = capsys.readouterr().err
     assert "ignored: " not in err
     assert "not in the command: " not in err

@@ -9,13 +9,15 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.cli.app.sync import Index, SyncRefusedError, sync
+from kb_mcp.cli.app.sources import SourcesRefusedError
+from kb_mcp.cli.app.sync import Index, sync
 from kb_mcp.cli.commands import embed as embed_command
 from kb_mcp.cli.commands import index as index_command
 from kb_mcp.cli.commands._embedding import indexing_of, open_endpoint
 from kb_mcp.cli.commands._rows import rows_text
+from kb_mcp.cli.domain.sources import given
 from kb_mcp.cli.domain.summary import values_of
-from kb_mcp.cli.domain.sync import chosen, given
+from kb_mcp.cli.domain.sync import chosen
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.roles import Run
 
@@ -63,7 +65,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sync
     step = Index(indexing=indexing_of(settings, opening))
     try:
         synced = sync(runs, step, lambda: datetime.now(UTC))
-    except SyncRefusedError as error:
+    except SourcesRefusedError as error:
         structlog.get_logger().error("sync.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     return synced.exit_status, synced

@@ -31,8 +31,9 @@ from structlog.testing import capture_logs
 
 from kb_mcp.cli.app import sync as sync_app
 from kb_mcp.cli.app.sync import Index, sync
-from kb_mcp.cli.domain.rows import Row
-from kb_mcp.cli.domain.sync import chosen, given
+from kb_mcp.cli.domain.rows import SyncRow
+from kb_mcp.cli.domain.sources import given
+from kb_mcp.cli.domain.sync import chosen
 from kb_mcp.cli.main import main, parser
 from kb_mcp.cli.options.sync import refused
 from kb_mcp.config.domain.settings import DEFAULT_MODEL, Settings
@@ -452,7 +453,7 @@ def test_the_site_asking_to_sign_in_still_lets_the_work_log_run_exit_3(
         ("index", None, "done"),
     ]
     assert synced.exit_status == ExitStatus.SIGN_IN_AGAIN
-    assert logged_as(logged, "download.sign_in_needed")
+    assert logged_as(logged, "fetch.sign_in_needed")
     assert len(list((settings.docs / "worklog").rglob("*.md"))) == WORKLOG_DOCUMENTS
 
 
@@ -1073,9 +1074,9 @@ def test_ctrl_c_once_every_step_ended_still_exits_130(
     """Every row kept as it ended, and the run interrupted."""
 
     def ended_then_stopped(
-        _step: Index, _now: Callable[[], datetime], add: Callable[[Row], None], **_: bool
+        _step: Index, _now: Callable[[], datetime], add: Callable[[SyncRow], None], **_: bool
     ) -> None:
-        add(Row(step="index", source=None, outcome="done", result=None))
+        add(SyncRow(step="index", source=None, outcome="done", result=None))
         raise KeyboardInterrupt
 
     monkeypatch.setattr(sync_app, "index", ended_then_stopped)
@@ -1188,12 +1189,12 @@ def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
         ("index", None, "done"),
     ]
     assert synced.exit_status == ExitStatus.FAILED
-    assert logged_as(logged, "download.store_busy")
+    assert logged_as(logged, "fetch.store_busy")
 
 
 # The commands whose steps sync runs: what their pages list, and sync's does not, is
 # theirs, and sync records it as they do.
-STEP_PAGES = ("download", "mirror", "index", "embed")
+STEP_PAGES = ("fetch", "mirror", "index", "embed")
 
 
 @pytest.mark.usefixtures("signed_in")

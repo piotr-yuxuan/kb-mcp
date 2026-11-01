@@ -1,4 +1,4 @@
-"""The rows that ``sync``, ``mirror`` and ``download`` write as text: each row, then its result."""
+"""The rows that ``sync`` and ``mirror`` write as text: each row, then its result."""
 
 from __future__ import annotations
 

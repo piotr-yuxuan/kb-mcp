@@ -73,7 +73,7 @@ Then download:
 sops exec-env ~/secrets/atlassian.sops.json 'KB_MCP_ACCOUNTS__ATLASSIAN__SITE="$ATLASSIAN_SITE" \
   KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL="$ATLASSIAN_EMAIL" \
   KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN="$ATLASSIAN_API_TOKEN" \
-  kb-mcp download --yes --space ENG --project PLAT --since 7d'
+  kb-mcp fetch --yes --space ENG --project PLAT --since 7d'
 ```
 
 The single quotes keep your shell from expanding anything: sops runs the quoted text

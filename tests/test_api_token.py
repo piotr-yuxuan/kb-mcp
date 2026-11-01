@@ -76,9 +76,9 @@ def served(
 
 
 def download(home: Path, *more: str) -> list[str]:
-    """Give the arguments of a download of the scripted site's space and project."""
+    """Give the arguments of a fetch of the scripted site's space and project."""
     return [
-        "download",
+        "fetch",
         "--yes",
         "--config",
         str(home / "none.toml"),
@@ -137,9 +137,9 @@ def test_a_download_refused_by_the_site_exits_3_naming_the_variables(
     served(monkeypatch, lambda _: httpx.Response(401))
     assert main(download(home, *dry_run)) == SIGN_IN_NEEDED
     err = capsys.readouterr().err
-    assert ("error", "download.sign_in_needed") in said(err)
+    assert ("error", "fetch.sign_in_needed") in said(err)
     assert f"check {EMAIL} and {CREDENTIAL}" in err
-    needed = logged_as(home, "download.sign_in_needed")
+    needed = logged_as(home, "fetch.sign_in_needed")
     assert [(each["source"], each["hint"]) for each in needed] == [
         ("confluence", f"check {EMAIL} and {CREDENTIAL}"),
         ("jira", f"check {EMAIL} and {CREDENTIAL}"),
@@ -176,7 +176,7 @@ def test_the_doctor_refused_by_the_site_exits_3_naming_the_variables(
 def test_the_doctor_refuses_a_token_without_its_email_and_asks_nothing(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Exit 2 naming the email, as a download does, before any request: one error alone."""
+    """Exit 2 naming the email, as a fetch does, before any request: one error alone."""
     monkeypatch.delenv(EMAIL)
     sent = served(monkeypatch, FakeSite().handle)
     assert main(["doctor", "--config", str(home / "none.toml"), "--site", SITE]) == REFUSED
@@ -249,7 +249,7 @@ def test_a_download_shows_no_secret_nor_writes_one_in_its_report(
     served(monkeypatch, answer)
     main(download(home, *more))
     out, err = capsys.readouterr()
-    assert "kb-mcp download" in err
+    assert "kb-mcp fetch" in err
     assert shown(out + err) == []
     reports = list((home / "kb-mcp" / "runs").glob("*.json"))
     assert all(shown(report.read_text("utf-8")) == [] for report in reports)

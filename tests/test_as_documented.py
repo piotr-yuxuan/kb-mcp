@@ -109,7 +109,7 @@ def signed_in(
 def download(data: Path, *options: str) -> list[str]:
     """Give the arguments of a download of the site into ``data``, without settings file."""
     settings = ("--config", str(data.parent / "none.toml"), "--data-dir", str(data))
-    return ["download", "--yes", *settings, "--site", SITE, *options]
+    return ["fetch", "--yes", *settings, "--site", SITE, *options]
 
 
 def test_download_records_as_documented(
@@ -128,32 +128,32 @@ def test_download_records_as_documented(
     data = tmp_path / "data"
     fake = FakeSite(changed_labels=True, failing_files=1)
     chosen = signed_in(monkeypatch, fake.handle, data)
-    with emitted.gathering(telemetry, "download"):
+    with emitted.gathering(telemetry, "fetch"):
         whole = download(data, "--space", "MFS", "--project", "PRB", *since)
         assert main(whole) == ExitStatus.FAILED
         assert main(download(data, "--space", "MFS", "--project", "PRB")) == ExitStatus.FAILED
     signed_in(monkeypatch, FakeSite(pages_fail=True).handle, tmp_path / "retried")
-    with emitted.gathering(telemetry, "download"):
+    with emitted.gathering(telemetry, "fetch"):
         assert main(download(tmp_path / "retried", "--space", "MFS", *since)) == ExitStatus.FAILED
     signed_in(monkeypatch, FakeSite(spaces=[]).handle, data)
-    with emitted.gathering(telemetry, "download"):
+    with emitted.gathering(telemetry, "fetch"):
         assert main(download(data, "--space", "NOPE", *since)) == ExitStatus.FAILED
-    with emitted.gathering(telemetry, "download"):
+    with emitted.gathering(telemetry, "fetch"):
         backwards = ("--since", "2026-10-22", "--until", "2026-10-01")
         assert main(download(data, "--space", "MFS", *backwards)) == ExitStatus.REFUSED
-    with emitted.gathering(telemetry, "download"), RawStore(chosen.raw).writing():
+    with emitted.gathering(telemetry, "fetch"), RawStore(chosen.raw).writing():
         assert main(download(data, "--space", "MFS", *since)) == ExitStatus.FAILED
 
     def interrupted(_: float) -> None:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(time, "sleep", interrupted)
-    with emitted.gathering(telemetry, "download"):
+    with emitted.gathering(telemetry, "fetch"):
         assert main(download(data, "--space", "MFS", *since)) == ExitStatus.INTERRUPTED
     (chosen.session / COOKIES).unlink()
-    with emitted.gathering(telemetry, "download"):
+    with emitted.gathering(telemetry, "fetch"):
         assert main(download(data, "--space", "MFS", *since)) == ExitStatus.SIGN_IN_AGAIN
-    assert undocumented("download", emitted) == []
+    assert undocumented("fetch", emitted) == []
 
 
 def test_a_run_s_trace_keeps_its_size_each_document_a_trace_linked_to_it(
@@ -169,10 +169,10 @@ def test_a_run_s_trace_keeps_its_size_each_document_a_trace_linked_to_it(
         data = tmp_path / str(pages)
         signed_in(monkeypatch, FakeSite(many_pages=pages).handle, data)
         emitted = Emitted()
-        with emitted.gathering(telemetry, "download"):
+        with emitted.gathering(telemetry, "fetch"):
             assert main(download(data, "--space", "MFS", "--since", "2026-10-02")) == 0
-        (root,) = (span for span in emitted.spans if span.name == "download")
-        fetched = [span for span in emitted.spans if span.name == "download.document"]
+        (root,) = (span for span in emitted.spans if span.name == "fetch")
+        fetched = [span for span in emitted.spans if span.name == "fetch.document"]
         assert len(fetched) == pages + 1
         for document in fetched:
             assert (document.parent, document.trace_id != root.trace_id) == (0, True)
