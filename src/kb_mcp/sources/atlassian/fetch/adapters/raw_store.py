@@ -141,11 +141,15 @@ def _decode(path: Path) -> object:
 
 
 def _record_json(path: Path) -> object:
-    # A record the store wrote and cannot read back is a changed shape, named by its file.
+    # A record the store wrote and cannot read back is a changed shape, named by its file,
+    # as is one that no read reaches, such as a folder in its place.
     try:
         return _decode(path)
     except ValueError:
         message = f"{path.name}: not JSON"
+        raise RepresentationError(message) from None
+    except OSError as error:
+        message = f"{path.name}: not read: {type(error).__name__}"
         raise RepresentationError(message) from None
 
 

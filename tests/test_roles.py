@@ -14,6 +14,7 @@ the work log the invented fixture; each test has a scratch home.
 
 from __future__ import annotations
 
+import json
 import os
 import pkgutil
 import shutil
@@ -27,6 +28,7 @@ from typing import TYPE_CHECKING
 import pytest
 from structlog.testing import capture_logs
 
+from kb_mcp.cli.domain.sync import label
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
@@ -351,6 +353,114 @@ def test_a_damaged_record_of_what_answered_as_gone_refuses_sync_before_its_first
     assert "run.failed" not in err
     assert "Traceback" not in err
     assert not (data / "docs").exists()
+
+
+@pytest.mark.parametrize("name", ["tombstones.json", "coverage.json"])
+def test_a_record_that_no_read_reaches_refuses_the_run_as_a_damaged_one(
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    site: FakeSite,
+    name: str,
+) -> None:
+    """A folder in its place: exit 2, naming the file, no traceback, nothing asked of the site.
+
+    In ``sync``, by its preflight, and in ``download``, by its first fetch.
+    """
+    data = home / "data"
+    (data / "raw" / name).mkdir(parents=True)
+    config = home / "config.toml"
+    config.write_text(
+        f'[accounts.atlassian]\nsite = "{SITE}"\nemail = "someone@example.invalid"\n'
+        '[sources.confluence]\nspaces = ["MFS"]\n',
+        "utf-8",
+    )
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", "made-up")
+    given = ["--yes", "--config", str(config), "--data-dir", str(data)]
+    for command in (["sync"], ["download", "--space", "MFS"]):
+        assert main([*command, *given]) == ExitStatus.REFUSED
+        err = capsys.readouterr().err
+        assert f"{name}: not read: IsADirectoryError" in err
+        assert "run.failed" not in err
+        assert "Traceback" not in err
+    assert site.asked == []
+
+
+# The record of what answered as gone, damaged, and whole but not as the store writes it.
+RECORDS = (
+    "not json",
+    '[{"kind":"pages","id":"1001","space":"999","first_gone":null,"confirmed":false}]',
+)
+
+
+@pytest.mark.parametrize("record", RECORDS, ids=["damaged", "whole"])
+def test_a_fetch_of_jira_neither_reads_nor_rewrites_what_answered_as_gone(
+    settings: Settings, site: FakeSite, record: str
+) -> None:
+    """The record is Confluence's, and the fetch that holds no space leaves it to Confluence's."""
+    settings.raw.mkdir(parents=True)
+    stones = settings.raw / "tombstones.json"
+    stones.write_text(record, "utf-8")
+    run = run_of(JIRA, signed_in(settings), SINCE)
+    assert fetcher_of(JIRA).preflight(run) is None
+    assert fetcher_of(JIRA).fetch(run).outcome == "done"
+    assert stones.read_text("utf-8") == record
+    assert any(each.path.startswith("/rest/api/3/") for each in site.asked)
+    assert not any(each.path.startswith("/wiki/") for each in site.asked)
+
+
+def test_a_fetch_of_confluence_keeps_each_tombstone_that_it_finds(
+    settings: Settings, site: FakeSite
+) -> None:
+    """Whole, the record is read, and what it holds of another space is there once it ends."""
+    settings.raw.mkdir(parents=True)
+    (settings.raw / "tombstones.json").write_text(RECORDS[1], "utf-8")
+    run = run_of(CONFLUENCE, signed_in(settings), SINCE)
+    assert fetcher_of(CONFLUENCE).preflight(run) is None
+    assert fetcher_of(CONFLUENCE).fetch(run).downloaded is not None
+    assert list(RawStore(settings.raw).tombstones()) == [("pages", "1001")]
+    assert any(each.path.startswith("/wiki/") for each in site.asked)
+
+
+@pytest.mark.parametrize(
+    ("given", "rows"),
+    [
+        (
+            ("--yes", "--exclude", "confluence"),
+            ["fetch jira", "prepare jira", "prepare worklog", "index"],
+        ),
+        (("--dry-run", "--include", "jira"), ["fetch jira", "prepare jira", "index"]),
+    ],
+    ids=["a run", "a dry run"],
+)
+def test_a_record_of_confluence_s_stops_no_sync_without_confluence(
+    home: Path,
+    worklog: Path,
+    capsys: CaptureFixture[str],
+    given: tuple[str, ...],
+    rows: list[str],
+) -> None:
+    """Jira's rows and the work log's run, though the record of what answered as gone is damaged.
+
+    With neither token nor session, the fetch's row asks to sign in, found before any request.
+    """
+    data = home / "data"
+    (data / "raw").mkdir(parents=True)
+    stones = data / "raw" / "tombstones.json"
+    stones.write_text("not json", "utf-8")
+    config = home / "config.toml"
+    config.write_text(
+        f'[accounts.atlassian]\nsite = "{SITE}"\n'
+        '[sources.confluence]\nspaces = ["MFS"]\n[sources.jira]\nprojects = ["PRB"]\n'
+        f"[sources.worklog]\npath = {json.dumps(str(worklog))}\n",
+        "utf-8",
+    )
+    arguments = [*given, "--format", "json", "--config", str(config), "--data-dir", str(data)]
+    assert main(["sync", *arguments]) == ExitStatus.SIGN_IN_AGAIN
+    out, err = capsys.readouterr()
+    assert "sync.refused" not in err
+    assert [label(row["step"], row["source"]) for row in json.loads(out)["steps"]] == rows
+    assert stones.read_text("utf-8") == "not json"
 
 
 @pytest.mark.parametrize(

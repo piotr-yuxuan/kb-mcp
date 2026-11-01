@@ -73,12 +73,15 @@ def preflight(run: Run) -> str | None:
     """Say why the fetch cannot start: an --until before --since, or a store's record not read.
 
     Those are the records that a download reads before its first request: what is
-    covered, and what answered as gone.
+    covered, and for a fetch of spaces what answered as gone, which is Confluence's. So
+    that one stops no fetch of projects.
     """
     store = RawStore(run.settings.raw)
     try:
-        targets_of(run).windows(store.coverage(), run.now())
-        store.tombstones()
+        targets = targets_of(run)
+        targets.windows(store.coverage(), run.now())
+        if targets.spaces:
+            store.tombstones()
     except (PeriodError, RepresentationError) as error:
         return str(error)
     return None

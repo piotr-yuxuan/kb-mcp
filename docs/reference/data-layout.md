@@ -236,7 +236,8 @@ Two more of the store's own records, each replaced whole:
   (`listed_ids(space_id, kind)`), so that an entry the adapter would refuse is still
   followed, and the ids that have a snapshot (`stored_ids(kind)`); the record is written
   before the space's listing is replaced, so that no absent document is lost to a run
-  that stops, and they are probed once every space of the run is listed.
+  that stops, and they are probed once every space of the run is listed. A fetch of
+  projects neither reads nor rewrites the record.
 
 ## Run reports
 

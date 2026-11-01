@@ -861,9 +861,11 @@ def download(
     The targets are one source's, whose name ends the report's,
     ``<runs>/<time>-<source>.json``, saved even when the run stops; another source's are
     another download. Each target is fetched over its window. The coverage of every
-    target listed whole grows as ``Coverage.extended`` rules, and the tombstones found
-    are kept, even when the run stops; ``download.coverage`` says at INFO what became of
-    each finished target's coverage, and why it was held, if it was. The status is
+    target listed whole grows as ``Coverage.extended`` rules. The tombstones are
+    Confluence's: a fetch of spaces reads them and keeps each as it finds it, even when
+    the run stops, and a fetch of projects neither reads nor rewrites them.
+    ``download.coverage`` says at INFO what became of each finished target's coverage,
+    and why it was held, if it was. The status is
     ``OK`` when nothing failed, ``FAILED`` when something did, and ``SIGN_IN_AGAIN`` when
     the sign-in no longer holds or no session was saved. Raises PeriodError when --since
     does not come before the windows' end, StoreBusyError when another run writes, and
@@ -885,7 +887,7 @@ def download(
                     now,
                     report,
                     windows=windows,
-                    tombstones=store.tombstones(),
+                    tombstones=store.tombstones() if targets.spaces else {},
                 )
                 failed_targets = run.failed_targets
                 try:
@@ -913,7 +915,6 @@ def download(
                             "download.coverage", target=str(target), outcome="held", reason=why
                         )
                     store.put_coverage(coverage)
-                    store.put_tombstones(run.tombstones.values())
         except SignInNeededError:  # from the client: no session was saved
             status = ExitStatus.SIGN_IN_AGAIN
         finally:
