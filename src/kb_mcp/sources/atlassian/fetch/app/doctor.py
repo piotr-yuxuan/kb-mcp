@@ -88,11 +88,14 @@ def doctor(settings: Settings) -> list[Verdict]:
         pandoc(),
         Verdict(name="data directory", found=f"{settings.data_dir}: allowed"),
     ]
-    if settings.site is None:
+    site = settings.accounts.atlassian.site
+    if site is None:
         return [
             *verdicts,
             Verdict(
-                name="site", found="not set: add it to the settings or pass --site", state=FAILED
+                name="site",
+                found="not set: add accounts.atlassian.site to the settings or pass --site",
+                state=FAILED,
             ),
         ]
-    return [*verdicts, public_trust(settings.site), *access(settings)]
+    return [*verdicts, public_trust(site), *access(settings)]

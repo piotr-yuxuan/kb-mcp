@@ -12,12 +12,13 @@ import structlog
 from pydantic_core import to_json, to_jsonable_python
 
 from kb_mcp.cli.adapters.question import ask
-from kb_mcp.cli.domain.summary import before, values_of
+from kb_mcp.cli.domain.summary import before, ignored_lines, values_of
 from kb_mcp.config.app.settings import load_settings
-from kb_mcp.config.domain.settings import SettingsError
+from kb_mcp.config.domain.settings import SettingsError, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.output import Output
 from kb_mcp.observability.app.observed import Invocation, observed
+from kb_mcp.sources.registry import tables
 
 # What run.start names in place of an argument's value that the command keeps out of logs.
 UNLOGGED = "[not logged]"
@@ -27,22 +28,27 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from kb_mcp.cli.domain.command import Command
+    from kb_mcp.sources.declaration import Declared
 
 
-def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
+def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence[Declared]) -> int:
     """Load the settings, with the flags given, run the chosen subcommand, write its result.
 
     The settings are loaded for every command observed, which reads those of
-    ``OBSERVING`` whatever else it reads. Refused settings exit 2 before the run is
-    imported, as does what the command refuses of them and of its arguments, a program
+    ``OBSERVING`` whatever else it reads, by the model that holds the table of each
+    source of the registry, ``sources``, and of each account that a source names, each
+    loaded by the module path that its declaration names. Refused settings exit 2 before
+    the run is imported, as does what the command refuses of them and of its arguments, a program
     that it needs missing from PATH, or a file that it reads missing or a folder, a pipe
     being read: each is an error, the event ``settings.refused`` or ``run.refused`` with
-    its reason, on stderr alone, as a run that never started has no log file. Else the
-    values ignored go to stderr, after the summary of a command that writes and before
-    the command to copy. Such a command then asks, unless told not to, and is refused
-    where no one can answer: declined, it exits 1, refused, 2, both before the run is
-    imported. The run gets the settings loaded, with each one's layer, a flag's being
-    its option. It returns its status, then its result, or None when it has none to
+    its reason, on stderr alone, as a run that never started has no log file. Before
+    ``run.refused`` go the values that the settings loaded ignored, one of which may be
+    why, such as a variable that names no setting, unless at the level error, as for a
+    run. Else the values ignored go to stderr, after the summary of a command that writes
+    and before the command to copy. Such a command then asks, unless told not to, and is
+    refused where no one can answer: declined, it exits 1, refused, 2, both before the
+    run is imported. The run gets the settings loaded, with each one's layer, a flag's
+    being its option. It returns its status, then its result, or None when it has none to
     write, such as ``serve``, whose output is the protocol. The result goes to stdout as
     one JSON document, secrets masked, or as its module's ``text`` writes it, unless -q.
     The run's status is returned.
@@ -72,8 +78,9 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
         option: (setting, getattr(arguments, dest))
         for dest, (option, setting) in command.setting_flags().items()
     }
+    model = settings_model(*tables(sources))
     try:
-        loaded = load_settings(arguments.config, flags, Path.home().resolve())
+        loaded = load_settings(arguments.config, flags, Path.home().resolve(), model)
     except SettingsError as error:
         structlog.get_logger().error("settings.refused", reason=str(error))
         sys.stderr.write(error.advice)
@@ -92,6 +99,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str]) -> int:
         None,
     )
     if refusal is not None:
+        sys.stderr.write(ignored_lines(loaded.ignored if output.level != "error" else ()))
         structlog.get_logger().error("run.refused", reason=refusal)
         return ExitStatus.REFUSED
     said, then = before(arguments, loaded, output, lambda path: path.expanduser().absolute())

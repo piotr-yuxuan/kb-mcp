@@ -1,12 +1,15 @@
 # download
 
 What `download` records, besides what every command does ([README](README.md)). A run is
-one trace: its root `download`, a span for each space and project listed, one for the
-probes and one for the users, and the requests between. Each document fetched is a
-trace of its own, `download.document`, linked to the span of its space or project:
-Tempo drops a trace past 5 MB, which a run of thousands of documents would pass. The
-files that a document already stored lacks are fetched in the run's trace, in its
-space's or project's span.
+one trace: its root `download`, then a fetch of each source on its own, Confluence's,
+then Jira's, each signing in and holding the raw store for itself: a span for each of
+its spaces or projects listed, for Confluence one for the probes and one for the users,
+and the requests between. So a run gives `download.store_busy` and
+`download.sign_in_needed` once per source, naming it, and `download.refused` and
+`download.interrupted` once at most. Each document fetched is a trace of its own,
+`download.document`, linked to the span of its space or project: Tempo drops a trace
+past 5 MB, which a run of thousands of documents would pass. The files that a document
+already stored lacks are fetched in the run's trace, in its space's or project's span.
 
 ## Events
 
@@ -20,15 +23,15 @@ space's or project's span.
 | `download.file_failed` | warning | `id`, `file_name`, `reason` | An attached file cannot be downloaded, or is not the size listed |
 | `download.target_failed` | warning | `target` | A space or a project named cannot be listed |
 | `download.coverage` | info | `target`, `outcome`, `reason` | A target finished or skipped: its coverage `extended` to its window's end, joined with it, or, for a project's entry from before plan 034 that the window starts at or before, replaced by it; a project's `capped` at the update time of its earliest document not stored whole; or `held` as it was, `reason` saying why: `entries refused` (a search entry that the adapter refuses), `after --until` (a catch-up that would start after it), `apart from what is covered` |
-| `download.refused` | error | `reason` | The period or a setting is refused, before any request: exit 2 |
-| `download.store_busy` | error | `store`, `hint` | Another run writes the raw store: exit 1 |
+| `download.refused` | error | `source`, `reason` | The period or a setting is refused, before any request: exit 2. In `sync`, where a fetcher's preflight refused them before the first row, one that comes once the run began also names its `source`, and fails that fetch's row alone |
+| `download.store_busy` | error | `source`, `store`, `hint` | Another run writes the raw store: the source's fetch fails, exit 1 |
 | `download.interrupted` | warning | `counts` | Ctrl-C stopped the download, whose counts are saved there: exit 130 |
-| `download.sign_in_needed` | error | `hint` | The session or the token no longer opens the site: exit 3 |
+| `download.sign_in_needed` | error | `source`, `hint` | The session or the token no longer opens the site for the source's fetch: exit 3 |
 | `http.get` | debug | `url`, `status`, `error`, `seconds` | Each request, a redirect's included; the query shown on the site alone |
 | `http.retry` | debug | `path`, `attempt`, `failure`, `wait_s` | A request retried after a throttling, gateway or transport failure |
 
-`kind` is `confluence pages`, `confluence blogposts` or `jira issues`; `target`, as
-`space MFS` or `project PRB`.
+`source` is `confluence` or `jira`; `kind`, `confluence pages`, `confluence blogposts`
+or `jira issues`; `target`, as `space MFS` or `project PRB`.
 
 ## Spans
 

@@ -106,7 +106,8 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
     with serving(endpoint) as url:
         config = tmp_path / "config.toml"
         config.write_text(
-            f'site = "{SITE}"\nmodel = "tiny"\nembedding_url = {json.dumps(url)}\n'
+            f'model = "tiny"\nembedding_url = {json.dumps(url)}\n'
+            f'[accounts.atlassian]\nsite = "{SITE}"\n'
             '[sources.confluence]\nspaces = ["MFS"]\n[sources.jira]\nprojects = ["PRB"]\n'
             "[rerank]\nenabled = false\n",  # no reranking server here
             "utf-8",
@@ -151,9 +152,15 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
 @pytest.mark.parametrize(
     ("case", "named"),
     [
-        (({"KB_MCP_SITE": SENTINEL}, "", []), "site (KB_MCP_SITE)"),
-        (({}, f'site = "{SENTINEL}"\n', []), "site (config.toml)"),
-        (({}, "", ["--site", SENTINEL]), "site (--site)"),
+        (
+            ({"KB_MCP_ACCOUNTS__ATLASSIAN__SITE": SENTINEL}, "", []),
+            "accounts.atlassian.site (KB_MCP_ACCOUNTS__ATLASSIAN__SITE)",
+        ),
+        (
+            ({}, f'[accounts.atlassian]\nsite = "{SENTINEL}"\n', []),
+            "accounts.atlassian.site (config.toml)",
+        ),
+        (({}, "", ["--site", SENTINEL]), "accounts.atlassian.site (--site)"),
         (
             ({"KB_MCP_EMBEDDING_URL": API_KEY}, "", []),
             "embedding_url (KB_MCP_EMBEDDING_URL)",

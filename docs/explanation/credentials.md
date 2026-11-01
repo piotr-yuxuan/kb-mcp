@@ -12,7 +12,7 @@ in [the trade-offs](trade-offs.md#cookies-and-api-tokens).
 | Secret | Given by | Kept by the program | Sent to |
 |---|---|---|---|
 | the session's cookies | `login`, in a Chrome window | `<data>/session/cookies.json`, beside the window's own profile | the site's host alone |
-| the API token, with its email | `KB_MCP_API_TOKEN`, in one run's environment | nowhere | the site's host alone, as Basic auth |
+| the API token, with its email | `KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN`, in one run's environment | nowhere | the site's host alone, as Basic auth |
 | the embedding key | `KB_MCP_EMBEDDING_API_KEY`, in one run's environment | nowhere | the embedding endpoint alone, as a bearer token |
 
 A run signs in by the token when one is set, else by the saved session
@@ -97,7 +97,7 @@ place where it would outlive a run:
   ([`test_no_run_at_debug_says_or_leaves_a_secret`](../../tests/test_secrets.py)).
 - **With its email, as one header.** A token without its email is refused before the
   run begins, with exit status 2
-  ([`token_without_email`](../../src/kb_mcp/cli/options/_common.py)).
+  ([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)).
   With it, it becomes the header of Basic auth, held by
   [`ApiToken`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py),
   whose representation leaves the header out.

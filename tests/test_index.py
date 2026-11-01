@@ -221,6 +221,25 @@ def test_a_refused_file_is_named_and_the_others_indexed(
         assert reader.summary().skipped == SKIPPED
 
 
+def test_a_stray_markdown_file_is_read_and_reported(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A Markdown file under docs/ that no source wrote is read, and skipped, said why.
+
+    One under assets/, or under a name beginning with ``_``, is no document, and not read.
+    """
+    write(data / "docs", page("196845", "Kafka"), BODY)
+    for name in ("x.md", "assets/x.md", "confluence/QM/_x.md"):
+        (data / "docs" / name).parent.mkdir(parents=True, exist_ok=True)
+        (data / "docs" / name).write_text("", encoding="utf-8")
+    status, out, err = index(data, capsys)
+    assert status == 1
+    assert out.startswith("documents: 1\n")
+    assert said(err).count(("warning", "index.file_skipped")) == 1
+    skipped = logged_as(data.parent / "home", "index.file_skipped")
+    assert [(line["path"], line["reason"]) for line in skipped] == [("x.md", "no front matter")]
+
+
 def test_a_failed_build_keeps_the_old_index(data: Path, monkeypatch: MonkeyPatch) -> None:
     """The new index replaces the old one only once complete; nothing is left behind."""
     write(data / "docs", page("196845", "Kafka"))

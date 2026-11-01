@@ -17,10 +17,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
-from kb_mcp.kernel.names import IDENTIFIER, REVISION, RefusedError, require
+from kb_mcp.kernel.names import IDENTIFIER, RefusedError, require
 from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.domain.content import (
+    REVISION,
     BlogPost,
     Folder,
     Issue,
@@ -140,11 +141,13 @@ def _decode(path: Path) -> object:
 
 
 def _record_json(path: Path) -> object:
-    # A record the store wrote and cannot read back is a changed shape, named by its file.
+    # A record the store wrote and cannot read back is a changed shape, named by its file,
+    # as is one that no read reaches, such as a folder in its place.
     try:
         return _decode(path)
-    except ValueError:
-        message = f"{path.name}: not JSON"
+    except UNREADABLE as error:
+        why = "not JSON" if isinstance(error, ValueError) else f"not read: {type(error).__name__}"
+        message = f"{path.name}: {why}"
         raise RepresentationError(message) from None
 
 

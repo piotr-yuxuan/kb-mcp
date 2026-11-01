@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections import Counter
 from datetime import UTC, datetime
@@ -12,19 +13,20 @@ import pytest
 from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
-from kb_mcp.cli.commands import download as download_command
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.download import (
     Outcome,
     Report,
     Targets,
     download,
 )
+from tests.composed import MODEL
 from tests.samples import v2_page
 from tests.test_cli import logged_as
 from tests.test_download import CAP, SITE, FakeSite, stamp
@@ -65,7 +67,7 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> list[str]:
     Its space and project changed since 2 October: two pages, a blog post and an issue,
     with three files to keep, of which one fails, and a video, which is not kept.
     """
-    chosen = Settings(site=SITE, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     return command(
@@ -76,40 +78,113 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> list[str]:
 def test_a_download_shows_what_it_fetched_by_kind_its_files_and_failures(
     signed_in: list[str], capsys: CaptureFixture[str]
 ) -> None:
-    """In short: the documents fetched of each kind, the files downloaded, the failures."""
+    """In short, a row per source, Confluence then Jira, each with its own counts.
+
+    The documents fetched of each kind, the files downloaded, the failures: the file
+    that fails is a page's, which fails Confluence's row alone, and the run.
+    """
     assert main(signed_in) == SOME_FAILED
     assert capsys.readouterr().out == (
-        "confluence blogposts: fetched: 1\n"
-        "confluence pages: fetched: 2\n"
-        "files: downloaded: 2\n"
-        "jira issues: fetched: 1\n"
-        "failures: 1\n"
+        "download confluence: failed\n"
+        "  confluence blogposts: fetched: 1\n"
+        "  confluence pages: fetched: 2\n"
+        "  files: downloaded: 1\n"
+        "  failures: 1\n"
+        "download jira: done\n"
+        "  files: downloaded: 1\n"
+        "  jira issues: fetched: 1\n"
+        "  failures: 0\n"
     )
 
 
 def test_a_download_in_detail_shows_each_window_every_count_then_the_failures(
     signed_in: list[str], capsys: CaptureFixture[str]
 ) -> None:
-    """Each target's window first, then each count, in order, with what short leaves out.
+    """Under each source's row, its target's window, then each count, in order, then failures.
 
-    Listings, files skipped or failed. Each window starts at --since, and the coverage of
-    each target grew.
+    With what short leaves out: listings, files skipped or failed. Each window starts at
+    --since, and the coverage of each target grew.
     """
     assert main([*signed_in, "--summary", "detailed"]) == SOME_FAILED
-    space, project, *counts, failures = capsys.readouterr().out.splitlines()
+    confluence, jira = capsys.readouterr().out.split("download jira: done\n")
+    row, space, *counts, failures = confluence.splitlines()
+    project, *issues, none_failed = jira.splitlines()
     since = "from 2026-10-02T00:00:00+00:00 to "
-    assert space.startswith(f"space MFS: {since}")
-    assert project.startswith(f"project PRB: {since}")
+    assert row == "download confluence: failed"
+    assert space.startswith(f"  space MFS: {since}")
+    assert project.startswith(f"  project PRB: {since}")
     assert space.endswith(", given; coverage extended")
+    assert project.endswith(", given; coverage extended")
     assert counts == sorted(counts)
+    assert issues == sorted(issues)
     assert {
-        "confluence pages: listed: 3",
-        "confluence pages: fetched: 2",
-        "files: downloaded: 2",
-        "files: skipped, media type not kept: 1",
-        "files failed: status 404: 1",
+        "  confluence pages: listed: 3",
+        "  confluence pages: fetched: 2",
+        "  files: downloaded: 1",
+        "  files: skipped, media type not kept: 1",
+        "  files failed: status 404: 1",
     } <= set(counts)
-    assert failures == "failures: 1"
+    assert {"  jira issues: listed: 2", "  files: downloaded: 1"} <= set(issues)
+    assert (failures, none_failed) == ("  failures: 1", "  failures: 0")
+
+
+def test_each_source_is_fetched_alone_into_a_report_of_its_own(
+    home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Plan 030: Confluence's fetch, then Jira's, each with its report, of its own counts.
+
+    Every request of Jira's comes after the last of Confluence's; the reports are
+    ``<time>-confluence.json`` and ``<time>-jira.json``, and neither counts anything of
+    the other source's.
+    """
+    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
+    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    fake = FakeSite()
+    monkeypatch.setattr(http, "client", lambda *_: fake.client())
+    options = ("--site", SITE, "--space", "MFS", "--project", "PRB", "--since", "2026-10-02")
+    assert main(command(home, *options)) == SOME_FAILED
+    paths = [url.path for url in fake.asked]
+    jira = [at for at, path in enumerate(paths) if path.startswith("/rest/api/3/")]
+    confluence = [at for at, path in enumerate(paths) if path.startswith("/wiki/")]
+    assert confluence
+    assert jira
+    assert max(confluence) < min(jira)
+    reports = {
+        path.name.rpartition("-")[2]: json.loads(path.read_text("utf-8"))
+        for path in chosen.runs.iterdir()
+    }
+    assert sorted(reports) == ["confluence.json", "jira.json"]
+    assert all(
+        re.fullmatch(r"\d{8}T\d{6}Z-(confluence|jira)\.json", path.name)
+        for path in chosen.runs.iterdir()
+    )
+    assert [what for what in reports["confluence.json"]["counts"] if "jira" in what] == []
+    assert [what for what in reports["jira.json"]["counts"] if "confluence" in what] == []
+    assert (reports["confluence.json"]["status"], reports["jira.json"]["status"]) == (
+        SOME_FAILED,
+        0,
+    )
+
+
+def test_without_a_session_each_source_is_to_sign_in_before_any_request(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Each fetch checks its own sign-in: both rows say so, by an error naming each source.
+
+    Nothing is asked of the site; exit 3.
+    """
+    fake = FakeSite()
+    monkeypatch.setattr(http, "client", lambda *_: fake.client())
+    options = ("--site", SITE, "--space", "MFS", "--project", "PRB", "--since", "7d")
+    assert main(command(home, *options)) == SIGN_IN_NEEDED
+    rows = [line for line in capsys.readouterr().out.splitlines() if not line.startswith(" ")]
+    assert rows == ["download confluence: sign in", "download jira: sign in"]
+    needed = logged_as(home, "download.sign_in_needed")
+    assert [(each["source"], each["hint"]) for each in needed] == [
+        ("confluence", "run kb-mcp login"),
+        ("jira", "run kb-mcp login"),
+    ]
+    assert fake.asked == []
 
 
 def test_a_stopped_download_says_why_in_short(
@@ -124,54 +199,70 @@ def test_a_stopped_download_says_why_in_short(
     stopped = Outcome(
         report=Report(counts=Counter(counts)), failed_targets=[], status=ExitStatus.FAILED
     )
-    monkeypatch.setattr(download_command, "download", lambda *_: stopped)
+    monkeypatch.setattr(fetcher, "download", lambda *_: stopped)
     assert main(command(home, "--site", SITE, "--space", "MFS")) == SOME_FAILED
     assert capsys.readouterr().out == (
-        "confluence pages: fetched: 3\nruns: stopped, too many failures in a row: 1\nfailures: 5\n"
+        "download confluence: failed\n"
+        "  confluence pages: fetched: 3\n"
+        "  runs: stopped, too many failures in a row: 1\n"
+        "  failures: 5\n"
     )
 
 
 def test_a_dry_run_shows_what_it_would_fetch(
     signed_in: list[str], capsys: CaptureFixture[str]
 ) -> None:
-    """In short: each window, the documents to fetch of each kind, the files to download.
+    """In short, under each source's row: its window, the documents to fetch, the files.
 
     No failure. The files to download are those that a listing names: the issue's. The
     windows say nothing of the coverage, which a dry run does not write.
     """
     assert main([*signed_in, "--dry-run"]) == 0
-    space, project, *rest = capsys.readouterr().out.splitlines(keepends=True)
-    assert space.startswith("space MFS: from 2026-10-02T00:00:00+00:00 to ")
+    confluence, jira = capsys.readouterr().out.split("download jira: done\n")
+    row, space, *pages = confluence.splitlines(keepends=True)
+    project, *issues = jira.splitlines(keepends=True)
+    assert row == "download confluence: done\n"
+    assert space.startswith("  space MFS: from 2026-10-02T00:00:00+00:00 to ")
     assert space.endswith(", given\n")
-    assert project.startswith("project PRB: from 2026-10-02T00:00:00+00:00 to ")
-    assert "".join(rest) == (
-        "confluence blogposts: to fetch: 1\n"
-        "confluence pages: to fetch: 2\n"
-        "files: to download: 1\n"
-        "jira issues: to fetch: 1\n"
-        "failures: 0\n"
+    assert project.startswith("  project PRB: from 2026-10-02T00:00:00+00:00 to ")
+    assert "".join(pages) == (
+        "  confluence blogposts: to fetch: 1\n  confluence pages: to fetch: 2\n  failures: 0\n"
+    )
+    assert "".join(issues) == (
+        "  files: to download: 1\n  jira issues: to fetch: 1\n  failures: 0\n"
     )
 
 
 def test_a_download_gives_its_counts_failed_keys_and_status_as_json(
     signed_in: list[str], capsys: CaptureFixture[str]
 ) -> None:
-    """One document: the counts whole, the user's keys that failed, the exit status."""
+    """One document: the exit status, then a row per source, each with its result whole.
+
+    Its counts, the user's keys that failed, its exit status, its target's window.
+    """
     assert main([*signed_in, "--format", "json"]) == SOME_FAILED
     document = json.loads(capsys.readouterr().out)
-    fetched = {"confluence pages: fetched": 2, "jira issues: fetched": 1}
-    assert fetched.items() <= document["report"]["counts"].items()
-    assert document["failed_targets"] == []
-    assert document["status"] == SOME_FAILED
+    assert document["exit_status"] == SOME_FAILED
+    rows = document["steps"]
+    assert [(row["step"], row["source"], row["outcome"]) for row in rows] == [
+        ("download", "confluence", "failed"),
+        ("download", "jira", "done"),
+    ]
+    confluence, jira = (row["result"] for row in rows)
+    assert confluence["report"]["counts"]["confluence pages: fetched"] == len(["1001", "1002"])
+    assert jira["report"]["counts"]["jira issues: fetched"] == 1
+    assert [each["failed_targets"] for each in (confluence, jira)] == [[], []]
+    assert [each["status"] for each in (confluence, jira)] == [SOME_FAILED, 0]
     assert [
         (each["target"], each["start"], each["reason"], each["coverage"])
-        for each in document["windows"]
+        for result in (confluence, jira)
+        for each in result["windows"]
     ] == [
         ({"source": "confluence", "key": "MFS"}, "2026-10-02T00:00:00Z", "given", "extended"),
         ({"source": "jira", "key": "PRB"}, "2026-10-02T00:00:00Z", "given", "extended"),
     ]
-    assert all(each["end"] for each in document["windows"])
-    assert document["dry_run"] is False
+    assert all(each["end"] for result in (confluence, jira) for each in result["windows"])
+    assert [each["dry_run"] for each in (confluence, jira)] == [False, False]
 
 
 def test_a_download_without_a_site_is_refused_by_name(
@@ -234,7 +325,7 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
 
     It is the warning download.target_failed, which the run's log file holds too.
     """
-    chosen = Settings(site=SITE, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite(spaces=[])
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
@@ -245,8 +336,9 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     assert "space NOPE: not found" in captured.err
     (failed,) = logged_as(home, "download.target_failed")
     assert (failed["level"], failed["target"]) == ("warning", "space NOPE: not found")
-    assert "confluence spaces failed: not found: 1" in captured.out
+    assert "  confluence spaces failed: not found: 1\n" in captured.out
     [report] = chosen.runs.iterdir()
+    assert report.name.endswith("-confluence.json")
     assert "NOPE" not in report.read_text("utf-8")
     assert json.loads(report.read_text("utf-8"))["status"] == SOME_FAILED
 
@@ -259,7 +351,7 @@ def test_ctrl_c_exits_130_and_says_where_the_counts_are(
     def interrupted(*_: object) -> None:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(download_command, "download", interrupted)
+    monkeypatch.setattr(fetcher, "download", interrupted)
     options = ("--site", SITE, "--space", "MFS", "--since", "7d")
     assert main(command(home, *options)) == INTERRUPTED
     runs = str(Settings(data_dir=(home / "kb-mcp").resolve()).runs)
@@ -274,7 +366,7 @@ def test_a_busy_store_exits_1_with_its_reason(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Another run writing the store: the user is told to wait for it, by an error."""
-    chosen = Settings(site=SITE, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     options = ("--site", SITE, "--space", "MFS", "--since", "7d")
@@ -352,7 +444,7 @@ def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
     ] == [(50, 7, 4, 3, reason)]
     tasks = [(each["done"], each["total"]) for each in events if each.get("task") == "documents"]
     assert tasks[-1] == (3, 3)
-    assert download_command.text(outcome, "short") == "confluence pages: fetched: 3\nfailures: 0\n"
+    assert outcome.text("short") == "confluence pages: fetched: 3\nfailures: 0\n"
     [window] = to_jsonable_python(outcome)["windows"]
     assert (window["target"], window["end"], window["reason"], window["coverage"]) == (
         {"source": "confluence", "key": "MFS"},
@@ -369,7 +461,7 @@ def test_without_since_the_detail_counts_what_is_new_or_changed_since_the_last_f
 ) -> None:
     """A catch-up, or a first fetch: not what is in the period, which can be a whole space."""
     outcome, _, _ = counted(tmp_path, monkeypatch, None, first_fetch=first_fetch)
-    detailed = download_command.text(outcome, "detailed")
+    detailed = outcome.text("detailed")
     assert "confluence pages: new or changed since the last fetch: 3\n" in detailed
     assert "confluence pages: fetched: 3\n" in detailed
     assert "in the period" not in detailed
@@ -381,7 +473,7 @@ def test_with_since_the_detail_counts_what_is_in_the_period_and_stored(
 ) -> None:
     """Given --since, the period is the user's: what is in it, and what was stored already."""
     outcome, _, _ = counted(tmp_path, monkeypatch, SINCE, first_fetch=False)
-    detailed = download_command.text(outcome, "detailed")
+    detailed = outcome.text("detailed")
     assert "confluence pages: in the period: 7\n" in detailed
     assert "confluence pages: already stored: 4\n" in detailed
     assert "confluence pages: fetched: 3\n" in detailed

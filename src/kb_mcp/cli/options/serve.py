@@ -15,7 +15,9 @@ from kb_mcp.cli.options._common import (
 from kb_mcp.kernel.tools import TOOLS, Tool
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 
 def tool_names(value: str) -> tuple[Tool, ...]:
@@ -34,7 +36,10 @@ def reranking_off(_arguments: argparse.Namespace, settings: Mapping[str, object]
     return dict.fromkeys(("rerank.url", "rerank.model", "rerank.depth"), "reranking off")
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    _sources: Sequence[Declared],
+) -> None:
     """Add ``serve`` to the command."""
     parser = subparsers.add_parser("serve", help="serve the mirror over MCP on stdio")
     actions, flags = add_settings_options(parser)

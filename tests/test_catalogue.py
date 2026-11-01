@@ -158,8 +158,42 @@ def test_an_issue_front_matter_is_one_line_texts() -> None:
 def test_a_page_of_a_space_not_listed_is_refused() -> None:
     """Its folder cannot be named, so its front matter has no space key."""
     other = page("50", "Elsewhere", None, space_id="2")
-    with pytest.raises(RefusedError):
+    with pytest.raises(RefusedError, match=r"^space: only and always for confluence$"):
         front_matter(other, (), FETCHED, CATALOGUE, SITE)
+
+
+@pytest.mark.parametrize(
+    ("document", "changes", "refusal"),
+    [
+        (ISSUE, {"space": "MFS"}, r"^space: only and always for confluence$"),
+        (ISSUE, {"version": 3}, r"^version: only and always for confluence$"),
+        (ISSUE, {"key": None}, r"^key: only and always for jira$"),
+        (ISSUE, {"type": "page"}, r"^type: not one of the source's types$"),
+        (LEAF, {"type": "issue"}, r"^type: not one of the source's types$"),
+        (LEAF, {"source": "worklog", "type": "entry"}, r"^type: not one of the source's types$"),
+        (LEAF, {"key": "PRB-1"}, r"^key: only and always for jira$"),
+        (LEAF, {"project": "PRB"}, r"^project: only and always for jira$"),
+        (LEAF, {"issue_type": "Idea"}, r"^issue_type: only and always for jira$"),
+        (LEAF, {"version": None}, r"^version: only and always for confluence$"),
+        (LEAF, {"revision": "3"}, r"^revision: does not match"),
+        (ISSUE, {"revision": "20261020T215241Z"}, r"^revision: does not match"),
+        (
+            LEAF,
+            {"people": (PersonRole(role="participant", name="A Person"),)},
+            r"^people: a role of another source$",
+        ),
+    ],
+)
+def test_a_front_matter_off_confluence_s_and_jira_s_rules_is_refused(
+    document: Page | Issue, changes: dict[str, object], refusal: str
+) -> None:
+    """The builder's front matter keeps their rules: a type, key, revision or role of another.
+
+    Each refusal names the key, as the rules common to every source let each of these pass.
+    """
+    matter = front_matter(document, (), FETCHED, CATALOGUE, SITE)
+    with pytest.raises(RefusedError, match=refusal):
+        replace(matter, **changes)
 
 
 ANOTHER = Person(account_id="account-2", display_name="Another Person")

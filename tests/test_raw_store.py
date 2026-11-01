@@ -433,6 +433,15 @@ def test_a_tombstone_confirmed_without_a_first_answer_is_refused(store: RawStore
         store.tombstones()
 
 
+@pytest.mark.parametrize("name", ["coverage.json", "tombstones.json"])
+def test_a_record_that_no_read_reaches_is_refused_by_name(store: RawStore, name: str) -> None:
+    """A folder in its place: not an ``OSError`` that no caller of a record's read expects."""
+    (store.root / name).mkdir()
+    read = store.coverage if name == "coverage.json" else store.tombstones
+    with pytest.raises(RepresentationError, match=rf"^{name}: not read: IsADirectoryError$"):
+        read()
+
+
 def test_the_ids_stored_are_those_with_a_snapshot(store: RawStore) -> None:
     """A folder left without a revision is not a stored document."""
     store.put(Page, page_responses(1), FETCHED, {})

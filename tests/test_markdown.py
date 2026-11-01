@@ -370,7 +370,7 @@ def test_participants_and_links_read_back_byte_for_byte(front: FrontMatter, line
         (
             "{role: participant, name: Sam Sample}",
             "{role: author, name: Sam Sample}",
-            r"^transcript\.md: people: .* a role of another source",
+            r"^transcript\.md: people: .* a participant beside another role",
         ),
         (
             TRANSCRIPT_LINKS,
@@ -449,48 +449,12 @@ def test_work_log_front_matter_reads_back_as_written(changes: dict[str, object])
     assert front_matter == replace(written, created=second, updated=second, fetched_at=second)
 
 
-@pytest.mark.parametrize(
-    "changes",
-    [
-        {"type": "page"},
-        {"id": "196845"},
-        {"id": "e-0123456789ABCDEF"},
-        {"id": "t-20261020-" + "a" * 65},
-        {"type": "day", "id": "d-2026102"},
-        {"type": "day", "id": "d-20261028-wed"},
-        {"type": "meeting", "id": "m-20261027-Payments"},
-        {"type": "meeting", "id": "m-20261027-"},
-        {"type": "meeting", "id": "m-20261027-" + "a" * 65},
-        {"type": "meeting", "id": "m-2026-10-27-stand-up"},
-        {"people": (PersonRole(role="author", name="A Person"),)},
-        {"revision": "000003"},
-        {"space": "MFS"},
-        {"version": 3},
-    ],
-)
-def test_work_log_front_matter_off_its_rules_is_refused(changes: dict[str, object]) -> None:
-    """Another source's type, id, revision, keys or roles are refused."""
-    with pytest.raises(RefusedError):
-        replace(ENTRY, **changes)
-
-
-@pytest.mark.parametrize(
-    ("kind", "identifier"),
-    [
-        ("entry", "m-20261027-payments-stand-up"),
-        ("entry", "d-20261028"),
-        ("day", "e-0123456789abcdef"),
-        ("day", "m-20261027-payments-stand-up"),
-        ("meeting", "t-20261027-1"),
-        ("meeting", "d-20261028"),
-        ("transcript", "d-20261028"),
-        ("transcript", "e-0123456789abcdef"),
-    ],
-)
-def test_a_work_log_id_of_another_type_s_shape_is_refused(kind: str, identifier: str) -> None:
-    """Each type has its own shape of id: a day bearing a meeting's is refused, naming id."""
-    with pytest.raises(RefusedError, match=r"^id: does not match"):
-        replace(ENTRY, type=kind, id=identifier)
+def test_a_document_of_a_source_that_no_registry_names_reads_back() -> None:
+    """The front matter's rules are every source's: a new source's name, type and ids load."""
+    written = replace(ENTRY, source="memo2", type="note", id="n-1_A", revision="r1.2_b-C")
+    front_matter, _ = load(dump(written, "# Notes\n"), "memo2/n-1_A.md")
+    second = MOMENT.replace(microsecond=0)
+    assert front_matter == replace(written, created=second, updated=second, fetched_at=second)
 
 
 def test_a_file_without_front_matter_is_refused() -> None:
@@ -500,41 +464,60 @@ def test_a_file_without_front_matter_is_refused() -> None:
 
 
 @pytest.mark.parametrize(
-    "changes",
+    ("changes", "refusal"),
     [
-        {"type": "issue"},
-        {"revision": "3"},
-        {"title": "Two\nlines"},
-        {"title": "Two\u2028lines"},
-        {"labels": ("one\x85two",)},
-        {"key": "PRB-1"},
-        {"version": None},
-        {"created": MOMENT.astimezone(timezone(timedelta(hours=1)))},
-        {"people": (PersonRole(role="participant", name="A Person"),)},
+        ({"source": "Confluence"}, r"^source: does not match"),
+        ({"source": "1confluence"}, r"^source: does not match"),
+        ({"type": "blog post"}, r"^type: does not match"),
+        ({"id": "../196845"}, r"^id: does not match"),
+        ({"revision": "000003/2"}, r"^revision: does not match"),
+        ({"revision": ""}, r"^revision: does not match"),
+        ({"key": "prb-1"}, r"^key: does not match"),
+        ({"space": "M F S"}, r"^space: does not match"),
+        ({"title": "Two\nlines"}, r"^a text holds a line break$"),
+        ({"title": "Two\u2028lines"}, r"^a text holds a line break$"),
+        ({"labels": ("one\x85two",)}, r"^a text holds a line break$"),
+        ({"created": MOMENT.astimezone(timezone(timedelta(hours=1)))}, r"^a time not in UTC$"),
+        (
+            {"people": (*PAGE.people, PersonRole(role="participant", name="Sam Sample"))},
+            r"^people: .* a participant beside another role",
+        ),
     ],
 )
-def test_front_matter_off_its_rules_is_refused(changes: dict[str, object]) -> None:
-    """A type or a role of another source, a bad revision, a line break or a bad key is refused."""
-    with pytest.raises(RefusedError):
+def test_front_matter_off_every_source_s_rules_is_refused(
+    changes: dict[str, object], refusal: str
+) -> None:
+    """A name, id, revision or key off its rule, a line break, a time not in UTC is refused.
+
+    So is a participant beside another role, which keeps a read's front matter within its
+    budget, whatever the source.
+    """
+    with pytest.raises(RefusedError, match=refusal):
         replace(PAGE, **changes)
 
 
-def test_the_documents_are_exactly_the_pages_posts_issues_and_the_work_log_s(
+def test_the_documents_are_every_markdown_file_but_assets_and_hidden_names(
     tmp_path: Path,
 ) -> None:
-    """Trees, assets and hidden files are not documents; the work log's are, after the rest.
+    """Every ``.md`` file under docs/, whichever source wrote it, sorted by path.
 
-    The work log's come by type: entries, days, meetings, then transcripts.
+    But those under ``assets/``, where an attached ``x.md`` is an asset, and those with a
+    name beginning with ``_`` or ``.`` on their path; and no other file.
     """
     for name in (
+        "x.md",
+        "assets/0a1b.md",
+        "assets/x/y.md",
         "confluence/MFS/196845-probe.md",
         "confluence/MFS/blog/196900-news.md",
         "confluence/MFS/_tree.md",
         "confluence/MFS/.hidden.md",
+        "confluence/MFS/notes.txt",
+        "confluence/QM/_x.md",
         "confluence/.trash/blog/1-old.md",
         "jira/_drafts/PRB-9.md",
         "jira/PRB/PRB-1.md",
-        "assets/0a1b.md",
+        "memo/n-1.md",
         "worklog/entries/e-0123456789abcdef-plan.md",
         "worklog/entries/.e-0123456789abcdef-plan.md",
         "worklog/transcripts/t-20261020-1-stand-up.md",
@@ -544,12 +527,16 @@ def test_the_documents_are_exactly_the_pages_posts_issues_and_the_work_log_s(
     ):
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text("", "utf-8")
+    (tmp_path / "jira" / "PRB" / "folder.md").mkdir()
     assert [path.relative_to(tmp_path).as_posix() for path in documents(tmp_path)] == [
         "confluence/MFS/196845-probe.md",
         "confluence/MFS/blog/196900-news.md",
         "jira/PRB/PRB-1.md",
-        "worklog/entries/e-0123456789abcdef-plan.md",
+        "memo/n-1.md",
         "worklog/days/d-20261027.md",
+        "worklog/entries/e-0123456789abcdef-plan.md",
         "worklog/meetings/m-20261027-payments-stand-up.md",
+        "worklog/other/t-20261020-1-stand-up.md",
         "worklog/transcripts/t-20261020-1-stand-up.md",
+        "x.md",
     ]

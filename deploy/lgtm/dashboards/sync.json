@@ -1,7 +1,7 @@
 {
   "uid": "kb-mcp-sync",
   "title": "sync",
-  "description": "The sync runs in the time range: how they ended, what each step counted (the download's documents and files, the mirror's documents, the work log's by kind), the work log's conversion time, then the warnings and errors, the runs and their steps.",
+  "description": "The sync runs in the time range: how they ended, what each row counted (Confluence's and Jira's fetch, their documents and files downloaded, and their prepare, their documents mirrored; the work log's prepare, its documents by kind), the work log's conversion time, then the warnings and errors, the runs and their rows, each span naming its step and its source.",
   "tags": [
     "kb-mcp"
   ],
@@ -561,7 +561,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"kb-mcp\" && name = \"sync.step\" }",
+          "query": "{ resource.service.name = \"kb-mcp\" && name = \"sync.step\" } | select(span.kb_mcp.step, span.kb_mcp.source, span.kb_mcp.outcome)",
           "limit": 20,
           "tableType": "spans"
         }

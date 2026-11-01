@@ -12,11 +12,11 @@ from typing import TYPE_CHECKING, Literal
 
 from kb_mcp.cli.domain.command import OBSERVING
 from kb_mcp.cli.domain.command_line import command_line
-from kb_mcp.config.domain.settings import SETTING_PATHS, Ignored
+from kb_mcp.config.domain.settings import Ignored
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
     from pathlib import Path
 
     from kb_mcp.cli.domain.command import Command
@@ -32,7 +32,7 @@ def values_of(loaded: Loaded) -> dict[str, object]:
     """Give every setting's value by its path joined by dots, as a command's functions take them."""
     return {
         ".".join(path): reduce(getattr, path, loaded.settings)
-        for path, kind in SETTING_PATHS.items()
+        for path, kind in loaded.paths.items()
         if kind != "table"
     }
 
@@ -40,17 +40,29 @@ def values_of(loaded: Loaded) -> dict[str, object]:
 def setting_line(loaded: Loaded, setting: str, *, detailed: bool) -> str:
     """Write a setting, by its path joined by dots, and its value; in detail, its layer too.
 
-    A secret is said to be set or not, never shown; a list is joined.
+    A secret is said to be set or not, never shown; a list is joined, one left at None
+    as one empty.
     """
     path = tuple(setting.split("."))
     value = reduce(getattr, path, loaded.settings)
-    if SETTING_PATHS[path] == "secret":
+    kind = loaded.paths[path]
+    if kind == "secret":
         shown = "not set" if value is None else "set"
-    elif SETTING_PATHS[path] == "list":
-        shown = ", ".join(value) or "(none)"
+    elif kind == "list":
+        shown = ", ".join(value or ()) or "(none)"
     else:
         shown = "(not set)" if value is None else str(value)
     return f"{setting}: {shown}" + (f" [{loaded.layer(setting)}]" if detailed else "")
+
+
+def ignored_lines(ignored: Iterable[Ignored]) -> str:
+    """Write each value ignored, a line each: its setting, if any, its layer, why; not its value."""
+    return "".join(
+        f"ignored: {each.layer}: {each.why}\n"
+        if each.setting is None
+        else f"ignored: {each.setting} ({each.layer}): {each.why}\n"
+        for each in ignored
+    )
 
 
 def before(
@@ -110,12 +122,7 @@ def before(
         ),
     ]
     warned = ignored if output.level != "error" or then == "ask" else []
-    noted = "".join(
-        f"ignored: {each.layer}: {each.why}\n"
-        if each.setting is None
-        else f"ignored: {each.setting} ({each.layer}): {each.why}\n"
-        for each in warned
-    )
+    noted = ignored_lines(warned)
     endpoint = loaded.settings.telemetry.endpoint
     telemetry = (
         ""

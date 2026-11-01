@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 import pytest
 
-from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError, period
+from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, PeriodError, period
 
+if TYPE_CHECKING:
+    from _pytest.monkeypatch import MonkeyPatch
+
+# The module of the period's rules, whose names of flags a test replaces.
+PERIOD = "kb_mcp.sources.atlassian.fetch.domain.period"
 NOW = datetime(2026, 10, 22, 9, 30, tzinfo=UTC)
 # The moment of plan 034's examples.
 EXAMPLE = datetime(2026, 10, 28, 12, tzinfo=UTC)
@@ -82,3 +88,16 @@ def test_an_unusable_period_is_refused_naming_its_option(
     """Each refusal names the option at fault."""
     with pytest.raises(PeriodError, match=f"^{option}: "):
         period(since, until, NOW)
+
+
+def test_a_flag_renamed_keeps_what_it_takes(monkeypatch: MonkeyPatch) -> None:
+    """Plan 030: ``all`` belongs to the flag that starts a period, by its name, not its text."""
+    monkeypatch.setattr(f"{PERIOD}.SINCE_FLAG", "--from")
+    monkeypatch.setattr(f"{PERIOD}.UNTIL_FLAG", "--to")
+    assert period("all", None, NOW).start == EPOCH
+    with pytest.raises(PeriodError, match=r"^--from: .*, or all$"):
+        period("forever", None, NOW)
+    with pytest.raises(PeriodError, match=r"^--to: .*[^l]$"):
+        period("2026-10-15", "all", NOW)
+    with pytest.raises(PeriodError, match=r"^--to: must come after --from$"):
+        period("2026-10-22", "2026-10-15", NOW)

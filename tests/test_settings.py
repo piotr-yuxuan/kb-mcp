@@ -16,8 +16,7 @@ from pydantic_settings import EnvSettingsSource
 from kb_mcp.cli.main import main
 from kb_mcp.config.app.settings import UnsafeDataDirError, load_settings
 from kb_mcp.config.domain.settings import (
-    SETTING_PATHS,
-    ConfluenceSource,
+    TABLE,
     Entry,
     Ignored,
     Loaded,
@@ -26,24 +25,36 @@ from kb_mcp.config.domain.settings import (
     environment_entries,
     file_entries,
     setting_paths,
+    settings_model,
     settings_of,
     unsafe_location,
 )
 from kb_mcp.kernel.endpoint import Service, loopback, refused_endpoint
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.sources.atlassian.settings import ConfluenceSource
+from kb_mcp.sources.worklog.settings import WorklogSource
+from tests.composed import MODEL
 
 if TYPE_CHECKING:
+    from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
 HOME = Path("/home/someone")
 FILE = "config.toml"
 # Values that no output may hold, as a secret or a value given.
 SENTINEL = "sentinel-0c1e5a"
+# The Atlassian account's site, by its path.
+SITE = ("accounts", "atlassian", "site")
 
 
 def from_file(values: dict[str, object]) -> Settings:
     """Build the settings from a settings file's values alone."""
-    return settings_of(file_entries(values, FILE), HOME).settings
+    return settings_of(file_entries(values, FILE, MODEL), HOME, MODEL).settings
+
+
+def atlassian(**values: object) -> dict[str, object]:
+    """Give a settings file's values that hold these of the Atlassian account alone."""
+    return {"accounts": {"atlassian": values}}
 
 
 def user_log_folder(home: Path) -> Path:
@@ -61,8 +72,12 @@ def test_settings_are_normalised() -> None:
     """The site becomes https://<host>, the endpoint loses its trailing slash."""
     settings = from_file(
         {
-            "site": "https://Example.atlassian.net/",
-            "email": "someone@example.invalid",
+            "accounts": {
+                "atlassian": {
+                    "site": "https://Example.atlassian.net/",
+                    "email": "someone@example.invalid",
+                }
+            },
             "data_dir": "~/mirror",
             "model": "hf.co/Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0",
             "search_mode": "hybrid",
@@ -73,8 +88,8 @@ def test_settings_are_normalised() -> None:
             },
         }
     )
-    assert settings.site == "https://example.atlassian.net"
-    assert settings.email == "someone@example.invalid"
+    assert settings.accounts.atlassian.site == "https://example.atlassian.net"
+    assert settings.accounts.atlassian.email == "someone@example.invalid"
     assert settings.data_dir == HOME / "mirror"
     assert settings.sources.confluence.spaces == ("ENG", "~5f1a2b")
     assert settings.sources.jira.projects == ("PAY",)
@@ -92,7 +107,7 @@ def test_settings_are_normalised() -> None:
 def test_the_alias_file_is_in_the_data_directory() -> None:
     """The user's aliases are <data>/aliases.toml, by plan 043, and no setting names them."""
     assert Settings(data_dir=Path("/data/mirror")).aliases == Path("/data/mirror/aliases.toml")
-    assert not any("alias" in ".".join(path) for path in SETTING_PATHS)
+    assert not any("alias" in ".".join(path) for path in setting_paths(MODEL))
 
 
 def test_the_default_embeddings_come_from_ollama_on_this_machine() -> None:
@@ -106,14 +121,14 @@ def test_the_default_embeddings_come_from_ollama_on_this_machine() -> None:
 
 def test_by_default_index_cuts_windows_and_search_is_hybrid() -> None:
     """Plan 025: with no file, variable or flag, windows, searched by words and meaning."""
-    settings = settings_of([], HOME).settings
+    settings = settings_of([], HOME, MODEL).settings
     assert (settings.chunking, settings.search_mode) == ("windows", "hybrid")
 
 
 def test_the_default_data_directory_is_under_the_home() -> None:
     """With nothing set, the data lives in ~/kb-mcp and no site is known."""
     settings = from_file({})
-    assert (settings.site, settings.data_dir) == (None, HOME / "kb-mcp")
+    assert (settings.accounts.atlassian.site, settings.data_dir) == (None, HOME / "kb-mcp")
     assert (settings.sources.confluence.spaces, settings.sources.jira.projects) == ((), ())
 
 
@@ -131,7 +146,7 @@ def test_the_data_directory_is_absolute_with_the_home_given_for_the_tilde(
 ) -> None:
     """Data written under a relative path would land below the current directory."""
     entries = [] if given is None else [Entry(path=("data_dir",), value=given, layer="--data-dir")]
-    assert settings_of(entries, HOME).settings.data_dir == data_dir
+    assert settings_of(entries, HOME, MODEL).settings.data_dir == data_dir
 
 
 def test_no_settings_hold_a_path_under_the_tilde_without_a_home() -> None:
@@ -144,8 +159,8 @@ def test_no_settings_hold_a_path_under_the_tilde_without_a_home() -> None:
 
 def test_every_setting_is_described() -> None:
     """Plan 020 writes the settings' reference from these descriptions, at every depth."""
-    for path in SETTING_PATHS:
-        model: type[BaseModel] = Settings
+    for path in setting_paths(MODEL):
+        model: type[BaseModel] = MODEL
         for name in path[:-1]:
             model = model.model_fields[name].annotation
         assert model.model_fields[path[-1]].description, path
@@ -157,10 +172,12 @@ def test_each_setting_is_read_by_its_kind() -> None:
     The data directory, the log folder and the work log's folder are paths, in which
     ``~`` is the home.
     """
-    assert {path: kind for path, kind in SETTING_PATHS.items() if kind != "value"} == {
-        ("api_token",): "secret",
+    assert {path: kind for path, kind in setting_paths(MODEL).items() if kind != "value"} == {
         ("data_dir",): "path",
         ("embedding_api_key",): "secret",
+        ("accounts",): "table",
+        ("accounts", "atlassian"): "table",
+        ("accounts", "atlassian", "api_token"): "secret",
         ("logs",): "table",
         ("logs", "dir"): "path",
         ("telemetry",): "table",
@@ -182,6 +199,9 @@ def test_each_setting_is_read_by_its_kind() -> None:
         (Annotated[SecretStr, Field(min_length=1)] | None, "secret"),
         (Literal["a", "b"] | None, "value"),
         (Annotated[Path, Field(description="a path")], "path"),
+        (tuple[Annotated[str, Field(min_length=1)], ...], "list"),
+        (tuple[Literal["a", "b"], ...], "list"),
+        (tuple[Annotated[Literal["a", "b"], Field(description="a choice")], ...] | None, "list"),
     ],
 )
 def test_a_setting_s_kind_is_seen_through_none_and_annotated(annotation: object, kind: str) -> None:
@@ -192,13 +212,69 @@ def test_a_setting_s_kind_is_seen_through_none_and_annotated(annotation: object,
 
 @pytest.mark.parametrize(
     "annotation",
-    [list[str], frozenset[str], dict[str, str], ConfluenceSource | None, SecretStr | int],
+    [
+        list[str],
+        frozenset[str],
+        dict[str, str],
+        ConfluenceSource | None,
+        SecretStr | int,
+        tuple[int, ...],
+        tuple[Path, ...],
+        tuple[SecretStr, ...],
+        tuple[str, int],
+        tuple[str | None, ...],
+        tuple[Literal[1, 2], ...],
+        tuple[Annotated[int, Field(ge=0)], ...],
+    ],
 )
 def test_a_setting_of_a_type_that_has_no_kind_is_refused(annotation: object) -> None:
-    """Read as text, a list would not be parsed as JSON, and a secret taken from the file."""
+    """Read as text, a list would not be parsed as JSON, and a secret taken from the file.
+
+    A list is of text, each item as it is shown: a number or a path would not join, and a
+    path would keep its ``~``, and pass the rules of a path's setting.
+    """
     model = create_model("Table", setting=(annotation, None))
     with pytest.raises(TypeError, match="a type that has no kind"):
         setting_paths(model)
+
+
+def test_each_source_s_table_is_composed_under_sources_in_name_order() -> None:
+    """Plan 030: ``[sources.<name>]``, in name order, with the core's settings in theirs."""
+    model = settings_model({"worklog": WorklogSource, "confluence": ConfluenceSource}, {})
+    assert list(model.model_fields) == list(Settings.model_fields)
+    assert [path for path in setting_paths(model) if path[0] == "sources"] == [
+        ("sources",),
+        ("sources", "confluence"),
+        ("sources", "confluence", "spaces"),
+        ("sources", "worklog"),
+        ("sources", "worklog", "path"),
+        ("sources", "worklog", "archives"),
+    ]
+    given = {"sources": {"worklog": {"archives": False}, "confluence": {"spaces": ["MFS"]}}}
+    settings = settings_of(file_entries(given, FILE, model), HOME, model).settings
+    assert (settings.sources.confluence.spaces, settings.sources.worklog.archives) == (
+        ("MFS",),
+        False,
+    )
+
+
+def test_a_source_s_table_with_a_type_that_has_no_kind_is_refused_naming_it() -> None:
+    """Refused as the model is composed, before any value is read, naming the source."""
+    table = create_model("Memo", folder=(list[str], []))
+    with pytest.raises(TypeError, match=r"^sources\.memo: a setting of a type that has no kind"):
+        settings_model({"memo": table}, {})
+
+
+def test_a_table_inside_a_source_s_table_is_refused_naming_it() -> None:
+    """Plan 030: a source's settings are values, each shown, given and judged by its path."""
+    inner = create_model("Inner", value=(str, "a"), __config__=TABLE)
+    table = create_model("Outer", first=(str | None, None), inner=(inner, inner()))
+    for place, tables in (
+        ("sources", ({"outer": table}, {})),
+        ("accounts", ({}, {"outer": table})),
+    ):
+        with pytest.raises(TypeError, match=rf"^{place}\.outer: a table inside a table: inner$"):
+            settings_model(*tables)
 
 
 @pytest.mark.parametrize(
@@ -209,10 +285,13 @@ def test_a_setting_of_a_type_that_has_no_kind_is_refused(annotation: object) -> 
         ({"sources": {"worklog": {"spaces": []}}}, "sources.worklog.spaces (config.toml):"),
         ({"unknown": {}}, "unknown (config.toml): not a setting"),
         ({"sources": {"gitlab": {}}}, "sources.gitlab (config.toml): not a setting"),
-        ({"site": "http://x.atlassian.net"}, "site (config.toml):"),
-        ({"site": "https://user@x.atlassian.net"}, "site (config.toml):"),
-        ({"site": "https://x.atlassian.net/wiki"}, "site (config.toml):"),
-        ({"site": "https://["}, "site (config.toml): an https address with a host name alone"),
+        (atlassian(site="http://x.atlassian.net"), "accounts.atlassian.site (config.toml):"),
+        (atlassian(site="https://user@x.atlassian.net"), "accounts.atlassian.site (config.toml):"),
+        (atlassian(site="https://x.atlassian.net/wiki"), "accounts.atlassian.site (config.toml):"),
+        (
+            atlassian(site="https://["),
+            "accounts.atlassian.site (config.toml): an https address with a host name alone",
+        ),
         ({"data_dir": 3}, "data_dir (config.toml):"),
         ({"data_dir": "relative/path"}, "data_dir (config.toml): an absolute path"),
         ({"data_dir": "~/mirror\0"}, "data_dir (config.toml):"),
@@ -312,15 +391,16 @@ def test_an_empty_table_gives_each_setting_under_it_and_none_other() -> None:
     """Each at its default, by the table's layer, so that it replaces a weaker value there."""
     loaded = settings_of(
         [
-            *file_entries({"site": "https://file.example.invalid"}, FILE),
-            *file_entries({"sources": {"confluence": {"spaces": ["ENG"]}}}, FILE),
-            *file_entries({"sources": {}}, "stronger"),
+            *file_entries(atlassian(site="https://file.example.invalid"), FILE, MODEL),
+            *file_entries({"sources": {"confluence": {"spaces": ["ENG"]}}}, FILE, MODEL),
+            *file_entries({"sources": {}}, "stronger", MODEL),
         ],
         HOME,
+        MODEL,
     )
     assert loaded.settings.sources.confluence.spaces == ()
     assert loaded.layers == {
-        "site": FILE,
+        "accounts.atlassian.site": FILE,
         "sources.confluence.spaces": "stronger",
         "sources.jira.projects": "stronger",
         "sources.worklog.path": "stronger",
@@ -336,10 +416,11 @@ def test_a_value_replacing_an_empty_table_s_default_replaces_no_value_given() ->
     """The table's layer wrote none: the stronger value is its setting's, nothing ignored."""
     loaded = settings_of(
         [
-            *file_entries({"sources": {"jira": {}}}, FILE),
+            *file_entries({"sources": {"jira": {}}}, FILE, MODEL),
             Entry(path=("sources", "jira", "projects"), value=["PRB"], layer="--project"),
         ],
         HOME,
+        MODEL,
     )
     assert loaded.settings.sources.jira.projects == ("PRB",)
     assert loaded.layers == {"sources.jira.projects": "--project"}
@@ -348,32 +429,41 @@ def test_a_value_replacing_an_empty_table_s_default_replaces_no_value_given() ->
 
 
 @pytest.mark.parametrize(
-    ("key", "table"), [("spaces", "[sources.confluence]"), ("projects", "[sources.jira]")]
+    ("key", "table"),
+    [
+        ("spaces", "[sources.confluence]"),
+        ("projects", "[sources.jira]"),
+        ("site", "[accounts.atlassian]"),
+        ("email", "[accounts.atlassian]"),
+    ],
 )
-def test_the_old_lists_at_the_top_of_the_file_are_refused_with_their_new_place(
+def test_the_old_keys_at_the_top_of_the_file_are_refused_with_their_new_place(
     key: str, table: str
 ) -> None:
-    """Plan 015 moved spaces and projects into their sources' tables, without an alias."""
+    """Plan 015 moved spaces and projects into their sources' tables, without an alias.
+
+    Plan 030 moved the site and the email into the Atlassian account's table alike.
+    """
     with pytest.raises(SettingsError) as refused:
-        file_entries({key: ["PLAT"]}, FILE)
+        file_entries({key: ["PLAT"]}, FILE, MODEL)
     assert str(refused.value) == f"{key} ({FILE}): moved, as {key} under {table}"
 
 
-@pytest.mark.parametrize("key", ["_cli_parse_args", "_env_file", "SITE", "unknown"])
+@pytest.mark.parametrize("key", ["_cli_parse_args", "_env_file", "DATA_DIR", "unknown"])
 def test_the_model_refuses_a_key_that_names_no_setting_whatever_its_layer(key: str) -> None:
     """A key that names no setting is refused, from any layer, never taken as an option.
 
     pydantic-settings' model takes ``_cli_parse_args`` as one, which parses sys.argv,
-    ``_env_file``, which reads the file named, and ``SITE`` as ``site``.
+    ``_env_file``, which reads the file named, and ``DATA_DIR`` as ``data_dir``.
     """
     with pytest.raises(SettingsError, match=re.escape(f"{key} (a layer):")):
-        settings_of([Entry(path=(key,), value="/etc/passwd", layer="a layer")], HOME)
+        settings_of([Entry(path=(key,), value="/etc/passwd", layer="a layer")], HOME, MODEL)
 
 
 def test_a_refusal_never_holds_the_value() -> None:
     """The setting and its layer are named; what the layer held is not."""
     with pytest.raises(SettingsError) as refused:
-        from_file({"site": "https://secret-host.example.invalid/wiki"})
+        from_file(atlassian(site="https://secret-host.example.invalid/wiki"))
     assert "secret-host" not in str(refused.value)
 
 
@@ -387,24 +477,28 @@ def test_a_stronger_layer_replaces_a_weaker_one_and_the_weaker_is_ignored() -> N
     """A flag wins over the file; the file's value is recorded as replaced."""
     loaded = settings_of(
         [
-            Entry(path=("site",), value="https://file.example.invalid", layer=FILE),
-            Entry(path=("site",), value="https://flag.example.invalid", layer="--site"),
+            Entry(path=SITE, value="https://file.example.invalid", layer=FILE),
+            Entry(path=SITE, value="https://flag.example.invalid", layer="--site"),
         ],
         HOME,
+        MODEL,
     )
-    assert loaded.settings.site == "https://flag.example.invalid"
-    assert loaded.layers == {"site": "--site"}
-    assert loaded.ignored == (Ignored(setting="site", layer=FILE, why="replaced by --site"),)
+    assert loaded.settings.accounts.atlassian.site == "https://flag.example.invalid"
+    assert loaded.layers == {"accounts.atlassian.site": "--site"}
+    assert loaded.ignored == (
+        Ignored(setting="accounts.atlassian.site", layer=FILE, why="replaced by --site"),
+    )
 
 
 def test_a_stronger_list_replaces_a_weaker_one_whole() -> None:
     """A list is never joined to another: the flag's spaces are all the spaces."""
     loaded = settings_of(
         [
-            *file_entries({"sources": {"confluence": {"spaces": ["ENG", "OPS"]}}}, FILE),
+            *file_entries({"sources": {"confluence": {"spaces": ["ENG", "OPS"]}}}, FILE, MODEL),
             Entry(path=("sources", "confluence", "spaces"), value=["MFS"], layer="--space"),
         ],
         HOME,
+        MODEL,
     )
     assert loaded.settings.sources.confluence.spaces == ("MFS",)
     assert loaded.layers == {"sources.confluence.spaces": "--space"}
@@ -422,6 +516,7 @@ def test_a_value_replaces_a_weaker_table_above_or_below_it() -> None:
             Entry(path=("sources", "jira", "projects"), value=["PRB"], layer="strongest"),
         ],
         HOME,
+        MODEL,
     )
     assert loaded.settings.sources.jira.projects == ("PRB",)
     assert loaded.ignored == (
@@ -437,7 +532,7 @@ def test_the_loader_takes_the_file_then_the_flags_and_makes_the_home_s_path(
     home = (tmp_path / "home").resolve()
     config = tmp_path / "work.toml"
     config.write_text(
-        'site = "https://file.example.invalid"\ndata_dir = "~/from-file"\n'
+        'accounts.atlassian.site = "https://file.example.invalid"\ndata_dir = "~/from-file"\n'
         '[sources.jira]\nprojects = ["PLAT"]\n',
         "utf-8",
     )
@@ -445,16 +540,17 @@ def test_the_loader_takes_the_file_then_the_flags_and_makes_the_home_s_path(
         config,
         {
             "--data-dir": ("data_dir", "~/from-flag"),
-            "--site": ("site", None),
+            "--site": ("accounts.atlassian.site", None),
             "--project": ("sources.jira.projects", ["PRB", "PAY"]),
         },
         home,
+        MODEL,
     )
     assert loaded.settings.data_dir == home / "from-flag"
-    assert loaded.settings.site == "https://file.example.invalid"
+    assert loaded.settings.accounts.atlassian.site == "https://file.example.invalid"
     assert loaded.settings.sources.jira.projects == ("PRB", "PAY")
     assert loaded.layers == {
-        "site": "work.toml",
+        "accounts.atlassian.site": "work.toml",
         "data_dir": "--data-dir",
         "sources.jira.projects": "--project",
     }
@@ -471,7 +567,7 @@ def loaded_from(
     home = (tmp_path / "home").resolve()
     config = tmp_path / FILE
     config.write_text(text, "utf-8")
-    return load_settings(config, flags or {}, home)
+    return load_settings(config, flags or {}, home, MODEL)
 
 
 def test_the_log_folder_is_the_user_s_unless_one_is_set(
@@ -503,7 +599,7 @@ def test_the_user_s_log_folder_passes_the_guard_too(
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     elsewhere = {"--data-dir": ("data_dir", str(tmp_path / "data"))}
     with pytest.raises(UnsafeDataDirError, match=r"^logs\.dir \(default\): inside the git"):
-        load_settings(tmp_path / FILE, elsewhere, home)
+        load_settings(tmp_path / FILE, elsewhere, home, MODEL)
 
 
 def test_opentelemetry_s_endpoint_is_a_layer_below_the_file(
@@ -606,28 +702,27 @@ def test_each_layer_wins_over_the_weaker_and_the_weaker_is_ignored(
 
     The value replaced is recorded as ignored, with what replaced it.
     """
-    text = 'site = "https://file.example.invalid"\n'
+    text = '[accounts.atlassian]\nsite = "https://file.example.invalid"\n'
+    site, variable = "accounts.atlassian.site", "KB_MCP_ACCOUNTS__ATLASSIAN__SITE"
     from_the_file = loaded_from(tmp_path, text)
-    assert from_the_file.settings.site == "https://file.example.invalid"
-    assert from_the_file.layers["site"] == FILE
+    assert from_the_file.settings.accounts.atlassian.site == "https://file.example.invalid"
+    assert from_the_file.layers[site] == FILE
     assert from_the_file.ignored == ()
 
-    monkeypatch.setenv("KB_MCP_SITE", "https://variable.example.invalid")
+    monkeypatch.setenv(variable, "https://variable.example.invalid")
     from_the_variable = loaded_from(tmp_path, text)
-    assert from_the_variable.settings.site == "https://variable.example.invalid"
-    assert from_the_variable.layers["site"] == "KB_MCP_SITE"
+    assert from_the_variable.settings.accounts.atlassian.site == "https://variable.example.invalid"
+    assert from_the_variable.layers[site] == variable
     assert from_the_variable.ignored == (
-        Ignored(setting="site", layer=FILE, why="replaced by KB_MCP_SITE"),
+        Ignored(setting=site, layer=FILE, why=f"replaced by {variable}"),
     )
 
-    from_the_flag = loaded_from(
-        tmp_path, text, {"--site": ("site", "https://flag.example.invalid")}
-    )
-    assert from_the_flag.settings.site == "https://flag.example.invalid"
-    assert from_the_flag.layers["site"] == "--site"
+    from_the_flag = loaded_from(tmp_path, text, {"--site": (site, "https://flag.example.invalid")})
+    assert from_the_flag.settings.accounts.atlassian.site == "https://flag.example.invalid"
+    assert from_the_flag.layers[site] == "--site"
     assert set(from_the_flag.ignored) == {
-        Ignored(setting="site", layer=FILE, why="replaced by KB_MCP_SITE"),
-        Ignored(setting="site", layer="KB_MCP_SITE", why="replaced by --site"),
+        Ignored(setting=site, layer=FILE, why=f"replaced by {variable}"),
+        Ignored(setting=site, layer=variable, why="replaced by --site"),
     }
 
 
@@ -646,9 +741,9 @@ def test_each_setting_s_variable_gives_its_value_and_names_its_layer(
 ) -> None:
     """Every setting that is no table has a variable: the prefix, then its path."""
     given = {
-        "KB_MCP_SITE": "https://variable.example.invalid",
-        "KB_MCP_EMAIL": "someone@example.invalid",
-        "KB_MCP_API_TOKEN": SENTINEL,
+        "KB_MCP_ACCOUNTS__ATLASSIAN__SITE": "https://variable.example.invalid",
+        "KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL": "someone@example.invalid",
+        "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": SENTINEL,
         "KB_MCP_DATA_DIR": "~/from-variable",
         "KB_MCP_MODEL": "bge-m3",
         "KB_MCP_SEARCH_MODE": "hybrid",
@@ -663,7 +758,8 @@ def test_each_setting_s_variable_gives_its_value_and_names_its_layer(
         monkeypatch.setenv(name, value)
     loaded = loaded_from(tmp_path, "")
     settings = loaded.settings
-    assert (settings.site, settings.email, settings.model, settings.search_mode) == (
+    account = settings.accounts.atlassian
+    assert (account.site, account.email, settings.model, settings.search_mode) == (
         "https://variable.example.invalid",
         "someone@example.invalid",
         "bge-m3",
@@ -671,8 +767,8 @@ def test_each_setting_s_variable_gives_its_value_and_names_its_layer(
     )
     assert settings.data_dir == (tmp_path / "home" / "from-variable").resolve()
     assert settings.embedding_url == "http://127.0.0.1:8080/v1"
-    assert settings.api_token is not None
-    assert settings.api_token.get_secret_value() == SENTINEL
+    assert account.api_token is not None
+    assert account.api_token.get_secret_value() == SENTINEL
     assert settings.embedding_api_key is not None
     assert settings.embedding_api_key.get_secret_value() == f"{SENTINEL}-key"
     assert settings.sources.confluence.spaces == ("ENG",)
@@ -730,8 +826,8 @@ def test_an_empty_table_from_the_environment_replaces_the_file_s_values_under_it
             ("KB_MCP_SOURCES__JIRA__PROJECTS", f'["{SENTINEL}"]'),
         ),
         (
-            ("KB_MCP_SITE", f"https://{SENTINEL}.example.invalid"),
-            ("kb_mcp_site", "https://other.example.invalid"),
+            ("KB_MCP_ACCOUNTS__ATLASSIAN__SITE", f"https://{SENTINEL}.example.invalid"),
+            ("kb_mcp_accounts__atlassian__site", "https://other.example.invalid"),
         ),
     ],
 )
@@ -805,12 +901,12 @@ def test_a_variable_naming_no_setting_below_a_value_is_ignored_alone(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """A value has nothing below it: the site is the variable's, the other is ignored."""
-    monkeypatch.setenv("KB_MCP_SITE", "https://variable.example.invalid")
-    monkeypatch.setenv("KB_MCP_SITE__X", "1")
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__SITE", "https://variable.example.invalid")
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__SITE__X", "1")
     loaded = loaded_from(tmp_path, "")
-    assert loaded.settings.site == "https://variable.example.invalid"
+    assert loaded.settings.accounts.atlassian.site == "https://variable.example.invalid"
     assert loaded.ignored == (
-        Ignored(setting=None, layer="KB_MCP_SITE__X", why="names no setting"),
+        Ignored(setting=None, layer="KB_MCP_ACCOUNTS__ATLASSIAN__SITE__X", why="names no setting"),
     )
 
 
@@ -818,11 +914,11 @@ def test_a_variable_is_read_without_regard_to_case_and_named_as_written(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """As pydantic-settings reads it: the layer is the variable's own name."""
-    monkeypatch.setenv("kb_mcp_site", "https://lower.example.invalid")
+    monkeypatch.setenv("kb_mcp_accounts__atlassian__site", "https://lower.example.invalid")
     monkeypatch.setenv("Kb_Mcp_Spaces", '["X"]')
     loaded = loaded_from(tmp_path, "")
-    assert loaded.settings.site == "https://lower.example.invalid"
-    assert loaded.layers == {"site": "kb_mcp_site"}
+    assert loaded.settings.accounts.atlassian.site == "https://lower.example.invalid"
+    assert loaded.layers == {"accounts.atlassian.site": "kb_mcp_accounts__atlassian__site"}
     assert loaded.ignored == (Ignored(setting=None, layer="Kb_Mcp_Spaces", why="names no setting"),)
 
 
@@ -832,8 +928,8 @@ def test_the_generic_atlassian_names_are_not_read(tmp_path: Path, monkeypatch: M
     monkeypatch.setenv("ATLASSIAN_EMAIL", "someone@example.invalid")
     monkeypatch.setenv("ATLASSIAN_API_TOKEN", SENTINEL)
     loaded = loaded_from(tmp_path, "")
-    settings = loaded.settings
-    assert (settings.site, settings.email, settings.api_token) == (None, None, None)
+    account = loaded.settings.accounts.atlassian
+    assert (account.site, account.email, account.api_token) == (None, None, None)
     assert loaded.ignored == ()
 
 
@@ -845,23 +941,23 @@ def test_secrets_come_from_the_environment_and_are_never_shown(
     Neither the settings, nor what the loader gives, nor the environment's entries,
     which hold them before they are masked, show them.
     """
-    monkeypatch.setenv("KB_MCP_API_TOKEN", SENTINEL)
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", SENTINEL)
     monkeypatch.setenv("KB_MCP_EMBEDDING_API_KEY", f"{SENTINEL}-key")
     loaded = loaded_from(tmp_path, "")
     settings = loaded.settings
-    assert settings.api_token is not None
-    assert settings.api_token.get_secret_value() == SENTINEL
+    assert settings.accounts.atlassian.api_token is not None
+    assert settings.accounts.atlassian.api_token.get_secret_value() == SENTINEL
     assert settings.embedding_api_key is not None
     assert settings.embedding_api_key.get_secret_value() == f"{SENTINEL}-key"
     assert SENTINEL not in f"{settings!r} {settings} {loaded!r}"
-    entries, _ = environment_entries(os.environ, EnvSettingsSource(Settings))
+    entries, _ = environment_entries(os.environ, EnvSettingsSource(MODEL), MODEL)
     assert SENTINEL not in f"{entries!r} {entries}"
 
 
 @pytest.mark.parametrize(
     ("key", "variable"),
     [
-        ("api_token", "KB_MCP_API_TOKEN"),
+        ("accounts.atlassian.api_token", "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"),
         ("embedding_api_key", "KB_MCP_EMBEDDING_API_KEY"),
     ],
 )
@@ -872,6 +968,80 @@ def test_a_secret_in_the_file_is_refused_by_name_never_by_value(
     with pytest.raises(SettingsError) as refused:
         loaded_from(tmp_path, f'{key} = "{SENTINEL}"\n')
     assert str(refused.value) == f"{key} ({FILE}): a secret, read from {variable} alone"
+
+
+def test_a_secret_written_under_its_table_is_refused_by_name_never_by_value(
+    tmp_path: Path,
+) -> None:
+    """Under ``[accounts.atlassian]``, as at its dotted path."""
+    with pytest.raises(SettingsError) as refused:
+        loaded_from(tmp_path, f'[accounts.atlassian]\napi_token = "{SENTINEL}"\n')
+    variable = "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"
+    assert str(refused.value) == (
+        f"accounts.atlassian.api_token ({FILE}): a secret, read from {variable} alone"
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("KB_MCP_ACCOUNTS__ATLASSIAN", f'{{"api_token": "{SENTINEL}"}}'),
+        ("KB_MCP_ACCOUNTS", f'{{"atlassian": {{"api_token": "{SENTINEL}"}}}}'),
+        ("kb_mcp_accounts__atlassian", f'{{"api_token": "{SENTINEL}"}}'),
+    ],
+)
+def test_a_secret_written_by_a_table_s_variable_is_refused_naming_its_own_never_its_value(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], name: str, value: str
+) -> None:
+    """Criterion 5: the token comes from ``KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN`` alone."""
+    monkeypatch.setenv(name, value)
+    with pytest.raises(SettingsError) as refused:
+        loaded_from(tmp_path, "")
+    assert str(refused.value) == (
+        f"accounts.atlassian.api_token ({name}): a secret, read from"
+        " KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN alone"
+    )
+    config = tmp_path / "none.toml"
+    assert main(["check", "--config", str(config)]) == ExitStatus.REFUSED
+    out, err = capsys.readouterr()
+    assert SENTINEL not in out
+    assert SENTINEL not in err
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("KB_MCP_ACCOUNTS__ATLASSIAN", "{}"),
+        ("KB_MCP_ACCOUNTS__ATLASSIAN", '{"site": "https://x.atlassian.net"}'),
+        ("KB_MCP_ACCOUNTS", "{}"),
+    ],
+)
+def test_a_table_s_variable_that_writes_no_secret_loads(
+    tmp_path: Path, monkeypatch: MonkeyPatch, name: str, value: str
+) -> None:
+    """A table's variable may give the table whole, but for the value of its secret."""
+    monkeypatch.setenv(name, value)
+    assert loaded_from(tmp_path, "").settings.accounts.atlassian.api_token is None
+
+
+@pytest.mark.parametrize("table", ["[accounts.atlassian]", "[accounts]"])
+def test_an_empty_table_that_holds_a_secret_writes_none_and_loads(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], table: str
+) -> None:
+    """Its only line commented out, it names no value: every command runs, as of any table.
+
+    The token stays the environment's, the stronger layer.
+    """
+    text = f'{table}\n# site = "https://x.atlassian.net"\n'
+    config = tmp_path / FILE
+    config.write_text(text, "utf-8")
+    assert main(["check", "--config", str(config)]) == ExitStatus.OK
+    assert capsys.readouterr().err == ""
+    variable = "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"
+    monkeypatch.setenv(variable, SENTINEL)
+    loaded = loaded_from(tmp_path, text)
+    assert loaded.settings.accounts.atlassian.api_token.get_secret_value() == SENTINEL
+    assert loaded.layer("accounts.atlassian.api_token") == variable
 
 
 @pytest.mark.parametrize(
@@ -932,14 +1102,16 @@ def test_variables_naming_no_setting_or_empty_are_ignored(
     """Other tools and versions share the environment: such a variable is ignored, and said."""
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJETS", '["X"]')
     monkeypatch.setenv("KB_MCP_SPACES", '["X"]')
-    monkeypatch.setenv("KB_MCP_SITE", "")
-    loaded = loaded_from(tmp_path, 'site = "https://file.example.invalid"\n')
-    assert loaded.settings.site == "https://file.example.invalid"
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__SITE", "")
+    loaded = loaded_from(tmp_path, '[accounts.atlassian]\nsite = "https://file.example.invalid"\n')
+    assert loaded.settings.accounts.atlassian.site == "https://file.example.invalid"
     assert loaded.settings.sources.jira.projects == ()
     assert set(loaded.ignored) == {
         Ignored(setting=None, layer="KB_MCP_SOURCES__JIRA__PROJETS", why="names no setting"),
         Ignored(setting=None, layer="KB_MCP_SPACES", why="names no setting"),
-        Ignored(setting="site", layer="KB_MCP_SITE", why="empty"),
+        Ignored(
+            setting="accounts.atlassian.site", layer="KB_MCP_ACCOUNTS__ATLASSIAN__SITE", why="empty"
+        ),
     }
 
 
@@ -1027,7 +1199,7 @@ def check_work_log(
         monkeypatch.setenv(name, value)
     config = tmp_path / "config.toml"
     config.write_text(
-        'site = "https://x.atlassian.net"\n'
+        '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n'
         '[sources.confluence]\nspaces = ["MFS"]\n'
         '[sources.jira]\nprojects = ["PRB"]\n'
         f"[sources.worklog]\n{table}\n",

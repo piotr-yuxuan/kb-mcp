@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.summary import setting_line
-from kb_mcp.config.domain.settings import SETTING_PATHS
 from kb_mcp.kernel.exit_status import ExitStatus
 
 if TYPE_CHECKING:
@@ -31,7 +30,7 @@ def text(loaded: Loaded, summary: Summary) -> str:
     default.
     """
     lines = []
-    for path, kind in SETTING_PATHS.items():
+    for path, kind in loaded.paths.items():
         setting = ".".join(path)
         if kind == "table" or (summary == "short" and setting not in loaded.layers):
             continue

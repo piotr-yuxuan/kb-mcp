@@ -10,23 +10,30 @@ and nothing else.
 from __future__ import annotations
 
 import builtins
-from datetime import datetime
+import re
+from datetime import UTC, datetime
 from typing import ClassVar, Self
 
 from pydantic import model_validator
 
-from kb_mcp.kernel.names import (
-    IDENTIFIER,
-    ISSUE_KEY,
-    PROJECT_KEY,
-    REVISION,
-    SITE_PATH,
-    SPACE_KEY,
-    require,
-    time_revision,
-    version_revision,
-)
+from kb_mcp.kernel.names import IDENTIFIER, ISSUE_KEY, PROJECT_KEY, SPACE_KEY, require
 from kb_mcp.kernel.record import Record
+
+# A path on the site, never another host's: one slash, no second one, no backslash, no
+# control character.
+SITE_PATH = re.compile(r"/(?![/\\])[^\s\\\x00-\x1f\x7f]*")
+# A revision's name: a Confluence version, or a Jira update time in UTC.
+REVISION = re.compile(r"[0-9]{6}|[0-9]{8}T[0-9]{6}\.[0-9]{6}Z")
+
+
+def version_revision(version: int) -> str:
+    """Name a Confluence version, padded so that names sort as versions do."""
+    return f"{version:06d}"
+
+
+def time_revision(updated: datetime) -> str:
+    """Name a state by its update time in UTC, so that names sort as times do."""
+    return updated.astimezone(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
 
 
 class Person(Record):

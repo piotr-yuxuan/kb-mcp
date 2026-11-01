@@ -12,16 +12,20 @@ from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
 from kb_mcp.kernel.endpoint import EMBEDDINGS, refused_endpoint
 from kb_mcp.kernel.names import MODEL_NAME
 from kb_mcp.kernel.output import FORMATS, LEVELS, SUMMARIES
+from kb_mcp.sources.atlassian.declared import API_TOKEN, CONFLUENCE, EMAIL, JIRA, SITE
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
+    from kb_mcp.cli.domain.command import Refused
     from kb_mcp.kernel.output import Level
+    from kb_mcp.sources.declaration import Declared, Option
 
 # The level of each -v given, from none: warning, then info, then debug.
 VERBOSITY: tuple[Level, ...] = ("warning", "info", "debug")
-# The settings of a sign-in by API token, which the commands that reach the site read.
-SIGN_IN = ("email", "api_token")
+# The Atlassian account's settings of a sign-in by API token, which the commands that
+# reach its site read beside the site: its email and the token.
+SIGN_IN = (EMAIL, API_TOKEN)
 
 
 class Verbose(argparse.Action):
@@ -110,7 +114,26 @@ def add_settings_options(
     data_dir = parser.add_argument("--data-dir", help="the data directory, overriding the settings")
     data_dir.completer = DirectoriesCompleter()
     site = parser.add_argument("--site", help="the site, as https://<name>.atlassian.net")
-    return (config, data_dir, site), {"data_dir": "data_dir", "site": "site"}
+    return (config, data_dir, site), {"data_dir": "data_dir", "site": SITE}
+
+
+def add_option(
+    parser: argparse.ArgumentParser, option: Option, default: object = None
+) -> argparse.Action:
+    """Add an option that a source declares, as ``given`` reads it; return its action.
+
+    Its value is kept under its flag itself, so that no flag that a source declares takes
+    a name that the program holds, such as ``sources``; help names its value as it would
+    by the flag alone.
+    """
+    return parser.add_argument(
+        option.flag,
+        dest=option.flag,
+        metavar=option.flag.lstrip("-").replace("-", "_").upper(),
+        type=option.type,
+        default=default,
+        help=option.help,
+    )
 
 
 def add_embedding_options(parser: argparse.ArgumentParser) -> argparse.Action:
@@ -133,35 +156,24 @@ def model_name(value: str) -> str:
     return value
 
 
-def email_without_token(
-    _arguments: argparse.Namespace, settings: Mapping[str, object]
-) -> dict[str, str]:
-    """Without an API token, the browser's session signs in, and an email goes unused."""
-    if settings["api_token"] is not None:
-        return {}
-    return {"email": "without an API token, the browser's session signs in"}
+def of_atlassian(sources: Sequence[Declared], refused: Refused | None = None) -> Refused | None:
+    """Give what a command of the Atlassian package refuses, under this registry.
 
-
-def token_without_email(
-    _arguments: argparse.Namespace, settings: Mapping[str, object]
-) -> str | None:
-    """Refuse an API token without the email of its account, with which it signs in."""
-    if settings["api_token"] is None or settings["email"] is not None:
-        return None
-    return "email: not set; an API token signs in with its account's email"
+    ``download``, ``mirror``, ``doctor`` and ``login`` read that package's settings by
+    name until plan 031 removes or moves them, so a registry without both its sources is
+    refused before they read one; any other, as ``refused`` says.
+    """
+    if {CONFLUENCE.name, JIRA.name} <= {declared.name for declared in sources}:
+        return refused
+    return lambda _arguments, _settings: (
+        f"{CONFLUENCE.name} and {JIRA.name}: not both in the registry, which this command reads"
+    )
 
 
 def signed_in_by(_arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
     """Say how the run signs in: by the API token when one is set, else by the saved session."""
-    by = "an API token" if settings["api_token"] is not None else "the session saved by login"
+    by = "an API token" if settings[API_TOKEN] is not None else "the session saved by login"
     return (f"sign-in: {by}",)
-
-
-def site_not_set(_arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
-    """Refuse a run that reaches the site when none is set."""
-    if settings["site"] is not None:
-        return None
-    return "site: not set; add it to the settings or pass --site"
 
 
 def endpoint_elsewhere(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:

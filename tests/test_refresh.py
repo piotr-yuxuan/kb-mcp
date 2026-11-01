@@ -12,9 +12,7 @@ import pytest
 from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
-from kb_mcp.cli.commands import download as download_command
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import Settings
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, Stored
@@ -23,6 +21,7 @@ from kb_mcp.sources.atlassian.fetch.app.download import Targets, download, plan
 from kb_mcp.sources.atlassian.fetch.domain.content import Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target, Window
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, Period, PeriodError
+from tests.composed import MODEL
 from tests.mirrors import mirrored
 from tests.samples import v2_page, v2_space
 from tests.test_download import (
@@ -43,6 +42,8 @@ if TYPE_CHECKING:
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
+
+    from kb_mcp.config.domain.settings import Settings
 
 FIRST = datetime(2026, 10, 22, 9, tzinfo=UTC)
 SECOND = datetime(2026, 10, 23, 9, tzinfo=UTC)
@@ -117,7 +118,7 @@ class RefreshSite(FakeSite):
 
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory, and a saved session, under the scratch folder."""
-    chosen = Settings(site=SITE, data_dir=tmp_path / "data")
+    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     return chosen
 
@@ -156,9 +157,10 @@ def stored_pages(chosen: Settings) -> dict[str, str]:
 def test_a_first_run_starts_the_coverage_of_each_target(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A run with --since 7d covers the week, for every target listed whole."""
+    """A run of each source with --since 7d covers the week, for every target listed whole."""
     chosen = settings(tmp_path)
-    assert run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], ["PRB"]), FIRST) == 0
+    assert run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST) == 0
+    assert run(chosen, monkeypatch, RefreshSite(), first_week([], ["PRB"]), FIRST) == 0
     assert RawStore(chosen.raw).coverage().periods == {
         Target(source="confluence", key="MFS"): Period(FIRST - WEEK, FIRST),
         Target(source="jira", key="PRB"): Period(FIRST - WEEK, FIRST),
@@ -216,7 +218,8 @@ def test_a_target_whose_listing_failed_keeps_its_coverage(
 ) -> None:
     """A refused search leaves the project uncovered; the space is covered all the same."""
     chosen = settings(tmp_path)
-    run(chosen, monkeypatch, RefreshSite(search_status=400), first_week(["MFS"], ["PRB"]), FIRST)
+    run(chosen, monkeypatch, RefreshSite(search_status=400), first_week(["MFS"], []), FIRST)
+    run(chosen, monkeypatch, RefreshSite(search_status=400), first_week([], ["PRB"]), FIRST)
     assert set(RawStore(chosen.raw).coverage().periods) == {Target(source="confluence", key="MFS")}
 
 
@@ -459,7 +462,7 @@ def test_a_gone_page_leaves_the_mirror_even_when_another_has_a_problem(
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
     broken = next((chosen.raw / "confluence" / "pages" / "1001").iterdir()) / "view.json"
     broken.write_text("{}", "utf-8")  # another document now unreadable
-    outcome = mirrored(RawStore(chosen.raw), chosen.docs, SITE, identity)
+    outcome = mirrored(RawStore(chosen.raw), chosen.docs, SITE, identity)["confluence"]
     assert outcome.problems
     assert not list((chosen.docs / "confluence" / "MFS").glob("1002-*.md"))
     assert list((chosen.docs / "confluence" / "MFS").glob("1001-*.md"))
@@ -528,7 +531,7 @@ def test_a_damaged_listing_time_is_one_problem_not_one_per_document(tmp_path: Pa
         listing = [v2_page(id="1001"), v2_page(id="1002")]
         store.put_space(v2_space(), listing, [], [], listed_at=FIRST)
     (store.root / "confluence" / "spaces" / SPACE / "listed_at.json").write_text("{}", "utf-8")
-    outcome = mirrored(store, tmp_path / "docs", SITE, identity)
+    outcome = mirrored(store, tmp_path / "docs", SITE, identity)["confluence"]
     named = [problem.where for problem in outcome.problems if "listed_at" in problem.where]
     assert named == [f"confluence/spaces/{SPACE}/listed_at.json"]
 
@@ -574,7 +577,7 @@ def test_a_moved_page_whose_new_file_fails_keeps_its_old_file(tmp_path: Path) ->
             raise PandocFailedError(message)
         return html
 
-    outcome = mirrored(store, docs, SITE, failing)
+    outcome = mirrored(store, docs, SITE, failing)["confluence"]
     assert outcome.problems
     assert list((docs / "confluence" / "MFS").glob("196845-*.md"))
 
@@ -824,13 +827,18 @@ def test_a_search_entry_that_the_adapter_refuses_holds_the_coverage(
 def test_a_run_stopped_during_a_project_leaves_its_coverage_and_extends_those_before(
     status: int, stopped: int, tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Failures in a row, or a sign-in lost, during PRB: MFS, finished, grows; PRB stays."""
+    """Failures in a row, or a sign-in lost, during PRB's fetch: MFS, fetched first, grows.
+
+    PRB's coverage stays as it was.
+    """
     chosen = settings(tmp_path)
-    run(chosen, monkeypatch, RefreshSite(issues=two_issues()), first_week(["MFS"], ["PRB"]), FIRST)
+    run(chosen, monkeypatch, RefreshSite(issues=two_issues()), first_week(["MFS"], []), FIRST)
+    run(chosen, monkeypatch, RefreshSite(issues=two_issues()), first_week([], ["PRB"]), FIRST)
     before = RawStore(chosen.raw).coverage().periods[PRB]
     many = {str(30000 + n): issue_at(str(30000 + n), RUN - timedelta(hours=1)) for n in range(MANY)}
     failing = RefreshSite(issues=many, failing_issues=dict.fromkeys(many, status))
-    assert run(chosen, monkeypatch, failing, catch_up(["MFS"], ["PRB"]), RUN) == stopped
+    assert run(chosen, monkeypatch, failing, catch_up(["MFS"], []), RUN) == 0
+    assert run(chosen, monkeypatch, failing, catch_up([], ["PRB"]), RUN) == stopped
     periods = RawStore(chosen.raw).coverage().periods
     assert periods[PRB] == before
     assert periods[Target(source="confluence", key="MFS")] == Period(FIRST - WEEK, RUN)
@@ -1012,7 +1020,8 @@ def test_a_target_never_fetched_fetches_its_last_week_while_the_others_catch_up(
         ),
         PRB: Window(period=Period(RUN - timedelta(days=1), NEXT), reason="since the last fetch"),
     }
-    assert run(chosen, monkeypatch, RefreshSite(issues={}), targets, NEXT) == 0
+    assert run(chosen, monkeypatch, RefreshSite(issues={}), catch_up(["MFS"], []), NEXT) == 0
+    assert run(chosen, monkeypatch, RefreshSite(issues={}), catch_up([], ["PRB"]), NEXT) == 0
     assert RawStore(chosen.raw).coverage().periods == {
         Target(source="confluence", key="MFS"): Period(NEXT - WEEK, NEXT),
         PRB: Period(START, NEXT),
@@ -1036,13 +1045,10 @@ def test_a_target_whose_catch_up_starts_after_until_is_skipped_and_asked_nothing
     until = RUN - timedelta(days=1)
     fake = RefreshSite(issues=two_issues())
     with capture_logs() as events:
-        run(
-            chosen,
-            monkeypatch,
-            fake,
-            Targets(spaces=["MFS"], projects=["PRB"], max_file_bytes=CAP, until=until),
-            NEXT,
-        )
+        space = Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, until=until)
+        run(chosen, monkeypatch, fake, space, NEXT)
+        project = Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, until=until)
+        run(chosen, monkeypatch, fake, project, NEXT)
     assert not [url for url in fake.asked if url.path.startswith("/rest/api/3/search")]
     periods = RawStore(chosen.raw).coverage().periods
     assert periods[PRB] == before
@@ -1087,7 +1093,7 @@ def test_a_space_whose_catch_up_starts_after_until_is_skipped_and_said_so(
     outcome = download(chosen, early, lambda: SECOND, lambda _: None)
     assert not [url for url in fake.asked if url.path.startswith("/wiki/api/v2/spaces")]
     assert RawStore(chosen.raw).coverage() == before
-    detailed = download_command.text(outcome, "detailed")
+    detailed = outcome.text("detailed")
     assert "space MFS: skipped, after --until; coverage held\n" in detailed
     [window] = to_jsonable_python(outcome)["windows"]
     assert (window["start"], window["end"], window["reason"], window["coverage"]) == (

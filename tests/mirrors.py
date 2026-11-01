@@ -2,7 +2,8 @@
 
 Values are made up. Filler documents speak lorem ipsum, so that no word under test is in
 half the sections of the index, where FTS5 would count it as worthless. ``mirrored``
-runs the mirror with a function of a test's own in pandoc's place.
+runs the mirror of each Atlassian source, and ``mirrored_source`` of one, with a function
+of a test's own in pandoc's place.
 """
 
 from __future__ import annotations
@@ -13,11 +14,11 @@ from copy import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.names import time_revision
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
-from kb_mcp.sources.atlassian.prepare.app.prepare import mirror
+from kb_mcp.sources.atlassian.fetch.domain.content import time_revision
+from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, mirror
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -143,18 +144,26 @@ def write(docs: Path, front: FrontMatter, body: str | None = None) -> str:
     return path
 
 
-def mirrored(
-    store: RawStore, docs: Path, site: str | None, convert: Callable[[str], str]
+def mirrored_source(
+    store: RawStore, docs: Path, site: str | None, convert: Callable[[str], str], source: str
 ) -> Outcome:
-    """Mirror ``store`` into ``docs``, converting by ``convert`` through the cache beside it.
+    """Mirror one source of ``store`` into ``docs``; give its outcome.
 
-    The cache is the file of the data layout, ``conversions.sqlite`` beside ``docs``. It
-    names ``convert`` by its qualified name, as pandoc's version and arguments name
-    pandoc's conversion, so that two functions never answer for each other.
+    It converts by ``convert`` through its rows of the cache beside ``docs``, the file
+    of the data layout, ``conversions.sqlite``. It names ``convert`` by its qualified
+    name, as pandoc's version and arguments name pandoc's conversion, so that two
+    functions never answer for each other.
     """
     path = docs.parent / "conversions.sqlite"
-    with conversions.opened(path, lambda: convert.__qualname__, convert) as cache:
-        return mirror(store, docs, site, cache)
+    with conversions.opened(path, lambda: convert.__qualname__, convert, source=source) as cache:
+        return mirror(store, docs, site, cache, PREPARED[source])
+
+
+def mirrored(
+    store: RawStore, docs: Path, site: str | None, convert: Callable[[str], str]
+) -> dict[str, Outcome]:
+    """Mirror ``store`` into ``docs``, each source as a run does; give its outcome by its name."""
+    return {source: mirrored_source(store, docs, site, convert, source) for source in PREPARED}
 
 
 def fillers(docs: Path, count: int = FILLERS) -> None:

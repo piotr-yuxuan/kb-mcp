@@ -12,7 +12,6 @@ import httpx
 import pytest
 from structlog.testing import capture_logs
 
-from kb_mcp.config.domain.settings import Settings
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import (
     MAX_FAILED_IN_A_ROW,
@@ -36,6 +35,7 @@ from kb_mcp.sources.atlassian.fetch.app.download import Download, Targets, downl
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target, Window
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, period
+from tests.composed import MODEL
 from tests.samples import (
     v1_user,
     v2_attachment,
@@ -51,6 +51,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
+
+    from kb_mcp.config.domain.settings import Settings
+    from tests.conftest import InMemory
 
 SITE = "https://sandbox.example.invalid"
 MEDIA = "https://api.media.atlassian.com/file/abc/binary?token=t"
@@ -461,7 +464,7 @@ def test_a_run_sends_the_site_nothing_but_gets(tmp_path: Path) -> None:
 
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory under the scratch folder."""
-    return Settings(site=SITE, data_dir=tmp_path / "data")
+    return MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
 
 
 def targets(spaces: list[str], projects: list[str]) -> Targets:
@@ -484,12 +487,50 @@ def no_sleep(_: float) -> None:
 
 
 def test_without_a_saved_session_the_run_asks_to_sign_in(tmp_path: Path) -> None:
-    """No cookies saved: nothing is asked of the site, and the status says sign in."""
+    """No cookies saved: nothing is asked of the site, and the status says sign in.
+
+    The report is named by the run's source, after its time.
+    """
     outcome = download(settings(tmp_path), targets(["MFS"], []), lambda: NOW, no_sleep)
     assert outcome.status == SIGN_IN_NEEDED
     assert outcome.report.counts["runs: stopped, sign-in needed"] == 1
     [report] = (tmp_path / "data" / "runs").iterdir()
+    assert report.name == "20261022T090000Z-confluence.json"
     assert json.loads(report.read_text("utf-8"))["status"] == SIGN_IN_NEEDED
+
+
+@pytest.mark.parametrize(("spaces", "projects"), [([], []), (["MFS"], ["PRB"])])
+def test_a_run_of_no_source_or_of_both_is_refused_before_anything_is_written(
+    tmp_path: Path, monkeypatch: MonkeyPatch, spaces: list[str], projects: list[str]
+) -> None:
+    """Plan 030: a fetch is of one source, whose report is its own; asked nothing, no report."""
+    fake = FakeSite()
+    chosen = saved_session(tmp_path, monkeypatch, fake)
+    said = f"a fetch is of one source: spaces {spaces}, projects {projects}"
+    with pytest.raises(ValueError, match=f"^{re.escape(said)}$"):
+        download(chosen, targets(spaces, projects), lambda: NOW, no_sleep)
+    assert fake.asked == []
+    assert not chosen.runs.exists()
+    assert not chosen.raw.exists()
+
+
+def test_a_run_of_projects_alone_does_nothing_of_confluence_s(
+    tmp_path: Path, monkeypatch: MonkeyPatch, telemetry: InMemory
+) -> None:
+    """Plan 030: Jira's fetch asks Confluence nothing, probes nothing, names no user.
+
+    Neither its report nor its trace holds anything of Confluence's.
+    """
+    fake = FakeSite()
+    chosen = saved_session(tmp_path, monkeypatch, fake)
+    outcome = download(chosen, targets([], ["PRB"]), lambda: NOW, no_sleep)
+    assert outcome.status == 0
+    assert outcome.report.counts["jira issues: fetched"] == 1
+    assert [what for what in outcome.report.counts if "confluence" in what] == []
+    assert [url.path for url in fake.asked if url.path.startswith("/wiki/")] == []
+    spans = {span.name for span in telemetry.spans.get_finished_spans()}
+    assert "download.project" in spans
+    assert spans & {"download.space", "download.probes", "download.users"} == set()
 
 
 def test_an_expired_session_stops_the_run_before_anything_is_stored(
@@ -497,10 +538,9 @@ def test_an_expired_session_stops_the_run_before_anything_is_stored(
 ) -> None:
     """Confluence answering as to an anonymous user means the session has expired."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(anonymous=True))
-    outcome = download(chosen, targets(["MFS"], ["PRB"]), lambda: NOW, no_sleep)
+    outcome = download(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
     assert outcome.status == SIGN_IN_NEEDED
     assert not (chosen.raw / "confluence" / "pages").exists()
-    assert not (chosen.raw / "jira").exists()
 
 
 def test_a_run_with_a_failure_says_so_in_its_status(
@@ -508,7 +548,7 @@ def test_a_run_with_a_failure_says_so_in_its_status(
 ) -> None:
     """A document that failed makes the run's status 1, and its report says why."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(changed_labels=True))
-    outcome = download(chosen, targets(["MFS"], ["PRB"]), lambda: NOW, no_sleep)
+    outcome = download(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
     assert outcome.status == SOME_FAILED
     assert outcome.report.failures == 1
     [report] = chosen.runs.iterdir()

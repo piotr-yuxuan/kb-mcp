@@ -1,22 +1,13 @@
-"""The Markdown mirror's rules of text, and the folders of the work log's documents.
+"""The Markdown mirror's rules of text.
 
 ``visible`` and ``one_line`` keep a text to what shows, for every source's front matter
-and layout. The work log's folders are here since the mirror tells its documents apart
-by them (``markdown.WORKLOG``); each source's paths are in its own ``layout``.
+and layout; each source's paths are in its own ``layout``.
 """
 
 from __future__ import annotations
 
 import unicodedata
-from pathlib import PurePosixPath
 
-# The work log's folders, by the type of their documents.
-WORKLOG_FOLDERS = {
-    "entry": PurePosixPath("worklog/entries"),
-    "day": PurePosixPath("worklog/days"),
-    "meeting": PurePosixPath("worklog/meetings"),
-    "transcript": PurePosixPath("worklog/transcripts"),
-}
 # Characters that show nothing, reorder what is shown, or cannot be written, apart from
 # tab and line feed: controls, format characters (zero-width, bidirectional controls,
 # tags), lone surrogates, private use and unassigned code points.

@@ -29,22 +29,24 @@ from opentelemetry import trace
 
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
-from kb_mcp.mirror.adapters.markdown import WORKLOG, documents, dump, load
+from kb_mcp.mirror.adapters.markdown import documents, dump, load
 from kb_mcp.mirror.adapters.mirror_files import Changes, sync
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, PersonRole
 from kb_mcp.mirror.domain.mirror_layout import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.prepare.adapters import files
-from kb_mcp.sources.worklog.prepare.adapters.mirrored import worklog_owned
-from kb_mcp.sources.worklog.prepare.domain.layout import worklog_path
+from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
+from kb_mcp.sources.worklog.prepare.domain.layout import WORKLOG, worklog_path
 from kb_mcp.sources.worklog.prepare.domain.worklog import (
     DAY_TYPE,
     ENTRY,
     MEETING_TYPE,
+    SOURCE,
     TODO,
     TODO_ARCHIVE,
     Document,
+    WorklogFrontMatter,
     held_back,
     journal,
     linked_back,
@@ -58,10 +60,11 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping
     from pathlib import Path
 
+    from kb_mcp.kernel.output import Summary
     from kb_mcp.mirror.adapters.pandoc import Pandoc
+    from kb_mcp.mirror.domain.mirror import FrontMatter
     from kb_mcp.sources.worklog.prepare.domain.worklog import Source
 
-SOURCE = "worklog"
 TRACER = trace.get_tracer(__name__)
 
 
@@ -105,6 +108,22 @@ class Outcome(Record):
     problems: tuple[Problem, ...]
     warnings: tuple[str, ...]
 
+    def text(self, summary: Summary) -> str:
+        """Write the counts of documents, of files, of HTML transcripts left out, of problems.
+
+        In detail, each warning comes before the problems.
+        """
+        warnings = self.warnings if summary == "detailed" else ()
+        return (
+            f"documents: {self.documents}\n"
+            f"files written: {self.changes.written}\n"
+            f"files unchanged: {self.changes.unchanged}\n"
+            f"files removed: {self.changes.removed}\n"
+            f"HTML left out: {self.html}\n"
+            + "".join(f"warning: {warning}\n" for warning in warnings)
+            + f"problems: {len(self.problems)}\n"
+        )
+
 
 class Planned(Record):
     """What a run would do: documents, those to convert, files to remove, HTML left out."""
@@ -115,6 +134,21 @@ class Planned(Record):
     html: int
     problems: tuple[Problem, ...]
     warnings: tuple[str, ...]
+
+    def text(self, summary: Summary) -> str:
+        """Write the counts of documents, of those to convert, of files to remove, of problems.
+
+        HTML transcripts left out come before the problems, and in detail each warning.
+        """
+        warnings = self.warnings if summary == "detailed" else ()
+        return (
+            f"documents: {self.documents}\n"
+            f"to convert: {self.to_convert}\n"
+            f"files to remove: {self.to_remove}\n"
+            f"HTML left out: {self.html}\n"
+            + "".join(f"warning: {warning}\n" for warning in warnings)
+            + f"problems: {len(self.problems)}\n"
+        )
 
 
 def read_worklog(folder: Path, *, archives: bool) -> Read:
@@ -267,7 +301,7 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                 fetched_at = document.source.fetched_at
                 CONVERSION_DURATION.record(time.perf_counter() - began, kind)
             DOCUMENTS.add(1, {"kb_mcp.outcome": outcome, **kind})
-            matter = FrontMatter(
+            matter = WorklogFrontMatter(
                 source=SOURCE,
                 type=document.type,
                 id=document.id,

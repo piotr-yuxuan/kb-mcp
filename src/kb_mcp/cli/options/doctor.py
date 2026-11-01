@@ -7,17 +7,24 @@ from typing import TYPE_CHECKING
 from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import (
     SIGN_IN,
+    SITE,
     add_output_options,
     add_settings_options,
-    email_without_token,
-    token_without_email,
+    of_atlassian,
 )
+from kb_mcp.sources.atlassian.declared import email_without_token, token_without_email
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    sources: Sequence[Declared],
+) -> None:
     """Add ``doctor`` to the command."""
     parser = subparsers.add_parser(
         "doctor",
@@ -33,10 +40,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         command=Command(
             "doctor",
             "kb_mcp.cli.commands.doctor",
-            reads=("site", *SIGN_IN, "data_dir"),
+            reads=(SITE, *SIGN_IN, "data_dir"),
             flags=flags,
             actions=actions,
             unapplied=email_without_token,
-            refused=token_without_email,
+            refused=of_atlassian(sources, token_without_email),
         )
     )

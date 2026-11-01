@@ -26,15 +26,10 @@ from unittest.mock import patch
 from kb_mcp.cli.domain.command import PROGRAM
 from kb_mcp.cli.main import parser
 from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
-from kb_mcp.config.domain.settings import (
-    NESTING,
-    PREFIX,
-    SETTING_PATHS,
-    Settings,
-    variable,
-)
+from kb_mcp.config.domain.settings import NESTING, PREFIX, setting_paths, variable
 from kb_mcp.kernel.exit_status import MEANINGS
 from kb_mcp.observability.adapters.logs import default_log_folder
+from tests.composed import MODEL
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -152,15 +147,16 @@ def typed(schema: dict[str, Any], definitions: dict[str, Any]) -> str:
 def settings() -> str:
     """Give the page of the settings: how they are named and layered, then one row each.
 
-    A row is a setting that holds a value, nested tables flattened, in the model's order:
-    its key, its variable, then its type, default and description as the model's JSON
-    schema gives them, so that no Python representation shows. A default that a factory
-    computes shows as computed. Raises ValueError naming a setting without a description.
+    A row is a setting that holds a value, nested tables flattened, in the order of the
+    model that the entry composes from the registry: its key, its variable, then its
+    type, default and description as the model's JSON schema gives them, so that no
+    Python representation shows. A default that a factory computes shows as computed.
+    Raises ValueError naming a setting without a description.
     """
-    schema = Settings.model_json_schema()
+    schema = MODEL.model_json_schema()
     definitions = schema.get("$defs", {})
     rows = []
-    for path, kind in SETTING_PATHS.items():
+    for path, kind in setting_paths(MODEL).items():
         if kind == "table":
             continue
         model = schema

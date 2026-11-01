@@ -192,6 +192,24 @@ def test_each_dashboard_is_json_drawing_on_the_image_s_three_sources(path: Path)
     assert {(source["uid"], source["type"]) for source in named} == SOURCES
 
 
+def test_sync_s_dashboard_lists_each_row_with_what_its_span_records() -> None:
+    """Plan 030: Tempo's table of spans shows what its query selects, not every attribute.
+
+    So the query selects what the page says that a ``sync.step`` records: its step, its
+    source and how it ended.
+    """
+    board = json.loads((DASHBOARDS / "sync.json").read_text("utf-8"))
+    (query,) = [
+        target["query"]
+        for panel in board["panels"]
+        for target in panel["targets"]
+        if "sync.step" in target.get("query", "")
+    ]
+    _, attributes = documented("sync").spans["sync.step"]
+    assert "kb_mcp.source" in attributes
+    assert set(re.findall(r"span\.(kb_mcp\.\w+)", query)) == attributes
+
+
 def series(instruments: Mapping[str, tuple[str, str, frozenset[str]]]) -> set[str]:
     """Give the names of the series that Prometheus makes of ``instruments``, by kind and unit."""
     named = set()

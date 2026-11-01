@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.mirror.adapters.markdown import WORKLOG, documents
+from kb_mcp.mirror.adapters.markdown import documents
 from kb_mcp.mirror.adapters.mirror_files import regular_files
+from kb_mcp.sources.worklog.prepare.domain.layout import WORKLOG
 
 if TYPE_CHECKING:
     from pathlib import Path, PurePosixPath

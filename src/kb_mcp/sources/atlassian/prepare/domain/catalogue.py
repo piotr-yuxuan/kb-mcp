@@ -13,12 +13,16 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC
 from functools import cached_property
 from html import escape
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
+from pydantic import model_validator
+
+from kb_mcp.kernel.names import RefusedError, require
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, PersonRole
 from kb_mcp.mirror.domain.mirror_layout import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import (
+    REVISION,
     BlogPost,
     ConfluenceDocument,
     Folder,
@@ -40,6 +44,40 @@ TYPES: dict[type[ConfluenceDocument | Issue], str] = {
     BlogPost: "blogpost",
     Issue: "issue",
 }
+# Each type with its source, as the front matter names them.
+SOURCE_TYPES = frozenset((kind.source, name) for kind, name in TYPES.items())
+# Keys that one source alone has, always.
+ONLY = {
+    "space": "confluence",
+    "version": "confluence",
+    "key": "jira",
+    "project": "jira",
+    "issue_type": "jira",
+}
+
+
+class AtlassianFrontMatter(FrontMatter):
+    """The front matter of a page, a blog post or an issue: every source's rules, and theirs."""
+
+    @model_validator(mode="after")
+    def check_atlassian(self) -> Self:
+        """Refuse what the layout's table rules out for Confluence and Jira.
+
+        A source and type that disagree, a key that only the other source has, a revision
+        off ``REVISION``, and a participant, a role of another source.
+        """
+        if (self.source, self.type) not in SOURCE_TYPES:
+            message = "type: not one of the source's types"
+            raise RefusedError(message)
+        for name, source in ONLY.items():
+            if (getattr(self, name) is not None) != (self.source == source):
+                message = f"{name}: only and always for {source}"
+                raise RefusedError(message)
+        require(REVISION, self.revision, "revision")
+        if any(person.role == PARTICIPANT for person in self.people):
+            message = "people: a role of another source"
+            raise RefusedError(message)
+        return self
 
 
 class Catalogue(Record):
@@ -147,9 +185,9 @@ def front_matter(
     """Say what the mirror says of a document and its comments, as the layout's table does.
 
     Every text is one visible line; a page's space key comes from the listed spaces, and
-    is None when its space is not listed, which ``FrontMatter`` refuses. Each commenter
-    comes once, by their first comment, with the times of their comments ascending; a
-    comment without an author names nobody.
+    is None when its space is not listed, which ``AtlassianFrontMatter`` refuses. Each
+    commenter comes once, by their first comment, with the times of their comments
+    ascending; a comment without an author names nobody.
     """
     issue = document if isinstance(document, Issue) else None
     confluence = document if isinstance(document, ConfluenceDocument) else None
@@ -173,7 +211,7 @@ def front_matter(
         PersonRole(role="commenter", name=name, account=account, at=tuple(at))
         for (name, account), at in said.items()
     ]
-    return FrontMatter(
+    return AtlassianFrontMatter(
         source=document.source,
         type=TYPES[type(document)],
         id=document.id,

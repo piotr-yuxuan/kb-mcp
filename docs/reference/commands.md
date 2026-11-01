@@ -39,8 +39,8 @@ positional arguments:
     model        check the embedding model and its endpoint
     reranker     check the reranking server and its model
     serve        serve the mirror over MCP on stdio
-    sync         bring the configured sources up to date: download, mirror, the work
-                 log, then the index
+    sync         bring the configured sources up to date: fetch each, prepare each,
+                 then the index
 
 options:
   -h, --help     show this help message and exit
@@ -151,10 +151,13 @@ options:
                         the largest file kept, in MB; 50 by default
   --dry-run             say what a run would fetch, and fetch nothing
 
-With --format json: report, the counts of what the run did, or with --dry-run would
-do; failed_targets, the spaces and projects that failed; status, the exit status;
-windows, each target's: its start, end and reason, and its coverage, extended, capped
-at a failure, held, or null when not written; dry_run, whether the run only planned.
+With --format json: exit_status, the run's; steps, a row per source with targets,
+confluence then jira, each with its step, download, its source, its outcome (done,
+failed, sign in) and its result, null when the fetch could not start: report, the
+counts of what the fetch did, or with --dry-run would do; failed_targets, the spaces
+or projects that failed; status, its exit status; windows, each target's: its start,
+end and reason, and its coverage, extended, capped at a failure, held, or null when
+not written; dry_run, whether the fetch only planned.
 ```
 
 ## `eval`
@@ -431,10 +434,13 @@ options:
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
 
-With --format json: documents, how many are mirrored; converted, the conversions
-pandoc ran, and reused, those the cache gave, a document's file and a space's tree
-being one each; changes, the files written, unchanged and removed; unsupported, what
-the mirror does not show, by name; problems, each by its place and why.
+With --format json: exit_status, the run's; steps, a row per source, confluence then
+jira, each with its step, mirror, its source, its outcome (done, failed) and its
+result: documents, how many are mirrored; converted, the conversions pandoc ran, and
+reused, those the cache gave, a document's file and a space's tree being one each;
+changes, the files written, unchanged and removed; unsupported, what the mirror does
+not show, by name; problems, each by its place and why; elsewhere, those that it found
+reading the other source's, by that source, which fail nothing of its own.
 ```
 
 ## `model`
@@ -562,12 +568,15 @@ options:
   --allow-remote-embeddings
                         let this run send the mirror's text to an embedding endpoint
                         off this machine
-  --dry-run             say what a run would fetch and what the work log would change;
-                        write nothing
+  --dry-run             say what the run would fetch, and change where a source can
+                        tell; write nothing
 
-With --format json: exit_status, the run's; steps, a row per step (download, mirror,
-worklog, index), each with its step, its outcome (done, failed, sign in, interrupted,
-not run) and its result, as its own command gives it.
+With --format json: exit_status, the run's; steps, a row per step and source, the
+fetch of each source that has a fetcher, then the prepare of each, then the index,
+each with its step (fetch, prepare, index), its source, null for the index, its
+outcome (done, failed, sign in, interrupted, not run) and its result, null when it
+gave none: a fetch's or a prepare's outcome, and what the source's own command gives,
+under downloaded or mirrored; the index's, as index gives it.
 ```
 
 ## Exit statuses

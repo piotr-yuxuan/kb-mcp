@@ -151,7 +151,7 @@ What any command may log.
 | `run.end` | info | `status`, `seconds` | A run ends: its exit status, how long it took |
 | `run.interrupted` | warning | `seconds` | Ctrl-C stopped the run, which exits 130 |
 | `run.failed` | error | `seconds` | An exception stopped the run, which exits 1; the traceback follows |
-| `run.refused` | error | `reason` | The command refuses its arguments or the settings, before the run: exit 2. On stderr alone |
+| `run.refused` | error | `reason` | The command refuses its arguments or the settings, before the run: exit 2. On stderr alone, after the values that the settings loaded ignored, unless at the level error |
 | `settings.refused` | error | `reason` | The settings break a rule, before the run: exit 2. On stderr alone; when the program's former name left settings, data or variables, the steps to move them follow, as [move to kb-mcp](../../how-to/move-to-kb-mcp.md) says |
 | `progress` | info | `task`, `done`, `total`, `remaining` | A task's heartbeat, every 10 s at most, and at its end; `remaining` in whole seconds |
 | `log.unwritable` | warning | `folder`, `reason` | The log folder cannot be written: no file, or nothing more in it |

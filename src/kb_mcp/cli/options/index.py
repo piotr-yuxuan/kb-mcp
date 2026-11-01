@@ -15,7 +15,9 @@ from kb_mcp.cli.options._common import (
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 # What the index's build reads, beside the data directory; sync's index step reads them too.
 INDEX_SETTINGS = ("model", "search_mode", "chunking", "embedding_url", "embedding_api_key")
@@ -40,7 +42,10 @@ def pruning_said(_arguments: argparse.Namespace, settings: Mapping[str, object])
     return ("then: the vector store keeps only the vectors that the index and eval's read",)
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    _sources: Sequence[Declared],
+) -> None:
     """Add ``index`` to the command."""
     parser = subparsers.add_parser(
         "index",

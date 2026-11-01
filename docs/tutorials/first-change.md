@@ -75,7 +75,7 @@ uv run lint-imports
 It ends with:
 
 ```text
-Contracts: 10 kept, 0 broken.
+Contracts: 11 kept, 0 broken.
 ```
 
 pytest runs the tests, spread over every core by `-n auto` (pytest-xdist), in a minute or
@@ -105,9 +105,9 @@ It ends with:
 
 ## 3. Write the test first
 
-`count` rests on one rule: given the paths of the mirror's documents, how many each
-source has. A rule decides without effects, with no file, clock or network, so it lives
-in a layer named `domain`, here the mirror's:
+`count` rests on one rule: given the paths of the mirror's documents and the names of
+the sources, how many each source has. A rule decides without effects, with no file,
+clock or network, so it lives in a layer named `domain`, here the mirror's:
 `src/kb_mcp/mirror/domain/`. A rule is the easiest code to test, so we
 write its test first, from what `count` must do. Create `tests/test_count.py`:
 
@@ -126,7 +126,8 @@ def test_each_source_counts_its_documents_and_one_without_any_counts_zero() -> N
         PurePosixPath("confluence/OPS/blog/196700-release-notes.md"),
         PurePosixPath("jira/PLAT/PLAT-1.md"),
     ]
-    assert per_source(documents) == {"confluence": 2, "jira": 1, "worklog": 0}
+    sources = ["confluence", "jira", "worklog"]
+    assert per_source(documents, sources) == {"confluence": 2, "jira": 1, "worklog": 0}
 ```
 
 Run it alone:
@@ -153,25 +154,25 @@ from __future__ import annotations
 from collections import Counter
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.names import SOURCE_NAMES
-
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import PurePath
 
 
-def per_source(documents: Iterable[PurePath]) -> dict[str, int]:
+def per_source(documents: Iterable[PurePath], sources: Iterable[str]) -> dict[str, int]:
     """Count the documents of each source, as their paths in the mirror name it.
 
-    Each source is counted, one without documents as 0.
+    Each source named is counted, one without documents as 0.
     """
     found = Counter(document.parts[0] for document in documents)
-    return {source: found[source] for source in SOURCE_NAMES}
+    return {source: found[source] for source in sources}
 ```
 
-The sources are named once, in the kernel
-([`SOURCE_NAMES`](../../src/kb_mcp/kernel/names.py)), so that `count`
-names each source as `sync` does. Run the test again:
+The rule takes the sources' names rather than knowing them: each source is declared in
+its own package, and the registry lists them
+([`SOURCES`](../../src/kb_mcp/sources/registry.py)), which the command, step 5,
+hands to the rule, so that `count` names each source as `sync` does. Run the test
+again:
 
 ```bash
 uv run pytest tests/test_count.py
@@ -186,9 +187,9 @@ It ends with:
 ## 5. Declare the subcommand, and run it
 
 A subcommand is two modules. Its declaration, in `cli/options/`, is light: the parser
-imports every declaration for `--help`, and finds each by itself
-([`parser`](../../src/kb_mcp/cli/main.py)). Its run, in `cli/commands/`,
-is imported only once it is chosen. Create
+imports every declaration for `--help`, finds each by itself, and gives each the
+registry, which `count`'s does not need ([`parser`](../../src/kb_mcp/cli/main.py)). Its
+run, in `cli/commands/`, is imported only once it is chosen. Create
 `src/kb_mcp/cli/options/count.py`:
 
 ```python
@@ -203,9 +204,15 @@ from kb_mcp.cli.options._common import add_output_options, add_settings_options
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    _sources: Sequence[Declared],
+) -> None:
     """Add ``count`` to the command."""
     parser = subparsers.add_parser(
         "count",
@@ -241,6 +248,7 @@ from typing import TYPE_CHECKING
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters.markdown import documents
 from kb_mcp.mirror.domain.count import per_source
+from kb_mcp.sources.registry import SOURCES
 
 if TYPE_CHECKING:
     import argparse
@@ -250,9 +258,10 @@ if TYPE_CHECKING:
 
 
 def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, dict[str, int]]:
-    """Count the documents that the mirror holds, under the data directory."""
+    """Count the documents that the mirror holds, under the data directory, by source."""
     docs = loaded.settings.docs
-    return ExitStatus.OK, per_source(path.relative_to(docs) for path in documents(docs))
+    found = (path.relative_to(docs) for path in documents(docs))
+    return ExitStatus.OK, per_source(found, (declared.name for declared in SOURCES))
 
 
 def text(counts: dict[str, int], _summary: Summary) -> str:
@@ -264,7 +273,9 @@ Finding the files is an effect, so it stays out of the rule: the run takes the m
 folder from the settings
 ([`Settings.docs`](../../src/kb_mcp/config/domain/settings.py)), lets
 [`documents`](../../src/kb_mcp/mirror/adapters/markdown.py), in the
-mirror's `adapters` layer, find the files there, and hands their paths to the rule.
+mirror's `adapters` layer, find the files there, and hands their paths to the rule,
+with the names of the registry's sources: the command, in `cli`, may import the
+sources, which the mirror, below them, may not.
 What the run returns, the entry of every subcommand writes, as text or as JSON
 ([`enter`](../../src/kb_mcp/cli/commands/_shared.py)). Run it:
 
@@ -299,20 +310,20 @@ from __future__ import annotations
 from collections import Counter
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.names import SOURCE_NAMES
 from kb_mcp.mirror.adapters.markdown import documents
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
 
-def per_source(docs: Path) -> dict[str, int]:
+def per_source(docs: Path, sources: Iterable[str]) -> dict[str, int]:
     """Count the documents of each source, as their paths in the mirror name it.
 
-    Each source is counted, one without documents as 0.
+    Each source named is counted, one without documents as 0.
     """
     found = Counter(path.relative_to(docs).parts[0] for path in documents(docs))
-    return {source: found[source] for source in SOURCE_NAMES}
+    return {source: found[source] for source in sources}
 ```
 
 Then check the layout:
@@ -324,19 +335,19 @@ uv run lint-imports
 It refuses the change, and names the import at fault, in each contract that it breaks:
 
 ```text
-Contracts: 8 kept, 2 broken.
+Contracts: 9 kept, 2 broken.
 ```
 
 ```text
 kb_mcp.mirror.domain is not allowed to import kb_mcp.mirror.adapters:
 
-- kb_mcp.mirror.domain.count -> kb_mcp.mirror.adapters.markdown (l.9)
+- kb_mcp.mirror.domain.count -> kb_mcp.mirror.adapters.markdown (l.8)
 ```
 
 A rule that reads files can be tested only with files, and changes whenever their
 layout does. So the layers of a context may import only those below them, and a rule,
 in any context, no effect. Put the rule back as step 4 wrote it, and run
-`uv run lint-imports` again: `Contracts: 10 kept, 0 broken.`
+`uv run lint-imports` again: `Contracts: 11 kept, 0 broken.`
 
 ## 7. Bring the reference up to date
 
@@ -372,8 +383,8 @@ git diff --stat
 ```
 
 ```text
- docs/reference/commands.md | 25 +++++++++++++++++++++++++
- 1 file changed, 25 insertions(+)
+ docs/reference/commands.md | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
 ```
 
 The page now lists `count` among the commands, with its help. Run the five checks of

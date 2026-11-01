@@ -6,26 +6,37 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import (
+    SITE,
     add_output_options,
     add_settings_options,
     add_yes_option,
+    of_atlassian,
 )
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    sources: Sequence[Declared],
+) -> None:
     """Add ``mirror`` to the command."""
     parser = subparsers.add_parser(
         "mirror",
         help="write the Markdown mirror from the raw store",
         epilog=(
-            "With --format json: documents, how many are mirrored; converted, the"
-            " conversions pandoc ran, and reused, those the cache gave, a document's file"
-            " and a space's tree being one each; changes, the files written, unchanged and"
-            " removed; unsupported, what the mirror does not show, by name; problems, each"
-            " by its place and why."
+            "With --format json: exit_status, the run's; steps, a row per source,"
+            " confluence then jira, each with its step, mirror, its source, its outcome"
+            " (done, failed) and its result: documents, how many are mirrored; converted,"
+            " the conversions pandoc ran, and reused, those the cache gave, a document's"
+            " file and a space's tree being one each; changes, the files written,"
+            " unchanged and removed; unsupported, what the mirror does not show, by name;"
+            " problems, each by its place and why; elsewhere, those that it found reading"
+            " the other source's, by that source, which fail nothing of its own."
         ),
     )
     actions, flags = add_settings_options(parser)
@@ -35,10 +46,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         command=Command(
             "mirror",
             "kb_mcp.cli.commands.mirror",
-            reads=("site", "data_dir"),
+            reads=(SITE, "data_dir"),
             flags=flags,
             actions=actions,
             writes=True,
+            refused=of_atlassian(sources),
             programs=("pandoc",),
         )
     )

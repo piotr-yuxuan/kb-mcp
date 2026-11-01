@@ -49,10 +49,9 @@ flowchart LR
 ## Sync: the stages in one command
 
 [`sync`](../../src/kb_mcp/cli/app/sync.py) runs, in this order, the stages
-that a refresh needs: one download of every space and project that the settings' tables
-name, then `mirror`
-([`atlassian`](../../src/kb_mcp/cli/app/sync.py)); the work log's step
-([`worklog`](../../src/kb_mcp/cli/app/sync.py)); then the index, from the
+that a refresh needs: the fetch of each source taken that has a fetcher, a download of
+the spaces or projects that its table names; the prepare of each, `mirror` for
+Confluence's and Jira's, the work log's step for its own; then the index, from the
 whole mirror, whichever sources the run took
 ([`index`](../../src/kb_mcp/cli/app/sync.py)). Each calls the same function
 as its own command:
@@ -60,11 +59,11 @@ as its own command:
 [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py),
 [`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) and
 [`index_mirror`](../../src/kb_mcp/search/app/indexing.py). A source is a
-record that names its table and its step
-([`SOURCES`](../../src/kb_mcp/cli/domain/sync.py)), and `--include` and
+declaration that names its table and its roles
+([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and `--include` and
 `--exclude` choose among those configured
 ([`chosen`](../../src/kb_mcp/cli/domain/sync.py));
-[sources](sources.md#modular-and-no-more) says why no interface spans them.
+[sources](sources.md#three-roles-not-a-bundle) says why a source is put together so.
 
 - **Writes** what its stages write, each as the sections below say.
 - **One step's failure** stops no other: each step reads what is on disk, so the work
@@ -128,18 +127,20 @@ days. A catch-up that would start after `--until` skips its target.
 [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the newest
 snapshot of each document
 ([`RawStore.latest`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
-the listings, the users and the tombstones, and the setting `site`: nothing else shapes
-its files. It places each document in the space whose freshest listing names it,
+the listings, the users and the tombstones, and the setting `accounts.atlassian.site`:
+nothing else shapes its files. Confluence and Jira are prepared apart, Confluence first,
+each its own kinds, and each places every document, since a page links an issue, and an
+issue a page. It places each document in the space whose freshest listing names it,
 leaving out those confirmed gone
-([`place`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)); turns the site's HTML
+([`place`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)); for its own, it turns the site's HTML
 into plain HTML, the one module that knows the site's markup
 ([`normalise`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py)); and has
 pandoc write it as Markdown, one process a document
 ([`Pandoc.markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py)), unless
 that HTML was converted before.
 
-Pandoc's conversions are kept in `<data>/conversions.sqlite`, which `mirror` and `sync`
-open around the mirror
+Pandoc's conversions are kept in `<data>/conversions.sqlite`, which each prepare opens
+on its own source's rows
 ([`opened`](../../src/kb_mcp/mirror/adapters/conversions.py)). Each is
 kept under a key that holds the whole of pandoc's input: its version line and its
 arguments ([`Pandoc.html_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py)),
@@ -157,15 +158,21 @@ trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost
   [`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
   whose bytes differ, through a hidden file renamed into place, so that no reader sees
   half of one. A file whose bytes are the same keeps them and its time. No lock: the
-  snapshots read are each complete, and each file is replaced whole. Into
+  snapshots read are each complete, and each file is replaced whole. Each source writes
+  and removes under its own folder
+  ([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py)), and
+  `docs/assets/` is theirs together
+  ([`attached`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py)). Into
   `<data>/conversions.sqlite`, each conversion as soon as it is made, so that an
-  interrupted run keeps those it made; once the files are written, the conversions that
-  the run did not use are deleted, unless it reported anything
+  interrupted run keeps those it made; once the files are written, the conversions of
+  its source that the run did not use are deleted, unless it reported anything
   ([`Conversions.prune`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 - **One document's failure**, a field refused or pandoc failing, is reported by its place
-  in the store, never its content; the run goes on. A run that reported anything removes
-  no file but those of documents gone or moved, and no conversion, so that the last good
-  copy of each stays. A cache that SQLite finds damaged, or no database at all, is
+  in the store, never its content; the run goes on. A source that reported anything
+  removes no file of its own but those of documents gone or moved, and no conversion, so
+  that the last good copy of each stays; the other source's removals go on, but under
+  `docs/assets/`, where any snapshot or listing not read stops them, since the files
+  wanted are then unknown. A cache that SQLite finds damaged, or no database at all, is
   deleted and started empty, with a warning, and the run converts everything
   ([`opened`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 - **Offline**, everything: the mirror is rebuilt from the raw store, byte for byte, as
@@ -193,7 +200,7 @@ or a dated transcript, dated afresh by its day; another is converted again
 - **Writes**, into `<data>/docs/worklog/` alone, through the mirror's
   [`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
   whose bytes differ, renamed into place, and the files of documents gone removed
-  ([`worklog_owned`](../../src/kb_mcp/sources/worklog/prepare/adapters/mirrored.py)).
+  ([`worklog_owned`](../../src/kb_mcp/sources/worklog/prepare/adapters/owned.py)).
 - **One document's failure**, a file that links out of the folder
   ([`listed`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), is
   over 32 MiB or is not UTF-8
@@ -210,9 +217,9 @@ or a dated transcript, dated afresh by its day; another is converted again
 ## Index: from Markdown to words and vectors
 
 [`build_index`](../../src/kb_mcp/search/app/indexing.py) reads the files
-of the mirror alone, never the raw store (an import contract holds it): Confluence's,
-Jira's and the work log's alike
-([`DOCUMENTS`](../../src/kb_mcp/mirror/adapters/markdown.py)). It cuts each
+of the mirror alone, never the raw store (an import contract holds it): every source's
+alike, by one rule of which files are documents
+([`documents`](../../src/kb_mcp/mirror/adapters/markdown.py)). It cuts each
 body into sections before each heading
 ([`sections`](../../src/kb_mcp/search/domain/search.py)), indexes them by
 words, and, unless `search_mode = "lexical"`, cuts each document into pieces by the

@@ -15,7 +15,9 @@ from kb_mcp.cli.options._common import (
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 
 def model_named(arguments: argparse.Namespace, _settings: Mapping[str, object]) -> dict[str, str]:
@@ -23,7 +25,10 @@ def model_named(arguments: argparse.Namespace, _settings: Mapping[str, object]) 
     return {"model": "replaced by the model named"} if arguments.name else {}
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    _sources: Sequence[Declared],
+) -> None:
     """Add ``model`` to the command."""
     parser = subparsers.add_parser(
         "model",

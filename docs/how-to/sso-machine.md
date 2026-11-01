@@ -25,6 +25,7 @@ its subcommands and options with Tab, see [shell completions](shell-completions.
 Create `~/.config/kb-mcp/config.toml`:
 
 ```toml
+[accounts.atlassian]
 site = "https://<your-site>.atlassian.net"
 
 # Optional: what to download when no --space or --project is given.
@@ -35,11 +36,13 @@ spaces = ["ENG", "OPS"]
 projects = ["PLAT"]
 ```
 
-`spaces` and `projects` belong to their sources' tables: at the top of the file, where
-they were before, they are refused, and the message names their table.
+`site` belongs to the Atlassian account's table, `spaces` and `projects` to their
+sources': at the top of the file, where they were before, they are refused, and the
+message names their table.
 
 Each setting can also come from a variable, `KB_MCP_` then its path in
-capitals joined by `__`, a list or a table in JSON (`KB_MCP_SITE`,
+capitals joined by `__`, a list or a table in JSON
+(`KB_MCP_ACCOUNTS__ATLASSIAN__SITE`,
 `KB_MCP_SOURCES__JIRA__PROJECTS='["PLAT"]'`), and some from a flag
 (`--site`, `--data-dir`, `--space`, `--project`). A flag wins over a variable, which
 wins over the file, and a list replaces a weaker one whole. Each command says on stderr
@@ -113,7 +116,8 @@ as a script needs: where no terminal can answer, the command is refused without 
 `--dry-run` lists and decides as a run would, then says what it would fetch, and
 fetches nothing; it does not ask.
 
-The counts are printed and saved in `~/kb-mcp/runs/`. The exit status is
+The counts are printed, a row per source, and saved in `~/kb-mcp/runs/`, a report per
+source. The exit status is
 0 when all went well, 1 when something failed (a space key that finds nothing is named
 on stderr) or you answered no, 2 for refused settings or options, or no terminal to ask
 on, 3 when you must sign in again, 130 when stopped by Ctrl-C. `kb-mcp

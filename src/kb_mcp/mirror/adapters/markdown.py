@@ -13,7 +13,6 @@ import yaml
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
-from kb_mcp.mirror.domain.mirror_layout import WORKLOG_FOLDERS
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
@@ -25,12 +24,11 @@ LINK = list(Link.model_fields)
 TIME = "%Y-%m-%dT%H:%M:%SZ"
 OPENING = "---\n"
 CLOSING = "\n---\n"
-# The documents of the mirror, relative to <data>/docs, by the step that writes them,
-# then all of them; names beginning with _ or . are not documents, and nothing under
-# assets/ is.
-ATLASSIAN = ("confluence/*/*.md", "confluence/*/blog/*.md", "jira/*/*.md")
-WORKLOG = tuple(f"{folder}/*.md" for folder in WORKLOG_FOLDERS.values())
-DOCUMENTS = (*ATLASSIAN, *WORKLOG)
+# The documents of the mirror, relative to <data>/docs: every Markdown file, whichever
+# source wrote it, but those under assets/, where an attached x.md is an asset, and
+# those with a name beginning with _ or . on their path.
+DOCUMENTS = ("**/*.md",)
+ASSETS = "assets"
 
 
 class Dumper(yaml.SafeDumper):
@@ -163,12 +161,15 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
 
 
 def documents(docs: Path, patterns: Iterable[str] = DOCUMENTS) -> Iterator[Path]:
-    """Yield every document file under ``docs`` that the patterns find, in a stable order.
+    """Yield every document file under ``docs`` that the patterns find, sorted by path.
 
-    No name on the way to a document begins with ``_`` or ``.``.
+    None is under ``assets/``, and no name on the way to one begins with ``_`` or ``.``.
     """
-    for pattern in patterns:
-        for path in sorted(docs.glob(pattern)):
-            names = path.relative_to(docs).parts
-            if path.is_file() and not any(name.startswith(("_", ".")) for name in names):
-                yield path
+    for path in sorted({path for pattern in patterns for path in docs.glob(pattern)}):
+        names = path.relative_to(docs).parts
+        if (
+            path.is_file()
+            and names[0] != ASSETS
+            and not any(name.startswith(("_", ".")) for name in names)
+        ):
+            yield path

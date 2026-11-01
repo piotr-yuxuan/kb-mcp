@@ -12,14 +12,7 @@ from kb_mcp.mcp.app.responses import LABELS as REFS
 from kb_mcp.mcp.app.responses import NAMES, cut
 from kb_mcp.mcp.app.responses import page as fitted
 from kb_mcp.mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
-from kb_mcp.mirror.domain.mirror import (
-    RELATIONS,
-    ROLES,
-    SOLE,
-    WORKLOG_ROLES,
-    Link,
-    PersonRole,
-)
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, RELATIONS, ROLES, SOLE, Link, PersonRole
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
@@ -174,17 +167,18 @@ def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
 ) -> None:
     """The front matter, which a read never cuts, leaves its body room within 4,000.
 
-    Each role that a document can hold is held: an issue's every role but the work
-    log's, a meeting's the work log's alone. By one person where one alone holds it, else
-    by two more people than a role's line names; each name, and each other text, longer
-    than a value shown and in characters that are not ASCII, but the address and the
-    refs. The meeting links by each relation two more documents than a relation's line
-    names, each ref the longest that the work log's ids allow; an issue links none, as
-    the work log alone writes links. At the defaults, then with the smallest slice, where
-    the front matter is the most of the answer.
+    Each role that a document can hold is held: an issue's every role but a
+    participant, which no other role holds beside it, a meeting's a participant alone.
+    By one person where one alone holds it, else by two more people than a role's line
+    names; each name, and each other text, longer than a value shown and in characters
+    that are not ASCII, but the address and the refs. The meeting links by each relation
+    two more documents than a relation's line names, each ref the longest that the work
+    log's ids allow; an issue links none, as the work log alone writes links. At the
+    defaults, then with the smallest slice, where the front matter is the most of the
+    answer.
     """
     worklog = kind.get("source") == "worklog"
-    roles = [role for role in ROLES if (role in WORKLOG_ROLES) == worklog]
+    roles = [role for role in ROLES if (role == PARTICIPANT) == worklog]
     people = tuple(
         PersonRole(
             role=role,

@@ -24,16 +24,19 @@ former name left in what it would use:
 
 - the former settings file, `~/.config/atlassian-offline-mcp/config.toml`, when the run
   reads the default one, `~/.config/kb-mcp/config.toml`, and that is missing; the
-  former file is then judged in its place;
+  former file is then judged in its place, and its keys renamed since, `site` and
+  `email` at its top, which `[accounts.atlassian]` holds now, are named by their final
+  keys;
 - the former data directory, `~/atlassian-offline-mcp`, when the data directory is the
   default, `~/kb-mcp`, and that is missing; a folder in a git working tree, such as a
   clone, is never taken for the data;
-- a variable named `ATLASSIAN_OFFLINE_MCP_…`, in any case, set and not empty, whose new
-  name, `KB_MCP_…`, is not set;
+- a variable named `ATLASSIAN_OFFLINE_MCP_…`, in any case, set and not empty, whose
+  final name, `KB_MCP_…`, is not set: the sign-in's are
+  `KB_MCP_ACCOUNTS__ATLASSIAN__SITE`, `…__EMAIL` and `…__API_TOKEN`;
 - a setting whose path holds a folder or a file whose name begins with the former name,
   such as `data_dir = "~/atlassian-offline-mcp"`, or a `--config` naming a file in such
-  a folder, or such a file; a data directory given through a link is judged where it
-  leads; a site or an e-mail is never judged.
+  a folder, or such a file, whose keys renamed since are named too; a data directory
+  given through a link is judged where it leads; a site or an e-mail is never judged.
 
 Where a former place and its new one both exist, the new one is used and nothing stops.
 A run given `--config` and `--data-dir` elsewhere uses neither former place. `--help`,
@@ -44,15 +47,20 @@ kb-mcp check
 ```
 
 After the event `settings.refused`, it prints what it found and what to do. For a
-machine that holds all four, with `KB_MCP_LOGS__DIR` naming a folder of the former name:
+machine that holds all four, its settings file holding `site` and `email` at its top,
+with `KB_MCP_LOGS__DIR` naming a folder of the former name:
 
 ```text
 # Move the files:
 mkdir -p ~/.config/kb-mcp && mv ~/.config/atlassian-offline-mcp/config.toml ~/.config/kb-mcp/config.toml
 mv ~/atlassian-offline-mcp ~/kb-mcp
 
+Rename each key of the settings file:
+site to accounts.atlassian.site
+email to accounts.atlassian.email
+
 Rename each variable where it is set (a shell's profile, an MCP client, sops):
-ATLASSIAN_OFFLINE_MCP_SITE to KB_MCP_SITE
+ATLASSIAN_OFFLINE_MCP_SITE to KB_MCP_ACCOUNTS__ATLASSIAN__SITE
 
 Change each setting whose path names the former name, moving what it names:
 logs.dir (KB_MCP_LOGS__DIR)
@@ -76,7 +84,15 @@ Then, by hand, as docs/how-to/move-to-kb-mcp.md says:
   added again on ~/kb-mcp/docs/
 ```
 
-Variables are named, and settings with their layer, never with their values.
+Keys and variables are named, and settings with their layer, never with their values.
+The layer of a value that the former settings file holds is that file's path, also when
+a setting refuses the value, before anything is said to move. A token left at a file's
+top, which no run ever took from there, is named by the variable that alone sets it,
+under the heading of the keys:
+
+```text
+api_token: delete it, and set KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN in the environment
+```
 
 ## 3. Move the files
 
@@ -86,15 +102,31 @@ that is already a link is not missing: the run uses where it leads, and nothing 
 moved; remove a link that leads nowhere, then run `check` again. Once the settings file
 is moved, its former folder, `~/.config/atlassian-offline-mcp`, may be removed. The data
 directory's files hold no path of their own: the index, the vectors, the conversions,
-the raw store, the sign-in and the aliases keep working where they are moved, and the
-next run rebuilds and converts nothing.
+the raw store, the sign-in and the aliases keep working where they are moved, and moving
+them makes the next run rebuild nothing.
 
-## 4. Rename the variables and the settings
+## 4. Rename the keys, the variables and the settings
+
+In the settings file, once moved, rename each key named: `site` becomes
+`accounts.atlassian.site`, which TOML reads as the key `site` of the table
+`[accounts.atlassian]`. Rename it where it is, at the file's top, or write it under that
+table:
+
+```toml
+[accounts.atlassian]
+site = "https://<name>.atlassian.net"
+email = "<you>@<company>"
+```
 
 Rename each variable named, wherever it is set: a shell's profile, an MCP client's entry
-for the server, a `sops exec-env` command. For each setting named, move the folder or
-file that it names, then change it in its layer: the settings file, a variable, or a
-flag in a script.
+for the server, a `sops exec-env` command, whose `KB_MCP_SITE="$ATLASSIAN_SITE"` becomes
+`KB_MCP_ACCOUNTS__ATLASSIAN__SITE="$ATLASSIAN_SITE"`, as
+[an API token kept by sops](api-token-with-sops.md) shows. The sign-in's variables that
+the rename first gave, `KB_MCP_SITE`, `KB_MCP_EMAIL` and `KB_MCP_API_TOKEN`, name no
+setting since its settings moved to `[accounts.atlassian]`: each run says it ignored
+them, a run refused for want of the site first of all; rename them alike. For each
+setting named, move the folder or file that it names, then change it in its layer: the
+settings file, a variable, or a flag in a script.
 
 ## 5. Coding agents
 
@@ -145,7 +177,27 @@ was.
   without the variable, is no longer pruned: remove it once its logs are no longer
   wanted.
 
-## 8. Check again
+## 8. What runs do differently
+
+The mirror stays the same, byte for byte, but what a run says and keeps has changed since
+the former name:
+
+- **The first prepare converts everything once.** The cache of conversions holds its rows
+  by source now, so a file of the former columns is replaced, `mirror.cache_replaced`
+  saying so; each run after it converts what changed, as before. Nothing is downloaded
+  again.
+- **A report per source.** A download's report is
+  `<data>/runs/<time>-confluence.json` or `<time>-jira.json`, one for each source that it
+  fetches, where it was `<time>.json`. Reports already there stay as they are. No code
+  reads them; a script of yours may.
+- **A row per source and step.** `sync`, `download` and `mirror` write a row for each
+  source and step, under `steps` with `--format json`. `sync --include confluence`
+  prepares Confluence alone: [bring every source up to
+  date](sync.md#3-choose-among-the-sources) says what that leaves.
+- **A stray `.md` file under the mirror is read.** The index reports it as a file without
+  front matter, and exits 1, where it was ignored: move it out of `docs/`.
+
+## 9. Check again
 
 ```bash
 kb-mcp check

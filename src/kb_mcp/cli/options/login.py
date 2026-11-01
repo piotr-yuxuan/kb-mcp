@@ -8,15 +8,19 @@ from typing import TYPE_CHECKING
 from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import (
     SIGN_IN,
+    SITE,
     add_output_options,
     add_settings_options,
     add_yes_option,
-    site_not_set,
+    of_atlassian,
 )
+from kb_mcp.sources.atlassian.declared import site_not_set
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
+
+    from kb_mcp.sources.declaration import Declared
 
 
 def in_the_browser(
@@ -26,7 +30,10 @@ def in_the_browser(
     return dict.fromkeys(SIGN_IN, "login signs in in a browser")
 
 
-def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+def register(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+    sources: Sequence[Declared],
+) -> None:
     """Add ``login`` to the command."""
     parser = subparsers.add_parser(
         "login",
@@ -49,11 +56,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         command=Command(
             "login",
             "kb_mcp.cli.commands.login",
-            reads=("site", "data_dir"),
+            reads=(SITE, "data_dir"),
             flags=flags,
             actions=(*actions, chrome, extensions),
             writes=True,
             unapplied=in_the_browser,
-            refused=site_not_set,
+            refused=of_atlassian(sources, site_not_set),
         )
     )

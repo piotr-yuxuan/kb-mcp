@@ -33,8 +33,8 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-EMAIL = "KB_MCP_EMAIL"
-CREDENTIAL = "KB_MCP_API_TOKEN"
+EMAIL = "KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL"
+CREDENTIAL = "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"
 ADDRESS = "someone@example.invalid"
 SENTINEL = "token-sentinel-4d1c"
 ENCODED = base64.b64encode(f"{ADDRESS}:{SENTINEL}".encode()).decode()
@@ -45,7 +45,7 @@ HOST = httpx.URL(SITE).host
 REFUSED = 2
 SIGN_IN_NEEDED = 3
 # What a command that signs in says of a token given without its email.
-WITHOUT_EMAIL = "email: not set; an API token signs in with its account's email"
+WITHOUT_EMAIL = "accounts.atlassian.email: not set; an API token signs in with its account's email"
 
 
 @pytest.fixture
@@ -130,14 +130,20 @@ def test_a_run_with_the_token_leaves_a_saved_session_as_it_was(
 def test_a_download_refused_by_the_site_exits_3_naming_the_variables(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], dry_run: list[str]
 ) -> None:
-    """A 401: the email and the token to check, by their variables, in an error."""
+    """A 401: the email and the token to check, by their variables, in an error.
+
+    Each source's fetch signs in on its own, so each says it, naming its source.
+    """
     served(monkeypatch, lambda _: httpx.Response(401))
     assert main(download(home, *dry_run)) == SIGN_IN_NEEDED
     err = capsys.readouterr().err
     assert ("error", "download.sign_in_needed") in said(err)
     assert f"check {EMAIL} and {CREDENTIAL}" in err
-    (needed,) = logged_as(home, "download.sign_in_needed")
-    assert needed["hint"] == f"check {EMAIL} and {CREDENTIAL}"
+    needed = logged_as(home, "download.sign_in_needed")
+    assert [(each["source"], each["hint"]) for each in needed] == [
+        ("confluence", f"check {EMAIL} and {CREDENTIAL}"),
+        ("jira", f"check {EMAIL} and {CREDENTIAL}"),
+    ]
 
 
 def test_the_doctor_signs_in_with_the_token(
@@ -194,7 +200,7 @@ def test_login_with_a_token_signs_in_in_the_browser(
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE]
     assert main(["login", *options]) == 0
     assert signed_in == [SITE]
-    ignored = f"ignored: api_token ({CREDENTIAL}): login signs in in a browser\n"
+    ignored = f"ignored: accounts.atlassian.api_token ({CREDENTIAL}): login signs in in a browser\n"
     assert ignored in capsys.readouterr().err
 
 
@@ -217,7 +223,7 @@ def test_check_shows_no_secret_in_any_format_or_summary(
     options = ["--config", str(home / "none.toml"), "--format", output_format]
     assert main(["check", *options, "--summary", summary, "-v"]) == 0
     out, err = capsys.readouterr()
-    assert "api_token" in out
+    assert "accounts.atlassian.api_token" in out
     assert "embedding_api_key" in out
     assert shown(out + err) == []
 

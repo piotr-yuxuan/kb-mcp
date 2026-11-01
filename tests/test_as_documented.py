@@ -27,7 +27,6 @@ from mcp.client.stdio import StdioServerParameters
 
 from kb_mcp.cli.commands import login as login_command
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.search.adapters import vector_store
@@ -38,6 +37,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.domain.content import Page
 from tests.collector import Collector, collecting
+from tests.composed import MODEL
 from tests.endpoint import URL, Reranks, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, PERSONS, fillers, issue, page, write
 from tests.reference import README, Emitted, documented, operations, undocumented
@@ -54,6 +54,7 @@ if TYPE_CHECKING:
 
     from _pytest.monkeypatch import MonkeyPatch
 
+    from kb_mcp.config.domain.settings import Settings
     from tests.conftest import InMemory
 
 TESTS = Path(__file__).parent
@@ -95,7 +96,7 @@ def signed_in(
     The client is the site's own, observed, over the scripted site; no run waits between
     requests. Give the settings of a run that names the site and the data directory.
     """
-    chosen = Settings(site=SITE, data_dir=data.resolve())
+    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=data.resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     transport = httpx.MockTransport(handle)
     monkeypatch.setattr(

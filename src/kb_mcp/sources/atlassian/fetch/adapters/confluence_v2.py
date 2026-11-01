@@ -10,9 +10,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
-from kb_mcp.kernel.names import IDENTIFIER, SITE_PATH, require, version_revision
+from kb_mcp.kernel.names import IDENTIFIER, require
 from kb_mcp.sources.atlassian.fetch.adapters.http import ReadPage, Request
 from kb_mcp.sources.atlassian.fetch.domain.content import (
+    SITE_PATH,
     Attachment,
     BlogPost,
     Folder,
@@ -21,6 +22,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Person,
     Snapshot,
     Space,
+    version_revision,
 )
 
 if TYPE_CHECKING:

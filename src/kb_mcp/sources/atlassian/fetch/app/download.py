@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from collections.abc import Sequence
+from copy import replace
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -59,12 +60,20 @@ from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     probing_order,
     too_many_gone,
 )
-from kb_mcp.sources.atlassian.fetch.domain.files import skip_reason
+from kb_mcp.sources.atlassian.fetch.domain.files import MEBIBYTE, skip_reason
+from kb_mcp.sources.atlassian.fetch.domain.period import (
+    DEFAULT_MAX_FILE_MB,
+    MAX_FILE_MB_FLAG,
+    SINCE_FLAG,
+    UNTIL_FLAG,
+    moment,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
     from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.kernel.output import Summary
     from kb_mcp.sources.atlassian.fetch.adapters.http import ReadPage, Request
     from kb_mcp.sources.atlassian.fetch.domain.content import Attachment, Document, Listed
     from kb_mcp.sources.atlassian.fetch.domain.period import Period
@@ -83,6 +92,10 @@ KINDS: tuple[type[Page | BlogPost], ...] = (Page, BlogPost)
 # Jira reads JQL dates in the user's time zone, up to 14 hours off UTC, and a date
 # stands for its midnight: two days on each side always cover the period.
 JQL_MARGIN = timedelta(days=2)
+# The counts that a short summary shows: the documents fetched, or to fetch, of each kind,
+# and the files downloaded, or to download; then how a run stopped, if it did.
+SHORT_COUNTS = (": fetched", ": to fetch", "files: downloaded", "files: to download")
+STOPPED = "runs: "
 
 # How each kind of document is read from its listing, and which GETs make its snapshot.
 LISTED: dict[type[Document], Callable[[Fields], Listed]] = {
@@ -178,7 +191,8 @@ class Download:
         holds. A source that does not answer at all (a site without Jira) is counted as a
         failure, and its targets skipped. A target without a window is skipped too, and
         asked nothing. The task ``targets`` reports those of the sources that answer,
-        each by its key.
+        each by its key. Confluence's probes and users follow its spaces alone, so that a
+        run of projects alone does and counts nothing of Confluence's.
         """
         self.held |= {target: "after --until" for target, w in self.windows.items() if w is None}
         confluence = bool(spaces) and self.reachable(
@@ -195,14 +209,14 @@ class Download:
                 window = self.windows[target]
                 if window is not None and self.space(target, window):
                     self.covered[target] = window.period
-            if not self.plan:
+            if spaces and not self.plan:
                 self.probe_absent()
             for key in targets.each(answered_projects, str):
                 target = Target(source="jira", key=key)
                 window = self.windows[target]
                 if window is not None and self.project(target, window):
                     self.covered[target] = window.period
-        if not self.plan:
+        if spaces and not self.plan:
             self.users()
 
     def reachable(self, source: str, request: Request, signed_in: Callable[[Fields], bool]) -> bool:
@@ -670,6 +684,50 @@ class Targets(Record):
         end = min(self.until, now) if self.until else now  # never past what a run can see
         return {target: window(coverage, target, self.since, end) for target in named}
 
+    def by_source(self) -> dict[str, Targets]:
+        """Give each source's targets apart, by its name: Confluence's spaces, Jira's projects.
+
+        Each is fetched on its own, in this order, over the same period; a source without
+        targets is left out.
+        """
+        apart = {"confluence": replace(self, projects=[]), "jira": replace(self, spaces=[])}
+        return {source: each for source, each in apart.items() if each.spaces or each.projects}
+
+    @property
+    def source(self) -> str:
+        """Name the one source of these targets, which names its fetch's report and events.
+
+        Raises ValueError for targets of no source, or of both: a fetch is of one source.
+        """
+        apart = self.by_source()
+        if len(apart) != 1:
+            message = (
+                f"a fetch is of one source: spaces {list(self.spaces)},"
+                f" projects {list(self.projects)}"
+            )
+            raise ValueError(message)
+        return next(iter(apart))
+
+
+def read_targets(
+    spaces: Sequence[str], projects: Sequence[str], options: Mapping[str, object], now: datetime
+) -> Targets:
+    """Read what a run downloads of these spaces and projects from the period's options.
+
+    ``options`` holds each by its flag, as typed, None when not given: --since and
+    --until read as ``moment`` reads them, at ``now``; --max-file-mb not given is
+    ``DEFAULT_MAX_FILE_MB``. Raises KeyError for one that it does not hold, so that a flag
+    renamed cannot read as not given.
+    """
+    since, until = options[SINCE_FLAG], options[UNTIL_FLAG]
+    return Targets(
+        spaces=list(spaces),
+        projects=list(projects),
+        max_file_bytes=(options[MAX_FILE_MB_FLAG] or DEFAULT_MAX_FILE_MB) * MEBIBYTE,
+        since=moment(since, now, SINCE_FLAG) if since else None,
+        until=moment(until, now, UNTIL_FLAG) if until else None,
+    )
+
 
 class TargetWindow(Record):
     """A target of a run: its window, from ``start`` to ``end``, and why it starts there.
@@ -723,6 +781,35 @@ class Outcome(Record):
     windows: tuple[TargetWindow, ...] = ()
     dry_run: bool = False
 
+    def text(self, summary: Summary) -> str:
+        """Write the documents fetched by kind and the files, or a dry run's; then failures.
+
+        Detailed, and a dry run, begin with each target's window, why it starts there, and
+        what became of its coverage. Short also says how a run stopped, if it did; detailed
+        gives every count of what the run did, or would do. The failures come last.
+        """
+        windows = self.windows if summary == "detailed" or self.dry_run else ()
+        said = [
+            f"{each.target}: "
+            + (
+                f"skipped, {each.reason}"
+                if each.start is None or each.end is None
+                else f"from {each.start.isoformat()} to {each.end.isoformat()}, {each.reason}"
+            )
+            + ("" if each.coverage is None else f"; coverage {each.coverage}")
+            for each in windows
+        ]
+        shown = [
+            (what, number)
+            for what, number in sorted(self.report.counts.items())
+            if summary == "detailed" or what.endswith(SHORT_COUNTS) or what.startswith(STOPPED)
+        ]
+        return (
+            "".join(f"{line}\n" for line in said)
+            + "".join(f"{what}: {number}\n" for what, number in shown)
+            + f"failures: {self.report.failures}\n"
+        )
+
 
 def plan(
     settings: Settings,
@@ -775,20 +862,24 @@ def download(
     now: Callable[[], datetime],
     sleep: Callable[[float], None],
 ) -> Outcome:
-    """Run a download signed in as the settings say, and save its report, even when stopped.
+    """Run a download of one source signed in as the settings say, and save its report.
 
-    Each target is fetched over its window. The coverage of every target listed whole
-    grows as ``Coverage.extended`` rules, and the tombstones found are kept, even when
-    the run stops; ``download.coverage`` says at INFO what became of each finished
-    target's coverage, and why it was held, if it was. The status is ``OK`` when nothing
-    failed, ``FAILED`` when something did, and ``SIGN_IN_AGAIN`` when the sign-in no
-    longer holds or no session was saved. Raises PeriodError when --since does not come
-    before the windows' end, and StoreBusyError when another run writes, both before
-    anything is written.
+    The targets are one source's, whose name ends the report's,
+    ``<runs>/<time>-<source>.json``, saved even when the run stops; another source's are
+    another download. Each target is fetched over its window. The coverage of every
+    target listed whole grows as ``Coverage.extended`` rules. The tombstones are
+    Confluence's: a fetch of spaces reads them and keeps each as it finds it, even when
+    the run stops, and a fetch of projects neither reads nor rewrites them.
+    ``download.coverage`` says at INFO what became of each finished target's coverage,
+    and why it was held, if it was. The status is
+    ``OK`` when nothing failed, ``FAILED`` when something did, and ``SIGN_IN_AGAIN`` when
+    the sign-in no longer holds or no session was saved. Raises PeriodError when --since
+    does not come before the windows' end, StoreBusyError when another run writes, and
+    ValueError for targets of no source or of both, all before anything is written.
     """
     report, failed_targets, status = Report(), [], None
     extensions: dict[Target, Extension] = {}
-    store, started = RawStore(settings.raw), now()
+    store, started, source = RawStore(settings.raw), now(), targets.source
     coverage = store.coverage()
     windows = targets.windows(coverage, started)
     signing = sign_in(settings)
@@ -802,7 +893,7 @@ def download(
                     now,
                     report,
                     windows=windows,
-                    tombstones=store.tombstones(),
+                    tombstones=store.tombstones() if targets.spaces else {},
                 )
                 failed_targets = run.failed_targets
                 try:
@@ -830,7 +921,6 @@ def download(
                             "download.coverage", target=str(target), outcome="held", reason=why
                         )
                     store.put_coverage(coverage)
-                    store.put_tombstones(run.tombstones.values())
         except SignInNeededError:  # from the client: no session was saved
             status = ExitStatus.SIGN_IN_AGAIN
         finally:
@@ -841,7 +931,8 @@ def download(
             settings.runs.mkdir(parents=True, exist_ok=True)
             stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
             saved = {"status": status, "counts": dict(sorted(report.counts.items()))}
-            (settings.runs / f"{stamp}.json").write_text(json.dumps(saved, indent=1), "utf-8")
+            path = settings.runs / f"{stamp}-{source}.json"
+            path.write_text(json.dumps(saved, indent=1), "utf-8")
     return Outcome(
         report=report,
         failed_targets=failed_targets,

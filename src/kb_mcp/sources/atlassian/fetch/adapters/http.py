@@ -14,9 +14,9 @@ import structlog
 import truststore
 from pydantic import ConfigDict, Field
 
-from kb_mcp.kernel.names import SITE_PATH
 from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.http import Recorded
+from kb_mcp.sources.atlassian.fetch.domain.content import SITE_PATH
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable

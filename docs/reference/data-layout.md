@@ -30,7 +30,7 @@ no location and is not for commands.
 | `<data>/vectors.sqlite.lock` | `vectors`, by `vector_store.lock_of` | `index`, `eval`, `sync` (023) | `index`, `eval`, `sync` (023) |
 | `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011); its indexes, `index` and `sync` (023) |
 | `<data>/session/` | `session` | `login` (004) | a run signed in by the saved session (004, 015) |
-| `<data>/runs/` | `runs` | `download` (004) | the user, and `doctor` (004) |
+| `<data>/runs/` | `runs` | `download` (004), `sync` (017) | the user |
 
 No code builds these paths otherwise.
 
@@ -236,22 +236,38 @@ Two more of the store's own records, each replaced whole:
   (`listed_ids(space_id, kind)`), so that an entry the adapter would refuse is still
   followed, and the ids that have a snapshot (`stored_ids(kind)`); the record is written
   before the space's listing is replaced, so that no absent document is lost to a run
-  that stops, and they are probed once every space of the run is listed.
+  that stops, and they are probed once every space of the run is listed. A fetch of
+  projects neither reads nor rewrites the record.
 
 ## Run reports
 
-Owned by `download` (004): `<data>/runs/<UTC time as %Y%m%dT%H%M%SZ>.json`, in the format
+Owned by the fetch of Confluence and Jira, which `download` and `sync` run (004):
+`<data>/runs/<UTC time as %Y%m%dT%H%M%SZ>-<source>.json`, one for each source fetched,
+`confluence` or `jira`, since two fetches can start within a second (030), in the format
 004's plan defines. A run report holds counts and refused fields' paths, never content,
-and names no target. Its counts of documents depend on whether `--since` was given
-(034): with it, `<kind>: in the period` and `<kind>: already stored`; without,
-`<kind>: new or changed since the last fetch`; `listed` and `fetched` either way.
+and names no target. No code reads one back. Its counts of documents depend on whether
+`--since` was given (034): with it, `<kind>: in the period` and `<kind>: already stored`;
+without, `<kind>: new or changed since the last fetch`; `listed` and `fetched` either way.
 
 ## The Markdown mirror
 
-Owned by `mirror` (005), but for `worklog/`, which `sync`'s work-log step owns (017,
-[below](#the-work-log)); neither removes the other's files. `mirror`'s part is derived
-from the raw store and the `site` setting alone, so it can be rebuilt without network,
-byte for byte: nothing in it depends on when `mirror` ran.
+Each source writes under a folder of its own name, through the mirror's writer,
+`mirror.adapters.mirror_files.sync`, and removes only the files that its `owned` module
+finds there (030):
+
+| Folder | Owned by | Removed by |
+|---|---|---|
+| `confluence/` | Confluence's prepare (005) | `sources.atlassian.prepare.adapters.owned.owned` |
+| `jira/` | Jira's prepare (005) | the same |
+| `assets/` | Confluence's and Jira's together: each writes the files of its own documents | `sources.atlassian.prepare.adapters.owned.attached`, a file that no placed document of either wants and no document file of either links (`unlinked`), unless a problem was found, of either source |
+| `worklog/` | the work log's prepare (017, [below](#the-work-log)) | `sources.worklog.prepare.adapters.owned.worklog_owned` |
+| `<name>/` | any other source: `<name>` is its declaration's, which the registry's rule keeps off `assets` | its own |
+
+A source that attaches files keeps them under `<name>/_assets/`, in its own folder, so that
+no other source removes them, and under a name beginning with `_`, which keeps them out of
+the documents. Confluence's and Jira's parts are derived from the raw store and the setting
+`accounts.atlassian.site` alone, so they can be rebuilt without network, byte for byte:
+nothing in them depends on when they were prepared.
 
 ```
 <data>/docs/confluence/<SPACE>/<id>-<slug>.md        a page
@@ -266,9 +282,10 @@ byte for byte: nothing in it depends on when `mirror` ran.
 ```
 
 - The documents are exactly the files that `mirror.adapters.markdown.documents(docs)`
-  yields: those of the first, second and fourth patterns and of the sixth to the ninth,
-  in this order, except names beginning with `_` or `.`. `_tree.md` has no front
-  matter, and nothing under `assets/` is a document.
+  yields, sorted by path: every `.md` file under `docs/`, but those under `assets/`, where
+  an attached `x.md` is an asset, and those with a name beginning with `_` or `.` on their
+  path (030). `_tree.md` has no front matter. A stray `.md` file is read too, and the index
+  reports it as a file without front matter.
 - `<SPACE>` is the space key, `<PROJECT>` the project key, `<KEY>` the issue key.
 - `<slug>`: the title decomposed (Unicode NFKD) and lowered, its combining marks dropped
   (`Crème` gives `creme`), keeping ASCII letters and digits; every run of other
@@ -286,15 +303,21 @@ byte for byte: nothing in it depends on when `mirror` ran.
 Each document starts with front matter written by `mirror.adapters.markdown.dump` and
 read by `mirror.adapters.markdown.load`, from a `mirror.domain.mirror.FrontMatter`;
 nothing else writes or reads it. Its keys come in this order, all always present (`null`
-when unknown or not applicable), and a key that one source alone has is `null` for the
-other and never for its own. Every text is one line, with no line break of any kind;
+when unknown or not applicable). `FrontMatter` checks what every source shares, and so
+does `load`: `source` a source's name, `type` a lower-case word, `id` one safe path part,
+`revision` a token, each key its own rule when it is set. What a source fills is checked
+by the code that builds its front matter
+(`sources.atlassian.prepare.domain.catalogue.AtlassianFrontMatter`,
+`sources.worklog.prepare.domain.worklog.WorklogFrontMatter`): a key that one Atlassian
+source alone has is `null` for the other and never for its own, and the work log fills
+none of them. Every text is one line, with no line break of any kind;
 times are in UTC, written as quoted strings to the second; strings that YAML 1.1 could
 read as another type (`'000003'`, `'Yes'`) are quoted; `load` refuses any other key,
 order or type, by name.
 
 | Key | Type | Value |
 |---|---|---|
-| `source` | string | `confluence`, `jira` or `worklog` |
+| `source` | string | the source's name: `confluence`, `jira` or `worklog` today |
 | `type` | string | `page` or `blogpost` (Confluence), `issue` (Jira), `entry`, `day`, `meeting` or `transcript` (work log) |
 | `id` | string | the content id or issue id; a work-log document's, [below](#the-work-log) |
 | `key` | string or null | the issue key; `null` for Confluence |
@@ -309,7 +332,7 @@ order or type, by name.
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |
 | `revision` | string | the raw store revision mirrored; a work-log document's, 16 hex digits, [below](#the-work-log) |
-| `url` | string or null | the absolute address of the web page: the `site` setting and `Document.url`; `null` when no site is set, and for the work log |
+| `url` | string or null | the absolute address of the web page: the setting `accounts.atlassian.site` and `Document.url`; `null` when no site is set, and for the work log |
 | `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
 | `fetched_at` | string | `fetched_at` of the snapshot, as `created`; a work-log document's file's modification time when converted |
 
@@ -367,7 +390,8 @@ people:
 
 A document has one `author`, one `creator` and one `assignee` at most, and each
 commenter and each participant once by name and account. `participant` is the work
-log's one role (`mirror.domain.mirror.WORKLOG_ROLES`), which no other source's
+log's one role
+(`sources.worklog.prepare.domain.worklog.WORKLOG_ROLES`), which no other source's
 documents hold, so that no document names people of both kinds. `load` refuses any
 other role, a field other than these or out of their order, a `null`, an empty `at` and
 any other broken rule of one entry, naming the entry, such as `people[1]`; and a second
@@ -454,18 +478,21 @@ document itself, by its id or key, or a link given twice, naming `links`.
 
 ### Pandoc's conversions
 
-Owned by `mirror.adapters.conversions`, which `mirror`, and `sync`'s step of Confluence
-and Jira, open around the mirror, which converts through it (039):
-`<data>/conversions.sqlite`, one table, `conversions`, a row per conversion, its `key`
-the primary key and its `markdown` what pandoc wrote. The key is the SHA-256, in hex, of
+Owned by `mirror.adapters.conversions`, which each prepare of Confluence and Jira opens
+around the mirror, which converts through it (039):
+`<data>/conversions.sqlite`, one table, `conversions`, a row per conversion, its `source`
+the source whose prepare asked for it, `source` and `key` the primary key, and its
+`markdown` what pandoc wrote; each prepare reads and prunes its own source's rows alone, so
+that a text that both convert is a row of each, which neither prune takes from the other
+(030). The key is the SHA-256, in hex, of
 the UTF-8 bytes of the converter's name, a NUL, then the HTML given to pandoc; the name
 is pandoc's version line, then its arguments, one a line
 (`mirror.adapters.pandoc.Pandoc.html_converter`). A document's file and a space's tree
 are one conversion each; the front matter, written after pandoc, is outside the key. A
 conversion is committed as soon as it is made, in WAL mode with `synchronous = NORMAL`,
-and a write waits up to 60 seconds for another run's. Once its files are written, a run
-that reports no problem deletes every row that it did not use; a run that reports one
-deletes none, as it removes no file.
+and a write waits up to 60 seconds for another run's. Once its files are written, a
+prepare that reports no problem deletes every row of its source that it did not use; one
+that reports a problem deletes none, as it removes none of its source's files.
 
 The file changes no byte of the mirror while its rows are sound. Deleting it costs one
 conversion of everything at the next run, and downloads nothing: the one way to start
@@ -479,9 +506,10 @@ SQLite finds damaged, no database, or of a format that it cannot read or may not
 (`SQLITE_CORRUPT` and `SQLITE_NOTADB` by their primary codes, `SQLITE_ERROR` and
 `SQLITE_READONLY` exactly, since their extended codes, such as
 `SQLITE_READONLY_DIRECTORY` for a folder that the run may not write, say nothing of the
-file), or whose schema names columns other than `key` and `markdown`, or a name that is
-no longer UTF-8 text, is deleted with its `-wal` and `-shm`, `mirror.cache_replaced`
-says why ([mirror's telemetry](telemetry/mirror.md)), and an empty file takes its
+file), or whose schema names columns other than `source`, `key` and `markdown`, as one
+written before plan 030 does, or a name that is no longer UTF-8 text, is deleted with its
+`-wal` and `-shm`, `mirror.cache_replaced` says why ([mirror's
+telemetry](telemetry/mirror.md)), and an empty file takes its
 place, so that the run goes on and converts everything. Damage that SQLite finds during
 the run, `SQLITE_CORRUPT` or `SQLITE_NOTADB`, fails it, once the file is deleted, so
 that the next run starts a new one. The check sees the file's structure, not the text of
@@ -499,8 +527,8 @@ may fail at once, seldom, as SQLite's switch of a new file to WAL mode does not 
 
 Owned by `sync`'s work-log step (017), in `sources.worklog.prepare.app.prepare`:
 `<data>/docs/worklog/`, from the folder that `sources.worklog.path` names, read in place
-and never written. `sources.atlassian.prepare.adapters.mirrored.owned` and
-`sources.worklog.prepare.adapters.mirrored.worklog_owned` tell each owner's files apart,
+and never written. `sources.atlassian.prepare.adapters.owned.owned` and
+`sources.worklog.prepare.adapters.owned.worklog_owned` tell each owner's files apart,
 so that `mirror` and the work-log step never remove each other's. A run that meets a
 problem (a file not read, a conversion that failed) removes none of its files but the
 old file of a document written again under another path, as an entry's or a transcript's
@@ -613,10 +641,10 @@ document by its id.
 Another program may read the mirror's files, such as a search engine of your own
 choosing ([the how-to](../how-to/other-search-engines.md)). What it may rely on (041):
 
-- **The documents** are the files of the patterns [above](#the-markdown-mirror), under
-  `confluence/`, `jira/` and `worklog/` (`mirror.adapters.markdown.DOCUMENTS`): no name
-  on the way to one begins with `_` or `.`. A space's `_tree.md` is navigation, and
-  `assets/` holds attached files: neither is a document.
+- **The documents** are the `.md` files of the rule [above](#the-markdown-mirror)
+  (`mirror.adapters.markdown.documents`): no name on the way to one begins with `_` or
+  `.`, and none is under `assets/`. A space's `_tree.md` is navigation, and `assets/` holds
+  attached files: neither is a document.
 - **Each document** begins with its front matter, between two lines `---`, its keys,
   types and order those of the table above, every key present; then its body, as
   described there.
@@ -835,7 +863,7 @@ of the sign-in window and the saved session cookies (mode `0600`). Agents are ne
 given access to it: only `<data>/docs/` is shared with them.
 
 `sources.atlassian.fetch.adapters.sign_in` chooses how a run signs in (015): by an API
-token when the setting `api_token` is set, else by the saved session, whose cookies a
-run writes back as the site renews them. A run signed in by a token reads and writes
+token when the setting `accounts.atlassian.api_token` is set, else by the saved session,
+whose cookies a run writes back as the site renews them. A run signed in by a token reads and writes
 nothing under `<data>/session/`, and keeps nothing of the token, which the environment
 gives to each run and no file under `<data>` holds.
