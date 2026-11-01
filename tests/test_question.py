@@ -52,7 +52,6 @@ WRITING = {
     "index": ([], "index"),
     "login": (["atlassian", "--site", SITE], "login"),
     "prepare": ([], "sources"),
-    "sync": ([], "sync"),
 }
 # The work log's folder, which every test's environment names, so that sync has a source.
 WORKLOG_PATH = "KB_MCP_SOURCES__WORKLOG__PATH"
@@ -89,12 +88,10 @@ REFUSED_FIRST = [
     (["eval", "missing.yaml"], {}, "missing.yaml: not a file"),
     (["eval", str(Path(__file__).parent)], {}, f"{Path(__file__).parent}: not a file"),
     (["prepare"], {"PATH": ""}, "pandoc: not found on PATH"),
-    (["sync", "--include", "jira"], {}, "--include jira: not configured"),
-    (["sync", "--exclude", "worklog"], {}, "nothing to sync"),
-    (["sync"], PROJECTS, "accounts.atlassian.site: not set"),
-    (["sync", "--site", SITE, "--since", "yesterday"], PROJECTS, "--since"),
-    (["sync", "--site", SITE], PROJECTS | WITHOUT_EMAIL, "accounts.atlassian.email: not set"),
-    (["sync"], {"PATH": ""}, "pandoc: not found on PATH"),
+    (["fetch", "jira"], {}, "jira: not configured"),
+    (["fetch"], PROJECTS, "accounts.atlassian.site: not set"),
+    (["fetch", "--site", SITE, "--since", "yesterday"], PROJECTS, "--since"),
+    (["fetch", "--site", SITE], PROJECTS | WITHOUT_EMAIL, "accounts.atlassian.email: not set"),
 ]
 
 
@@ -258,7 +255,7 @@ def test_quiet_leaves_out_the_summary_of_a_refusal_but_keeps_it_for_a_question(
         *((name, "--yes") for name in sorted(WRITING)),
         ("prepare", "-y"),
         ("fetch", "--dry-run"),
-        ("sync", "--dry-run"),
+        ("prepare", "--dry-run"),
     ],
 )
 def test_yes_or_a_dry_run_runs_without_reading_stdin(
@@ -370,7 +367,7 @@ def test_what_needs_no_network_is_refused_before_anything_is_asked(
     assert tree(home) == before
 
 
-@pytest.mark.parametrize("name", ["fetch", "sync"])
+@pytest.mark.parametrize("name", ["fetch"])
 def test_back_is_no_option_of_download_nor_sync(
     name: str, home: Path, capsys: CaptureFixture[str]
 ) -> None:

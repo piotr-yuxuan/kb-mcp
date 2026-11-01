@@ -24,11 +24,10 @@ and the server's tools are read-only too.
 
 ## Refresh by hand
 
-The mirror changes only when someone runs `sync`, which downloads and mirrors the site,
-mirrors the work log, then rebuilds the index
-([`sync`](../../src/kb_mcp/cli/app/sync.py)), or its stages one at a time:
-`download`, `mirror`, `index`. Nothing runs on a schedule, and the server never fetches
-from the site.
+The mirror changes only when someone runs the commands that write it: `fetch`, `prepare`,
+`index` and `embed`, which the user composes
+([`run_each`](../../src/kb_mcp/cli/app/sources.py)). Nothing runs on a schedule, and the
+server never fetches from the site.
 
 - **Why.** The user chooses when the site is read, and is there when a session has
   expired: through single sign-on, only a person can sign in again. Coverage makes a run

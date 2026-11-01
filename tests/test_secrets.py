@@ -113,11 +113,12 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
             "utf-8",
         )
         options = ["--config", str(config), "--data-dir", str(data), "-vv"]
-        assert main(["sync", "--yes", "--since", "2026-10-02", *options]) == ExitStatus.FAILED
+        assert main(["fetch", "--yes", "--since", "2026-10-02", *options]) == ExitStatus.FAILED
+        assert main(["prepare", "--yes", *options]) == ExitStatus.OK
         by_token, files_by_token = list(sent), left(tmp_path)
         with monkeypatch.context() as session_alone:
             session_alone.delenv(CREDENTIAL)
-            assert main(["sync", "--yes", *options]) == ExitStatus.FAILED
+            assert main(["fetch", "--yes", *options]) == ExitStatus.FAILED
         assert main(["embed", "--yes", *options]) == ExitStatus.OK
         port = int(url.rpartition(":")[2].partition("/")[0])
         given = {"ports": [port], "limit": 1.0, "report": str(tmp_path / "report.json")}
@@ -186,7 +187,7 @@ def test_a_setting_refused_with_a_secret_as_its_value_does_not_echo_it(
     config = home.parent / "config.toml"
     config.write_text(written, "utf-8")
     options = ["--config", str(config), "--data-dir", str(home.parent / "data"), "-vv", *flags]
-    assert main(["sync", "--yes", *options]) == ExitStatus.REFUSED
+    assert main(["fetch", "--yes", *options]) == ExitStatus.REFUSED
     out, err = capsys.readouterr()
     assert ("error", "settings.refused") in said(err)
     assert f"{named}: " in err

@@ -41,21 +41,19 @@ positional arguments:
     prepare      turn what each source holds into the Markdown mirror
     reranker     check the reranking server and its model
     serve        serve the mirror over MCP on stdio
-    sync         bring the configured sources up to date: fetch each, prepare each,
-                 then the index
 
 options:
   -h, --help     show this help message and exit
   --version      show the version
 
 The commands that write under the data directory (embed, eval, eval-agents, eval-
-rerank, fetch, index, login, prepare, sync) first say what they will do, with the
-command to copy, then ask; --yes, or --dry-run where taken, runs them without asking,
-and with no terminal to ask on, they are refused. Exit statuses: 0 done; 1 something
-failed (a document, a file, a check, the endpoint), or the question was declined; 2
-refused before acting: settings, options or input, or no terminal to ask on; 3 sign in
-again: no session saved, it no longer holds, or the site refused the API token; 130
-stopped by Ctrl-C.
+rerank, fetch, index, login, prepare) first say what they will do, with the command to
+copy, then ask; --yes, or --dry-run where taken, runs them without asking, and with no
+terminal to ask on, they are refused. Exit statuses: 0 done; 1 something failed (a
+document, a file, a check, the endpoint), or the question was declined; 2 refused
+before acting: settings, options or input, or no terminal to ask on; 3 sign in again:
+no session saved, it no longer holds, or the site refused the API token; 130 stopped
+by Ctrl-C.
 ```
 
 ## `check`
@@ -603,55 +601,6 @@ options:
                         the tools to serve, comma-separated; by default, every one
   --rerank              rerank through the reranking server, whatever the settings say
   --no-rerank           search without the reranking server, whatever the settings say
-```
-
-## `sync`
-
-```text
-usage: kb-mcp sync [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
-                   -v | --log-level {debug,info,warning,error}] [--format {text,json}]
-                   [--summary {short,detailed}] [-y]
-                   [--include {confluence,jira,worklog} |
-                   --exclude {confluence,jira,worklog}] [--space SPACE]
-                   [--since SINCE] [--until UNTIL] [--max-file-mb MAX_FILE_MB]
-                   [--project PROJECT] [--allow-remote-embeddings] [--dry-run]
-
-options:
-  -h, --help            show this help message and exit
-  --config CONFIG       the settings file
-  --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
-  -q                    say errors alone, and write no result as text
-  -v                    the level info, or debug with -vv
-  --log-level {debug,info,warning,error}
-                        say what is of this level or above; warning by default
-  --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
-                        write what matters of the result, or all of it
-  -y, --yes             run without asking first, as a script does
-  --include {confluence,jira,worklog}
-                        sync this source alone, if configured; repeat for more
-  --exclude {confluence,jira,worklog}
-                        sync every configured source but this one; repeat for more
-  --space SPACE         a space key, in place of the setting's; repeat for more
-  --since SINCE         12h, 7d, 6mo, an ISO date or time, or all; by default, each
-                        target's last fetch
-  --until UNTIL         12h, 7d, or an ISO date or time, excluded; by default, now
-  --max-file-mb MAX_FILE_MB
-                        the largest file kept, in MB; 50 by default
-  --project PROJECT     a project key, in place of the setting's; repeat for more
-  --allow-remote-embeddings
-                        let this run send the mirror's text to an embedding endpoint
-                        off this machine
-  --dry-run             say what the run would fetch, and change where a source can
-                        tell; write nothing
-
-With --format json: exit_status, the run's; steps, a row per step and source, the
-fetch of each source that has a fetcher, then the prepare of each, then the index,
-each with its step (fetch, prepare, index), its source, null for the index, its
-outcome (done, failed, sign in, interrupted, not run) and its result, null when it
-gave none: a fetch's or a prepare's outcome, and what the source's own command gives,
-under downloaded or mirrored; the index's, as index gives it.
 ```
 
 ## Exit statuses

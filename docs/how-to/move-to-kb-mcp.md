@@ -193,7 +193,7 @@ the former name:
 - **A row per source and step.** `sync`, `download` and `mirror` write a row for each
   source and step, under `steps` with `--format json`. `sync --include confluence`
   prepares Confluence alone: [bring every source up to
-  date](sync.md#3-choose-among-the-sources) says what that leaves.
+  date](refresh.md#3-take-some-of-the-sources) says what that leaves.
 - **A stray `.md` file under the mirror is read.** The index reports it as a file without
   front matter, and exits 1, where it was ignored: move it out of `docs/`.
 

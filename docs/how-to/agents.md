@@ -9,7 +9,7 @@ read-only, for agents that prefer files.
 - The command is installed, so that `kb-mcp` is on your `PATH`, for
   instance with `uv tool install <path of this repository>`.
 - The mirror is built, and so is its index: `sync` builds both, from Confluence, Jira
-  and the work log alike ([bring every source up to date](sync.md)); or `mirror`, from
+  and the work log alike ([bring every source up to date](refresh.md)); or `mirror`, from
   Confluence and Jira, then:
 
   ```bash

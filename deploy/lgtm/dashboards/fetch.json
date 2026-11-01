@@ -474,6 +474,34 @@
           "tableType": "traces"
         }
       ]
+    },
+    {
+      "id": 12,
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 24,
+        "h": 10
+      },
+      "type": "table",
+      "title": "Sources, as spans",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"kb-mcp\" && name = \"fetch.source\" } | select(span.kb_mcp.source, span.kb_mcp.outcome)",
+          "limit": 20,
+          "tableType": "traces"
+        }
+      ]
     }
   ]
 }

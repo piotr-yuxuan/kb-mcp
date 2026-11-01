@@ -536,8 +536,8 @@ whose title changed, and a file not read holds back the files of what it builds:
 one for `todo.org` or `todo.org_archive`, on which days, meetings and entries' numbers
 draw; for a transcript, its own; for a folder not listed, or the files past the bound,
 the transcripts under it, but one whose id a file found takes, whose copy then replaces
-it. Each problem says what it held back, as `worklog.problem` ([sync's
-telemetry](telemetry/sync.md)), at each run until it is fixed.
+it. Each problem says what it held back, as `worklog.problem` ([prepare's
+telemetry](telemetry/prepare.md)), at each run until it is fixed.
 
 - The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
   a day among its children, whatever its title. A **day** is a heading at level 1, or 2
@@ -567,8 +567,8 @@ telemetry](telemetry/sync.md)), at each run until it is fixed.
   that the file's path gives, since a move under `archive/` keeps the id and org
   rewrites no link; that transcript's link `summary` names it back; a `:MEETING:` that
   reaches no file found links nothing, and
-  `worklog.unlinked` counts it, a warning that holds no removal back ([sync's
-  telemetry](telemetry/sync.md)). A day and a meeting begin at level 1, what joins them
+  `worklog.unlinked` counts it, a warning that holds no removal back ([prepare's
+  telemetry](telemetry/prepare.md)). A day and a meeting begin at level 1, what joins them
   at level 2.
 - An **entry** is any other top-level heading, a child of the journal that is no day, or
   the journal's own lines above its children when they hold text besides its planning

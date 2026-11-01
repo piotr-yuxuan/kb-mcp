@@ -18,7 +18,7 @@ and timed, never a span of its own: a span each would make a run's trace too lar
 | `prepare.start` | info | `sources`, `dry_run` | The sources that the run takes, in their order, and whether it only counts |
 | `prepare.source` | info | `source`, `outcome` | A source's row ended: `done`, `failed` or, in a dry run of a source that cannot count, `not run` |
 | `prepare.end` | info | `status`, `sources` | The run's exit status, and how each row ended |
-| `prepare.refused` | error | `reason` | What the run cannot go on with, before its first row: a role that does not load, or a work log that is not a folder: exit 2 |
+| `prepare.refused` | error | `reason` | What the run cannot go on with, before its first row: a role that does not load, naming the source and the path, or what a role's preflight refuses, after its source and its step (`source 'worklog': prepare: ...`), such as a work log that is not a folder, or types that are not all the kinds of one source: exit 2 |
 | `prepare.interrupted` | warning | `source` | Ctrl-C stopped the row of this source, none once every row ended: later rows do not run, exit 130 |
 | `prepare.placed` | info | `source`, `documents`, `assets`, `problems` | The store is read and every document placed, so that links reach the other source's: the source's documents placed in the mirror, the files they attach, its problems so far |
 | `prepare.document` | debug | `path`, `id`, `title`, `seconds` | A document's file is built, or fails to be: its path in the mirror, its id or key, its title |

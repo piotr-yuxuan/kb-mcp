@@ -7,8 +7,8 @@ says why. The example here is a folder of text files, read in place, under the n
 source, outside `src/`, which [its test](../../tests/test_memo_source.py) registers and runs.
 
 You need a checkout whose checks pass, as [your first change](../tutorials/first-change.md)
-shows, and pandoc on `PATH`: `sync` refuses a run without it, whichever sources it takes
-([`register`](../../src/kb_mcp/cli/options/sync.py) names it among its programs).
+shows, and pandoc on `PATH`: `prepare` refuses a run without it, whichever sources it takes
+([`register`](../../src/kb_mcp/cli/options/prepare.py) names it among its programs).
 
 ## 1. Choose its name
 
@@ -47,7 +47,7 @@ Create `src/kb_mcp/sources/notes/prepare/app/__init__.py`:
 
 The table is a Pydantic model of `[sources.notes]`. Its first setting names what the source
 covers: a source whose first setting is not set is left out, as not configured
-([`chosen`](../../src/kb_mcp/cli/domain/sync.py)). `TABLE` refuses a misspelt key, and
+([`chosen`](../../src/kb_mcp/cli/domain/sources.py)). `TABLE` refuses a misspelt key, and
 `LocalPath` reads a folder, absolute or under `~`
 ([`TABLE`](../../src/kb_mcp/config/domain/settings.py),
 [`LocalPath`](../../src/kb_mcp/config/domain/settings.py)). A setting is text, a flag, a
@@ -249,10 +249,10 @@ and add it to the registry, in name order:
 SOURCES = (CONFLUENCE, JIRA, NOTES, WORKLOG)
 ```
 
-That one line makes `[sources.notes]` a setting, `--include notes` a choice of `sync`, and
+That one line makes `[sources.notes]` a setting, `notes` a choice of `prepare`, and
 its `preparers` part of each run that takes it
 ([`settings_model`](../../src/kb_mcp/config/domain/settings.py),
-[`sync`](../../src/kb_mcp/cli/app/sync.py)).
+[`run_each`](../../src/kb_mcp/cli/app/sources.py)).
 
 ## 7. Give it its place in the contracts
 
@@ -332,7 +332,7 @@ def test_a_note_is_mirrored_found_and_gone_with_its_file(tmp_path: Path) -> None
 
 Some tests name the registry whole, or give every setting by its path, so they name a new
 source too: those of `tests/test_registry.py`, `tests/test_roles.py`, `tests/test_settings.py`,
-`tests/test_cli.py` and `tests/test_sync.py` that do fail until they do, each naming what it
+`tests/test_cli.py` and `tests/test_sources.py` that do fail until they do, each naming what it
 lacks, such as `KeyError: 'sources.notes.folder'`. Run them all, and give each its line:
 
 ```bash
@@ -382,21 +382,22 @@ search_mode: lexical
 sources.notes.folder: /home/you/notes-try/notes
 ```
 
-`sync` takes it alone, the one source that this file configures, with no fetch row, as it
-has no fetcher:
+`prepare` takes it, the one source read in place that this file configures, after each
+source that keeps a store, each with nothing to do; `fetch` does not offer it, as it has no
+fetcher. Then `index` reads the mirror:
 
 ```bash
-uv run kb-mcp sync --yes --config ~/notes-try/config.toml
+uv run kb-mcp prepare --yes --config ~/notes-try/config.toml
+uv run kb-mcp index --yes --config ~/notes-try/config.toml
 ```
 
 ```text
-prepare notes: done
+notes: done
   written: 1
   unchanged: 0
   removed: 0
-index: done
-  documents: 1
-  sections: 1
+documents: 1
+sections: 1
 ```
 
 Remove `~/notes-try` once you have seen it.

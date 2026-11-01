@@ -22,8 +22,8 @@ the command and those who change its code, unless it is marked for contributors.
   in your browser and a first download, on the user's machine.
 - [Move to kb-mcp](how-to/move-to-kb-mcp.md): a machine set up under the program's former
   name moved, its settings, data and variables, and what other programs keep of it.
-- [Bring every source up to date](how-to/sync.md): `sync`, which downloads and mirrors
-  each source that the settings name, then rebuilds the index, in one command.
+- [Bring every source up to date](how-to/refresh.md): `fetch`, `prepare`, `index` and
+  `embed`, each one step, which you compose.
 - [Mirror the work log](how-to/work-log.md): a folder of org files mirrored as Markdown
   beside Confluence and Jira, read in place, indexed and served to agents.
 - [Sign in with an API token kept by sops](how-to/api-token-with-sops.md): a token in
@@ -76,8 +76,7 @@ the command and those who change its code, unless it is marked for contributors.
   [`fetch`](reference/telemetry/fetch.md),
   [`index`](reference/telemetry/index.md), [`login`](reference/telemetry/login.md),
   [`model`](reference/telemetry/model.md), [`prepare`](reference/telemetry/prepare.md),
-  [`reranker`](reference/telemetry/reranker.md), [`serve`](reference/telemetry/serve.md)
-  and [`sync`](reference/telemetry/sync.md).
+  [`reranker`](reference/telemetry/reranker.md) and [`serve`](reference/telemetry/serve.md).
 
 ## Explanation
 

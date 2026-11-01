@@ -57,12 +57,13 @@ def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     )
     write(data / "docs", page("196845", f"Kafka {UNIQUE}"))
     monkeypatch.setenv("HOME", str(home))
-    assert main(["sync", "--yes"]) == 0
+    assert main(["prepare", "--yes", "worklog"]) == 0
+    assert main(["index", "--yes"]) == 0
     return home
 
 
 def library(home: Path) -> Library:
-    """Answer from the index that ``sync`` built in the home's data directory."""
+    """Answer from the index built in the home's data directory."""
     data = home.parent / "data"
     return Library(data / "index.sqlite", data / "docs")
 

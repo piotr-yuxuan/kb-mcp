@@ -39,7 +39,7 @@ RANKED: tuple[tuple[Outcome, ExitStatus], ...] = (
 def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, object]:
     """Give the value of each option by its flag, None when not given.
 
-    ``add_option`` keeps an option's value under its flag itself.
+    ``add_source_options`` keeps an option's value under its flag itself.
     """
     return {flag: getattr(arguments, flag) for flag in flags}
 

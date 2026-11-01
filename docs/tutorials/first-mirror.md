@@ -144,7 +144,7 @@ all` takes the whole space. First, a dry run, which reads the site, says what it
 fetch, and writes nothing:
 
 ```bash
-kb-mcp sync --dry-run --since all
+kb-mcp fetch --dry-run --since all
 ```
 
 It starts with each setting that it reads, defaults included (the model, the search
@@ -173,7 +173,10 @@ index: not run
 Now the run itself:
 
 ```bash
-kb-mcp sync --since all
+kb-mcp fetch --since all
+kb-mcp prepare
+kb-mcp index
+kb-mcp embed
 ```
 
 It starts as the dry run did:
@@ -264,7 +267,7 @@ server ranks by words alone, and says so.
 You have a mirror of one space on your machine, an index that ranks it by words and by
 meaning, and an agent that answers from it and says how old its evidence is. From here:
 
-- [Bring every source up to date](../how-to/sync.md): `sync` again, without `--since`,
+- [Bring every source up to date](../how-to/refresh.md): `fetch` again, without `--since`,
   fetches what changed since the last fetch, only the revisions not yet stored, and asks
   again for what failed, so that a run that failed leaves no hole
   ([refresh by hand](../explanation/trade-offs.md#refresh-by-hand)); more spaces, and

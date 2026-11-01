@@ -5,7 +5,7 @@ store when it holds the piece's text, else from the model, then kept there. A pi
 whose text the model refuses has no vector, and its document is named. Reading the files,
 joining persons and embedding are each a span; files and pieces are counted, as
 ``docs/reference/telemetry/index.md`` and ``embed.md`` list it. ``refresh`` is what
-``index``, ``embed`` and ``sync`` run alike: ``index_mirror``'s build, which opens the
+``index`` and ``embed`` run alike: ``index_mirror``'s build, which opens the
 endpoint, if any, then builds; then, for an index by meaning, the prune of the vector
 store to what the indexes on disk read.
 """

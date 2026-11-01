@@ -5,7 +5,7 @@ log in name order; any registry that the entry is given is refused, naming the
 declaration, for a name off the rule, ``assets``, a name declared twice, a name that a
 model holds, an account that two declarations name differently, no setting, no role,
 settings that are not its table's, or an option that is no flag, that another source
-declares otherwise, or that is ``sync``'s own; an option's value takes no name that the
+declares otherwise, or that is ``fetch``'s own; an option's value takes no name that the
 program holds; each
 declaration names its table, whose settings are the declaration's; Confluence and Jira
 sign in with one account,
@@ -15,7 +15,6 @@ leaves out has no setting (criterion 3).
 
 from __future__ import annotations
 
-import json
 import pkgutil
 import re
 from dataclasses import replace
@@ -24,7 +23,8 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import BaseModel
 
-from kb_mcp.cli.main import main
+from kb_mcp.cli.domain.sources import given
+from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import TABLE, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.declared import ATLASSIAN, CONFLUENCE, JIRA, SINCE
@@ -120,7 +120,7 @@ def test_a_source_that_names_some_of_its_kinds_is_refused_and_no_file_removed(
 ) -> None:
     """Plan 030: Atlassian's preparer removes the files of all of a source's kinds.
 
-    So a registry that names the pages alone would remove every blog post: ``sync`` is
+    So a registry that names the pages alone would remove every blog post: ``prepare`` is
     refused before any row, naming the source and its types.
     """
     registry = (replace(CONFLUENCE, types=types), JIRA, WORKLOG)
@@ -134,10 +134,10 @@ def test_a_source_that_names_some_of_its_kinds_is_refused_and_no_file_removed(
     post = data / "docs" / "confluence" / "MFS" / "blog" / "600-news.md"
     post.parent.mkdir(parents=True)
     post.write_text("kept", "utf-8")
-    given = ["sync", "--yes", "--include", "confluence", "--config", str(config)]
+    given = ["prepare", "confluence", "--yes", "--config", str(config)]
     assert main([*given, "--data-dir", str(data)], registry) == ExitStatus.REFUSED
     err = capsys.readouterr().err
-    assert "sync.refused" in err
+    assert "prepare.refused" in err
     assert f"source 'confluence': prepare: types {named}: not all the kinds of one" in err
     assert post.read_text("utf-8") == "kept"
 
@@ -273,7 +273,7 @@ class Tags(BaseModel):
     ids=["numbers", "paths", "a table"],
 )
 @pytest.mark.parametrize(
-    "command", [["check"], ["sync", "--include", "added", "--yes"]], ids=["check", "sync"]
+    "command", [["check"], ["prepare", "added", "--yes"]], ids=["check", "prepare"]
 )
 def test_a_table_that_a_command_could_not_read_is_refused_naming_its_source(
     tmp_path: Path, table: type[BaseModel], said: str, command: list[str]
@@ -326,14 +326,35 @@ def test_a_source_that_names_no_role_is_refused_naming_it(tmp_path: Path) -> Non
 def test_an_option_takes_no_name_that_the_program_holds(
     tmp_path: Path, capsys: CaptureFixture[str], flag: str
 ) -> None:
-    """Its flag is another's name for what the program holds: its value replaces none of it."""
-    folder = tmp_path / "log"
-    folder.mkdir()
+    """Its flag is another's name for what the program holds: its value replaces none of it.
+
+    A whole ``fetch`` runs, its summary and its command to copy carrying it, and it asks the
+    site nothing, as no session is saved.
+    """
+    option = Option(flag=flag, help="one of the source's own")
+    issues = ResourceType(name="more", summary="more", read="searched", options=(option,))
+    registry = (CONFLUENCE, replace(JIRA, types=(*JIRA.types, issues)), WORKLOG)
+    arguments = parser(sources=registry).parse_args(["fetch", flag, "kept"])
+    assert given(arguments, (flag,)) == {flag: "kept"}
+    assert arguments.sources == registry
+    assert arguments.command.name == "fetch"
+    assert (arguments.dry_run, arguments.level, arguments.quiet) == (False, "warning", False)
     config = tmp_path / "config.toml"
-    config.write_text(f"[sources.worklog]\npath = {json.dumps(str(folder))}\n", "utf-8")
-    registry = (CONFLUENCE, JIRA, declaring(Option(flag=flag, help="one of the source's own")))
-    given = ["sync", flag, "kept", "--dry-run", "--config", str(config)]
-    assert main([*given, "--data-dir", str(tmp_path / "data")], registry) == ExitStatus.OK
+    config.write_text('[accounts.atlassian]\nsite = "https://x.atlassian.net"\n', "utf-8")
+    command = [
+        "fetch",
+        "jira",
+        flag,
+        "kept",
+        "--project",
+        "PRB",
+        "--dry-run",
+        "--config",
+        str(config),
+    ]
+    assert (
+        main([*command, "--data-dir", str(tmp_path / "data")], registry) == ExitStatus.SIGN_IN_AGAIN
+    )
     assert f"{flag} kept" in capsys.readouterr().err
 
 
@@ -345,7 +366,7 @@ def test_an_option_takes_no_name_that_the_program_holds(
 def test_a_flag_that_two_sources_declare_otherwise_is_refused_naming_both(
     tmp_path: Path, option: Option
 ) -> None:
-    """One flag of ``sync``: one definition would change for every source."""
+    """One flag of ``fetch``: one definition would change for every source."""
     registry = (CONFLUENCE, JIRA, declaring(option))
     with pytest.raises(
         ValueError, match=r"^source 'worklog': option --since declared otherwise by 'confluence'$"
@@ -358,17 +379,23 @@ def test_a_flag_that_two_sources_declare_alike_is_one_option(
 ) -> None:
     """The work log taking ``--since`` as Confluence does: one flag, which each reads."""
     registry = (CONFLUENCE, JIRA, declaring(SINCE))
-    given = ["sync", "--since", "7d", "--dry-run", "--config", str(tmp_path / "none.toml")]
+    given = ["fetch", "--since", "7d", "--dry-run", "--config", str(tmp_path / "none.toml")]
     assert main(given, registry) == ExitStatus.REFUSED
-    assert "nothing to sync" in capsys.readouterr().err
+    assert "nothing to fetch" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("flag", ["--yes", "--dry-run", "--config", "--allow-remote-embeddings"])
-def test_an_option_that_takes_a_flag_of_sync_s_own_is_refused_naming_it(flag: str) -> None:
+@pytest.mark.parametrize("flag", ["--yes", "--dry-run", "--config", "--format"])
+def test_an_option_that_takes_a_flag_of_fetch_s_own_is_refused_naming_it(flag: str) -> None:
     """In every command, as the registry's other rules: ``--help`` builds every parser."""
-    registry = (CONFLUENCE, JIRA, declaring(Option(flag=flag, help="another")))
+    issues = ResourceType(
+        name="issues",
+        summary="a project's issues",
+        read="searched",
+        options=(Option(flag=flag, help="another"),),
+    )
+    registry = (CONFLUENCE, replace(JIRA, types=(issues,)), WORKLOG)
     with pytest.raises(
-        ValueError, match=rf"^source 'worklog': option {flag}: a flag of sync's own"
+        ValueError, match=rf"^source 'jira': option {flag}: a flag of the command's own"
     ):
         main(["--help"], registry)
 
@@ -456,22 +483,23 @@ def test_a_source_that_the_registry_leaves_out_has_no_setting(
 
 
 @pytest.mark.parametrize("left_out", ["worklog", "confluence"])
-def test_a_source_that_the_registry_leaves_out_cannot_be_synced(
+def test_a_source_that_the_registry_leaves_out_cannot_be_prepared(
     tmp_path: Path, capsys: CaptureFixture[str], left_out: str
 ) -> None:
-    """Criterion 3: ``sync --include`` of it exits 2, argparse naming the choice refused.
+    """Criterion 3: ``prepare`` of it exits 2, argparse naming the choice refused.
 
     With every source registered, the same name is a choice, here refused as not
     configured, by the run's own check.
     """
     registry = tuple(each for each in SOURCES if each.name != left_out)
-    given = ["sync", "--yes", "--config", str(tmp_path / "none.toml"), "--include", left_out]
+    given = ["prepare", "--yes", "--config", str(tmp_path / "none.toml"), left_out]
     with pytest.raises(SystemExit) as stopped:
         main(given, registry)
     assert stopped.value.code == ExitStatus.REFUSED
     assert f"invalid choice: '{left_out}'" in capsys.readouterr().err
-    assert main(given) == ExitStatus.REFUSED
-    assert f"--include {left_out}: not configured" in capsys.readouterr().err
+    assert main(given) == (ExitStatus.REFUSED if left_out == "worklog" else ExitStatus.OK)
+    if left_out == "worklog":
+        assert f"{left_out}: not configured" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -484,14 +512,14 @@ def test_a_source_that_the_registry_leaves_out_cannot_be_synced(
         ("preparers", "kb_mcp.sources.atlassian.fetch.app.fetcher", "not a Preparer"),
     ],
 )
-def test_a_role_that_does_not_load_refuses_the_sync_of_its_source_naming_the_path(
+def test_a_role_that_does_not_load_refuses_the_run_of_its_source_naming_the_path(
     tmp_path: Path, capsys: CaptureFixture[str], role: str, path: str, said: str
 ) -> None:
     """Criterion 3: a declaration naming a role that does not load, or is not the role.
 
-    ``sync --include`` of it exits 2 before any row, naming the source and the path;
-    with the registry's own declaration, the same run goes on, its fetch to sign in,
-    no session being saved.
+    The command of its role, of that source, exits 2 before any row, naming the source and
+    the path; with the registry's own declaration, the same run goes on, a fetch to sign
+    in, no session being saved, a prepare not counted.
     """
     named = path if role == "fetcher" else (path,)
     registry = (replace(CONFLUENCE, **{role: named}), JIRA, WORKLOG)
@@ -502,14 +530,15 @@ def test_a_role_that_does_not_load_refuses_the_sync_of_its_source_naming_the_pat
         "utf-8",
     )
     data = tmp_path / "data"
-    given = ["sync", "--yes", "--config", str(config), "--data-dir", str(data)]
-    given += ["--include", "confluence", "--dry-run", "--format", "json"]
+    step, status = ("fetch", ExitStatus.SIGN_IN_AGAIN) if role == "fetcher" else ("prepare", 0)
+    given = [step, "--yes", "--config", str(config), "--data-dir", str(data)]
+    given += ["confluence", "--dry-run", "--format", "json"]
     assert main(given, registry) == ExitStatus.REFUSED
     err = capsys.readouterr().err
-    assert "sync.refused" in err
+    assert f"{step}.refused" in err
     assert f"source 'confluence': {path}: {said}" in err
     assert not data.exists()
-    assert main(given) == ExitStatus.SIGN_IN_AGAIN
+    assert main(given) == status
 
 
 @pytest.mark.parametrize(
@@ -520,7 +549,7 @@ def test_a_role_that_does_not_load_refuses_the_sync_of_its_source_naming_the_pat
     ],
     ids=["a syntax error", "its own error at import"],
 )
-def test_a_role_whose_module_breaks_on_import_refuses_the_sync_naming_the_path(
+def test_a_role_whose_module_breaks_on_import_refuses_the_run_naming_the_path(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], body: str, said: str
 ) -> None:
     """Criterion 3 and ``sources.md``: whatever its import raises, exit 2, not a traceback."""
@@ -533,9 +562,9 @@ def test_a_role_whose_module_breaks_on_import_refuses_the_sync_naming_the_path(
         '[sources.confluence]\nspaces = ["MFS"]\n',
         "utf-8",
     )
-    given = ["sync", "--yes", "--config", str(config), "--data-dir", str(tmp_path / "data")]
-    assert main([*given, "--include", "confluence"], registry) == ExitStatus.REFUSED
+    given = ["prepare", "--yes", "--config", str(config), "--data-dir", str(tmp_path / "data")]
+    assert main([*given, "confluence"], registry) == ExitStatus.REFUSED
     err = capsys.readouterr().err
-    assert "sync.refused" in err
+    assert "prepare.refused" in err
     assert "source 'confluence': kb_broken: does not load:" in err
     assert said in err

@@ -46,41 +46,35 @@ flowchart LR
 | `index` | the mirror; the user's alias file, if any; the endpoint, for new texts | `<data>/index.sqlite`, `<data>/vectors.sqlite` | the index built aside, then renamed into place; the vector store pruned under its lock, its deletions one transaction | the file is skipped and named; a name that could be several people is joined to none, and named; without the endpoint, or with an alias file refused, the old index stays; a prune it cannot trust deletes nothing |
 | `serve` | the index; the endpoint, for queries; the reranking server, when on | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why; without the reranker, it keeps its order and says why |
 
-## Sync: the stages in one command
+## The stages, each one command
 
-[`sync`](../../src/kb_mcp/cli/app/sync.py) runs, in this order, the stages
-that a refresh needs: the fetch of each source taken that has a fetcher, a download of
-the spaces or projects that its table names; the prepare of each, `mirror` for
-Confluence's and Jira's, the work log's step for its own; then the index, from the
-whole mirror, whichever sources the run took
-([`index`](../../src/kb_mcp/cli/app/sync.py)). Each calls the same function
-as its own command:
-[`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py),
-[`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py),
-[`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) and
-[`index_mirror`](../../src/kb_mcp/search/app/indexing.py). A source is a
-declaration that names its table and its roles
-([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and `--include` and
-`--exclude` choose among those configured
-([`chosen`](../../src/kb_mcp/cli/domain/sync.py));
+A refresh is what the user composes: `fetch`, each source taken that has a fetcher, a
+download of the spaces or projects that its table names
+([`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)); `prepare`, each
+source's preparer, [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) for
+Confluence's and Jira's,
+[`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) for the work log;
+`index`, from the whole mirror, whichever sources were prepared, by words alone; and
+`embed`, the same build with vectors, then the prune
+([`index_mirror`](../../src/kb_mcp/search/app/indexing.py)). `fetch` and `prepare` share one
+use case ([`run_each`](../../src/kb_mcp/cli/app/sources.py)). A source is a declaration that
+names its table and its roles ([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and the
+names given choose among those that a command can take
+([`chosen`](../../src/kb_mcp/cli/domain/sources.py));
 [sources](sources.md#three-roles-not-a-bundle) says why a source is put together so.
 
-- **Writes** what its stages write, each as the sections below say.
-- **One step's failure** stops no other: each step reads what is on disk, so the work
-  log is mirrored while the site asks to sign in again, and the index is built from what
-  the mirror holds. What can be refused is refused before the first step: a space or
+- **Writes** what each stage writes, as the sections below say.
+- **One row's failure** stops no other: each role reads what is on disk, and the next
+  command reads what the last one left, so that the work log is mirrored while the site asks
+  to sign in again. What can be refused is refused before the first row: a space or
   project with nowhere to start
   ([`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py)),
   or a work log that is not a folder
   ([`SourcesRefusedError`](../../src/kb_mcp/cli/app/sources.py)). Ctrl-C ends
-  the step it stops and runs no later one. The exit status ranks how the steps ended:
+  the row it stops and runs no later one. The exit status ranks how the rows ended:
   interrupted, then to sign in again, then failed
   ([`RANKED`](../../src/kb_mcp/cli/domain/sources.py)).
-- **Offline**, all but its download: `sync --include worklog` reads nothing from the
-  site.
-
-`download`, `mirror` and `index` stay, for one stage at a time.
-
+- **Offline**, all but `fetch`: `prepare` and `index` read nothing from the site.
 ## Download: from the site to the raw store
 
 [`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) reads the

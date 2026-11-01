@@ -25,7 +25,7 @@ fetched in the run's trace, in its space's or project's span.
 | `fetch.start` | info | `sources`, `dry_run` | The sources that the run takes, in their order, and whether it only plans |
 | `fetch.source` | info | `source`, `outcome` | A source's row ended: `done`, `failed` or `sign in` |
 | `fetch.end` | info | `status`, `sources` | The run's exit status, and how each row ended |
-| `fetch.refused` | error | `source`, `reason` | A role that does not load, or what a fetcher's preflight refuses, such as a period or a store's record, stops the run before its first row, exit 2, without `source`. Such a record damaged once the run began fails that source's row alone, naming it, and the next rows go on |
+| `fetch.refused` | error | `source`, `reason` | A role that does not load, naming the source and the path, or what a fetcher's preflight refuses, after its source and its step (`source 'confluence': fetch: ...`), such as a period or a store's record, of what answered as gone for Confluence's fetch alone, stops the run before its first row, exit 2, without `source`. Such a record damaged once the run began fails that source's row alone, naming it, and the next rows go on |
 | `fetch.store_busy` | error | `source`, `store`, `hint` | Another run writes the raw store: the source's fetch fails, exit 1 |
 | `fetch.interrupted` | warning | `source` | Ctrl-C stopped the row of this source, none once every row ended: later rows do not run, exit 130 |
 | `fetch.sign_in_needed` | error | `source`, `hint` | The session or the token no longer opens the site for the source's fetch: exit 3 |

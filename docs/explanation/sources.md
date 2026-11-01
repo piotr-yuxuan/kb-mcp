@@ -4,7 +4,7 @@ The mirror has three sources: Confluence and Jira, on the Atlassian site, and th
 work log, a folder of org files on this machine. A source is a declaration and the code
 that it names, and the three are declared alike, so that a new one is a package and one
 line of a registry. This page says why a source is put together as it is; [bring every
-source up to date](../how-to/sync.md) and [mirror the work log](../how-to/work-log.md)
+source up to date](../how-to/refresh.md) and [mirror the work log](../how-to/work-log.md)
 say how to use them, and [add a source](../how-to/add-a-source.md) how to write one.
 
 ## Three roles, not a bundle
@@ -101,7 +101,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   ([`plan_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)), and
   Atlassian's does not run.
 - **A result** is a record, which `--format json` writes as every result, and whose `text`
-  its row writes ([`rows_text`](../../src/kb_mcp/cli/commands/_rows.py)). Each keeps its
+  its row writes ([`text`](../../src/kb_mcp/cli/commands/sources.py)). Each keeps its
   own problems: the Atlassian prepare's
   [`Problem`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) has a place and a
   reason, the work log's
@@ -160,9 +160,9 @@ Its rules hold for any registry that the entry is given
 name off `[a-z][a-z0-9]*` ([`SOURCE_NAME`](../../src/kb_mcp/kernel/names.py)), or `assets`;
 two of one name; two declarations naming one account differently; a source naming no
 setting, or neither a fetcher nor a preparer; an option that another source declares
-otherwise, or that takes a flag of `sync`'s own
-([`register`](../../src/kb_mcp/cli/options/sync.py)). An option's value is kept under its
-flag itself ([`add_option`](../../src/kb_mcp/cli/options/_common.py)), so no flag takes a
+otherwise, or that takes a flag of `fetch`'s own
+([`add_source_options`](../../src/kb_mcp/cli/options/_sources.py)). An option's value is kept
+under its flag itself, so no flag takes a
 name that the program holds. Once the arguments are parsed, so that `--help` imports no
 table, the entry also refuses a table whose settings are not those that its declaration
 names ([`tables`](../../src/kb_mcp/sources/registry.py)), whose name a model already holds,
@@ -324,27 +324,27 @@ package, but each is a source: a row, a report and a set of files of its own.
   0.41 s more on a store of 1,474 documents, against 2.3 s for a `mirror` that the cache
   spares pandoc, and 31 s for one that it does not.
 
-## `sync` through the registry
+## `fetch` and `prepare` through the registry
 
-[`sync`](../../src/kb_mcp/cli/app/sync.py) is one use case over the sources registered and
-three steps: every `preflight`, then every fetcher, every preparer, then the index. Each row
-runs even when an earlier one failed, since the next reads what is on disk, Ctrl-C stops
-the rest, and the rows rank the exit status
-([`RANKED`](../../src/kb_mcp/cli/domain/sources.py)). Rows run from `fetch confluence` to
-`prepare worklog`, then `index`, each with its result's text
-([`Row`](../../src/kb_mcp/cli/domain/rows.py)); [the index](../../src/kb_mcp/cli/app/sync.py)
-stays apart, being no source.
+[`run_each`](../../src/kb_mcp/cli/app/sources.py) is one use case over the sources taken:
+every `preflight`, then each role, a row each. Each row runs even when an earlier one failed,
+since the next reads what is on disk, Ctrl-C stops the rest, and the rows rank the exit status
+([`RANKED`](../../src/kb_mcp/cli/domain/sources.py)). A row names its source, with its
+result's text ([`Row`](../../src/kb_mcp/cli/domain/rows.py)); `index` and `embed` stay apart,
+reading the mirror whatever sources it holds.
 
-What it says of a source comes from the declarations: `--include` and `--exclude` take the
-registry's names ([`register`](../../src/kb_mcp/cli/options/sync.py)); a source is configured
-when its first setting is set ([`chosen`](../../src/kb_mcp/cli/domain/sync.py)); and so
-do the summary's lines ([`described`](../../src/kb_mcp/cli/domain/sync.py)), the settings not
-applied of the sources left out
-([`unapplied`](../../src/kb_mcp/cli/options/sync.py)), the light refusals
-([`refused`](../../src/kb_mcp/cli/options/sync.py)) and the options, each flag once.
-`fetch` and `prepare` run each source's role, a row each, by one run
-([`run`](../../src/kb_mcp/cli/commands/sources.py)). `login` and `doctor` stay the
-Atlassian package's commands.
+What a run says of a source comes from the declarations: the names that each command takes
+are the registry's ([`register`](../../src/kb_mcp/cli/options/fetch.py),
+[`register`](../../src/kb_mcp/cli/options/prepare.py)); a source is configured when its first
+setting is set ([`chosen`](../../src/kb_mcp/cli/domain/sources.py)); and so do the summary's
+lines ([`described`](../../src/kb_mcp/cli/domain/sources.py)), the settings not applied of the
+sources left out ([`unapplied`](../../src/kb_mcp/cli/options/_sources.py)), the light refusals
+([`refused`](../../src/kb_mcp/cli/options/_sources.py)) and the options, each flag once. A
+source's options and light checks are its fetch's, so a site not set refuses `fetch`, never
+`prepare`. Both commands run by one module
+([`run`](../../src/kb_mcp/cli/commands/sources.py)). `login` and `doctor` read each account
+from the registry: its run, its checks and its light rules, each named by its
+[`Account`](../../src/kb_mcp/sources/declaration.py).
 
 ## Kept for the extras, later
 

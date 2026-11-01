@@ -110,25 +110,33 @@ def planned(step: str, runs: Sequence[Run]) -> list[Planned]:
     return [Planned(run=run, preflight=each.preflight, act=each.prepare) for run, each in preparers]
 
 
-def run_each(step: str, runs: Sequence[Run], *, dry_run: bool) -> Ran:
+def run_each(step: str, runs: Sequence[Run]) -> Ran:
     """Run each source's role for this step; return a row each, and the status that they rank.
 
-    Raises ``SourcesRefusedError`` for a role that does not load, and for what a role's
-    ``preflight`` refuses, both before the first row. Ctrl-C ends the row it stops as
-    interrupted, and each later one as not run; the run is interrupted even when Ctrl-C
-    comes once every row has ended. The status is the first of ``RANKED``'s outcomes that
-    the run had, else OK. A step's ``start`` and ``end`` say at INFO the sources planned
-    and how each ended, its ``source`` each as it ends; its ``interrupted``, a warning,
-    which source Ctrl-C stopped.
+    Each run's ``dry_run`` is what its role reads, and the events follow the runs. Raises
+    ``SourcesRefusedError`` for a role that does not load, and for what a role's
+    ``preflight`` refuses, after its source's name and the step, both before the first
+    row. Ctrl-C ends the row it stops as interrupted, and each later one as not run; the
+    run is interrupted even when Ctrl-C comes once every row has ended. The status is the
+    first of ``RANKED``'s outcomes that the run had, else OK. A step's ``start`` and ``end``
+    say at INFO the sources planned and how each ended, its ``source`` each as it ends; its
+    ``interrupted``, a warning, which source Ctrl-C stopped.
     """
     plans = planned(step, runs)
-    refusal = next((said for each in plans if (said := each.preflight(each.run))), None)
+    refusal = next(
+        (
+            f"source {each.run.declared.name!r}: {step}: {said}"
+            for each in plans
+            if (said := each.preflight(each.run))
+        ),
+        None,
+    )
     if refusal is not None:
         raise SourcesRefusedError(refusal)
     log = structlog.get_logger()
     recorded = RECORDED[step]
     names = [each.run.declared.name for each in plans]
-    log.info(recorded.start, sources=names, dry_run=dry_run)
+    log.info(recorded.start, sources=names, dry_run=any(run.dry_run for run in runs))
     rows: list[Row] = []
     outcomes: set[Outcome] = set()
     try:

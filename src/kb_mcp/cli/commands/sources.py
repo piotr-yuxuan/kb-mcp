@@ -56,7 +56,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran 
         for declared in taken
     ]
     try:
-        ran = run_each(step, runs, dry_run=arguments.dry_run)
+        ran = run_each(step, runs)
     except SourcesRefusedError as error:
         structlog.get_logger().error(REFUSED[step], reason=str(error))
         return ExitStatus.REFUSED, None

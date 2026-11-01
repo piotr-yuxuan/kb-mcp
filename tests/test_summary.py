@@ -232,7 +232,7 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
 ) -> None:
     """At its default too, where no value is said to be ignored.
 
-    ``eval``'s --model replaces the model; ``sync`` by words alone embeds nothing.
+    ``eval``'s --model replaces the model; a ``prepare`` of the work log alone signs in nowhere.
     """
     monkeypatch.chdir(home)
     (home / "golden.yaml").write_text("", "utf-8")
@@ -241,16 +241,15 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
     err = capsys.readouterr().err
     assert f"\n  model: {DEFAULT_MODEL} (not applied: replaced by --model)\n" in err
     assert "ignored: " not in err
-    monkeypatch.setenv("KB_MCP_SEARCH_MODE", "lexical")
     monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(home))
-    assert main(["sync", "--yes", "--config", none]) == 1  # no document to index
-    summary = capsys.readouterr().err.split("kb-mcp sync")[0]
+    assert main(["prepare", "--yes", "--config", none, "worklog"]) == 0
+    summary = capsys.readouterr().err.split("kb-mcp prepare")[0]
     marked = [
         line.strip().partition(": ")[0]
         for line in summary.splitlines()
-        if line.endswith(" (not applied: the lexical mode embeds nothing)")
+        if line.endswith(" (not applied: no source of the atlassian account in this prepare)")
     ]
-    assert marked == ["model", "chunking", "embedding_url", "embedding_api_key"]
+    assert marked == ["accounts.atlassian.site"]
 
 
 def test_settings_that_the_command_never_reads_are_ignored_in_detail_alone(

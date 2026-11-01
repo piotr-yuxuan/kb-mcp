@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from kb_mcp.kernel.output import Level
-    from kb_mcp.sources.declaration import Option
 
 # The level of each -v given, from none: warning, then info, then debug.
 VERBOSITY: tuple[Level, ...] = ("warning", "info", "debug")
@@ -111,25 +110,6 @@ def add_settings_options(
     data_dir.completer = DirectoriesCompleter()
     site = parser.add_argument("--site", help="the site, as https://<name>.atlassian.net")
     return (config, data_dir, site), {"data_dir": "data_dir", "site": SITE}
-
-
-def add_option(
-    parser: argparse.ArgumentParser | argparse._ArgumentGroup, option: Option
-) -> argparse.Action:
-    """Add an option that a source declares, as ``given`` reads it; return its action.
-
-    Its value is kept under its flag itself, so that no flag that a source declares takes
-    a name that the program holds, such as ``sources``; help names its value as it would
-    by the flag alone. One that replaces a setting repeats.
-    """
-    return parser.add_argument(
-        option.flag,
-        dest=option.flag,
-        metavar=option.flag.lstrip("-").replace("-", "_").upper(),
-        action="append" if option.setting else "store",
-        type=option.type,
-        help=option.help,
-    )
 
 
 def add_embedding_options(parser: argparse.ArgumentParser) -> argparse.Action:

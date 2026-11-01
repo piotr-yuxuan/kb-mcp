@@ -2,8 +2,7 @@
 
 ``fetch`` and ``prepare`` give them. They are records, so not in ``cli.domain.sources``,
 which ``--help`` imports, nor in the use case, which loads what roles need, so that a
-command writes rows without importing what it does not run. ``sync`` gives its own until
-it goes, a row per step and source.
+command writes rows without importing what it does not run.
 """
 
 from __future__ import annotations
@@ -26,22 +25,3 @@ class Ran(Record):
 
     exit_status: ExitStatus
     sources: tuple[Row, ...]
-
-
-class SyncRow(Record):
-    """A step's row: its name, its source, how it ended, and its result, None if it gave none.
-
-    ``source`` is None on a row of no single source: the index.
-    """
-
-    step: str
-    source: str | None
-    outcome: Outcome
-    result: object | None
-
-
-class Synced(Record):
-    """What a sync did: its exit status, then a row per step, in their order."""
-
-    exit_status: ExitStatus
-    steps: tuple[SyncRow, ...]

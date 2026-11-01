@@ -39,7 +39,7 @@ def refuse(sources: Iterable[Declared]) -> None:
     not ``assets``, and is declared once. An account's name is its table, which the
     sources naming it share: each names it alike. A source names a setting, its first
     saying whether it is configured, and a role, a fetcher or a preparer, or a run of it
-    would have no row. An option is one flag of ``sync``, which the sources declaring it
+    would have no row. An option is one flag of ``fetch``, which the sources declaring it
     share: each declares it alike, and it matches ``FLAG``, or argparse would read it as
     a positional, and no command would start.
     """

@@ -140,7 +140,8 @@ have one name, as a copy's may.
 ## 4. Mirror it
 
 ```bash
-kb-mcp sync --include worklog
+kb-mcp prepare worklog
+kb-mcp index
 ```
 
 The files go to `<data>/docs/worklog/`: `entries/` and `transcripts/` as
@@ -206,7 +207,7 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
   warns once, `worklog.unlinked`, with how many and the first: the file that its link
   names when it is in brackets or begins `file:` or `./`, else the meeting's id, a path
   alone included, since any text, a meeting room's URL among them, reads as one; never
-  the link itself ([sync's telemetry](../reference/telemetry/sync.md)). It goes on: the
+  the link itself ([prepare's telemetry](../reference/telemetry/prepare.md)). It goes on: the
   warning holds no removal back.
 - A document removed loses its file, unless the run reported a problem (a file not read,
   a conversion that failed): then every file stays, but the old one of an entry or a

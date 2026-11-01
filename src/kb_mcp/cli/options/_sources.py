@@ -6,7 +6,6 @@ import argparse
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.sources import FETCH, chosen, given
-from kb_mcp.cli.options._common import add_option
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -29,8 +28,10 @@ def add_source_options(
     """Add a group per source, with the options that it alone declares; then the others.
 
     An option that several sources declare is added once, in a group of its own, naming
-    them. None has a default, so that one given is told from one not given. Give the
-    actions, and each flag's setting by its ``dest``.
+    them. None has a default, so that one given is told from one not given; one that
+    replaces a setting repeats. Its value is kept under its flag itself, so that no flag that
+    a source declares takes a name that the program holds, such as ``sources``; help names
+    its value as it would by the flag alone. Give the actions, and each flag's setting.
     Raises ValueError, naming the source, for an option that takes a flag of the
     command's own, as the registry's rules do.
     """
@@ -51,7 +52,14 @@ def add_source_options(
         option = found[0].options[flag]
         group = shared if found[1:] else groups[found[0].name]
         try:
-            added = add_option(group, option)
+            added = group.add_argument(
+                flag,
+                dest=flag,
+                metavar=flag.lstrip("-").replace("-", "_").upper(),
+                action="append" if option.setting else "store",
+                type=option.type,
+                help=option.help,
+            )
         except argparse.ArgumentError as error:
             message = f"source {found[0].name!r}: option {flag}: a flag of the command's own"
             raise ValueError(message) from error
