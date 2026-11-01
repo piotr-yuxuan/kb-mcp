@@ -23,7 +23,20 @@ READ = {
 def source_groups(
     parser: argparse.ArgumentParser, sources: Sequence[Declared]
 ) -> dict[str, argparse._ArgumentGroup]:
-    """Add a group per source to the help, what it is, what it reads and how; give each by name."""
+    """Add a group per source to the help, what it is, what it reads and how; give each by name.
+
+    Raises ValueError, naming the source, for a type read in a way that ``READ`` has no
+    words for, the first found, as the registry's rules do.
+    """
+    unknown = [
+        f"source {declared.name!r}: type {each.name!r}: read {each.read!r}:"
+        f" not one of {', '.join(READ)}"
+        for declared in sources
+        for each in declared.types
+        if each.read not in READ
+    ]
+    if unknown:
+        raise ValueError(unknown[0])
     return {
         declared.name: parser.add_argument_group(
             declared.name,

@@ -160,7 +160,9 @@ name off `[a-z][a-z0-9]*` ([`SOURCE_NAME`](../../src/kb_mcp/kernel/names.py)), o
 two of one name; two declarations naming one account differently; a source naming no
 setting, or neither a fetcher nor a preparer; an option that another source declares
 otherwise, or that takes a flag of `fetch`'s own
-([`add_source_options`](../../src/kb_mcp/cli/options/_sources.py)). An option's value is kept
+([`add_source_options`](../../src/kb_mcp/cli/options/_sources.py)); a type read in a way that
+the help has no words for ([`source_groups`](../../src/kb_mcp/cli/options/_sources.py)). An
+option's value is kept
 under its flag itself, so no flag takes a
 name that the program holds. Once the arguments are parsed, so that `--help` imports no
 table, the entry also refuses a table whose settings are not those that its declaration

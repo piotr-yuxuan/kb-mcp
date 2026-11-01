@@ -4,9 +4,9 @@ The expectations come from plan 030: the registry lists Confluence, Jira and the
 log in name order; any registry that the entry is given is refused, naming the
 declaration, for a name off the rule, ``assets``, a name declared twice, a name that a
 model holds, an account that two declarations name differently, no setting, no role,
-settings that are not its table's, or an option that is no flag, that another source
-declares otherwise, or that is ``fetch``'s own; an option's value takes no name that the
-program holds; each
+settings that are not its table's, a type read in a way that the help has no words for,
+or an option that is no flag, that another source declares otherwise, or that is
+``fetch``'s own; an option's value takes no name that the program holds; each
 declaration names its table, whose settings are the declaration's; Confluence and Jira
 sign in with one account,
 ``[accounts.atlassian]`` (question 1); and a source, or an account, that a registry
@@ -398,6 +398,19 @@ def test_an_option_that_takes_a_flag_of_fetch_s_own_is_refused_naming_it(flag: s
         ValueError, match=rf"^source 'jira': option {flag}: a flag of the command's own"
     ):
         main(["--help"], registry)
+
+
+@pytest.mark.parametrize("given", [["--help"], ["serve", "--help"], ["check", "--help"]], ids=str)
+def test_a_type_read_in_a_way_of_no_known_word_is_refused_naming_its_source(
+    given: list[str],
+) -> None:
+    """In every command: the groups of ``fetch`` and ``prepare`` say how each type is read."""
+    more = ResourceType(name="more", summary="more", read="scanned")
+    registry = (CONFLUENCE, replace(JIRA, types=(*JIRA.types, more)), WORKLOG)
+    with pytest.raises(
+        ValueError, match=r"^source 'jira': type 'more': read 'scanned': not one of listed,"
+    ):
+        main(given, registry)
 
 
 @pytest.mark.parametrize("flag", ["since2", "", "-", "--", "--two words", "-since"])
