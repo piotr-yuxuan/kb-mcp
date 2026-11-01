@@ -377,14 +377,16 @@ def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
     assert ("warning", "mirror.nothing_removed") in warnings
     assert "confluence/pages/196845/000001" in captured.err
     assert "space not listed" in captured.err
-    for problem in logged_as(home, "mirror.not_mirrored"):
-        assert {key: problem[key] for key in ("level", "source", "where", "reason")} == {
+    fields = ("level", "source", "where", "reason")
+    told = [{key: each[key] for key in fields} for each in logged_as(home, "mirror.not_mirrored")]
+    assert told == [
+        {
             "level": "warning",
             "source": "confluence",
             "where": "confluence/pages/196845/000001",
             "reason": "space not listed",
         }
-    assert len(logged_as(home, "mirror.not_mirrored")) == len(["confluence", "jira"])
+    ] * len(["confluence's prepare", "jira's"])
     (kept,) = logged_as(home, "mirror.nothing_removed")
     assert (kept["level"], kept["source"], kept["problems"]) == ("warning", "confluence", 1)
     assert main(arguments(home, "--format", "json")) == SOME_FAILED

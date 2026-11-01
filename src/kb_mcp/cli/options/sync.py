@@ -80,17 +80,44 @@ def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
     return unused
 
 
+def add_run_options(
+    parser: argparse.ArgumentParser, sources: Sequence[Declared]
+) -> tuple[tuple[argparse.Action, ...], argparse.Action]:
+    """Add each option that a source declares, once, then the embedding's and --dry-run.
+
+    None of the first has a default, so that one given is told from one not given. Give
+    their actions and the embedding's. Raises ValueError, naming the source, for an option
+    that takes a flag of ``sync``'s own, in every command, as the registry's rules do.
+    """
+    options = {flag: option for declared in sources for flag, option in declared.options.items()}
+    try:
+        added = tuple(
+            parser.add_argument(option.flag, type=option.type, help=option.help)
+            for option in options.values()
+        )
+        remote = add_embedding_options(parser)
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="say what the run would fetch, and change where a source can tell; write nothing",
+        )
+    except argparse.ArgumentError as error:
+        flag = error.argument_name
+        named = next(declared.name for declared in sources if flag in declared.options)
+        message = f"source {named!r}: option {flag}: a flag of sync's own"
+        raise ValueError(message) from error
+    return added, remote
+
+
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
     sources: Sequence[Declared],
 ) -> None:
     """Add ``sync`` to the command, its sources and their options the registry's.
 
-    ``--include`` and ``--exclude`` take the sources' names; each option that a source
-    declares is added once, and none has a default, so that one given is told from one
-    not given. The settings read are each account's, once, the data directory, each
-    source's, then the index's. Raises ValueError, naming the source, for an option that
-    takes a flag of ``sync``'s own, as the registry's other rules do.
+    ``--include`` and ``--exclude`` take the sources' names, and ``add_run_options`` the
+    options that they declare. The settings read are each account's, once, the data
+    directory, each source's, then the index's.
     """
     parser = subparsers.add_parser(
         "sync",
@@ -122,23 +149,7 @@ def register(
         choices=names,
         help="sync every configured source but this one; repeat for more",
     )
-    options = {flag: option for declared in sources for flag, option in declared.options.items()}
-    try:
-        declared_options = tuple(
-            parser.add_argument(option.flag, type=option.type, help=option.help)
-            for option in options.values()
-        )
-        remote = add_embedding_options(parser)
-        parser.add_argument(
-            "--dry-run",
-            action="store_true",
-            help="say what the run would fetch, and change where a source can tell; write nothing",
-        )
-    except argparse.ArgumentError as error:
-        flag = error.argument_name
-        named = next(declared.name for declared in sources if flag in declared.options)
-        message = f"source {named!r}: option {flag}: a flag of sync's own"
-        raise ValueError(message) from error
+    declared_options, remote = add_run_options(parser, sources)
     parser.set_defaults(
         command=Command(
             "sync",

@@ -2,8 +2,8 @@
 
 Values are made up. Filler documents speak lorem ipsum, so that no word under test is in
 half the sections of the index, where FTS5 would count it as worthless. ``mirrored``
-runs the mirror of each Atlassian source with a function of a test's own in pandoc's
-place.
+runs the mirror of each Atlassian source, and ``mirrored_source`` of one, with a function
+of a test's own in pandoc's place.
 """
 
 from __future__ import annotations
@@ -144,28 +144,26 @@ def write(docs: Path, front: FrontMatter, body: str | None = None) -> str:
     return path
 
 
-def mirrored(
-    store: RawStore,
-    docs: Path,
-    site: str | None,
-    convert: Callable[[str], str],
-    sources: Sequence[str] = tuple(PREPARED),
-) -> dict[str, Outcome]:
-    """Mirror ``store`` into ``docs``, a source at a time, in the order of ``sources``.
+def mirrored_source(
+    store: RawStore, docs: Path, site: str | None, convert: Callable[[str], str], source: str
+) -> Outcome:
+    """Mirror one source of ``store`` into ``docs``; give its outcome.
 
-    Each converts by ``convert`` through its rows of the cache beside ``docs``, the file
+    It converts by ``convert`` through its rows of the cache beside ``docs``, the file
     of the data layout, ``conversions.sqlite``. It names ``convert`` by its qualified
     name, as pandoc's version and arguments name pandoc's conversion, so that two
-    functions never answer for each other. Give each source's outcome, by its name.
+    functions never answer for each other.
     """
     path = docs.parent / "conversions.sqlite"
-    outcomes: dict[str, Outcome] = {}
-    for source in sources:
-        with conversions.opened(
-            path, lambda: convert.__qualname__, convert, source=source
-        ) as cache:
-            outcomes[source] = mirror(store, docs, site, cache, PREPARED[source])
-    return outcomes
+    with conversions.opened(path, lambda: convert.__qualname__, convert, source=source) as cache:
+        return mirror(store, docs, site, cache, PREPARED[source])
+
+
+def mirrored(
+    store: RawStore, docs: Path, site: str | None, convert: Callable[[str], str]
+) -> dict[str, Outcome]:
+    """Mirror ``store`` into ``docs``, each source as a run does; give its outcome by its name."""
+    return {source: mirrored_source(store, docs, site, convert, source) for source in PREPARED}
 
 
 def fillers(docs: Path, count: int = FILLERS) -> None:

@@ -31,7 +31,7 @@ from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED
 from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_kinds
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
 from tests.composed import MODEL
-from tests.mirrors import mirrored
+from tests.mirrors import mirrored_source
 from tests.samples import (
     v1_user,
     v2_attachment,
@@ -145,7 +145,10 @@ class Sandbox:
         Pandoc writes the Markdown, unless another writer is given.
         """
         writer = markdown or Pandoc.find().markdown
-        return mirrored(self.store, self.docs, site, writer, sources)
+        return {
+            source: mirrored_source(self.store, self.docs, site, writer, source)
+            for source in sources
+        }
 
     def files(self) -> dict[str, bytes]:
         """Return every file of the mirror, by its path within ``docs``."""
