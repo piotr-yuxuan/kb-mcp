@@ -21,11 +21,20 @@ from kb_mcp.mirror.adapters.pandoc import (
 )
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.fetch.domain.content import Page
+from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from tests.reference import STANDARD
 from tests.samples import v2_page, v2_space, v2_view
 from tests.test_cli import logged_as
-from tests.test_mirror import FETCHED, SPACE_ID, Sandbox, listing_page, page_responses
+from tests.test_mirror import (
+    FETCHED,
+    LISTED,
+    POST_LISTED,
+    SPACE_ID,
+    Sandbox,
+    listing_page,
+    page_responses,
+    post_responses,
+)
 from tests.test_observed import said
 
 if TYPE_CHECKING:
@@ -217,6 +226,22 @@ def two_pages(home: Path, monkeypatch: MonkeyPatch) -> Path:
 
 # The two pages' files and their space's tree.
 CONVERSIONS = 3
+
+
+def test_the_command_mirrors_both_of_confluence_s_kinds(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A blog post is Confluence's as a page is: mirrored, and counted under its row."""
+    store = RawStore(home / "data" / "raw")
+    with store.writing():
+        store.put_space(v2_space(id=SPACE_ID), LISTED[:1], [POST_LISTED], [])
+        store.put(Page, page_responses("100", "Home", 1, "<p>Home.</p>", []), FETCHED, {})
+        store.put(BlogPost, post_responses("<p>News.</p>"), FETCHED, {})
+    assert main(arguments(home)) == 0
+    assert "documents: 2\n" in capsys.readouterr().out
+    docs = home / "data" / "docs" / "confluence" / "MFS"
+    assert (docs / "100-home.md").is_file()
+    assert (docs / "blog" / "600-news.md").is_file()
 
 
 def test_a_second_mirror_with_nothing_changed_runs_pandoc_on_nothing(

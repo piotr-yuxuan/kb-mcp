@@ -26,6 +26,7 @@ from kb_mcp.config.domain.settings import TABLE, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.declared import ATLASSIAN, CONFLUENCE, JIRA, SINCE
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED
 from kb_mcp.sources.declaration import Option, ResourceType
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.worklog.declared import WORKLOG
@@ -97,6 +98,13 @@ def test_a_registry_with_two_declarations_of_one_name_is_refused_naming_it(
     registry = (*SOURCES, replace(JIRA, table=WORKLOG.table))
     with pytest.raises(ValueError, match=r"^source 'jira': declared twice$"):
         main(["check", "--config", str(tmp_path / "none.toml")], registry)
+
+
+def test_each_source_prepares_the_kinds_that_its_declaration_names() -> None:
+    """``mirror``'s kinds and ``sync``'s are one: a type added to a declaration reaches both."""
+    assert {source: [kind.kind for kind in kinds] for source, kinds in PREPARED.items()} == {
+        declared.name: [kind.name for kind in declared.types] for declared in (CONFLUENCE, JIRA)
+    }
 
 
 def declaring(*options: Option) -> Declared:

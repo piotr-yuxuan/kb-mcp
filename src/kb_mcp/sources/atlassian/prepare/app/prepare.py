@@ -69,11 +69,12 @@ if TYPE_CHECKING:
     from kb_mcp.sources.atlassian.fetch.domain.content import Folder
 
 KINDS: tuple[type[Page | BlogPost | Issue], ...] = (Page, BlogPost, Issue)
-# The kinds that each source prepares, by its name, in the order that it is prepared:
-# Confluence's pages and blog posts, with each space's tree, then Jira's issues.
+# The kinds that each source prepares, by its name, in the order that it is prepared, as
+# each kind names its source: Confluence's pages and blog posts, with each space's tree,
+# then Jira's issues.
 PREPARED: dict[str, tuple[type[Page | BlogPost | Issue], ...]] = {
-    "confluence": (Page, BlogPost),
-    "jira": (Issue,),
+    source: tuple(kind for kind in KINDS if kind.source == source)
+    for source in dict.fromkeys(kind.source for kind in KINDS)
 }
 # A comment's headings sit under its own third-level heading.
 COMMENT_SHIFT = 3
