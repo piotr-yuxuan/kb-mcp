@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
+from kb_mcp.cli.domain.sources import accounts_to_check
 from kb_mcp.cli.options._common import add_output_options, add_settings_options
 from kb_mcp.sources.registry import accounts_of
 
@@ -26,10 +27,20 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 
 
 def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
-    """Name what each sign-in does not apply, by each account's ``unapplied``."""
+    """Name what each sign-in does not apply, by each account's ``unapplied``, and the unchecked.
+
+    The settings of an account that this machine does not use are not checked, whatever they
+    say, so that a token and an email without a site do not read as a sign-in that holds.
+    """
+    checked = accounts_to_check(arguments.sources, settings)
     unused: dict[str, str] = {}
-    for account in accounts_of(arguments.sources).values():
-        unused |= account.unapplied({}, settings) if account.unapplied else {}
+    for name, account in accounts_of(arguments.sources).items():
+        if name not in checked:
+            unused |= dict.fromkeys(
+                account.paths, "no site nor source of it: its sign-in not checked"
+            )
+        elif account.unapplied:
+            unused |= account.unapplied({}, settings)
     return unused
 
 
@@ -37,7 +48,11 @@ def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
     sources: Sequence[Declared],
 ) -> None:
-    """Add ``doctor`` to the command, which reads each account's settings and the data folder."""
+    """Add ``doctor`` to the command.
+
+    It reads each account's settings, the data folder, and the first setting of each source
+    naming an account, which says whether that account is checked.
+    """
     parser = subparsers.add_parser(
         "doctor",
         help="check the machine and each sign-in",
@@ -55,6 +70,7 @@ def register(
             reads=(
                 *(path for account in accounts_of(sources).values() for path in account.paths),
                 "data_dir",
+                *(each.paths[0] for each in sources if each.account is not None),
             ),
             flags=flags,
             actions=actions,

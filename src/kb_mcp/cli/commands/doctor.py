@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.app.doctor import doctor
+from kb_mcp.cli.domain.sources import accounts_to_check
 from kb_mcp.cli.domain.summary import values_of
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.roles import FAILED, SIGN_IN, WELL
@@ -20,16 +21,9 @@ if TYPE_CHECKING:
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, list[Verdict]]:
     """Give each check's verdict; exit 1 if one fails, 3 to sign in again.
 
-    A sign-in is checked when a source naming it is configured, or its first setting, where
-    it signs in, is set: a machine with neither needs none, and gets the machine's alone.
+    A machine that uses no sign-in, as ``accounts_to_check`` judges, gets the machine's alone.
     """
-    values = values_of(loaded)
-    accounts = {
-        declared.account.name: declared.account
-        for declared in arguments.sources
-        if declared.account is not None
-        and (values[declared.paths[0]] or values[declared.account.paths[0]])
-    }
+    accounts = accounts_to_check(arguments.sources, values_of(loaded))
     verdicts = doctor(loaded.settings, accounts.values())
     states = {verdict.state for verdict in verdicts}
     if SIGN_IN in states:

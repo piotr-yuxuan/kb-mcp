@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
+from pydantic import BaseModel
 
 from kb_mcp.cli.main import main
+from kb_mcp.config.domain.settings import TABLE
 from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, read_cookies
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
+from kb_mcp.sources.declaration import Account
+from kb_mcp.sources.registry import SOURCES
+from kb_mcp.sources.roles import SignedIn, Verdict
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 from tests.test_cli import logged_as
@@ -21,6 +27,8 @@ if TYPE_CHECKING:
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
+
+    from kb_mcp.config.domain.settings import Settings
 
 SITE = "https://sandbox.example.invalid"
 INSTRUCTION = f"Sign in to {SITE} in the Chrome window that opens.\n"
@@ -164,3 +172,68 @@ def test_the_command_says_the_account_s_other_settings_are_not_used(
     assert "login signs in in a browser" in err
     assert f"--site {SITE}" in err.split("kb-mcp login")[1]
     assert err.split("kb-mcp login")[1].rstrip().splitlines()[-2].strip() == "atlassian"
+
+
+class DriveAccount(BaseModel):
+    """A second account's table, of a registry of these tests' own."""
+
+    model_config = TABLE
+
+    folder: str | None = None
+
+
+def drive_signed_in(
+    settings: Settings, chrome: Path | None, *, extensions: bool
+) -> SignedIn | None:
+    """Sign in to a second account: its run, as its declaration names it."""
+    assert (chrome, extensions) == (None, False)
+    return SignedIn(site=str(settings.accounts.drive.folder), session=settings.session)
+
+
+def drive_checks(settings: Settings) -> list[Verdict]:
+    """Check a second account: its verdict, as its declaration names it."""
+    return [Verdict(name="drive", found=str(settings.accounts.drive.folder))]
+
+
+DRIVE = Account(
+    name="drive",
+    table=f"{__name__}:DriveAccount",
+    settings=("folder",),
+    login=f"{__name__}:drive_signed_in",
+    checks=f"{__name__}:drive_checks",
+)
+TWO_ACCOUNTS = (*SOURCES[:2], replace(SOURCES[2], account=DRIVE))
+
+
+def test_a_second_account_signs_in_by_its_own_run_and_reads_none_of_the_first(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Nothing of the command names Atlassian: its usage, its run, its settings' use.
+
+    Each account's first setting is said applied for the one named alone, and ``--site``,
+    which sets the Atlassian site, is offered to that account alone.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    given = ["--yes", "--config", str(tmp_path / "none.toml"), "--format", "json"]
+    assert main(["login", "drive", *given], TWO_ACCOUNTS) == BAD_ARGUMENTS
+    err = capsys.readouterr().err
+    assert "accounts.drive.folder: not set; add it to the settings\n" in err.replace("'", "\n")
+    assert "--site" not in err.partition("run.refused")[2]
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__DRIVE__FOLDER", "/made/up")
+    assert main(["login", "drive", *given, "--site", SITE], TWO_ACCOUNTS) == 0
+    out, err = capsys.readouterr()
+    assert json.loads(out)["site"] == "/made/up"
+    assert f"accounts.atlassian.site: {SITE} (not applied: atlassian not named)\n" in err
+    assert "--site" not in err.split("kb-mcp login")[1]
+
+
+def test_doctor_checks_each_account_by_its_own_checks(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Only that which this machine uses: its verdict after the machine's."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__DRIVE__FOLDER", "/made/up")
+    options = ["doctor", "--config", str(tmp_path / "none.toml"), "--format", "json"]
+    assert main(options, TWO_ACCOUNTS) == 0
+    names = [verdict["name"] for verdict in json.loads(capsys.readouterr().out)]
+    assert names == ["python", "pandoc", "data directory", "drive"]

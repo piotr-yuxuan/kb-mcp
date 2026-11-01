@@ -159,3 +159,24 @@ def test_a_registry_without_an_account_reads_none_of_it(
     assert main(options, (WORKLOG,)) == 0
     names = [verdict["name"] for verdict in json.loads(capsys.readouterr().out)]
     assert names == ["python", "pandoc", "data directory"]
+
+
+def test_a_sign_in_not_checked_is_said_so_and_the_settings_that_choose_it_are_read(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """A token and an email without a site do not read as a sign-in that holds; exit 0.
+
+    And a source's setting, which makes the site's check run, is not said not read.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL", "someone@example.invalid")
+    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", "token-sentinel-7f2b")
+    options = ["doctor", "--config", str(tmp_path / "none.toml")]
+    assert main(options) == 0
+    err = capsys.readouterr().err
+    assert "ignored: accounts.atlassian.api_token (KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN)" in err
+    assert "no site nor source of it: its sign-in not checked" in err
+    assert "token-sentinel-7f2b" not in err
+    monkeypatch.setenv(A_SOURCE, '["PRB"]')
+    assert main([*options, "--summary", "detailed"]) == SOME_FAILED
+    assert f"{A_SOURCE}): not read by doctor" not in capsys.readouterr().err

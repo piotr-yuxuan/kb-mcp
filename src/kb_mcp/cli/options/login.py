@@ -19,17 +19,27 @@ if TYPE_CHECKING:
 def in_the_browser(
     arguments: argparse.Namespace, _settings: Mapping[str, object]
 ) -> dict[str, str]:
-    """``login`` signs in in a browser, whatever the account's other settings say."""
-    account = accounts_of(arguments.sources)[arguments.account]
-    return dict.fromkeys(account.paths[1:], "login signs in in a browser")
+    """``login`` signs in in a browser, whatever the account's other settings say.
+
+    Another account's first setting, which the declaration reads for whichever is named, is
+    not applied either.
+    """
+    accounts = accounts_of(arguments.sources)
+    named = accounts.pop(arguments.account)
+    others = {path: f"{name} not named" for name, each in accounts.items() for path in each.paths}
+    return others | dict.fromkeys(named.paths[1:], "login signs in in a browser")
 
 
 def site_not_set(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
-    """Refuse a sign-in without the first setting of the account named: where it signs in."""
+    """Refuse a sign-in without the first setting of the account named: where it signs in.
+
+    ``--site`` is offered only for the setting that it sets, until plan 032 gives each its flag.
+    """
     site = accounts_of(arguments.sources)[arguments.account].paths[0]
     if settings[site] is not None:
         return None
-    return f"{site}: not set; add it to the settings or pass --site"
+    flag = " or pass --site" if arguments.command.flags["site"] == site else ""
+    return f"{site}: not set; add it to the settings{flag}"
 
 
 def register(

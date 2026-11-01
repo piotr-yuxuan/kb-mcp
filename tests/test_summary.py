@@ -110,7 +110,7 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
 
 
 @pytest.mark.parametrize(
-    "command", [["doctor"], ["fetch", "--yes", "--site", SITE, "--space", "ENG"]]
+    "command", [["doctor", "--site", SITE], ["fetch", "--yes", "--site", SITE, "--space", "ENG"]]
 )
 @pytest.mark.usefixtures("runs")
 def test_an_email_without_a_token_is_ignored(

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Iterable, Mapping
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Account, Declared
 
 # The commands over sources, whose names a run reads.
 FETCH, PREPARE = "fetch", "prepare"
@@ -86,6 +86,22 @@ def chosen(
     """Return what the command that the arguments name takes, and why each other is left out."""
     choose = chosen_to_fetch if arguments.command.name == FETCH else chosen_to_prepare
     return choose(arguments, settings)
+
+
+def accounts_to_check(
+    sources: Iterable[Declared], settings: Mapping[str, object]
+) -> dict[str, Account]:
+    """Give each account for ``doctor`` to check, by its name: those that this machine uses.
+
+    An account is used when a source naming it is configured, or its first setting, where it
+    signs in, is set: a machine with neither needs none.
+    """
+    return {
+        declared.account.name: declared.account
+        for declared in sources
+        if declared.account is not None
+        and (settings[declared.paths[0]] or settings[declared.account.paths[0]])
+    }
 
 
 def source_line(declared: Declared, settings: Mapping[str, object]) -> str:
