@@ -387,8 +387,8 @@ def test_the_index_step_prunes_and_a_deferred_prune_leaves_it_done(tmp_path: Pat
         )
     )
     with vector_store.shared(settings.vectors):
-        deferred = sync([], step, lambda: FIRST, dry_run=False)
-    done = sync([], step, lambda: FIRST, dry_run=False)
+        deferred = sync([], step, lambda: FIRST)
+    done = sync([], step, lambda: FIRST)
     rows = [json.loads(to_json(synced))["steps"] for synced in (deferred, done)]
     assert [(row["outcome"], row["result"]["pruned"]["outcome"]) for [row] in rows] == [
         ("done", "deferred"),
@@ -419,14 +419,12 @@ def test_a_later_sync_catches_up_on_an_old_page_edited_today_and_nothing_stored(
     settings = chosen_settings(tmp_path, worklog)
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
     first = runs(settings, FIRST, CONFLUENCE, options=SINCE)
-    assert sync(first, by_words(settings), lambda: FIRST, dry_run=False).exit_status == 0
+    assert sync(first, by_words(settings), lambda: FIRST).exit_status == 0
     assert "1003" not in stored_pages(settings)
     edited = {"number": 4, "createdAt": "2026-10-23T08:00:00.000Z"}
     later = RefreshSite(listing={**PAGES, "1003": {**PAGES["1003"], "version": edited}})
     monkeypatch.setattr(http, "client", lambda *_: later.client())
-    synced = sync(
-        runs(settings, SECOND, CONFLUENCE), by_words(settings), lambda: SECOND, dry_run=False
-    )
+    synced = sync(runs(settings, SECOND, CONFLUENCE), by_words(settings), lambda: SECOND)
     assert synced.exit_status == ExitStatus.OK
     fetched = synced.steps[0].result
     assert isinstance(fetched, fetcher.Fetched)
@@ -446,7 +444,7 @@ def test_the_site_asking_to_sign_in_still_lets_the_work_log_run_exit_3(
     )
     taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
     with capture_logs() as logged:
-        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+        synced = sync(taken, by_words(settings), lambda: FIRST)
     assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
         ("fetch", "confluence", "sign in"),
         ("prepare", "confluence", "done"),
@@ -469,7 +467,7 @@ def test_ctrl_c_in_the_download_exits_130_and_no_later_step_runs(
     monkeypatch.setattr(fetcher, "download", interrupted)
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
-    synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+    synced = sync(taken, by_words(settings), lambda: FIRST)
     assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
         ("fetch", "confluence", "interrupted"),
         ("prepare", "confluence", "not run"),
@@ -508,7 +506,7 @@ def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
     with capture_logs() as logged:
-        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+        synced = sync(taken, by_words(settings), lambda: FIRST)
     assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
         ("fetch", "confluence", "done"),
         ("prepare", "confluence", "failed"),
@@ -535,11 +533,11 @@ def test_an_index_that_cannot_be_written_fails_its_row_and_keeps_the_others(
 
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, WORKLOG)
-    assert sync(taken, by_words(settings), lambda: FIRST, dry_run=False).exit_status == 0
+    assert sync(taken, by_words(settings), lambda: FIRST).exit_status == 0
     before = settings.index.read_bytes()
     monkeypatch.setattr(sqlite_index.Writer, "add", full)
     with capture_logs() as logged:
-        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+        synced = sync(taken, by_words(settings), lambda: FIRST)
     assert [(row.step, row.outcome) for row in synced.steps] == [
         ("prepare", "done"),
         ("index", "failed"),
@@ -590,7 +588,7 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     """
     settings = chosen_settings(tmp_path, worklog)
     taken, step = runs(settings, FIRST, WORKLOG), by_words(settings)
-    sync(taken, step, lambda: FIRST, dry_run=False)
+    sync(taken, step, lambda: FIRST)
     gone = next((settings.docs / "worklog/transcripts").glob("*waiting-notes.md"))
     (worklog / "transcripts/misc/a.org").unlink()
     todo = worklog / "todo.org"
@@ -600,7 +598,7 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     telemetry.measured()
     with monkeypatch.context() as patch, capture_logs() as logged:
         patch.setattr(Pandoc, "find", lambda: failing)
-        synced = sync(taken, step, lambda: FIRST, dry_run=False)
+        synced = sync(taken, step, lambda: FIRST)
     assert (synced.steps[0].outcome, synced.exit_status) == ("failed", ExitStatus.FAILED)
     (kept,) = logged_as(logged, "worklog.nothing_removed")
     assert {key: kept[key] for key in kept if key not in {"event", "log_level"}} == {"problems": 1}
@@ -619,7 +617,7 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     assert by_kind_and_outcome(telemetry.measured()).get(("entry", "failed")) == 1
     assert gone.exists()
     todo.write_text(todo.read_text("utf-8").replace("Drafted, failing, on", "Drafted on"), "utf-8")
-    assert sync(taken, step, lambda: FIRST, dry_run=False).exit_status == ExitStatus.OK
+    assert sync(taken, step, lambda: FIRST).exit_status == ExitStatus.OK
     assert not gone.exists()
 
 
@@ -886,12 +884,12 @@ def test_a_damaged_cache_is_replaced_and_every_step_runs_exit_0(
     settings = chosen_settings(tmp_path, worklog)
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
     taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
-    first = sync(taken, by_words(settings), lambda: FIRST, dry_run=False).steps[1].result
+    first = sync(taken, by_words(settings), lambda: FIRST).steps[1].result
     assert isinstance(first, preparer.Prepared)
     assert isinstance(first.mirrored, mirror_app.Outcome)
     settings.conversions.write_bytes(hashlib.shake_256(b"cache").digest(8192))
     with capture_logs() as logged:
-        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+        synced = sync(taken, by_words(settings), lambda: FIRST)
     assert synced.exit_status == ExitStatus.OK
     assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
         ("fetch", "confluence", "done"),
@@ -918,13 +916,13 @@ def test_other_arguments_for_pandoc_convert_the_mirror_again(
     settings = chosen_settings(tmp_path, worklog)
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
     taken = runs(settings, FIRST, CONFLUENCE, options=SINCE)
-    first = sync(taken, by_words(settings), lambda: FIRST, dry_run=False).steps[1].result
+    first = sync(taken, by_words(settings), lambda: FIRST).steps[1].result
     assert isinstance(first, preparer.Prepared)
     first = first.mirrored
     assert isinstance(first, mirror_app.Outcome)
     more = (*pandoc_adapter.ARGUMENTS, "--columns=72")
     monkeypatch.setattr(pandoc_adapter, "ARGUMENTS", more)
-    again = sync(taken, by_words(settings), lambda: FIRST, dry_run=False).steps[1].result
+    again = sync(taken, by_words(settings), lambda: FIRST).steps[1].result
     assert isinstance(again, preparer.Prepared)
     again = again.mirrored
     assert isinstance(again, mirror_app.Outcome)
@@ -1057,7 +1055,7 @@ def test_ctrl_c_in_the_mirror_marks_it_interrupted_and_the_work_log_not_run(
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
     with capture_logs() as logged:
-        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+        synced = sync(taken, by_words(settings), lambda: FIRST)
     assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
         ("fetch", "confluence", "done"),
         ("prepare", "confluence", "interrupted"),
@@ -1082,7 +1080,7 @@ def test_ctrl_c_once_every_step_ended_still_exits_130(
 
     monkeypatch.setattr(sync_app, "index", ended_then_stopped)
     settings = chosen_settings(tmp_path, worklog)
-    synced = sync(runs(settings, FIRST, WORKLOG), by_words(settings), lambda: FIRST, dry_run=False)
+    synced = sync(runs(settings, FIRST, WORKLOG), by_words(settings), lambda: FIRST)
     assert [(row.step, row.outcome) for row in synced.steps] == [
         ("prepare", "done"),
         ("index", "done"),
@@ -1115,11 +1113,11 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
         sources={"confluence": {"spaces": ["MFS"]}, "worklog": {"path": worklog}},
     )
     taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
-    synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+    synced = sync(taken, by_words(settings), lambda: FIRST)
     assert [row.outcome for row in synced.steps] == ["sign in", "failed", "done", "done"]
     assert synced.exit_status == ExitStatus.SIGN_IN_AGAIN
     monkeypatch.setattr(worklog_preparer, "prepare", interrupting)
-    synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+    synced = sync(taken, by_words(settings), lambda: FIRST)
     assert [row.outcome for row in synced.steps] == ["sign in", "failed", "interrupted", "not run"]
     assert synced.exit_status == ExitStatus.INTERRUPTED
 
@@ -1182,7 +1180,7 @@ def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
     with capture_logs() as logged:
-        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+        synced = sync(taken, by_words(settings), lambda: FIRST)
     assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
         ("fetch", "confluence", "failed"),
         ("prepare", "confluence", "done"),
@@ -1374,14 +1372,14 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     settings = chosen_settings(tmp_path, worklog)
     dry, step = runs(settings, FIRST, WORKLOG, dry_run=True), by_words(settings)
     with capture_logs() as planned:
-        sync(dry, step, lambda: FIRST, dry_run=True)
+        sync(dry, step, lambda: FIRST)
     with capture_logs() as fresh:
-        sync(runs(settings, FIRST, WORKLOG), step, lambda: FIRST, dry_run=False)
+        sync(runs(settings, FIRST, WORKLOG), step, lambda: FIRST)
     with capture_logs() as unchanged:
-        sync(runs(settings, FIRST, WORKLOG), step, lambda: FIRST, dry_run=False)
+        sync(runs(settings, FIRST, WORKLOG), step, lambda: FIRST)
     (worklog / "transcripts/misc/a.org").unlink()
     with capture_logs() as planned_again:
-        sync(dry, step, lambda: FIRST, dry_run=True)
+        sync(dry, step, lambda: FIRST)
     (read,) = logged_as(fresh, "worklog.read")
     counts = ("entries", "days", "meetings", "transcripts", "html", "problems")
     assert tuple(read[each] for each in counts) == (13, 2, 8, 6, 1, 0)
@@ -1489,6 +1487,33 @@ def test_a_source_s_own_light_checks_are_asked_when_it_is_taken(
     assert "a declaration's refusal" not in capsys.readouterr().err
 
 
+def test_a_sync_is_a_dry_run_by_its_runs_alone(tmp_path: Path, worklog: Path) -> None:
+    """Plan 030: one flag for a run, which each role reads: the index and the events follow it.
+
+    A sync of no run, which the entry refuses, is no dry run.
+    """
+    settings = chosen_settings(tmp_path, worklog)
+    step = by_words(settings)
+    with capture_logs() as dry:
+        synced = sync(runs(settings, FIRST, WORKLOG, dry_run=True), step, lambda: FIRST)
+    assert [(row.step, row.outcome) for row in synced.steps] == [
+        ("prepare", "done"),
+        ("index", "not run"),
+    ]
+    assert logged_as(dry, "sync.start")[0]["dry_run"] is True
+    assert not settings.docs.exists()
+    assert not settings.index.exists()
+    with capture_logs() as real:
+        synced = sync(runs(settings, FIRST, WORKLOG), step, lambda: FIRST)
+    assert [(row.step, row.outcome) for row in synced.steps] == [
+        ("prepare", "done"),
+        ("index", "done"),
+    ]
+    assert logged_as(real, "sync.start")[0]["dry_run"] is False
+    assert settings.index.exists()
+    assert [row.step for row in sync([], step, lambda: FIRST).steps] == ["index"]
+
+
 def test_each_preparer_that_a_source_declares_is_a_row_of_its_own(
     tmp_path: Path, worklog: Path
 ) -> None:
@@ -1498,7 +1523,7 @@ def test_each_preparer_that_a_source_declares_is_a_row_of_its_own(
     """
     settings = chosen_settings(tmp_path, worklog)
     twice = replace(WORKLOG, preparers=WORKLOG.preparers * 2)
-    synced = sync(runs(settings, FIRST, twice), by_words(settings), lambda: FIRST, dry_run=False)
+    synced = sync(runs(settings, FIRST, twice), by_words(settings), lambda: FIRST)
     assert [(row.step, row.source, row.outcome) for row in synced.steps] == [
         ("prepare", "worklog", "done"),
         ("prepare", "worklog", "done"),
@@ -1536,7 +1561,7 @@ def test_pandoc_gone_fails_each_preparer_s_row_and_the_run_exits_as_its_rows_ran
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
     with capture_logs() as logged:
-        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+        synced = sync(taken, by_words(settings), lambda: FIRST)
     assert [(row.step, row.source, row.outcome) for row in synced.steps[:3]] == [
         ("fetch", "confluence", fetched),
         ("prepare", "confluence", "failed"),
@@ -1556,7 +1581,7 @@ def test_pandoc_giving_no_version_fails_the_work_log_s_row_writing_nothing(
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, WORKLOG)
     with capture_logs() as logged:
-        synced = sync(taken, by_words(settings), lambda: FIRST, dry_run=False)
+        synced = sync(taken, by_words(settings), lambda: FIRST)
     assert [(row.step, row.source) for row in synced.steps] == [
         ("prepare", "worklog"),
         ("index", None),
@@ -1575,9 +1600,9 @@ def test_only_a_run_that_writes_says_that_its_problems_held_removals_back(
     settings = chosen_settings(tmp_path, worklog)
     step = by_words(settings)
     with capture_logs() as dry:
-        sync(runs(settings, FIRST, WORKLOG, dry_run=True), step, lambda: FIRST, dry_run=True)
+        sync(runs(settings, FIRST, WORKLOG, dry_run=True), step, lambda: FIRST)
     with capture_logs() as real:
-        sync(runs(settings, FIRST, WORKLOG), step, lambda: FIRST, dry_run=False)
+        sync(runs(settings, FIRST, WORKLOG), step, lambda: FIRST)
     assert logged_as(dry, "worklog.problem")
     assert not logged_as(dry, "worklog.nothing_removed")
     assert logged_as(real, "worklog.problem")

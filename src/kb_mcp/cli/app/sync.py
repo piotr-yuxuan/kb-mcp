@@ -114,9 +114,11 @@ def index(
         )
 
 
-def sync(runs: Sequence[Run], step: Index, now: Callable[[], datetime], *, dry_run: bool) -> Synced:
+def sync(runs: Sequence[Run], step: Index, now: Callable[[], datetime]) -> Synced:
     """Run each source's roles, then the index; return a row each, and the status they rank.
 
+    Each run's ``dry_run`` is what its role reads; the index and the events follow the
+    runs, the index not run when any of them is dry, so that no second flag can disagree.
     Raises ``SyncRefusedError`` for a role that does not load, and for what a role's
     ``preflight`` refuses, after its source's name and its step, both before the first
     row. A row's result is its role's;
@@ -158,6 +160,7 @@ def sync(runs: Sequence[Run], step: Index, now: Callable[[], datetime], *, dry_r
     if refusal is not None:
         raise SyncRefusedError(refusal)
     log = structlog.get_logger()
+    dry_run = any(run.dry_run for run in runs)
     named = [*((each.step, each.run.declared.name) for each in planned), ("index", None)]
     log.info("sync.start", steps=[label(*row) for row in named], dry_run=dry_run)
     rows = Rows()

@@ -56,7 +56,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sync
     ]
     step = Index(indexing=indexing_of(arguments, settings))
     try:
-        synced = sync(runs, step, lambda: datetime.now(UTC), dry_run=arguments.dry_run)
+        synced = sync(runs, step, lambda: datetime.now(UTC))
     except SyncRefusedError as error:
         structlog.get_logger().error("sync.refused", reason=str(error))
         return ExitStatus.REFUSED, None
