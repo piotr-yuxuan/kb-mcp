@@ -115,7 +115,7 @@ NOTES = Declared(
 ## 5. Write its preparer
 
 A preparer has two functions ([`Preparer`](../../src/kb_mcp/sources/roles.py)): `preflight`,
-what it cannot go on with, read before any source starts, which `sync` says after the
+what it cannot go on with, read before any source starts, which `prepare` says after the
 source's name and the step, and `prepare`, which writes the
 documents through the mirror and gives a [`Result`](../../src/kb_mcp/sources/roles.py), its
 counts and how they read as text. Mind what the writer and the front matter ask:
