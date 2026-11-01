@@ -17,6 +17,7 @@ from kb_mcp.kernel.reranking import LONGEST_TEXT, MOST_TEXTS
 from kb_mcp.mcp.app import responses
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.search.adapters.reranking import Reranked, RerankError
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import build_index
 from kb_mcp.search.app.reranking import Reranking
 from kb_mcp.search.domain.reranking import PLACES, split_order, written
@@ -87,7 +88,7 @@ def root(tmp_path_factory: TempPathFactory) -> Path:
 
 def library(root: Path, reranking: Reranking | None) -> Library:
     """Serve the index by words alone, reranked through ``reranking`` if any."""
-    return Library(root / "index.sqlite", root / "docs", None, "lexical", reranking)
+    return Library(SqliteIndex(root / "index.sqlite"), root / "docs", None, "lexical", reranking)
 
 
 def order(served: Library, query: str = QUERY) -> list[str]:
@@ -377,7 +378,7 @@ def test_serve_reranks_its_searches_through_the_server_of_the_settings(tmp_path:
     found = results[0]["content"][0]["text"]
     (asked,) = answers.asked
     scores = [relevance(asked["query"], text) for text in asked["documents"]]
-    plain = Library(data / "index.sqlite", data / "docs", None, "lexical")
+    plain = Library(SqliteIndex(data / "index.sqlite"), data / "docs", None, "lexical")
     before = [shown.path for shown in plain.ranked("kafka retention", "lexical", limit=4)[0]]
     after = [before[place] for place in sorted(range(len(before)), key=lambda at: -scores[at])]
     assert titles(found)[: len(after)] == [title(data, path) for path in after]

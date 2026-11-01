@@ -12,6 +12,7 @@ import pytest
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.mirror.domain.mirror import Link, PersonRole
 from kb_mcp.search.adapters import sqlite_index
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import build_index
 from tests.answers import built, continuation, follow, parts
 from tests.mirrors import (
@@ -1038,7 +1039,7 @@ def test_the_alias_suggested_writes_the_word_as_its_person_does(tmp_path: Path) 
         write(tmp_path / "docs", front)
     aliases = {"Rob": ROBIN_ALONE}
     build_index(tmp_path / "docs", tmp_path / "index.sqlite", MOMENT, aliases=aliases)
-    library = Library(tmp_path / "index.sqlite", tmp_path / "docs")
+    library = Library(SqliteIndex(tmp_path / "index.sqlite"), tmp_path / "docs")
     alone = parts(library.search(filters={"person": ROBIN_ALONE}, sort="updated"))[1]
     assert alone.startswith(f"Person: Rob, {ROBIN_ALONE}: ")
     block = parts(library.search(filters={"person": ROBIN}, sort="updated"))[1]
@@ -1350,7 +1351,7 @@ def test_status_counts_the_persons_and_names_those_of_several_accounts(
     for front in PERSONS:
         write(tmp_path / "docs", front)
     build_index(tmp_path / "docs", tmp_path / "index.sqlite", MOMENT, aliases=aliases)
-    content = parts(Library(tmp_path / "index.sqlite", tmp_path / "docs").status())[1]
+    content = parts(Library(SqliteIndex(tmp_path / "index.sqlite"), tmp_path / "docs").status())[1]
     assert f"\nprojects: PAY 2\n{line}\nfiles skipped at build: 0\n" in content
 
 

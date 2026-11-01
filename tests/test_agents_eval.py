@@ -26,6 +26,7 @@ from kb_mcp.cli.main import main
 from kb_mcp.evaluation.adapters.mcp_client import Answered
 from kb_mcp.evaluation.app import agents
 from kb_mcp.mcp.app.tools import Library
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
 from tests.answers import estimate, parts
@@ -239,7 +240,10 @@ def test_a_call_prints_serve_s_answer_alone_and_logs_five_fields(
     assert main(bridged(out, run, "ask", {"question": QUESTIONS["q1"]})) == 0
     printed = capsys.readouterr().out
     library = Library(
-        world.data / "index.sqlite", world.data / "docs", Meaning(connector()), "hybrid"
+        SqliteIndex(world.data / "index.sqlite"),
+        world.data / "docs",
+        Meaning(connector()),
+        "hybrid",
     )
     answer = library.ask(QUESTIONS["q1"])
     assert printed == f"{answer}\n"

@@ -12,6 +12,7 @@ import re
 from typing import TYPE_CHECKING
 
 from kb_mcp.mcp.app.tools import Library
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
 from tests.endpoint import connector, tiny
@@ -96,4 +97,4 @@ def built(
         write(docs, front, body)
     embedding = Embedding(tiny(model=model), root / "vectors.sqlite") if model else None
     build_index(docs, root / "index.sqlite", MOMENT, embedding)
-    return Library(root / "index.sqlite", docs, Meaning(connector()), mode)
+    return Library(SqliteIndex(root / "index.sqlite"), docs, Meaning(connector()), mode)

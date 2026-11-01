@@ -29,6 +29,7 @@ from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.mirror.adapters.markdown import load
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.sources.registry import SOURCES
 from tests.answers import parts
 from tests.mirrors import page, write
@@ -185,7 +186,7 @@ def test_prepare_writes_under_its_folder_alone_and_search_finds_a_note(
     made = [path for path in after if path not in before]
     assert len(made) == len(["orchard", "rota"])
     assert all(path.parts[0] == "memo" and len(path.parts) == len(["memo", "x"]) for path in made)
-    served = Library(data / "index.sqlite", data / "docs")
+    served = Library(SqliteIndex(data / "index.sqlite"), data / "docs")
     assert len(refs(served.search(WORD))) == 1
     _, hits, _ = parts(served.search(WORD))
     (found,) = [path.as_posix() for path in made if path.as_posix() in hits]
@@ -231,7 +232,7 @@ def test_a_note_removed_takes_its_file_with_it(
     assert files_of(data / "docs") == {
         path: held for path, held in before.items() if WORD.encode() not in held[0]
     }
-    assert refs(Library(data / "index.sqlite", data / "docs").search(WORD)) == []
+    assert refs(Library(SqliteIndex(data / "index.sqlite"), data / "docs").search(WORD)) == []
 
 
 def test_a_dry_run_writes_nothing(

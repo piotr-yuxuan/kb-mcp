@@ -20,7 +20,7 @@ from kb_mcp.kernel.endpoint import EMBEDDINGS
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError, endpoint
-from kb_mcp.search.adapters.sqlite_index import reading
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning, Nearest
 from kb_mcp.search.domain.search import Filters, Score
@@ -85,7 +85,7 @@ def data(tmp_path: Path) -> Path:
 def library(data: Path, mode: SearchMode, meaning: Meaning | None = None) -> Library:
     """Return the tools over the data directory's index, ranking in ``mode``."""
     meaning = meaning or Meaning(connector())
-    return Library(data / "index.sqlite", data / "docs", meaning, mode)
+    return Library(SqliteIndex(data / "index.sqlite"), data / "docs", meaning, mode)
 
 
 def titles(answer: str) -> list[str]:
@@ -185,9 +185,11 @@ def test_hybrid_shows_by_words_a_document_both_rank_first(tmp_path: Path) -> Non
     tied = "# Tied\n\n## First\n\nrevert revert revert\n\n## Second\n\nundo undo undo rollback\n"
     write(docs, page("4006", "Tied"), tied)
     build_index(docs, tmp_path / "index.sqlite", MOMENT, Embedding(tiny(), tmp_path / "v.db"))
-    semantic = Library(tmp_path / "index.sqlite", docs, Meaning(connector()), "semantic")
+    semantic = Library(
+        SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connector()), "semantic"
+    )
     assert "section 3 Second" in hits(semantic.search("revert"))[0]
-    hybrid = Library(tmp_path / "index.sqlite", docs, Meaning(connector()), "hybrid")
+    hybrid = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connector()), "hybrid")
     assert "section 2 First" in hits(hybrid.search("revert"))[0]
 
 
@@ -197,7 +199,7 @@ def test_without_vectors_meaning_falls_back_to_words_and_says_why(tmp_path: Path
     fillers(docs)
     write(docs, page("4002", TARGET), "Leave for a meal.\n")
     build_index(docs, tmp_path / "index.sqlite", MOMENT)
-    tools = Library(tmp_path / "index.sqlite", docs, Meaning(connector()), "hybrid")
+    tools = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connector()), "hybrid")
     answer = tools.search("meal")
     assert titles(answer) == [TARGET]
     assert (
@@ -404,7 +406,9 @@ def test_a_long_section_is_shown_at_the_piece_that_meaning_found(tmp_path: Path)
     write(docs, page("4007", "Guide"), body)
     build_index(docs, tmp_path / "index.sqlite", MOMENT, Embedding(tiny(), tmp_path / "v.db"))
     meaning = Meaning(connector())
-    answer = Library(tmp_path / "index.sqlite", docs, meaning, "semantic").search("holidays")
+    answer = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, meaning, "semantic").search(
+        "holidays"
+    )
     first = hits(answer)[0]
     assert "section 2 Long" in first
     assert "> leave leave leave" in first
@@ -421,7 +425,7 @@ def test_ties_by_meaning_keep_the_newest_before_the_cut(tmp_path: Path) -> None:
     build_index(docs, tmp_path / "index.sqlite", MOMENT, Embedding(tiny(), tmp_path / "v.db"))
     meaning = Meaning(connector())
     for mode in ("semantic", "hybrid"):
-        tools = Library(tmp_path / "index.sqlite", docs, meaning, mode)
+        tools = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, meaning, mode)
         shown, _ = tools.ranked("holidays", mode, limit=500)
         assert [each.path.split("/")[-1][:4] for each in shown] == [
             str(7104 - number) for number in range(100)
@@ -461,7 +465,7 @@ def test_with_an_identifier_a_tie_still_goes_to_words(data: Path) -> None:
     order = [each.path for each in library(data, "lexical").ranked("PROJ-7 notes", "lexical")[0]]
     assert order[:2] == ["jira/PROJ/PROJ-7.md", path]
     ordered = Ordered([(path, 3, start, end)])
-    tools = Library(data / "index.sqlite", data / "docs", ordered, "hybrid")
+    tools = Library(SqliteIndex(data / "index.sqlite"), data / "docs", ordered, "hybrid")
     shown = next(hit for hit in hits(tools.search("PROJ-7 notes")) if MIXED in hit)
     assert "section 2 Notes" in shown
 
@@ -474,6 +478,6 @@ def test_with_an_identifier_a_place_higher_by_meaning_shows_meaning(data: Path) 
     ]
     assert order.index(path) == WORDS_PLACE
     ordered = Ordered([(path, 3, start, end)])
-    tools = Library(data / "index.sqlite", data / "docs", ordered, "hybrid")
+    tools = Library(SqliteIndex(data / "index.sqlite"), data / "docs", ordered, "hybrid")
     shown = next(hit for hit in hits(tools.search("4002 revert release")) if MIXED in hit)
     assert "section 3 Plan" in shown

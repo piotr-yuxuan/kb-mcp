@@ -31,6 +31,7 @@ from kb_mcp.mcp.app.tools import FALLBACKS, Library, UnanswerableError
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import endpoint
 from kb_mcp.search.adapters.reranking import SEARCH, rerank
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.meaning import Meaning
 from kb_mcp.search.app.reranking import Reranking
 
@@ -142,7 +143,9 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None
             )
             score = functools.partial(rerank, reranker, settings.rerank.model, bounds=SEARCH)
             reranking = Reranking(score, settings.rerank.depth)
-        library = Library(settings.index, settings.docs, meaning, settings.search_mode, reranking)
+        library = Library(
+            SqliteIndex(settings.index), settings.docs, meaning, settings.search_mode, reranking
+        )
         offered = surface(library, arguments.tools)
         tools = [
             Tool.from_function(

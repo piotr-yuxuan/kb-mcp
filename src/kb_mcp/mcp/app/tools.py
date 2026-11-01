@@ -28,7 +28,6 @@ from kb_mcp.kernel.names import WORKLOG_ID
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from kb_mcp.mcp.app import responses
-from kb_mcp.search.adapters.sqlite_index import reading
 from kb_mcp.search.app.meaning import Nearest
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS, UNIT, around
@@ -58,9 +57,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
     from pathlib import Path
 
-    from kb_mcp.search.adapters.sqlite_index import Reader
     from kb_mcp.search.app.meaning import Meaning
     from kb_mcp.search.app.reranking import Reranking
+    from kb_mcp.search.domain.indexes import SearchIndex, SearchReader
     from kb_mcp.search.domain.search import Entry
 
 SEARCH_LIMIT = 8
@@ -162,7 +161,7 @@ class Asked(Record):
     order: tuple[int, ...] | None = None  # the order that a cursor carries: None, none yet
 
 
-def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
+def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Ranking:
     """Rank the documents for a query in a mode; documents it names by identifier first.
 
     Lexical: by words, as 006 ranks. Semantic: the nearest by meaning. Hybrid: both,
@@ -216,7 +215,7 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
     )
 
 
-def passage_of(reader: Reader, entry: Entry, ranked: Ranking, planned: Plan) -> Passage:
+def passage_of(reader: SearchReader, entry: Entry, ranked: Ranking, planned: Plan) -> Passage:
     """Find the section to show for a document: by meaning or by words, as it was ranked.
 
     A document shown by words opens at its best section for the query's words; one
@@ -242,7 +241,7 @@ def folded(text: str) -> str:
 
 
 def place_of(
-    reader: Reader, ranked: Ranking, planned: Plan, path: str
+    reader: SearchReader, ranked: Ranking, planned: Plan, path: str
 ) -> tuple[int, tuple[int, int]]:
     """Give a document's section, by its number, and its best place there, as a span of the body.
 
@@ -274,7 +273,9 @@ def place_of(
     return number, (hit, hit + 1)
 
 
-def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -> list[Passage]:
+def excerpts(
+    reader: SearchReader, ranked: Ranking, planned: Plan, paths: list[str]
+) -> list[Passage]:
     """Give the passage that ask quotes of each document, verbatim, in the order given.
 
     About each document's best place (``place_of``): by meaning, the unit of its best
@@ -300,7 +301,9 @@ def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -
     return found
 
 
-def reranked(reader: Reader, asked: Asked, ranked: Ranking, reranking: Reranking | None) -> Ranking:
+def reranked(
+    reader: SearchReader, asked: Asked, ranked: Ranking, reranking: Reranking | None
+) -> Ranking:
     """Reorder the documents after those named, as many as the reranking's depth, by score.
 
     A page that continues another keeps the order that its cursor carries, reranked or
@@ -352,7 +355,7 @@ def checked(filters: SearchFilters | None) -> dict[str, str]:
     return given
 
 
-def narrowed(reader: Reader, given: Mapping[str, str]) -> Filters:
+def narrowed(reader: SearchReader, given: Mapping[str, str]) -> Filters:
     """Give the filters as the index holds their values, refusing one that no document has."""
     names = ("source", "space", "project", "status", "label", "issue_type")
     dates = (
@@ -377,7 +380,7 @@ PERSON_FILTERS = {
 }
 
 
-def who(reader: Reader, name: str, value: str | None) -> str | None:
+def who(reader: SearchReader, name: str, value: str | None) -> str | None:
     """Find the person whom a filter names, by their id or any name that a source writes.
 
     Of the persons with a document in the filter's role, in PERSON_FILTERS, the one of
@@ -422,7 +425,9 @@ def who(reader: Reader, name: str, value: str | None) -> str | None:
     raise UnanswerableError(responses.refusal(message, listed[:VALUES_SHOWN], len(valid)))
 
 
-def about(reader: Reader, filters: Filters, paths: Sequence[str]) -> tuple[str, dict[str, str]]:
+def about(
+    reader: SearchReader, filters: Filters, paths: Sequence[str]
+) -> tuple[str, dict[str, str]]:
     """Write the person that ``person`` narrows to, and their roles on each document shown.
 
     The person as ``responses.person`` writes them, then a blank line, with those perhaps
@@ -465,7 +470,7 @@ def bounded(**values: tuple[str | None, int]) -> None:
             raise UnanswerableError(message)
 
 
-def canonical(reader: Reader, name: str, value: str | None) -> str | None:
+def canonical(reader: SearchReader, name: str, value: str | None) -> str | None:
     """Find the value that the index holds for a filter, without regard to case or accents.
 
     Values compare as hits show them, their spaces collapsed, composed and casefolded,
@@ -558,17 +563,17 @@ class Shown(Record):
 
 
 class Library:
-    """The four tools, over the index at one path."""
+    """The four tools, over one index."""
 
     def __init__(
         self,
-        index: Path,
+        index: SearchIndex,
         docs: Path,
         meaning: Meaning | None = None,
         mode: Mode = "lexical",
         reranking: Reranking | None = None,
     ) -> None:
-        """Answer from the index at ``index``, built from the mirror at ``docs``.
+        """Answer from ``index``, built from the mirror at ``docs``.
 
         Search ranks in ``mode``; by meaning, through ``meaning``, when it is given; its
         first documents are reranked through ``reranking``, when it is given.
@@ -584,14 +589,14 @@ class Library:
         return Library(self._index, self._docs, self._meaning, self._mode, reranking)
 
     @contextmanager
-    def _reading(self) -> Iterator[Reader]:
+    def _reading(self) -> Iterator[SearchReader]:
         try:
-            with reading(self._index) as reader:
+            with self._index.reading() as reader:
                 yield reader
         except UnavailableIndexError as error:
             raise UnanswerableError(str(error)) from None
 
-    def _find(self, reader: Reader, ref: str) -> Entry | None:
+    def _find(self, reader: SearchReader, ref: str) -> Entry | None:
         """Find a document by path, issue key, page or work-log id, or address, in that order."""
         named, path = identifiers(ref), ref.strip()
         ids = [path] if WORKLOG_ID.fullmatch(path) else named.ids[:1]

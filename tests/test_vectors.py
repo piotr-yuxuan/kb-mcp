@@ -19,7 +19,7 @@ from kb_mcp.mcp.app import responses
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.adapters.model_api import ModelError
-from kb_mcp.search.adapters.sqlite_index import reading
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
 from kb_mcp.search.domain.indexes import UnavailableIndexError
@@ -198,7 +198,9 @@ def test_index_after_embed_asks_nothing_and_leaves_the_vectors_until_the_next_em
         )
         with reading(data / "index.sqlite") as reader:
             assert reader.summary().pieces == 0
-        library = Library(data / "index.sqlite", data / "docs", Meaning(connector()), "hybrid")
+        library = Library(
+            SqliteIndex(data / "index.sqlite"), data / "docs", Meaning(connector()), "hybrid"
+        )
         assert (
             "search by meaning: off, the index holds no vectors; run kb-mcp embed"
             in (parts(library.status())[1])
