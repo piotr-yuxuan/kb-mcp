@@ -115,7 +115,17 @@ POSITIONALS = {
 # The subcommands whose output is their own, by plan 015: the protocol, a script.
 OWN_OUTPUT = {"serve", "completion"}
 # The subcommands that write under the data directory, and so ask first, by plan 015.
-WRITING = {"download", "eval", "eval-agents", "eval-rerank", "index", "login", "mirror", "sync"}
+WRITING = {
+    "download",
+    "embed",
+    "eval",
+    "eval-agents",
+    "eval-rerank",
+    "index",
+    "login",
+    "mirror",
+    "sync",
+}
 # The subcommands that take --dry-run, by plans 015 and 017.
 DRY_RUN = {"download", "sync"}
 SECRETS = {
@@ -251,9 +261,10 @@ def test_the_version_is_the_project_s(capsys: CaptureFixture[str]) -> None:
 def test_the_help_says_who_asks_and_what_each_exit_status_means() -> None:
     """The commands that write ask first, by name; every status of the one enum is listed.
 
-    The help is read with its lines joined, as its width follows the terminal's.
+    The help is read with its lines joined, as its width follows the terminal's, which may
+    break a name at its hyphen.
     """
-    said = " ".join(parser().format_help().split())
+    said = " ".join(parser().format_help().split()).replace("- ", "-")
     assert f"write under the data directory ({', '.join(sorted(WRITING))})" in said
     assert "then ask" in said
     for status in ExitStatus:
@@ -287,7 +298,7 @@ def test_the_help_on_a_terminal_has_no_colour_under_no_color(
         said = read_until(controller, b"\0")
     os.close(controller)
     assert child.returncode == 0
-    assert b"Exit statuses" in said
+    assert b"Exit statuses" in b" ".join(said.split())
     assert (b"\x1b" in said) is coloured
 
 

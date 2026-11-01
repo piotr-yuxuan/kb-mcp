@@ -848,7 +848,7 @@ def reading(path: Path) -> Iterator[Reader]:
             raise UnavailableIndexError(message)
         # A chunking that this version lacks would be cut as no table says.
         if meta.get("chunking", "") not in {"", *CHUNKINGS}:
-            message = f"{unread} `kb-mcp index`"
+            message = f"{unread} `kb-mcp embed`"
             raise UnavailableIndexError(message)
         yield Reader(connection)
     finally:

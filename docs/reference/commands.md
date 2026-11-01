@@ -27,13 +27,15 @@ positional arguments:
     completion   print the code that completes the command in bash and zsh
     doctor       check the machine and the sign-in
     download     download what changed in a period, with its files
+    embed        build the search index again with vectors, then prune the vector
+                 store
     eval         measure search and ask on golden questions, by mode, model and
                  chunking
     eval-agents  evaluate ask through agents: prepare their runs, bridge their calls,
                  grade
     eval-rerank  measure search reranked at each depth on golden questions, against
                  the bar
-    index        build the search index from the mirror
+    index        build the search index of the mirror's words
     login        sign in once, in a Chrome window
     mirror       write the Markdown mirror from the raw store
     model        check the embedding model and its endpoint
@@ -46,10 +48,10 @@ options:
   -h, --help     show this help message and exit
   --version      show the version
 
-The commands that write under the data directory (download, eval, eval-agents, eval-
-rerank, index, login, mirror, sync) first say what they will do, with the command to
-copy, then ask; --yes, or --dry-run where taken, runs them without asking, and with no
-terminal to ask on, they are refused. Exit statuses: 0 done; 1 something failed (a
+The commands that write under the data directory (download, embed, eval, eval-agents,
+eval-rerank, index, login, mirror, sync) first say what they will do, with the command
+to copy, then ask; --yes, or --dry-run where taken, runs them without asking, and with
+no terminal to ask on, they are refused. Exit statuses: 0 done; 1 something failed (a
 document, a file, a check, the endpoint), or the question was declined; 2 refused
 before acting: settings, options or input, or no terminal to ask on; 3 sign in again:
 no session saved, it no longer holds, or the site refused the API token; 130 stopped
@@ -158,6 +160,37 @@ counts of what the fetch did, or with --dry-run would do; failed_targets, the sp
 or projects that failed; status, its exit status; windows, each target's: its start,
 end and reason, and its coverage, extended, capped at a failure, held, or null when
 not written; dry_run, whether the fetch only planned.
+```
+
+## `embed`
+
+```text
+usage: kb-mcp embed [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
+                    -v | --log-level {debug,info,warning,error}]
+                    [--format {text,json}] [--summary {short,detailed}] [-y]
+                    [--allow-remote-embeddings]
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       the settings file
+  --data-dir DATA_DIR   the data directory, overriding the settings
+  --site SITE           the site, as https://<name>.atlassian.net
+  -q                    say errors alone, and write no result as text
+  -v                    the level info, or debug with -vv
+  --log-level {debug,info,warning,error}
+                        say what is of this level or above; warning by default
+  --format {text,json}  write the result as text, or as one JSON document
+  --summary {short,detailed}
+                        write what matters of the result, or all of it
+  -y, --yes             run without asking first, as a script does
+  --allow-remote-embeddings
+                        let this run send the mirror's text to an embedding endpoint
+                        off this machine
+
+With --format json: report, the documents by type, the sections, the files skipped,
+the pieces by meaning, the texts embedded now and the files with a piece refused;
+index, its path; model, the one that embedded; pruned, what the prune of the vector
+store kept and deleted, or why it did not prune.
 ```
 
 ## `eval`
@@ -359,7 +392,6 @@ verdicts and default depth; results, the file that keeps them.
 usage: kb-mcp index [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
                     -v | --log-level {debug,info,warning,error}]
                     [--format {text,json}] [--summary {short,detailed}] [-y]
-                    [--allow-remote-embeddings]
 
 options:
   -h, --help            show this help message and exit
@@ -374,15 +406,9 @@ options:
   --summary {short,detailed}
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
-  --allow-remote-embeddings
-                        let this run send the mirror's text to an embedding endpoint
-                        off this machine
 
-With --format json: report, the documents by type, the sections, the files skipped,
-the pieces by meaning, the texts embedded now and the files with a piece refused;
-index, its path; model, the one that embedded, null by words alone; pruned, what the
-prune of the vector store kept and deleted, or why it did not prune, null by words
-alone.
+With --format json: report, the documents by type, the sections and the files skipped;
+index, its path; model and pruned, null.
 ```
 
 ## `login`

@@ -131,7 +131,7 @@ machine: a literal loopback address, `127.0.0.1` or `[::1]`, not a name, not eve
 command is given `--allow-remote-embeddings`, on every run, and then only over https:
 
 ```bash
-kb-mcp index --allow-remote-embeddings
+kb-mcp embed --allow-remote-embeddings
 ```
 
 For the MCP server, that means registering it with the flag:

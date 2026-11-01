@@ -156,20 +156,21 @@ def test_the_command_gives_its_report_index_and_model_as_json(
     assert document["model"] is None
 
 
-def test_by_default_the_command_needs_the_endpoint_unless_words_alone_are_set(
+def test_embed_needs_the_endpoint_and_index_never_asks_it(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Plan 025, criterion 2: no mode set and no endpoint answering, exit 1 naming the way out.
+    """No endpoint answering: ``embed`` exits 1 naming the way out, which runs by words alone.
 
-    That way is search_mode = "lexical": with it, the same run indexes by words alone.
+    Whatever the mode says, as neither reads it to decide: plan 031, criterion 5.
     """
     write(data / "docs", page("196845", "Kafka"), BODY)
+    config = data.parent / "config.toml"
     with nothing_listening() as url:
-        endpoint = f"embedding_url = {json.dumps(url)}\n"
-        status, _, err = index(data, capsys, endpoint)
-        assert status == 1
-        assert 'search_mode = "lexical"' in err
-        status, out, _ = index(data, capsys, f'search_mode = "lexical"\n{endpoint}')
+        config.write_text(f"embedding_url = {json.dumps(url)}\n", encoding="utf-8")
+        options = ["--yes", "--config", str(config), "--data-dir", str(data)]
+        assert main(["embed", *options]) == 1
+        assert "run kb-mcp index for an index by words alone" in capsys.readouterr().err
+        status, out, _ = index(data, capsys, f"embedding_url = {json.dumps(url)}\n")
     assert (status, out) == (0, "documents: 1\nsections: 2\n")
 
 
@@ -333,29 +334,29 @@ def test_a_bug_in_the_database_s_use_is_not_taken_for_a_failure_to_write(
 def test_by_words_alone_no_endpoint_is_asked_even_one_elsewhere(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The lexical mode never opens the endpoint, so an address off this machine is no matter."""
+    """``index`` never opens the endpoint, so an address off this machine is no matter."""
     write(data / "docs", page("196845", "Kafka"))
-    remote = 'search_mode = "lexical"\nembedding_url = "https://embeddings.example/v1"\n'
-    assert index(data, capsys, remote)[0] == 0
+    for mode in ("lexical", "hybrid"):
+        remote = f'search_mode = "{mode}"\nembedding_url = "https://embeddings.example/v1"\n'
+        assert index(data, capsys, remote)[0] == 0
 
 
-def test_by_meaning_an_endpoint_elsewhere_needs_the_flag_and_https(
-    data: Path, capsys: CaptureFixture[str]
+@pytest.mark.parametrize("mode", ["hybrid", "lexical"])
+def test_embed_with_an_endpoint_elsewhere_needs_the_flag_and_https(
+    data: Path, capsys: CaptureFixture[str], mode: str
 ) -> None:
-    """Hybrid, an endpoint off this machine: refused without the flag, and over http with it."""
+    """An endpoint off this machine: refused without the flag, over http with it, in any mode."""
     write(data / "docs", page("196845", "Kafka"))
-    remote = 'search_mode = "hybrid"\nembedding_url = "https://embeddings.example/v1"\n'
-    status, _, err = index(data, capsys, remote)
-    assert status == BAD_SETTINGS
+    config = data.parent / "config.toml"
+    settings = f'search_mode = "{mode}"\nembedding_url = "{{}}://embeddings.example/v1"\n'
+    config.write_text(settings.format("https"), encoding="utf-8")
+    options = ["--yes", "--config", str(config), "--data-dir", str(data)]
+    assert main(["embed", *options]) == BAD_SETTINGS
+    err = capsys.readouterr().err
     assert said(err) == [("error", "run.refused")]
     assert "embedding_url: not an address of this machine" in err
-    config = data.parent / "config.toml"
-    config.write_text(
-        'search_mode = "hybrid"\nembedding_url = "http://embeddings.example/v1"\n',
-        encoding="utf-8",
-    )
-    options = ["--config", str(config), "--data-dir", str(data), "--allow-remote-embeddings"]
-    assert main(["index", "--yes", *options]) == BAD_SETTINGS
+    config.write_text(settings.format("http"), encoding="utf-8")
+    assert main(["embed", *options, "--allow-remote-embeddings"]) == BAD_SETTINGS
     err = capsys.readouterr().err
     assert said(err) == [("error", "run.refused")]
     assert "over https only" in err

@@ -118,7 +118,7 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
         with monkeypatch.context() as session_alone:
             session_alone.delenv(CREDENTIAL)
             assert main(["sync", "--yes", *options]) == ExitStatus.FAILED
-        assert main(["index", "--yes", *options]) == ExitStatus.OK
+        assert main(["embed", "--yes", *options]) == ExitStatus.OK
         port = int(url.rpartition(":")[2].partition("/")[0])
         given = {"ports": [port], "limit": 1.0, "report": str(tmp_path / "report.json")}
         command = StdioServerParameters(

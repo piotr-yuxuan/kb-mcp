@@ -126,6 +126,7 @@ source_modules = [
   "kb_mcp.mcp",
   "kb_mcp.evaluation",
   "kb_mcp.cli.commands.serve",
+  "kb_mcp.cli.commands.embed",
   "kb_mcp.cli.commands.index",
   "kb_mcp.cli.commands.evaluate",
   "kb_mcp.cli.commands.model",

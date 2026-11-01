@@ -281,7 +281,7 @@ def test_an_index_that_fails_to_embed_shows_no_key(
     options = ["--yes", "--config", str(home / "none.toml"), "--data-dir", str(home / "data")]
     with serving(Scripted(models={})) as url:
         monkeypatch.setenv("KB_MCP_EMBEDDING_URL", url)
-        assert main(["index", *options, "--summary", "detailed"]) == 1
+        assert main(["embed", *options, "--summary", "detailed"]) == 1
     out, err = capsys.readouterr()
     assert "embedding_api_key: set" in err
     assert ("error", "index.not_built") in said(err)

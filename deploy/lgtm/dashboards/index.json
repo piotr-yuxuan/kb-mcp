@@ -1,7 +1,7 @@
 {
   "uid": "kb-mcp-index",
   "title": "index",
-  "description": "The index runs in the time range: the files they indexed, the pieces embedded, and the prunes of the vector store.",
+  "description": "The index runs in the time range: the files that they indexed, by words alone.",
   "tags": [
     "kb-mcp"
   ],
@@ -27,7 +27,7 @@
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 6,
+        "w": 8,
         "h": 4
       },
       "type": "stat",
@@ -70,9 +70,9 @@
     {
       "id": 2,
       "gridPos": {
-        "x": 6,
+        "x": 8,
         "y": 0,
-        "w": 6,
+        "w": 8,
         "h": 4
       },
       "type": "stat",
@@ -113,101 +113,11 @@
       }
     },
     {
-      "id": 3,
-      "gridPos": {
-        "x": 12,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
-      "type": "stat",
-      "title": "Embedding time, 95th percentile",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(gen_ai_client_operation_duration_seconds_bucket{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range])))",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "none",
-        "graphMode": "none",
-        "textMode": "auto"
-      }
-    },
-    {
-      "id": 4,
-      "gridPos": {
-        "x": 18,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
-      "type": "stat",
-      "title": "Embedding calls",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(last_over_time(gen_ai_client_operation_duration_seconds_count{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range]))",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "none",
-        "graphMode": "none",
-        "textMode": "auto"
-      }
-    },
-    {
       "id": 5,
       "gridPos": {
         "x": 0,
         "y": 4,
-        "w": 12,
+        "w": 24,
         "h": 8
       },
       "type": "bargauge",
@@ -249,187 +159,10 @@
       }
     },
     {
-      "id": 6,
-      "gridPos": {
-        "x": 12,
-        "y": 4,
-        "w": 12,
-        "h": 8
-      },
-      "type": "bargauge",
-      "title": "Pieces by outcome",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_index_pieces_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range]))",
-          "instant": true,
-          "range": false,
-          "legendFormat": "{{kb_mcp_outcome}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "horizontal",
-        "displayMode": "basic",
-        "showUnfilled": true
-      }
-    },
-    {
-      "id": 7,
-      "gridPos": {
-        "x": 0,
-        "y": 12,
-        "w": 12,
-        "h": 8
-      },
-      "type": "bargauge",
-      "title": "Failed embedding calls by model",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (gen_ai_request_model, error_type) (last_over_time(gen_ai_client_operation_duration_seconds_count{job=\"kb-mcp\", error_type!=\"\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range]))",
-          "instant": true,
-          "range": false,
-          "legendFormat": "{{gen_ai_request_model}}: {{error_type}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "horizontal",
-        "displayMode": "basic",
-        "showUnfilled": true
-      }
-    },
-    {
-      "id": 10,
-      "gridPos": {
-        "x": 12,
-        "y": 12,
-        "w": 12,
-        "h": 4
-      },
-      "type": "timeseries",
-      "title": "Vector store's size at each prune",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max(kb_mcp_vectors_bytes{job=\"kb-mcp\"} and on (instance) kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"})",
-          "instant": false,
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes"
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        }
-      }
-    },
-    {
-      "id": 11,
-      "gridPos": {
-        "x": 12,
-        "y": 16,
-        "w": 12,
-        "h": 4
-      },
-      "type": "stat",
-      "title": "Vectors pruned",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(last_over_time(kb_mcp_vectors_total{job=\"kb-mcp\", kb_mcp_outcome=\"pruned\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"index\"}[$__range]))",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "none",
-        "graphMode": "none",
-        "textMode": "auto"
-      }
-    },
-    {
       "id": 8,
       "gridPos": {
         "x": 0,
-        "y": 20,
+        "y": 12,
         "w": 24,
         "h": 10
       },
@@ -462,7 +195,7 @@
       "id": 9,
       "gridPos": {
         "x": 0,
-        "y": 30,
+        "y": 22,
         "w": 24,
         "h": 10
       },

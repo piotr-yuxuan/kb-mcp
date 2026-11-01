@@ -5,7 +5,6 @@ Apart from the entry, so that a run that embeds nothing loads none of this.
 
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.endpoint import EMBEDDINGS
@@ -15,6 +14,7 @@ from kb_mcp.search.app.indexing import Indexing
 
 if TYPE_CHECKING:
     import argparse
+    from collections.abc import Callable
 
     from kb_mcp.config.domain.settings import Settings
 
@@ -33,15 +33,12 @@ def open_endpoint(arguments: argparse.Namespace, settings: Settings) -> Endpoint
     )
 
 
-def indexing_of(arguments: argparse.Namespace, settings: Settings) -> Indexing:
-    """Say how this run builds the index, from its settings and as the run allows it.
+def indexing_of(settings: Settings, opening: Callable[[], Endpoint] | None) -> Indexing:
+    """Say how a run builds the index, from its settings.
 
-    By words alone in the lexical mode, which opens no endpoint; else with the setting's
-    model, through the endpoint that ``open_endpoint`` opens once the build begins.
+    By words alone when ``opening`` is None; else with the setting's model, through the
+    endpoint that ``opening`` opens once the build begins.
     """
-    opening = (
-        None if settings.search_mode == "lexical" else partial(open_endpoint, arguments, settings)
-    )
     return Indexing(
         docs=settings.docs,
         index=settings.index,

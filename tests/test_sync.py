@@ -1193,7 +1193,7 @@ def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
 
 # The commands whose steps sync runs: what their pages list, and sync's does not, is
 # theirs, and sync records it as they do.
-STEP_PAGES = ("download", "mirror", "index")
+STEP_PAGES = ("download", "mirror", "index", "embed")
 
 
 @pytest.mark.usefixtures("signed_in")

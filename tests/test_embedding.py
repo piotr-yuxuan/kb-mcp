@@ -450,7 +450,7 @@ class Unabridged(argparse.ArgumentParser):
 def test_the_embeddings_service_names_a_real_setting_and_option() -> None:
     """The setting and the flag that its messages name are the settings' and the command's."""
     assert EMBEDDINGS.setting in Settings.model_fields
-    assert parser(Unabridged).parse_args(["index", EMBEDDINGS.flag]).allow_remote_embeddings
+    assert parser(Unabridged).parse_args(["embed", EMBEDDINGS.flag]).allow_remote_embeddings
 
 
 def test_the_captured_answers_of_ollama_parse() -> None:

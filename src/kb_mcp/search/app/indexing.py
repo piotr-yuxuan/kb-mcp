@@ -4,10 +4,10 @@ With an embedding, each piece of each section also gets its vector: from the vec
 store when it holds the piece's text, else from the model, then kept there. A piece
 whose text the model refuses has no vector, and its document is named. Reading the files,
 joining persons and embedding are each a span; files and pieces are counted, as
-``docs/reference/telemetry/index.md`` lists it. ``refresh`` is what ``index`` and
-``sync`` run alike: ``index_mirror``'s build, which opens the endpoint, if any, then
-builds; then, for an index by meaning, the prune of the vector store to what the indexes
-on disk read.
+``docs/reference/telemetry/index.md`` and ``embed.md`` list it. ``refresh`` is what
+``index``, ``embed`` and ``sync`` run alike: ``index_mirror``'s build, which opens the
+endpoint, if any, then builds; then, for an index by meaning, the prune of the vector
+store to what the indexes on disk read.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ PIECES = METER.create_counter(
 
 
 # What to do when the endpoint does not answer with the model.
-WORDS_ALONE = 'set search_mode = "lexical" to index by words alone'
+WORDS_ALONE = "run kb-mcp index for an index by words alone"
 
 
 class MirrorMissingError(Exception):

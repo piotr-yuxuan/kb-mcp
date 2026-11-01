@@ -226,22 +226,49 @@ def test_mirror_records_as_documented(
     assert undocumented("mirror", emitted) == []
 
 
-def by_meaning(data: Path, url: str, mode: str = "hybrid") -> list[str]:
-    """Write settings naming the tiny model at ``url``, in ``mode``; give the options to them."""
+def by_meaning(data: Path, url: str) -> list[str]:
+    """Write settings naming the tiny model at ``url``; give the options to them."""
     settings = data.parent / "config.toml"
     settings.write_text(
-        f'model = "tiny"\nembedding_url = {json.dumps(url)}\nsearch_mode = "{mode}"\n',
+        f'model = "tiny"\nembedding_url = {json.dumps(url)}\n',
         encoding="utf-8",
     )
     return ["--config", str(settings), "--data-dir", str(data)]
 
 
-def test_index_records_as_documented(
+def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None:
+    """By words alone, in the hybrid mode too: a file skipped; whole; then no mirror.
+
+    The mirror holds a page, one with a front matter refused, and the people of PERSONS,
+    two of whose names could be several persons, with an alias whose key none holds. An
+    address off this machine, in the settings, is never asked.
+    """
+    data = tmp_path / "data"
+    fillers(data / "docs", 5)
+    for front in PERSONS:
+        write(data / "docs", front)
+    (data / "aliases.toml").write_text('"Jo Placeholder" = "Robin Example"\n', encoding="utf-8")
+    broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
+    broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
+    options = by_meaning(data, "https://embeddings.example/v1")
+    emitted = Emitted()
+    with emitted.gathering(telemetry, "index"):
+        assert main(["index", "--yes", *options]) == ExitStatus.FAILED
+    broken.unlink()
+    with emitted.gathering(telemetry, "index"):
+        assert main(["index", "--yes", *options]) == ExitStatus.OK
+    empty = tmp_path / "empty"
+    with emitted.gathering(telemetry, "index"):
+        assert main(["index", "--yes", *by_meaning(empty, URL)]) == ExitStatus.FAILED
+    assert undocumented("index", emitted) == []
+    assert not any(name.startswith(("http.", "vectors.")) for name in emitted.events)
+    assert not (data / "vectors.sqlite").exists()
+
+
+def test_embed_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """By meaning: a file skipped and a piece refused, during a prune, whole, during a build.
-
-    Then no endpoint, and no mirror.
+    """A file skipped and a piece refused, during a prune, whole, during a build; no endpoint.
 
     The mirror holds a few pages, one with a front matter refused, and one whose second
     section the endpoint refuses to embed, cut by sections; and the people of PERSONS,
@@ -261,10 +288,10 @@ def test_index_records_as_documented(
     broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
     refused = "Rollback\nRelease\nThe deploy of the seller service."
     emitted = Emitted()
-    with serving(Scripted(refused={refused})) as url, emitted.gathering(telemetry, "index"):
-        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
-    with nothing_listening() as url, emitted.gathering(telemetry, "index"):
-        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
+    with serving(Scripted(refused={refused})) as url, emitted.gathering(telemetry, "embed"):
+        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
+    with nothing_listening() as url, emitted.gathering(telemetry, "embed"):
+        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
     taken = threading.Event()
 
     def prune_briefly() -> None:
@@ -278,22 +305,19 @@ def test_index_records_as_documented(
     pruning = threading.Thread(target=prune_briefly)
     pruning.start()
     assert taken.wait(10)
-    with serving(Scripted()) as url, emitted.gathering(telemetry, "index"):
-        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
+    with serving(Scripted()) as url, emitted.gathering(telemetry, "embed"):
+        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
     pruning.join()
     broken.unlink()
-    with serving(Scripted()) as url, emitted.gathering(telemetry, "index"):
-        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
+    with serving(Scripted()) as url, emitted.gathering(telemetry, "embed"):
+        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
     with (
         vector_store.shared(data / "vectors.sqlite"),
         serving(Scripted()) as url,
-        emitted.gathering(telemetry, "index"),
+        emitted.gathering(telemetry, "embed"),
     ):
-        assert main(["index", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
-    with emitted.gathering(telemetry, "index"):
-        empty = tmp_path / "empty"
-        assert main(["index", "--yes", *by_meaning(empty, URL, "lexical")]) == ExitStatus.FAILED
-    assert undocumented("index", emitted) == []
+        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
+    assert undocumented("embed", emitted) == []
     assert emitted.events["index.person_ambiguous"] == {"spelling", "people"}
     assert emitted.events["index.alias_unused"] == {"alias", "key", "reason"}
     assert "people" in emitted.events["index.built"]

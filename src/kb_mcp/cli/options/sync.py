@@ -15,13 +15,15 @@ from kb_mcp.cli.options._common import (
     add_yes_option,
     endpoint_by_meaning,
 )
-from kb_mcp.cli.options.index import INDEX_SETTINGS, by_words_alone
 from kb_mcp.sources.registry import accounts_of
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from kb_mcp.sources.declaration import Declared
+
+# What the index's build reads, beside the data directory.
+INDEX_SETTINGS = ("model", "search_mode", "chunking", "embedding_url", "embedding_api_key")
 
 
 def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
@@ -73,8 +75,11 @@ def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
     }
     if arguments.dry_run:
         unused |= dict.fromkeys(INDEX_SETTINGS, "a dry run builds no index")
-    else:
-        unused |= by_words_alone(arguments, settings)
+    elif settings["search_mode"] == "lexical":
+        unused |= dict.fromkeys(
+            ("model", "embedding_url", "embedding_api_key", "chunking"),
+            "the lexical mode embeds nothing",
+        )
     for declared in taken:
         options = given(arguments, declared.options)
         unused |= declared.unapplied(options, settings) if declared.unapplied else {}

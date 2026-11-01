@@ -25,7 +25,6 @@ from kb_mcp.cli.commands._shared import enter
 from kb_mcp.cli.domain.command_line import command_line
 from kb_mcp.cli.domain.summary import values_of
 from kb_mcp.cli.main import main, parser
-from kb_mcp.cli.options.index import by_words_alone
 from kb_mcp.config.domain.settings import DEFAULT_MODEL
 from kb_mcp.observability.app.observed import early
 from kb_mcp.sources.registry import SOURCES
@@ -50,12 +49,12 @@ SECRETS = {CREDENTIAL: "token-sentinel-4d1c", KEY: "key-sentinel-9a7e"}
 UNKNOWN = "KB_MCP_UNKNOWN"
 WAIT = 30  # seconds for the server to answer and stop
 # The modules that run the commands that write, by plan 015.
-WRITING = ("download", "evaluate", "index", "login", "mirror")
+WRITING = ("download", "embed", "evaluate", "index", "login", "mirror")
 # Each command that writes, with options of its own, as given on its command line.
 OWN_OPTIONS = {
     "download": ["--space", "ENG", "--space", "OPS", "--since", "7d", "--max-file-mb", "5"],
     "mirror": [],
-    "index": ["--allow-remote-embeddings"],
+    "embed": ["--allow-remote-embeddings"],
     "eval": ["golden.yaml", "--model", "tiny", "--model", "qwen3-embedding:0.6b"],
     "login": ["--chrome", "chrome", "--keep-extensions"],
 }
@@ -180,28 +179,23 @@ def test_a_download_s_summary_says_where_its_windows_start(
     assert f"\n  {rule}\n" in err.split("kb-mcp download")[0]
 
 
-def test_an_index_by_words_alone_ignores_the_model_and_the_endpoint_given(
+def test_an_index_says_in_detail_that_it_reads_no_model_and_no_endpoint(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Those that a layer gave: the file's model, the variable's key; not the default address."""
     (home / "data" / "docs").mkdir(parents=True)
     config = home / "config.toml"
-    config.write_text('model = "tiny"\nsearch_mode = "lexical"\n', "utf-8")
+    config.write_text('model = "tiny"\n', "utf-8")
     monkeypatch.setenv(KEY, SECRETS[KEY])
-    assert main(["index", "--yes", "--config", str(config), "--data-dir", str(home / "data")]) == 0
+    options = ["--yes", "--config", str(config), "--data-dir", str(home / "data")]
+    assert main(["index", *options, "--summary", "detailed"]) == 0
     out, err = capsys.readouterr()
     ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
     assert ignored == [
-        "ignored: model (config.toml): the lexical mode embeds nothing",
-        f"ignored: embedding_api_key ({KEY}): the lexical mode embeds nothing",
+        "ignored: model (config.toml): not read by index",
+        f"ignored: embedding_api_key ({KEY}): not read by index",
     ]
     assert SECRETS[KEY] not in out + err
-
-
-@pytest.mark.parametrize("mode", ["semantic", "hybrid"])
-def test_an_index_by_meaning_applies_its_model_and_endpoint(mode: str) -> None:
-    """Outside the lexical mode the index embeds, with the model at the endpoint."""
-    assert by_words_alone(None, {"search_mode": mode}) == {}
 
 
 @pytest.mark.parametrize(
@@ -238,7 +232,7 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
 ) -> None:
     """At its default too, where no value is said to be ignored.
 
-    ``eval``'s --model replaces the model; an index by words alone embeds nothing.
+    ``eval``'s --model replaces the model; ``sync`` by words alone embeds nothing.
     """
     monkeypatch.chdir(home)
     (home / "golden.yaml").write_text("", "utf-8")
@@ -248,8 +242,9 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
     assert f"\n  model: {DEFAULT_MODEL} (not applied: replaced by --model)\n" in err
     assert "ignored: " not in err
     monkeypatch.setenv("KB_MCP_SEARCH_MODE", "lexical")
-    assert main(["index", "--yes", "--config", none]) == 0
-    summary = capsys.readouterr().err.split("kb-mcp index")[0]
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(home))
+    assert main(["sync", "--yes", "--config", none]) == 1  # no document to index
+    summary = capsys.readouterr().err.split("kb-mcp sync")[0]
     marked = [
         line.strip().partition(": ")[0]
         for line in summary.splitlines()
@@ -556,24 +551,26 @@ def test_an_empty_list_that_replaced_no_value_given_is_neither_ignored_nor_named
 def test_the_command_to_copy_is_followed_by_the_settings_that_no_flag_sets(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Run again elsewhere, the command would index by the defaults: each is named, with its layer.
+    """Run again elsewhere, the command would embed by the defaults: each is named, with its layer.
 
     With every setting at its default but the file's path, which --config carries,
     nothing is named.
     """
-    options = ["index", "--yes", "--config", str(home / "none.toml")]
+    options = ["embed", "--yes", "--config", str(home / "none.toml")]
     assert main(options) == 0
     assert "not in the command" not in capsys.readouterr().err
-    mode, model = "KB_MCP_SEARCH_MODE", "KB_MCP_MODEL"
-    monkeypatch.setenv(mode, "semantic")
+    chunking, model = "KB_MCP_CHUNKING", "KB_MCP_MODEL"
+    monkeypatch.setenv(chunking, "sections")
     monkeypatch.setenv(model, "foo")
     assert main(options) == 0
-    command = f"kb-mcp index \\\n  --config {shlex.quote(str(home / 'none.toml'))}\n"
+    command = f"kb-mcp embed \\\n  --config {shlex.quote(str(home / 'none.toml'))}\n"
     _, found, after = capsys.readouterr().err.partition(command)
     assert found
-    assert [line.rpartition(": ")[0] for line in after.splitlines()] == [
+    assert [
+        line.rpartition(": ")[0] for line in after.splitlines() if line.startswith("not in")
+    ] == [
         f"not in the command: model ({model})",
-        f"not in the command: search_mode ({mode})",
+        f"not in the command: chunking ({chunking})",
     ]
 
 
