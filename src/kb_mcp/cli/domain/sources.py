@@ -98,7 +98,7 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
         flag
         for declared in arguments.sources
         for flag, option in declared.options.items()
-        if option.setting is None
+        if declared.fetcher is not None and option.setting is None
     }
     for flag, value in sorted(given(arguments, flags).items()):
         ignoring = [declared.name for declared in taken if flag not in declared.options]

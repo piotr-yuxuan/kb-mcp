@@ -47,7 +47,7 @@ from kb_mcp.sources.atlassian.fetch.app.download import Outcome, Report
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
 from kb_mcp.sources.atlassian.prepare.app import prepare as mirror_app
 from kb_mcp.sources.atlassian.prepare.app import preparer
-from kb_mcp.sources.declaration import ResourceType
+from kb_mcp.sources.declaration import Option, ResourceType
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.roles import Run
 from kb_mcp.sources.worklog.declared import WORKLOG
@@ -216,6 +216,20 @@ def test_an_option_that_no_setting_holds_is_said_ignored_by_a_source_that_declar
     assert "--since: ignored by jira" in described(given, CONFIGURED)
     alone = parser(sources=registry).parse_args(["fetch", "--since", "7d", "confluence"])
     assert not [line for line in described(alone, CONFIGURED) if "ignored" in line]
+
+
+def test_an_option_of_a_source_without_a_fetcher_is_no_flag_and_said_of_none() -> None:
+    """A source's options are its fetch's: the parser offers none, and the summary reads none."""
+    noted = ResourceType(
+        name="notes",
+        summary="a folder's notes",
+        read="in place",
+        options=(Option(flag="--tag", help="a tag"),),
+    )
+    registry = (CONFLUENCE, JIRA, replace(WORKLOG, types=(noted,)))
+    given = parser(sources=registry).parse_args(["fetch"])
+    assert not hasattr(given, "tag")
+    assert "source confluence: spaces MFS" in described(given, CONFIGURED)
 
 
 def test_a_dry_run_of_the_work_log_alone_writes_nothing_and_ignores_nothing(
