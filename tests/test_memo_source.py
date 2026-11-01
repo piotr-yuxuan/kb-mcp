@@ -138,7 +138,7 @@ def test_help_lists_it_and_imports_none_of_the_runs_packages(tmp_path: Path) -> 
         check=False,
     )
     assert child.returncode == 0
-    assert "--include {confluence,jira,worklog,memo}" in child.stdout
+    assert re.search(r"--include \{(?:\w+,)*memo(?:,\w+)*\}", child.stdout)
     imported = {
         line.rsplit("|", 1)[-1].strip()
         for line in child.stderr.splitlines()
