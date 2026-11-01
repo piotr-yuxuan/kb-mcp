@@ -421,12 +421,26 @@ def test_a_fetch_of_confluence_keeps_each_tombstone_that_it_finds(
     assert any(each.path.startswith("/wiki/") for each in site.asked)
 
 
+@pytest.mark.parametrize(
+    ("given", "status"),
+    [
+        (("fetch", "jira", "--yes"), ExitStatus.SIGN_IN_AGAIN),
+        (("fetch", "jira", "--dry-run"), ExitStatus.SIGN_IN_AGAIN),
+        (("prepare", "jira", "--yes"), ExitStatus.OK),
+        (("prepare", "worklog", "--yes"), ExitStatus.OK),
+    ],
+    ids=["a fetch of Jira", "a dry run of Jira", "a prepare of Jira", "a prepare of the work log"],
+)
 def test_a_record_of_confluence_s_stops_no_run_without_confluence(
-    home: Path, worklog: Path, capsys: CaptureFixture[str]
+    home: Path,
+    worklog: Path,
+    capsys: CaptureFixture[str],
+    given: tuple[str, ...],
+    status: ExitStatus,
 ) -> None:
-    """A fetch of Jira, and a prepare of the work log, run on a damaged record of what is gone.
+    """Each gives the row of the source that it names, on a damaged record of what is gone.
 
-    With neither token nor session, the fetch's row asks to sign in, found before any request.
+    With neither token nor session, a fetch's row asks to sign in, found before any request.
     """
     data = home / "data"
     (data / "raw").mkdir(parents=True)
@@ -439,13 +453,11 @@ def test_a_record_of_confluence_s_stops_no_run_without_confluence(
         f"[sources.worklog]\npath = {json.dumps(str(worklog))}\n",
         "utf-8",
     )
-    arguments = ["--yes", "--format", "json", "--config", str(config), "--data-dir", str(data)]
-    assert main(["fetch", "jira", *arguments]) == ExitStatus.SIGN_IN_AGAIN
+    arguments = [*given, "--format", "json", "--config", str(config), "--data-dir", str(data)]
+    assert main(arguments) == status
     out, err = capsys.readouterr()
-    assert "fetch.refused" not in err
-    assert [row["source"] for row in json.loads(out)["sources"]] == ["jira"]
-    assert main(["prepare", "worklog", *arguments]) == ExitStatus.OK
-    assert "prepare.refused" not in capsys.readouterr().err
+    assert ".refused" not in err
+    assert [row["source"] for row in json.loads(out)["sources"]] == [given[1]]
     assert stones.read_text("utf-8") == "not json"
 
 
