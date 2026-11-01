@@ -217,11 +217,12 @@ places `session/` and `runs/` stay `config`'s
 ([`Settings.parts`](../../src/kb_mcp/config/domain/settings.py)), which the data guard
 judges.
 
-A settings file of the former name holding these keys at its top is stopped before its
-entries are refused, each key named by its final one
-([`RENAMED`](../../src/kb_mcp/config/domain/former_name.py)), so that the user's machine's file
-gets its advice, and a value that the file holds and a setting refuses names that file's
-path as its layer ([move to kb-mcp](../how-to/move-to-kb-mcp.md)). Any other file holding
+A settings file of the former name, the default's or one that `--config` names, holding
+these keys at its top is stopped before its entries are refused, each key named by its
+final one ([`RENAMED`](../../src/kb_mcp/config/domain/former_name.py)), a token by the
+variable that alone sets it, so that the user's machine's file gets its advice, and a value that
+the former default's file holds and a setting refuses names that file's path as its layer
+([move to kb-mcp](../how-to/move-to-kb-mcp.md)). Any other file holding
 a top-level `site` or `email` is refused by
 [`MOVED`](../../src/kb_mcp/config/domain/settings.py), naming `[accounts.atlassian]`.
 
