@@ -1,6 +1,6 @@
 # Add a source
 
-For contributors: how to add a source of documents, so that the settings, `check`, `sync`
+For contributors: how to add a source of documents, so that the settings, `check`, `prepare`
 and search know it. A source is a package and one line of the registry; [sources](../explanation/sources.md)
 says why. The example here is a folder of text files, read in place, under the name `notes`.
 [`kb_memo`](../../tests/fixtures/memo_source/kb_memo/declared.py), in the tests, is the same
@@ -86,7 +86,7 @@ The declaration is data ([`Declared`](../../src/kb_mcp/sources/declaration.py)),
 standard library alone, since `--help` imports it: it names the table and the roles by
 module path. Each resource type says what the source reads and how
 ([`ResourceType`](../../src/kb_mcp/sources/declaration.py)). A source that signs in also
-names its `account`, and one with a fetcher its `fetcher`; a light check that `sync` asks
+names its `account`, and one with a fetcher its `fetcher`; a light check that `fetch` asks
 before anything else goes in `refused`, as Confluence's does
 ([`CONFLUENCE`](../../src/kb_mcp/sources/atlassian/declared.py)). Create
 `src/kb_mcp/sources/notes/declared.py`:
@@ -304,7 +304,7 @@ if TYPE_CHECKING:
 
 
 def test_a_note_is_mirrored_found_and_gone_with_its_file(tmp_path: Path) -> None:
-    """Sync writes it under its folder alone, search finds it, and its removal takes its file."""
+    """Prepare writes it under its folder alone, search finds it, and its removal takes its file."""
     notes, data = tmp_path / "notes", tmp_path / "data"
     notes.mkdir()
     note = notes / "orchard.txt"
@@ -315,8 +315,9 @@ def test_a_note_is_mirrored_found_and_gone_with_its_file(tmp_path: Path) -> None
         f"[sources.notes]\nfolder = {json.dumps(str(notes))}\n",
         "utf-8",
     )
-    given = ["sync", "--include", "notes", "--yes", "--config", str(config)]
+    given = ["prepare", "notes", "--yes", "--config", str(config)]
     assert main(given) == ExitStatus.OK
+    assert main(["index", "--yes", "--config", str(config)]) == ExitStatus.OK
     (file,) = (data / "docs").rglob("*.md")
     assert file.parent == data / "docs" / "notes"
     assert "orchard" in Library(data / "index.sqlite", data / "docs").search("quillwort")
@@ -341,8 +342,8 @@ uv run pytest -n auto
 
 ## 9. Generate the reference
 
-The reference of settings and commands comes from the code, and `sync`'s choices and the new
-table have changed. Write the pages again, and commit what changes:
+The reference of settings and commands comes from the code, and `prepare`'s choices and the
+new table have changed. Write the pages again, and commit what changes:
 
 ```bash
 uv run python -m tests.reference_pages

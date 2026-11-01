@@ -171,7 +171,7 @@ def per_source(documents: Iterable[PurePath], sources: Iterable[str]) -> dict[st
 The rule takes the sources' names rather than knowing them: each source is declared in
 its own package, and the registry lists them
 ([`SOURCES`](../../src/kb_mcp/sources/registry.py)), which the command, step 5,
-hands to the rule, so that `count` names each source as `sync` does. Run the test
+hands to the rule, so that `count` names each source as `prepare` does. Run the test
 again:
 
 ```bash
@@ -411,7 +411,7 @@ layout and its pages do not allow. From here:
 - [The roadmap](../work/README.md): the plans to come; those done are in
   [`changelog/`](../work/changelog/).
 - [The code's layout](../explanation/code-layout.md), and
-  [a walkthrough of the code](../explanation/code-walkthrough.md) of one `sync` and one
+  [a walkthrough of the code](../explanation/code-walkthrough.md) of one refresh and one
   search.
 - [Internals](../explanation/internals.md) and
   [trade-offs](../explanation/trade-offs.md): how the program works, and why so.

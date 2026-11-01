@@ -52,8 +52,8 @@ script itself. fish is not supported.
 
 ## What it completes
 
-- The subcommands: `dow` gives `download`.
-- Each subcommand's options and their choices: `download --sp` gives `--space`, `check
+- The subcommands: `fe` gives `fetch`.
+- Each subcommand's options and their choices: `fetch --sp` gives `--space`, `check
   --format ` gives `text` and `json`.
 - Files where an option takes one: TOML files for `--config`, folders for
   `--data-dir`, YAML files for `eval`'s golden questions.

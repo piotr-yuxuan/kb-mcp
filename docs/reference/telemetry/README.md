@@ -16,7 +16,7 @@ OpenTelemetry's [naming](https://opentelemetry.io/docs/specs/semconv/general/nam
 advises for an application's own names: its name as Python writes it, since `kb` alone
 also reads as kilobyte, which a size in bytes would make misleading. Prometheus writes
 the dots as underscores: `kb_mcp_run_duration_seconds`. Spans and events are named after
-what they record, such as `sync.step`.
+what they record, such as `fetch.source`.
 
 ## The log file
 
@@ -138,8 +138,8 @@ status stays its own.
 
 A run is one trace, whose root span is named after the command, but `serve`, each of
 whose requests is a trace, and `completion`, which records nothing. Grafana's
-dashboards, an overview and one each for `download`, `mirror`, `index`, `serve`, `eval`,
-`eval-agents` and `sync`, are in `deploy/lgtm/dashboards/`.
+dashboards, an overview and one each for `fetch`, `prepare`, `index`, `embed`, `serve`,
+`eval` and `eval-agents`, are in `deploy/lgtm/dashboards/`.
 
 ## Events
 

@@ -957,7 +957,7 @@ def test_a_file_that_the_source_not_prepared_links_stays_until_it_is_prepared(
 ) -> None:
     """With no problem at all, Confluence's prepare leaves the image of Jira's file not rebuilt.
 
-    As ``sync --include confluence`` after a download does; Jira's prepare then takes it.
+    As ``prepare confluence`` after a fetch does; Jira's prepare then takes it.
     """
     sandbox.run()
     image = issue_with_the_next_image(sandbox, "Other ideas")

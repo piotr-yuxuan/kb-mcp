@@ -45,10 +45,10 @@ Some choices are not obvious:
 - **`site_html.py` is in `sources/atlassian/prepare/adapters/`**, in the package it
   serves, beside its only user, the prepare of Confluence and Jira. It is still an
   adapter: a fix for the real site's HTML goes there.
-- **`sync`'s steps are `cli/app/sync.py`**, a use case of `cli`: they run each source's
-  roles, then search's index, and only `cli` sits above both. Its choices are pure, in
-  `cli/domain/sync.py`, so that its declaration stays light, and read the registry that
-  the entry is given, so that it names no source.
+- **`fetch`'s and `prepare`'s rows are `cli/app/sources.py`**, a use case of `cli`: it runs
+  each source's role, a row each, by the path that its declaration names. What they choose
+  and say is pure, in `cli/domain/sources.py`, so that their declarations stay light, and
+  reads the registry that the entry is given, so that it names no source.
 - **The MCP SDK is known to two modules**: `cli/commands/serve.py`, which registers the
   methods of `mcp.app.tools.Library` as tools, with what `mcp.app.surface` composes, and
   `evaluation/adapters/mcp_client.py`, the client through which `eval-agents` reaches
@@ -88,7 +88,7 @@ A source is a declaration and the code that it names; [sources](sources.md) says
 |---|---|---|
 | `sources/declaration.py` | What a source declares: `Declared`, `ResourceType`, `Option`, `Account`, as dataclasses, since `--help` imports them | every declaration |
 | `sources/registry.py` | `SOURCES`, one line per source, and `refuse`, the rules of any registry | `cli`, whose entry takes a registry as a parameter |
-| `sources/roles.py` | The roles' interfaces, `Fetcher` and `Preparer`, and what they take and give, `Run` and `Result` | each role, and `sync`'s use case |
+| `sources/roles.py` | The roles' interfaces, `Fetcher` and `Preparer`, what they take and give, `Run` and `Result`, and what a sign-in and its checks give, `SignedIn` and `Verdict` | each role, each account's sign-in and checks, and `cli`'s `run_each`, `login` and `doctor` |
 
 The first two stay light for `--help`, and all three are pure, by contracts G and C, which
 name them. Each source's package holds:
@@ -101,9 +101,8 @@ name them. Each source's package holds:
 | `prepare/` | Its preparers, and all that they use | by the run that uses it |
 
 Each source imports the interfaces, `mirror`, `config`'s rules of a table, `observability`
-and the kernel. `cli` reaches its roles by the paths of its declaration, never by name, but
-for the commands of `download`, `mirror`, `login` and `doctor`, which call the Atlassian
-package directly until plan 031 removes the first two.
+and the kernel. `cli` reaches its roles by the paths of its declaration, and its sign-in
+and checks by those of its account, never by name.
 
 ## The roles within a source
 
@@ -113,11 +112,11 @@ above. Plan 029 nested them so:
 - **`fetch/`** reaches a system and keeps the store it owns. For Confluence and Jira:
   the sign-in, HTTP, the two APIs' adapters, the browser and the session file, the raw
   store, a download's period, coverage, deletions and files kept; the records that the
-  fetch stores and the prepare reads, `content.py`; and the use cases of `download`,
-  `login` and `doctor`.
+  fetch stores and the prepare reads, `content.py`; and the use cases, `download.py`,
+  `login.py` and `doctor.py`.
 - **`prepare/`** writes documents through the mirror, from its source's store or from a
   folder read in place. For Confluence and Jira: the site's HTML, the catalogue, the
-  layout of their files, the files they own, and the use case of `mirror`. The work log
+  layout of their files, the files they own, and the use case, `prepare.py`. The work log
   has `prepare/` alone, being read in place: org's syntax, its folder's reader, its
   documents and their layout, the files it owns, and its step.
 
@@ -138,13 +137,13 @@ checks the ids, in their order, against this table:
 | B | Within each context, and within each role of a source, the layers' order. It is exhaustive too: a module outside a layer breaks it. A module put directly in a source's package, but `declared` and `settings`, breaks J; one put directly in `sources/` is outside B and J: A still orders it with `sources`, and `declaration`, `registry` and `roles` are named under C, the first two under G too, so a new one joins their lists, or no contract checks its layer or its use of `httpx` |
 | C | Pure rules, in any context (and the kernel), with the declarations and the modules beside the sources' packages, use no effect and no use case, nor structlog, OpenTelemetry or Rich: a rule neither logs, traces nor draws |
 | D | Effects, in any context, use no use case |
-| E | Search, the server and the evaluation read the mirror, never a source: the index is built from the mirror alone |
+| E | Search, the server and the evaluation, with their commands, `index` and `embed` among them, read the mirror, never a source: the index is built from the mirror alone |
 | F | Use cases and commands reach the network through effects only (no `httpx`) |
 | G | Declaring the command, `cli.main` and `cli.options`, with the registry and each source's declaration, imports none of the packages that runs need: the MCP SDK, Playwright, httpx, NumPy, lxml, PyYAML, Pydantic, Rich, OpenTelemetry, requests, structlog and platformdirs |
 | H | Only `observability` and `cli` use Rich, which draws on the terminal, and requests, which OpenTelemetry's exporters bring: the rest reaches the network by httpx. It counts indirect imports, so what the other contexts import of `observability` reaches neither. It names every other context, so a new one joins its list as it joins A's order, and `observability.adapters.progress`, through which they all report progress, so that it never imports the display that draws it |
 | I | No source imports another, `sources.atlassian` and `sources.worklog`: a list that a test holds to the packages of the registry's declarations, so a new source's package joins it |
 | J | Within each source, from the top: its declaration, preparing, fetching, its settings: the declaration names the roles by path and imports neither, and preparing may use fetching, never the reverse. It is exhaustive: a source's package holds these alone |
-| K | Only `sources.atlassian` uses lxml and Playwright, so that an extra can hold them later: every other context, the modules beside the sources' packages, `sources.worklog` and `sources.atlassian.settings`, which every command loads by its path, import neither, but the commands of `login` and `mirror`, which call the Atlassian package directly until plan 031. It names every other context, so a new one, or a new source, joins its list, as H's does |
+| K | Only `sources.atlassian` uses lxml and Playwright, so that an extra can hold them later: every other context, the modules beside the sources' packages, `sources.worklog` and `sources.atlassian.settings`, which every command loads by its path, import neither, as `cli` loads what uses them by the declarations' paths. It names every other context, so a new one, or a new source, joins its list, as H's does |
 
 A orders the contexts, which B, applied per context, does not; C and D carry the order
 of the layers across contexts, which B cannot; I keeps the sources apart, and J the

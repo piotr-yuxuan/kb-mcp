@@ -21,16 +21,16 @@ no location and is not for commands.
 
 | Path | `Settings` | Written by | Read by |
 |---|---|---|---|
-| `<data>/raw/` | `raw` | `download` (004) | `mirror` (005) |
-| `<data>/docs/` | `docs` | `mirror` (005), `sync` (017) | agents, and `index` (006), `sync` (017) |
-| `<data>/conversions.sqlite` | `conversions` | `mirror`, `sync` (039) | `mirror`, `sync` (039) |
-| `<data>/index.sqlite` | `index` | `index` (006), `sync` (017) | the MCP server (006) |
-| `<data>/aliases.toml` | `aliases` | the user (043) | `index`, `sync` (043), [below](#the-alias-file) |
-| `<data>/vectors.sqlite` | `vectors` | `index`, `eval` (011), `sync` (017) | `index`, `eval` (011), `sync` (017) |
-| `<data>/vectors.sqlite.lock` | `vectors`, by `vector_store.lock_of` | `index`, `eval`, `sync` (023) | `index`, `eval`, `sync` (023) |
-| `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011); its indexes, `index` and `sync` (023) |
+| `<data>/raw/` | `raw` | `fetch` (004) | `prepare` (005) |
+| `<data>/docs/` | `docs` | `prepare` (005) | agents, and `index` (006), `embed` (031) |
+| `<data>/conversions.sqlite` | `conversions` | `prepare` (039) | `prepare` (039) |
+| `<data>/index.sqlite` | `index` | `index` (006), `embed` (031) | the MCP server (006) |
+| `<data>/aliases.toml` | `aliases` | the user (043) | `index`, `embed` (043), [below](#the-alias-file) |
+| `<data>/vectors.sqlite` | `vectors` | `embed`, `eval` (011) | `embed`, `eval` (011) |
+| `<data>/vectors.sqlite.lock` | `vectors`, by `vector_store.lock_of` | `embed`, `eval` (023) | `embed`, `eval` (023) |
+| `<data>/eval/` | `evaluations` | the user, `eval` (011) | `eval` (011); its indexes, `embed` (023) |
 | `<data>/session/` | `session` | `login` (004) | a run signed in by the saved session (004, 015) |
-| `<data>/runs/` | `runs` | `download` (004), `sync` (017) | the user |
+| `<data>/runs/` | `runs` | `fetch` (004) | the user |
 
 No code builds these paths otherwise.
 
@@ -80,7 +80,7 @@ The site's responses and its HTML change without notice. So that a change stays 
   print them.
 - **Raw first.** The raw store keeps responses exactly as received, reading only what
   names their folder. A response whose other fields have changed is therefore kept; it
-  reads as `Unreadable` until its adapter is fixed, and then `mirror` reads it again
+  reads as `Unreadable` until its adapter is fixed, and then `prepare` reads it again
   without fetching anything.
 - **HTML likewise.** The site's markup (class names, data attributes, macro names) is
   known to one module of 005, as named constants. Markup it does not know becomes a
@@ -241,7 +241,7 @@ Two more of the store's own records, each replaced whole:
 
 ## Run reports
 
-Owned by the fetch of Confluence and Jira, which `download` and `sync` run (004):
+Owned by the fetch of Confluence and Jira, which `fetch` runs (004):
 `<data>/runs/<UTC time as %Y%m%dT%H%M%SZ>-<source>.json`, one for each source fetched,
 `confluence` or `jira`, since two fetches can start within a second (030), in the format
 004's plan defines. A run report holds counts and refused fields' paths, never content,
@@ -435,9 +435,9 @@ The MCP server serves no entry's `account` (`mcp.app.responses.metadata`); the f
 that agents may read hold it. It serves a person by name and id, never by account id,
 although hashing a known account id gives its person's id. Deleting `<data>/docs/` and
 `<data>/index.sqlite` removes the people from all that agents and the server read,
-until the next `mirror` and `index`, or `sync`, write them again from the raw store.
+until the next `prepare` and `index` write them again from the raw store.
 Persons live in the index alone: deleting `<data>/index.sqlite` removes them, until the
-next `index` or `sync` joins them again; `<data>/aliases.toml` stays until the user
+next `index` or `embed` joins them again; `<data>/aliases.toml` stays until the user
 deletes it. Deleting every copy is deleting the data directory, the log folder and the
 folders of `eval-agents`, after which the mirror is downloaded again, as from a first
 run.
@@ -519,18 +519,19 @@ UTF-8. Deleting the file is the remedy for a mirror that looks wrong, or a run t
 fails on the file.
 
 A file locked past the wait, or in a folder that the run may not write, is not
-replaced: the run fails, `sync` without its later steps, and the file stays. Nor does
+replaced: the run fails, and the file stays. Nor does
 the wait cover the file's creation: of two runs that create it at the same moment, one
 may fail at once, seldom, as SQLite's switch of a new file to WAL mode does not wait.
 
 ### The work log
 
-Owned by `sync`'s work-log step (017), in `sources.worklog.prepare.app.prepare`:
+Owned by the work log's row of `prepare` (017), in `sources.worklog.prepare.app.prepare`:
 `<data>/docs/worklog/`, from the folder that `sources.worklog.path` names, read in place
 and never written. `sources.atlassian.prepare.adapters.owned.owned` and
 `sources.worklog.prepare.adapters.owned.worklog_owned` tell each owner's files apart,
-so that `mirror` and the work-log step never remove each other's. A run that meets a
-problem (a file not read, a conversion that failed) removes none of its files but the
+so that Confluence's and Jira's rows and the work log's never remove each other's. A run
+that meets a problem (a file not read, a conversion that failed) removes none of its files
+but the
 old file of a document written again under another path, as an entry's or a transcript's
 whose title changed, and a file not read holds back the files of what it builds: every
 one for `todo.org` or `todo.org_archive`, on which days, meetings and entries' numbers
@@ -667,7 +668,7 @@ choosing ([the how-to](../how-to/other-search-engines.md)). What it may rely on 
 
 ## The index
 
-Owned by `index` (006), which `sync` runs as its last step (017).
+Owned by `index` (006), which builds it by words alone, and `embed` (031), with vectors.
 `<data>/index.sqlite` is built from the documents of `<data>/docs/` alone, the work
 log's among them, read with `mirror.adapters.markdown`, into a temporary file that
 is then renamed into place. Its schema is defined in 006's plan; schema 3 (011) adds the
@@ -693,9 +694,9 @@ participant is a row of the table `people`, without account or time. No piece's 
 holds the links either. Schema 6 (043) joins the people into persons
 ([below](#persons)): the column `person` of `people`, and the tables `persons` and
 `person_names`; no piece's text holds a person. An index of another schema is refused,
-naming `sync`, or `mirror` then `index` where no source is configured, which write the
+naming `prepare`, then `index` or `embed`, which write the
 mirror again before they rebuild the index, as a new schema can come with a new format
-of the files; one cut by a chunking that this version lacks, naming `index`. The MCP
+of the files; one cut by a chunking that this version lacks, naming `embed`. The MCP
 server opens it read-only, never writes, and reopens it when the file is replaced; it
 searches by meaning with the model that the index names, and only while the endpoint's
 fingerprint for it is the index's.
@@ -767,7 +768,7 @@ document by document.
 ### The alias file
 
 `<data>/aliases.toml` (`Settings.aliases`) is the user's: the program never writes it.
-`index` and `sync` read it at the start of each build, before the endpoint is asked
+`index` and `embed` read it at the start of each build, before the endpoint is asked
 (`search.adapters.aliases.read_aliases`, through `search.app.indexing.index_mirror`);
 `serve` never does, and `eval` builds its indexes without aliases. Each line is a name
 as some source writes it, then the person it means, by a name or by a person's id, both
@@ -796,7 +797,7 @@ TOML strings:
 - An alias whose key no name without an account holds, or whose target names nobody
   or several persons, changes nothing, and the build warns of it, as
   `index.alias_unused`. Neither warning changes the exit status.
-- A change takes effect at the next `index` or `sync`, which embeds nothing new.
+- A change takes effect at the next `index` or `embed`, which embeds nothing new.
 
 ### Models and vectors
 
@@ -815,7 +816,7 @@ by the SHA-256 of that fingerprint and the text, committed in batches; deleting 
 costs a full embedding of the mirror by the model, and downloads nothing. A text that the endpoint refuses has no vector there, and is
 asked again at the next build.
 
-After each `index` by meaning, the step of `sync` included, the store is pruned (plan
+After each `embed`, the store is pruned (plan
 023) to the vectors that `<data>/index.sqlite` and the indexes under
 `<data>/eval/indexes/` read, by the keys their pieces record: the files are the truth,
 so that deleting an evaluation's index lets the next prune drop its vectors, and
@@ -830,7 +831,7 @@ when a folder there cannot be reached or listed, an entry below `<data>/eval/ind
 is a link, which is not followed, or `<data>/eval` is a dangling link, as to a disk
 away: make it readable, or put what the link points to in its place. A build holds
 `<data>/vectors.sqlite.lock` shared by `flock` until its index is in place, and a prune
-takes it exclusive or is deferred to the next `index`. A store made from plan 023 on
+takes it exclusive or is deferred to the next `embed`. A store made from plan 023 on
 gives the pages freed back to the file system (`auto_vacuum = INCREMENTAL`). One made
 before is converted at its first prune, once the vectors that no index reads are
 deleted: the mode set, then one `VACUUM`, which rewrites the vectors kept while the

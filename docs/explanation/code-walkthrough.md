@@ -153,7 +153,7 @@ under `<data>/raw/` and takes its lock
 ([`RawStore.writing`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)):
 a second run stops at once with
 [`StoreBusyError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
-and sync's fetch row fails while the next steps run.
+and its row fails while the next one runs.
 
 The sign-in comes from
 [`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py): an
@@ -214,7 +214,7 @@ the page in its storage format with its labels, the page as the site renders it,
 its attachments. Updated within the window and its revision stored,
 [`Download.complete`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
 fetches only the files that its snapshot should have and lacks. The progress and the
-counts are of what is fetched, apart from what is listed, as `download.listed` says.
+counts are of what is fetched, apart from what is listed, as `fetch.listed` says.
 
 Once the space is listed,
 [`Download.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
@@ -223,7 +223,7 @@ asks after the documents gone from their listing, and
 names the authors seen. Last, `download` extends the coverage of each target listed whole
 ([`Coverage.extended`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
 a project's only to its earliest document not stored whole, so that the next run needs
-no `--since` and asks again for what failed, as `download.coverage` says; writes it, each
+no `--since` and asks again for what failed, as `fetch.coverage` says; writes it, each
 change of the tombstones having been written where it was made, and a fetch of projects
 rewriting none; writes back the
 cookies that the site renewed
@@ -260,8 +260,8 @@ The latter builds a [`Page`](../../src/kb_mcp/sources/atlassian/fetch/domain/con
 and its files through
 [`attachment`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py):
 frozen records of the fetch's domain, each checking its own rules. A snapshot that the
-adapter refuses is stored all the same, raw, so that `mirror` reads it once the adapter
-is fixed, without a download ([raw first](trade-offs.md#raw-first), [strict
+adapter refuses is stored all the same, raw, so that `prepare` reads it once the adapter
+is fixed, without a fetch ([raw first](trade-offs.md#raw-first), [strict
 reading](trade-offs.md#strict-reading-a-module-per-representation)).
 
 ### 6. The snapshot
@@ -569,7 +569,7 @@ from each document fetched, and a call of a tool is one trace:
 | `tools/call search`, a call's root | the MCP SDK; [`Library.search`](../../src/kb_mcp/mcp/app/tools.py) adds the mode, the documents found and whether words stood in for meaning |
 | `search.lexical`, `search.semantic` | [`ranking`](../../src/kb_mcp/mcp/app/tools.py) |
 
-In the index's row, the model's connection comes first, its `GET` and probe before
+In `embed`'s trace, the model's connection comes first, its `GET` and probe before
 `index.files`; within `index.embed`, a `GET` of the digest frames the embeddings. Every
 span and its attributes are listed in [telemetry](../reference/telemetry/README.md), a
 page per command; [observability](observability.md#a-trace-per-document) says why a

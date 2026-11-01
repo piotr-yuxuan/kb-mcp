@@ -492,7 +492,7 @@ def problem_mirrored() -> mirror_app.Outcome:
     )
 
 
-def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
+def test_a_prepare_problem_exits_1_with_the_work_log_mirrored(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Confluence's prepare fails, said by place; the work log's still runs."""
@@ -913,7 +913,7 @@ def interrupting(*_: object) -> None:
     raise KeyboardInterrupt
 
 
-def test_ctrl_c_in_the_mirror_marks_it_interrupted_and_the_work_log_not_run(
+def test_ctrl_c_in_a_prepare_marks_it_interrupted_and_the_work_log_not_run(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Confluence's prepare interrupted, the work log's not run: exit 130."""

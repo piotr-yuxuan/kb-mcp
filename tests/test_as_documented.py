@@ -115,7 +115,7 @@ def download(data: Path, *options: str) -> list[str]:
     return ["fetch", "--yes", *settings, "--site", SITE, *options]
 
 
-def test_download_records_as_documented(
+def test_fetch_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """Fetched, failed, unread, skipped, retried; refused, busy, interrupted, signed out.

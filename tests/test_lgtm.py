@@ -195,8 +195,8 @@ def test_each_dashboard_is_json_drawing_on_the_image_s_three_sources(path: Path)
 def test_prepare_s_dashboard_lists_each_row_with_what_its_span_records() -> None:
     """Plan 030: Tempo's table of spans shows what its query selects, not every attribute.
 
-    So the query selects what the page says that a ``sync.step`` records: its step, its
-    source and how it ended.
+    So the query selects what the page says that a ``prepare.source`` records: its source
+    and how it ended.
     """
     board = json.loads((DASHBOARDS / "prepare.json").read_text("utf-8"))
     (query,) = [

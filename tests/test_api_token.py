@@ -127,7 +127,7 @@ def test_a_run_with_the_token_leaves_a_saved_session_as_it_was(
 
 
 @pytest.mark.parametrize("dry_run", [[], ["--dry-run"]])
-def test_a_download_refused_by_the_site_exits_3_naming_the_variables(
+def test_a_fetch_refused_by_the_site_exits_3_naming_the_variables(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], dry_run: list[str]
 ) -> None:
     """A 401: the email and the token to check, by their variables, in an error.
@@ -237,7 +237,7 @@ def test_check_shows_no_secret_in_any_format_or_summary(
         (lambda _: httpx.Response(401), ["--summary", "detailed"]),
     ],
 )
-def test_a_download_shows_no_secret_nor_writes_one_in_its_report(
+def test_a_fetch_shows_no_secret_nor_writes_one_in_its_report(
     home: Path,
     monkeypatch: MonkeyPatch,
     capsys: CaptureFixture[str],

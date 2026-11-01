@@ -57,7 +57,7 @@ stays light, and names the rest by module path, which the entry loads for its ta
 above the preparers, they above the fetcher, it above the tables: both roles read the
 tables, and the declaration imports neither role ([contract
 J](code-layout.md#the-contracts)). A declaration's light checks are functions that it
-holds, which `sync` asks before anything is asked of the user: what it refuses, such as
+holds, which `fetch` asks before anything is asked of the user: what it refuses, such as
 an API token without its email
 ([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)), what its run
 does not apply, and what its summary says.
@@ -71,8 +71,7 @@ does not apply, and what its summary says.
   declaration's preparers are a tuple. Until then no source names two, and two would share
   one row's name, `prepare git`, told apart by their order alone: that plan names them.
 - **A source keeps a store when it has a fetcher**, so no field says so.
-- **Later plans add their fields**: plan 031, to the account, the runs of its login and
-  checks; 032 its flag rows; 033 a description and examples.
+- **Later plans add their fields**: 032 its flag rows; 033 a description and examples.
 
 ## The roles' interfaces
 
@@ -110,9 +109,9 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 - **Pandoc is the preparers' own.** `Run` holds no tool that a role alone needs, so each
   preparer that converts finds it
   ([`Pandoc.find`](../../src/kb_mcp/mirror/adapters/pandoc.py)). Pandoc gone from `PATH`
-  once the run began fails those rows alone, and the fetch rows still run; the run then
-  exits as its rows rank, 1, or 3 when a fetch needs sign-in. The entry still refuses a
-  run without pandoc on `PATH` before anything is asked, whichever sources it takes
+  once the run began fails those rows alone; the run then exits as its rows rank, 1. The
+  entry still refuses a `prepare` without pandoc on `PATH` before anything is asked,
+  whichever sources it takes
   ([`enter`](../../src/kb_mcp/cli/commands/_shared.py)).
 
 ## Resource types
@@ -210,9 +209,10 @@ environment (`KB_MCP_SOURCES__CONFLUENCE__SPACES`), the flags, layers, secrets a
 work as for the core's settings, and a table with a setting of a type of no known kind is
 refused, naming its source, as is a list of other than text, which no summary can show and
 no rule of a path reads, and a table inside a table. Raw tables validated when their source runs were rejected:
-they would let a misspelt key pass until then. `sync` takes its keys from the tables alone,
-and `--include` and `--exclude` choose among them. What a run does not apply, such as the
-period's options for the work log, is said, not refused: the same settings serve every run.
+they would let a misspelt key pass until then. `fetch` and `prepare` take their names from
+the registry alone, and the names given choose among them. What a run does not apply, such
+as Jira's projects in a `fetch confluence`, is said, not refused: the same settings serve
+every run.
 
 An account is what a fetcher signs in with: a light record in the declaration
 ([`ATLASSIAN`](../../src/kb_mcp/sources/atlassian/declared.py), an
@@ -299,7 +299,7 @@ package, but each is a source: a row, a report and a set of files of its own.
   ([`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)): pages and blog
   posts, with the spaces' trees, for Confluence; issues for Jira. Prepared in name order,
   Confluence then Jira, after any download, every link is what one prepare of both would
-  make. `sync --include confluence` prepares Confluence alone, so Jira's files whose links
+  make. `prepare confluence` prepares Confluence alone, so Jira's files whose links
   depend on Confluence's pages are rewritten only when Jira is prepared.
 - **What each owns.** Confluence writes and removes under `docs/confluence/`, Jira under
   `docs/jira/`. `docs/assets/` is theirs together: each writes the files of its own
@@ -321,7 +321,7 @@ package, but each is a source: a row, a report and a set of files of its own.
   columns fails [`COLUMNS`](../../src/kb_mcp/mirror/adapters/conversions.py) and is replaced
   once, so that the first prepare since converts everything again.
 - **Cost.** The raw store is read and placed twice per prepare of both, in place of once:
-  0.41 s more on a store of 1,474 documents, against 2.3 s for a `mirror` that the cache
+  0.41 s more on a store of 1,474 documents, against 2.3 s for a `prepare` that the cache
   spares pandoc, and 31 s for one that it does not.
 
 ## `fetch` and `prepare` through the registry
@@ -353,7 +353,7 @@ alone is kept: Playwright (138 MB installed) and lxml (12 MB) stay inside the At
 package, by [contract K](code-layout.md#the-contracts). Of `sources/atlassian/`,
 [its browser](../../src/kb_mcp/sources/atlassian/fetch/adapters/browser.py) alone imports
 Playwright, for `login`, and [the site's HTML](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py)
-alone lxml; `download`, `doctor`, the work log's prepare and `check` import neither. A
+alone lxml; `fetch`, `doctor`, the work log's prepare and `check` import neither. A
 forbidden contract cannot leave one package out of a wildcard, so K names each context, and
 a test holds it to them
 ([`test_contract_k_names_every_context_and_source_but_the_atlassian_package`](../../tests/test_code_layout.py)).
@@ -365,8 +365,8 @@ a package of this monorepo would be: its declaration, its table and a preparer t
 folder's text files in place and writes `docs/memo/<id>.md` through the mirror's
 [`dump`](../../src/kb_mcp/mirror/adapters/markdown.py) and writer. It has no fetcher, as the
 work log; the Atlassian sources prove the fetcher's seam. Given `SOURCES` and its declaration,
-[its test](../../tests/test_memo_source.py) runs `--help`, `check` and `sync` through the
-entry, with no line of `src/` naming it.
+[its test](../../tests/test_memo_source.py) runs `--help`, `check`, `prepare` and `index`
+through the entry, with no line of `src/` naming it.
 
 ## Not built
 
@@ -504,7 +504,7 @@ Links between documents are one key too, `links`, each a relation and the other'
 the relations a closed set
 ([`RELATIONS`](../../src/kb_mcp/mirror/domain/mirror.py)):
 a meeting's `transcript`, and a transcript's `summary`, each meeting that links it. The
-work log's step writes each link both ways
+work log's prepare writes each link both ways
 ([`linked_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 since a program that reads one file cannot find those that link to it without reading
 them all. A meeting finds its transcript by the path that its `:MEETING:` names, else by
@@ -584,7 +584,7 @@ quote a transcript rather than a summary of it, and check the one against the ot
 its `source` filter
 ([`SearchFilters`](../../src/kb_mcp/mcp/app/tools.py)) says it of
 entries and transcripts alone, its words counted in the schemas of `search` and `ask`.
-It stays on this machine, as all the data does: by default `sync` sends its text to the
+It stays on this machine, as all the data does: `embed` sends its text to the
 embedding endpoint, which must be a loopback address unless the run is given
 `--allow-remote-embeddings` ([an endpoint off this
 machine](../how-to/embeddings.md#reach-an-endpoint-off-this-machine)). Served to agents

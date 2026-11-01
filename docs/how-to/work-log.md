@@ -32,7 +32,7 @@ kb-mcp check
   Emacs's lock, autosave and backup files. A link is followed only inside the folder.
 - A file over 32 MiB, a link out of the folder, or a file that is not UTF-8 is named by
   its path, never by its content, in a warning, `worklog.problem`, that says what it
-  held back, at each run until it is fixed, and `sync` exits 1. The run removes
+  held back, at each run until it is fixed, and `prepare` exits 1. The run removes
   nothing, nor writes what the file builds: for `todo.org` or its archive, every
   document; for a transcript, its own, whose last copy stays, while its meeting is
   written and links it as before. Past 20,000 transcripts in the two folders, the first
@@ -182,13 +182,13 @@ transcript's dates and links are found afresh at each run: a transcript saved la
 links its meeting without converting it again. pandoc converts each document;
 a transcript's lines stay apart.
 
-`sync` then rebuilds the index, by default in hybrid mode, which needs the embedding
-model, served by Ollama on this machine or any other OpenAI-compatible API
-([embeddings](embeddings.md)): without it, the index's row fails and `sync` exits 1,
-the work log mirrored all the same. The first such run embeds the whole mirror;
-`search_mode = "lexical"` indexes by words alone, without a model.
+`index` then builds the index of the mirror's words, without a model. For search by
+meaning, `kb-mcp embed` builds it again with vectors, which needs the embedding model,
+served by Ollama on this machine or any other OpenAI-compatible API
+([embeddings](embeddings.md)): without it, `embed` exits 1 and the index in place stays.
+Its first run embeds the whole mirror.
 
-## 5. What a change does at the next sync
+## 5. What a change does at the next prepare
 
 - An entry edited, closed, retagged, ticked or archived keeps its id and its file. The
   file is written again only when the entry's revision changed (its text, or pandoc's
@@ -227,16 +227,16 @@ the work log mirrored all the same. The first such run embeds the whole mirror;
   of `transcripts/archive/` and `meetings/archive/`, and of the headings tagged
   `ARCHIVE`; a meeting that links an archived transcript then links nothing, and is
   counted in the warning.
-- Search: `sync` ends by rebuilding the index whole from the mirror, as `index` does,
-  so a document's old pieces leave search with its old text, and a document removed
-  leaves search. Each piece's vector is kept in `<data>/vectors.sqlite` by its model and
-  its text, so only the pieces whose text changed are embedded again; the vectors of
-  text no longer mirrored are then pruned, unless an evaluation's index reads them.
+- Search: `index` and `embed` each build the index whole from the mirror, so a document's
+  old pieces leave search with its old text, and a document removed leaves search. Each
+  piece's vector is kept in `<data>/vectors.sqlite` by its model and its text, so `embed`
+  embeds again only the pieces whose text changed, then prunes the vectors of text no
+  longer mirrored, unless an evaluation's index reads them.
 
 ## 6. Search it
 
-`sync` ends with the index, so a server started afterwards, or already running, finds
-the work log from its next call on. `search` and `ask` narrow to it with
+Once `index` has run, a server started afterwards, or already running, finds the work
+log from its next call on. `search` and `ask` narrow to it with
 `filters={"source": "worklog"}`; each hit's ref is the document's id, `e-…` for an
 entry, `d-…` for a day, `m-…` for a meeting and `t-…` for a transcript, which `read`
 opens. `read` of a meeting names its participants and its transcript, such as
@@ -264,7 +264,7 @@ documents tie, and come by path.
 
 ## 7. Join a speaker to a colleague
 
-Each `index`, and so each `sync`, joins the names of every source into persons, so that
+Each `index` and each `embed` joins the names of every source into persons, so that
 one colleague is one person to an agent:
 
 - a Jira or Confluence account, under each name that the site gave it;
@@ -284,7 +284,7 @@ be two people, such as a meeting's `Sam Sample` when two accounts have that name
 speaker `Sam` whose meeting names `Sam Sample` when an account is named `Sam`, is
 joined to neither. To see what stays apart:
 
-- `index` and `sync` warn of each name that could be several people,
+- `index` and `embed` warn of each name that could be several people,
   `index.person_ambiguous`, and of each alias that changes nothing,
   `index.alias_unused` ([index's telemetry](../reference/telemetry/index.md));
 - the server's `status` counts the persons, those in more than one source and those by
@@ -305,10 +305,11 @@ is several people's:
 "Kim" = "Kim"
 ```
 
-Rebuild the index, which embeds nothing new:
+Rebuild the index by `embed`, which embeds nothing new, or by `index`, if you search by
+words alone:
 
 ```bash
-kb-mcp index
+kb-mcp embed
 ```
 
 - An alias joins names without an account alone: an account's names are the site's.

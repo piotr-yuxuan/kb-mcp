@@ -38,8 +38,8 @@ server never fetches from the site.
   covered end, which stops at its first document not stored whole, so that what failed
   is asked for again; a space's listing is read whole anyway, so it is checked by
   version over its whole covered period, at no request, which finds a page moved in or
-  restored with an older version. One command makes the refresh one thing to remember,
-  while each stage still runs alone, to redo one after a fix.
+  restored with an older version. A line of `&&`, or a shell function, makes the refresh
+  one thing to remember, while each stage still runs alone, to redo one after a fix.
 - **Cost.** The mirror is as old as its last run. Each answer gives every document's
   mirror date, the time its snapshot was fetched, and `status` the newest, so that an
   agent can tell how old its evidence is. And catching up is not free: each run lists
@@ -51,15 +51,18 @@ server never fetches from the site.
   project's coverage ends in the future, its catch-up is skipped, said after `--until`,
   until the clock comes within a day of that end, and then starts after the edits made
   meanwhile, which only a `--since` fetches.
-- **Rejected.** A schedule (cron, launchd) or a server that refreshes itself. For
-  `sync`, a catch-up from the last run's time whatever failed in it, which would leave a
+- **Rejected.** A schedule (cron, launchd) or a server that refreshes itself. A command
+  that runs the others, as `sync` did until plan 031: composing them is the user's. For
+  `fetch`, a catch-up from the last run's time whatever failed in it, which would leave a
   lasting hole. A window from the last fetch for a space, which would miss what moved in
   and save no request. A refresh started from an MCP tool, after the user's approval, is
   planned (009), not built.
 - **Settled** by the programme with the maintainer, before plan 001; catching up without
-  dates by [plan 007](../work/changelog/007-incremental-refresh.md#decisions); `sync` by
-  [plan 017](../work/changelog/017-modular-sources.md#what-sync-does); the catch-up from
-  the last fetch, a project's end exact, by
+  dates by [plan 007](../work/changelog/007-incremental-refresh.md#decisions); the
+  commands that the user composes by
+  [plan 031](../work/plans/031-composable-commands.md#settled-by-the-user), which removed
+  the `sync` of [plan 017](../work/changelog/017-modular-sources.md#what-sync-does); the
+  catch-up from the last fetch, a project's end exact, by
   [plan 034](../work/changelog/034-incremental-fetch.md#decisions).
 
 ## Cookies and API tokens
@@ -75,9 +78,10 @@ takes the token when one is set, else the session.
   shows. The token serves the sandbox, the agents that test against it, and anyone who
   has one.
 - **Cost.** Cookies expire: a 401, or a redirect to sign in, stops a run with exit status
-  3 until a person runs `login` again. The cookies sit in clear in `<data>/session/`,
-  mode 0600, as the browser's own profile holds them. A token is in no file of the
-  program: the environment gives it to one run, for instance through `sops exec-env`.
+  3 until a person runs `login atlassian` again. The cookies sit in clear in
+  `<data>/session/`, mode 0600, as the browser's own profile holds them. A token is in no
+  file of the program: the environment gives it to one run, for instance through
+  `sops exec-env`.
 - **Rejected.** Reading the pages in a browser, which would paint every page and its
   includes, slowly, for text that REST gives directly; a token in the settings file,
   which is refused, since secrets come from the environment alone; the generic
@@ -90,14 +94,14 @@ takes the token when one is set, else the session.
 
 ## Raw first
 
-`download` keeps each response exactly as received, in the raw store
+`fetch` keeps each response exactly as received, in the raw store
 ([`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py));
 the mirror, the index and the vectors are all derived from it, offline.
 
 - **Why.** The site's responses and HTML "can and will unexpectedly change", in the
   maintainer's words. A response that a change breaks is still stored
   ([`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
-  stores a snapshot that its adapter refuses), and once the adapter is fixed, `mirror`
+  stores a snapshot that its adapter refuses), and once the adapter is fixed, `prepare`
   reads it again without fetching anything. A fix to the conversion is a rebuild, never
   a download.
 - **Cost.** Disk: every revision fetched stays as received, a page with both its bodies,
@@ -202,7 +206,7 @@ The mirror is a folder of Markdown files, one per document with its front matter
 
 ## Pandoc's conversions kept by their input
 
-`mirror` keeps each conversion that pandoc makes in `<data>/conversions.sqlite`, under
+`prepare` keeps each conversion that pandoc makes in `<data>/conversions.sqlite`, under
 the SHA-256 of pandoc's version line, its arguments and the HTML it was given
 ([`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)),
 so that a run converts only the HTML that it has not converted before. Once its files
@@ -239,7 +243,7 @@ Every run still reads the store and builds every document's HTML.
   skip the reading and the building too, at the risk of a stale file for any input it
   forgot; a cache wrapped around pandoc outside the mirror, which would count its
   conversions only after the mirror's own event, and copy its rule on problems;
-  `mirror --rebuild`, which deleting the file replaces; the work log in the cache, whose
+  `prepare --rebuild`, which deleting the file replaces; the work log in the cache, whose
   revisions already skip what has not changed; a file per source, where a column keeps
   one file, which the data guard already judges.
 - **Settled** by the maintainer's answer to [plan
@@ -284,10 +288,9 @@ that what read the two keys, a hit's line among them
 - **Cost.** One rewrite: every file of the mirror is written again once, and the index
   rebuilt once, at schema 4
   ([`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py)), which
-  embeds nothing new; until then, the server refuses the old index, naming `sync`, or
-  `mirror` then `index` where no source is configured, which write the files again
-  before they rebuild the index, where `index` alone would skip every file of the old
-  format
+  embeds nothing new; until then, the server refuses the old index, naming `prepare`, then
+  `index` or `embed`, which write the files again before they rebuild the index, where
+  `index` or `embed` alone would skip every file of the old format
   ([`reading`](../../src/kb_mcp/search/adapters/sqlite_index.py)). Each
   evaluation's index built before then holds every prune back, the vector store growing
   meanwhile, until `eval` rebuilds it, for each model and chunking still wanted, or
@@ -445,7 +448,7 @@ but the id, which the path gives, so that it links a transcript read or not
 and a link is written when its other end is written in that run or kept from an
 earlier one ([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
 A run that meets a problem still removes no file but the old one of a document written
-again under another title's path, and `sync` exits 1.
+again under another title's path, and `prepare` exits 1.
 
 - **Why.** Once a meeting is its day and is numbered in the journal's order, nothing
   that it holds draws on a transcript's text: one transcript not read, or past the
@@ -468,7 +471,7 @@ again under another title's path, and `sync` exits 1.
   `read` of the meeting loses its record for as long as the file stays unread, which
   past the bound is for good. Keeping a meeting's links from its last copy: a file
   written from two runs' reads. Removing files while a file is not read, but those that
-  it builds: a second rule in the step and in its dry run. Lifting the bound, or one in
+  it builds: a second rule in the prepare and in its dry run. Lifting the bound, or one in
   bytes: not needed for ten years or more.
 - **Settled** by [plan
   044](../work/changelog/044-meetings-by-their-day.md#settled-by-the-user), on the
@@ -578,7 +581,7 @@ Words are indexed by SQLite's full-text engine, FTS5, in one file,
   ([`reading`](../../src/kb_mcp/search/adapters/sqlite_index.py)), so a new
   build is served from the next call without a restart.
 - **Cost.** No stemming: `deploy` does not find `deployment`. The weights are set by
-  hand, and every `index` reads the whole mirror again.
+  hand, and every `index` and `embed` reads the whole mirror again.
 - **Rejected.** The Porter stemmer, which knows English alone where the content mixes
   English and French ([plan 011](../work/changelog/011-search-strategies.md#deliberately-not-done)).
   No plan weighed another engine: the programme settled FTS5 with the maintainer.
@@ -647,8 +650,8 @@ mode and chunking on golden questions, whose answers are known.
   maintainer's choice over both rules, knowing their numbers, which
   [the defaults](chunking.md#the-defaults-the-maintainers-choice) give: ranking
   mattered more to them than speed.
-- **Cost.** A model by default: `index` and the server need an embedding endpoint
-  unless `search_mode = "lexical"`. A query's 95th percentile on the development
+- **Cost.** A model by default: `embed` needs an embedding endpoint, and so does the
+  server unless `search_mode = "lexical"`. A query's 95th percentile on the development
   laptop's processor missed the bar of 200 ms set before the runs. And the sandbox's
   questions are not a real site's: the work set will decide again
   ([evaluating search](search-evaluation.md)).

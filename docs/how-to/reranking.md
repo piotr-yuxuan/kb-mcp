@@ -255,7 +255,7 @@ machine it was measured with: measure again when one of them changes.
 
 The sandbox's verdict is not your corpus's, and a laptop's CPU is not the Mac's GPU:
 whether reranking helps your agents is for a measure on the Mac, with your mirror and
-your questions, to say. Everything below runs there, on the mirror that `sync` keeps,
+your questions, to say. Everything below runs there, on the mirror that `prepare` keeps,
 and nothing of the corpus leaves the Mac.
 
 1. **The two servers.** llama.cpp 0.7.0 or later, with Metal: Homebrew's
@@ -294,7 +294,7 @@ and nothing of the corpus leaves the Mac.
    ```
 
    It asks before it runs. The first run builds its own index of the mirror under
-   `<data>/eval/indexes/`, reusing the vectors that `index` made with the same model
+   `<data>/eval/indexes/`, reusing the vectors that `embed` made with the same model
    and chunking; then 600 texts are scored, one to two minutes by the estimate. In
    the table, compare the row of depth 30 with the row `none`: `MRR@10` and
    `Success@1`, group `all` and each group, and `Search, 95th` against 5,000 ms. On 20

@@ -3,8 +3,8 @@
 Plan 030's criterion 4. ``tests/fixtures/memo_source/`` holds ``kb_memo``, shaped as a
 package of this monorepo would be, its declaration, its table and its preparer, and no
 module of ``src/`` names it: ``SOURCES`` and its declaration, one line, are the whole
-registration. Given them, ``--help`` lists it among ``sync``'s choices and imports none
-of contract G's packages; ``check`` lists its setting; ``sync`` writes under
+registration. Given them, ``--help`` lists it among ``prepare``'s choices and imports none
+of contract G's packages; ``check`` lists its setting; ``prepare`` writes under
 ``docs/memo/`` alone, search finds a note by a word only it holds, a second run writes
 nothing and a note removed takes its file with it. Without that line, its table is not
 a setting. The notes are invented.
@@ -193,7 +193,7 @@ def test_prepare_writes_under_its_folder_alone_and_search_finds_a_note(
     assert WORD in read
 
 
-def test_a_second_sync_writes_nothing(
+def test_a_second_prepare_writes_nothing(
     config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
 ) -> None:
     """Each note found unchanged keeps its file, its bytes and its time.

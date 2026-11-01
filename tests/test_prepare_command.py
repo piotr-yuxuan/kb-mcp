@@ -1,4 +1,4 @@
-"""The ``mirror`` command as the user meets it, and pandoc as the mirror runs it."""
+"""The ``prepare`` command as the user meets it, and pandoc as the mirror runs it."""
 
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ def arguments(home: Path, *extra: str) -> list[str]:
     ]
 
 
-def test_without_pandoc_the_mirror_names_it_and_writes_nothing(
+def test_without_pandoc_prepare_names_it_and_writes_nothing(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Refused before anything is asked, exit 2, naming pandoc by run.refused; and no mirror."""
@@ -135,7 +135,7 @@ def test_an_empty_store_mirrors_nothing_and_exits_zero(
 ) -> None:
     """A data directory without a raw store gives an empty mirror, and counts of zero.
 
-    A row each, Confluence's then Jira's, names its source, as sync's rows do.
+    A row each, Confluence's then Jira's, names its source.
     """
     assert main(arguments(home)) == 0
     assert capsys.readouterr().out == (f"confluence: done\n{NOTHING}jira: done\n{NOTHING}")
@@ -241,7 +241,7 @@ def test_the_command_mirrors_both_of_confluence_s_kinds(
     assert (docs / "blog" / "600-news.md").is_file()
 
 
-def test_a_second_mirror_with_nothing_changed_runs_pandoc_on_nothing(
+def test_a_second_prepare_with_nothing_changed_runs_pandoc_on_nothing(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Plan 039, criterion 5: its text and its JSON say that each conversion was reused."""
@@ -264,7 +264,7 @@ def test_a_second_mirror_with_nothing_changed_runs_pandoc_on_nothing(
     assert len(runs.read_text("utf-8").splitlines()) == CONVERSIONS
 
 
-def test_a_damaged_cache_is_replaced_and_the_mirror_converts_everything(
+def test_a_damaged_cache_is_replaced_and_prepare_converts_everything(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Plan 039, criterion 8: exit 0, nothing reused, one warning by SQLite's error name.
@@ -289,7 +289,7 @@ def test_a_damaged_cache_is_replaced_and_the_mirror_converts_everything(
     assert "  converted by pandoc: 0\n  reused from the cache: 3\n" in capsys.readouterr().out
 
 
-def test_a_new_pandoc_converts_again_and_writes_the_bytes_of_a_mirror_from_no_cache(
+def test_a_new_pandoc_converts_again_and_writes_the_bytes_of_a_prepare_from_no_cache(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Plan 039, criterion 6: pandoc's version line changed, as a fake pandoc plays it.

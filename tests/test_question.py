@@ -53,9 +53,9 @@ WRITING = {
     "login": (["atlassian", "--site", SITE], "login"),
     "prepare": ([], "sources"),
 }
-# The work log's folder, which every test's environment names, so that sync has a source.
+# The work log's folder, which every test's environment names, so that prepare has a source.
 WORKLOG_PATH = "KB_MCP_SOURCES__WORKLOG__PATH"
-# Jira's projects, so that sync has an Atlassian source too.
+# Jira's projects, so that fetch has an Atlassian source too.
 PROJECTS = {"KB_MCP_SOURCES__JIRA__PROJECTS": '["PRB"]'}
 # An embedding endpoint off this machine, over https and over http.
 ELSEWHERE = {"KB_MCP_EMBEDDING_URL": "https://embeddings.example/v1"}
@@ -115,7 +115,7 @@ class Interrupting(Terminal):
 def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     """Give each test a scratch home directory, so that none reads or writes the user's.
 
-    Its work log is the home itself, so that sync has a source to take.
+    Its work log is the home itself, so that prepare has a source to take.
     """
     scratch = tmp_path / "home"
     scratch.mkdir()
@@ -319,7 +319,7 @@ def test_yes_in_the_settings_file_is_refused(
 
 
 @pytest.mark.parametrize("terminal", [True, False])
-def test_a_download_declined_or_refused_asks_the_site_nothing(
+def test_a_fetch_declined_or_refused_asks_the_site_nothing(
     home: Path, monkeypatch: MonkeyPatch, *, terminal: bool
 ) -> None:
     """Nothing is spent before the question: no request, no file, the session as it was."""
@@ -368,9 +368,7 @@ def test_what_needs_no_network_is_refused_before_anything_is_asked(
 
 
 @pytest.mark.parametrize("name", ["fetch"])
-def test_back_is_no_option_of_download_nor_sync(
-    name: str, home: Path, capsys: CaptureFixture[str]
-) -> None:
+def test_back_is_no_option_of_fetch(name: str, home: Path, capsys: CaptureFixture[str]) -> None:
     """Plan 034 removed it, since --since 1y or all says the same: unknown, and not in --help."""
     with pytest.raises(SystemExit) as stopped:
         main([name, "--config", str(home / "none.toml"), "--back=1y"])

@@ -144,7 +144,7 @@ def test_an_email_without_a_token_is_ignored(
     ],
 )
 @pytest.mark.usefixtures("runs")
-def test_a_download_s_summary_says_how_it_signs_in(
+def test_a_fetch_s_summary_says_how_it_signs_in(
     home: Path,
     monkeypatch: MonkeyPatch,
     capsys: CaptureFixture[str],
@@ -169,7 +169,7 @@ def test_a_download_s_summary_says_how_it_signs_in(
     ],
 )
 @pytest.mark.usefixtures("runs")
-def test_a_download_s_summary_says_where_its_windows_start(
+def test_a_fetch_s_summary_says_where_its_windows_start(
     home: Path, capsys: CaptureFixture[str], given: list[str], rule: str
 ) -> None:
     """The rule in words, before the run reads the store: from --since, or the last fetch."""

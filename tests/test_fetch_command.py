@@ -79,7 +79,7 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> list[str]:
     )
 
 
-def test_a_download_shows_what_it_fetched_by_kind_its_files_and_failures(
+def test_a_fetch_shows_what_it_fetched_by_kind_its_files_and_failures(
     signed_in: list[str], capsys: CaptureFixture[str]
 ) -> None:
     """In short, a row per source, Confluence then Jira, each with its own counts.
@@ -101,7 +101,7 @@ def test_a_download_shows_what_it_fetched_by_kind_its_files_and_failures(
     )
 
 
-def test_a_download_in_detail_shows_each_window_every_count_then_the_failures(
+def test_a_fetch_in_detail_shows_each_window_every_count_then_the_failures(
     signed_in: list[str], capsys: CaptureFixture[str]
 ) -> None:
     """Under each source's row, its target's window, then each count, in order, then failures.
@@ -191,7 +191,7 @@ def test_without_a_session_each_source_is_to_sign_in_before_any_request(
     assert fake.asked == []
 
 
-def test_a_stopped_download_says_why_in_short(
+def test_a_stopped_fetch_says_why_in_short(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Too many failures in a row stop a run: short says so, else it reads as a whole run."""
@@ -237,7 +237,7 @@ def test_a_dry_run_shows_what_it_would_fetch(
     )
 
 
-def test_a_download_gives_its_counts_failed_keys_and_status_as_json(
+def test_a_fetch_gives_its_counts_failed_keys_and_status_as_json(
     signed_in: list[str], capsys: CaptureFixture[str]
 ) -> None:
     """One document: the exit status, then a row per source, each with its result whole.
@@ -270,9 +270,7 @@ def test_a_download_gives_its_counts_failed_keys_and_status_as_json(
     assert [each["dry_run"] for each in (confluence, jira)] == [False, False]
 
 
-def test_a_download_without_a_site_is_refused_by_name(
-    home: Path, capsys: CaptureFixture[str]
-) -> None:
+def test_a_fetch_without_a_site_is_refused_by_name(home: Path, capsys: CaptureFixture[str]) -> None:
     """The site is named as the missing setting, by the error run.refused."""
     assert main(command(home, "--space", "MFS", "--since", "7d")) == REFUSED
     err = capsys.readouterr().err

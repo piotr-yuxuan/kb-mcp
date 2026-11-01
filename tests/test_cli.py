@@ -225,7 +225,7 @@ def test_each_subcommand_reads_settings_by_their_paths_and_declares_each_flag(na
 
 
 @pytest.mark.parametrize("name", sorted(SUBCOMMANDS))
-def test_the_commands_that_write_take_yes_and_download_and_sync_a_dry_run(name: str) -> None:
+def test_the_commands_that_write_take_yes_and_fetch_and_prepare_a_dry_run(name: str) -> None:
     """They ask first, as plans 015 and 017 list them; check, doctor, model, serve never do."""
     command = SUBCOMMANDS[name].get_default("command")
     arguments = parser().parse_args([name, *POSITIONALS.get(name, [])])

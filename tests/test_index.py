@@ -854,7 +854,7 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     """An index of plan 006, or built before the build id, people, links or persons.
 
     The commands named write the mirror's files before the index, as 041 changed them:
-    ``sync``, which runs only the sources configured, else ``mirror`` then ``index``.
+    ``prepare``, then ``index`` or ``embed``.
     """
     write(data / "docs", page("196845", "Kafka"), BODY)
     build_index(data / "docs", data / "index.sqlite", MOMENT)

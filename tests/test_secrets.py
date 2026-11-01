@@ -1,7 +1,7 @@
 """Never logged: no run at debug says or leaves a secret, from the site to the agent (plan 020).
 
-Plan 020's "Never logged". ``sync`` runs against plan 004's scripted site, signed in by
-an API token, then by the session that ``login`` saved; ``index`` against the scripted
+Plan 020's "Never logged". ``fetch`` runs against plan 004's scripted site, signed in by
+an API token, then by the session that ``login`` saved; ``embed`` against the scripted
 embeddings endpoint; a stdio ``serve``, in a fresh interpreter, answers one ``search``
 by meaning. Every run has the token, its account's email and the endpoint's key in its
 environment, at debug, and the session file holds a cookie: each secret a sentinel, and
@@ -90,10 +90,10 @@ def left(folder: Path) -> dict[Path, bytes]:
 def test_no_run_at_debug_says_or_leaves_a_secret(
     home: Path, tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Sync by the token, then by the session, index, then serve: each secret used, none shown.
+    """Fetch by the token, then by the session, embed, then serve: each secret used, none shown.
 
-    The site's one attached file that fails makes each sync exit 1. The files are read
-    after the first sync too, as the second replaces its run report, both made within
+    The site's one attached file that fails makes each fetch exit 1. The files are read
+    after the first fetch too, as the second replaces its run report, both made within
     one second. The server, at debug too, may reach the endpoint's port alone; what it
     sends on stdout, the protocol, and its stderr, a file, are read as the in-process
     runs' are.

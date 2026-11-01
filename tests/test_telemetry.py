@@ -397,7 +397,7 @@ def test_a_run_is_one_trace_whose_root_holds_its_records_and_says_its_command_an
 
 
 @pytest.mark.parametrize(("dry", "options"), [(True, ["--dry-run"]), (False, [])])
-def test_a_download_s_root_says_whether_it_is_a_dry_run(
+def test_a_fetch_s_root_says_whether_it_is_a_dry_run(
     tmp_path: Path, *, dry: bool, options: list[str]
 ) -> None:
     """The flag's value, not whether the command takes it.

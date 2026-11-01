@@ -8,21 +8,20 @@ read-only, for agents that prefer files.
 
 - The command is installed, so that `kb-mcp` is on your `PATH`, for
   instance with `uv tool install <path of this repository>`.
-- The mirror is built, and so is its index: `sync` builds both, from Confluence, Jira
-  and the work log alike ([bring every source up to date](refresh.md)); or `mirror`, from
-  Confluence and Jira, then:
+- The mirror is built, and so is its index, from Confluence, Jira and the work log alike
+  ([bring every source up to date](refresh.md)):
 
   ```bash
-  kb-mcp index
+  kb-mcp fetch && kb-mcp prepare && kb-mcp index && kb-mcp embed
   ```
 
-  By default `index` embeds the mirror with a model that Ollama serves, so set that up
-  first, as [embeddings](embeddings.md) says, or set `search_mode = "lexical"` to index
-  and search by words alone. Build the index again after each
-  `mirror`; a running server reads the new index from its next call on. `status` tells
-  when the index was built. `mirror`, `index` and `eval` write under the data
-  directory, so each first says what it will do and asks `Proceed? [y/N]`; `--yes` runs
-  it without the question, as a script needs.
+  `embed` embeds the mirror with a model that Ollama serves, so set that up first, as
+  [embeddings](embeddings.md) says, or stop after `index` and set
+  `search_mode = "lexical"` to search by words alone. Build the index again after each
+  `prepare`; a running server reads the new index from its next call on. `status` tells
+  when the index was built. `fetch`, `prepare`, `index`, `embed` and `eval` write under
+  the data directory, so each first says what it will do and asks `Proceed? [y/N]`;
+  `--yes` runs it without the question, as a script needs.
 - The server is the command with no arguments. It speaks MCP over stdio, reads only
   `<data>/index.sqlite` and the mirror, and writes nothing; its network connections are
   to the embedding endpoint, when it searches by meaning, and to the reranking server,
@@ -199,7 +198,7 @@ folder, where `kb-mcp/docs` is not part of the files' paths.
 ```
 
 Neither setting is a guarantee from the operating system: an agent's terminal commands
-can still write there. `mirror` rebuilds the folder from the raw store in any case, so
+can still write there. `prepare` rebuilds the folder from the raw store in any case, so
 an edit would not last.
 
 ## Sources

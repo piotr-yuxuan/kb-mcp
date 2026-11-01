@@ -6,7 +6,7 @@ sign-in in Chrome, a first download of last week's pages and issues with their p
 then ending the session, and what may come back to the personal laptop. It needs uv and
 Google Chrome, and pandoc for the mirror.
 [Your first mirror](../tutorials/first-mirror.md) is the lesson of it all on any site,
-with `sync`, the index and an agent.
+with `fetch`, `prepare`, the index and an agent.
 
 ## 1. Install the command
 
@@ -91,7 +91,7 @@ add `--chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`.
 Where Chrome cannot sign in, an API token can: see [sign in with an API token kept by
 sops](api-token-with-sops.md).
 
-## 5. Download
+## 5. Fetch
 
 ```bash
 kb-mcp fetch --space ENG --space OPS --project PLAT --since 7d
@@ -108,7 +108,7 @@ as it reads its whole covered period; a project's issues get theirs only from a 
 whose `--since` reaches them, such as `--since all`, since a project catches up from
 its last fetch.
 
-Before it starts, the download writes on stderr what it will do: each setting it reads
+Before it starts, the fetch writes on stderr what it will do: each setting it reads
 and its value, how it signs in, the values it ignores, and the same command written in
 full, one option per line, to copy and run again. Then it asks `Proceed? [y/N]`: `y`
 runs it, anything else does nothing and exits 1. `--yes` runs it without the question,
@@ -144,7 +144,7 @@ or as soon as that folder may have been copied:
    ```
 
 A run signed in by the session then stops at once with exit status 3, and says to run
-`login` again. Running `login` again replaces the saved cookies, but does not end the
+`login atlassian` again. Running it again replaces the saved cookies, but does not end the
 session that they held: only the first step does.
 [Credentials](../explanation/credentials.md) explains what the folder holds and why.
 

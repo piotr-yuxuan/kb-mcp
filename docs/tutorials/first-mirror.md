@@ -136,65 +136,66 @@ command says:
 Signed in; the session is saved.
 ```
 
-## 5. Look before you sync
+## 5. Look before you fetch
 
-`sync` downloads the space, mirrors it as Markdown, then builds the search index. A
-space that no run has fetched yet takes its last 7 days without `--since`; `--since
-all` takes the whole space. First, a dry run, which reads the site, says what it would
-fetch, and writes nothing:
+Four commands, each one step, make the mirror and its index: `fetch` downloads the space
+into a store, `prepare` turns what the store holds into Markdown, `index` builds the search
+index of its words, and `embed` builds it again with vectors. A space that no run has
+fetched yet takes its last 7 days without `--since`; `--since all` takes the whole space.
+First, a dry run, which reads the site, says what it would fetch, and writes nothing:
 
 ```bash
 kb-mcp fetch --dry-run --since all
 ```
 
-It starts with each setting that it reads, defaults included (the model, the search
-mode, the endpoint), then says which sources it takes or leaves out, and gives the same
-command in full, one option per line, to copy. Its first lines:
+It starts with each setting that it reads, defaults included (the data directory), then
+says which sources it takes or leaves out, and gives the same command in full, one option
+per line, to copy. Its first lines:
 
 ```text
-sync, with these settings:
+fetch, with these settings:
   accounts.atlassian.site: https://<your-site>.atlassian.net
 ```
 
-After a progress bar, it ends with the window of the space, from the start of 2000 to
-now, and what it would fetch:
+After a progress bar, it ends with Confluence's row: the window of the space, from the
+start of 2000 to now, and what it would fetch:
 
 ```text
-fetch confluence: done
+confluence: done
   space <KEY>: from 2000-01-01T00:00:00+00:00 to <now>, given
   confluence pages: to fetch: 13
   failures: 0
-prepare confluence: not run
-index: not run
 ```
 
-## 6. Sync
+## 6. Run the chain
 
-Now the run itself:
+Now the run itself, each command going on from what the one before it wrote:
 
 ```bash
-kb-mcp fetch --since all
-kb-mcp prepare
-kb-mcp index
-kb-mcp embed
+kb-mcp fetch --since all && kb-mcp prepare && kb-mcp index && kb-mcp embed
 ```
 
-It starts as the dry run did:
+Each command starts as the dry run did, under its own name:
 
 ```text
-sync, with these settings:
+fetch, with these settings:
   accounts.atlassian.site: https://<your-site>.atlassian.net
 ```
 
-and ends its summary with `Proceed? [y/N]`: answer `y`. A space of tens of pages takes a
-minute or so. It ends with a row per step, and that step's counts:
+and ends its summary with `Proceed? [y/N]`: answer `y`, four times. A space of tens of
+pages takes a minute or so. `fetch` ends with Confluence's row, and its counts:
 
 ```text
-fetch confluence: done
+confluence: done
   confluence pages: fetched: 13
   files: downloaded: 10
   failures: 0
-prepare confluence: done
+```
+
+`prepare` ends with a row for each source that keeps a store, Jira holding nothing yet:
+
+```text
+confluence: done
   documents: 13
   converted by pandoc: 14
   reused from the cache: 0
@@ -202,18 +203,39 @@ prepare confluence: done
   files unchanged: 0
   files removed: 0
   problems: 0
-index: done
-  documents: 13
-  sections: 67
-  pieces: 45
-  embedded now: 45
+jira: done
+  documents: 0
+  converted by pandoc: 0
+  reused from the cache: 0
+  files written: 0
+  files unchanged: 0
+  files removed: 0
+  problems: 0
 ```
 
-On macOS, `sync` may not exit once its download is done: a known issue, which plan 013
+`index` ends with what it indexed:
+
+```text
+documents: 13
+sections: 67
+```
+
+and `embed` with the same, the pieces that it gave vectors, and the vector store:
+
+```text
+documents: 13
+sections: 67
+pieces: 45
+embedded now: 45
+vectors pruned: 0
+vector store: 0.2 MB
+```
+
+On macOS, `fetch` may not exit once its download is done: a known issue, which plan 013
 is to diagnose and fix, parked for now
 ([the roadmap](../work/README.md#plans) lists it).
 
-Look at what it wrote:
+Look at what `prepare` wrote:
 
 ```bash
 ls ~/kb-mcp/docs/confluence/<KEY>
@@ -221,7 +243,7 @@ ls ~/kb-mcp/docs/confluence/<KEY>
 
 A Markdown file per page, named by the page's id and its title, and `_tree.md`, the
 space's tree of pages. The id is the page's ref, by which agents cite it. Each file
-begins with front matter, where `fetched_at` is the page's mirror date: the time `sync`
+begins with front matter, where `fetched_at` is the page's mirror date: the time `fetch`
 fetched it.
 
 ## 7. Give the mirror to Claude Code
@@ -281,4 +303,4 @@ meaning, and an agent that answers from it and says how old its evidence is. Fro
 - [Mirror the work log](../how-to/work-log.md) beside Confluence and Jira.
 - [Observe runs with Grafana](../how-to/observe-with-grafana.md), and what each command
   records, in [telemetry](../reference/telemetry/README.md).
-- [Internals](../explanation/internals.md): what each step of `sync` did, and why.
+- [Internals](../explanation/internals.md): what each of these commands did, and why.
