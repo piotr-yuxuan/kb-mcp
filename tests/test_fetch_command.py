@@ -439,7 +439,7 @@ def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
 ) -> None:
     """50 listed, 7 in the window of which 4 stored: the task, short and its JSON say 3.
 
-    download.listed says each number, and the window's reason; the window goes to the
+    fetch.listed says each number, and the window's reason; the window goes to the
     JSON, and the run report names no target.
     """
     outcome, events, chosen = counted(tmp_path, monkeypatch, since, first_fetch=first_fetch)
