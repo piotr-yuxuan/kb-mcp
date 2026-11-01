@@ -865,8 +865,8 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     refused = pytest.raises(
         UnavailableIndexError,
         match=(
-            "rebuild it with `kb-mcp sync`, or, where no source is configured,"
-            " `kb-mcp mirror` then `kb-mcp index`, which write"
+            "rebuild it with `kb-mcp prepare`, which writes the mirror again first,"
+            " then `kb-mcp index` or `kb-mcp embed`"
         ),
     )
     with refused, reading(data / "index.sqlite"):

@@ -49,11 +49,11 @@ SECRETS = {CREDENTIAL: "token-sentinel-4d1c", KEY: "key-sentinel-9a7e"}
 UNKNOWN = "KB_MCP_UNKNOWN"
 WAIT = 30  # seconds for the server to answer and stop
 # The modules that run the commands that write, by plan 015.
-WRITING = ("embed", "evaluate", "index", "login", "mirror", "sources")
+WRITING = ("embed", "evaluate", "index", "login", "sources")
 # Each command that writes, with options of its own, as given on its command line.
 OWN_OPTIONS = {
     "fetch": ["--space", "ENG", "--space", "OPS", "--since", "7d", "--max-file-mb", "5"],
-    "mirror": [],
+    "prepare": [],
     "embed": ["--allow-remote-embeddings"],
     "eval": ["golden.yaml", "--model", "tiny", "--model", "qwen3-embedding:0.6b"],
     "login": ["--chrome", "chrome", "--keep-extensions"],
@@ -345,30 +345,40 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     config.write_text(f'model = "tiny"\n[accounts.atlassian]\nsite = "{SITE}"\n', "utf-8")
     monkeypatch.setenv(UNKNOWN, "1")
     data = (home / "data").resolve()
-    options = ["mirror", "--yes", "--config", str(config), "--data-dir", str(data)]
+    options = ["prepare", "--yes", "--config", str(config), "--data-dir", str(data)]
     command = (
-        "kb-mcp mirror \\\n"
+        "kb-mcp prepare \\\n"
         f"  --config {shlex.quote(str(config))} \\\n"
         f"  --data-dir {shlex.quote(str(data))} \\\n"
         f"  --site {SITE}\n"
     )
     assert main(options) == 0
     assert capsys.readouterr().err == (
-        "mirror, with these settings:\n"
+        "prepare, with these settings:\n"
         f"  accounts.atlassian.site: {SITE}\n"
         f"  data_dir: {data}\n"
+        "  sources.worklog.path: (not set)\n"
+        "  sources.worklog.archives: True (not applied: worklog not configured)\n"
+        "  source confluence: all that its store holds\n"
+        "  source jira: all that its store holds\n"
+        "  source worklog: left out, not configured\n"
         f"ignored: {UNKNOWN}: names no setting\n"
         f"{command}"
     )
     assert main([*options, "--summary", "detailed"]) == 0
     assert capsys.readouterr().err == (
-        "mirror, with these settings:\n"
+        "prepare, with these settings:\n"
         f"  accounts.atlassian.site: {SITE} [config.toml]\n"
         f"  data_dir: {data} [--data-dir]\n"
+        "  sources.worklog.path: (not set) [default]\n"
+        "  sources.worklog.archives: True [default] (not applied: worklog not configured)\n"
         f"  logs.dir: {user_log_folder(home.resolve())} [default]\n"
         "  telemetry.endpoint: (not set) [default]\n"
+        "  source confluence: all that its store holds\n"
+        "  source jira: all that its store holds\n"
+        "  source worklog: left out, not configured\n"
         f"ignored: {UNKNOWN}: names no setting\n"
-        "ignored: model (config.toml): not read by mirror\n"
+        "ignored: model (config.toml): not read by prepare\n"
         f"{command}"
     )
     assert main([*options, "-q"]) == 0
@@ -376,7 +386,7 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     assert len(runs) == len(["short", "detailed", "quiet"])
 
 
-@pytest.mark.parametrize("command", ["mirror", "index"])
+@pytest.mark.parametrize("command", ["prepare", "index"])
 @pytest.mark.usefixtures("runs")
 def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], command: str
@@ -472,15 +482,13 @@ def test_a_command_s_described_lines_end_its_summary(
     def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
         return (f"mirrors {settings['accounts.atlassian.site']}", f"as {arguments.command.name}")
 
-    given = ["mirror", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
+    given = ["prepare", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
     arguments = parser().parse_args(given)
     arguments.command = dataclasses.replace(arguments.command, described=described)
     with early():
         assert enter(arguments, given, SOURCES) == 0
-    summary = capsys.readouterr().err.split("kb-mcp mirror")[0]
-    assert summary.endswith(
-        f"  data_dir: {(home / 'kb-mcp').resolve()}\n  mirrors {SITE}\n  as mirror\n"
-    )
+    summary = capsys.readouterr().err.split("kb-mcp prepare")[0]
+    assert summary.endswith(f"  mirrors {SITE}\n  as prepare\n")
     assert len(runs) == 1
 
 

@@ -51,7 +51,7 @@ WRITING = {
     "embed": ([], "embed"),
     "index": ([], "index"),
     "login": (["--site", SITE], "login"),
-    "mirror": ([], "mirror"),
+    "prepare": ([], "sources"),
     "sync": ([], "sync"),
 }
 # The work log's folder, which every test's environment names, so that sync has a source.
@@ -88,7 +88,7 @@ REFUSED_FIRST = [
     (["eval", GOLDEN], ELSEWHERE, "embedding_url: not an address of this machine"),
     (["eval", "missing.yaml"], {}, "missing.yaml: not a file"),
     (["eval", str(Path(__file__).parent)], {}, f"{Path(__file__).parent}: not a file"),
-    (["mirror"], {"PATH": ""}, "pandoc: not found on PATH"),
+    (["prepare"], {"PATH": ""}, "pandoc: not found on PATH"),
     (["sync", "--include", "jira"], {}, "--include jira: not configured"),
     (["sync", "--exclude", "worklog"], {}, "nothing to sync"),
     (["sync"], PROJECTS, "accounts.atlassian.site: not set"),
@@ -168,12 +168,12 @@ def test_on_terminals_yes_lets_the_run_go_on(
     """The summary and the command come first, then the question, then the run."""
     stderr = Terminal()
     given(monkeypatch, Terminal(answer), stderr)
-    assert main(command_line(home, "mirror")) == 0
+    assert main(command_line(home, "prepare")) == 0
     assert len(runs) == 1
     said = stderr.getvalue()
-    assert said.startswith("mirror, with these settings:\n")
+    assert said.startswith("prepare, with these settings:\n")
     assert said.endswith(QUESTION)
-    assert f"kb-mcp mirror \\\n  --config {home / 'none.toml'}" in said
+    assert f"kb-mcp prepare \\\n  --config {home / 'none.toml'}" in said
 
 
 @pytest.mark.parametrize("answer", ["n\n", "\n", "yess\n", ""])
@@ -242,12 +242,12 @@ def test_quiet_leaves_out_the_summary_of_a_refusal_but_keeps_it_for_a_question(
     """-q says the refusal alone; with a question to answer, the summary is still shown."""
     refused = io.StringIO()
     given(monkeypatch, io.StringIO(), refused)
-    assert main(command_line(home, "mirror", "-q")) == REFUSED
+    assert main(command_line(home, "prepare", "-q")) == REFUSED
     assert refused.getvalue() == REFUSAL
     asked = Terminal()
     given(monkeypatch, Terminal("n\n"), asked)
-    assert main(command_line(home, "mirror", "-q")) == DECLINED
-    assert asked.getvalue().startswith("mirror, with these settings:\n")
+    assert main(command_line(home, "prepare", "-q")) == DECLINED
+    assert asked.getvalue().startswith("prepare, with these settings:\n")
     assert QUESTION in asked.getvalue()
     assert runs == []
 
@@ -256,7 +256,7 @@ def test_quiet_leaves_out_the_summary_of_a_refusal_but_keeps_it_for_a_question(
     ("name", "skip"),
     [
         *((name, "--yes") for name in sorted(WRITING)),
-        ("mirror", "-y"),
+        ("prepare", "-y"),
         ("fetch", "--dry-run"),
         ("sync", "--dry-run"),
     ],
@@ -300,11 +300,11 @@ def test_a_yes_variable_skips_nothing_and_is_said_to_be_ignored(
     monkeypatch.setenv("KB_MCP_YES", "1")
     asked = Terminal()
     given(monkeypatch, Terminal("n\n"), asked)
-    assert main(command_line(home, "mirror", *level)) == DECLINED
+    assert main(command_line(home, "prepare", *level)) == DECLINED
     assert "ignored: KB_MCP_YES: names no setting\n" in asked.getvalue()
     assert QUESTION in asked.getvalue()
     given(monkeypatch, io.StringIO(), io.StringIO())
-    assert main(command_line(home, "mirror")) == REFUSED
+    assert main(command_line(home, "prepare")) == REFUSED
     assert runs == []
 
 
@@ -314,7 +314,7 @@ def test_yes_in_the_settings_file_is_refused(
     """Only the flag skips the question: ``yes`` is no setting."""
     config = home / "config.toml"
     config.write_text("yes = true\n", "utf-8")
-    assert main(["mirror", "--config", str(config)]) == REFUSED
+    assert main(["prepare", "--config", str(config)]) == REFUSED
     err = capsys.readouterr().err
     assert said_on(err) == [("error", "settings.refused")]
     assert "yes (config.toml): not a setting" in err

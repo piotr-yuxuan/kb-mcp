@@ -313,7 +313,7 @@ package, but each is a source: a row, a report and a set of files of its own.
   Confluence's stale pages still go. What a prepare could not read of the other source
   fails nothing of its own, yet its files may then link the document's address on the site:
   it says so, by that source, under a row that stays done
-  ([`prepare_kinds`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
+  ([`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
 - **The conversion cache.** Each prepare looks up and prunes its own rows
   ([`Conversions`](../../src/kb_mcp/mirror/adapters/conversions.py)), keyed by source and
   key, so that a text that both convert is a row of each, which neither prune takes from the
@@ -342,10 +342,9 @@ do the summary's lines ([`described`](../../src/kb_mcp/cli/domain/sync.py)), the
 applied of the sources left out
 ([`unapplied`](../../src/kb_mcp/cli/options/sync.py)), the light refusals
 ([`refused`](../../src/kb_mcp/cli/options/sync.py)) and the options, each flag once.
-`download` runs the fetch of `confluence`, then of `jira`, and `mirror` their prepare, each
-with a row per source as in `sync`, until plan 031 removes both
-([`run`](../../src/kb_mcp/cli/commands/mirror.py)). `login` and `doctor` stay the Atlassian
-package's commands.
+`fetch` and `prepare` run each source's role, a row each, by one run
+([`run`](../../src/kb_mcp/cli/commands/sources.py)). `login` and `doctor` stay the
+Atlassian package's commands.
 
 ## Kept for the extras, later
 

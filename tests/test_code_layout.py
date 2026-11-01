@@ -45,8 +45,6 @@ NAMING = {
     "cli/domain/command.py": 1,
     # MOVED: plan 015's message for its moved keys, which name their tables.
     "config/domain/settings.py": 2,
-    # A docstring: who records the instruments.
-    "mirror/adapters/instruments.py": 1,
     # A docstring: which step owns which folder.
     "mirror/adapters/mirror_files.py": 2,
     # Docstrings of the front matter's Atlassian-shaped keys, which question 3 keeps.

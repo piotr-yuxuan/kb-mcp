@@ -37,8 +37,8 @@ positional arguments:
     fetch        bring what changed in each source into its store
     index        build the search index of the mirror's words
     login        sign in once, in a Chrome window
-    mirror       write the Markdown mirror from the raw store
     model        check the embedding model and its endpoint
+    prepare      turn what each source holds into the Markdown mirror
     reranker     check the reranking server and its model
     serve        serve the mirror over MCP on stdio
     sync         bring the configured sources up to date: fetch each, prepare each,
@@ -49,7 +49,7 @@ options:
   --version      show the version
 
 The commands that write under the data directory (embed, eval, eval-agents, eval-
-rerank, fetch, index, login, mirror, sync) first say what they will do, with the
+rerank, fetch, index, login, prepare, sync) first say what they will do, with the
 command to copy, then ask; --yes, or --dry-run where taken, runs them without asking,
 and with no terminal to ask on, they are refused. Exit statuses: 0 done; 1 something
 failed (a document, a file, a check, the endpoint), or the question was declined; 2
@@ -459,36 +459,6 @@ With --format json: site, the site signed in to; session, the folder that keeps 
 session.
 ```
 
-## `mirror`
-
-```text
-usage: kb-mcp mirror [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
-                     -v | --log-level {debug,info,warning,error}]
-                     [--format {text,json}] [--summary {short,detailed}] [-y]
-
-options:
-  -h, --help            show this help message and exit
-  --config CONFIG       the settings file
-  --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
-  -q                    say errors alone, and write no result as text
-  -v                    the level info, or debug with -vv
-  --log-level {debug,info,warning,error}
-                        say what is of this level or above; warning by default
-  --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
-                        write what matters of the result, or all of it
-  -y, --yes             run without asking first, as a script does
-
-With --format json: exit_status, the run's; steps, a row per source, confluence then
-jira, each with its step, mirror, its source, its outcome (done, failed) and its
-result: documents, how many are mirrored; converted, the conversions pandoc ran, and
-reused, those the cache gave, a document's file and a space's tree being one each;
-changes, the files written, unchanged and removed; unsupported, what the mirror does
-not show, by name; problems, each by its place and why; elsewhere, those that it found
-reading the other source's, by that source, which fail nothing of its own.
-```
-
 ## `model`
 
 ```text
@@ -520,6 +490,59 @@ options:
 
 With --format json: name and dimensions, the model's; url, the endpoint; digest, the
 model's, empty when the endpoint reports none.
+```
+
+## `prepare`
+
+```text
+usage: kb-mcp prepare [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
+                      -v | --log-level {debug,info,warning,error}]
+                      [--format {text,json}] [--summary {short,detailed}] [-y]
+                      [--dry-run]
+                      [{confluence,jira,worklog} ...]
+
+positional arguments:
+  {confluence,jira,worklog}
+                        the sources to prepare, given together; by default those that
+                        keep a store, and each one read in place that is configured
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       the settings file
+  --data-dir DATA_DIR   the data directory, overriding the settings
+  --site SITE           the site, as https://<name>.atlassian.net
+  -q                    say errors alone, and write no result as text
+  -v                    the level info, or debug with -vv
+  --log-level {debug,info,warning,error}
+                        say what is of this level or above; warning by default
+  --format {text,json}  write the result as text, or as one JSON document
+  --summary {short,detailed}
+                        write what matters of the result, or all of it
+  -y, --yes             run without asking first, as a script does
+  --dry-run             count what a run would convert and remove, where a source can
+                        tell; write nothing
+
+confluence:
+  Confluence, on the Atlassian site: the pages and blog posts of its spaces: pages,
+  listed whole; blogposts, listed whole.
+
+jira:
+  Jira, on the Atlassian site: the issues of its projects: issues, searched by
+  update time.
+
+worklog:
+  The user's work log: org files read in place, never written: entries, in place;
+  days, in place; meetings, in place; transcripts, in place.
+
+With --format json: exit_status, the run's; sources, a row per source taken, in the
+registry's order, each with its source, its outcome (done, failed, interrupted, not
+run) and its result, null when it gave none: its outcome, and under mirrored what the
+source's documents became, null when it did not run: documents, how many are mirrored;
+for Confluence and Jira, converted, the conversions pandoc ran, and reused, those the
+cache gave, a document's file and a space's tree being one each; changes, the files
+written, unchanged and removed; unsupported, what the mirror does not show, by name;
+problems, each by its place and why; elsewhere, those that it found reading the other
+source's, by that source, which fail nothing of its own.
 ```
 
 ## `reranker`

@@ -28,8 +28,10 @@ from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
-from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, mirror
-from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_kinds
+from kb_mcp.sources.atlassian.prepare.app import preparer
+from kb_mcp.sources.atlassian.prepare.app.prepare import mirror
+from kb_mcp.sources.registry import SOURCES
+from kb_mcp.sources.roles import Run
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
 from tests.composed import MODEL
 from tests.mirrors import mirrored_source
@@ -398,7 +400,7 @@ def test_a_second_run_with_nothing_changed_runs_pandoc_on_nothing(sandbox: Sandb
         "confluence": (0, 0),
         "jira": (0, 0),
     }
-    assert events_named(events, "mirror.written") == [
+    assert events_named(events, "prepare.written") == [
         {
             "source": source,
             "written": 0,
@@ -436,8 +438,8 @@ def test_a_run_with_a_problem_keeps_the_conversion_of_what_it_could_not_read(
         source: ((), count) for source, count in CONVERSIONS.items()
     }
     assert pandoc.runs == []
-    assert [each["pruned"] for each in events_named(damaged, "mirror.written")] == [0, 0]
-    assert [each["pruned"] for each in events_named(mended, "mirror.written")] == [1, 0]
+    assert [each["pruned"] for each in events_named(damaged, "prepare.written")] == [0, 0]
+    assert [each["pruned"] for each in events_named(mended, "prepare.written")] == [1, 0]
 
 
 # Home's view links to the page listed only, never stored, by its address on the site.
@@ -995,9 +997,21 @@ def issue_damaged(sandbox: Sandbox) -> None:
 
 def prepared(sandbox: Sandbox, source: str) -> tuple[Prepared, list[dict[str, object]]]:
     """Prepare one source as its role does; give how it ended, and what it warned."""
-    settings = MODEL(data_dir=sandbox.data)
+    settings = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=sandbox.data)
+    declared = next(each for each in SOURCES if each.name == source)
     with capture_logs() as events:
-        done = prepare_kinds(settings, SITE, Pandoc.find(), source, PREPARED[source])
+        done = preparer.prepare(
+            Run(
+                declared=declared,
+                settings=settings,
+                table=getattr(settings.sources, source),
+                account=settings.accounts.atlassian,
+                options={},
+                now=lambda: FETCHED,
+                sleep=lambda _: None,
+                dry_run=False,
+            )
+        )
     return done, [each for each in events if each["log_level"] == "warning"]
 
 
@@ -1018,7 +1032,7 @@ def test_a_prepare_of_jira_says_what_it_could_not_read_of_confluence(crossed: Sa
     theirs = done.mirrored.elsewhere["confluence"]
     assert theirs
     assert [(each["event"], each["source"], each["where"], each["reason"]) for each in warned] == [
-        ("mirror.not_mirrored", "confluence", problem.where, problem.reason) for problem in theirs
+        ("prepare.not_mirrored", "confluence", problem.where, problem.reason) for problem in theirs
     ]
 
 
@@ -1031,7 +1045,7 @@ def test_a_prepare_of_confluence_says_what_it_could_not_read_of_jira(crossed: Sa
     (theirs,) = done.mirrored.elsewhere["jira"]
     assert theirs.where.startswith("jira/issues/10000/")
     assert [(each["event"], each["source"], each["where"]) for each in warned] == [
-        ("mirror.not_mirrored", "jira", theirs.where)
+        ("prepare.not_mirrored", "jira", theirs.where)
     ]
     assert "problems of jira, read here: 1\n" in done.text("short")
 
@@ -1054,7 +1068,7 @@ def test_each_source_prunes_its_own_conversions_alone(sandbox: Sandbox) -> None:
     leaf_edited(sandbox)
     with capture_logs() as events:
         sandbox.run(markdown=pandoc.markdown, sources=("confluence",))
-    assert [each["pruned"] for each in events_named(events, "mirror.written")] == [1]
+    assert [each["pruned"] for each in events_named(events, "prepare.written")] == [1]
     pandoc.runs.clear()
     jira = sandbox.run(markdown=pandoc.markdown, sources=("jira",))["jira"]
     assert (jira.converted, jira.reused, pandoc.runs) == (0, CONVERSIONS["jira"], [])
@@ -1083,7 +1097,7 @@ def test_a_cache_of_plan_039_s_columns_is_replaced_once_and_everything_converted
         connection.commit()
     with capture_logs() as events:
         outcomes = sandbox.run()
-    assert events_named(events, "mirror.cache_replaced") == [
+    assert events_named(events, "prepare.cache_replaced") == [
         {"reason": "SQLITE_ERROR", "log_level": "warning"}
     ]
     assert each(outcomes, lambda outcome: (outcome.converted, outcome.reused)) == {

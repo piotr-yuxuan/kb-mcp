@@ -222,6 +222,4 @@ forbidden_modules = ["lxml", "playwright"]
 ignore_imports = [
   "kb_mcp.cli.commands.login -> kb_mcp.sources.atlassian.fetch.adapters.browser",
   "kb_mcp.cli.commands.login -> kb_mcp.sources.atlassian.fetch.app.login",
-  "kb_mcp.cli.commands.mirror -> kb_mcp.sources.atlassian.prepare.app.prepare",
-  "kb_mcp.cli.commands.mirror -> kb_mcp.sources.atlassian.prepare.app.preparer",
 ]

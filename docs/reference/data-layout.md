@@ -508,8 +508,8 @@ SQLite finds damaged, no database, or of a format that it cannot read or may not
 `SQLITE_READONLY_DIRECTORY` for a folder that the run may not write, say nothing of the
 file), or whose schema names columns other than `source`, `key` and `markdown`, as one
 written before plan 030 does, or a name that is no longer UTF-8 text, is deleted with its
-`-wal` and `-shm`, `mirror.cache_replaced` says why ([mirror's
-telemetry](telemetry/mirror.md)), and an empty file takes its
+`-wal` and `-shm`, `prepare.cache_replaced` says why ([prepare's
+telemetry](telemetry/prepare.md)), and an empty file takes its
 place, so that the run goes on and converts everything. Damage that SQLite finds during
 the run, `SQLITE_CORRUPT` or `SQLITE_NOTADB`, fails it, once the file is deleted, so
 that the next run starts a new one. The check sees the file's structure, not the text of

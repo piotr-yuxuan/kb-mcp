@@ -1,9 +1,9 @@
 """The rows of a run of sources: a row per source, and the run's exit status.
 
-``fetch`` gives them. They are records, so not in ``cli.domain.sources``, which ``--help``
-imports, nor in the use case, which loads what roles need, so that a command writes rows
-without importing what it does not run. ``sync`` and ``mirror`` give their own until they
-go, a row per step and source.
+``fetch`` and ``prepare`` give them. They are records, so not in ``cli.domain.sources``,
+which ``--help`` imports, nor in the use case, which loads what roles need, so that a
+command writes rows without importing what it does not run. ``sync`` gives its own until
+it goes, a row per step and source.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class SyncRow(Record):
 
 
 class Synced(Record):
-    """What a sync, or a mirror, did: its exit status, then a row per step, in their order."""
+    """What a sync did: its exit status, then a row per step, in their order."""
 
     exit_status: ExitStatus
     steps: tuple[SyncRow, ...]

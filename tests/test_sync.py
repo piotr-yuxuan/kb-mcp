@@ -515,7 +515,7 @@ def test_a_mirror_problem_exits_1_with_the_work_log_mirrored(
         ("index", None, "done"),
     ]
     assert synced.exit_status == ExitStatus.FAILED
-    (said,) = logged_as(logged, "mirror.not_mirrored")
+    (said,) = logged_as(logged, "prepare.not_mirrored")
     assert (said["where"], said["reason"]) == (problem.where, problem.reason)
     assert len(list((settings.docs / "worklog").rglob("*.md"))) == WORKLOG_DOCUMENTS
 
@@ -903,7 +903,7 @@ def test_a_damaged_cache_is_replaced_and_every_step_runs_exit_0(
     mirrored, first = result.mirrored, first.mirrored
     assert isinstance(mirrored, mirror_app.Outcome)
     assert (mirrored.converted, mirrored.reused) == (first.converted, 0)
-    replaced = logged_as(logged, "mirror.cache_replaced")
+    replaced = logged_as(logged, "prepare.cache_replaced")
     assert [each["reason"] for each in replaced] == ["SQLITE_NOTADB"]
 
 
@@ -1194,7 +1194,7 @@ def test_a_busy_raw_store_fails_the_download_and_the_next_steps_run(
 
 # The commands whose steps sync runs: what their pages list, and sync's does not, is
 # theirs, and sync records it as they do.
-STEP_PAGES = ("fetch", "mirror", "index", "embed")
+STEP_PAGES = ("fetch", "prepare", "index", "embed")
 
 
 @pytest.mark.usefixtures("signed_in")
@@ -1298,7 +1298,7 @@ def by_kind_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, objec
     """Give the work log's documents counted, by kind and outcome."""
     return {
         (point.attributes["kb_mcp.kind"], point.attributes["kb_mcp.outcome"]): point.value
-        for point in measured["kb_mcp.mirror.documents"].data.data_points
+        for point in measured["kb_mcp.prepare.documents"].data.data_points
         if point.attributes and "kb_mcp.kind" in point.attributes
     }
 
@@ -1324,9 +1324,9 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
     assert by_kind_and_outcome(second) == {
         (kind, "kept"): count for kind, count in WORKLOG_KINDS.items()
     }
-    timed = first["kb_mcp.mirror.conversion.duration"].data.data_points
+    timed = first["kb_mcp.prepare.conversion.duration"].data.data_points
     assert {point.attributes["kb_mcp.kind"]: point.count for point in timed} == WORKLOG_KINDS
-    assert "kb_mcp.mirror.conversion.duration" not in second
+    assert "kb_mcp.prepare.conversion.duration" not in second
     rows = {span.attributes["kb_mcp.step"]: span for span in spans if span.name == "sync.step"}
     assert list(rows) == ["prepare", "index"]
     row = rows["prepare"]
@@ -1571,7 +1571,7 @@ def test_pandoc_gone_fails_each_preparer_s_row_and_the_run_exits_as_its_rows_ran
         ("prepare", "worklog", "failed"),
     ]
     assert synced.exit_status == status
-    assert len(logged_as(logged, "mirror.pandoc_missing")) == 1
+    assert len(logged_as(logged, "prepare.pandoc_missing")) == 1
     assert len(logged_as(logged, "worklog.pandoc_failed")) == 1
     assert not (settings.docs / "worklog").exists()
 

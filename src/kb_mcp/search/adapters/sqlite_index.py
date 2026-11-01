@@ -823,9 +823,9 @@ def reading(path: Path) -> Iterator[Reader]:
     """Open the index at ``path`` read-only, for one use; never write to it.
 
     Raise UnavailableIndexError when there is none, or when this version cannot read it.
-    Another schema names ``sync``, or ``mirror`` then ``index`` where no source is
-    configured, not ``index`` alone: a new schema can come with a new format of the
-    mirror's files, which ``index`` would skip, and those write them first.
+    Another schema names ``prepare``, then ``index`` or ``embed``, not ``index`` alone: a
+    new schema can come with a new format of the mirror's files, which ``index`` would
+    skip, and ``prepare`` writes them first.
     """
     unread = f"{path} is not an index that this version reads: rebuild it with"
     try:
@@ -841,9 +841,8 @@ def reading(path: Path) -> Iterator[Reader]:
             meta = {}
         if meta.get("schema") != SCHEMA:
             message = (
-                f"{unread} `kb-mcp sync`, or, where no source is configured,"
-                " `kb-mcp mirror` then `kb-mcp index`, which"
-                " write the mirror again first"
+                f"{unread} `kb-mcp prepare`, which writes the mirror again first,"
+                " then `kb-mcp index` or `kb-mcp embed`"
             )
             raise UnavailableIndexError(message)
         # A chunking that this version lacks would be cut as no table says.

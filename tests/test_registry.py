@@ -104,7 +104,7 @@ def test_a_registry_with_two_declarations_of_one_name_is_refused_naming_it(
 
 
 def test_each_source_prepares_the_kinds_that_its_declaration_names() -> None:
-    """``mirror``'s kinds and ``sync``'s are one: a type added to a declaration reaches both."""
+    """A type added to a declaration reaches its preparer, and the tests' store of each kind."""
     assert {source: [kind.kind for kind in kinds] for source, kinds in PREPARED.items()} == {
         declared.name: [kind.name for kind in declared.types] for declared in (CONFLUENCE, JIRA)
     }
@@ -162,7 +162,7 @@ class Required(BaseModel):
 
 @pytest.mark.parametrize(
     "command",
-    [["doctor"], ["mirror", "--yes"], ["login", "--yes"]],
+    [["doctor"], ["login", "--yes"]],
     ids=lambda command: command[0],
 )
 @pytest.mark.parametrize(

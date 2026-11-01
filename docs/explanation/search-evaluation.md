@@ -475,7 +475,7 @@ the same generic names; or skip `download` and `mirror`: copy `<data>/docs` (7 M
 from a machine that has it into the new data directory, and go on from `index`.
 
 ```bash
-uv run kb-mcp mirror --config <missing-file> --data-dir <data>
+uv run kb-mcp prepare confluence jira --config <missing-file> --data-dir <data>
 ```
 
 ```bash

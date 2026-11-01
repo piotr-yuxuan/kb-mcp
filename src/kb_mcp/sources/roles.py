@@ -37,8 +37,9 @@ class Run(Record):
     ``declared`` is the source that it is run for, its name and resource types, which a
     role serving several sources reads; ``table`` is that source's ``[sources.<name>]``,
     ``account`` its account's table, None for a source that signs in with none.
-    ``options`` holds its options' values by flag, None when not given; ``now`` and
-    ``sleep`` are the clock and the pause between requests.
+    ``options`` holds its options' values by flag, None when not given, and nothing for a
+    preparer, a source's options being its fetch's; ``now`` and ``sleep`` are the clock and
+    the pause between requests.
     """
 
     declared: Declared

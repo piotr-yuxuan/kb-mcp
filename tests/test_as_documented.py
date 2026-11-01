@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import threading
 import time
@@ -28,7 +29,7 @@ from mcp.client.stdio import StdioServerParameters
 from kb_mcp.cli.commands import login as login_command
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
+from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError, PandocMissingError
 from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.sources.atlassian.fetch.adapters import http
@@ -36,6 +37,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.domain.content import Page
+from kb_mcp.sources.worklog.prepare.app import preparer as worklog_preparer
 from tests.collector import Collector, collecting
 from tests.composed import MODEL
 from tests.endpoint import URL, Reranks, Scripted, nothing_listening, serving, tiny
@@ -45,9 +47,10 @@ from tests.samples import v2_space
 from tests.test_download import SITE, FakeSite
 from tests.test_evaluate import GOLDEN
 from tests.test_mirror import FETCHED, SPACE_ID, listing_page, page_responses
-from tests.test_mirror_command import fake_pandoc
+from tests.test_prepare_command import fake_pandoc
 from tests.test_serve import talk
 from tests.test_settings import user_log_folder
+from tests.test_worklog_mirror import FIXTURE as WORKLOG_FIXTURE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -182,16 +185,11 @@ def test_a_run_s_trace_keeps_its_size_each_document_a_trace_linked_to_it(
     assert three == thirty
 
 
-def test_mirror_records_as_documented(
-    telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
-) -> None:
-    """Built, failed, unplaced, with a damaged cache; then pandoc gone once the run began.
+def a_store_with_a_page_of_each_ending(data: Path) -> None:
+    """Store a page to build, one that pandoc fails on, and one whose space is not listed.
 
-    A space lists a page, built, and one that pandoc fails on; a third page's space is
-    not listed. The pandoc on PATH passes its input through, unless it holds BREAK. The
-    cache of conversions is random bytes before the first run, which replaces it.
+    The cache of conversions is random bytes, which the first run replaces.
     """
-    data = tmp_path / "data"
     store = RawStore(data / "raw")
     listed = [listing_page("100", "Home", None, None), listing_page("101", "Broken", None, None)]
     with store.writing():
@@ -201,11 +199,23 @@ def test_mirror_records_as_documented(
         elsewhere = page_responses("102", "Elsewhere", 1, "<p>Away.</p>", [], spaceId="999")
         store.put(Page, elsewhere, FETCHED, {})
     (data / "conversions.sqlite").write_bytes(hashlib.shake_256(b"cache").digest(8192))
+
+
+def test_prepare_records_as_documented(
+    telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """Built, failed, unplaced, with a damaged cache; then pandoc gone once the run began.
+
+    The pandoc on PATH passes its input through, unless it holds BREAK. Then the work log,
+    by the real pandoc: whole; a dry run; a problem and two transcripts of one id; a pandoc
+    that gives no version; Ctrl-C; a folder that is none.
+    """
+    data = tmp_path / "data"
+    a_store_with_a_page_of_each_ending(data)
     script = 'input=$(cat); case "$input" in *BREAK*) exit 3;; esac; printf "%s" "$input"'
     folder = fake_pandoc(tmp_path / "bin", script)
-    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
     arguments = [
-        "mirror",
+        "prepare",
         "--yes",
         "--config",
         str(tmp_path / "none.toml"),
@@ -213,17 +223,50 @@ def test_mirror_records_as_documented(
         str(data),
     ]
     emitted = Emitted()
-    with emitted.gathering(telemetry, "mirror"):
-        assert main(arguments) == ExitStatus.FAILED
+    with monkeypatch.context() as patch:
+        patch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+        with emitted.gathering(telemetry, "prepare"):
+            assert main(arguments) == ExitStatus.FAILED
 
-    def gone() -> Pandoc:
-        message = "pandoc: not found on PATH"
-        raise PandocMissingError(message)
+        def gone() -> Pandoc:
+            message = "pandoc: not found on PATH"
+            raise PandocMissingError(message)
 
-    monkeypatch.setattr(Pandoc, "find", gone)
-    with emitted.gathering(telemetry, "mirror"):
-        assert main(arguments) == ExitStatus.FAILED
-    assert undocumented("mirror", emitted) == []
+        patch.setattr(Pandoc, "find", gone)
+        with emitted.gathering(telemetry, "prepare"):
+            assert main(arguments) == ExitStatus.FAILED
+    worklog = tmp_path / "todo"
+    shutil.copytree(WORKLOG_FIXTURE, worklog)
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(worklog))
+    worklog_alone = [*arguments, "worklog"]
+    with emitted.gathering(telemetry, "prepare"):
+        assert main(worklog_alone) == ExitStatus.OK
+    with emitted.gathering(telemetry, "prepare"):
+        assert main([*worklog_alone, "--dry-run"]) == ExitStatus.OK
+    shutil.copytree(worklog / "transcripts/current", worklog / "transcripts/archive/2026/x")
+    (worklog / "transcripts/misc/a.org").write_bytes(b"* Caf\xe9\n")
+    with emitted.gathering(telemetry, "prepare"):
+        assert main(worklog_alone) == ExitStatus.FAILED
+
+    def no_version(_: Pandoc) -> str:
+        message = "pandoc: exit status 9"
+        raise PandocFailedError(message)
+
+    def stopped(*_: object, **__: object) -> None:
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Pandoc, "org_converter", no_version)
+        with emitted.gathering(telemetry, "prepare"):
+            assert main(worklog_alone) == ExitStatus.FAILED
+    with monkeypatch.context() as patch:
+        patch.setattr(worklog_preparer, "mirror_worklog", stopped)
+        with emitted.gathering(telemetry, "prepare"):
+            assert main(worklog_alone) == ExitStatus.INTERRUPTED
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(tmp_path / "absent"))
+    with emitted.gathering(telemetry, "prepare"):
+        assert main(worklog_alone) == ExitStatus.REFUSED
+    assert undocumented("prepare", emitted) == []
 
 
 def by_meaning(data: Path, url: str) -> list[str]:

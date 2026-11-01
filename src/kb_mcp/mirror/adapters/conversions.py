@@ -140,7 +140,7 @@ def opened(
     included. When the check reports damage, or SQLite finds the file damaged, no
     database, in a format that it cannot read or may not write, or with a schema that
     names other columns, as one of plan 039's does, or text that is not UTF-8, the file
-    and its ``-wal`` and ``-shm`` are deleted, ``mirror.cache_replaced`` says why,
+    and its ``-wal`` and ``-shm`` are deleted, ``prepare.cache_replaced`` says why,
     by SQLite's error name, ``integrity_check`` or ``UnicodeDecodeError``, and an empty
     file takes its place. A file locked past the wait is not damaged, nor one in a folder
     that the run may not write: it raises, as any write that cannot be made does, and
@@ -167,7 +167,7 @@ def opened(
         if damage is not None:
             connection.close()
             delete(path)
-            structlog.get_logger().warning("mirror.cache_replaced", reason=damage)
+            structlog.get_logger().warning("prepare.cache_replaced", reason=damage)
             connection = sqlite3.connect(path, timeout=WAIT_S)
             connection.executescript(SETUP)
         try:

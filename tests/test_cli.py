@@ -123,11 +123,11 @@ WRITING = {
     "fetch",
     "index",
     "login",
-    "mirror",
+    "prepare",
     "sync",
 }
 # The subcommands that take --dry-run, by plans 015 and 017.
-DRY_RUN = {"fetch", "sync"}
+DRY_RUN = {"fetch", "prepare", "sync"}
 SECRETS = {
     "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": "token-sentinel-4d1c",
     "KB_MCP_EMBEDDING_API_KEY": "key-sentinel-9a7e",

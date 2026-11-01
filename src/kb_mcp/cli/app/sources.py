@@ -1,12 +1,13 @@
-"""``fetch``'s run: each source's role, as its declaration names it, a row each.
+"""``fetch``'s and ``prepare``'s run: each source's role, as its declaration names it.
 
 The sources taken come as runs, one each, in the registry's order. Each role is loaded by
 the module path that its source's declaration names; then every role's ``preflight`` says
 what it cannot go on with, before the first row. Then each runs, a row for each, even when
 an earlier one failed, since the next reads what is on disk; Ctrl-C stops the run, and no
 later row runs. In a dry run each role says what it would do. Each row is a span of the
-step's, ``fetch.source``, naming its source, within which its role's own spans and events
-are recorded, as ``docs/reference/telemetry/fetch.md`` says.
+step's, ``fetch.source`` or ``prepare.source``, naming its source, within which its role's
+own spans and events are recorded, as ``docs/reference/telemetry/fetch.md`` and
+``prepare.md`` say.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import structlog
 from opentelemetry import trace
 
 from kb_mcp.cli.domain.rows import Ran, Row
-from kb_mcp.cli.domain.sources import RANKED
+from kb_mcp.cli.domain.sources import FETCH, PREPARE, RANKED
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
 from kb_mcp.sources.roles import Fetcher, Preparer, Result, Run
@@ -32,6 +33,31 @@ if TYPE_CHECKING:
 
 
 TRACER = trace.get_tracer(__name__)
+
+
+class Recorded(Record):
+    """What a step records, each name written out, so that a search for a page's name finds it."""
+
+    start: str
+    source: str
+    interrupted: str
+    end: str
+
+
+RECORDED = {
+    FETCH: Recorded(
+        start="fetch.start",
+        source="fetch.source",
+        interrupted="fetch.interrupted",
+        end="fetch.end",
+    ),
+    PREPARE: Recorded(
+        start="prepare.start",
+        source="prepare.source",
+        interrupted="prepare.interrupted",
+        end="prepare.end",
+    ),
+}
 
 
 class SourcesRefusedError(ValueError):
@@ -65,42 +91,57 @@ def loaded[R: (Fetcher, Preparer)](declared: Declared, path: str, role: type[R])
     return found
 
 
-def fetch_each(runs: Sequence[Run], *, dry_run: bool) -> Ran:
-    """Run each source's fetcher; return a row each, and the status that they rank.
+def planned(step: str, runs: Sequence[Run]) -> list[Planned]:
+    """Load the role of each run for this step: its source's fetcher, or each of its preparers."""
+    if step == FETCH:
+        fetchers = (
+            (run, loaded(run.declared, run.declared.fetcher, Fetcher))
+            for run in runs
+            if run.declared.fetcher is not None
+        )
+        return [
+            Planned(run=run, preflight=each.preflight, act=each.fetch) for run, each in fetchers
+        ]
+    preparers = (
+        (run, loaded(run.declared, path, Preparer))
+        for run in runs
+        for path in run.declared.preparers
+    )
+    return [Planned(run=run, preflight=each.preflight, act=each.prepare) for run, each in preparers]
+
+
+def run_each(step: str, runs: Sequence[Run], *, dry_run: bool) -> Ran:
+    """Run each source's role for this step; return a row each, and the status that they rank.
 
     Raises ``SourcesRefusedError`` for a role that does not load, and for what a role's
     ``preflight`` refuses, both before the first row. Ctrl-C ends the row it stops as
     interrupted, and each later one as not run; the run is interrupted even when Ctrl-C
     comes once every row has ended. The status is the first of ``RANKED``'s outcomes that
-    the run had, else OK. ``fetch.start`` and ``fetch.end`` say at INFO the sources planned
-    and how each ended, ``fetch.source`` each as it ends; ``fetch.interrupted``, a warning,
+    the run had, else OK. A step's ``start`` and ``end`` say at INFO the sources planned
+    and how each ended, its ``source`` each as it ends; its ``interrupted``, a warning,
     which source Ctrl-C stopped.
     """
-    roles = (
-        (run, loaded(run.declared, run.declared.fetcher, Fetcher))
-        for run in runs
-        if run.declared.fetcher is not None
-    )
-    planned = [Planned(run=run, preflight=role.preflight, act=role.fetch) for run, role in roles]
-    refusal = next((said for each in planned if (said := each.preflight(each.run))), None)
+    plans = planned(step, runs)
+    refusal = next((said for each in plans if (said := each.preflight(each.run))), None)
     if refusal is not None:
         raise SourcesRefusedError(refusal)
     log = structlog.get_logger()
-    names = [each.run.declared.name for each in planned]
-    log.info("fetch.start", sources=names, dry_run=dry_run)
+    recorded = RECORDED[step]
+    names = [each.run.declared.name for each in plans]
+    log.info(recorded.start, sources=names, dry_run=dry_run)
     rows: list[Row] = []
     outcomes: set[Outcome] = set()
     try:
-        for each, source in zip(planned, names, strict=True):
+        for each, source in zip(plans, names, strict=True):
             attributes = {"kb_mcp.source": source}
-            with TRACER.start_as_current_span("fetch.source", attributes=attributes) as span:
+            with TRACER.start_as_current_span(recorded.source, attributes=attributes) as span:
                 result = each.act(each.run)
                 span.set_attribute("kb_mcp.outcome", result.outcome)
-                log.info("fetch.source", source=source, outcome=result.outcome)
+                log.info(recorded.source, source=source, outcome=result.outcome)
                 rows.append(Row(source=source, outcome=result.outcome, result=result))
     except KeyboardInterrupt:
         stopped = len(rows)
-        log.warning("fetch.interrupted", source=names[stopped] if stopped < len(names) else None)
+        log.warning(recorded.interrupted, source=names[stopped] if stopped < len(names) else None)
         outcomes.add("interrupted")
         rows.extend(
             Row(source=name, outcome="interrupted" if at == stopped else "not run", result=None)
@@ -108,5 +149,5 @@ def fetch_each(runs: Sequence[Run], *, dry_run: bool) -> Ran:
         )
     outcomes.update(row.outcome for row in rows)
     status = next((status for outcome, status in RANKED if outcome in outcomes), ExitStatus.OK)
-    log.info("fetch.end", status=int(status), sources=[f"{r.source}: {r.outcome}" for r in rows])
+    log.info(recorded.end, status=int(status), sources=[f"{r.source}: {r.outcome}" for r in rows])
     return Ran(exit_status=status, sources=tuple(rows))

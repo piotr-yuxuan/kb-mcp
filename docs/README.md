@@ -75,7 +75,7 @@ the command and those who change its code, unless it is marked for contributors.
   [`eval-rerank`](reference/telemetry/eval-rerank.md),
   [`fetch`](reference/telemetry/fetch.md),
   [`index`](reference/telemetry/index.md), [`login`](reference/telemetry/login.md),
-  [`mirror`](reference/telemetry/mirror.md), [`model`](reference/telemetry/model.md),
+  [`model`](reference/telemetry/model.md), [`prepare`](reference/telemetry/prepare.md),
   [`reranker`](reference/telemetry/reranker.md), [`serve`](reference/telemetry/serve.md)
   and [`sync`](reference/telemetry/sync.md).
 

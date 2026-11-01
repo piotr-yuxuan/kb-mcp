@@ -538,17 +538,17 @@ def test_the_atlassian_preparer_mirrors_the_kinds_of_the_source_that_it_runs_for
     )
 
 
-def test_the_atlassian_preparer_writes_and_says_what_mirror_does(
+def test_the_atlassian_preparer_writes_and_says_what_prepare_does(
     home: Path, stored: Settings, capsys: CaptureFixture[str]
 ) -> None:
-    """Confluence's prepare, then Jira's, write mirror's files, byte for byte, and its rows."""
+    """Confluence's role, then Jira's, write the command's files, byte for byte, and its rows."""
     other = home / "other"
     shutil.copytree(stored.raw, other / "raw")
     said = ""
     for declared in (CONFLUENCE, JIRA):
         result = preparer_of(declared).prepare(run_of(declared, stored))
-        said += row_text(f"mirror {declared.name}", result.outcome, result.text("detailed"))
-    command = ["mirror", "--yes", "--config", str(home / "none.toml"), "--summary", "detailed"]
+        said += row_text(declared.name, result.outcome, result.text("detailed"))
+    command = ["prepare", "--yes", "--config", str(home / "none.toml"), "--summary", "detailed"]
     capsys.readouterr()  # what the prepares logged, outside a run, which has no log file
     assert main([*command, "--data-dir", str(other), "--site", SITE]) == ExitStatus.OK
     assert capsys.readouterr().out == said
@@ -556,9 +556,10 @@ def test_the_atlassian_preparer_writes_and_says_what_mirror_does(
 
 
 def test_a_dry_run_leaves_the_atlassian_prepare_alone(stored: Settings) -> None:
-    """Nothing is converted nor written, and the result has no counts to write."""
+    """Nothing is converted nor written, and the result says that it counts nothing."""
     result = preparer_of(CONFLUENCE).prepare(run_of(CONFLUENCE, stored, dry_run=True))
-    assert (result.outcome, result.text("detailed")) == ("not run", "")
+    assert result.outcome == "not run"
+    assert result.text("detailed").startswith("not counted: ")
     assert not stored.docs.exists()
 
 
@@ -582,7 +583,7 @@ def test_pandoc_gone_fails_each_preparer_that_converts_and_writes_nothing(
         ("failed", ""),
     ]
     assert [(each["event"], each["log_level"], each["reason"]) for each in logged] == [
-        ("mirror.pandoc_missing", "error", message),
+        ("prepare.pandoc_missing", "error", message),
         ("worklog.pandoc_failed", "error", message),
     ]
     assert not stored.docs.exists()

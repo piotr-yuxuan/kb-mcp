@@ -1,4 +1,4 @@
-"""``mirror``: the newest snapshot of every document of one Atlassian source, as Markdown.
+"""The newest snapshot of every document of one Atlassian source, as Markdown.
 
 Confluence and Jira are prepared apart, each by its kinds of document. Each reads the
 whole store and places every document, so that a link or an image of either reaches its
@@ -10,7 +10,7 @@ read or converted is reported by the source it belongs to, and a source that rep
 anything removes none of its files and none of its conversions, so that the last good
 copy of each stays; an attached file stays while any document's file links it. Reading,
 building and writing are each a span; each document built is counted and timed, never a
-span, as ``docs/reference/telemetry/mirror.md`` lists it.
+span, as ``docs/reference/telemetry/prepare.md`` lists it.
 """
 
 from __future__ import annotations
@@ -347,11 +347,11 @@ def mirror(
     problem was found, of either source: a document that cannot be read or placed wants
     none of its files, and a last good copy links what its document wanted. The task
     named after the source, as ``confluence documents``, reports the documents' files
-    built, each by its path. The spans ``mirror.read``, ``mirror.build`` and
-    ``mirror.write`` hold reading the store, building the files and writing them, the
-    prune included; ``mirror.placed``
-    and ``mirror.written`` say at INFO, with the source, how many of its documents were
-    placed, and files written and conversions run, reused and pruned, ``mirror.document``
+    built, each by its path. The spans ``prepare.read``, ``prepare.build`` and
+    ``prepare.write`` hold reading the store, building the files and writing them, the
+    prune included; ``prepare.placed``
+    and ``prepare.written`` say at INFO, with the source, how many of its documents were
+    placed, and files written and conversions run, reused and pruned, ``prepare.document``
     at DEBUG each document built, by its path, id and title.
     """
     log = structlog.get_logger()
@@ -359,14 +359,14 @@ def mirror(
     # The problems found, by the source they belong to: the catalogue's are Confluence's.
     found: dict[str, list[Problem]] = {kind.source: [] for kind in KINDS}
     problems = found[source]
-    with TRACER.start_as_current_span("mirror.read"):
+    with TRACER.start_as_current_span("prepare.read"):
         catalogue, damaged, times = read_catalogue(store, found[ConfluenceDocument.source])
         placed, retired = place(store, catalogue, times, found)
         mirrored, assets = index(placed, store, site)
     own = [each for each in placed if isinstance(each.document, kinds)]
     _, files = index(own, store, site)
     log.info(
-        "mirror.placed",
+        "prepare.placed",
         source=source,
         documents=len(own),
         assets=len(files),
@@ -374,7 +374,7 @@ def mirror(
     )
     wanted: dict[PurePosixPath, bytes | Path] = {**files}
     unsupported: Counter[str] = Counter()
-    with TRACER.start_as_current_span("mirror.build"):
+    with TRACER.start_as_current_span("prepare.build"):
         with task(f"{source} documents", len(own)) as built:
             for each in built.each(own, lambda one: str(one.path)):
                 context = Context(
@@ -391,7 +391,7 @@ def mirror(
                 seconds = time.perf_counter() - began
                 CONVERSION_DURATION.record(seconds)
                 log.debug(
-                    "mirror.document",
+                    "prepare.document",
                     path=str(each.path),
                     id=each.handle,
                     title=each.document.title,
@@ -417,7 +417,7 @@ def mirror(
     written = sum(1 for each in own if each.path in wanted)
     # A moved document's old file goes once its new one is built, never before.
     gone = [old for old, new in retired.items() if new is None or new in wanted]
-    with TRACER.start_as_current_span("mirror.write"):
+    with TRACER.start_as_current_span("prepare.write"):
         changes = sync(
             docs, wanted, lambda folder: owned(folder, source), remove=not problems, retired=gone
         )
@@ -432,7 +432,7 @@ def mirror(
         changes = replace(changes, removed=changes.removed + swept.removed)
         pruned = conversions.prune(remove=not problems)
     log.info(
-        "mirror.written",
+        "prepare.written",
         source=source,
         written=changes.written,
         unchanged=changes.unchanged,
