@@ -46,9 +46,9 @@ sets one default, `command`, a
 [`Command`](../../src/kb_mcp/cli/domain/command.py): the module that runs
 it, named as a string and not imported; the settings it reads; that it writes, and so
 asks first; and three pure functions of the arguments and settings,
-[`refused`](../../src/kb_mcp/cli/options/_sources.py),
-[`unapplied`](../../src/kb_mcp/cli/options/_sources.py) and
-[`described`](../../src/kb_mcp/cli/domain/sources.py).
+[`refused`](../../src/kb_mcp/cli/options/fetch.py),
+[`unapplied`](../../src/kb_mcp/cli/options/fetch.py) and
+[`fetch_described`](../../src/kb_mcp/cli/domain/sources.py).
 
 Nothing heavier is imported to parse: argcomplete runs the program at every Tab, and
 answers before any run is imported ([why argparse and
@@ -85,7 +85,7 @@ synchronised folder, or inside a git tree, the run stops with
 before anything is written.
 
 Then what fetch cannot run with. Its
-[`refused`](../../src/kb_mcp/cli/options/_sources.py) takes the sources by
+[`refused`](../../src/kb_mcp/cli/options/fetch.py) takes the sources by
 [`chosen`](../../src/kb_mcp/cli/domain/sources.py), from the registry's declarations,
 [`SOURCES`](../../src/kb_mcp/sources/registry.py), and refuses the first of
 these that it finds: a source named that the settings do not configure;
@@ -105,7 +105,7 @@ started, so there is no log file.
 Then [`before`](../../src/kb_mcp/cli/domain/summary.py) writes the summary
 on stderr: each setting that the command reads, with its value, a secret only as set or not
 ([`setting_line`](../../src/kb_mcp/cli/domain/summary.py)); the sources
-taken and left out ([`described`](../../src/kb_mcp/cli/domain/sources.py));
+taken and left out ([`fetch_described`](../../src/kb_mcp/cli/domain/sources.py));
 each value ignored, and why; and the command to copy
 ([`command_line`](../../src/kb_mcp/cli/domain/command_line.py)).
 [`ask`](../../src/kb_mcp/cli/adapters/question.py) asks `Proceed? [y/N]`;

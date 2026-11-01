@@ -337,9 +337,9 @@ What a run says of a source comes from the declarations: the names that each com
 are the registry's ([`register`](../../src/kb_mcp/cli/options/fetch.py),
 [`register`](../../src/kb_mcp/cli/options/prepare.py)); a source is configured when its first
 setting is set ([`chosen`](../../src/kb_mcp/cli/domain/sources.py)); and so do the summary's
-lines ([`described`](../../src/kb_mcp/cli/domain/sources.py)), the settings not applied of the
-sources left out ([`unapplied`](../../src/kb_mcp/cli/options/_sources.py)), the light refusals
-([`refused`](../../src/kb_mcp/cli/options/_sources.py)) and the options, each flag once. A
+lines ([`fetch_described`](../../src/kb_mcp/cli/domain/sources.py)), the settings not applied
+of the sources left out ([`left_unapplied`](../../src/kb_mcp/cli/options/_sources.py)), the
+light refusals ([`refused`](../../src/kb_mcp/cli/options/fetch.py)) and the options, each flag once. A
 source's options and light checks are its fetch's, so a site not set refuses `fetch`, never
 `prepare`. Both commands run by one module
 ([`run`](../../src/kb_mcp/cli/commands/sources.py)). `login` and `doctor` read each account

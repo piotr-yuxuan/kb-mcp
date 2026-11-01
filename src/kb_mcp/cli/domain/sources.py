@@ -44,56 +44,78 @@ def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, obje
     return {flag: getattr(arguments, flag) for flag in flags}
 
 
-def chosen(
+def chosen_to_fetch(
     arguments: argparse.Namespace, settings: Mapping[str, object]
 ) -> tuple[tuple[Declared, ...], dict[str, str]]:
-    """Return the sources that a run takes, in their order, and why each other is left out."""
-    fetching = arguments.command.name == FETCH
+    """Return the sources that a fetch takes, in their order, and why each other is left out."""
     named = set(arguments.source)
     taken: list[Declared] = []
     left: dict[str, str] = {}
     for declared in arguments.sources:
-        in_place = declared.fetcher is None
-        if fetching and in_place:
+        if declared.fetcher is None:
             left[declared.name] = "read in place, it has nothing to fetch"
         elif named and declared.name not in named:
             left[declared.name] = "not named"
-        elif (fetching or in_place) and not settings[declared.paths[0]]:
+        elif not settings[declared.paths[0]]:
             left[declared.name] = "not configured"
         else:
             taken.append(declared)
     return tuple(taken), left
 
 
-def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
+def chosen_to_prepare(
+    arguments: argparse.Namespace, settings: Mapping[str, object]
+) -> tuple[tuple[Declared, ...], dict[str, str]]:
+    """Return the sources that a prepare takes, in their order, and why each other is left out."""
+    named = set(arguments.source)
+    taken: list[Declared] = []
+    left: dict[str, str] = {}
+    for declared in arguments.sources:
+        if named and declared.name not in named:
+            left[declared.name] = "not named"
+        elif declared.fetcher is None and not settings[declared.paths[0]]:
+            left[declared.name] = "not configured"
+        else:
+            taken.append(declared)
+    return tuple(taken), left
+
+
+def chosen(
+    arguments: argparse.Namespace, settings: Mapping[str, object]
+) -> tuple[tuple[Declared, ...], dict[str, str]]:
+    """Return what the command that the arguments name takes, and why each other is left out."""
+    choose = chosen_to_fetch if arguments.command.name == FETCH else chosen_to_prepare
+    return choose(arguments, settings)
+
+
+def source_line(declared: Declared, settings: Mapping[str, object]) -> str:
+    """Say a source taken, with the value of each of its settings."""
+    values = {
+        path: ", ".join(value) if isinstance(value := settings[path], tuple) else str(value)
+        for path in declared.paths
+    }
+    shown = (f"{path.rpartition('.')[2]} {value}" for path, value in values.items())
+    return f"source {declared.name}: {', '.join(shown)}"
+
+
+def fetch_described(
+    arguments: argparse.Namespace, settings: Mapping[str, object]
+) -> tuple[str, ...]:
     """Say each source taken, with its settings, each left out and why, and the options ignored.
 
-    A source that keeps a store, in a prepare, is said to give what it holds. In a fetch,
-    the lines that a source taken says follow, each once, as its declaration's
+    The lines that a source taken says follow, each once, as its declaration's
     ``described`` gives them. An option that no setting holds, given, is ignored by each
     source taken that does not declare it; one that replaces a setting is said by
     ``unapplied``, as for any setting.
     """
-    fetching = arguments.command.name == FETCH
-    taken, left = chosen(arguments, settings)
-    values = {
-        setting: ", ".join(value) if isinstance(value, tuple) else str(value)
-        for setting, value in settings.items()
-    }
-    lines: list[str] = []
+    taken, left = chosen_to_fetch(arguments, settings)
+    lines = [source_line(declared, settings) for declared in taken]
     said: list[str] = []
     for declared in taken:
-        if fetching or declared.fetcher is None:
-            shown = (f"{path.rpartition('.')[2]} {values[path]}" for path in declared.paths)
-            lines.append(f"source {declared.name}: {', '.join(shown)}")
-        else:
-            lines.append(f"source {declared.name}: all that its store holds")
-        if fetching and declared.described:
-            said += declared.described(given(arguments, declared.options), settings)
+        options = given(arguments, declared.options)
+        said += declared.described(options, settings) if declared.described else ()
     lines += [f"source {name}: left out, {why}" for name, why in left.items()]
     lines += said
-    if not fetching:
-        return tuple(dict.fromkeys(lines))
     flags = {
         flag
         for declared in arguments.sources
@@ -105,3 +127,23 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
         if value is not None and ignoring:
             lines.append(f"{flag}: ignored by {', '.join(ignoring)}")
     return tuple(dict.fromkeys(lines))
+
+
+def prepare_described(
+    arguments: argparse.Namespace, settings: Mapping[str, object]
+) -> tuple[str, ...]:
+    """Say each source taken, each left out and why.
+
+    A source read in place is said by its settings; one that keeps a store gives all that
+    its store holds, whatever its settings cover.
+    """
+    taken, left = chosen_to_prepare(arguments, settings)
+    return (
+        *(
+            source_line(declared, settings)
+            if declared.fetcher is None
+            else f"source {declared.name}: all that its store holds"
+            for declared in taken
+        ),
+        *(f"source {name}: left out, {why}" for name, why in left.items()),
+    )

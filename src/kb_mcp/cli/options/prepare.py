@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.domain.sources import described
+from kb_mcp.cli.domain.sources import PREPARE, prepare_described
 from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
-from kb_mcp.cli.options._sources import refused, source_group, unapplied
+from kb_mcp.cli.options._sources import choice_refused, left_unapplied, source_group
 from kb_mcp.sources.registry import accounts_of
 
 if TYPE_CHECKING:
@@ -64,7 +64,7 @@ def register(
         source_group(parser, declared)
     parser.set_defaults(
         command=Command(
-            "prepare",
+            PREPARE,
             "kb_mcp.cli.commands.sources",
             reads=(
                 *(account.paths[0] for account in accounts_of(sources).values()),
@@ -75,9 +75,9 @@ def register(
             actions=(*actions, source),
             writes=True,
             dry_run=True,
-            unapplied=unapplied,
-            described=described,
-            refused=refused,
+            unapplied=left_unapplied,
+            described=prepare_described,
+            refused=choice_refused,
             programs=("pandoc",),
         )
     )

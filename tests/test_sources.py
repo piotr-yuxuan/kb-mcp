@@ -28,7 +28,7 @@ from structlog.testing import capture_logs
 
 from kb_mcp.cli.app import sources as sources_app
 from kb_mcp.cli.app.sources import run_each
-from kb_mcp.cli.domain.sources import chosen, described, given
+from kb_mcp.cli.domain.sources import chosen, fetch_described, given
 from kb_mcp.cli.main import main, parser
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters import pandoc as pandoc_adapter
@@ -213,9 +213,9 @@ def test_an_option_that_no_setting_holds_is_said_ignored_by_a_source_that_declar
     )
     registry = (CONFLUENCE, plain, WORKLOG)
     given = parser(sources=registry).parse_args(["fetch", "--since", "7d"])
-    assert "--since: ignored by jira" in described(given, CONFIGURED)
+    assert "--since: ignored by jira" in fetch_described(given, CONFIGURED)
     alone = parser(sources=registry).parse_args(["fetch", "--since", "7d", "confluence"])
-    assert not [line for line in described(alone, CONFIGURED) if "ignored" in line]
+    assert not [line for line in fetch_described(alone, CONFIGURED) if "ignored" in line]
 
 
 def test_an_option_of_a_source_without_a_fetcher_is_no_flag_and_said_of_none() -> None:
@@ -229,7 +229,7 @@ def test_an_option_of_a_source_without_a_fetcher_is_no_flag_and_said_of_none() -
     registry = (CONFLUENCE, JIRA, replace(WORKLOG, types=(noted,)))
     given = parser(sources=registry).parse_args(["fetch"])
     assert not hasattr(given, "tag")
-    assert "source confluence: spaces MFS" in described(given, CONFIGURED)
+    assert "source confluence: spaces MFS" in fetch_described(given, CONFIGURED)
 
 
 def test_a_dry_run_of_the_work_log_alone_writes_nothing_and_ignores_nothing(
