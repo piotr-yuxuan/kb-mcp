@@ -12,6 +12,7 @@ from kb_mcp.cli.options._common import (
     add_output_options,
     add_settings_options,
     add_yes_option,
+    of_atlassian,
 )
 from kb_mcp.sources.atlassian.declared import site_not_set
 
@@ -31,7 +32,7 @@ def in_the_browser(
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    _sources: Sequence[Declared],
+    sources: Sequence[Declared],
 ) -> None:
     """Add ``login`` to the command."""
     parser = subparsers.add_parser(
@@ -60,6 +61,6 @@ def register(
             actions=(*actions, chrome, extensions),
             writes=True,
             unapplied=in_the_browser,
-            refused=site_not_set,
+            refused=of_atlassian(sources, site_not_set),
         )
     )

@@ -10,6 +10,7 @@ from kb_mcp.cli.options._common import (
     add_output_options,
     add_settings_options,
     add_yes_option,
+    of_atlassian,
 )
 
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    _sources: Sequence[Declared],
+    sources: Sequence[Declared],
 ) -> None:
     """Add ``mirror`` to the command."""
     parser = subparsers.add_parser(
@@ -49,6 +50,7 @@ def register(
             flags=flags,
             actions=actions,
             writes=True,
+            refused=of_atlassian(sources),
             programs=("pandoc",),
         )
     )

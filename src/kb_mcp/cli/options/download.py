@@ -13,6 +13,7 @@ from kb_mcp.cli.options._common import (
     add_output_options,
     add_settings_options,
     add_yes_option,
+    of_atlassian,
     signed_in_by,
 )
 from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY
@@ -70,7 +71,7 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    _sources: Sequence[Declared],
+    sources: Sequence[Declared],
 ) -> None:
     """Add ``download`` to the command."""
     parser = subparsers.add_parser(
@@ -130,6 +131,6 @@ def register(
             dry_run=True,
             unapplied=email_without_token,
             described=described,
-            refused=refused,
+            refused=of_atlassian(sources, refused),
         )
     )

@@ -12,12 +12,14 @@ from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
 from kb_mcp.kernel.endpoint import EMBEDDINGS, refused_endpoint
 from kb_mcp.kernel.names import MODEL_NAME
 from kb_mcp.kernel.output import FORMATS, LEVELS, SUMMARIES
-from kb_mcp.sources.atlassian.declared import API_TOKEN, EMAIL, SITE
+from kb_mcp.sources.atlassian.declared import API_TOKEN, CONFLUENCE, EMAIL, JIRA, SITE
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
+    from kb_mcp.cli.domain.command import Refused
     from kb_mcp.kernel.output import Level
+    from kb_mcp.sources.declaration import Declared
 
 # The level of each -v given, from none: warning, then info, then debug.
 VERBOSITY: tuple[Level, ...] = ("warning", "info", "debug")
@@ -133,6 +135,20 @@ def model_name(value: str) -> str:
         message = "the name of an embedding model, such as qwen3-embedding:0.6b"
         raise argparse.ArgumentTypeError(message)
     return value
+
+
+def of_atlassian(sources: Sequence[Declared], refused: Refused | None = None) -> Refused | None:
+    """Give what a command of the Atlassian package refuses, under this registry.
+
+    ``download``, ``mirror``, ``doctor`` and ``login`` read that package's settings by
+    name until plan 031 removes or moves them, so a registry without both its sources is
+    refused before they read one; any other, as ``refused`` says.
+    """
+    if {CONFLUENCE.name, JIRA.name} <= {declared.name for declared in sources}:
+        return refused
+    return lambda _arguments, _settings: (
+        f"{CONFLUENCE.name} and {JIRA.name}: not both in the registry, which this command reads"
+    )
 
 
 def signed_in_by(_arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:

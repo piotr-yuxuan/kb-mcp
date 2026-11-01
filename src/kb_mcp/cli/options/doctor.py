@@ -10,6 +10,7 @@ from kb_mcp.cli.options._common import (
     SITE,
     add_output_options,
     add_settings_options,
+    of_atlassian,
 )
 from kb_mcp.sources.atlassian.declared import email_without_token, token_without_email
 
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    _sources: Sequence[Declared],
+    sources: Sequence[Declared],
 ) -> None:
     """Add ``doctor`` to the command."""
     parser = subparsers.add_parser(
@@ -43,6 +44,6 @@ def register(
             flags=flags,
             actions=actions,
             unapplied=email_without_token,
-            refused=token_without_email,
+            refused=of_atlassian(sources, token_without_email),
         )
     )
