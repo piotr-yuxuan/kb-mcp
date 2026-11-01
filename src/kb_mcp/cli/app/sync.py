@@ -17,6 +17,7 @@ recorded, those of the source's commands, or ``index``'s, as
 from __future__ import annotations
 
 import pkgutil
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import structlog
@@ -28,14 +29,13 @@ from kb_mcp.cli.domain.sync import RANKED, Outcome, label
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
 from kb_mcp.search.app.indexing import Indexing, refresh
-from kb_mcp.sources.roles import Fetcher, Preparer
+from kb_mcp.sources.roles import Fetcher, Preparer, Result, Run
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Sequence
     from datetime import datetime
 
     from kb_mcp.sources.declaration import Declared
-    from kb_mcp.sources.roles import Result, Run
 
 
 TRACER = trace.get_tracer(__name__)
@@ -49,6 +49,15 @@ class Index(Record):
     """The index's step: how it is built, from the whole mirror, whatever sources were taken."""
 
     indexing: Indexing
+
+
+class Planned(Record):
+    """A row to run: its step, its source's run, its role's preflight and what does the step."""
+
+    step: str
+    run: Run
+    preflight: Callable[[Run], str | None]
+    act: Callable[[Run], Result]
 
 
 class Rows(Record):
@@ -127,26 +136,31 @@ def sync(runs: Sequence[Run], step: Index, now: Callable[[], datetime], *, dry_r
         for run in runs
         for path in run.declared.preparers
     ]
-    planned: list[tuple[str, Run, Callable[[Run], str | None], Callable[[Run], Result]]] = [
-        *(("fetch", run, role.preflight, role.fetch) for run, role in fetchers),
-        *(("prepare", run, role.preflight, role.prepare) for run, role in preparers),
+    planned = [
+        *(
+            Planned(step="fetch", run=run, preflight=role.preflight, act=role.fetch)
+            for run, role in fetchers
+        ),
+        *(
+            Planned(step="prepare", run=run, preflight=role.preflight, act=role.prepare)
+            for run, role in preparers
+        ),
     ]
-    refusal = next((said for _, run, check, _ in planned if (said := check(run))), None)
+    refusal = next((said for each in planned if (said := each.preflight(each.run))), None)
     if refusal is not None:
         raise SyncRefusedError(refusal)
     log = structlog.get_logger()
-    named = [*((name, run.declared.name) for name, run, _, _ in planned), ("index", None)]
+    named = [*((each.step, each.run.declared.name) for each in planned), ("index", None)]
     log.info("sync.start", steps=[label(*row) for row in named], dry_run=dry_run)
     rows = Rows()
     outcomes: set[Outcome] = set()
     try:
-        for name, run, _, act in planned:
-            attributes = {"kb_mcp.step": name, "kb_mcp.source": run.declared.name}
+        for each in planned:
+            source = each.run.declared.name
+            attributes = {"kb_mcp.step": each.step, "kb_mcp.source": source}
             with TRACER.start_as_current_span("sync.step", attributes=attributes):
-                result = act(run)
-                rows.add(
-                    Row(step=name, source=run.declared.name, outcome=result.outcome, result=result)
-                )
+                result = each.act(each.run)
+                rows.add(Row(step=each.step, source=source, outcome=result.outcome, result=result))
         index(step, now, rows.add, dry_run=dry_run)
     except KeyboardInterrupt:
         stopped = len(rows.added)
