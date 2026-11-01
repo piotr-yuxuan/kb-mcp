@@ -183,6 +183,12 @@ ID_IN_ADDRESS = re.compile(r"(?:/pages/|[?&]pageId=|/blog/[0-9]{4}/[0-9]{2}/[0-9
 HEADING = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*")
 FENCE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
 NUMBER = re.compile(r"([0-9]+)")
+# The version of what a whole build writes from the same files: how ``sections`` cuts a
+# body, how words are tokenized, a document's rows, how people are joined. It changes
+# with any of them, as an update copies the rows of the build before, ``embed`` numbers
+# its pieces by this code's cut, and a run with nothing changed keeps the old persons.
+# ``tests/test_index.py`` pins what it writes, and names it in its failure.
+WORDS = "1"
 # Reciprocal rank fusion's constant: a document's share of a list is 1 / (FUSION + rank).
 FUSION = 60
 # How a search orders what it finds: by relevance, or by a date, newest first.

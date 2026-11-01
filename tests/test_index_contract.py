@@ -21,7 +21,7 @@ from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from kb_mcp.search.adapters import sqlite_index, vector_store
 from kb_mcp.search.domain import people
-from kb_mcp.search.domain.indexes import SearchReader, UnavailableIndexError
+from kb_mcp.search.domain.indexes import Put, SearchReader, UnavailableIndexError
 from kb_mcp.search.domain.search import Embedded, Filters, quote, sections
 from tests.mirrors import MOMENT, issue, location, page, worklog_document
 
@@ -70,7 +70,14 @@ def sqlite(
     path = folder / "index.sqlite"
     with sqlite_index.building(path, MOMENT, embedded) as writer:
         for document in documents:
-            first = writer.add(location(document.front), document.front, sections(document.body))
+            first = writer.add(
+                Put(
+                    path=location(document.front),
+                    digest="made-up",
+                    front=document.front,
+                    sections=tuple(sections(document.body)),
+                )
+            )
             writer.add_pieces(
                 (
                     first + piece.number - 1,

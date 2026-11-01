@@ -31,6 +31,7 @@ from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.indexes import UnavailableIndexError
 from kb_mcp.search.domain.search import (
+    WORDS,
     Activity,
     Embedded,
     Entry,
@@ -49,7 +50,8 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from kb_mcp.kernel.chunking import Chunking
-    from kb_mcp.search.domain.search import Section, Sort
+    from kb_mcp.search.domain.indexes import Put, Skipped
+    from kb_mcp.search.domain.search import Sort
 
 TRACER = trace.get_tracer(__name__)
 # What the file of a build begins with, beside its index, until it is renamed into place.
@@ -72,7 +74,7 @@ CREATE = """
 CREATE TABLE meta (name TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE documents (
   rowid INTEGER PRIMARY KEY,
-  path TEXT NOT NULL UNIQUE,
+  path TEXT NOT NULL UNIQUE, digest TEXT NOT NULL,
   source TEXT NOT NULL, type TEXT NOT NULL, id TEXT NOT NULL, key TEXT,
   title TEXT NOT NULL, space TEXT, project TEXT, status TEXT NOT NULL, issue_type TEXT,
   labels TEXT NOT NULL, people TEXT NOT NULL, links TEXT NOT NULL, created TEXT NOT NULL,
@@ -82,6 +84,7 @@ CREATE TABLE documents (
   UNIQUE (source, id)
 );
 CREATE INDEX documents_key ON documents (key);
+CREATE TABLE skipped (path TEXT PRIMARY KEY, digest TEXT, reason TEXT NOT NULL);
 CREATE TABLE labels (document INTEGER NOT NULL, label TEXT NOT NULL);
 CREATE TABLE people (
   document INTEGER NOT NULL, role TEXT NOT NULL, name TEXT NOT NULL, account TEXT, at TEXT,
@@ -218,6 +221,9 @@ PEOPLE_ROWS = """
 SELECT p.rowid, p.document, p.role, p.name, p.account, d.updated
 FROM people p JOIN documents d ON d.rowid = p.document
 """
+# Each document's place by its path's text, which numbers it for the join: ties go to the
+# first row, and by rowid to whichever file was not edited last.
+BY_PATH = "SELECT rowid, row_number() OVER (ORDER BY path) FROM documents"
 SUMMARIES = """
 SELECT t.rowid, m.rowid
 FROM documents t CROSS JOIN json_each(t.links) l CROSS JOIN documents m
@@ -311,13 +317,14 @@ class Writer:
         """Write through a connection whose schema is created."""
         self._connection = connection
         self._next_section = 1
-        self.skipped = 0
+        self.aliases = people.aliases_digest({})  # what the join read: no alias, yet
 
-    def add(self, path: str, front: FrontMatter, sections: list[Section]) -> int:
+    def add(self, put: Put) -> int:
         """Add a document and its sections; refuse a source and id held already.
 
         Return the rowid of its first section; the others follow it.
         """
+        path, front, sections = put.path, put.front, put.sections
         values = {name: getattr(front, name) for name in FrontMatter.model_fields}
         values |= {
             "labels": json.dumps(front.labels, ensure_ascii=False),
@@ -330,17 +337,18 @@ class Writer:
             "updated": moment(front.updated),
             "fetched_at": moment(front.fetched_at),
             "path": path,
+            "digest": put.digest,
             "length": sum(len(section.text) for section in sections),
             "first_section": self._next_section,
             "last_section": self._next_section + len(sections) - 1,
         }
         try:
             cursor = self._connection.execute(
-                "INSERT INTO documents (path, source, type, id, key, title, space, project,"
-                " status, issue_type, labels, people, links, created, updated, version,"
+                "INSERT INTO documents (path, digest, source, type, id, key, title, space,"
+                " project, status, issue_type, labels, people, links, created, updated, version,"
                 " revision, url, breadcrumb, fetched_at, length, first_section, last_section)"
-                " VALUES (:path, :source, :type, :id, :key, :title, :space, :project, :status,"
-                " :issue_type, :labels, :people, :links, :created, :updated, :version,"
+                " VALUES (:path, :digest, :source, :type, :id, :key, :title, :space, :project,"
+                " :status, :issue_type, :labels, :people, :links, :created, :updated, :version,"
                 " :revision, :url, :breadcrumb, :fetched_at, :length, :first_section,"
                 " :last_section)",
                 values,
@@ -408,9 +416,12 @@ class Writer:
             pieces,
         )
 
-    def skip(self) -> None:
-        """Count a file of the mirror that could not be indexed."""
-        self.skipped += 1
+    def skip(self, skipped: Skipped) -> None:
+        """Record a file of the mirror that could not be indexed, with its digest and why."""
+        self._connection.execute(
+            "INSERT INTO skipped (path, digest, reason) VALUES (?, ?, ?)",
+            (skipped.path, skipped.digest, skipped.reason),
+        )
 
     @TRACER.start_as_current_span("index.join")
     def join(self, aliases: Mapping[str, str]) -> people.Outcome:
@@ -421,13 +432,17 @@ class Writer:
         how it joined. A transcript's meetings are the meetings that its ``summary`` links
         name: no other document, so that each is joined before the transcript.
         ``aliases`` gives each alias's name and target, as the alias file's reader checks
-        them. Give back how many persons there are, and what the join left apart: the
+        them, and the build records their digest. Documents go to the join by the order
+        of their paths, so that its ties go as in a whole build, whichever file was edited
+        last. Give back how many persons there are, and what the join left apart: the
         names that could be several persons, and the aliases that changed nothing; each
         row's person stays here. The span ``index.join`` holds it.
         """
+        self.aliases = people.aliases_digest(aliases)
+        places = dict(self._connection.execute(BY_PATH))
         rows = {
             rowid: people.Row(
-                document=document,
+                document=places[document],
                 role=role,
                 name=name,
                 account=account,
@@ -439,7 +454,7 @@ class Writer:
         }
         meetings: dict[int, set[int]] = {}
         for transcript, meeting in self._connection.execute(SUMMARIES):
-            meetings.setdefault(transcript, set()).add(meeting)
+            meetings.setdefault(places[transcript], set()).add(places[meeting])
         found = people.joined(rows.values(), meetings, aliases)
         self._connection.executemany(
             "UPDATE people SET person = ? WHERE rowid = ?",
@@ -507,12 +522,15 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
             writer = Writer(connection)
             yield writer
             connection.execute("INSERT INTO chunks (chunks) VALUES ('optimize')")
+            skipped = connection.execute("SELECT count(*) FROM skipped").fetchone()[0]
             connection.executemany(
                 "INSERT INTO meta (name, value) VALUES (?, ?)",
                 [
                     ("schema", SCHEMA),
                     ("built_at", moment(built_at)),
-                    ("skipped", str(writer.skipped)),
+                    ("skipped", str(skipped)),
+                    ("words", WORDS),
+                    ("aliases", writer.aliases),
                     ("build", uuid.uuid4().hex),
                     ("model", embedded.model if embedded else ""),
                     ("fingerprint", embedded.fingerprint if embedded else ""),

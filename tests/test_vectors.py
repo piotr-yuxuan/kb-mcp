@@ -24,7 +24,7 @@ from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
-from kb_mcp.search.domain.indexes import UnavailableIndexError
+from kb_mcp.search.domain.indexes import Put, UnavailableIndexError
 from kb_mcp.search.domain.search import Embedded, Filters, sections
 from tests.answers import parts
 from tests.endpoint import DIMENSIONS, Scripted, connector, nothing_listening, serving, tiny
@@ -142,9 +142,12 @@ def test_pieces_are_read_by_path_section_and_start_whatever_their_rowids(data: P
     """An updated index and a whole build number rows otherwise, and give one matrix."""
     embedded = Embedded(model="tiny", fingerprint="f", dimensions=1)
     first, second = page("1", "First"), page("2", "Second")
-    cut = sections("# Top\n\nOne two.\n\n## Next\n\nThree.\n")
+    cut = tuple(sections("# Top\n\nOne two.\n\n## Next\n\nThree.\n"))
     with sqlite_index.building(data / "index.sqlite", MOMENT, embedded) as writer:
-        rows = {front: writer.add(location(front), front, cut) for front in (second, first)}
+        rows = {
+            front: writer.add(Put(path=location(front), digest="d", front=front, sections=cut))
+            for front in (second, first)
+        }
         # Each piece's vector says when it was written.
         written = [(second, 0, 0), (first, 1, 6), (first, 0, 4), (second, 1, 0), (first, 1, 0)]
         writer.add_pieces(

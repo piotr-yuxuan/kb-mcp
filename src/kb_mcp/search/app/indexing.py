@@ -13,6 +13,8 @@ store to what the indexes on disk read.
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import os
 import sqlite3
 from collections import Counter
 from collections.abc import Callable
@@ -36,6 +38,7 @@ from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import Endpoint, ModelError
 from kb_mcp.search.app.pruning import Pruned, prune
 from kb_mcp.search.domain.chunking import CHUNKERS
+from kb_mcp.search.domain.indexes import Put, Skipped
 from kb_mcp.search.domain.people import Outcome
 from kb_mcp.search.domain.search import Embedded, sections
 
@@ -127,6 +130,29 @@ class Indexed(Record):
     pruned: Pruned | None = None
 
 
+def read_document(file: Path, path: str) -> Put | Skipped:
+    """Read the file of the mirror that ``path`` names: its document, or why it gives none.
+
+    Its digest is that of the bytes read; a file that cannot be read has none. A file not
+    in UTF-8, or that ``markdown.load`` refuses, gives a reason that holds no content.
+    """
+    digest = None
+    try:
+        data = file.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()
+        # Line endings are kept as written, so that a body reads back exactly.
+        front, body = markdown.load(data.decode("utf-8"), path)
+    except UnicodeDecodeError:
+        reason = "not UTF-8"
+    except OSError as error:
+        reason = f"not readable ({type(error).__name__})"
+    except RepresentationError as error:
+        reason = str(error).removeprefix(f"{path}: ")
+    else:
+        return Put(path=path, digest=digest, front=front, sections=tuple(sections(body)))
+    return Skipped(path=path, digest=digest, reason=reason)
+
+
 def build_index(
     docs: Path,
     index: Path,
@@ -138,7 +164,8 @@ def build_index(
 
     A file that cannot be read, that ``markdown.load`` refuses, or whose document is
     there already is skipped, and named in the report with a reason that holds no
-    content. Once the files are read, the documents' people are joined into persons,
+    content; the index records it, with its digest, as it does each document's. Once the
+    files are read, the documents' people are joined into persons,
     through ``aliases``, the alias file's, else none, as for an evaluation's index: the
     report counts the persons and gives what the join left apart. The index replaces
     the old one only once complete. Raises ModelError when the embedding fails; the old
@@ -176,37 +203,37 @@ def build_index(
         vector_store.shared(embedding.store) if embedding else contextlib.nullcontext(),
         sqlite_index.building(index, built_at, embedded) as writer,
     ):
-        files = {file.relative_to(docs).as_posix(): file for file in markdown.documents(docs)}
+        # A name not in UTF-8, which no text in the index could hold, goes in ASCII escapes.
+        files = {
+            os.fsencode(file.relative_to(docs).as_posix()).decode(errors="backslashreplace"): file
+            for file in markdown.documents(docs)
+        }
         with TRACER.start_as_current_span("index.files"), task("files", len(files)) as indexed:
             for path in indexed.each(files, str):
-                try:
-                    # Line endings are kept as written, so that a body reads back exactly.
-                    text = files[path].read_text(encoding="utf-8", newline="")
-                    front, body = markdown.load(text, path)
-                    cut = sections(body)
-                    first = writer.add(path, front, cut)
-                except UnicodeDecodeError:
-                    reason = "not UTF-8"
-                except OSError as error:
-                    reason = f"not readable ({type(error).__name__})"
-                except (RepresentationError, sqlite_index.DuplicateDocumentError) as error:
-                    reason = str(error).removeprefix(f"{path}: ")
-                else:
-                    report.types[front.type] += 1
-                    report.sections += len(cut)
-                    # Cut as the index records it.
-                    for number, start, end, text in (
-                        CHUNKERS[embedded.chunking].cut(front, cut) if embedded else ()
-                    ):
-                        key = vector_store.key(model.fingerprint, text)
-                        pending.append((first + number, start, end, key, path))
-                        texts[key] = text
-                    FILES.add(1, {"kb_mcp.outcome": "indexed"})
-                    log.debug("index.document", path=path, type=front.type, sections=len(cut))
+                read = read_document(files[path], path)
+                if isinstance(read, Put):
+                    try:
+                        first = writer.add(read)
+                    except sqlite_index.DuplicateDocumentError as error:
+                        reason = str(error).removeprefix(f"{path}: ")
+                        read = Skipped(path=path, digest=read.digest, reason=reason)
+                if isinstance(read, Skipped):
+                    writer.skip(read)
+                    report.skipped.append((path, read.reason))
+                    FILES.add(1, {"kb_mcp.outcome": "skipped"})
                     continue
-                writer.skip()
-                report.skipped.append((path, reason))
-                FILES.add(1, {"kb_mcp.outcome": "skipped"})
+                front, cut = read.front, read.sections
+                report.types[front.type] += 1
+                report.sections += len(cut)
+                # Cut as the index records it.
+                for number, start, end, text in (
+                    CHUNKERS[embedded.chunking].cut(front, cut) if embedded else ()
+                ):
+                    key = vector_store.key(model.fingerprint, text)
+                    pending.append((first + number, start, end, key, path))
+                    texts[key] = text
+                FILES.add(1, {"kb_mcp.outcome": "indexed"})
+                log.debug("index.document", path=path, type=front.type, sections=len(cut))
         report.persons = writer.join(aliases or {})
         if embedding is not None:
             with TRACER.start_as_current_span("index.embed"):

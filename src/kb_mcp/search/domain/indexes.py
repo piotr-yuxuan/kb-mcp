@@ -8,12 +8,17 @@ backend. ``tests/test_index_contract.py`` holds every backend to these docstring
 A use is opened once: ``reading()`` opens one and gives its reader, and no other method
 opens one, so that all that a call reads comes through one reader. A search reads words
 and vectors in one use, hence ``SearchIndex``, the two interfaces together, whose
-reader reads both.
+reader reads both. ``Put`` and ``Skipped`` say what an index takes of each file of the
+mirror.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
+
+from kb_mcp.kernel.record import Record
+from kb_mcp.mirror.domain.mirror import FrontMatter
+from kb_mcp.search.domain.search import Section
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -37,6 +42,23 @@ if TYPE_CHECKING:
 
 class UnavailableIndexError(Exception):
     """No index to read, or one that this version cannot read; the message says why."""
+
+
+class Put(Record):
+    """A file of the mirror, read: the document that an index takes of it."""
+
+    path: str  # relative to the mirror, which names the document
+    digest: str  # the SHA-256 of the file's bytes
+    front: FrontMatter
+    sections: tuple[Section, ...]  # its body, as ``search.sections`` cuts it
+
+
+class Skipped(Record):
+    """A file of the mirror that an index could not take, and why."""
+
+    path: str  # relative to the mirror
+    digest: str | None  # the SHA-256 of its bytes; None for a file that could not be read
+    reason: str  # holding nothing of the file's content
 
 
 class WordsReader(Protocol):
