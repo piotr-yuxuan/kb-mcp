@@ -242,3 +242,16 @@ def test_doctor_checks_each_account_by_its_own_checks(
     assert main(options, TWO_ACCOUNTS) == 0
     names = [verdict["name"] for verdict in json.loads(capsys.readouterr().out)]
     assert names == ["python", "pandoc", "data directory", "drive"]
+
+
+def test_a_prepare_names_each_account_s_first_setting_with_its_own_sources(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Two accounts unset: each line names the sources of that account, and no other."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(tmp_path))
+    given = ["prepare", "--dry-run", "--config", str(tmp_path / "none.toml")]
+    assert main(given, TWO_ACCOUNTS) == 0
+    err = capsys.readouterr().err
+    assert "accounts.atlassian.site: not set; any documents of confluence, jira get no" in err
+    assert "accounts.drive.folder: not set; any documents of worklog get no" in err

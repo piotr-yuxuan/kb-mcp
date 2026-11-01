@@ -986,3 +986,11 @@ def test_a_file_named_in_bytes_that_are_not_utf_8_is_said_all_the_same(
     status, result, _ = held_back(data, capsys)
     assert (status, result["outcome"]) == (0, "held back")
     assert result["file"] == f"{folder}/w\ufffd\ufffd.sqlite"
+
+
+def test_what_a_prune_says_to_run_is_what_prunes_and_what_has_vectors() -> None:
+    """Plan 031: ``embed``. ``index`` prunes nothing, and replaces an index with vectors."""
+    assert "the next embed prunes it" in DEFERRED
+    assert "rebuild the index with embed," in UNREADABLE
+    assert "index prunes" not in DEFERRED
+    assert "with index" not in UNREADABLE

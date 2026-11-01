@@ -397,7 +397,10 @@ def test_a_ref_missing_from_the_index_evaluated_is_refused(data: Path) -> None:
     questions = golden(data)
     (data / "docs" / "confluence" / "ENG" / "4003-words.md").unlink()
     settings = Settings(data_dir=data, model="tiny")
-    with pytest.raises(EvaluationError, match=r"tiny: q2: confluence/ENG/4003-words\.md is not"):
+    with pytest.raises(
+        EvaluationError,
+        match=r"tiny: q2: confluence/ENG/4003-words\.md is not in its index; run embed again$",
+    ):
         evaluate(settings, questions, targets(tiny()), ticking(), MOMENT)
 
 

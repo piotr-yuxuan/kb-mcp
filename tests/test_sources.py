@@ -313,6 +313,16 @@ def test_a_machine_with_the_work_log_alone_has_nothing_to_fetch_and_something_to
     assert main(command(home, config, "prepare", "--yes", "worklog")) == ExitStatus.OK
 
 
+def test_a_work_log_named_by_an_empty_variable_is_not_configured(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """An empty variable sets nothing, for a path as for any setting: named, exit 2."""
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", "")
+    config = settings_file(home, None)
+    assert main(command(home, config, "prepare", "--yes", "worklog")) == ExitStatus.REFUSED
+    assert "worklog: not configured; set sources.worklog.path" in capsys.readouterr().err
+
+
 def test_a_prepare_without_a_site_runs_and_says_what_it_costs(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
