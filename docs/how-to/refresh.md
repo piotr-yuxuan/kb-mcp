@@ -24,14 +24,17 @@ path = "~/todo"  # absolute or under ~
 ```
 
 Confluence and Jira sign in with the Atlassian account, on its site. A table that names
-nothing (no space, no project, no folder) leaves its source out. The work log has its own
-guide: [mirror the work log](work-log.md).
+nothing (no space, no project, no folder) leaves its source out of `fetch`, and the work log
+out of `prepare`. The work log has its own guide: [mirror the work log](work-log.md).
 
 ## 2. Run the chain
 
 ```bash
 kb-mcp fetch --yes && kb-mcp prepare --yes && kb-mcp index --yes && kb-mcp embed --yes
 ```
+
+With the work log alone, nothing needs fetching: `fetch` is refused, exit 2, so start the
+chain at `prepare`.
 
 Without `--yes`, each command writes on stderr each setting it reads, each source it takes,
 each it leaves out and why, and the command written in full, then asks `Proceed? [y/N]`, as
@@ -47,12 +50,14 @@ every command that writes does.
 2. **`prepare`** writes the mirror, a row each: each source that keeps a store, from all
    that its store holds, even a space no longer configured, and the work log, read whole in
    place, each document converted again only when it changed, the files of documents gone
-   removed. It reads no site: it signs in nowhere, and needs no site set.
+   removed. It reaches no site and signs in nowhere, but it reads the site's address, which
+   gives each document its `url` and resolves the links between pages: without a site set, it
+   still runs, and says that those documents get no address.
 
    The mirror keeps pandoc's conversions in `<data>/conversions.sqlite`: the first run
    converts every document, taking as long as a mirror always has, and each run after it
-   only what changed; each row says how many were `converted by pandoc` and how many
-   `reused from the cache`. Deleting the file starts again, converting everything once and
+   only what changed; each of their rows says how many were `converted by pandoc` and how
+   many `reused from the cache`. Deleting the file starts again, converting everything once and
    downloading nothing: do so after installing a pandoc rebuilt under the same version
    line, the one change that the cache cannot see. A damaged file is replaced by the run
    itself, which converts everything and says so in its log (`prepare.cache_replaced`):
@@ -112,7 +117,7 @@ Each command's exit status says what its next step can rely on:
 | Status | Means | The next step |
 |---|---|---|
 | 0 | every row done | runs |
-| 1 | a row failed, the others ran | can run on what the store or the mirror holds |
+| 1 | a row failed, the others ran; or the run stopped on a cache it could not use, or a path that is no folder, with no rows written | can run on what the store or the mirror holds, once you have read why |
 | 2 | refused before any row | should not: nothing ran, and it is yours to fix |
 | 3 | to sign in again | should not, until you have |
 | 130 | stopped by Ctrl-C | should not |

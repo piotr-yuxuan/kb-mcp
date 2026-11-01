@@ -132,12 +132,18 @@ def fetch_described(
 def prepare_described(
     arguments: argparse.Namespace, settings: Mapping[str, object]
 ) -> tuple[str, ...]:
-    """Say each source taken, each left out and why.
+    """Say each source taken, each left out and why, and each account's site not set.
 
     A source read in place is said by its settings; one that keeps a store gives all that
-    its store holds, whatever its settings cover.
+    its store holds, whatever its settings cover. Without its account's first setting, the
+    site, a prepare still runs, its documents without an address there.
     """
     taken, left = chosen_to_prepare(arguments, settings)
+    unset = dict.fromkeys(
+        declared.account.paths[0]
+        for declared in taken
+        if declared.account is not None and settings[declared.account.paths[0]] is None
+    )
     return (
         *(
             source_line(declared, settings)
@@ -146,4 +152,5 @@ def prepare_described(
             for declared in taken
         ),
         *(f"source {name}: left out, {why}" for name, why in left.items()),
+        *(f"{path}: not set; these documents get no address on the site" for path in unset),
     )

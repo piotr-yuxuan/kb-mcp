@@ -77,9 +77,8 @@ def choice_refused(arguments: argparse.Namespace, settings: Mapping[str, object]
         for declared in arguments.sources
         if declared.name in arguments.source and left.get(declared.name) == "not configured"
     ]
-    faults.append(
-        None if taken else f"nothing to {arguments.command.name}: no source is configured"
-    )
+    step = arguments.command.name
+    faults.append(None if taken else f"nothing to {step}: none of its sources is configured")
     return next((fault for fault in faults if fault is not None), None)
 
 

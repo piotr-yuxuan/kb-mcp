@@ -86,7 +86,9 @@ and asks, as it does outside sops. `--yes` runs it without the question, as a sc
 needs: where no terminal can answer, a command that writes is refused without it
 (exit 2). `--dry-run` says what it would fetch, and fetches nothing.
 
-`prepare`, `index` and `embed` read nothing from the site, and need no token.
+`prepare`, `index` and `embed` reach no site, and need no token. `prepare` reads the site's
+address all the same, for each document's `url` and the links between pages: keep it in the
+settings file, or give it by `--site`.
 
 ## Revoke the token
 

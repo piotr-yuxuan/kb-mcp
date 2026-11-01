@@ -15,6 +15,8 @@ read-only, for agents that prefer files.
   kb-mcp fetch && kb-mcp prepare && kb-mcp index && kb-mcp embed
   ```
 
+  With the work log alone, start at `prepare`: `fetch` has nothing to fetch, and is refused.
+
   `embed` embeds the mirror with a model that Ollama serves, so set that up first, as
   [embeddings](embeddings.md) says, or stop after `index` and set
   `search_mode = "lexical"` to search by words alone. Build the index again after each

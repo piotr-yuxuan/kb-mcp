@@ -169,7 +169,7 @@ def command(home: Path, config: Path, step: str, *more: str) -> list[str]:
     [
         ("prepare", ("worklog",), "worklog: not configured; set sources.worklog.path"),
         ("fetch", ("jira",), "jira: not configured; set sources.jira.projects"),
-        ("fetch", (), "nothing to fetch: no source is configured"),
+        ("fetch", (), "nothing to fetch: none of its sources is configured"),
     ],
 )
 def test_a_choice_that_leaves_nothing_to_run_exits_2_saying_why(
@@ -189,7 +189,7 @@ def test_a_registry_with_nothing_to_prepare_is_refused(
     config = settings_file(home, None)
     given = command(home, config, "prepare", "--yes")
     assert main(given, (WORKLOG,)) == ExitStatus.REFUSED
-    assert "nothing to prepare: no source is configured" in capsys.readouterr().err
+    assert "nothing to prepare: none of its sources is configured" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("step", ["fetch", "prepare"])
@@ -291,6 +291,54 @@ def test_a_command_asks_once_after_naming_each_source_taken_and_left_out(
         assert -1 < said.index(line) < asked
     assert said.count(QUESTION) == 1
     assert not (home / "data").exists()
+
+
+def test_a_machine_with_the_work_log_alone_has_nothing_to_fetch_and_something_to_prepare(
+    home: Path, worklog: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The first exits 2, saying of its own sources, as the how-to tells; the second runs."""
+    config = settings_file(home, worklog)
+    assert main(command(home, config, "fetch", "--yes")) == ExitStatus.REFUSED
+    assert "nothing to fetch: none of its sources is configured" in capsys.readouterr().err
+    assert main(command(home, config, "prepare", "--yes", "worklog")) == ExitStatus.OK
+
+
+def test_a_prepare_without_a_site_runs_and_says_what_it_costs(
+    home: Path, worklog: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Its documents get no address: said once, of a source of that account alone."""
+    config = settings_file(home, worklog)
+    line = "accounts.atlassian.site: not set; these documents get no address on the site\n"
+    assert main(command(home, config, "prepare", "--yes")) == ExitStatus.OK
+    assert capsys.readouterr().err.count(line) == 1
+    assert main(command(home, config, "prepare", "--yes", "worklog")) == ExitStatus.OK
+    assert line not in capsys.readouterr().err
+    assert main(command(home, config, "prepare", "--yes", "--site", SITE)) == ExitStatus.OK
+    assert line not in capsys.readouterr().err
+
+
+def test_a_false_value_of_a_source_left_out_is_said_not_applied_as_a_true_one_is(
+    home: Path, worklog: Path, capsys: CaptureFixture[str]
+) -> None:
+    """What holds a value is not the same as what is true: ``archives = false`` is one."""
+    config = settings_file(home, worklog)
+    config.write_text(config.read_text("utf-8") + "archives = false\n", "utf-8")
+    assert main(command(home, config, "prepare", "--dry-run", "confluence")) == ExitStatus.OK
+    err = capsys.readouterr().err
+    assert "sources.worklog.archives: False (not applied: worklog not named)\n" in err
+    assert "not in the command: sources.worklog.archives" not in err
+
+
+def test_a_list_emptied_of_a_source_not_named_is_not_said_to_be_lost_by_the_command(
+    home: Path, signed_in: FakeSite, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The command, run again, does not read it: nothing to carry."""
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SPACES", "[]")
+    config = settings_file(home, None, atlassian=True)
+    given = command(home, config, "fetch", "--dry-run", "--since", "2026-10-02", "jira")
+    assert main(given) == ExitStatus.OK
+    assert "not in the command: sources.confluence.spaces" not in capsys.readouterr().err
+    assert signed_in.asked
 
 
 def test_a_source_read_in_place_is_said_by_its_settings(

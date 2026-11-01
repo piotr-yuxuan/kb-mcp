@@ -205,7 +205,8 @@ refuses each, exit 2, and its message lists the commands. What replaces each:
 
 | Was | Now |
 |---|---|
-| `sync` | the chain that you compose: `fetch && prepare && index && embed`, as [bring every source up to date](refresh.md) says |
+| `sync` | the chain that you compose: `fetch && prepare && index && embed`, as [bring every source up to date](refresh.md) says; with the work log alone, from `prepare` on, as `fetch` has nothing to fetch and is refused |
+| `sync --since 7d`, and any option of the period | `fetch --since 7d`, then the rest of the chain: `prepare` takes none, and its parser reads a value after an unknown flag as a source's name |
 | `sync --include worklog` | `prepare worklog && index`, or `embed` for search by meaning |
 | `sync --include` or `--exclude` of a site's source | the sources named: `fetch jira`, `prepare jira` |
 | `sync --dry-run` | `fetch --dry-run` and `prepare --dry-run` |
