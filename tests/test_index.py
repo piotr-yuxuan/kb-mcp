@@ -1938,4 +1938,7 @@ def test_a_whole_update_s_own_damage_is_raised_once_not_retried(
     with pytest.raises(sqlite3.DatabaseError, match="malformed"):
         update_index(indexing, MOMENT, rebuild=True)
     assert len(attempts) == 1
-    assert not (data / "index.sqlite").exists()
+    assert sorted(path.name for path in data.iterdir()) == ["docs", "index.sqlite.lock"]
+    lock = data / "index.sqlite.lock"
+    with lock.open("a") as file:
+        fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)  # free, or this raises

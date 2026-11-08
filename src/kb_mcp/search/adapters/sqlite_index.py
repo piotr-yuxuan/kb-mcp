@@ -1179,7 +1179,7 @@ class SqliteIndex:
                 with building(self._path, change.built_at, embedded) as writer:
                     updated = writer.update(change, None if change.whole else self._path)
             except sqlite3.DatabaseError as error:
-                # Only the copy reads the index in place: a whole update's error is its own.
+                # A whole update reads no index in place: its error is its own.
                 if change.whole or not damaged(error):
                     raise
                 message = f"{self._path} is damaged ({error}): it is rebuilt whole"
