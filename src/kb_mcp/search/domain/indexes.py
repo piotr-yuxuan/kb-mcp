@@ -9,21 +9,23 @@ A use is opened once: ``reading()`` opens one and gives its reader, and no other
 opens one, so that all that a call reads comes through one reader. A search reads words
 and vectors in one use, hence ``SearchIndex``, the two interfaces together, whose
 reader reads both. ``Put`` and ``Skipped`` say what an index takes of each file of the
-mirror.
+mirror; ``Held`` what it holds of them, ``Change`` what an update changes, all of it or
+none, and ``Updated`` what that did.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from datetime import datetime
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter
+from kb_mcp.search.domain.people import Outcome
 from kb_mcp.search.domain.search import Section
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from contextlib import AbstractContextManager
-    from datetime import datetime
 
     import numpy as np
     from numpy.typing import NDArray
@@ -40,8 +42,18 @@ if TYPE_CHECKING:
     )
 
 
+# Why an update keeps nothing of the index in place: none that this version reads, one
+# written by another version of the cut (``search.WORDS``) or before it was recorded, one
+# damaged, or the run's --rebuild.
+type Whole = Literal["unavailable", "another version", "damaged", "--rebuild"]
+
+
 class UnavailableIndexError(Exception):
     """No index to read, or one that this version cannot read; the message says why."""
+
+
+class DamagedIndexError(UnavailableIndexError):
+    """An index that this version reads, but one of whose tables cannot be read."""
 
 
 class Put(Record):
@@ -59,6 +71,55 @@ class Skipped(Record):
     path: str  # relative to the mirror
     digest: str | None  # the SHA-256 of its bytes; None for a file that could not be read
     reason: str  # holding nothing of the file's content
+
+
+class Held(Record):
+    """What a words index holds of the mirror's files: what an update compares them with."""
+
+    build: str
+    words: str | None  # the ``search.WORDS`` of the code that wrote it; None if unrecorded
+    aliases: str | None  # what the alias file meant, as ``people.aliases_digest`` gives it
+    documents: dict[str, str]  # each document's path, and its file's digest
+    skipped: dict[str, Skipped]  # each file skipped, by path
+
+
+class Change(Record):
+    """What an update changes of a words index, all of it or none.
+
+    The documents of ``removed`` go, those of ``put`` come, replacing any of their path,
+    and the index holds no other skipped file than those of ``skipped`` and those that
+    two of one source and id leave out. A ``whole`` update keeps nothing of the index in
+    place. Persons are joined again over every document, through ``aliases``.
+    """
+
+    removed: frozenset[str]  # the paths of documents to remove
+    put: tuple[Put, ...]
+    skipped: tuple[Skipped, ...]
+    aliases: dict[str, str]  # each alias's name and target, in the file's order
+    built_at: datetime
+    whole: bool = False
+
+
+class Updated(Record):
+    """What an update did, and what the index then holds.
+
+    Of the documents of the index in place, each is ``copied``, ``replaced`` by one put
+    of its path, or ``removed``; each other put is ``added``. ``skipped`` gives every
+    file that the index lacks, a put whose source and id an earlier file by path holds
+    among them, and a copied document so pushed out. ``awaiting`` counts the documents
+    that hold a section but no piece, of an index that names a model, else None.
+    """
+
+    build: str
+    copied: int
+    added: int
+    replaced: int
+    removed: int
+    types: dict[str, int]  # the documents held, by type
+    sections: int
+    awaiting: int | None
+    skipped: tuple[Skipped, ...]
+    persons: Outcome  # what the join left apart
 
 
 class WordsReader(Protocol):
@@ -149,6 +210,12 @@ class WordsReader(Protocol):
     def summary(self) -> Summary:
         """Say what the index holds and when it was built."""
 
+    def held(self) -> Held:
+        """Say what the index holds of the mirror's files, by path, and what wrote it.
+
+        Raises DamagedIndexError when a table of it cannot be read.
+        """
+
     def built_at(self) -> datetime:
         """Say when the index was built."""
 
@@ -193,6 +260,17 @@ class WordsIndex(Protocol):
 
         Raises UnavailableIndexError when there is no index, or one this version cannot
         read.
+        """
+
+    def update(self, change: Change, expected_build: str | None) -> Updated | None:
+        """Change the index, all of it or none; give what it did, or None if it changed meanwhile.
+
+        Unless the change is whole, the index must still be the build ``expected_build``
+        read. A document replaced or removed takes its pieces with it; each copied keeps
+        its own. Of two documents of one source and id, the first by the parts of its
+        path is held, and the other skipped. Raises DamagedIndexError when a table of the
+        index in place cannot be read, and TimeoutError when another run's change holds
+        the index too long.
         """
 
 

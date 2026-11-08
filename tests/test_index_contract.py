@@ -9,6 +9,9 @@ nothing, the lock and the rename are no part of it: they are SQLite's own, in
 from __future__ import annotations
 
 import functools
+import hashlib
+import sqlite3
+from contextlib import closing
 from copy import replace
 from datetime import timedelta
 from inspect import signature
@@ -21,8 +24,14 @@ from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from kb_mcp.search.adapters import sqlite_index, vector_store
 from kb_mcp.search.domain import people
-from kb_mcp.search.domain.indexes import Put, SearchReader, UnavailableIndexError
-from kb_mcp.search.domain.search import Embedded, Filters, quote, sections
+from kb_mcp.search.domain.indexes import (
+    Change,
+    Put,
+    SearchReader,
+    Skipped,
+    UnavailableIndexError,
+)
+from kb_mcp.search.domain.search import WORDS, Embedded, Filters, quote, sections
 from tests.mirrors import MOMENT, issue, location, page, worklog_document
 
 if TYPE_CHECKING:
@@ -63,33 +72,81 @@ class Document(Record):
     pieces: tuple[Piece, ...] = ()
 
 
+def digest(body: str) -> str:
+    """Give the digest that a document's file has here: that of its body."""
+    return hashlib.sha256(body.encode()).hexdigest()
+
+
+def put_of(document: Document) -> Put:
+    """Give a document as an update puts it, its file named as the data layout names it."""
+    return Put(
+        path=location(document.front),
+        digest=digest(document.body),
+        front=document.front,
+        sections=tuple(sections(document.body)),
+    )
+
+
+def change(
+    *,
+    put: Sequence[Document] = (),
+    removed: Sequence[str] = (),
+    skipped: Sequence[Skipped] = (),
+    whole: bool = False,
+) -> Change:
+    """Give a change of these documents put, these paths removed and files skipped."""
+    return Change(
+        removed=frozenset(removed),
+        put=tuple(put_of(document) for document in put),
+        skipped=tuple(skipped),
+        aliases={},
+        built_at=MOMENT,
+        whole=whole,
+    )
+
+
 def sqlite(
     folder: Path, documents: Sequence[Document], embedded: Embedded | None = None
 ) -> SearchIndex:
-    """Write the documents into a new SQLite index, as a whole build writes them."""
+    """Write the documents into a new SQLite index by a whole update; then their pieces.
+
+    The pieces and the model are written in place by SQL, until the vector index fills
+    them itself.
+    """
     path = folder / "index.sqlite"
-    with sqlite_index.building(path, MOMENT, embedded) as writer:
-        for document in documents:
-            first = writer.add(
-                Put(
-                    path=location(document.front),
-                    digest="made-up",
-                    front=document.front,
-                    sections=tuple(sections(document.body)),
-                )
-            )
-            writer.add_pieces(
+    index = sqlite_index.SqliteIndex(path)
+    index.update(change(put=documents, whole=True), None)
+    if embedded is None:
+        return index
+    with closing(sqlite3.connect(path)) as connection:
+        connection.executemany(
+            "UPDATE meta SET value = ? WHERE name = ?",
+            [
+                (embedded.model, "model"),
+                (embedded.fingerprint, "fingerprint"),
+                (str(embedded.dimensions), "dimensions"),
+                (embedded.chunking, "chunking"),
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO pieces (section, start, stop, key, vector)"
+            " SELECT s.rowid, ?, ?, ?, ? FROM sections s JOIN documents d ON d.rowid = s.document"
+            " WHERE d.path = ? AND s.number = ?",
+            [
                 (
-                    first + piece.number - 1,
                     piece.start,
                     piece.stop,
                     piece.key,
                     vector_store.as_bytes(np.array(piece.vector, dtype=np.float32)),
+                    location(document.front),
+                    piece.number,
                 )
+                for document in documents
                 for piece in document.pieces
-            )
-        writer.join({})
-    return sqlite_index.SqliteIndex(path)
+            ],
+        )
+        connection.commit()
+    return index
 
 
 BACKENDS = {"sqlite": sqlite}
@@ -496,3 +553,201 @@ def test_a_backend_has_every_read_that_the_protocols_name(
     with written(BOTH).reading() as reader:
         for name in get_protocol_members(SearchReader):
             assert declared(getattr(reader, name)) == declared(getattr(SearchReader, name)), name
+
+
+def build_of(index: SearchIndex) -> str:
+    """Name the build that the index holds now."""
+    with index.reading() as reader:
+        return reader.build()
+
+
+EDITED = replace(RUNBOOK, labels=("ops", "revert"))
+EDITED_BODY = "# Rollback runbook\n\nWhy we revert.\n"
+
+
+def test_a_document_put_again_is_replaced(written: Written) -> None:
+    """Its new words find it, its old ones nothing; it reads back as put, the other as it was."""
+    index = written(BOTH)
+    build = build_of(index)
+    done = index.update(change(put=[Document(front=EDITED, body=EDITED_BODY)]), build)
+    assert done is not None
+    assert (done.copied, done.added, done.replaced, done.removed) == (1, 0, 1, 0)
+    with index.reading() as reader:
+        assert reader.build() == done.build != build
+        assert reader.scores(quote("ledger"), Filters()) == ({}, True)
+        assert list(reader.scores(quote("revert"), Filters())[0]) == [RUNBOOK_PATH]
+        (entry,) = reader.entries(paths=[RUNBOOK_PATH])
+        assert entry.front == EDITED
+        assert reader.text(RUNBOOK_PATH, 0, len(EDITED_BODY)) == EDITED_BODY
+        assert reader.values("label") == [("ops", 1), ("revert", 1)]
+        assert list(reader.scores(quote("broker"), Filters())[0]) == [UPGRADE_PATH]
+        assert reader.held().documents[RUNBOOK_PATH] == digest(EDITED_BODY)
+
+
+LONE = page(
+    "1003",
+    "Lone page",
+    space="OPS",
+    labels=("alone",),
+    people=(PersonRole(role="author", name=BO),),
+)
+LONE_BODY = "# Lone page\n\nA solitary word.\n"
+
+
+def test_a_document_removed_leaves_no_trace(written: Written) -> None:
+    """In ranking, entries, the listing, values, persons, the summary and what is held."""
+    index = written([*BOTH, Document(front=LONE, body=LONE_BODY)])
+    path = location(LONE)
+    done = index.update(change(removed=[path]), build_of(index))
+    assert done is not None
+    assert (done.copied, done.added, done.replaced, done.removed) == (2, 0, 0, 1)
+    assert done.types == {"page": 1, "issue": 1}
+    with index.reading() as reader:
+        assert reader.scores(quote("solitary"), Filters(), every=True) == ({}, True)
+        assert reader.passage(path, quote("solitary")) is None
+        assert reader.entries(paths=[path], ids=[LONE.id]) == []
+        assert [each.path for each in reader.listing(Filters())] == sorted(
+            [RUNBOOK_PATH, UPGRADE_PATH]
+        )
+        assert reader.recent(Filters(), "updated", 0, 10)[0] == len(BOTH)
+        assert reader.values("space") == [("ENG", 1)]
+        assert ("alone", 1) not in reader.values("label")
+        assert reader.values("author") == [("A Person", 2)]
+        assert reader.persons(people.name_key(BO)) == []
+        summary = reader.summary()
+        assert summary.types == {"page": 1, "issue": 1}
+        assert summary.sections == len(sections(RUNBOOK_BODY)) + len(sections(UPGRADE_BODY))
+        assert summary.spaces == {"ENG": 1}
+        assert path not in reader.held().documents
+
+
+def test_held_gives_each_document_s_digest_and_each_file_skipped(written: Written) -> None:
+    """With what wrote the index: its build, the code's cut and the meaning of no alias file."""
+    index = written(BOTH)
+    with index.reading() as reader:
+        held = reader.held()
+        assert held.build == reader.build()
+    assert held.documents == {
+        RUNBOOK_PATH: digest(RUNBOOK_BODY),
+        UPGRADE_PATH: digest(UPGRADE_BODY),
+    }
+    assert held.skipped == {}
+    assert (held.words, held.aliases) == (WORDS, people.aliases_digest({}))
+    refused = Skipped(path="confluence/ENG/1-broken.md", digest="d1", reason="no front matter")
+    unread = Skipped(path="confluence/ENG/2-unread.md", digest=None, reason="not readable")
+    done = index.update(change(skipped=[unread, refused]), held.build)
+    assert done is not None
+    assert done.skipped == (refused, unread)
+    with index.reading() as reader:
+        assert reader.held().skipped == {refused.path: refused, unread.path: unread}
+        assert reader.summary().skipped == len(done.skipped)
+    done = index.update(change(), done.build)
+    assert done is not None
+    assert done.skipped == ()
+
+
+def test_an_update_of_a_build_no_longer_held_changes_nothing(written: Written) -> None:
+    """It gives None, as another run wrote the index meanwhile; a whole update checks nothing."""
+    index = written(BOTH)
+    build = build_of(index)
+    assert index.update(change(removed=[RUNBOOK_PATH]), "another build") is None
+    with index.reading() as reader:
+        assert reader.build() == build
+        assert len(reader.listing(Filters())) == len(BOTH)
+    done = index.update(change(put=[BOTH[0]], whole=True), "another build")
+    assert done is not None
+    assert (done.copied, done.added, done.replaced, done.removed) == (0, 1, 0, 0)
+    with index.reading() as reader:
+        assert [each.path for each in reader.listing(Filters())] == [RUNBOOK_PATH]
+
+
+def test_of_two_files_of_one_source_and_id_the_first_by_its_path_s_parts_is_held(
+    written: Written,
+) -> None:
+    """Put after the one held by path, a file is skipped; put before, it takes its place.
+
+    By the parts of each path, not its text: ``1000/1.md`` comes before ``1000-1.md``.
+    """
+    index = written(BOTH)
+    later = replace(
+        put_of(Document(front=EDITED, body=EDITED_BODY)), path="confluence/ENG/1001-zzz.md"
+    )
+    done = index.update(replace(change(), put=(later,)), build_of(index))
+    assert done is not None
+    assert [(each.path, each.digest) for each in done.skipped] == [(later.path, later.digest)]
+    assert (done.copied, done.added, done.replaced, done.removed) == (2, 0, 0, 0)
+    nested = replace(later, path="confluence/ENG/1000/1.md")
+    flat = replace(later, path="confluence/ENG/1000-1.md")
+    done = index.update(replace(change(), put=(flat, nested)), done.build)
+    assert done is not None
+    assert [(each.path, each.digest) for each in done.skipped] == sorted(
+        [(RUNBOOK_PATH, digest(RUNBOOK_BODY)), (flat.path, flat.digest)]
+    )
+    assert (done.copied, done.added, done.replaced, done.removed) == (1, 1, 0, 1)
+    with index.reading() as reader:
+        (entry,) = reader.entries(ids=[RUNBOOK.id])
+        assert entry.path == nested.path
+        assert reader.held().documents.keys() == {nested.path, UPGRADE_PATH}
+
+
+def test_a_document_replaced_or_removed_takes_its_pieces_with_it(written: Written) -> None:
+    """Search by meaning no longer finds it, nor names its keys; the other keeps its own."""
+    other = (piece_of(UPGRADE_BODY, "broker", "k-broker", EAST),)
+    index = written((*ALIKE, Document(front=UPGRADE, body=UPGRADE_BODY, pieces=other)), EMBEDDED)
+    replaced = Document(front=INSIDE, body="# Alike\n\nOther words now.\n")
+    done = index.update(change(put=[replaced], removed=[location(OUTSIDE)]), build_of(index))
+    assert done is not None
+    assert done.awaiting == 1
+    with index.reading() as reader:
+        assert reader.embedded() == EMBEDDED
+        assert list(reader.nearest(query(NORTH), Filters(), 10)) == [UPGRADE_PATH]
+        assert reader.keys() == {"k-broker"}
+        summary = reader.summary()
+    assert (summary.pieces, summary.awaiting) == (1, 1)
+
+
+SAM = "Sam Sample"
+SYNC = worklog_document("meeting", "m-20261020-sync", "Sync", (SAM,))
+SYNC_PATH = location(SYNC)
+
+
+def sam_of(account: str, key: str) -> Document:
+    """Give an issue authored by an account of Sam Sample's name."""
+    front = issue(
+        key, f"Issue {key}", people=(PersonRole(role="author", name=SAM, account=account),)
+    )
+    return Document(front=front, body=f"# Issue {key}\n")
+
+
+def test_a_person_s_rows_follow_an_account_put_or_removed_in_another_document(
+    written: Written,
+) -> None:
+    """A meeting's name alone joins the one account of its name; with two, neither, said.
+
+    The meeting's file is never put again: each update joins every document whole.
+    """
+    index = written([Document(front=SYNC, body="# Sync\n")])
+    key = people.name_key(SAM)
+
+    def participant() -> list[str]:
+        with index.reading() as reader:
+            return [each for each in reader.persons(key) if reader.roles(each, [SYNC_PATH])]
+
+    (alone,) = participant()
+    first, second = sam_of("acct-0002", "PROJ-2"), sam_of("acct-0003", "PROJ-3")
+    done = index.update(change(put=[first]), build_of(index))
+    assert done is not None
+    assert done.persons.ambiguous == ()
+    (joined,) = participant()
+    with index.reading() as reader:
+        assert reader.persons(key) == reader.persons(key, people.ACCOUNT) == [joined]
+    done = index.update(change(put=[second]), done.build)
+    assert done is not None
+    assert [each.name for each in done.persons.ambiguous] == [SAM]
+    assert participant() == [alone]
+    done = index.update(change(removed=[location(second.front)]), done.build)
+    assert done is not None
+    assert participant() == [joined]
+    done = index.update(change(removed=[location(first.front)]), done.build)
+    assert done is not None
+    assert participant() == [alone]

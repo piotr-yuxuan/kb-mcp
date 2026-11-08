@@ -253,45 +253,41 @@ def config(data: Path, model: str, url: str) -> list[str]:
     return ["--config", str(settings), "--data-dir", str(data)]
 
 
-def test_index_after_embed_asks_nothing_and_leaves_the_vectors_until_the_next_embed(
+def test_index_after_embed_asks_nothing_and_keeps_the_vectors(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Plan 031, criterion 5, in the hybrid mode: words alone, each said, the store unchanged.
+    """Plan 035, in the hybrid mode: nothing changed, ``index`` writes nothing, said so.
 
-    ``index`` asks the endpoint nothing, writes no piece and leaves ``vectors.sqlite``
-    byte for byte; its summary says what the index holds, search by meaning waiting for
-    ``embed``; ``status`` and the server's answer name ``embed``, which brings it back
-    and embeds nothing new.
+    It asks the endpoint nothing and leaves ``vectors.sqlite`` byte for byte; the index
+    keeps its pieces, so that search by meaning goes on; a page edited, its document
+    alone awaits vectors, which the summary counts, and the rest keep theirs.
     """
     scripted = Scripted()
     with serving(scripted) as url:
         options = ["--yes", *config(data, "tiny", url)]
         assert main(["embed", *options]) == 0
-        store = data / "vectors.sqlite"
-        kept = store.read_bytes()
+        store, index = data / "vectors.sqlite", data / "index.sqlite"
+        kept, built = store.read_bytes(), index.read_bytes()
         asked = len(scripted.asked)
+        with reading(index) as reader:
+            pieces = reader.summary().pieces
         capsys.readouterr()
         assert main(["index", *options]) == 0
         assert len(scripted.asked) == asked
-        assert store.read_bytes() == kept
-        assert "this index holds words alone; search by meaning waits for kb-mcp embed" in (
-            capsys.readouterr().err
+        assert (store.read_bytes(), index.read_bytes()) == (kept, built)
+        out, err = capsys.readouterr()
+        assert "then: documents added or changed have no vectors until kb-mcp embed" in err
+        assert "nothing written\nskipped: 0\nawaiting vectors: 0\n" in out
+        library = Library(SqliteIndex(index), data / "docs", Meaning(connector()), "hybrid")
+        assert "search by meaning: tiny, " in parts(library.status())[1]
+        write(data / "docs", page("196845", "Rollback"), BODY + "\nEdited.\n")
+        assert main(["index", *options]) == 0
+        assert len(scripted.asked) == asked
+        assert "replaced: 1\nremoved: 0\nskipped: 0\nawaiting vectors: 1\n" in (
+            capsys.readouterr().out
         )
-        with reading(data / "index.sqlite") as reader:
-            assert reader.summary().pieces == 0
-        library = Library(
-            SqliteIndex(data / "index.sqlite"), data / "docs", Meaning(connector()), "hybrid"
-        )
-        assert (
-            "search by meaning: off, the index holds no vectors; run kb-mcp embed"
-            in (parts(library.status())[1])
-        )
-        assert "then run kb-mcp embed" in parts(library.search("rollback"))[0]
-        capsys.readouterr()
-        assert main(["embed", *options]) == 0
-        assert "embedded now: 0\n" in capsys.readouterr().out
-        with reading(data / "index.sqlite") as reader:
-            assert reader.summary().pieces > 0
+        with reading(index) as reader:
+            assert 0 < reader.summary().pieces < pieces
 
 
 def test_the_command_embeds_with_the_settings_model(
@@ -545,7 +541,7 @@ def test_the_environment_s_chunking_replaces_the_file_s(
 def test_an_index_cut_by_a_chunking_this_version_lacks_is_refused(data: Path) -> None:
     """Its pieces could be quoted by no unit known here: rebuilt, it is read again.
 
-    The files are not in question, so the command named is ``index`` alone.
+    The files are not in question, so the commands named are ``index``, then ``embed``.
     """
     build(data, counting())
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
@@ -553,7 +549,7 @@ def test_an_index_cut_by_a_chunking_this_version_lacks_is_refused(data: Path) ->
         connection.commit()
     refused = pytest.raises(
         UnavailableIndexError,
-        match=r"this version reads: rebuild it with `kb-mcp embed`$",
+        match=r"this version reads: rebuild it with `kb-mcp index`, then `kb-mcp embed`$",
     )
     with refused, reading(data / "index.sqlite"):
         pass

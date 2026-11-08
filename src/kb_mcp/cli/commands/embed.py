@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from functools import partial
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.commands import index as index_command
 from kb_mcp.cli.commands._embedding import indexing_of, open_endpoint, prefixes_said
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.search.app.indexing import refresh
@@ -77,16 +76,21 @@ def prune_text(pruned: Pruned | None, summary: Summary) -> str:
 
 
 def text(indexed: Indexed, summary: Summary) -> str:
-    """Write what ``index`` writes, then the pieces by meaning; then what the prune did.
+    """Write the documents and sections indexed, the pieces by meaning, then the prune.
 
-    Short gives their count and the texts embedded now, detailed the model with its
-    prefixes too.
+    Short gives their count and the texts embedded now, detailed the documents by type,
+    the index, and the model with its prefixes too.
     """
     report = indexed.report
-    written = index_command.text(indexed, summary)
     if summary == "short":
+        written = f"documents: {report.types.total()}\nsections: {report.sections}\n"
         written += f"pieces: {report.pieces}\nembedded now: {report.embedded}\n"
     else:
+        types = ", ".join(f"{name}: {count}" for name, count in sorted(report.types.items()))
+        written = (
+            f"indexed {report.types.total()} documents ({types or 'none'}),"
+            f" {report.sections} sections, into {indexed.index}\n"
+        )
         written += (
             f"{report.pieces} pieces by meaning, with {indexed.model}"
             f" ({prefixes_said(indexed.model)}); {report.embedded} embedded now,"

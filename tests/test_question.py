@@ -466,5 +466,6 @@ def test_on_a_pseudo_terminal_no_leaves_the_data_then_yes_builds_the_index(home:
     assert QUESTION.encode() in asked
     assert b"Nothing done." in asked
     assert (declined, nothing, unchanged) == (DECLINED, b"", ["docs"])
-    assert (built, counts) == (0, b"documents: 0\nsections: 0\n")
+    assert built == 0
+    assert counts.startswith(b"documents: 0\nsections: 0\n")
     assert "index.sqlite" in grown

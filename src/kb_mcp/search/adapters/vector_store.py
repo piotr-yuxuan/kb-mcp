@@ -205,8 +205,32 @@ def opened(path: Path) -> Iterator[VectorStore]:
 
 
 def lock_of(store: Path) -> Path:
-    """Name the lock of the store at ``store``, beside it."""
+    """Name the lock of the store at ``store``, beside it; an index's lock is named alike."""
     return store.with_name(f"{store.name}.lock")
+
+
+@contextmanager
+def locked(lock: Path, operation: int, event: str, holder: str) -> Iterator[None]:
+    """Hold a lock file by ``flock``'s ``operation``, shared or exclusive, waiting for it.
+
+    A run that finds it held says so once, ``event`` naming the lock, then waits, and
+    raises TimeoutError, naming the lock and its ``holder``, once WAIT_S seconds have
+    passed.
+    """
+    with lock.open("a") as file:
+        for attempt in itertools.count():
+            try:
+                fcntl.flock(file, operation | fcntl.LOCK_NB)
+            except BlockingIOError:
+                if attempt == 0:
+                    structlog.get_logger().info(event, lock=str(lock))
+                if attempt * POLL_S >= WAIT_S:
+                    message = f"{lock}: {holder} held it for {WAIT_S} s"
+                    raise TimeoutError(message) from None
+                time.sleep(POLL_S)
+            else:
+                break
+        yield
 
 
 @contextmanager
@@ -217,20 +241,7 @@ def shared(store: Path) -> Iterator[None]:
     ``vectors.lock_wait``, then waits, and raises TimeoutError, naming the lock, once
     WAIT_S seconds have passed.
     """
-    lock = lock_of(store)
-    with lock.open("a") as file:
-        for attempt in itertools.count():
-            try:
-                fcntl.flock(file, fcntl.LOCK_SH | fcntl.LOCK_NB)
-            except BlockingIOError:
-                if attempt == 0:
-                    structlog.get_logger().info("vectors.lock_wait", lock=str(lock))
-                if attempt * POLL_S >= WAIT_S:
-                    message = f"{lock}: a prune of the vector store held it for {WAIT_S} s"
-                    raise TimeoutError(message) from None
-                time.sleep(POLL_S)
-            else:
-                break
+    with locked(lock_of(store), fcntl.LOCK_SH, "vectors.lock_wait", "a prune of the vector store"):
         yield
 
 

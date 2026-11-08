@@ -121,7 +121,7 @@
         "h": 8
       },
       "type": "bargauge",
-      "title": "Files by outcome",
+      "title": "Documents by outcome, and files skipped",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

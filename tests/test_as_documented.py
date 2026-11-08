@@ -10,6 +10,7 @@ trace of its own.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -280,11 +281,13 @@ def by_meaning(data: Path, url: str) -> list[str]:
 
 
 def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None:
-    """By words alone, in the hybrid mode too: a file skipped; whole; then no mirror.
+    """By words alone, in the hybrid mode too: a file skipped, built whole; then updated.
 
     The mirror holds a page, one with a front matter refused, and the people of PERSONS,
     two of whose names could be several persons, with an alias whose key none holds. An
-    address off this machine, in the settings, is never asked.
+    address off this machine, in the settings, is never asked. The update waits for the
+    index's lock, then finds the index written by another run, and starts again; a run
+    with nothing changed writes nothing; then no mirror.
     """
     data = tmp_path / "data"
     fillers(data / "docs", 5)
@@ -297,7 +300,26 @@ def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> Non
     emitted = Emitted()
     with emitted.gathering(telemetry, "index"):
         assert main(["index", "--yes", *options]) == ExitStatus.FAILED
+    other = tmp_path / "other.sqlite"  # another run's index, of the mirror as it was
+    build_index(data / "docs", other, MOMENT)
     broken.unlink()
+    taken = threading.Event()
+
+    def write_briefly() -> None:
+        with (data / "index.sqlite.lock").open("a") as file:
+            fcntl.flock(file, fcntl.LOCK_EX)
+            taken.set()
+            deadline = time.monotonic() + 10
+            while "index.lock_wait" not in emitted.events and time.monotonic() < deadline:
+                time.sleep(0.01)
+            other.replace(data / "index.sqlite")
+
+    writing = threading.Thread(target=write_briefly)
+    writing.start()
+    assert taken.wait(10)
+    with emitted.gathering(telemetry, "index"):
+        assert main(["index", "--yes", *options]) == ExitStatus.OK
+    writing.join()
     with emitted.gathering(telemetry, "index"):
         assert main(["index", "--yes", *options]) == ExitStatus.OK
     empty = tmp_path / "empty"

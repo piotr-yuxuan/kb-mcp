@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import pty
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -20,9 +22,17 @@ import pytest
 from kb_mcp.cli.main import main
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.domain.mirror import Link, PersonRole
-from kb_mcp.search.adapters import sqlite_index
-from kb_mcp.search.adapters.sqlite_index import reading
-from kb_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
+from kb_mcp.search.adapters import sqlite_index, vector_store
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
+from kb_mcp.search.app import indexing as indexing_module
+from kb_mcp.search.app.indexing import (
+    CHANGED_MEANWHILE,
+    Embedding,
+    Indexing,
+    build_index,
+    index_mirror,
+    update_index,
+)
 from kb_mcp.search.domain.indexes import Put, UnavailableIndexError
 from kb_mcp.search.domain.people import (
     UNHELD,
@@ -62,7 +72,7 @@ from tests.test_people import (
 from tests.test_question import read_until
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
     from pathlib import Path
 
     from _pytest.capture import CaptureFixture
@@ -87,7 +97,10 @@ def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
 
 
 def index(
-    data: Path, capsys: CaptureFixture[str], settings: str = 'search_mode = "lexical"\n'
+    data: Path,
+    capsys: CaptureFixture[str],
+    settings: str = 'search_mode = "lexical"\n',
+    *options: str,
 ) -> tuple[int, str, str]:
     """Run ``index`` on the data directory, by words alone unless the settings say otherwise.
 
@@ -95,7 +108,7 @@ def index(
     """
     config = data.parent / "config.toml"
     config.write_text(settings, encoding="utf-8")
-    status = main(["index", "--yes", "--config", str(config), "--data-dir", str(data)])
+    status = main(["index", "--yes", "--config", str(config), "--data-dir", str(data), *options])
     out, err = capsys.readouterr()
     return status, out, err
 
@@ -127,12 +140,19 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
     )
 
 
+# What the first index of a mirror of one page says: none to update, so built whole.
+FIRST_SHORT = (
+    "documents: 1\nsections: 2\ncopied: 0\nadded: 1\nreplaced: 0\nremoved: 0\nskipped: 0\n"
+    "rebuilt whole: unavailable\n"
+)
+FIRST_DETAILED = (
+    "rebuilt {index} whole, there being none that this version reads:"
+    " 1 documents (page: 1), 2 sections\n"
+)
+
+
 @pytest.mark.parametrize(
-    ("summary", "shown"),
-    [
-        ("short", "documents: 1\nsections: 2\n"),
-        ("detailed", "indexed 1 documents (page: 1), 2 sections, into {index}\n"),
-    ],
+    ("summary", "shown"), [("short", FIRST_SHORT), ("detailed", FIRST_DETAILED)]
 )
 def test_by_words_alone_the_command_shows_documents_and_sections(
     data: Path, capsys: CaptureFixture[str], summary: str, shown: str
@@ -176,7 +196,7 @@ def test_embed_needs_the_endpoint_and_index_never_asks_it(
         assert main(["embed", *options]) == 1
         assert "run kb-mcp index for an index by words alone" in capsys.readouterr().err
         status, out, _ = index(data, capsys, f"embedding_url = {json.dumps(url)}\n")
-    assert (status, out) == (0, "documents: 1\nsections: 2\n")
+    assert (status, out) == (0, FIRST_SHORT)
 
 
 def test_line_endings_read_back_as_written(data: Path) -> None:
@@ -264,11 +284,16 @@ def test_a_failed_build_keeps_the_old_index(data: Path, monkeypatch: MonkeyPatch
 
 
 def test_a_build_leaves_no_temporary_file(data: Path, capsys: CaptureFixture[str]) -> None:
-    """Built twice, the data directory holds the mirror and one index, no journal."""
+    """Built, then updated, the data directory holds the mirror, one index and its lock.
+
+    No journal, no write-ahead log, no build file.
+    """
     write(data / "docs", page("196845", "Kafka"))
     assert index(data, capsys)[0] == 0
+    write(data / "docs", page("196846", "Another"))
     assert index(data, capsys)[0] == 0
-    assert sorted(path.name for path in data.iterdir()) == ["docs", "index.sqlite"]
+    names = ["docs", "index.sqlite", "index.sqlite.lock"]
+    assert sorted(path.name for path in data.iterdir()) == names
 
 
 def test_no_mirror_is_a_failure(data: Path, capsys: CaptureFixture[str]) -> None:
@@ -298,6 +323,7 @@ def test_a_database_error_is_a_failure_and_keeps_the_old_index(
     write(data / "docs", page("196845", "Kafka"))
     assert index(data, capsys)[0] == 0
     before = (data / "index.sqlite").read_bytes()
+    write(data / "docs", page("196846", "Another"))
 
     def full(*_: object) -> None:
         message = "database or disk is full"
@@ -859,7 +885,7 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     """An index of plan 006, or built before the build id, people, links or persons.
 
     The commands named write the mirror's files before the index, as 041 changed them:
-    ``prepare``, then ``index`` or ``embed``.
+    ``prepare``, then ``index``, then ``embed``.
     """
     write(data / "docs", page("196845", "Kafka"), BODY)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
@@ -871,7 +897,7 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
         UnavailableIndexError,
         match=(
             "rebuild it with `kb-mcp prepare`, which writes the mirror again first,"
-            " then `kb-mcp index` or `kb-mcp embed`"
+            " then `kb-mcp index`, then `kb-mcp embed`"
         ),
     )
     with refused, reading(data / "index.sqlite"):
@@ -903,11 +929,11 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
 
     Piped, stderr has no bar, and the log file holds the events progress; on a terminal,
     the files' bar shows them all done, with the time elapsed and the time left; with
-    -q, the terminal is sent no bar.
+    -q, the terminal is sent no bar. Each run reads every file, rebuilding whole.
     """
     fillers(data / "docs")
     piped = subprocess.run(
-        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--format", "json"],
+        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--rebuild", "--format", "json"],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         env=child_environment(data),
@@ -921,7 +947,7 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     assert (last["task"], last["done"], last["total"]) == ("files", FILLERS, FILLERS)
     controller, terminal = pty.openpty()
     with subprocess.Popen(
-        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--format", "json"],
+        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--rebuild", "--format", "json"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=terminal,
@@ -936,7 +962,7 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     assert re.search(rf"files [━╸╺ ]+ {FILLERS}/{FILLERS} {clock} {clock} ", shown)
     controller, terminal = pty.openpty()
     with subprocess.Popen(
-        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--format", "json", "-q"],
+        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--rebuild", "--format", "json", "-q"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=terminal,
@@ -964,6 +990,7 @@ def test_an_index_that_cannot_be_written_exits_1_and_keeps_the_one_in_place(
     write(data / "docs", page("196845", "Kafka"), BODY)
     assert index(data, capsys)[0] == 0
     before = (data / "index.sqlite").read_bytes()
+    write(data / "docs", page("196846", "Another"), BODY)
     monkeypatch.setattr(sqlite_index.Writer, "add", full)
     status, _, err = index(data, capsys)
     assert status == 1
@@ -1398,3 +1425,379 @@ def test_what_a_whole_build_joins_of_a_small_mirror_is_pinned_under_words(data: 
     assert report.persons.ambiguous == (
         Ambiguity(name="Jo Two", persons=frozenset({JO_2, JO_3})),
     ), WORDS_CHANGED
+
+
+LEXICAL = 'search_mode = "lexical"\n'
+PAGES = 3  # the fillers of a test's mirror, Kafka's page aside
+KAFKA = page("196845", "Kafka", labels=("streaming",))
+KAFKA_PATH = location(KAFKA)
+
+
+def embedded(data: Path) -> None:
+    """Write a mirror of a few pages and Kafka's, and build its index whole, by meaning."""
+    fillers(data / "docs", PAGES)
+    write(data / "docs", KAFKA, BODY)
+    build_index(data / "docs", data / "index.sqlite", MOMENT, Embedding(tiny(), data / "v.db"))
+
+
+def snapshot(index: Path) -> tuple[bytes, int, str]:
+    """Give an index's bytes, its time and its build: what a run that writes nothing keeps."""
+    with reading(index) as reader:
+        return index.read_bytes(), index.stat().st_mtime_ns, reader.build()
+
+
+# Each row of every document but one, with its rowids: what an update copies as it was.
+KEPT_ROWS = (
+    "SELECT * FROM documents WHERE path <> :path ORDER BY rowid",
+    """
+    SELECT l.* FROM labels l JOIN documents d ON d.rowid = l.document
+    WHERE d.path <> :path ORDER BY l.document, l.label
+    """,
+    """
+    SELECT p.document, p.role, p.name, p.account, p.at FROM people p
+    JOIN documents d ON d.rowid = p.document WHERE d.path <> :path
+    ORDER BY p.document, p.role, p.name
+    """,
+    """
+    SELECT s.* FROM sections s JOIN documents d ON d.rowid = s.document
+    WHERE d.path <> :path ORDER BY s.rowid
+    """,
+    """
+    SELECT p.* FROM pieces p JOIN sections s ON s.rowid = p.section
+    JOIN documents d ON d.rowid = s.document WHERE d.path <> :path ORDER BY p.rowid
+    """,
+)
+# The rows of one document, by path.
+ITS_ROWS = (
+    "SELECT * FROM documents WHERE path = :path",
+    "SELECT l.* FROM labels l JOIN documents d ON d.rowid = l.document WHERE d.path = :path",
+    "SELECT p.* FROM people p JOIN documents d ON d.rowid = p.document WHERE d.path = :path",
+    "SELECT s.* FROM sections s JOIN documents d ON d.rowid = s.document WHERE d.path = :path",
+    """
+    SELECT p.* FROM pieces p JOIN sections s ON s.rowid = p.section
+    JOIN documents d ON d.rowid = s.document WHERE d.path = :path
+    """,
+)
+
+
+def rows_by(index: Path, queries: Iterable[str], path: str) -> list[list[tuple[object, ...]]]:
+    """Read the rows that each query gives of a path, as they are written."""
+    with closing(sqlite3.connect(index)) as connection:
+        return [connection.execute(query, {"path": path}).fetchall() for query in queries]
+
+
+def test_nothing_changed_writes_nothing_and_says_so(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 035, criterion 3: the index's bytes, time and build as they were, exit 0.
+
+    The summary still counts what the index holds; ``index.unchanged`` says it.
+    """
+    fillers(data / "docs", PAGES)
+    assert index(data, capsys)[0] == 0
+    before = snapshot(data / "index.sqlite")
+    status, out, _ = index(data, capsys)
+    assert status == 0
+    assert out == f"documents: {PAGES}\nsections: {2 * PAGES}\nnothing written\nskipped: 0\n"
+    assert snapshot(data / "index.sqlite") == before
+    (unchanged,) = logged_as(data.parent / "home", "index.unchanged")
+    assert unchanged["documents"] == PAGES
+    assert (unchanged["sections"], unchanged["skipped"]) == (2 * PAGES, 0)
+    assert len(logged_as(data.parent / "home", "index.built")) == 1
+
+
+def test_an_edited_file_is_replaced_and_every_other_document_keeps_its_rows(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Criterion 3: 1 replaced; every other document's rows, rowids and pieces as they were.
+
+    The edited document has no pieces, awaiting vectors, and its new words find it; the
+    index stays in SQLite's rollback journal.
+    """
+    embedded(data)
+    kept = rows_by(data / "index.sqlite", KEPT_ROWS, KAFKA_PATH)
+    assert kept[0]
+    assert kept[-1]
+    write(data / "docs", KAFKA, BODY.replace("Seven days.", "Fourteen days."))
+    status, out, _ = index(data, capsys)
+    assert status == 0
+    assert f"copied: {PAGES}\nadded: 0\nreplaced: 1\nremoved: 0\nskipped: 0\n" in out
+    assert out.endswith("awaiting vectors: 1\n")
+    assert rows_by(data / "index.sqlite", KEPT_ROWS, KAFKA_PATH) == kept
+    assert rows_by(data / "index.sqlite", ITS_ROWS, KAFKA_PATH)[4] == []
+    assert rows_of(data / "index.sqlite", "PRAGMA journal_mode") == [("delete",)]
+    with reading(data / "index.sqlite") as reader:
+        assert list(reader.scores('"fourteen"', Filters())[0]) == [KAFKA_PATH]
+        assert reader.scores('"seven"', Filters())[0] == {}
+
+
+def test_a_removed_file_leaves_no_row_and_full_text_search_whole(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Criterion 4: its document, labels, people, sections and pieces gone; FTS5 checks out.
+
+    A word that it alone held finds nothing, and its label is no value any more.
+    """
+    embedded(data)
+    assert all(rows_by(data / "index.sqlite", ITS_ROWS, KAFKA_PATH))
+    (data / "docs" / KAFKA_PATH).unlink()
+    status, out, _ = index(data, capsys)
+    assert status == 0
+    assert f"copied: {PAGES}\nadded: 0\nreplaced: 0\nremoved: 1\n" in out
+    assert rows_by(data / "index.sqlite", ITS_ROWS, KAFKA_PATH) == [[]] * len(ITS_ROWS)
+    orphans = "SELECT count(*) FROM pieces WHERE section NOT IN (SELECT rowid FROM sections)"
+    assert rows_of(data / "index.sqlite", orphans) == [(0,)]
+    checked = data.parent / "checked.sqlite"
+    checked.write_bytes((data / "index.sqlite").read_bytes())
+    with closing(sqlite3.connect(checked)) as connection:
+        connection.execute("INSERT INTO chunks (chunks, rank) VALUES ('integrity-check', 1)")
+    with reading(data / "index.sqlite") as reader:
+        assert reader.scores('"retention"', Filters()) == ({}, True)
+        assert ("streaming", 1) not in reader.values("label")
+
+
+def made_before_digests(path: Path) -> None:
+    """Make an index as one of schema 6 was before plan 035: no digest, skipped or words."""
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute("DELETE FROM meta WHERE name IN ('words', 'aliases')")
+        connection.execute("ALTER TABLE documents DROP COLUMN digest")
+        connection.execute("DROP TABLE skipped")
+        connection.commit()
+
+
+def another_schema(path: Path) -> None:
+    """Make an index of the schema before persons."""
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute("UPDATE meta SET value = '5' WHERE name = 'schema'")
+        connection.commit()
+
+
+def unknown_chunking(path: Path) -> None:
+    """Make an index cut by a chunking that this version lacks."""
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute("UPDATE meta SET value = 'paragraphs' WHERE name = 'chunking'")
+        connection.commit()
+
+
+@pytest.mark.parametrize(
+    ("made", "options", "reason"),
+    [
+        (made_before_digests, (), "another version"),
+        (another_schema, (), "unavailable"),
+        (unknown_chunking, (), "unavailable"),
+        (None, ("--rebuild",), "--rebuild"),
+    ],
+)
+def test_an_index_that_cannot_be_updated_is_rebuilt_whole_saying_why(
+    data: Path,
+    capsys: CaptureFixture[str],
+    made: Callable[[Path], None] | None,
+    options: tuple[str, ...],
+    reason: str,
+) -> None:
+    """Criterion 7: without digests, at another schema, cut otherwise, or --rebuild: whole.
+
+    ``index.whole`` says why, the summary too; nothing is copied; exit 0; the index then
+    holds every document with its digest, under this code's ``WORDS``, and no pieces.
+    """
+    embedded(data)
+    if made is not None:
+        made(data / "index.sqlite")
+    status, out, _ = index(data, capsys, LEXICAL, *options)
+    assert status == 0
+    assert f"copied: 0\nadded: {PAGES + 1}\nreplaced: 0\nremoved: 0\n" in out
+    assert f"rebuilt whole: {reason}\n" in out
+    (whole,) = logged_as(data.parent / "home", "index.whole")
+    assert whole["reason"] == reason
+    with reading(data / "index.sqlite") as reader:
+        held = reader.held()
+        assert (held.words, len(held.documents), reader.embedded()) == (WORDS, PAGES + 1, None)
+
+
+def test_an_index_of_another_words_is_rebuilt_whole(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """Criterion 7: the constant changed by the test, the index read as another version's."""
+    fillers(data / "docs", PAGES)
+    assert index(data, capsys)[0] == 0
+    monkeypatch.setattr(indexing_module, "WORDS", "another")
+    status, out, _ = index(data, capsys)
+    assert status == 0
+    assert "rebuilt whole: another version\n" in out
+
+
+def damage(index: Path, table: str) -> None:
+    """Overwrite the root page of a table of the index, which ``reading`` alone passes."""
+    with closing(sqlite3.connect(index)) as connection:
+        root = connection.execute("SELECT rootpage FROM sqlite_master WHERE name = ?", (table,))
+        page_number = root.fetchone()[0]
+        size = connection.execute("PRAGMA page_size").fetchone()[0]
+    with index.open("r+b") as file:
+        file.seek((page_number - 1) * size)
+        file.write(b"\xff" * size)
+
+
+@pytest.mark.parametrize(
+    ("table", "changed"), [("documents", False), ("sections", True), ("labels", True)]
+)
+def test_a_damaged_index_is_rebuilt_whole(
+    data: Path, capsys: CaptureFixture[str], table: str, *, changed: bool
+) -> None:
+    """Criterion 7: a table's root page overwritten: ``index.whole``, reason damaged, exit 0.
+
+    That of documents, read whether anything changed; of sections, read for the summary;
+    of labels, which the copy alone reads, once a file changed.
+    """
+    fillers(data / "docs", PAGES)
+    write(data / "docs", KAFKA, BODY)
+    assert index(data, capsys)[0] == 0
+    damage(data / "index.sqlite", table)
+    if changed:
+        write(data / "docs", KAFKA, BODY + "\nEdited.\n")
+    status, out, err = index(data, capsys)
+    assert status == 0
+    assert "Traceback" not in err
+    assert "rebuilt whole: damaged\n" in out
+    with reading(data / "index.sqlite") as reader:
+        assert len(reader.listing(Filters())) == PAGES + 1
+        assert reader.values("label") == [("streaming", 1)]
+
+
+def test_an_index_written_meanwhile_starts_the_update_again_once(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """Criterion 8: another build renamed in between the read and the write; then twice.
+
+    The other run builds the mirror as it was. Once, ``index.restarted`` says so, and the
+    update reads the new build and writes; twice, it stops, ``index.not_built`` naming
+    the other run, exit 1.
+    """
+    fillers(data / "docs", PAGES)
+    assert index(data, capsys)[0] == 0
+    before = data.parent / "before"
+    shutil.copytree(data / "docs", before)
+    update = SqliteIndex.update
+    builds: list[str | None] = []
+    meanwhile_at = {1}
+
+    def meanwhile(self: SqliteIndex, change: object, expected: str | None) -> object:
+        builds.append(expected)
+        if len(builds) in meanwhile_at:
+            build_index(before, data / "index.sqlite", MOMENT)
+        return update(self, change, expected)
+
+    monkeypatch.setattr(SqliteIndex, "update", meanwhile)
+    write(data / "docs", KAFKA, BODY)
+    status, out, _ = index(data, capsys)
+    assert status == 0
+    assert "added: 1\n" in out
+    assert len(builds) == len(set(builds)) == len(meanwhile_at) + 1
+    assert len(logged_as(data.parent / "home", "index.restarted")) == 1
+    builds.clear()
+    meanwhile_at.add(2)
+    write(data / "docs", KAFKA, BODY + "\nEdited.\n")
+    status, _, err = index(data, capsys)
+    assert status == 1
+    assert ("error", "index.not_built") in said(err)
+    assert CHANGED_MEANWHILE in err
+    assert len(builds) == len(set(builds)) == len(meanwhile_at)
+
+
+def test_a_lock_held_too_long_fails_naming_it(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """Criterion 8: a wait past WAIT_S, shortened here, said first: exit 1, the index in place."""
+    monkeypatch.setattr(vector_store, "WAIT_S", 0.3)
+    fillers(data / "docs", PAGES)
+    assert index(data, capsys)[0] == 0
+    before = (data / "index.sqlite").read_bytes()
+    write(data / "docs", KAFKA, BODY)
+    lock = data / "index.sqlite.lock"
+    with lock.open("a") as file:
+        fcntl.flock(file, fcntl.LOCK_EX)
+        status, _, err = index(data, capsys)
+    assert status == 1
+    assert ("error", "index.not_built") in said(err)
+    assert f"{lock}: another kb-mcp index or kb-mcp embed held it" in err
+    (waited,) = logged_as(data.parent / "home", "index.lock_wait")
+    assert waited["lock"] == str(lock)
+    assert (data / "index.sqlite").read_bytes() == before
+    assert index(data, capsys)[0] == 0
+
+
+def test_an_update_that_fails_before_its_rename_leaves_the_index_as_it_was(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """Criterion 9: its bytes as they were, no build file left, and the lock free."""
+    fillers(data / "docs", PAGES)
+    assert index(data, capsys)[0] == 0
+    before = (data / "index.sqlite").read_bytes()
+    write(data / "docs", KAFKA, BODY)
+
+    def fail(*_: object) -> None:
+        raise RuntimeError
+
+    indexing = Indexing(
+        docs=data / "docs",
+        index=data / "index.sqlite",
+        vectors=data / "vectors.sqlite",
+        evaluation_indexes=data / "eval" / "indexes",
+        aliases=data / "aliases.toml",
+        model="tiny",
+        chunking="sections",
+        endpoint=None,
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(sqlite_index.Writer, "join", fail)
+        with pytest.raises(RuntimeError):
+            update_index(indexing, MOMENT)
+    assert (data / "index.sqlite").read_bytes() == before
+    names = ["docs", "index.sqlite", "index.sqlite.lock"]
+    assert sorted(path.name for path in data.iterdir()) == names
+    assert index(data, capsys)[0] == 0
+
+
+def test_an_update_killed_leaves_the_index_as_it_was_and_its_lock_free(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Criterion 9: killed by SIGKILL in its join, its build file ignored by readers and prune.
+
+    No write-ahead log is beside the index; the next run takes the lock and updates.
+    """
+    fillers(data / "docs", PAGES)
+    assert index(data, capsys)[0] == 0
+    before = (data / "index.sqlite").read_bytes()
+    write(data / "docs", KAFKA, BODY)
+    with subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys, time\n"
+                "from kb_mcp.cli.main import main\n"
+                "from kb_mcp.search.adapters import sqlite_index\n"
+                "def join(self, aliases):\n"
+                "    print('joining', flush=True)\n"
+                "    time.sleep(60)\n"
+                "sqlite_index.Writer.join = join\n"
+                "sys.exit(main(['index', '--yes']))\n"
+            ),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
+        env=child_environment(data),
+        cwd=data.parent,
+    ) as child:
+        assert child.stdout is not None
+        assert child.stdout.readline() == "joining\n"
+        child.kill()
+        child.wait(30)
+    assert (data / "index.sqlite").read_bytes() == before
+    assert list(data.glob(f"{sqlite_index.BUILDING}*.sqlite"))
+    assert sqlite_index.indexes_in(data) == [data / "index.sqlite"]
+    assert not (data / "index.sqlite-wal").exists()
+    with reading(data / "index.sqlite") as reader:
+        assert len(reader.listing(Filters())) == PAGES
+    status, out, _ = index(data, capsys)
+    assert (status, "added: 1\n" in out) == (0, True)
