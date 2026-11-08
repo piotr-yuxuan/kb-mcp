@@ -154,8 +154,9 @@ MB against 38 MB. What it costs:
   018's run. The user's machine's GPU is not measured yet; [reproducing
   it](search-evaluation.md#reproducing-it) says how.
 - **A model by default.** `embed` needs the embedding endpoint, Ollama by default, and so
-  does the MCP server unless `search_mode = "lexical"`: without it, `embed` stops and
-  names `kb-mcp index`, and the server answers by words, saying why.
+  does the MCP server unless `search_mode = "lexical"`: without it, `embed` stops, the
+  index that `kb-mcp index` wrote staying as it is, and the server answers by words,
+  saying why.
 - **Evidence.** In hybrid mode, `ask`'s passages held the evidence barely more often
   than by `sections` (0.357 against 0.333, not significant).
 - **Documents found.** `ask`'s passages held fewer of the expected documents: Found@ask
@@ -176,9 +177,11 @@ To go back to either rule's choice: `chunking = "sections"`, then `embed`; or
 
 ## When pages change
 
-`embed` rebuilds the whole index from the mirror each time, but embeds only the texts
-that `<data>/vectors.sqlite` lacks: vectors are kept by model and text, never by page.
-So what a change costs is the number of texts it makes new, and that depends on the
+`index` reads into the index only the files whose bytes changed, their documents without
+pieces; `embed` then cuts the index's documents again, adds the pieces that the index
+lacks and removes those that no section wants. It embeds only the texts that
+`<data>/vectors.sqlite` lacks: vectors are kept by model and text, never by page. So
+what a change costs is the number of texts it makes new, and that depends on the
 chunking:
 
 - **A cut that shifts re-embeds more than what changed.** `sections`, `section-paths`
@@ -194,7 +197,9 @@ chunking:
 - **A text that two chunkings share is embedded once**, and what an evaluation embeds
   for the chunkings not in use stays in `vectors.sqlite` while its index under
   `<data>/eval/indexes/` exists, which each prune keeps (plan 023): deleting the store
-  costs a full embedding of the chunking in use by the model, and downloads nothing.
+  costs nothing at the next `embed`, whose index holds each piece's vector, but a full
+  embedding of the chunking in use by the model once a whole rebuild of the index has
+  dropped its pieces, and of each evaluation's at its next `eval`; it downloads nothing.
 
 Counted on the sandbox's mirror, offline, with the tests' scripted model (the counts
 depend on the cuts alone, not on the model), after editing one page of 17 sections,
@@ -207,8 +212,10 @@ depend on the cuts alone, not on the model), after editing one page of 17 sectio
 | `section-paths` | 6,729 | 1 | 2 |
 | `small-to-big` | 9,149 | 2 | 4 |
 
-A vector stays in the store when its text leaves the mirror, and is read by nothing; an
-index never holds a vector whose text the mirror no longer has, since it is rebuilt.
+A vector stays in the store when its text leaves the mirror, read by nothing until the
+prune after the next `embed` deletes it. Once `index` has run, the index holds no vector
+whose text the mirror no longer has, as a document changed or gone loses its pieces;
+until then, an edited page keeps its old text in the index, pieces included.
 
 ## Not compared
 

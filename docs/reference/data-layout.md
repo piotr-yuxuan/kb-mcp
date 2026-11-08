@@ -22,10 +22,11 @@ no location and is not for commands.
 | Path | `Settings` | Written by | Read by |
 |---|---|---|---|
 | `<data>/raw/` | `raw` | `fetch` (004) | `prepare` (005) |
-| `<data>/docs/` | `docs` | `prepare` (005) | agents, and `index` (006), `embed` (031) |
+| `<data>/docs/` | `docs` | `prepare` (005) | agents, and `index` (006); `embed`, for the files' digests alone (035) |
 | `<data>/conversions.sqlite` | `conversions` | `prepare` (039) | `prepare` (039) |
-| `<data>/index.sqlite` | `index` | `index` (006), `embed` (031) | the MCP server (006), `embed`'s prune (023) |
-| `<data>/aliases.toml` | `aliases` | the user (043) | `index`, `embed` (043), [below](#the-alias-file) |
+| `<data>/index.sqlite` | `index` | `index` (006), `embed` (031) | the MCP server (006), `embed`'s prune (023), `index` and `embed`, which update it (035) |
+| `<data>/index.sqlite.lock` | `index`, by `vector_store.lock_of` | `index`, `embed` (035) | `index`, `embed` (035), [below](#updates) |
+| `<data>/aliases.toml` | `aliases` | the user (043) | `index` (043), [below](#the-alias-file) |
 | `<data>/vectors.sqlite` | `vectors` | `embed`, `eval`, `eval-rerank` (011) | `embed`, `eval`, `eval-rerank` (011) |
 | `<data>/vectors.sqlite.lock` | `vectors`, by `vector_store.lock_of` | `embed`, `eval`, `eval-rerank` (023) | `embed`, `eval`, `eval-rerank` (023) |
 | `<data>/eval/` | `evaluations` | the user, `eval`, `eval-rerank` (011) | `eval`, `eval-rerank` (011); its indexes, `embed` (023) |
@@ -437,7 +438,7 @@ although hashing a known account id gives its person's id. Deleting `<data>/docs
 `<data>/index.sqlite` removes the people from all that agents and the server read,
 until the next `prepare` and `index` write them again from the raw store.
 Persons live in the index alone: deleting `<data>/index.sqlite` removes them, until the
-next `index` or `embed` joins them again; `<data>/aliases.toml` stays until the user
+next `index` joins them again; `<data>/aliases.toml` stays until the user
 deletes it. Deleting every copy is deleting the data directory, the log folder and the
 folders of `eval-agents`, after which the mirror is downloaded again, as from a first
 run.
@@ -668,10 +669,12 @@ choosing ([the how-to](../how-to/other-search-engines.md)). What it may rely on 
 
 ## The index
 
-Owned by `index` (006), which builds it by words alone, and `embed` (031), with vectors.
-`<data>/index.sqlite` is built from the documents of `<data>/docs/` alone, the work
-log's among them, read with `mirror.adapters.markdown`, into a temporary file that
-is then renamed into place. Its schema is defined in 006's plan; schema 3 (011) adds the
+Owned by `index` (006), which writes the documents and their words, and `embed` (031),
+which writes the pieces' vectors; since plan 035 each writes only what changed
+([below](#updates)). `<data>/index.sqlite` holds the documents of `<data>/docs/` alone,
+the work log's among them, read with `mirror.adapters.markdown`, and each write goes
+into a temporary file beside it that is then renamed into place. Its schema is defined
+in 006's plan; schema 3 (011) adds the
 table `pieces` (each piece of a section's body, its span and its vector) and the meta
 rows `build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the
 last three empty for an index built without a model. Plan 019 adds the meta row
@@ -693,17 +696,89 @@ links as JSON, as `labels` is, so that a row still gives its front matter back w
 participant is a row of the table `people`, without account or time. No piece's text
 holds the links either. Schema 6 (043) joins the people into persons
 ([below](#persons)): the column `person` of `people`, and the tables `persons` and
-`person_names`; no piece's text holds a person. An index of another schema is refused,
-naming `prepare`, then `index` or `embed`, which write the
-mirror again before they rebuild the index, as a new schema can come with a new format
-of the files; one cut by a chunking that this version lacks, naming `embed`. The MCP
-server opens it read-only, never writes, and reopens it when the file is replaced; it
-searches by meaning with the model that the index names, and only while the endpoint's
-fingerprint for it is the index's.
+`person_names`; no piece's text holds a person. Plan 035 adds, at the same schema, as
+023 did: the column `digest` of `documents`, the SHA-256 of its file's bytes; the table
+`skipped`, each file of the mirror that the index could not take, by its `path`, with
+its `digest`, null for a file that could not be read, and its `reason`, which holds no
+content; and the meta rows `words`, the `search.domain.search.WORDS` of the code that
+cut the sections, and `aliases`, the digest of what the alias file meant
+(`search.domain.people.aliases_digest`). The server's readers ignore them; an index
+built before them is served, rebuilt whole by the next `index`, and refused by `embed`
+until then. An index of another schema is refused, naming `prepare`, then `index`, then
+`embed`: `prepare` writes the mirror again before `index` rebuilds the index, as a new
+schema can come with a new format of the files; one cut by a chunking that this version
+lacks, naming `index`, then `embed`. The MCP server opens it read-only, never writes,
+and reopens it when the file is replaced; it searches by meaning with the model that the
+index names, and only while the endpoint's fingerprint for it is the index's.
+
+### Updates
+
+`index` (`search.app.indexing.update_index`) reads the alias file first, then digests
+every file of the mirror, the SHA-256 of its bytes, and compares them with what the
+index holds (`search.adapters.sqlite_index.Reader.held`): each document's path and
+digest, each file skipped, and the meta rows `words`, `aliases` and `build`. With no
+file added, changed or gone, and the same alias file, it writes nothing,
+`index.unchanged`, and the index keeps its bytes and its `build`. Else it reads the
+files added or changed, and each file skipped again, as what kept it out may be gone,
+before it takes any lock; then it writes a new file beside the index, named by
+`sqlite_index.BUILDING` (`.index-*.sqlite`), which readers and the prune skip
+(`search.adapters.sqlite_index.Writer.update`):
+
+1. the index in place attached read-only, and every document copied whose file did not
+   change, with its labels, people, sections and pieces, their rowids kept, so that each
+   piece still names its section; each row of `people` without its person;
+2. the documents read added, their sections numbered after the largest copied, so that
+   a document's sections stay consecutive; those gone left out;
+3. FTS5's index rebuilt from the sections (`rebuild`, then `optimize`);
+4. persons joined again over every document ([below](#persons));
+5. the meta rows written, the model's copied, with a new `build` and `built_at`; the
+   file committed, then renamed into place.
+
+Of two files of one source and id, the first by the parts of its path, as `Path` sorts
+them, not by its text, is held, and the other skipped, whichever of them came first.
+Each file skipped is said at each run, whether it writes or not, and the run exits 1. A
+whole rebuild copies nothing and reads every file: with no index that this version
+reads, one without `words` or of another `words`, one damaged (a table of it that SQLite
+finds corrupt, in the update's read or its copy), or on `index --rebuild`, `index.whole`
+naming which. Its index has no pieces and no model's rows: the next `embed` takes their
+vectors back from the vector store.
+
+`embed` (`search.app.indexing.refresh`) reads the index in one use: what it holds of the
+mirror, the model it names, each document's front matter and body, and its pieces by
+path, section number, span and key. It reads no file of the mirror but to digest it,
+compares those digests with the index's, and when they differ warns,
+`embed.mirror_changed`, naming `kb-mcp index`, then goes on as it would have; it never
+reads the alias file. It stops, `index.not_built`, exit 1, before it opens the endpoint:
+with no index, naming `kb-mcp index`, or one at another schema, naming `prepare` first;
+with one without `words` or of another `words`, "run kb-mcp index first", as its pieces
+would land on other sections; with one damaged, naming `kb-mcp index --rebuild`. It cuts
+each document's body again by this code's sections and the run's chunking, keys each
+piece by the model's fingerprint, adds the pieces wanted that the index does not hold,
+their vectors from the vector store, else from the model, and removes those it holds
+that none wants: a chunking or a model changed needs no rule of its own, a piece of
+another span or key being replaced and an identical one kept. Nothing to add or remove,
+and the same model: nothing is written, `embed.unchanged`. Else a copy of the index, by
+SQLite's backup, beside it, takes the pieces removed and added, each naming its section
+by path and number, the model's meta rows and a new `build`, its `built_at` kept, and is
+renamed into place (`search.adapters.sqlite_index.SqliteIndex.fill`). Between `index`
+and `embed`, a document added or changed has no pieces: search finds it by its words,
+not by its meaning, and `index` counts the documents awaiting vectors.
+
+`<data>/index.sqlite.lock`, beside the index (`vector_store.lock_of`), is the writers'
+lock: `index` and `embed` take it exclusive by `flock` from their check that the index
+is still the build they read until the rename, never while they read files or ask the
+model. A run that finds it held says so, `index.lock_wait`, and gives up after a minute
+(`vector_store.WAIT_S`), naming the lock; one that finds the index written by another
+meanwhile starts again once, `index.restarted`, then stops. The file is never removed,
+and `flock` releases it at a process's end, a kill included. The index stays in SQLite's
+rollback journal, never in WAL mode, whose `-wal` file a rename would pair with the new
+index. A build file that a kill leaves, `.index-*.sqlite`, is ignored, and never
+removed.
 
 ### Persons
 
-Once every file is read, each build joins the rows of `people` into persons (043,
+Once the files are read, each write of `index` joins the rows of `people` of every
+document, copied or read, into persons (043,
 `search.adapters.sqlite_index.Writer.join`), by the first of these rules that answers
 (`search.domain.people.joined`, rules 2 to 4 its `RULES`):
 
@@ -748,7 +823,8 @@ agent kept, names fewer documents, as the build warns of that name. A person is 
 by a name: an account's, the name on its most recently updated document; a person by
 name alone's, the target of the first alias that made it, when that is a name, else
 its most frequent spelling; ties go to the first row in the join's order, by document,
-role, name and account, the rows of transcripts that link meetings last, so that their
+in the order of their paths' text whichever file was written last, then role, name and
+account, the rows of transcripts that link meetings last, so that their
 meetings' persons are known. The join reads the links of transcripts to meetings
 alone, and refuses a document that links to meetings and is a transcript's meeting
 itself, as a programming error.
@@ -761,16 +837,18 @@ itself, as a programming error.
 
 The filters by person read them (`mcp.app.tools.who`): a value is a person's id, or a
 name whose key one person holds in the filter's role, and `KEPT` keeps that person's
-rows of `people` ([the tools](mcp-tools.md#search)). The join is whole at each build:
-one account fetched late can make a work-log name ambiguous, so no person is patched
-document by document.
+rows of `people` ([the tools](mcp-tools.md#search)). The join is whole at each write of
+`index`, a copied document's rows joined again with the others: one account fetched late
+can make a work-log name ambiguous, so no person is patched document by document.
+`embed` joins nothing.
 
 ### The alias file
 
 `<data>/aliases.toml` (`Settings.aliases`) is the user's: the program never writes it.
-`index` and `embed` read it at the start of each build, before the endpoint is asked
-(`search.adapters.aliases.read_aliases`, through `search.app.indexing.update_index`);
-`serve` never does, and `eval` builds its indexes without aliases. Each line is a name
+`index` alone reads it, at the start of each run, before the mirror
+(`search.adapters.aliases.read_aliases`, through `search.app.indexing.update_index`),
+and the index records the digest of what it means, its meta row `aliases`; `embed` and
+`serve` never do, and `eval` builds its indexes without aliases. Each line is a name
 as some source writes it, then the person it means, by a name or by a person's id, both
 TOML strings:
 
@@ -797,7 +875,9 @@ TOML strings:
 - An alias whose key no name without an account holds, or whose target names nobody
   or several persons, changes nothing, and the build warns of it, as
   `index.alias_unused`. Neither warning changes the exit status.
-- A change takes effect at the next `index` or `embed`, which embeds nothing new.
+- A change takes effect at the next `index`, which writes a new build for it alone,
+  every document copied with its pieces and joined again; the next `embed` has nothing
+  to write.
 
 ### Models and vectors
 
@@ -812,37 +892,43 @@ the reranking server answers is stored. A model's fingerprint is the
 SHA-256 of its name, the digest that Ollama lists for it (`/api/tags`, empty from a
 server that lists none), its dimensions, its query and document prefixes, and the
 adapter's format version. `<data>/vectors.sqlite` keeps the vectors embedded, keyed
-by the SHA-256 of that fingerprint and the text, committed in batches; deleting it
-costs a full embedding of the mirror by the model, and downloads nothing. A text that the endpoint refuses has no vector there, and is
-asked again at the next build.
+by the SHA-256 of that fingerprint and the text, committed in batches; deleting it costs
+no embedding at the next `embed` while the index holds its pieces, each with its vector,
+but a full embedding of the mirror by the model once a whole rebuild of the index has
+dropped them, and of each evaluation's pieces at its next `eval`; it downloads nothing.
+A text that the endpoint refuses has no vector there, and is asked again at the next
+`embed`.
 
-After each `embed`, the store is pruned (plan
-023) to the vectors that `<data>/index.sqlite` and the indexes under
-`<data>/eval/indexes/` read, by the keys their pieces record: the files are the truth,
-so that deleting an evaluation's index lets the next prune drop its vectors, and
-`eval --model M` keeps a model's. A vector that no index on disk reads is deleted: an
-edited piece's old text, a deleted document's, a model replaced, a build interrupted
-before its index was renamed in. The prune is held back, deleting nothing, when the
-build skipped a file or indexed no document; when an index there cannot say which
-vectors it reads (built by words alone, before plan 023 or at another schema, damaged,
-or not an index):
+After each `embed`, the store is pruned (plan 023) to the vectors that
+`<data>/index.sqlite` and the indexes under `<data>/eval/indexes/` read, by the keys
+their pieces record, and to those of the index that the `embed` wrote, should an `index`
+have renamed another in place meanwhile: the files are the truth, so that deleting an
+evaluation's index lets the next prune drop its vectors, and `eval --model M` keeps a
+model's. A vector that no index on disk reads is deleted: an edited piece's old text, a
+deleted document's, a model replaced, a build interrupted before its index was renamed
+in. The prune is held back, deleting nothing, when the index lacks a file of the mirror
+or holds no document; when an index there cannot say which vectors it reads (built by
+words alone, before plan 023 or at another schema, damaged, or not an index):
 `eval` rebuilds those of the models and chunkings it is given, else delete them; and
 when a folder there cannot be reached or listed, an entry below `<data>/eval/indexes/`
 is a link, which is not followed, or `<data>/eval` is a dangling link, as to a disk
-away: make it readable, or put what the link points to in its place. A build holds
-`<data>/vectors.sqlite.lock` shared by `flock` until its index is in place, and a prune
-takes it exclusive or is deferred to the next `embed`. A store made from plan 023 on
+away: make it readable, or put what the link points to in its place. `embed`, from its
+read of the vectors, and each build of `eval` hold `<data>/vectors.sqlite.lock` shared
+by `flock` until their index is in place, and a prune takes it exclusive or is deferred
+to the next `embed`. A store made from plan 023 on
 gives the pages freed back to the file system (`auto_vacuum = INCREMENTAL`). One made
 before is converted at its first prune, once the vectors that no index reads are
 deleted: the mode set, then one `VACUUM`, which rewrites the vectors kept while the
 prune holds the lock, and needs about their size free in SQLite's temporary folder
 (`SQLITE_TMPDIR`, else `TMPDIR`, else `/var/tmp`) and as much again beside the store,
 for its WAL. The result says so; a conversion that fails, for want of space, says why,
-leaves the deletions, and the next prune tries again. A later
-index that reads the store builds through `search.app.indexing.build_index`, and so its
-lock, and adds its files to what the prune follows. Under `<data>/eval/`,
-`indexes/<chunking>/<model>.sqlite` (each `/` and `:` of the name written `_`) are the
-indexes that `eval` builds, one per model and chunking, and `results/<UTC time>.json`
+leaves the deletions, and the next prune tries again. An evaluation's index builds whole
+through `search.app.indexing.build_index`, every file read, with no writers' lock, as
+each of those files has one writer; a later index that reads the store does so too, and
+so takes the store's lock, and adds its files to what the prune follows. Under
+`<data>/eval/`, `indexes/<chunking>/<model>.sqlite` (each `/` and `:` of the name
+written `_`) are the indexes that `eval` builds, one per model and chunking, and
+`results/<UTC time>.json`
 its numbers: the golden file's SHA-256, models, chunkings, measures of `search` and of
 `ask`, costs, ranks and tests, by question id, never a question's text, and for each
 model the chunking that plan 019's rule chooses. `results/<UTC time>-rerank.json` are

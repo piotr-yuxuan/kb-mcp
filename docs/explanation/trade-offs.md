@@ -288,9 +288,9 @@ that what read the two keys, a hit's line among them
 - **Cost.** One rewrite: every file of the mirror is written again once, and the index
   rebuilt once, at schema 4
   ([`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py)), which
-  embeds nothing new; until then, the server refuses the old index, naming `prepare`, then
-  `index` or `embed`, which write the files again before they rebuild the index, where
-  `index` or `embed` alone would skip every file of the old format
+  embeds nothing new; until then, the server refuses the old index, naming `prepare`,
+  then `index`, then `embed`: `prepare` writes the files again before `index` rebuilds
+  the index, where `index` alone would skip every file of the old format
   ([`reading`](../../src/kb_mcp/search/adapters/sqlite_index.py)). Each
   evaluation's index built before then holds every prune back, the vector store growing
   meanwhile, until `eval` rebuilds it, for each model and chunking still wanted, or
@@ -501,7 +501,7 @@ could be several persons joins none of them, a speaker whose meeting names anoth
 than the one account of its name among them, and the build warns of it, as of an alias
 that changes nothing
 ([`update_index`](../../src/kb_mcp/search/app/indexing.py)). The
-aliases are a file of the data directory, `aliases.toml`, read at each build
+aliases are a file of the data directory, `aliases.toml`, read by each `index`
 ([`read_aliases`](../../src/kb_mcp/search/adapters/aliases.py)). The
 index holds the persons, each with an id, `p-` and a digest of its account id or its
 name's key ([`person_id`](../../src/kb_mcp/search/domain/people.py)),
@@ -581,12 +581,82 @@ Words are indexed by SQLite's full-text engine, FTS5, in one file,
   ([`reading`](../../src/kb_mcp/search/adapters/sqlite_index.py)), so a new
   build is served from the next call without a restart.
 - **Cost.** No stemming: `deploy` does not find `deployment`. The weights are set by
-  hand, and every `index` and `embed` reads the whole mirror again.
+  hand. Each `index` digests every file of the mirror, and copies the whole index to
+  write what changed ([the index updated aside](#the-index-updated-aside-not-in-place)).
 - **Rejected.** The Porter stemmer, which knows English alone where the content mixes
   English and French ([plan 011](../work/changelog/011-search-strategies.md#deliberately-not-done)).
   No plan weighed another engine: the programme settled FTS5 with the maintainer.
 - **Settled** by the programme, and built by
   [plan 006](../work/changelog/006-search-mcp.md#the-index).
+
+## The index updated aside, not in place
+
+`index` writes the index only when a file of the mirror or the alias file changed: it
+digests every file, the SHA-256 of its bytes, and compares each with the digest that the
+index records ([`change_of`](../../src/kb_mcp/search/app/indexing.py)). It then builds
+the new index beside the old one, as a whole build does: it copies from the old,
+attached read-only, every document whose file did not change, with its sections and
+pieces, reads the files added or changed, leaves out those gone, joins persons again
+over every document, and renames the file into place
+([`Writer.update`](../../src/kb_mcp/search/adapters/sqlite_index.py)). `embed` fills
+the pieces that the index's documents want and it lacks, cut again from the text that
+the index holds, and removes those that none wants, in a copy of the index renamed in
+its turn ([`filling`](../../src/kb_mcp/search/app/indexing.py)). One lock beside the
+index, which both take from their check that the index is still the build they read
+until the rename, keeps either from overwriting the other
+([`SqliteIndex.update`](../../src/kb_mcp/search/adapters/sqlite_index.py)); a run that
+finds the index written meanwhile starts again once. An index so updated equals a whole
+build, row for row, and ranks the golden questions alike
+([the tests](../../tests/test_index_updates.py)).
+
+- **Why.** The maintainer asked that the commands be incremental and keep the index
+  correct of themselves, a document removed losing its words and its vectors. On plan
+  002's mirror, a whole build took 3.3 to 3.7 s, 1.9 s of it reading and loading files;
+  digesting them takes 0.024 s, and a new file holding a copy of every document but one,
+  its full-text index rebuilt and its persons joined, 0.17 s, or 0.23 s with 3,003
+  pieces. Aside keeps what readers rely on since plan 006: the file in place is never
+  written, so each call reads one state, and a rename gives all of a new build or none
+  of it, with no write-ahead log, whose `-wal` file a rename would pair with the new
+  index, and no triggers. The digest, not the file's time, as copying or restoring the
+  folder changes times, not bytes. Copying the pieces keeps the vectors of the documents
+  that did not change across `index`, which until then dropped every vector until the
+  next `embed`. Persons are joined whole at each write, as one account fetched late can
+  make a work-log name ambiguous
+  ([persons joined by account](#persons-joined-by-account-then-exact-name)). `embed`
+  digests the mirror too, by the maintainer's answer, so that a chain that leaves out
+  `index` does not pass in silence.
+- **Cost.** The copy grows with the index, not with the change: on 20,000 made-up
+  issues, 3.4 s, 2.0 s of it the join, on top of reading the changed files, and the
+  index's size free on disk beside it, as a whole build needs. Between `index` and
+  `embed`, a document added or changed has no pieces: search finds it by words and
+  misses it by meaning, and `index` counts the documents awaiting vectors.
+  `prepare && embed`, leaving out `index`, is a wrong use: `embed` fills the index as
+  the last `index` left it, so a page that `prepare` removed keeps its words, pieces and
+  vectors, and an edited one its old text, and the server serves both until the next
+  `index`; `embed` warns of it, `embed.mirror_changed`, naming `kb-mcp index`, and exits
+  as it would have, composing the commands staying the user's. `embed` stops on an
+  index that another version of the cut wrote, as its pieces would land on other
+  sections: after an upgrade that changes the cut, plan 035's among them, `index` runs
+  first and rebuilds the index whole, and the next `embed` takes the vectors back from
+  the store. A damaged index is no longer healed by `embed`, which stops, naming
+  `index --rebuild`; a run of `index` with nothing changed reads the documents' and the
+  skipped files' digests alone, so damage elsewhere waits for a write.
+- **Rejected.** The index updated in place, in a write-ahead log, triggers keeping
+  FTS5's rows, a snapshot per reader's use: it costs what changed, 22 ms here, and the
+  whole join, 0.06 s, at the price of those triggers and snapshots and of a rule for a
+  rebuild over a file in WAL mode, the alternative for when the copy grows slow. `embed`
+  running `index`'s update first, which would keep the index correct to the letter, but
+  composing the commands is the user's ([refresh by hand](#refresh-by-hand)). A stop, or
+  another exit status, for a mirror changed since the index. An agnostic connection,
+  SQLAlchemy or DB-API: FTS5's `MATCH`, `bm25()` and tokenizers have counterparts of
+  other syntax and ranking elsewhere, and a vector service may not be SQL, so the two
+  interfaces, [`WordsIndex`](../../src/kb_mcp/search/domain/indexes.py) and
+  [`VectorIndex`](../../src/kb_mcp/search/domain/indexes.py), hold only what search
+  needs, and a networked backend's adapter would bring its own pool and retries.
+- **Settled** by [plan
+  035](../work/plans/035-incremental-index-and-embed.md#decisions), its first question
+  answered by the maintainer, aside, and its fourth too: `embed` warns of a mirror
+  changed since the index, and goes on.
 
 ## Filters on the index as it is
 

@@ -182,9 +182,10 @@ transcript's dates and links are found afresh at each run: a transcript saved la
 links its meeting without converting it again. pandoc converts each document;
 a transcript's lines stay apart.
 
-`index` then builds the index of the mirror's words, without a model. For search by
-meaning, `kb-mcp embed` builds it again with vectors, which needs the embedding model,
-served by Ollama on this machine or any other OpenAI-compatible API
+`index` then brings the index of the mirror's words up to the mirror, without a model,
+reading only the files that changed. For search by meaning, `kb-mcp embed`, after it,
+gives the index's pieces their vectors, which needs the embedding model, served by
+Ollama on this machine or any other OpenAI-compatible API
 ([embeddings](embeddings.md)): without it, `embed` exits 1 and the index in place stays.
 Its first run embeds the whole mirror.
 
@@ -227,11 +228,12 @@ Its first run embeds the whole mirror.
   of `transcripts/archive/` and `meetings/archive/`, and of the headings tagged
   `ARCHIVE`; a meeting that links an archived transcript then links nothing, and is
   counted in the warning.
-- Search: `index` and `embed` each build the index whole from the mirror, so a document's
-  old pieces leave search with its old text, and a document removed leaves search. Each
-  piece's vector is kept in `<data>/vectors.sqlite` by its model and its text, so `embed`
-  embeds again only the pieces whose text changed, then prunes the vectors of text no
-  longer mirrored, unless an evaluation's index reads them.
+- Search: `index` reads each file whose bytes changed and leaves out each file gone, so
+  a document's old text, its pieces with it, leaves search, and a document removed
+  leaves search; until `embed`, an edited document is found by its words alone. Each
+  piece's vector is kept in `<data>/vectors.sqlite` by its model and its text, so
+  `embed` embeds again only the pieces whose text changed, then prunes the vectors of
+  text no longer mirrored, unless an evaluation's index reads them.
 
 ## 6. Search it
 
@@ -264,8 +266,8 @@ documents tie, and come by path.
 
 ## 7. Join a speaker to a colleague
 
-Each `index` and each `embed` joins the names of every source into persons, so that
-one colleague is one person to an agent:
+Each `index` that writes the index joins the names of every source into persons, so
+that one colleague is one person to an agent:
 
 - a Jira or Confluence account, under each name that the site gave it;
 - a name written in a meeting's `:PARTICIPANTS:` or by a transcript's speaker, joined to
@@ -284,7 +286,7 @@ be two people, such as a meeting's `Sam Sample` when two accounts have that name
 speaker `Sam` whose meeting names `Sam Sample` when an account is named `Sam`, is
 joined to neither. To see what stays apart:
 
-- `index` and `embed` warn of each name that could be several people,
+- `index` warns, at each write, of each name that could be several people,
   `index.person_ambiguous`, and of each alias that changes nothing,
   `index.alias_unused` ([index's telemetry](../reference/telemetry/index.md));
 - the server's `status` counts the persons, those in more than one source and those by
@@ -305,11 +307,13 @@ is several people's:
 "Kim" = "Kim"
 ```
 
-Rebuild the index by `embed`, which embeds nothing new, or by `index`, if you search by
-words alone:
+An alias takes effect by `index`, whichever mode you search in: with the alias file
+changed and no file of the mirror, it writes a new build, every document copied with
+its vectors and the names joined again, and the next `embed` has nothing to write.
+`embed` never reads the file.
 
 ```bash
-kb-mcp embed
+kb-mcp index
 ```
 
 - An alias joins names without an account alone: an account's names are the site's.
@@ -325,4 +329,4 @@ kb-mcp embed
   characters, or two names that differ by case, accents or spaces alone.
 - An alias whose name no document writes without an account, or whose target names
   nobody or several people, changes nothing, and the build warns of it.
-- To undo an alias, delete its line and rebuild. The program never writes the file.
+- To undo an alias, delete its line and run `index`. The program never writes the file.

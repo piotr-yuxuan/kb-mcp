@@ -197,6 +197,12 @@ the former name:
   up to date](refresh.md#3-take-some-of-the-sources) says what that leaves.
 - **A stray `.md` file under the mirror is read.** The index reports it as a file without
   front matter, and exits 1, where it was ignored: move it out of `docs/`.
+- **The first `index` rebuilds the index whole.** An index written before records no
+  file's digest, so the first `index` keeps nothing of it, `index.whole` saying why, and
+  reads every file; the next `embed` takes the vectors back from `<data>/vectors.sqlite`,
+  embedding only what it lacks. `embed` before that `index` stops, exit 1, naming
+  `kb-mcp index`, and leaves the index as it was. From then on, `index` reads only the
+  files that changed, and writes nothing when none did.
 
 ## 9. The commands that moved
 
@@ -207,31 +213,41 @@ refuses each, exit 2, and its message lists the commands. What replaces each:
 |---|---|
 | `sync` | the chain that you compose: `fetch && prepare && index && embed`, as [bring every source up to date](refresh.md) says; with the work log alone, from `prepare` on, as `fetch` has nothing to fetch and is refused |
 | `sync --since 7d`, and any option of the period | `fetch --since 7d`, then the rest of the chain: `prepare` takes none, and its parser reads a value after an unknown flag as a source's name |
-| `sync --include worklog` | `prepare worklog && index`, or `embed` for search by meaning |
+| `sync --include worklog` | `prepare worklog && index`, then `embed` for search by meaning |
 | `sync --include` or `--exclude` of a site's source | the sources named: `fetch jira`, `prepare jira` |
 | `sync --dry-run` | `fetch --dry-run` and `prepare --dry-run` |
 | `download` | `fetch` |
 | `mirror` | `prepare confluence jira`, since `prepare` alone takes the work log too |
-| `index`, for search by meaning | `embed`, which takes `--allow-remote-embeddings`; `index` builds by words alone, asks no endpoint, and refuses that flag |
+| `index`, for search by meaning | `index`, then `embed`, which takes `--allow-remote-embeddings`; `index` writes the words alone, asks no endpoint, and refuses that flag |
 | `login` | `login atlassian` |
 
-`index` after an `embed` replaces the index with one of words alone, whatever
-`search_mode` says, until the next `embed`: a script that wants search by meaning ends with
-`embed`.
+A script that wants search by meaning ends with `index`, then `embed`, never with
+`prepare && embed`: `embed` reads the index, not the mirror, so a page that `prepare`
+removed, and an edited page's old text, stay served until the next `index`. `embed` warns
+of a mirror changed since the index, `embed.mirror_changed`, naming `kb-mcp index`, and
+goes on, with the exit status it would have had.
 
 What reads a run's output follows:
 
 - **JSON.** A result's `steps`, each with its `step`, are `sources`, each with its `source`,
-  `outcome` and `result`, whose `downloaded` and `mirrored` stay. `index`'s result by meaning
-  is `embed`'s; `index`'s has no pieces, `model` and `pruned` null.
+  `outcome` and `result`, whose `downloaded` and `mirrored` stay. `index`'s `report` gives
+  the documents held by type, their sections and the files skipped, then the documents
+  `copied`, `added`, `replaced` and `removed`, `awaiting`, those awaiting vectors, null
+  when the index names no model, `unchanged`, whether nothing was written, and `rebuilt`,
+  why the index was rebuilt whole, if it was; its `model` and `pruned` are null. `embed`'s
+  result by meaning gives `index`, `model`, `pieces` and `documents`, those that the index
+  holds, `skipped`, the files that it lacks, `added` and `removed`, the pieces,
+  `embedded`, `found` and `refused`, `unchanged`, and `pruned`.
 - **Log files, spans and metrics.** A run's log file and root span take its command's name,
   `fetch` or `prepare`, for instance. Events, spans and instruments named `download.`,
   `kb_mcp.download.`, `mirror.` and `kb_mcp.mirror.` are named `fetch.`, `kb_mcp.fetch.`,
   `prepare.` and `kb_mcp.prepare.`; `sync.` is gone, for each command's `start`, `source`,
   `interrupted`, `end` and `refused`. `fetch.interrupted` names the source that it stopped,
-  where `download.interrupted` named the folder of the reports. A build of the index keeps
-  its names, `index.` and `kb_mcp.index.`, under whichever command runs it. Log files of the
-  retired commands go after their 30 days, as every command's.
+  where `download.interrupted` named the folder of the reports. The index's events, spans
+  and instruments keep their names, `index.` and `kb_mcp.index.`, under whichever command
+  writes the index, and `embed` adds its own, `embed.`, as
+  [its telemetry](../reference/telemetry/embed.md) lists them. Log files of the retired
+  commands go after their 30 days, as every command's.
 - **Dashboards.** Those of [observe with Grafana](observe-with-grafana.md) are `fetch`,
   `prepare`, `index` and `embed`, where they were `download`, `mirror`, `index` and `sync`.
 - **`doctor`.** A machine with neither a site nor a Confluence or Jira source gets the
