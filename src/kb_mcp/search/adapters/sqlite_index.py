@@ -56,7 +56,6 @@ from kb_mcp.search.domain.search import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
-    from contextlib import AbstractContextManager
 
     from numpy.typing import NDArray
 
@@ -1076,11 +1075,10 @@ def reading(path: Path, searched: Callable[[Reader], Pieces] = Reader.vectors) -
     """Open the index at ``path`` read-only, for one use; never write to it.
 
     ``searched`` gives ``Reader.nearest`` what it searches: by default, read at each search.
-    Raise UnavailableIndexError when there is none, or when this version cannot read it;
-    DamagedIndexError when a read of the use finds a table damaged, the file being
-    SQLite's. Another schema names ``prepare``, then ``index``, not ``index`` alone: a new
-    schema can come with a new format of the mirror's files, which ``index`` would skip,
-    and ``prepare`` writes them first.
+    Raise UnavailableIndexError when there is none, or when this version cannot read it.
+    Another schema names ``prepare``, then ``index``, not ``index`` alone: a new schema
+    can come with a new format of the mirror's files, which ``index`` would skip, and
+    ``prepare`` writes them first.
     """
     unread = f"{path} is not an index that this version reads: rebuild it with"
     try:
@@ -1105,11 +1103,6 @@ def reading(path: Path, searched: Callable[[Reader], Pieces] = Reader.vectors) -
             message = f"{unread} `kb-mcp index`, then `kb-mcp embed`"
             raise UnavailableIndexError(message)
         yield Reader(connection, searched)
-    except sqlite3.DatabaseError as error:
-        if not damaged(error):
-            raise
-        message = f"{path} is damaged ({error}): rebuild it with `kb-mcp index --rebuild`"
-        raise DamagedIndexError(message) from None
     finally:
         connection.close()
 
@@ -1127,9 +1120,21 @@ class SqliteIndex:
         self._lock = threading.Lock()  # the SDK runs tools in worker threads
         self._kept: tuple[str, Pieces] | None = None  # a build and its vectors
 
-    def reading(self) -> AbstractContextManager[Reader]:
-        """Open one use of the index, as ``reading`` does, its vectors kept here."""
-        return reading(self._path, self._vectors)
+    @contextmanager
+    def reading(self) -> Iterator[Reader]:
+        """Open one use of the index, as ``reading`` does, its vectors kept here.
+
+        Raises DamagedIndexError, naming ``kb-mcp index --rebuild``, when a read of the
+        use finds a table damaged.
+        """
+        try:
+            with reading(self._path, self._vectors) as reader:
+                yield reader
+        except sqlite3.DatabaseError as error:
+            if not damaged(error):
+                raise
+            message = f"{self._path} is damaged ({error}): rebuild it with `kb-mcp index --rebuild`"
+            raise DamagedIndexError(message) from None
 
     def update(self, change: Change, expected_build: str | None) -> Updated | None:
         """Change the index as ``WordsIndex.update`` says: a new file, renamed into place.

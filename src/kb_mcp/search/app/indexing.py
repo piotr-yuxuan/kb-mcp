@@ -563,7 +563,9 @@ def filling(index: SearchIndex, indexing: Indexing) -> Filled:
     held and not wanted are removed; nothing to add or remove, the same model, nothing
     is written, nor when the model refuses every piece to add. Another run that wrote
     the index meanwhile starts the fill again, once, then raises ChangedMeanwhileError.
-    Raises ModelError when the model fails.
+    Raises ModelError when the model fails. Each document with a piece refused is a
+    warning; ``embed.filled`` or ``embed.unchanged`` says what it did, and
+    ``kb_mcp.index.pieces`` counts the pieces added, removed and refused.
     """
     log = structlog.get_logger()
     held, before, stored, pieces = to_fill(index)
@@ -649,6 +651,8 @@ def filling(index: SearchIndex, indexing: Indexing) -> Filled:
                 counts = {"added": filled.added, "removed": filled.removed}
                 for outcome, count in (*counts.items(), ("refused", len(add) - len(given))):
                     PIECES.add(count, {"kb_mcp.outcome": outcome})
+                for path in filled.refused:
+                    log.warning("index.piece_refused", path=path)
                 if filled.unchanged:
                     log.info("embed.unchanged", pieces=filled.pieces)
                     return filled
@@ -674,13 +678,10 @@ def refresh(indexing: Indexing) -> Filled | None:
     When there is no index, one that this code's cut did not write, one damaged, the
     model fails, the index cannot be written, its lock is held too long, or another run
     wrote it at each attempt, the index in place stays, nothing is returned, and
-    ``index.not_built`` is an error. Each document with a piece refused is a warning.
-    ``embed.filled`` or ``embed.unchanged`` says what it did, and ``kb_mcp.index.pieces``
-    counts the pieces added, removed and refused. The prune holds back for an index
-    that lacks a file of the mirror or holds no document, and keeps the vectors of the
-    pieces that the index holds, as this run wrote it.
+    ``index.not_built`` is an error. The prune holds back for an index that lacks a file
+    of the mirror or holds no document, and keeps the vectors of the pieces that the
+    index holds, as this run wrote it.
     """
-    log = structlog.get_logger()
     try:
         filled = filling(sqlite_index.SqliteIndex(indexing.index), indexing)
     except (
@@ -692,8 +693,6 @@ def refresh(indexing: Indexing) -> Filled | None:
     ) as error:
         structlog.get_logger().error("index.not_built", reason=str(error))
         return None
-    for path in filled.refused:
-        log.warning("index.piece_refused", path=path)
     written = Written(skipped=filled.skipped, documents=filled.documents, keys=filled.kept)
     pruned = prune(indexing.vectors, indexing.index, indexing.evaluation_indexes, written)
     return replace(filled, pruned=pruned)

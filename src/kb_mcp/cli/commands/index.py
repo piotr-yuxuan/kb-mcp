@@ -41,32 +41,41 @@ def text(indexed: Indexed, summary: Summary) -> str:
     """Write the documents and sections held, then what changed, or that nothing did.
 
     Short gives each count, the documents awaiting vectors when the index names a model,
-    and why it was rebuilt whole, if it was. Detailed says it in a line, with the
-    documents by type and the index.
+    and why it was rebuilt whole, if it was; detailed says it in a line, as ``detailed``.
+    """
+    if summary != "short":
+        return detailed(indexed)
+    report = indexed.report
+    lines = [f"documents: {report.types.total()}", f"sections: {report.sections}"]
+    lines += (
+        ["nothing written"]
+        if report.unchanged
+        else [f"{name}: {getattr(report, name)}" for name in OUTCOMES]
+    )
+    lines.append(f"skipped: {len(report.skipped)}")
+    lines += [f"rebuilt whole: {report.rebuilt}"] if report.rebuilt else []
+    lines += [] if report.awaiting is None else [f"awaiting vectors: {report.awaiting}"]
+    return "".join(f"{line}\n" for line in lines)
+
+
+def detailed(indexed: Indexed) -> str:
+    """Say in a line what ``index`` did, with the documents by type, and the index.
+
+    Nothing changed, updated with each count, or rebuilt whole and why; then the files
+    skipped, if any, and the documents awaiting vectors, when the index names a model.
     """
     report = indexed.report
-    counts = {name: getattr(report, name) for name in OUTCOMES}
-    skipped, awaiting = len(report.skipped), report.awaiting
-    if summary == "short":
-        lines = [f"documents: {report.types.total()}", f"sections: {report.sections}"]
-        lines += (
-            ["nothing written"] if report.unchanged else [f"{k}: {v}" for k, v in counts.items()]
-        )
-        lines.append(f"skipped: {skipped}")
-        lines += [f"rebuilt whole: {report.rebuilt}"] if report.rebuilt else []
-        lines += [] if awaiting is None else [f"awaiting vectors: {awaiting}"]
-        return "".join(f"{line}\n" for line in lines)
     types = ", ".join(f"{name}: {count}" for name, count in sorted(report.types.items()))
     holds = f"{report.types.total()} documents ({types or 'none'}), {report.sections} sections"
-    done = ", ".join(f"{count} {name}" for name, count in counts.items())
+    done = ", ".join(f"{getattr(report, name)} {name}" for name in OUTCOMES)
     if report.unchanged:
         written = f"nothing changed: {indexed.index} holds {holds}"
     elif report.rebuilt:
         written = f"rebuilt {indexed.index} whole, {WHOLE[report.rebuilt]}: {holds}"
     else:
         written = f"updated {indexed.index}: documents {done}; it holds {holds}"
-    if skipped:
-        written += f"; {skipped} files skipped"
-    if awaiting is not None:
-        written += f"; {awaiting} await vectors from kb-mcp embed"
+    if report.skipped:
+        written += f"; {len(report.skipped)} files skipped"
+    if report.awaiting is not None:
+        written += f"; {report.awaiting} await vectors from kb-mcp embed"
     return f"{written}\n"
