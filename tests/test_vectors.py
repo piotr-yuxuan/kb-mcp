@@ -755,6 +755,7 @@ def test_embed_without_an_index_stops_naming_index(data: Path, capsys: CaptureFi
         assert (status, ("error", "index.not_built") in said(err)) == (FAILED, True)
         assert "build it with `kb-mcp index`" in err
         assert "no answer" not in err
+        assert mirror_changed(err) == []
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
         with closing(sqlite3.connect(data / "index.sqlite")) as connection:
             connection.execute("UPDATE meta SET value = '5' WHERE name = 'schema'")
@@ -795,12 +796,14 @@ def test_embed_on_an_index_of_another_cut_stops_until_index_runs(
     with nothing_listening() as url:
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
     made(data, monkeypatch)
+    write(data / "docs", page("196845", "Rollback"), BODY.replace("seller", "buyer"))
     before = (data / "index.sqlite").read_bytes()
     with nothing_listening() as url:
         status, err = embedded_at(data, url, capsys)
     assert (status, ("error", "index.not_built") in said(err)) == (FAILED, True)
     assert "run kb-mcp index first" in err
     assert "no answer" not in err
+    assert mirror_changed(err) == []
     assert (data / "index.sqlite").read_bytes() == before
     with serving(Scripted()) as url:
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
@@ -828,10 +831,12 @@ def test_embed_on_a_damaged_index_stops_naming_a_rebuild(
     with nothing_listening() as url:
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
         damage(data / "index.sqlite", table)
+        write(data / "docs", page("196845", "Rollback"), BODY.replace("seller", "buyer"))
         status, err = embedded_at(data, url, capsys)
     assert (status, ("error", "index.not_built") in said(err)) == (FAILED, True)
     assert "kb-mcp index --rebuild" in err
     assert "no answer" not in err
+    assert mirror_changed(err) == []
 
 
 @pytest.mark.parametrize("rebuild", [False, True])
@@ -1032,22 +1037,40 @@ def test_a_mirror_changed_since_the_index_is_a_warning_and_nothing_else(
         steps = [
             (
                 lambda: write(data / "docs", page("196845", "Rollback"), "# Rollback\n\nNew.\n"),
-                "changed",
+                ("1", "0", "0"),
             ),
-            ((data / "docs" / location(page("900000", "Lorem 0"))).unlink, "removed"),
-            (lambda: write(data / "docs", page("196847", "Later")), "added"),
+            ((data / "docs" / location(page("900000", "Lorem 0"))).unlink, ("1", "0", "1")),
+            (lambda: write(data / "docs", page("196847", "Later")), ("1", "1", "1")),
         ]
-        for change, counted in steps:
+        for change, counted in steps:  # each counted with those before, no index between
             change()
             status, err = embedded_at(data, url, capsys)
             assert status == 0
             (warned,) = mirror_changed(err)
-            assert warned[counted] == "1"
+            assert (warned["changed"], warned["added"], warned["removed"]) == counted
             assert "run kb-mcp index" in warned["hint"]
             assert snapshot(data / "index.sqlite") == before
     with reading(data / "index.sqlite") as reader:
         assert list(reader.scores('"payout"', Filters())[0]) == [ROLLBACK_PATH]
         assert reader.entries(paths=[location(page("900000", "Lorem 0"))])
+
+
+def test_the_warning_comes_before_the_endpoint_is_opened(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Criterion 16: an endpoint that does not answer fails the run after the warning."""
+    with serving(Scripted()) as url:
+        assert chained(data, capsys, url) == 0
+    write(data / "docs", page("196845", "Rollback"), "# Rollback\n\nNew.\n")
+    with nothing_listening() as url:
+        status, err = embedded_at(data, url, capsys)
+    assert status == FAILED
+    (warned,) = mirror_changed(err)
+    assert (warned["changed"], warned["added"], warned["removed"]) == ("1", "0", "0")
+    lines = err.splitlines()
+    warning = next(at for at, line in enumerate(lines) if "embed.mirror_changed" in line)
+    assert warning < next(at for at, line in enumerate(lines) if "index.not_built" in line)
+    assert "no answer from the embedding endpoint" in err
 
 
 def test_no_warning_for_a_mirror_unchanged_a_skipped_file_or_an_alias_file(
