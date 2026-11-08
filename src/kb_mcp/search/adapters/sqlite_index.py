@@ -6,7 +6,8 @@ that a replaced file is read from the next use on. An index built with a model a
 holds the vector of each piece of each section, with its key in the vector store, and
 names the model. ``SqliteIndex`` is one file as ``search.domain.indexes`` declares an
 index: an update builds the new file beside it too, copying what it keeps of the old,
-under a lock beside it that only updates take.
+and a fill copies it whole beside it to add and remove pieces, each under a lock beside
+it that only they take.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import sqlite3
 import tempfile
 import threading
 import uuid
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, cast
@@ -34,7 +35,9 @@ from kb_mcp.search.domain import people
 from kb_mcp.search.domain.indexes import (
     DamagedIndexError,
     Held,
+    Piece,
     Skipped,
+    Stored,
     UnavailableIndexError,
     Updated,
 )
@@ -52,7 +55,7 @@ from kb_mcp.search.domain.search import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Mapping
+    from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
     from contextlib import AbstractContextManager
 
     from numpy.typing import NDArray
@@ -216,6 +219,33 @@ SELECT d.rowid AS document, d.path, d.updated, s.number,
        s.start + length(s.head) + p.stop AS finish, p.vector
 FROM pieces p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
 ORDER BY d.path, s.number, p.start
+"""
+# Every piece that has its vector, where it is and its key: what ``embed`` compares.
+HELD_PIECES = """
+SELECT d.path, s.number, p.start, p.stop, p.key
+FROM pieces p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
+ORDER BY d.path, s.number, p.start
+"""
+# Each section's heading line and body, which give a document's body back in order.
+BODIES = """
+SELECT d.path, s.head || s.body FROM sections s JOIN documents d ON d.rowid = s.document
+ORDER BY d.path, s.number
+"""
+# What a fill writes into its copy: a piece, its section named by path and number, which
+# the copy resolves to a rowid; or the removal of one.
+FILL_ADD = """
+INSERT INTO pieces (section, start, stop, key, vector)
+SELECT s.rowid, :start, :stop, :key, :vector
+FROM sections s JOIN documents d ON d.rowid = s.document
+WHERE d.path = :path AND s.number = :number
+"""
+FILL_REMOVE = """
+DELETE FROM pieces WHERE rowid IN (
+  SELECT p.rowid FROM pieces p JOIN sections s ON s.rowid = p.section
+  JOIN documents d ON d.rowid = s.document
+  WHERE d.path = :path AND s.number = :number AND p.start = :start AND p.stop = :stop
+    AND p.key = :key
+)
 """
 TEXT = """
 SELECT s.start, s.head || s.body AS text FROM sections s JOIN documents d ON d.rowid = s.document
@@ -628,6 +658,24 @@ def indexes_in(folder: Path) -> list[Path]:
 
 
 @contextmanager
+def aside(path: Path) -> Iterator[Path]:
+    """Give a new, empty file beside ``path``, which replaces it once the block ends.
+
+    On any failure the file at ``path`` stays, and the new file is removed. Its name
+    begins with BUILDING, which readers and the prune skip.
+    """
+    descriptor, name = tempfile.mkstemp(prefix=BUILDING, suffix=".sqlite", dir=path.parent)
+    os.close(descriptor)
+    temporary = Path(name)
+    try:
+        yield temporary
+        temporary.replace(path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+@contextmanager
 def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -> Iterator[Writer]:
     """Build a new index at ``path``, in one transaction, into a file beside it.
 
@@ -635,10 +683,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
     into place once complete. On any failure the index already at ``path`` stays, and
     the new file is removed.
     """
-    descriptor, name = tempfile.mkstemp(prefix=BUILDING, suffix=".sqlite", dir=path.parent)
-    os.close(descriptor)
-    temporary = Path(name)
-    try:
+    with aside(path) as temporary:
         # By its address, so that an update can attach the index in place read-only.
         connection = sqlite3.connect(temporary.as_uri(), autocommit=False, uri=True)
         try:
@@ -665,10 +710,6 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
             connection.commit()
         finally:
             connection.close()
-        temporary.replace(path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
 
 
 def entry(row: sqlite3.Row) -> Entry:
@@ -714,10 +755,12 @@ class Reader:
     A list is bounded by a limit, or else by what one space, project or filter holds.
     """
 
-    def __init__(self, connection: sqlite3.Connection, vectors: Callable[[Reader], Pieces]) -> None:
-        """Read through an open, read-only connection; ``vectors`` gives what meaning searches."""
+    def __init__(
+        self, connection: sqlite3.Connection, searched: Callable[[Reader], Pieces]
+    ) -> None:
+        """Read through an open, read-only connection; ``searched`` gives what meaning searches."""
         self._connection = connection
-        self._vectors = vectors
+        self._searched = searched
         self._kept: dict[Filters, str | None] = {}
 
     def kept(self, filters: Filters) -> str | None:
@@ -900,6 +943,22 @@ class Reader:
             },
         )
 
+    def documents(self) -> list[Stored]:
+        """Give every document with its front matter and its body as put, by path.
+
+        The body is each section's heading line and body, in order, which give it back.
+        """
+        bodies: dict[str, list[str]] = {}
+        for path, text in self._connection.execute(BODIES):
+            bodies.setdefault(path, []).append(text)
+        rows = self._connection.execute("SELECT * FROM documents ORDER BY path")
+        return [
+            Stored(
+                path=row["path"], front=entry(row).front, body="".join(bodies.get(row["path"], ()))
+            )
+            for row in rows
+        ]
+
     def built_at(self) -> datetime:
         """Say when the index was built."""
         row = self._connection.execute("SELECT value FROM meta WHERE name = 'built_at'").fetchone()
@@ -938,7 +997,14 @@ class Reader:
             raise UnavailableIndexError(message)
         return {row[0] for row in self._connection.execute("SELECT DISTINCT key FROM pieces")}
 
-    def pieces(self) -> Pieces:
+    def pieces(self) -> list[Piece]:
+        """Give every piece that has its vector, by path, section number and start."""
+        return [
+            Piece(path=path, number=number, start=start, stop=stop, key=key)
+            for path, number, start, stop, key in self._connection.execute(HELD_PIECES)
+        ]
+
+    def vectors(self) -> Pieces:
         """Read every piece's vector, with where the piece is: what meaning searches."""
         rows = self._connection.execute(PIECES).fetchall()
         dimensions = len(rows[0]["vector"]) // vector_store.LAYOUT.itemsize if rows else 0
@@ -963,7 +1029,7 @@ class Reader:
         """
         kept = self.kept(filters)
         allowed = None if kept is None else set(json.loads(kept))
-        pieces = self._vectors(self)
+        pieces = self._searched(self)
         return {
             path: (score, pieces.sections[index], pieces.offsets[index], pieces.ends[index])
             for path, (score, index) in pieces.nearest(vector, allowed, depth).items()
@@ -1006,10 +1072,10 @@ class Reader:
 
 
 @contextmanager
-def reading(path: Path, vectors: Callable[[Reader], Pieces] = Reader.pieces) -> Iterator[Reader]:
+def reading(path: Path, searched: Callable[[Reader], Pieces] = Reader.vectors) -> Iterator[Reader]:
     """Open the index at ``path`` read-only, for one use; never write to it.
 
-    ``vectors`` gives ``Reader.nearest`` what it searches: by default, read at each search.
+    ``searched`` gives ``Reader.nearest`` what it searches: by default, read at each search.
     Raise UnavailableIndexError when there is none, or when this version cannot read it;
     DamagedIndexError when a read of the use finds a table damaged, the file being
     SQLite's. Another schema names ``prepare``, then ``index``, not ``index`` alone: a new
@@ -1038,7 +1104,7 @@ def reading(path: Path, vectors: Callable[[Reader], Pieces] = Reader.pieces) -> 
         if meta.get("chunking", "") not in {"", *CHUNKINGS}:
             message = f"{unread} `kb-mcp index`, then `kb-mcp embed`"
             raise UnavailableIndexError(message)
-        yield Reader(connection, vectors)
+        yield Reader(connection, searched)
     except sqlite3.DatabaseError as error:
         if not damaged(error):
             raise
@@ -1094,10 +1160,73 @@ class SqliteIndex:
                 raise DamagedIndexError(message) from None
             return updated
 
+    def fill(
+        self,
+        expected_build: str,
+        model: Embedded,
+        add: Mapping[Piece, NDArray[np.float32]],
+        remove: Collection[Piece],
+    ) -> str | None:
+        """Fill the index's pieces as ``VectorIndex.fill`` says: in a copy, renamed into place.
+
+        Under its lock, as an update: SQLite's backup copies the index beside it, the copy
+        removes and adds the pieces, each resolving its section to a rowid, and names the
+        model and a new build; the index's time stays its update's.
+        """
+        lock = vector_store.lock_of(self._path)
+        with vector_store.locked(lock, fcntl.LOCK_EX, "index.lock_wait", WRITER):
+            try:
+                with reading(self._path) as reader:
+                    if reader.build() != expected_build:
+                        return None
+            except UnavailableIndexError:
+                return None
+            build = uuid.uuid4().hex
+            source = f"{self._path.as_uri()}?mode=ro"
+            try:
+                with (
+                    aside(self._path) as temporary,
+                    closing(sqlite3.connect(source, uri=True)) as old,
+                    closing(sqlite3.connect(temporary)) as copy,
+                ):
+                    old.backup(copy)
+                    removed = copy.executemany(
+                        FILL_REMOVE, [piece.model_dump() for piece in remove]
+                    ).rowcount
+                    added = copy.executemany(
+                        FILL_ADD,
+                        [
+                            piece.model_dump() | {"vector": vector_store.as_bytes(vector)}
+                            for piece, vector in add.items()
+                        ],
+                    ).rowcount
+                    if (removed, added) != (len(remove), len(add)):
+                        message = f"{self._path}: a piece names a section that the index lacks"
+                        raise ValueError(message)
+                    copy.executemany(
+                        "UPDATE meta SET value = ? WHERE name = ?",
+                        [
+                            (model.model, "model"),
+                            (model.fingerprint, "fingerprint"),
+                            (str(model.dimensions), "dimensions"),
+                            (model.chunking, "chunking"),
+                            (build, "build"),
+                        ],
+                    )
+                    copy.commit()
+            except sqlite3.DatabaseError as error:
+                if not damaged(error):
+                    raise
+                message = (
+                    f"{self._path} is damaged ({error}): rebuild it with `kb-mcp index --rebuild`"
+                )
+                raise DamagedIndexError(message) from None
+            return build
+
     def _vectors(self, reader: Reader) -> Pieces:
         """Give the vectors of the build that ``reader`` reads, from memory once read."""
         with self._lock:
             build = reader.build()
             if self._kept is None or self._kept[0] != build:
-                self._kept = (build, reader.pieces())
+                self._kept = (build, reader.vectors())
             return self._kept[1]

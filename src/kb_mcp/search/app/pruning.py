@@ -1,10 +1,10 @@
 """Pruning the vector store to what the indexes on disk read, after an index by meaning.
 
-The vectors kept are those that the index in place and the evaluation's indexes read:
-the files are the truth, so that deleting an evaluation's index lets the next prune drop
-its vectors. A prune holds the store's lock exclusive, which no build in progress holds,
-so that it never deletes what a build embeds; ``docs/reference/telemetry/index.md``
-lists what it records.
+The vectors kept are those that the index in place and the evaluation's indexes read,
+and those of the index that the run wrote: the files are the truth, so that deleting an
+evaluation's index lets the next prune drop its vectors. A prune holds the store's lock
+exclusive, which no build in progress holds, so that it never deletes what a build
+embeds; ``docs/reference/telemetry/embed.md`` lists what it records.
 """
 
 from __future__ import annotations
@@ -38,12 +38,12 @@ STORE_SIZE = METER.create_gauge(
 
 type Outcome = Literal["pruned", "deferred", "held back", "failed"]
 DEFERRED = "a build, or another prune, is using the vector store; the next embed prunes it"
-SKIPPED = "the build skipped a file, so the index lacks documents of the mirror"
-NO_DOCUMENT = "the build indexed no document"
+SKIPPED = "the index skipped a file, so it lacks documents of the mirror"
+NO_DOCUMENT = "the index holds no document"
 UNREADABLE = (
     "it cannot say which vectors it reads, built by words alone or by an earlier version, or"
-    " damaged: rebuild the index with embed, an evaluation's with eval and its model and"
-    " chunking, or delete it"
+    " damaged: rebuild the index with index --rebuild, then embed, an evaluation's with"
+    " eval and its model and chunking, or delete it"
 )
 UNLISTED = (
     "it cannot be reached or listed, or it is a link below the evaluation's folder, which"
@@ -72,6 +72,18 @@ SAID: dict[Outcome, tuple[str, str, tuple[str, ...]]] = {
     "held back": ("warning", "index.prune_skipped", ("outcome", "reason", "file")),
     "failed": ("warning", "index.prune_skipped", ("outcome", "reason", "file")),
 }
+
+
+class Written(Record):
+    """What the index that a run wrote holds, as its prune reads it.
+
+    The files of the mirror that it skipped, its documents, and the keys of its pieces'
+    vectors, which another run's index renamed into place since may read no longer.
+    """
+
+    skipped: int
+    documents: int
+    keys: frozenset[str] = frozenset()
 
 
 class Pruned(Record):
@@ -114,14 +126,12 @@ def said(pruned: Pruned, span: Span, started: float) -> Pruned:
     return pruned
 
 
-def prune(
-    store: Path, index: Path, evaluation_indexes: Path, *, skipped: int, documents: int
-) -> Pruned:
+def prune(store: Path, index: Path, evaluation_indexes: Path, written: Written) -> Pruned:
     """Delete from the store every vector that neither the index nor the evaluation reads.
 
-    ``skipped`` and ``documents`` count what the build that just ended skipped and
-    indexed: a file skipped, or no document, holds the prune back, as the index then
-    lacks what the mirror still holds; so does an index that cannot say which vectors it
+    Nor any that the index that the run wrote reads, by ``written``'s keys. A file that
+    it skipped, or no document, holds the prune back, as the index then lacks what the
+    mirror still holds; so does an index that cannot say which vectors it
     reads, being by words alone or damaged, and a folder that cannot be listed, or a
     link, among the evaluation's. Either way, it would delete what the mirror still
     needs. A build holding the store's lock
@@ -130,8 +140,8 @@ def prune(
     """
     started = time.monotonic()
     with TRACER.start_as_current_span("index.prune") as span:
-        if skipped or not documents:
-            reason = SKIPPED if skipped else NO_DOCUMENT
+        if written.skipped or not written.documents:
+            reason = SKIPPED if written.skipped else NO_DOCUMENT
             return said(Pruned(outcome="held back", reason=reason), span, started)
         with vector_store.exclusive(store) as held:
             if not held:
@@ -150,7 +160,7 @@ def prune(
             except UnavailableIndexError, sqlite3.DatabaseError:
                 held_back = Pruned(outcome="held back", reason=UNREADABLE, file=shown(path))
                 return said(held_back, span, started)
-            read = keys.pop(index)
+            read = keys.pop(index) | written.keys
             evaluation = set().union(*keys.values()) - read
             kept = read | evaluation
             try:

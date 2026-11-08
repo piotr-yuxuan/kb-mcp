@@ -1,7 +1,7 @@
 {
   "uid": "kb-mcp-embed",
   "title": "embed",
-  "description": "The embed runs in the time range: the files they indexed, the pieces embedded, and the prunes of the vector store.",
+  "description": "The embed runs in the time range: the pieces they added, removed and refused, the embeddings, and the prunes of the vector store.",
   "tags": [
     "kb-mcp"
   ],
@@ -203,57 +203,11 @@
       }
     },
     {
-      "id": 5,
+      "id": 6,
       "gridPos": {
         "x": 0,
         "y": 4,
-        "w": 12,
-        "h": 8
-      },
-      "type": "bargauge",
-      "title": "Files by outcome",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_index_files_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"embed\"}[$__range]))",
-          "instant": true,
-          "range": false,
-          "legendFormat": "{{kb_mcp_outcome}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "horizontal",
-        "displayMode": "basic",
-        "showUnfilled": true
-      }
-    },
-    {
-      "id": 6,
-      "gridPos": {
-        "x": 12,
-        "y": 4,
-        "w": 12,
+        "w": 24,
         "h": 8
       },
       "type": "bargauge",

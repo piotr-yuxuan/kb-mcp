@@ -359,7 +359,7 @@ its new file is built, so that the last good copy of every other stays.
 [`Indexing`](../../src/kb_mcp/search/app/indexing.py) that
 [`indexing_of`](../../src/kb_mcp/cli/commands/_embedding.py) reads from the settings, and
 [`refresh`](../../src/kb_mcp/search/app/indexing.py) calls
-[`index_mirror`](../../src/kb_mcp/search/app/indexing.py), as `index` does, by words alone. It
+[`filling`](../../src/kb_mcp/search/app/indexing.py), as `index` does, by words alone. It
 opens the embedding endpoint first, by
 [`open_endpoint`](../../src/kb_mcp/cli/commands/_embedding.py), then
 [`endpoint`](../../src/kb_mcp/search/adapters/model_api.py), the only way to
@@ -424,7 +424,7 @@ same transaction the meta rows (a random `build` id, the model, its fingerprint,
 chunking), and renames the file over `<data>/index.sqlite` once complete. On any failure
 the new file goes and the old index stays: an endpoint that does not answer, or lacks the
 model, raises [`ModelError`](../../src/kb_mcp/search/adapters/model_api.py),
-which [`index_mirror`](../../src/kb_mcp/search/app/indexing.py) logs as
+which [`refresh`](../../src/kb_mcp/search/app/indexing.py) logs as
 `index.not_built`, with the hint to index by words alone. A file skipped or a piece
 refused is named in the [`Report`](../../src/kb_mcp/search/app/indexing.py),
 and the run exits 0 only when the report is

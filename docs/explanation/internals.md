@@ -56,7 +56,8 @@ Confluence's and Jira's,
 [`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) for the work log;
 `index`, from the whole mirror, whichever sources were prepared, by words alone; and
 `embed`, the same build with vectors, then the prune
-([`index_mirror`](../../src/kb_mcp/search/app/indexing.py)). `fetch` and `prepare` share one
+([`update_index`](../../src/kb_mcp/search/app/indexing.py),
+[`refresh`](../../src/kb_mcp/search/app/indexing.py)). `fetch` and `prepare` share one
 use case ([`run_each`](../../src/kb_mcp/cli/app/sources.py)). A source is a declaration that
 names its table and its roles ([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and the
 names given choose among those that a command can take
@@ -241,7 +242,7 @@ and gives each piece a vector.
   [`joined`](../../src/kb_mcp/search/domain/people.py), through the
   aliases of `<data>/aliases.toml`, which the build reads first, before the mirror and
   the endpoint
-  ([`index_mirror`](../../src/kb_mcp/search/app/indexing.py)); the
+  ([`update_index`](../../src/kb_mcp/search/app/indexing.py)); the
   persons and their names go into tables of their own, which the filters by person read.
   A transcript's meetings, which a speaker may join by, are the meetings that its
   `summary` links name, read by their source and id; the join is a span of its own.

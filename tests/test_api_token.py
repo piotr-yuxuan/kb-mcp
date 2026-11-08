@@ -22,9 +22,10 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from tests.endpoint import Scripted, serving
-from tests.test_cli import logged_as, the_log_file
+from tests.test_cli import logged_as
 from tests.test_download import SITE, FakeSite
 from tests.test_observed import said
+from tests.test_settings import user_log_folder
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -281,9 +282,12 @@ def test_an_index_that_fails_to_embed_shows_no_key(
     options = ["--yes", "--config", str(home / "none.toml"), "--data-dir", str(home / "data")]
     with serving(Scripted(models={})) as url:
         monkeypatch.setenv("KB_MCP_EMBEDDING_URL", url)
+        assert main(["index", *options]) == 0
+        capsys.readouterr()
         assert main(["embed", *options, "--summary", "detailed"]) == 1
     out, err = capsys.readouterr()
     assert "embedding_api_key: set" in err
     assert ("error", "index.not_built") in said(err)
     assert [line["level"] for line in logged_as(home, "index.not_built")] == ["error"]
-    assert shown(out + err + the_log_file(home).read_text("utf-8")) == []
+    logs = "".join(path.read_text("utf-8") for path in user_log_folder(home.resolve()).iterdir())
+    assert shown(out + err + logs) == []

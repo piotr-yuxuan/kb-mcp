@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import functools
 import hashlib
-import sqlite3
-from contextlib import closing
 from copy import replace
 from datetime import timedelta
 from inspect import signature
@@ -22,13 +20,15 @@ import pytest
 
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
-from kb_mcp.search.adapters import sqlite_index, vector_store
+from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.indexes import (
     Change,
+    Piece,
     Put,
     SearchReader,
     Skipped,
+    Stored,
     UnavailableIndexError,
 )
 from kb_mcp.search.domain.search import WORDS, Embedded, Filters, quote, sections
@@ -54,8 +54,8 @@ NORTHISH_COSINE = 0.8
 EPSILON = 1e-6
 
 
-class Piece(Record):
-    """A piece of a document, as a fill names it: its section's number, span, key and vector."""
+class Part(Record):
+    """A piece of a document to fill: its section's number, span, key and vector."""
 
     number: int
     start: int  # in the section's body, after its heading line
@@ -69,7 +69,7 @@ class Document(Record):
 
     front: FrontMatter
     body: str
-    pieces: tuple[Piece, ...] = ()
+    pieces: tuple[Part, ...] = ()
 
 
 def digest(body: str) -> str:
@@ -105,47 +105,30 @@ def change(
     )
 
 
+def filled(documents: Sequence[Document]) -> dict[Piece, NDArray[np.float32]]:
+    """Give the documents' parts as a fill takes them: each piece, by path, with its vector."""
+    return {
+        Piece(
+            path=location(document.front),
+            number=part.number,
+            start=part.start,
+            stop=part.stop,
+            key=part.key,
+        ): np.array(part.vector, dtype=np.float32)
+        for document in documents
+        for part in document.pieces
+    }
+
+
 def sqlite(
     folder: Path, documents: Sequence[Document], embedded: Embedded | None = None
 ) -> SearchIndex:
-    """Write the documents into a new SQLite index by a whole update; then their pieces.
-
-    The pieces and the model are written in place by SQL, until the vector index fills
-    them itself.
-    """
-    path = folder / "index.sqlite"
-    index = sqlite_index.SqliteIndex(path)
-    index.update(change(put=documents, whole=True), None)
-    if embedded is None:
-        return index
-    with closing(sqlite3.connect(path)) as connection:
-        connection.executemany(
-            "UPDATE meta SET value = ? WHERE name = ?",
-            [
-                (embedded.model, "model"),
-                (embedded.fingerprint, "fingerprint"),
-                (str(embedded.dimensions), "dimensions"),
-                (embedded.chunking, "chunking"),
-            ],
-        )
-        connection.executemany(
-            "INSERT INTO pieces (section, start, stop, key, vector)"
-            " SELECT s.rowid, ?, ?, ?, ? FROM sections s JOIN documents d ON d.rowid = s.document"
-            " WHERE d.path = ? AND s.number = ?",
-            [
-                (
-                    piece.start,
-                    piece.stop,
-                    piece.key,
-                    vector_store.as_bytes(np.array(piece.vector, dtype=np.float32)),
-                    location(document.front),
-                    piece.number,
-                )
-                for document in documents
-                for piece in document.pieces
-            ],
-        )
-        connection.commit()
+    """Write the documents into a new SQLite index by a whole update; then fill their pieces."""
+    index = sqlite_index.SqliteIndex(folder / "index.sqlite")
+    done = index.update(change(put=documents, whole=True), None)
+    assert done is not None
+    if embedded is not None:
+        assert index.fill(done.build, embedded, filled(documents), ())
     return index
 
 
@@ -158,11 +141,11 @@ def written(request: pytest.FixtureRequest, tmp_path: Path) -> Written:
     return functools.partial(BACKENDS[request.param], tmp_path)
 
 
-def piece_of(body: str, text: str, key: str, vector: tuple[float, ...]) -> Piece:
+def piece_of(body: str, text: str, key: str, vector: tuple[float, ...]) -> Part:
     """Name the piece holding ``text``, by where the first section holding it has it."""
     section = next(each for each in sections(body) if text in each.body)
     start = section.body.index(text)
-    return Piece(number=section.number, start=start, stop=start + len(text), key=key, vector=vector)
+    return Part(number=section.number, start=start, stop=start + len(text), key=key, vector=vector)
 
 
 def query(vector: tuple[float, ...]) -> NDArray[np.float32]:
@@ -751,3 +734,88 @@ def test_a_person_s_rows_follow_an_account_put_or_removed_in_another_document(
     done = index.update(change(removed=[location(first.front)]), done.build)
     assert done is not None
     assert participant() == [alone]
+
+
+def test_documents_come_back_with_their_front_matter_and_body(written: Written) -> None:
+    """Each as put, by path: its body exactly, as its sections' heading lines and bodies give it."""
+    with written(BOTH).reading() as reader:
+        assert reader.documents() == [
+            Stored(path=RUNBOOK_PATH, front=RUNBOOK, body=RUNBOOK_BODY),
+            Stored(path=UPGRADE_PATH, front=UPGRADE, body=UPGRADE_BODY),
+        ]
+
+
+COMPASS = page("2001", "Compass")
+COMPASS_PATH = location(COMPASS)
+NORTHERN = piece_of(NEAR_BODY, "north text", "k-north", NORTH)
+EASTERN = piece_of(NEAR_BODY, "east text", "k-east", EAST)
+
+
+def test_a_fill_adds_and_removes_pieces_and_names_the_model(written: Written) -> None:
+    """Search by meaning finds what it added, not what it removed; ``pieces`` and ``keys`` too.
+
+    A fill of a build no longer held gives None and changes nothing.
+    """
+    index = written([Document(front=COMPASS, body=NEAR_BODY)])
+    build = build_of(index)
+    north, east = filled(
+        [Document(front=COMPASS, body=NEAR_BODY, pieces=(NORTHERN, EASTERN))]
+    ).items()
+    done = index.fill(build, EMBEDDED, dict([north, east]), ())
+    assert done is not None
+    assert done != build
+    with index.reading() as reader:
+        assert reader.embedded() == EMBEDDED
+        assert reader.pieces() == [north[0], east[0]]
+        assert reader.keys() == {"k-north", "k-east"}
+        assert list(reader.nearest(query(EAST), Filters(), 10)) == [COMPASS_PATH]
+    assert index.fill(build, EMBEDDED, {}, [north[0]]) is None
+    other = replace(EMBEDDED, chunking="windows")
+    after = index.fill(done, other, {}, [north[0]])
+    assert after is not None
+    with index.reading() as reader:
+        assert reader.build() == after
+        assert reader.embedded() == other
+        assert reader.pieces() == [east[0]]
+        assert reader.keys() == {"k-east"}
+        _, number, start, end = reader.nearest(query(NORTH), Filters(), 10)[COMPASS_PATH]
+        assert (number, reader.text(COMPASS_PATH, start, end)) == (2, "east text")
+
+
+def test_a_piece_that_names_no_section_is_refused(written: Written) -> None:
+    """A fill of a section that the document lacks raises, and leaves the index as it was."""
+    index = written([Document(front=COMPASS, body=NEAR_BODY)])
+    build = build_of(index)
+    stray = Piece(path=COMPASS_PATH, number=9, start=0, stop=1, key="k")
+    with pytest.raises(ValueError, match="names a section"):
+        index.fill(build, EMBEDDED, {stray: query(NORTH)}, ())
+    with index.reading() as reader:
+        assert (reader.build(), reader.embedded(), reader.pieces()) == (build, None, [])
+
+
+def test_a_document_replaced_has_no_pieces_until_filled(written: Written) -> None:
+    """Its pieces go with it; filled again, they come back, the other's as they were."""
+    parts = (NORTHERN,)
+    index = written(
+        [
+            Document(front=COMPASS, body=NEAR_BODY, pieces=parts),
+            Document(
+                front=UPGRADE,
+                body=UPGRADE_BODY,
+                pieces=(piece_of(UPGRADE_BODY, "broker", "k-broker", EAST),),
+            ),
+        ],
+        EMBEDDED,
+    )
+    with index.reading() as reader:
+        held = reader.pieces()
+    done = index.update(change(put=[Document(front=COMPASS, body=NEAR_BODY)]), build_of(index))
+    assert done is not None
+    with index.reading() as reader:
+        assert [piece.path for piece in reader.pieces()] == [UPGRADE_PATH]
+        assert reader.keys() == {"k-broker"}
+    again = filled([Document(front=COMPASS, body=NEAR_BODY, pieces=parts)])
+    assert index.fill(done.build, EMBEDDED, again, ())
+    with index.reading() as reader:
+        assert reader.pieces() == held
+        assert reader.keys() == {"k-north", "k-broker"}

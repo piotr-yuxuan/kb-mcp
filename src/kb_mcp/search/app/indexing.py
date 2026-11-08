@@ -6,9 +6,10 @@ whose text the model refuses has no vector, and its document is named. Reading t
 joining persons and embedding are each a span; files and pieces are counted, as
 ``docs/reference/telemetry/index.md`` and ``embed.md`` list it. ``update_index`` is
 ``index``'s: only the files whose bytes changed are read, and the index takes them
-through its update. ``refresh`` is ``embed``'s: ``index_mirror``'s build, which opens
-the endpoint, then builds; then the prune of the vector store to what the indexes on
-disk read.
+through its update. ``refresh`` is ``embed``'s: the pieces that the index's documents
+want are filled, from the index alone, the mirror read for its digests; then the
+vector store is pruned to what the indexes on disk read. ``build_index`` builds an
+index whole, as ``eval`` does.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 import structlog
 from opentelemetry import metrics, trace
 from pydantic import ConfigDict, Field
@@ -37,11 +39,12 @@ from kb_mcp.search.adapters import sqlite_index, vector_store
 from kb_mcp.search.adapters.aliases import AliasFileError, read_aliases
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import Endpoint, ModelError
-from kb_mcp.search.app.pruning import Pruned, prune
+from kb_mcp.search.app.pruning import Pruned, Written, prune
 from kb_mcp.search.domain.chunking import CHUNKERS
 from kb_mcp.search.domain.indexes import (
     Change,
     DamagedIndexError,
+    Piece,
     Put,
     Skipped,
     UnavailableIndexError,
@@ -55,7 +58,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from kb_mcp.search.adapters.embedding import Embedder
-    from kb_mcp.search.domain.indexes import Held, WordsIndex
+    from kb_mcp.search.domain.indexes import Held, SearchIndex, Stored, WordsIndex
 
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
@@ -67,8 +70,6 @@ PIECES = METER.create_counter(
 )
 
 
-# What to do when the endpoint does not answer with the model.
-WORDS_ALONE = "run kb-mcp index for an index by words alone"
 # Why a run stops that found the index written by another, twice, as it was about to.
 CHANGED_MEANWHILE = "another kb-mcp index or kb-mcp embed wrote the index during this run, twice"
 # The outcomes of an update's documents, as its report and ``kb_mcp.index.files`` count them.
@@ -130,7 +131,7 @@ class Indexing(Record):
     ``endpoint`` opens the embedding endpoint, as the run allows it, or is None for an
     index by words alone, which never calls it. ``evaluation_indexes`` holds the indexes
     that eval builds, whose vectors a prune keeps. ``aliases`` is the user's alias file,
-    which each build reads, if there is one, to join names into persons.
+    which ``index`` reads, if there is one, to join names into persons.
     """
 
     docs: Path
@@ -152,10 +153,10 @@ class Differences(Record):
 
 
 class Indexed(Record):
-    """What a build did, the index it wrote, and the model that embedded, None by words alone.
+    """What ``index`` did, and the index it wrote.
 
-    ``pruned`` says what the prune of the vector store that followed did: None by words
-    alone, which never opens the store, and from ``index_mirror``, which does not prune.
+    ``model`` and ``pruned`` stay None, as ``index`` embeds nothing and never opens the
+    vector store; its JSON names them, as before plan 035.
     """
 
     report: Report
@@ -483,17 +484,8 @@ def update_index(
             people=report.persons.count,
             **counts,
         )
-    warned(report)
-    return Indexed(report=report, index=indexing.index, model=None)
-
-
-def warned(report: Report) -> None:
-    """Warn of each file that a build skipped, of their count, and of what its join left apart."""
-    log = structlog.get_logger()
     for path, reason in report.skipped:
         log.warning("index.file_skipped", path=path, reason=reason)
-    for path in report.unembedded:
-        log.warning("index.piece_refused", path=path)
     if report.skipped:
         log.warning("index.lacks_files", count=len(report.skipped))
     for ambiguity in report.persons.ambiguous:
@@ -502,58 +494,206 @@ def warned(report: Report) -> None:
         )
     for alias in report.persons.unused:
         log.warning("index.alias_unused", alias=alias.name, key=alias.key, reason=alias.reason)
+    return Indexed(report=report, index=indexing.index, model=None)
 
 
-def index_mirror(indexing: Indexing, built_at: datetime) -> Indexed | None:
-    """Build the index from the whole mirror, by words alone or with vectors too.
+# The texts of the pieces wanted, each by its piece, and what the index already holds.
+type Wanted = dict[Piece, str]
 
-    The alias file is read first, before any request to the endpoint. With an endpoint,
-    it must answer with the model; when it does not, or the alias file is refused or
-    cannot be read, or there is no mirror, or the index cannot be written (a file's
-    error, or the database's operational one, such as a full disk or a lock), the index
-    in place stays, with its vectors, nothing is returned, and ``index.not_built`` is an
-    error. Each file skipped and each piece that the endpoint refused is a warning, as
-    is the count of files that the index lacks, each name that could be several persons
-    and each alias that changed nothing; the last two leave the report whole.
+
+class Filled(Record):
+    """What ``embed`` did to the index's pieces, then what the prune that followed did.
+
+    ``added`` and ``removed`` count pieces; ``embedded`` the texts that the model embedded,
+    the store lacking them; ``found`` those that the store held; ``refused`` names the
+    documents with a piece whose text the model refused, which stays wanted. ``pieces``
+    counts what the index then holds, ``documents`` its documents and ``skipped`` the
+    files that it lacks. ``unchanged`` says that nothing was written. ``kept`` holds the
+    keys of the pieces that the index then holds, which the prune keeps whatever an
+    ``index`` renamed meanwhile; it is not shown.
     """
-    opened = None if indexing.endpoint is None else indexing.endpoint()
-    try:
-        with opened or contextlib.nullcontext():
-            aliases = read_aliases(indexing.aliases)
-            embedder = None if opened is None else connect(opened, indexing.model)
-            embedding = (
-                None
-                if embedder is None
-                else Embedding(embedder, indexing.vectors, indexing.chunking)
+
+    index: Path
+    model: str
+    pieces: int
+    documents: int
+    skipped: int = 0
+    added: int = 0
+    removed: int = 0
+    embedded: int = 0
+    found: int = 0
+    refused: list[str] = Field(default_factory=list)
+    unchanged: bool = False
+    kept: frozenset[str] = Field(default_factory=frozenset, exclude=True)
+    pruned: Pruned | None = None
+
+    @property
+    def whole(self) -> bool:
+        """Whether every piece wanted has its vector, and the index lacks no file."""
+        return not (self.refused or self.skipped)
+
+
+def to_fill(index: SearchIndex) -> tuple[Held, Embedded | None, list[Stored], set[Piece]]:
+    """Read in one use what ``embed`` fills: what is held, the model, documents and pieces.
+
+    What the index holds of the mirror, the model it names, if any, its documents and
+    its pieces. Raises UnavailableIndexError, naming ``kb-mcp index``, for an index that this code's
+    cut did not write, as its pieces would land on other sections; and as ``reading``
+    and ``held`` raise it.
+    """
+    with index.reading() as reader:
+        held = reader.held()
+        if held.words != WORDS:
+            message = (
+                "the index is cut otherwise than this version cuts, or records no files:"
+                " run kb-mcp index first"
             )
-            report = build_index(indexing.docs, indexing.index, built_at, embedding, aliases)
-    except ModelError as error:
-        structlog.get_logger().error("index.not_built", reason=str(error), hint=WORDS_ALONE)
-        return None
-    except (MirrorMissingError, AliasFileError, OSError, sqlite3.OperationalError) as error:
+            raise UnavailableIndexError(message)
+        return held, reader.embedded(), reader.documents(), set(reader.pieces())
+
+
+def filling(index: SearchIndex, indexing: Indexing) -> Filled:
+    """Fill the pieces that the index's documents want, by the run's model and chunking.
+
+    Before the endpoint is opened, the index is read and the mirror's files compared
+    with it: ``embed.mirror_changed`` warns of any difference, naming ``kb-mcp index``,
+    and changes nothing else. The documents' bodies are cut again by this code, each
+    piece keyed by the model's fingerprint: those wanted and not held are added, their
+    vectors from the store, else from the model, under the store's lock shared; those
+    held and not wanted are removed; nothing to add or remove, the same model, nothing
+    is written, nor when the model refuses every piece to add. Another run that wrote
+    the index meanwhile starts the fill again, once, then raises ChangedMeanwhileError.
+    Raises ModelError when the model fails.
+    """
+    log = structlog.get_logger()
+    held, before, stored, pieces = to_fill(index)
+    try:
+        files = mirror_files(indexing.docs)
+    except MirrorMissingError:
+        files = {}
+    found = differences(digested(files), held)
+    if found.changed or found.added or found.removed:
+        log.warning(
+            "embed.mirror_changed",
+            changed=len(found.changed),
+            added=len(found.added),
+            removed=len(found.removed),
+            hint="run kb-mcp index",
+        )
+    restarted = False
+    with indexing.endpoint() as endpoint:
+        embedder = connect(endpoint, indexing.model)
+        model = Embedded(
+            model=embedder.name,
+            fingerprint=embedder.fingerprint,
+            dimensions=embedder.dimensions,
+            chunking=indexing.chunking,
+        )
+        while True:
+            wanted: Wanted = {
+                Piece(
+                    path=each.path,
+                    number=number + 1,
+                    start=start,
+                    stop=stop,
+                    key=vector_store.key(model.fingerprint, text),
+                ): text
+                for each in stored
+                for number, start, stop, text in CHUNKERS[model.chunking].cut(
+                    each.front, sections(each.body)
+                )
+            }
+            add = {piece: text for piece, text in wanted.items() if piece not in pieces}
+            remove = pieces - wanted.keys()
+            kept = pieces - remove
+            filled = Filled(
+                index=indexing.index,
+                model=indexing.model,
+                pieces=len(kept),
+                documents=len(held.documents),
+                skipped=len(held.skipped),
+                kept=frozenset(piece.key for piece in kept),
+            )
+            if not add and not remove and before == model:
+                log.info("embed.unchanged", pieces=filled.pieces)
+                return replace(filled, unchanged=True)
+            texts = {piece.key: text for piece, text in add.items()}
+            with vector_store.shared(indexing.vectors):
+                with (
+                    TRACER.start_as_current_span("index.embed"),
+                    vector_store.opened(indexing.vectors) as store,
+                ):
+                    vectors, embedded = store.vectors(texts, embedder.documents)
+                given = {
+                    piece: np.frombuffer(vectors[piece.key], dtype=vector_store.LAYOUT)
+                    for piece in add
+                    if piece.key in vectors
+                }
+                build = (
+                    index.fill(held.build, model, given, remove)
+                    if given or remove or before != model
+                    else held.build  # every piece to add refused: nothing to write
+                )
+            if build is not None:
+                filled = replace(
+                    filled,
+                    pieces=len(kept) + len(given),
+                    added=len(given),
+                    removed=len(remove),
+                    embedded=embedded,
+                    found=len(texts.keys() & vectors.keys()) - embedded,
+                    refused=sorted({piece.path for piece in add.keys() - given.keys()}),
+                    kept=filled.kept | {piece.key for piece in given},
+                    unchanged=build == held.build,
+                )
+                counts = {"added": filled.added, "removed": filled.removed}
+                for outcome, count in (*counts.items(), ("refused", len(add) - len(given))):
+                    PIECES.add(count, {"kb_mcp.outcome": outcome})
+                if filled.unchanged:
+                    log.info("embed.unchanged", pieces=filled.pieces)
+                    return filled
+                log.info(
+                    "embed.filled",
+                    **counts,
+                    embedded=filled.embedded,
+                    found=filled.found,
+                    refused=len(filled.refused),
+                    pieces=filled.pieces,
+                )
+                return filled
+            if restarted:
+                raise ChangedMeanwhileError(CHANGED_MEANWHILE)
+            restarted = True
+            log.info("index.restarted")
+            held, before, stored, pieces = to_fill(index)
+
+
+def refresh(indexing: Indexing) -> Filled | None:
+    """Fill the index's pieces, as ``filling`` does, then prune the vector store.
+
+    When there is no index, one that this code's cut did not write, one damaged, the
+    model fails, the index cannot be written, its lock is held too long, or another run
+    wrote it at each attempt, the index in place stays, nothing is returned, and
+    ``index.not_built`` is an error. Each document with a piece refused is a warning.
+    ``embed.filled`` or ``embed.unchanged`` says what it did, and ``kb_mcp.index.pieces``
+    counts the pieces added, removed and refused. The prune holds back for an index
+    that lacks a file of the mirror or holds no document, and keeps the vectors of the
+    pieces that the index holds, as this run wrote it.
+    """
+    log = structlog.get_logger()
+    try:
+        filled = filling(sqlite_index.SqliteIndex(indexing.index), indexing)
+    except (
+        UnavailableIndexError,
+        ModelError,
+        ChangedMeanwhileError,
+        OSError,
+        sqlite3.OperationalError,
+    ) as error:
         structlog.get_logger().error("index.not_built", reason=str(error))
         return None
-    warned(report)
-    return Indexed(
-        report=report, index=indexing.index, model=None if embedding is None else indexing.model
-    )
-
-
-def refresh(indexing: Indexing, built_at: datetime) -> Indexed | None:
-    """Build the index as ``index_mirror`` does; then, by meaning, prune the vector store.
-
-    An index by words alone never opens the store, and prunes nothing. The prune holds
-    back after a build that skipped a file or indexed no document, as the index then
-    lacks what the mirror still holds.
-    """
-    indexed = index_mirror(indexing, built_at)
-    if indexed is None or indexed.model is None:
-        return indexed
-    pruned = prune(
-        indexing.vectors,
-        indexing.index,
-        indexing.evaluation_indexes,
-        skipped=len(indexed.report.skipped),
-        documents=indexed.report.types.total(),
-    )
-    return replace(indexed, pruned=pruned)
+    for path in filled.refused:
+        log.warning("index.piece_refused", path=path)
+    written = Written(skipped=filled.skipped, documents=filled.documents, keys=filled.kept)
+    pruned = prune(indexing.vectors, indexing.index, indexing.evaluation_indexes, written)
+    return replace(filled, pruned=pruned)

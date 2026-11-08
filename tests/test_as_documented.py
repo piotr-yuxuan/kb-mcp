@@ -280,6 +280,30 @@ def by_meaning(data: Path, url: str) -> list[str]:
     return ["--config", str(settings), "--data-dir", str(data)]
 
 
+def held_meanwhile(
+    lock: Path, event: str, emitted: Emitted, then: Callable[[], object]
+) -> threading.Thread:
+    """Hold a lock file exclusive in a thread until a run waits for it, ``event``; then ``then``.
+
+    Give the thread, started once it holds the lock; join it after the run.
+    """
+    taken = threading.Event()
+
+    def hold() -> None:
+        with lock.open("a") as file:
+            fcntl.flock(file, fcntl.LOCK_EX)
+            taken.set()
+            deadline = time.monotonic() + 10
+            while event not in emitted.events and time.monotonic() < deadline:
+                time.sleep(0.01)
+            then()
+
+    thread = threading.Thread(target=hold)
+    thread.start()
+    assert taken.wait(10)
+    return thread
+
+
 def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None:
     """By words alone, in the hybrid mode too: a file skipped, built whole; then updated.
 
@@ -303,20 +327,10 @@ def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> Non
     other = tmp_path / "other.sqlite"  # another run's index, of the mirror as it was
     build_index(data / "docs", other, MOMENT)
     broken.unlink()
-    taken = threading.Event()
-
-    def write_briefly() -> None:
-        with (data / "index.sqlite.lock").open("a") as file:
-            fcntl.flock(file, fcntl.LOCK_EX)
-            taken.set()
-            deadline = time.monotonic() + 10
-            while "index.lock_wait" not in emitted.events and time.monotonic() < deadline:
-                time.sleep(0.01)
-            other.replace(data / "index.sqlite")
-
-    writing = threading.Thread(target=write_briefly)
-    writing.start()
-    assert taken.wait(10)
+    index = data / "index.sqlite"
+    writing = held_meanwhile(
+        data / "index.sqlite.lock", "index.lock_wait", emitted, lambda: other.replace(index)
+    )
     with emitted.gathering(telemetry, "index"):
         assert main(["index", "--yes", *options]) == ExitStatus.OK
     writing.join()
@@ -333,59 +347,53 @@ def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> Non
 def test_embed_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A file skipped and a piece refused, during a prune, whole, during a build; no endpoint.
+    """No index; a piece refused during a prune; no endpoint; the mirror changed; then whole.
 
-    The mirror holds a few pages, one with a front matter refused, and one whose second
-    section the endpoint refuses to embed, cut by sections; and the people of PERSONS,
-    two of whose names could be several persons, with an alias whose key none holds.
-    Plan 043, criterion 5: both warnings are recorded with their fields, by builds that
-    exit 0 as by the others, and index.built with the persons.
+    The mirror holds a few pages, one with a front matter refused, which the index lacks,
+    and one whose second section the endpoint refuses to embed, cut by sections. The
+    last fills wait for the index's lock, then find it written by another run, and start
+    again; then nothing changes, during a build. The ``index`` runs between are not
+    gathered: what they record is ``index``'s.
     """
     monkeypatch.setenv("KB_MCP_CHUNKING", "sections")
     data = tmp_path / "data"
     fillers(data / "docs", 5)
-    for front in PERSONS:
-        write(data / "docs", front)
-    (data / "aliases.toml").write_text('"Jo Placeholder" = "Robin Example"\n', encoding="utf-8")
     body = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
     write(data / "docs", page("196845", "Rollback"), body)
     broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
     broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
     refused = "Rollback\nRelease\nThe deploy of the seller service."
     emitted = Emitted()
+    with serving(Scripted()) as url, emitted.gathering(telemetry, "embed"):
+        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
+    assert main(["index", "--yes", *by_meaning(data, URL)]) == ExitStatus.FAILED
+    store, index = data / "vectors.sqlite", data / "index.sqlite"
+    pruning = held_meanwhile(vector_store.lock_of(store), "vectors.lock_wait", emitted, list)
     with serving(Scripted(refused={refused})) as url, emitted.gathering(telemetry, "embed"):
         assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
+    pruning.join()
     with nothing_listening() as url, emitted.gathering(telemetry, "embed"):
         assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
-    taken = threading.Event()
-
-    def prune_briefly() -> None:
-        with vector_store.exclusive(data / "vectors.sqlite") as held:
-            assert held
-            taken.set()
-            deadline = time.monotonic() + 10
-            while "vectors.lock_wait" not in emitted.events and time.monotonic() < deadline:
-                time.sleep(0.01)
-
-    pruning = threading.Thread(target=prune_briefly)
-    pruning.start()
-    assert taken.wait(10)
+    broken.unlink()
+    write(data / "docs", page("196846", "Refund"), body.replace("payout", "refund"))
     with serving(Scripted()) as url, emitted.gathering(telemetry, "embed"):
         assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
-    pruning.join()
-    broken.unlink()
+    assert main(["index", "--yes", *by_meaning(data, URL)]) == ExitStatus.OK
+    other = tmp_path / "other.sqlite"  # another run's index, with no pieces
+    build_index(data / "docs", other, MOMENT)
+    lock = vector_store.lock_of(index)
+    writing = held_meanwhile(lock, "index.lock_wait", emitted, lambda: other.replace(index))
     with serving(Scripted()) as url, emitted.gathering(telemetry, "embed"):
         assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
+    writing.join()
     with (
-        vector_store.shared(data / "vectors.sqlite"),
+        vector_store.shared(store),
         serving(Scripted()) as url,
         emitted.gathering(telemetry, "embed"),
     ):
         assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
     assert undocumented("embed", emitted) == []
-    assert emitted.events["index.person_ambiguous"] == {"spelling", "people"}
-    assert emitted.events["index.alias_unused"] == {"alias", "key", "reason"}
-    assert "people" in emitted.events["index.built"]
+    assert emitted.events["embed.mirror_changed"] == {"changed", "added", "removed", "hint"}
 
 
 def test_serve_records_as_documented(tmp_path: Path) -> None:

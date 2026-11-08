@@ -30,7 +30,6 @@ from kb_mcp.search.app.indexing import (
     Embedding,
     Indexing,
     build_index,
-    index_mirror,
     update_index,
 )
 from kb_mcp.search.domain.indexes import Put, UnavailableIndexError
@@ -184,19 +183,18 @@ def test_the_command_gives_its_report_index_and_model_as_json(
 def test_embed_needs_the_endpoint_and_index_never_asks_it(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """No endpoint answering: ``embed`` exits 1 naming the way out, which runs by words alone.
+    """No endpoint answering: ``index`` never asks it, and ``embed`` exits 1 saying why.
 
     Whatever the mode says, as neither reads it to decide: plan 031, criterion 5.
     """
     write(data / "docs", page("196845", "Kafka"), BODY)
     config = data.parent / "config.toml"
     with nothing_listening() as url:
-        config.write_text(f"embedding_url = {json.dumps(url)}\n", encoding="utf-8")
+        status, out, _ = index(data, capsys, f"embedding_url = {json.dumps(url)}\n")
+        assert (status, out) == (0, FIRST_SHORT)
         options = ["--yes", "--config", str(config), "--data-dir", str(data)]
         assert main(["embed", *options]) == 1
-        assert "run kb-mcp index for an index by words alone" in capsys.readouterr().err
-        status, out, _ = index(data, capsys, f"embedding_url = {json.dumps(url)}\n")
-    assert (status, out) == (0, FIRST_SHORT)
+    assert "no answer from the embedding endpoint" in capsys.readouterr().err
 
 
 def test_line_endings_read_back_as_written(data: Path) -> None:
@@ -359,7 +357,7 @@ def test_a_bug_in_the_database_s_use_is_not_taken_for_a_failure_to_write(
         endpoint=None,
     )
     with pytest.raises(sqlite3.ProgrammingError):
-        index_mirror(indexing, MOMENT)
+        update_index(indexing, MOMENT)
 
 
 @pytest.mark.parametrize("mode", ["lexical", "hybrid"])

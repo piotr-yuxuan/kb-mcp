@@ -1,8 +1,7 @@
-"""``embed``: build the search index again with vectors, by the setting's model, then prune."""
+"""``embed``: give the index's pieces their vectors, by the setting's model, then prune."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -15,7 +14,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.search.app.indexing import Indexed
+    from kb_mcp.search.app.indexing import Filled
     from kb_mcp.search.app.pruning import Pruned
 
 # Bytes in a megabyte, as the summary says the vector store's size.
@@ -29,19 +28,19 @@ SHRINKS_NOT = (
 )
 
 
-def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Indexed | None]:
-    """Build the index with vectors; exit 1 when a file or a piece was left out, or none built.
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Filled | None]:
+    """Fill the index's pieces; exit 1 when a piece was refused, a file lacks, or none written.
 
     The endpoint must answer with the setting's model, whatever ``search_mode`` says,
     which this run does not read; when it does not, the index in place stays, with its
-    vectors, and nothing is given. Nothing built is an error; each file skipped and each
-    piece that the endpoint refused is a warning, as is the count of files that the
-    index lacks.
+    vectors, and nothing is given. Nothing filled is an error, the index named by
+    ``kb-mcp index``; each document with a piece that the endpoint refused is a
+    warning. A mirror changed since the index is a warning, whose exit status stays.
     """
     settings = loaded.settings
     opening = partial(open_endpoint, arguments, settings)
-    indexed = refresh(indexing_of(settings, opening), datetime.now(UTC))
-    return ExitStatus.OK if indexed and indexed.report.whole else ExitStatus.FAILED, indexed
+    filled = refresh(indexing_of(settings, opening))
+    return ExitStatus.OK if filled and filled.whole else ExitStatus.FAILED, filled
 
 
 def prune_text(pruned: Pruned | None, summary: Summary) -> str:
@@ -75,25 +74,30 @@ def prune_text(pruned: Pruned | None, summary: Summary) -> str:
     return f"{written}\n"
 
 
-def text(indexed: Indexed, summary: Summary) -> str:
-    """Write the documents and sections indexed, the pieces by meaning, then the prune.
+def text(filled: Filled, summary: Summary) -> str:
+    """Write the pieces that the index holds and what changed of them, then the prune.
 
-    Short gives their count and the texts embedded now, detailed the documents by type,
-    the index, and the model with its prefixes too.
+    Short gives the pieces, those added and removed, or that nothing was written, and
+    the texts embedded now; detailed, the texts found in the vector store, the documents
+    with a piece refused, the index, and the model with its prefixes too.
     """
-    report = indexed.report
     if summary == "short":
-        written = f"documents: {report.types.total()}\nsections: {report.sections}\n"
-        written += f"pieces: {report.pieces}\nembedded now: {report.embedded}\n"
-    else:
-        types = ", ".join(f"{name}: {count}" for name, count in sorted(report.types.items()))
-        written = (
-            f"indexed {report.types.total()} documents ({types or 'none'}),"
-            f" {report.sections} sections, into {indexed.index}\n"
-        )
+        written = f"pieces: {filled.pieces}\n"
         written += (
-            f"{report.pieces} pieces by meaning, with {indexed.model}"
-            f" ({prefixes_said(indexed.model)}); {report.embedded} embedded now,"
-            " the others kept\n"
+            "nothing written\n"
+            if filled.unchanged
+            else f"added: {filled.added}\nremoved: {filled.removed}\n"
         )
-    return written + prune_text(indexed.pruned, summary)
+        written += f"embedded now: {filled.embedded}\n"
+    else:
+        model = f"{filled.model} ({prefixes_said(filled.model)})"
+        holds = f"{filled.index} holds {filled.pieces} pieces by meaning, with {model}"
+        written = (
+            f"nothing changed: {holds}\n"
+            if filled.unchanged
+            else f"{filled.pieces} pieces by meaning in {filled.index}, with {model}:"
+            f" {filled.added} added, {filled.removed} removed; {filled.embedded} texts embedded"
+            f" now, {filled.found} found in the vector store;"
+            f" {len(filled.refused)} documents with a piece refused\n"
+        )
+    return written + prune_text(filled.pruned, summary)

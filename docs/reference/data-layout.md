@@ -769,7 +769,7 @@ document by document.
 
 `<data>/aliases.toml` (`Settings.aliases`) is the user's: the program never writes it.
 `index` and `embed` read it at the start of each build, before the endpoint is asked
-(`search.adapters.aliases.read_aliases`, through `search.app.indexing.index_mirror`);
+(`search.adapters.aliases.read_aliases`, through `search.app.indexing.update_index`);
 `serve` never does, and `eval` builds its indexes without aliases. Each line is a name
 as some source writes it, then the person it means, by a name or by a person's id, both
 TOML strings:

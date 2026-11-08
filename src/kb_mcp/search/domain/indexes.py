@@ -10,7 +10,8 @@ opens one, so that all that a call reads comes through one reader. A search read
 and vectors in one use, hence ``SearchIndex``, the two interfaces together, whose
 reader reads both. ``Put`` and ``Skipped`` say what an index takes of each file of the
 mirror; ``Held`` what it holds of them, ``Change`` what an update changes, all of it or
-none, and ``Updated`` what that did.
+none, and ``Updated`` what that did. ``Stored`` is a document as the index holds it,
+and ``Piece`` a piece of one that a vector stands for.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from kb_mcp.search.domain.people import Outcome
 from kb_mcp.search.domain.search import Section
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Collection, Iterable, Mapping
     from contextlib import AbstractContextManager
 
     import numpy as np
@@ -71,6 +72,24 @@ class Skipped(Record):
     path: str  # relative to the mirror
     digest: str | None  # the SHA-256 of its bytes; None for a file that could not be read
     reason: str  # holding nothing of the file's content
+
+
+class Stored(Record):
+    """A document as an index holds it: its path, its front matter and its body."""
+
+    path: str
+    front: FrontMatter
+    body: str
+
+
+class Piece(Record):
+    """A piece of a document that a vector stands for, as ``search.domain.chunking`` cuts it."""
+
+    path: str  # the document's
+    number: int  # the section holding its middle, numbered from 1
+    start: int  # its span in that section's body, its heading line aside
+    stop: int
+    key: str  # its vector's in the vector store
 
 
 class Held(Record):
@@ -216,6 +235,9 @@ class WordsReader(Protocol):
         Raises DamagedIndexError when a table of it cannot be read.
         """
 
+    def documents(self) -> list[Stored]:
+        """Give every document with its front matter and its body as put, by path."""
+
     def built_at(self) -> datetime:
         """Say when the index was built."""
 
@@ -228,6 +250,9 @@ class VectorReader(Protocol):
 
     def embedded(self) -> Embedded | None:
         """Name the model of the index's vectors, or None when it has no model."""
+
+    def pieces(self) -> list[Piece]:
+        """Give every piece that has its vector, by path, section number and start."""
 
     def keys(self) -> set[str]:
         """Give the vector store's keys of the pieces' vectors: what the index reads of it.
@@ -282,6 +307,21 @@ class VectorIndex(Protocol):
 
         Raises UnavailableIndexError when there is no index, or one this version cannot
         read.
+        """
+
+    def fill(
+        self,
+        expected_build: str,
+        model: Embedded,
+        add: Mapping[Piece, NDArray[np.float32]],
+        remove: Collection[Piece],
+    ) -> str | None:
+        """Add pieces with their vectors and remove others, all or none, naming the model.
+
+        Give the new build, or None when the index is no longer the build
+        ``expected_build`` read. Each piece names its section by its document's path and
+        number; one that names none is a defect, and raises ValueError. Raises
+        DamagedIndexError and TimeoutError as ``WordsIndex.update`` does.
         """
 
 

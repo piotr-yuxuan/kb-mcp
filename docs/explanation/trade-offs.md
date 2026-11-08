@@ -500,7 +500,7 @@ parts that tell two names of one key apart
 could be several persons joins none of them, a speaker whose meeting names another
 than the one account of its name among them, and the build warns of it, as of an alias
 that changes nothing
-([`index_mirror`](../../src/kb_mcp/search/app/indexing.py)). The
+([`update_index`](../../src/kb_mcp/search/app/indexing.py)). The
 aliases are a file of the data directory, `aliases.toml`, read at each build
 ([`read_aliases`](../../src/kb_mcp/search/adapters/aliases.py)). The
 index holds the persons, each with an id, `p-` and a digest of its account id or its

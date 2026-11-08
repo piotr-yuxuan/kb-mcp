@@ -26,8 +26,7 @@ positional arguments:
     check        validate the settings and the data directory
     completion   print the code that completes the command in bash and zsh
     doctor       check the machine and each sign-in
-    embed        build the search index again with vectors, then prune the vector
-                 store
+    embed        give the index's pieces their vectors, then prune the vector store
     eval         measure search and ask on golden questions, by mode, model and
                  chunking
     eval-agents  evaluate ask through agents: prepare their runs, bridge their calls,
@@ -145,10 +144,12 @@ options:
                         let this run send the mirror's text to an embedding endpoint
                         off this machine
 
-With --format json: report, the documents by type, the sections, the files skipped,
-the pieces by meaning, the texts embedded now and the files with a piece refused;
-index, its path; model, the one that embedded; pruned, what the prune of the vector
-store kept and deleted, or why it did not prune.
+With --format json: index, its path; model, the one that embedded; pieces, those that
+the index holds; documents, its documents; skipped, the files that it lacks; added and
+removed, the pieces; embedded, the texts embedded now; found, those that the vector
+store held; refused, the documents with a piece refused; unchanged, whether nothing
+was written; pruned, what the prune of the vector store kept and deleted, or why it
+did not prune.
 ```
 
 ## `eval`
