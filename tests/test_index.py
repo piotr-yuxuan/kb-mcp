@@ -1224,7 +1224,20 @@ WORDS_CHANGED = (
     "a whole build writes otherwise from the same files: change WORDS, in"
     " search/domain/search.py, so that no update keeps rows of the old one; then pin this"
 )
-HANDBOOK = page("1001", "Deploy", labels=("ops", "été"), breadcrumb=("Home", "Guides"))
+HANDBOOK = page(
+    "1001",
+    "Deploy",
+    labels=("ops", "été"),
+    breadcrumb=("Home", "Guides"),
+    people=(
+        PersonRole(role="author", name="A Person", account="acct-0001"),
+        PersonRole(
+            role="commenter",
+            name="Kim Doe",
+            at=(MOMENT - timedelta(hours=2), MOMENT - timedelta(hours=1)),
+        ),
+    ),
+)
 HANDBOOK_BODY = (
     "# Deploy\n\nWhy we deploy_it.\n\n"
     "## Rollback ##\r\n\r\nUndo it.\n\n```\n# not a heading\n```\n\n"
@@ -1295,17 +1308,91 @@ PINNED_TERMS = [
     ("we", 1, 1),
     ("why", 1, 1),
 ]
-# Of each document's row, what the front matter does not give back by itself.
+# Each document's row but its rowid and its file's digest: times, people, links as written.
 PINNED_DOCUMENTS = [
-    ("confluence/ENG/1001-deploy.md", '["ops", "été"]', '["Home", "Guides"]', 110, 1, 3),
-    ("jira/PROJ/PROJ-1.md", "[]", "[]", 41, 4, 5),
+    (
+        "confluence/ENG/1001-deploy.md",
+        "confluence",
+        "page",
+        "1001",
+        None,
+        "Deploy",
+        "ENG",
+        None,
+        "current",
+        None,
+        '["ops", "été"]',
+        (
+            '[{"role": "author", "name": "A Person", "account": "acct-0001", "at": []},'
+            ' {"role": "commenter", "name": "Kim Doe", "account": null,'
+            ' "at": ["2026-10-20T19:52:41+00:00", "2026-10-20T20:52:41+00:00"]}]'
+        ),
+        "[]",
+        "2026-10-20T21:52:41+00:00",
+        "2026-10-20T21:52:41+00:00",
+        1,
+        "000001",
+        None,
+        '["Home", "Guides"]',
+        "2026-10-20T21:52:41+00:00",
+        110,
+        1,
+        3,
+    ),
+    (
+        "jira/PROJ/PROJ-1.md",
+        "jira",
+        "issue",
+        "10001",
+        "PROJ-1",
+        "Économie",
+        None,
+        "PROJ",
+        "To Do",
+        "Task",
+        "[]",
+        "[]",
+        "[]",
+        "2026-10-20T21:52:41+00:00",
+        "2026-10-20T21:52:41+00:00",
+        None,
+        "20261020T215241.000000Z",
+        None,
+        "[]",
+        "2026-10-20T21:52:41+00:00",
+        41,
+        4,
+        5,
+    ),
+]
+# Each row of people, a commenter's one per comment, and the file refused with why.
+PINNED_ROWS = [
+    ("confluence/ENG/1001-deploy.md", "author", "A Person", "acct-0001", None),
+    ("confluence/ENG/1001-deploy.md", "commenter", "Kim Doe", None, "2026-10-20T19:52:41+00:00"),
+    ("confluence/ENG/1001-deploy.md", "commenter", "Kim Doe", None, "2026-10-20T20:52:41+00:00"),
+]
+REFUSED = "---\ntitle: no other key\n---\n"
+PINNED_SKIPPED = [
+    (
+        "confluence/ENG/1-broken.md",
+        (
+            "front matter without exactly the mirror's keys, in order, without source, type,"
+            " id, key, space, project, status, issue_type, labels, people, links, created,"
+            " updated, version, revision, url, breadcrumb, fetched_at"
+        ),
+    )
 ]
 
 
 def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Path) -> None:
-    """The sections, the words and the rows of two documents, as ``WORDS`` names them."""
+    """The sections, the words and the rows of two documents, and a refusal, under ``WORDS``.
+
+    Every column of their rows, so that no change to how a time, the people or the links
+    are written leaves an update's copied rows otherwise than a whole build's.
+    """
     write(data / "docs", HANDBOOK, HANDBOOK_BODY)
     write(data / "docs", NOTE, NOTE_BODY)
+    (data / "docs" / "confluence" / "ENG" / "1-broken.md").write_text(REFUSED, encoding="utf-8")
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     assert WORDS == PINNED_WORDS, WORDS_CHANGED
     index = data / "index.sqlite"
@@ -1321,11 +1408,21 @@ def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Pat
     assert (
         rows_of(
             index,
-            "SELECT path, labels, breadcrumb, length, first_section, last_section"
-            " FROM documents ORDER BY path",
+            "SELECT path, source, type, id, key, title, space, project, status, issue_type,"
+            " labels, people, links, created, updated, version, revision, url, breadcrumb,"
+            " fetched_at, length, first_section, last_section FROM documents ORDER BY path",
         )
         == PINNED_DOCUMENTS
     ), WORDS_CHANGED
+    assert (
+        rows_of(
+            index,
+            "SELECT d.path, p.role, p.name, p.account, p.at FROM people p"
+            " JOIN documents d ON d.rowid = p.document ORDER BY 1, 2, 3, 5",
+        )
+        == PINNED_ROWS
+    ), WORDS_CHANGED
+    assert rows_of(index, "SELECT path, reason FROM skipped") == PINNED_SKIPPED, WORDS_CHANGED
     with closing(sqlite3.connect(index)) as connection:
         connection.execute("CREATE VIRTUAL TABLE temp.terms USING fts5vocab(main, chunks, row)")
         terms = connection.execute("SELECT term, doc, cnt FROM terms ORDER BY term").fetchall()
