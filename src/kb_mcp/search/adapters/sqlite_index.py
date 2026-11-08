@@ -32,6 +32,7 @@ from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.domain import people
+from kb_mcp.search.domain.chunking import CHUNKERS
 from kb_mcp.search.domain.indexes import (
     DamagedIndexError,
     Held,
@@ -52,6 +53,7 @@ from kb_mcp.search.domain.search import (
     Pieces,
     Score,
     Summary,
+    sections,
 )
 
 if TYPE_CHECKING:
@@ -253,12 +255,14 @@ ORDER BY s.number
 """
 # What ``reading`` checks before it reads an index.
 META = "SELECT name, value FROM meta WHERE name IN ('schema', 'chunking')"
-# The documents that hold a section but no piece: those awaiting their vectors.
-AWAITING = """
-SELECT count(*) FROM documents
-WHERE last_section >= first_section
-  AND rowid NOT IN (SELECT s.document FROM pieces p JOIN sections s ON s.rowid = p.section)
+# The documents that hold a section but no piece: those that may await their vectors.
+UNFILLED = """
+SELECT d.* FROM documents d
+WHERE d.last_section >= d.first_section
+  AND d.rowid NOT IN (SELECT s.document FROM pieces p JOIN sections s ON s.rowid = p.section)
 """
+# A document's body, as its sections' heading lines and bodies give it back in order.
+BODY = "SELECT head || body FROM sections WHERE document = ? ORDER BY number"
 # The documents of the index in place, attached as ``old``, that an update would copy
 # and whose source and id one of :keys, a JSON list of pairs, holds.
 HOLDERS = """
@@ -395,6 +399,21 @@ def damaged(error: sqlite3.DatabaseError) -> bool:
     """Say whether an error of SQLite's is that of a damaged file, not of its use or its disk."""
     code = getattr(error, "sqlite_errorcode", 0) & 0xFF  # the primary code
     return code in {sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB}
+
+
+def awaiting(connection: sqlite3.Connection, chunking: Chunking) -> int:
+    """Count the documents that hold no piece and want one, as ``chunking`` cuts them.
+
+    One whose body gives no text to embed by that chunking, such as a page of a title
+    alone cut by sections, or of white space alone, wants none, and never awaits.
+    """
+    rows = connection.cursor()
+    rows.row_factory = sqlite3.Row
+    wanting = 0
+    for row in rows.execute(UNFILLED).fetchall():
+        body = "".join(text for (text,) in connection.execute(BODY, (row["rowid"],)))
+        wanting += bool(CHUNKERS[chunking].cut(entry(row).front, sections(body)))
+    return wanting
 
 
 class Writer:
@@ -614,7 +633,7 @@ class Writer:
             self.skip(each)
         persons = self.join(change.aliases)
         replaced = len(taken & held.keys())
-        awaiting = None if self.embedded is None else connection.execute(AWAITING).fetchone()[0]
+        wanting = None if self.embedded is None else awaiting(connection, self.embedded.chunking)
         return Updated(
             build=self.build,
             copied=copied,
@@ -623,7 +642,7 @@ class Writer:
             removed=len(held) - copied - replaced,
             types=dict(connection.execute(VALUES["type"]).fetchall()),
             sections=connection.execute("SELECT count(*) FROM sections").fetchone()[0],
-            awaiting=awaiting,
+            awaiting=wanting,
             skipped=tuple(sorted(skipped, key=lambda each: each.path)),
             persons=persons,
         )
@@ -1053,7 +1072,7 @@ class Reader:
         across = self._connection.execute(ACROSS).fetchone()[0]
         shared = tuple((row[0], row[1]) for row in self._connection.execute(SHARED))
         embedded = self.embedded()
-        awaiting = self._connection.execute(AWAITING).fetchone()[0] if embedded else 0
+        wanting = awaiting(self._connection, embedded.chunking) if embedded else 0
         return Summary(
             built_at=self.built_at(),
             skipped=int(meta["skipped"]),
@@ -1066,7 +1085,7 @@ class Reader:
             model=meta["model"] or None,
             pieces=pieces,
             chunking=embedded.chunking if embedded else None,
-            awaiting=awaiting,
+            awaiting=wanting,
         )
 
 

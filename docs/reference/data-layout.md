@@ -762,7 +762,9 @@ SQLite's backup, beside it, takes the pieces removed and added, each naming its 
 by path and number, the model's meta rows and a new `build`, its `built_at` kept, and is
 renamed into place (`search.adapters.sqlite_index.SqliteIndex.fill`). Between `index`
 and `embed`, a document added or changed has no pieces: search finds it by its words,
-not by its meaning, and `index` counts the documents awaiting vectors.
+not by its meaning, and `index` counts the documents awaiting vectors, those that the
+index's chunking cuts some text from; a page of white space alone, or of a title alone
+cut by sections, awaits none.
 
 `<data>/index.sqlite.lock`, beside the index (`vector_store.lock_of`), is the writers'
 lock: `index` and `embed` take it exclusive by `flock` from their check that the index

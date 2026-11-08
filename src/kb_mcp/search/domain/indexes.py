@@ -126,7 +126,8 @@ class Updated(Record):
     of its path, or ``removed``; each other put is ``added``. ``skipped`` gives every
     file that the index lacks, a put whose source and id an earlier file by path holds
     among them, and a copied document so pushed out. ``awaiting`` counts the documents
-    that hold a section but no piece, of an index that names a model, else None.
+    that want a piece by the index's chunking and hold none, of an index that names a
+    model, else None.
     """
 
     build: str

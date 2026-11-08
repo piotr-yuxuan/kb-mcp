@@ -310,7 +310,7 @@ class Summary(Record):
     model: str | None = None  # the model of the vectors, if any
     pieces: int = 0
     chunking: Chunking | None = None  # how the pieces were cut, if there are vectors
-    awaiting: int = 0  # documents holding a section but no piece, of an index with a model
+    awaiting: int = 0  # documents that want a piece by its chunking and hold none
 
 
 class Activity(Record):

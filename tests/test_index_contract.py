@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+    from kb_mcp.kernel.chunking import Chunking
     from kb_mcp.search.domain.indexes import SearchIndex
 
 # What writes documents, and a model if any, into a new index of a backend.
@@ -819,3 +820,35 @@ def test_a_document_replaced_has_no_pieces_until_filled(written: Written) -> Non
     with index.reading() as reader:
         assert reader.pieces() == held
         assert reader.keys() == {"k-north", "k-broker"}
+
+
+BLANK = page("3001", "Blank")
+TITLED = page("3002", "Titled")
+
+
+@pytest.mark.parametrize(("chunking", "waiting"), [("sections", 1), ("windows", 2)])
+def test_a_document_that_wants_no_piece_never_awaits(
+    written: Written, chunking: Chunking, waiting: int
+) -> None:
+    """Of the documents with no piece, those that the chunking cuts some text from await.
+
+    White space alone gives none; a title alone, none cut by sections, one by windows.
+    Filled, the runbook awaits no more.
+    """
+    documents = [
+        Document(front=BLANK, body="\n"),
+        Document(front=TITLED, body="# Titled\n"),
+        Document(front=RUNBOOK, body=RUNBOOK_BODY),
+    ]
+    index = written(documents, replace(EMBEDDED, chunking=chunking))
+    with index.reading() as reader:
+        assert reader.summary().awaiting == waiting
+        build = reader.build()
+    parts = filled([replace(documents[2], pieces=(piece_of(RUNBOOK_BODY, "ledger", "k", NORTH),))])
+    done = index.fill(build, replace(EMBEDDED, chunking=chunking), parts, ())
+    assert done is not None
+    with index.reading() as reader:
+        assert reader.summary().awaiting == waiting - 1
+    updated = index.update(change(put=[documents[2]]), done)
+    assert updated is not None
+    assert updated.awaiting == waiting
