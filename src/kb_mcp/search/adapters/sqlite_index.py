@@ -1141,8 +1141,9 @@ class SqliteIndex:
 
         Its lock, beside it, is held exclusive from the check of the build until the
         rename, ``index.lock_wait`` saying a wait; a change that is not whole attaches the
-        index in place read-only and copies from it, keeping its model's rows. A failure
-        leaves the index in place, and removes the new file.
+        index in place read-only and copies from it, keeping its model's rows, and a table
+        of it found damaged raises DamagedIndexError. A failure leaves the index in place,
+        and removes the new file.
         """
         lock = vector_store.lock_of(self._path)
         with vector_store.locked(lock, fcntl.LOCK_EX, "index.lock_wait", WRITER):
@@ -1159,7 +1160,8 @@ class SqliteIndex:
                 with building(self._path, change.built_at, embedded) as writer:
                     updated = writer.update(change, None if change.whole else self._path)
             except sqlite3.DatabaseError as error:
-                if not damaged(error):
+                # Only the copy reads the index in place: a whole update's error is its own.
+                if change.whole or not damaged(error):
                     raise
                 message = f"{self._path} is damaged ({error}): it is rebuilt whole"
                 raise DamagedIndexError(message) from None

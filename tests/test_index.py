@@ -1799,3 +1799,37 @@ def test_an_update_killed_leaves_the_index_as_it_was_and_its_lock_free(
         assert len(reader.listing(Filters())) == PAGES
     status, out, _ = index(data, capsys)
     assert (status, "added: 1\n" in out) == (0, True)
+
+
+def test_a_whole_update_s_own_damage_is_raised_once_not_retried(
+    data: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A corrupt error as a whole update writes its new file: no index in place was read.
+
+    It is raised, after one attempt, rather than taken for the index's damage and tried
+    again whole without end.
+    """
+    fillers(data / "docs", PAGES)
+    attempts: list[object] = []
+
+    def corrupt(*arguments: object) -> None:
+        attempts.append(arguments)
+        error = sqlite3.DatabaseError("database disk image is malformed")
+        error.sqlite_errorcode = sqlite3.SQLITE_CORRUPT
+        raise error
+
+    monkeypatch.setattr(sqlite_index.Writer, "update", corrupt)
+    indexing = Indexing(
+        docs=data / "docs",
+        index=data / "index.sqlite",
+        vectors=data / "vectors.sqlite",
+        evaluation_indexes=data / "eval" / "indexes",
+        aliases=data / "aliases.toml",
+        model="tiny",
+        chunking="sections",
+        endpoint=None,
+    )
+    with pytest.raises(sqlite3.DatabaseError, match="malformed"):
+        update_index(indexing, MOMENT, rebuild=True)
+    assert len(attempts) == 1
+    assert not (data / "index.sqlite").exists()
