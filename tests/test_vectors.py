@@ -1055,7 +1055,7 @@ def test_a_mirror_changed_since_the_index_is_a_warning_and_nothing_else(
         assert reader.entries(paths=[location(page("900000", "Lorem 0"))])
 
 
-def test_the_warning_comes_before_the_endpoint_is_opened(
+def test_the_warning_comes_before_the_model_is_reached(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
     """Criterion 16: an endpoint that does not answer fails the run after the warning."""

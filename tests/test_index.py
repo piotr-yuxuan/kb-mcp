@@ -1237,6 +1237,7 @@ HANDBOOK = page(
             at=(MOMENT - timedelta(hours=2), MOMENT - timedelta(hours=1)),
         ),
     ),
+    links=(Link(relation="summary", ref="m-20261020-review"),),
 )
 HANDBOOK_BODY = (
     "# Deploy\n\nWhy we deploy_it.\n\n"
@@ -1327,7 +1328,7 @@ PINNED_DOCUMENTS = [
             ' {"role": "commenter", "name": "Kim Doe", "account": null,'
             ' "at": ["2026-10-20T19:52:41+00:00", "2026-10-20T20:52:41+00:00"]}]'
         ),
-        "[]",
+        '[{"relation": "summary", "ref": "m-20261020-review"}]',
         "2026-10-20T21:52:41+00:00",
         "2026-10-20T21:52:41+00:00",
         1,
@@ -1372,16 +1373,8 @@ PINNED_ROWS = [
     ("confluence/ENG/1001-deploy.md", "commenter", "Kim Doe", None, "2026-10-20T20:52:41+00:00"),
 ]
 REFUSED = "---\ntitle: no other key\n---\n"
-PINNED_SKIPPED = [
-    (
-        "confluence/ENG/1-broken.md",
-        (
-            "front matter without exactly the mirror's keys, in order, without source, type,"
-            " id, key, space, project, status, issue_type, labels, people, links, created,"
-            " updated, version, revision, url, breadcrumb, fetched_at"
-        ),
-    )
-]
+# Its reason, but the mirror's keys, which change with the mirror rather than the index.
+PINNED_SKIPPED = [("confluence/ENG/1-broken.md", "front matter without exactly the mirror's keys")]
 
 
 def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Path) -> None:
@@ -1422,7 +1415,9 @@ def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Pat
         )
         == PINNED_ROWS
     ), WORDS_CHANGED
-    assert rows_of(index, "SELECT path, reason FROM skipped") == PINNED_SKIPPED, WORDS_CHANGED
+    skipped = rows_of(index, "SELECT path, reason FROM skipped")
+    pinned = [(path, reason[: len(PINNED_SKIPPED[0][1])]) for path, reason in skipped]
+    assert pinned == PINNED_SKIPPED, WORDS_CHANGED
     with closing(sqlite3.connect(index)) as connection:
         connection.execute("CREATE VIRTUAL TABLE temp.terms USING fts5vocab(main, chunks, row)")
         terms = connection.execute("SELECT term, doc, cnt FROM terms ORDER BY term").fetchall()
@@ -1910,6 +1905,7 @@ def test_a_whole_update_s_own_damage_is_raised_once_not_retried(
     attempts: list[object] = []
 
     def corrupt(*arguments: object) -> None:
+        assert not attempts, "a whole update tried again"
         attempts.append(arguments)
         error = sqlite3.DatabaseError("database disk image is malformed")
         error.sqlite_errorcode = sqlite3.SQLITE_CORRUPT
