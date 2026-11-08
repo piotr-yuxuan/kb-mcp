@@ -1228,12 +1228,15 @@ HANDBOOK = page(
     "1001",
     "Deploy",
     labels=("ops", "été"),
-    breadcrumb=("Home", "Guides"),
+    breadcrumb=("Home", "Guidés"),
+    created=MOMENT - timedelta(days=3),
+    fetched_at=MOMENT + timedelta(hours=1),
+    url="https://example.atlassian.net/wiki/spaces/ENG/pages/1001",
     people=(
         PersonRole(role="author", name="A Person", account="acct-0001"),
         PersonRole(
             role="commenter",
-            name="Kim Doe",
+            name="Kim Doé",
             at=(MOMENT - timedelta(hours=2), MOMENT - timedelta(hours=1)),
         ),
     ),
@@ -1256,7 +1259,7 @@ PINNED_SECTIONS = [
         "# Deploy\n",
         "Deploy",
         "ops été",
-        "Home / Guides",
+        "Home / Guidés",
         "",
         "\nWhy we deploy_it.\n\n",
     ),
@@ -1325,17 +1328,17 @@ PINNED_DOCUMENTS = [
         '["ops", "été"]',
         (
             '[{"role": "author", "name": "A Person", "account": "acct-0001", "at": []},'
-            ' {"role": "commenter", "name": "Kim Doe", "account": null,'
+            ' {"role": "commenter", "name": "Kim Doé", "account": null,'
             ' "at": ["2026-10-20T19:52:41+00:00", "2026-10-20T20:52:41+00:00"]}]'
         ),
         '[{"relation": "summary", "ref": "m-20261020-review"}]',
-        "2026-10-20T21:52:41+00:00",
+        "2026-10-17T21:52:41+00:00",
         "2026-10-20T21:52:41+00:00",
         1,
         "000001",
-        None,
-        '["Home", "Guides"]',
-        "2026-10-20T21:52:41+00:00",
+        "https://example.atlassian.net/wiki/spaces/ENG/pages/1001",
+        '["Home", "Guidés"]',
+        "2026-10-20T22:52:41+00:00",
         110,
         1,
         3,
@@ -1369,9 +1372,10 @@ PINNED_DOCUMENTS = [
 # Each row of people, a commenter's one per comment, and the file refused with why.
 PINNED_ROWS = [
     ("confluence/ENG/1001-deploy.md", "author", "A Person", "acct-0001", None),
-    ("confluence/ENG/1001-deploy.md", "commenter", "Kim Doe", None, "2026-10-20T19:52:41+00:00"),
-    ("confluence/ENG/1001-deploy.md", "commenter", "Kim Doe", None, "2026-10-20T20:52:41+00:00"),
+    ("confluence/ENG/1001-deploy.md", "commenter", "Kim Doé", None, "2026-10-20T19:52:41+00:00"),
+    ("confluence/ENG/1001-deploy.md", "commenter", "Kim Doé", None, "2026-10-20T20:52:41+00:00"),
 ]
+PINNED_LABELS = [("confluence/ENG/1001-deploy.md", "ops"), ("confluence/ENG/1001-deploy.md", "été")]
 REFUSED = "---\ntitle: no other key\n---\n"
 # Its reason, but the mirror's keys, which change with the mirror rather than the index.
 PINNED_SKIPPED = [("confluence/ENG/1-broken.md", "front matter without exactly the mirror's keys")]
@@ -1380,8 +1384,9 @@ PINNED_SKIPPED = [("confluence/ENG/1-broken.md", "front matter without exactly t
 def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Path) -> None:
     """The sections, the words and the rows of two documents, and a refusal, under ``WORDS``.
 
-    Every column of their rows, so that no change to how a time, the people or the links
-    are written leaves an update's copied rows otherwise than a whole build's.
+    Every column of their rows, labels and people, each time distinct, names and labels
+    beyond ASCII, so that no change to how a time, a name, the people or the links are
+    written leaves an update's copied rows otherwise than a whole build's.
     """
     write(data / "docs", HANDBOOK, HANDBOOK_BODY)
     write(data / "docs", NOTE, NOTE_BODY)
@@ -1414,6 +1419,14 @@ def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Pat
             " JOIN documents d ON d.rowid = p.document ORDER BY 1, 2, 3, 5",
         )
         == PINNED_ROWS
+    ), WORDS_CHANGED
+    assert (
+        rows_of(
+            index,
+            "SELECT d.path, l.label FROM labels l JOIN documents d ON d.rowid = l.document"
+            " ORDER BY l.rowid",
+        )
+        == PINNED_LABELS
     ), WORDS_CHANGED
     skipped = rows_of(index, "SELECT path, reason FROM skipped")
     pinned = [(path, reason[: len(PINNED_SKIPPED[0][1])]) for path, reason in skipped]
