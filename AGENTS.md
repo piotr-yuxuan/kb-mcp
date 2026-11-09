@@ -1,9 +1,9 @@
 # Instructions for coding agents
 
-kb-mcp keeps an offline mirror of Confluence and Jira Cloud content
-and serves it to coding agents through a local MCP server. The repository is meant to
-become public: never commit an employer's name, a site URL other than the sandbox's,
-identifiers or content. Fixtures come only from the sandbox site.
+An offline mirror of Confluence, Jira Cloud and a work log, served to coding agents over
+MCP. The repository is meant to become public: never commit an employer's name, a site
+URL other than the sandbox's, identifiers or content. Fixtures come only from the sandbox
+site.
 
 ## Workflow
 

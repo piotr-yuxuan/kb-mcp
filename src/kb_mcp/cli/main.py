@@ -73,7 +73,8 @@ def parser(
     program = parser_class(
         prog=PROGRAM,
         description=(
-            "Knowledge base MCP: an offline mirror of Confluence and Jira Cloud, served over MCP."
+            "An offline mirror of Confluence, Jira Cloud and a work log, served to coding agents"
+            " over MCP."
         ),
     )
     program.add_argument(
