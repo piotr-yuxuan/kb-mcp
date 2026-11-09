@@ -1,7 +1,7 @@
 """``fetch`` and ``prepare`` as plan 031 defines them: what each takes, says, runs and exits.
 
 The expectations come from its section "``fetch`` and ``prepare``: a list of sources", and
-from plans 017 and 030 before it: a row for each source's role, with its result, and the
+from plans 017 and 030 before it: a row for each source's stage, with its result, and the
 sources, their options and light checks the declarations'. The Atlassian sources are served
 by plan 004's scripted site, the work log is the invented fixture; each test has a scratch
 home, and terminals are injected or ``--yes`` given.
@@ -89,13 +89,13 @@ WORKLOG_DOCUMENTS = sum(WORKLOG_BY_TYPE.values())
 SINCE = {"--since": (FIRST - WEEK).isoformat()}
 
 
-def arguments(step: str, *given: str) -> argparse.Namespace:
+def arguments(stage: str, *given: str) -> argparse.Namespace:
     """Parse a command's arguments as the command does."""
-    return parser().parse_args([step, *given])
+    return parser().parse_args([stage, *given])
 
 
 @pytest.mark.parametrize(
-    ("step", "given", "taken"),
+    ("stage", "given", "taken"),
     [
         ("fetch", (), ["confluence", "jira"]),
         ("fetch", ("jira",), ["jira"]),
@@ -106,10 +106,10 @@ def arguments(step: str, *given: str) -> argparse.Namespace:
     ],
 )
 def test_names_choose_among_the_sources_each_once_in_the_registry_s_order(
-    step: str, given: tuple[str, ...], taken: list[str]
+    stage: str, given: tuple[str, ...], taken: list[str]
 ) -> None:
     """No name takes every one that the command can run; a name, those named alone."""
-    found, _ = chosen(arguments(step, *given), CONFIGURED)
+    found, _ = chosen(arguments(stage, *given), CONFIGURED)
     assert [source.name for source in found] == taken
 
 
@@ -159,13 +159,13 @@ def settings_file(home: Path, worklog: Path | None, *, atlassian: bool = False) 
     return config
 
 
-def command(home: Path, config: Path, step: str, *more: str) -> list[str]:
+def command(home: Path, config: Path, stage: str, *more: str) -> list[str]:
     """Give a command's arguments: this settings file, the data in the home, then ``more``."""
-    return [step, "--config", str(config), "--data-dir", str(home / "data"), *more]
+    return [stage, "--config", str(config), "--data-dir", str(home / "data"), *more]
 
 
 @pytest.mark.parametrize(
-    ("step", "given", "named"),
+    ("stage", "given", "named"),
     [
         ("prepare", ("worklog",), "worklog: not configured; set sources.worklog.path"),
         ("fetch", ("jira",), "jira: not configured; set sources.jira.projects"),
@@ -173,11 +173,11 @@ def command(home: Path, config: Path, step: str, *more: str) -> list[str]:
     ],
 )
 def test_a_choice_that_leaves_nothing_to_run_exits_2_saying_why(
-    home: Path, capsys: CaptureFixture[str], step: str, given: tuple[str, ...], named: str
+    home: Path, capsys: CaptureFixture[str], stage: str, given: tuple[str, ...], named: str
 ) -> None:
     """A source named without its setting, or none configured, before anything is asked."""
     config = settings_file(home, None)
-    assert main(command(home, config, step, "--yes", *given)) == ExitStatus.REFUSED
+    assert main(command(home, config, stage, "--yes", *given)) == ExitStatus.REFUSED
     assert named in capsys.readouterr().err
     assert not (home / "data").exists()
 
@@ -192,14 +192,14 @@ def test_a_registry_with_nothing_to_prepare_is_refused(
     assert "nothing to prepare: none of its sources is configured" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("step", ["fetch", "prepare"])
+@pytest.mark.parametrize("stage", ["fetch", "prepare"])
 def test_a_source_that_does_not_exist_is_refused_by_the_options(
-    home: Path, capsys: CaptureFixture[str], step: str
+    home: Path, capsys: CaptureFixture[str], stage: str
 ) -> None:
     """Argparse names the choices."""
     config = settings_file(home, None, atlassian=True)
     with pytest.raises(SystemExit) as stopped:
-        main(command(home, config, step, "gitlab"))
+        main(command(home, config, stage, "gitlab"))
     assert stopped.value.code == ExitStatus.REFUSED
     assert "invalid choice: 'gitlab'" in capsys.readouterr().err
 
@@ -256,7 +256,7 @@ def test_a_prepare_of_the_work_log_alone_ignores_nothing_when_given_nothing_to_i
 
 
 @pytest.mark.parametrize(
-    ("step", "lines"),
+    ("stage", "lines"),
     [
         (
             "fetch",
@@ -277,14 +277,14 @@ def test_a_prepare_of_the_work_log_alone_ignores_nothing_when_given_nothing_to_i
     ],
 )
 def test_a_command_asks_once_after_naming_each_source_taken_and_left_out(
-    home: Path, worklog: Path, monkeypatch: MonkeyPatch, step: str, lines: tuple[str, ...]
+    home: Path, worklog: Path, monkeypatch: MonkeyPatch, stage: str, lines: tuple[str, ...]
 ) -> None:
     """On terminals: each source taken, with what it covers, each left out, one question."""
     config = settings_file(home, worklog, atlassian=True)
     stderr = Terminal()
     monkeypatch.setattr("sys.stdin", Terminal("n\n"))
     monkeypatch.setattr("sys.stderr", stderr)
-    assert main(command(home, config, step, "confluence")) == ExitStatus.FAILED
+    assert main(command(home, config, stage, "confluence")) == ExitStatus.FAILED
     said = stderr.getvalue()
     asked = said.index(QUESTION)
     for line in lines:
@@ -719,21 +719,21 @@ def test_the_text_gives_a_row_per_source_then_its_counts(
     )
 
 
-@pytest.mark.parametrize("step", ["fetch", "prepare"])
+@pytest.mark.parametrize("stage", ["fetch", "prepare"])
 @pytest.mark.parametrize("registry", [SOURCES, (WORKLOG,), (CONFLUENCE, WORKLOG)])
 def test_the_sources_offered_are_the_registry_s(
-    step: str, registry: tuple[Source, ...], capsys: CaptureFixture[str]
+    stage: str, registry: tuple[Source, ...], capsys: CaptureFixture[str]
 ) -> None:
     """Each name that the registry declares is taken; each other is refused by argparse.
 
     By ``prepare`` every source, by ``fetch`` those that have a fetcher.
     """
-    names = [each.name for each in registry if step == "prepare" or each.fetcher is not None]
+    names = [each.name for each in registry if stage == "prepare" or each.fetcher is not None]
     for name in names:
-        assert parser(sources=registry).parse_args([step, name]).source == [name]
+        assert parser(sources=registry).parse_args([stage, name]).source == [name]
     for name in (each.name for each in SOURCES if each.name not in names):
         with pytest.raises(SystemExit) as stopped:
-            parser(sources=registry).parse_args([step, name])
+            parser(sources=registry).parse_args([stage, name])
         assert stopped.value.code == ExitStatus.REFUSED
         assert f"invalid choice: '{name}'" in capsys.readouterr().err
 
@@ -1467,17 +1467,17 @@ def test_a_prepare_refused_by_a_token_without_its_email_is_none_of_its_concern(
 
 
 @pytest.mark.usefixtures("signed_in")
-@pytest.mark.parametrize("step", ["fetch", "prepare"])
+@pytest.mark.parametrize("stage", ["fetch", "prepare"])
 def test_the_same_command_runs_either_way_round_its_options(
-    home: Path, capsys: CaptureFixture[str], step: str
+    home: Path, capsys: CaptureFixture[str], stage: str
 ) -> None:
     """Names before the options, or after: one command to copy, the names last."""
     config = settings_file(home, None, atlassian=True)
-    period = ("--since", "2026-10-02") if step == "fetch" else ()
+    period = ("--since", "2026-10-02") if stage == "fetch" else ()
     data = str(home / "data")
-    given = [step, "confluence", "--config", str(config), "--data-dir", data, "--dry-run", *period]
+    given = [stage, "confluence", "--config", str(config), "--data-dir", data, "--dry-run", *period]
     assert main(given) == ExitStatus.OK
-    copied = capsys.readouterr().err.split(f"kb-mcp {step} \\\n")[1]
+    copied = capsys.readouterr().err.split(f"kb-mcp {stage} \\\n")[1]
     assert copied.rstrip().rsplit("\n", 1)[-1].strip() == "confluence"
 
 

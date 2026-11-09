@@ -981,7 +981,7 @@ def test_a_revision_names_the_input_and_the_converter() -> None:
     assert revision("pandoc 3.7", "b") != first
 
 
-# An entry's front matter, as the work log's step builds it.
+# An entry's front matter, as the work log's preparer builds it.
 ENTRY_MATTER = WorklogFrontMatter(
     source="worklog",
     type="entry",

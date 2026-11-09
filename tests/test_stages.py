@@ -68,7 +68,7 @@ if TYPE_CHECKING:
 
 # The period of a fetch: the week before the run, which holds what the scripted site serves.
 SINCE = {"--since": (FIRST - WEEK).isoformat()}
-# Each module that a declaration of the registry names, its roles' and its tables'.
+# Each module that a declaration of the registry names, its stages' and its tables'.
 NAMED = frozenset(
     path.partition(":")[0]
     for each in SOURCES
@@ -151,7 +151,7 @@ def run_of(
     *,
     dry_run: bool = False,
 ) -> SourceRun:
-    """Give a run of a declaration's roles, its tables from the settings, at FIRST.
+    """Give a run of a declaration's stages, its tables from the settings, at FIRST.
 
     Each option that it declares is held, as ``fetch``'s command gives them: None when not
     among ``options``.
@@ -237,7 +237,7 @@ def test_confluence_and_jira_share_their_roles_and_the_work_log_has_no_fetcher()
 
 
 def test_help_imports_the_declarations_and_no_module_that_they_name(home: Path) -> None:
-    """A declaration names its roles and tables by module path: ``--help`` loads none.
+    """A declaration names its fetcher, preparers and tables by module path: ``--help`` loads none.
 
     Neither the command's help nor ``fetch``'s, which lists the sources; ``-X importtime``
     names each module that the child imports.
@@ -545,7 +545,7 @@ def test_the_atlassian_preparer_mirrors_the_kinds_of_the_source_that_it_runs_for
 def test_the_atlassian_preparer_writes_and_says_what_prepare_does(
     home: Path, stored: Settings, capsys: CaptureFixture[str]
 ) -> None:
-    """Confluence's role, then Jira's, write the command's files, byte for byte, and its rows."""
+    """Confluence's preparer, then Jira's, write the command's files and rows byte for byte."""
     other = home / "other"
     shutil.copytree(stored.raw, other / "raw")
     said = ""

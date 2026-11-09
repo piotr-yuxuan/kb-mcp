@@ -1,4 +1,4 @@
-"""Confluence's and Jira's declarations: what each reads of the site, its table and roles.
+"""Confluence's and Jira's declarations: what each reads of the site, its table and stages.
 
 The raw store keeps each resource type, fetched over a period that its options give.
 Both sign in with one Atlassian account, its site's, name one fetcher and one preparer,

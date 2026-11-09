@@ -711,7 +711,7 @@ def test_a_clean_run_removes_only_the_files_the_mirror_owns(sandbox: Sandbox) ->
 def test_the_mirror_leaves_the_work_log_s_files_and_the_work_log_the_mirror_s(
     sandbox: Sandbox,
 ) -> None:
-    """Each step removes only the files it owns; neither removes the other's."""
+    """Each preparer removes only the files it owns; neither removes the other's."""
     sandbox.run()
     worklog = ["worklog/entries/e-0123456789abcdef-notes.md", "worklog/transcripts/t-20261020-1.md"]
     for relative in worklog:

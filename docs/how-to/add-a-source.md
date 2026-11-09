@@ -19,7 +19,7 @@ digits, beginning with a letter, and not `assets`
 
 ## 2. Make its package
 
-A source read in place has one role, `prepare/`:
+A source read in place takes part in one stage, `prepare/`:
 
 ```bash
 mkdir -p src/kb_mcp/sources/notes/prepare/app

@@ -121,7 +121,7 @@ class MirrorFile:
 
 @dataclass
 class Run:
-    """The work log's step over a copy of the fixture, into a data folder of its own.
+    """The work log's preparer over a copy of the fixture, into a data folder of its own.
 
     ``runs`` holds pandoc's runs of each prepare, in order.
     """
@@ -147,7 +147,7 @@ class Run:
         return planned
 
     def files(self) -> list[MirrorFile]:
-        """Read back every file of the work log's step, as search will."""
+        """Read back every file of the work log's preparer, as search will."""
         found = sorted((self.docs / "worklog").rglob("*.md"))
         return [
             MirrorFile(path.relative_to(self.docs).as_posix(), *load(path.read_text("utf-8"), "x"))
@@ -697,7 +697,7 @@ def test_a_link_into_the_archive_leaves_a_live_transcript_as_it_is(run: Run) -> 
 def test_a_day_bearing_a_meeting_s_id_is_refused_and_nothing_written(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The step checks the work log's own rules: each type's ids, which no other source has.
+    """The preparer checks the work log's own rules: each type's ids, which no other source has.
 
     The day is read from the fixture, then given a meeting's id, which no org file gives.
     """
@@ -711,7 +711,7 @@ def test_a_day_bearing_a_meeting_s_id_is_refused_and_nothing_written(
 
 
 def test_the_mirror_and_the_work_log_leave_each_other_s_files(run: Run) -> None:
-    """Each step removes only what it owns."""
+    """Each preparer removes only what it owns."""
     run()
     page = run.docs / "confluence" / "MFS" / "196845-probe.md"
     page.parent.mkdir(parents=True)

@@ -124,9 +124,9 @@ reads; `kb-mcp index --rebuild` writes an index without any.
 
 ## 5. Decide what to do on a failure
 
-Each command's exit status says what its next step can rely on:
+Each command's exit status says what the next command can rely on:
 
-| Status | Means | The next step |
+| Status | Means | The next command |
 |---|---|---|
 | 0 | every row done | runs |
 | 1 | a row failed, the others ran; or the run stopped, with no rows written, on a cache of conversions that it could not use, or on a `<data>/docs` or `<data>/raw` that is no folder; or you answered no | can run on what the raw store or the mirror holds, once you have read why |
