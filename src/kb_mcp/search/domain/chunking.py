@@ -52,14 +52,14 @@ PASSAGE_CHARS = 2400
 
 
 def chunks(text: str, limit: int = CHUNK) -> list[tuple[int, int]]:
-    """Cut a section's text into chunks of at most ``limit`` characters, as spans.
+    """Cut a section's text into chunks of at most ``limit`` characters, as ranges.
 
     A chunk ends at the last blank line that fits; a paragraph longer than the limit is
     cut at its last line break that fits, else its last space, else at the limit. A
     chunk starts at its first character that is not white space, so none is blank.
     """
     breaks = [found.end() for found in BLANK_LINE.finditer(text)]
-    spans: list[tuple[int, int]] = []
+    ranges: list[tuple[int, int]] = []
     start = 0
     while found := NOT_SPACE.search(text, start):
         start = found.start()
@@ -72,9 +72,9 @@ def chunks(text: str, limit: int = CHUNK) -> list[tuple[int, int]]:
             line, space = (text.rfind(each, start + 1, end + 1) for each in ("\n", " "))
             cuts = (fitting, line, space) if fitting > start else (line, space)
             end = next((cut for cut in cuts if cut > start), end)
-        spans.append((start, end))
+        ranges.append((start, end))
         start = end
-    return spans
+    return ranges
 
 
 def section_chunks(title: str, cut: Sequence[Section]) -> list[tuple[int, int, int, str]]:
@@ -172,7 +172,7 @@ def around(
     """Give a chunk's section whole when it fits ``size`` characters, else ``size`` about it.
 
     The ``size`` characters are centred on the chunk's middle, then moved to stay within
-    the section. Every span, given or returned, is in the document's body.
+    the section. Every range, given or returned, is in the document's body.
     """
     first, last = section
     start = max(first, min((chunk[0] + chunk[1]) // 2 - size // 2, last - size))
@@ -183,16 +183,16 @@ class Chunker(Record):
     """A chunking: the chunks it cuts a document into, and the unit returned for one."""
 
     cut: Callable[[FrontMatter, Sequence[Section]], Cut]
-    # From a chunk's span and that of the section holding it, both in the body, the span
+    # From a chunk's range and that of the section holding it, both in the body, the range
     # that ``ask`` returns.
-    quoted_span: Callable[[tuple[int, int], tuple[int, int]], tuple[int, int]]
+    quoted: Callable[[tuple[int, int], tuple[int, int]], tuple[int, int]]
 
 
 CHUNKERS: Mapping[Chunking, Chunker] = {
     "sections": Chunker(
-        cut=lambda front, cut: section_chunks(front.title, cut), quoted_span=lambda chunk, _: chunk
+        cut=lambda front, cut: section_chunks(front.title, cut), quoted=lambda chunk, _: chunk
     ),
-    "windows": Chunker(cut=windows, quoted_span=lambda chunk, _: chunk),
-    "section-paths": Chunker(cut=section_paths, quoted_span=lambda chunk, _: chunk),
-    "small-to-big": Chunker(cut=functools.partial(section_paths, limit=SMALL), quoted_span=around),
+    "windows": Chunker(cut=windows, quoted=lambda chunk, _: chunk),
+    "section-paths": Chunker(cut=section_paths, quoted=lambda chunk, _: chunk),
+    "small-to-big": Chunker(cut=functools.partial(section_paths, limit=SMALL), quoted=around),
 }

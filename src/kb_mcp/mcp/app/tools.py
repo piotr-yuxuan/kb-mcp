@@ -255,7 +255,7 @@ def folded(text: str) -> str:
 def place_of(
     reader: SearchReader, ranked: Ranking, planned: Plan, path: str
 ) -> tuple[int, tuple[int, int]]:
-    """Give a document's section, by its number, and its best place there, as a span of the body.
+    """Give a document's section, by its number, and its best place there, as a range of the body.
 
     A document ranked by meaning gives its best chunk. One ranked by words gives the
     occurrence of the question's rarest word with the most other words within UNIT / 2
@@ -296,13 +296,13 @@ def passages(
     break falls in the half that the cut shortens.
     """
     embedded = reader.embedded()
-    quoted_span = CHUNKERS[embedded.chunking].quoted_span if embedded else None
+    quoted = CHUNKERS[embedded.chunking].quoted if embedded else None
     found = []
     for path in paths:
         number, place = place_of(reader, ranked, planned, path)
         first, last = reader.bounds(path)[number - 1]
-        if quoted_span and path in ranked.chunks:
-            start, end = quoted_span(place, (first, last))
+        if quoted and path in ranked.chunks:
+            start, end = quoted(place, (first, last))
             text = reader.text(path, start, end)
         else:
             start, end = around(place, (first, last))

@@ -434,10 +434,10 @@ and when it was built.
 [`passage`](../../src/kb_mcp/mcp/app/responses.py);
 [`BUDGET`](../../src/kb_mcp/mcp/app/responses.py),
 [`PASSAGE_CHARS`](../../src/kb_mcp/search/domain/chunking.py) and
-[`Chunker.quoted_span`](../../src/kb_mcp/search/domain/chunking.py);
+[`Chunker.quoted`](../../src/kb_mcp/search/domain/chunking.py);
 [`Surface`](../../src/kb_mcp/mcp/app/surface.py),
 [`ServedPrompt`](../../src/kb_mcp/mcp/app/surface.py) and
-[`guides`](../../src/kb_mcp/mcp/app/surface.py), the prompts; the command `serve`; the
+[`prompts`](../../src/kb_mcp/mcp/app/surface.py); the command `serve`; the
 telemetry attributes `kb_mcp.hits`, which counts the documents that a ranking holds, for
 `search` and `ask` alike, and `kb_mcp.passages`, the quotes of `ask`.
 

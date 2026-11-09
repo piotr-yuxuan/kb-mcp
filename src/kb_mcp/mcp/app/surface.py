@@ -80,7 +80,7 @@ class Surface(Record):
     tools: tuple[Tool, ...]
     instructions: str
     descriptions: dict[Tool, str]
-    guides: tuple[ServedPrompt, ...]
+    prompts: tuple[ServedPrompt, ...]
 
 
 def scoped(library: Library, scope: str) -> tuple[str, str]:
@@ -101,7 +101,7 @@ def scoped(library: Library, scope: str) -> tuple[str, str]:
         raise UnanswerableError(message) from None
 
 
-def guides(library: Library) -> tuple[ServedPrompt, ...]:
+def prompts(library: Library) -> tuple[ServedPrompt, ...]:
     """Give every prompt, each rendering its text from canonical values alone."""
 
     def brief(ref: str) -> str:
@@ -175,8 +175,8 @@ def surface(library: Library, tools: Sequence[Tool]) -> Surface:
     descriptions = {tool: getattr(library, tool).__doc__ or "" for tool in tools}
     if "ask" in tools and "search" in tools:
         descriptions["search"] += TO_ASK
-    offered = tuple(guide for guide in guides(library) if set(guide.needs) <= set(tools))
+    offered = tuple(prompt for prompt in prompts(library) if set(prompt.needs) <= set(tools))
     instructions = f"{OPENING} {said}.{WORKLOG_INSTRUCTION}{CLOSING}"
     return Surface(
-        tools=tuple(tools), instructions=instructions, descriptions=descriptions, guides=offered
+        tools=tuple(tools), instructions=instructions, descriptions=descriptions, prompts=offered
     )

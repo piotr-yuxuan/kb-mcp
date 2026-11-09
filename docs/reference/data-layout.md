@@ -771,7 +771,7 @@ vectors back from the vector cache.
 
 `embed` (`search.app.indexing.fill_and_prune`) reads the index in one use: what it holds of the
 mirror, the model it names, each document's front matter and body, and its chunks by
-path, section number, span and key. It reads no file of the mirror but to digest it,
+path, section number, range and key. It reads no file of the mirror but to digest it,
 compares those digests with the index's, and when they differ warns,
 `embed.mirror_changed`, naming `kb-mcp index`, then goes on as it would have; it never
 reads the alias file. It stops, `index.not_built`, exit 1, before it opens the endpoint:
@@ -782,7 +782,7 @@ each document's body again by this code's sections and the run's chunking, keys 
 chunk by the model's fingerprint, adds the chunks wanted that the index does not hold,
 their vectors from the vector cache, else from the model, and removes those it holds
 that none wants: a chunking or a model changed needs no rule of its own, a chunk of
-another span or key being replaced and an identical one kept. Nothing to add or remove,
+another range or key being replaced and an identical one kept. Nothing to add or remove,
 and the same model: nothing is written, `embed.unchanged`. Else a copy of the index, by
 SQLite's backup, beside it, takes the chunks removed and added, each naming its section
 by path and number, the model's meta rows and a new `build`, its `built_at` kept, and is

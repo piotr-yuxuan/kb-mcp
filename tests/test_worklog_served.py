@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.cli.main import main
-from kb_mcp.mcp.app.surface import guides
+from kb_mcp.mcp.app.surface import prompts
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from tests.answers import parts
@@ -94,7 +94,7 @@ def test_a_transcript_found_is_read_by_the_ref_its_hit_shows(home: Path) -> None
     path = served.resolve(ref)
     assert path is not None
     assert path.startswith("worklog/transcripts/")
-    (brief,) = [guide for guide in guides(served) if guide.name == "brief"]
+    (brief,) = [prompt for prompt in prompts(served) if prompt.name == "brief"]
     assert f"read(ref={json.dumps(path)})" in brief.render(ref=ref)
 
 

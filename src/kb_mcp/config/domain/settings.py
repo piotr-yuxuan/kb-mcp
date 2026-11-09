@@ -72,10 +72,10 @@ DEFAULT_SEARCH_MODE: SearchMode = "hybrid"
 # no chunking beat them on the evidence quoted; windows ranked significantly better, and
 # by plan 025 the user chose them.
 DEFAULT_CHUNKING: Chunking = "windows"
-# The reranking server: llama.cpp's llama-server on this machine, where the guide starts it.
+# The reranking server: llama.cpp's llama-server on this machine, where the how-to page starts it.
 DEFAULT_RERANK_URL = "http://127.0.0.1:9931/v1"
 # The reranker, as the server names it: Qwen3-Reranker-0.6B, chosen by plan 022 from
-# published reranking results, under the alias that the guide gives it.
+# published reranking results, under the alias that the how-to page gives it.
 DEFAULT_RERANKER = "qwen3-reranker-0.6b"
 # The documents reranked after those named, until plan 022's run on the user's machine decides:
 # about 30 fit within its bound of 5 seconds, by estimate.

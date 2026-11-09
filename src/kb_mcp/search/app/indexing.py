@@ -268,7 +268,7 @@ def build_index(
         if model
         else None
     )
-    pending: list[tuple[int, int, int, str, str]] = []  # each chunk's section, span,
+    pending: list[tuple[int, int, int, str, str]] = []  # each chunk's section, range,
     # key and document
     texts: dict[str, str] = {}  # what each key's vector embeds
     log = structlog.get_logger()

@@ -214,7 +214,7 @@ FROM sections s JOIN documents d ON d.rowid = s.document
 WHERE d.path = :path
 ORDER BY s.number
 """
-# Every chunk with its document, its section, and its span within the document's body; by
+# Every chunk with its document, its section, and its range in the document's body; by
 # what no rowid changes, so that an updated index and a whole build give one matrix.
 CHUNKS = """
 SELECT d.rowid AS document, d.path, d.updated, s.number, p.start, p."end", p.key, p.vector

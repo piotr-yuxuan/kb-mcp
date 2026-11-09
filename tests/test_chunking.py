@@ -118,7 +118,7 @@ def test_sections_cuts_as_011_did_and_returns_the_chunk() -> None:
     """The control is 011's passages, unchanged; its unit is the chunk."""
     cut = sections(f"# {TITLE}\n\nFirst.\n\n## Second\n\nMore.\n")
     assert CHUNKERS["sections"].cut(FRONT, cut) == section_chunks(TITLE, cut)
-    assert CHUNKERS["sections"].quoted_span((5, 9), (0, 40)) == (5, 9)
+    assert CHUNKERS["sections"].quoted((5, 9), (0, 40)) == (5, 9)
 
 
 def test_a_window_stops_at_its_last_space_and_the_next_starts_960_after() -> None:
@@ -167,7 +167,7 @@ def test_a_window_is_embedded_with_the_title_and_belongs_to_the_section_of_its_m
     assert index == 1
     assert (start, end) == (0, WINDOW)
     assert text == f"{TITLE}\n{body[0:WINDOW].strip()}"
-    assert CHUNKERS["windows"].quoted_span((0, WINDOW), bounds(cut[1])) == (0, WINDOW)
+    assert CHUNKERS["windows"].quoted((0, WINDOW), bounds(cut[1])) == (0, WINDOW)
 
 
 def test_windows_hold_at_most_1200_characters_and_overlap_as_the_plan_says() -> None:
@@ -215,7 +215,7 @@ def test_a_unit_holds_its_chunk_and_is_its_section_when_that_fits() -> None:
         for index, start, end, _ in CHUNKERS["small-to-big"].cut(FRONT, cut):
             chunk = (start, end)
             section = bounds(cut[index])
-            first, last = CHUNKERS["small-to-big"].quoted_span(chunk, section)
+            first, last = CHUNKERS["small-to-big"].quoted(chunk, section)
             assert section[0] <= first <= chunk[0] < chunk[1] <= last <= section[1]
             assert last - first == min(PASSAGE_CHARS, section[1] - section[0])
 
@@ -233,7 +233,7 @@ def test_a_unit_is_centred_on_its_chunk_within_its_section(
     chunk: tuple[int, int], section: tuple[int, int], unit: tuple[int, int]
 ) -> None:
     """2,400 characters about the chunk's middle, moved back inside the section."""
-    assert CHUNKERS["small-to-big"].quoted_span(chunk, section) == unit
+    assert CHUNKERS["small-to-big"].quoted(chunk, section) == unit
 
 
 def test_section_paths_cuts_as_sections_does() -> None:
