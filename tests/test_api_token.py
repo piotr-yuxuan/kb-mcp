@@ -213,18 +213,18 @@ def shown(text: str) -> list[str]:
 
 
 @pytest.mark.parametrize("output_format", ["text", "json"])
-@pytest.mark.parametrize("summary", ["short", "detailed"])
-def test_check_shows_no_secret_in_any_format_or_summary(
+@pytest.mark.parametrize("detail", ["short", "detailed"])
+def test_check_shows_no_secret_in_any_format_or_detail(
     home: Path,
     monkeypatch: MonkeyPatch,
     capsys: CaptureFixture[str],
     output_format: str,
-    summary: str,
+    detail: str,
 ) -> None:
     """Each secret is said to be set, and never shown."""
     monkeypatch.setenv(KEY, KEY_SENTINEL)
     options = ["--config", str(home / "none.toml"), "--format", output_format]
-    assert main(["check", *options, "--summary", summary, "-v"]) == 0
+    assert main(["check", *options, "--detail", detail, "-v"]) == 0
     out, err = capsys.readouterr()
     assert "accounts.atlassian.api_token" in out
     assert "embedding_api_key" in out
@@ -234,10 +234,10 @@ def test_check_shows_no_secret_in_any_format_or_summary(
 @pytest.mark.parametrize(
     ("answer", "more"),
     [
-        (FakeSite().handle, ["--summary", "detailed", "-v"]),
-        (FakeSite().handle, ["--format", "json", "--summary", "detailed"]),
-        (FakeSite().handle, ["--dry-run", "--summary", "detailed"]),
-        (lambda _: httpx.Response(401), ["--summary", "detailed"]),
+        (FakeSite().handle, ["--detail", "detailed", "-v"]),
+        (FakeSite().handle, ["--format", "json", "--detail", "detailed"]),
+        (FakeSite().handle, ["--dry-run", "--detail", "detailed"]),
+        (lambda _: httpx.Response(401), ["--detail", "detailed"]),
     ],
 )
 def test_a_fetch_shows_no_secret_nor_writes_one_in_its_report(
@@ -247,7 +247,7 @@ def test_a_fetch_shows_no_secret_nor_writes_one_in_its_report(
     answer: Callable[[httpx.Request], httpx.Response],
     more: list[str],
 ) -> None:
-    """Its summary, the command to copy, its result and its errors, then its run report."""
+    """Its echo, the command to copy, its result and its errors, then its run report."""
     monkeypatch.setenv(KEY, KEY_SENTINEL)
     served(monkeypatch, answer)
     main(download(home, *more))
@@ -274,7 +274,7 @@ def test_refused_settings_show_no_secret(
 def test_an_index_that_fails_to_embed_shows_no_key(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Its summary says the key is set; its error, that the model is missing, without it.
+    """Its echo says the key is set; its error, that the model is missing, without it.
 
     Nor does the run's log file show it.
     """
@@ -286,7 +286,7 @@ def test_an_index_that_fails_to_embed_shows_no_key(
         monkeypatch.setenv("KB_MCP_EMBEDDING_URL", url)
         assert main(["index", *options]) == 0
         capsys.readouterr()
-        assert main(["embed", *options, "--summary", "detailed"]) == 1
+        assert main(["embed", *options, "--detail", "detailed"]) == 1
     out, err = capsys.readouterr()
     assert "embedding_api_key: set" in err
     assert ("error", "index.not_built") in said(err)

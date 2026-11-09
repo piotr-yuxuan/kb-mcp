@@ -61,7 +61,7 @@ by Ctrl-C.
 ```text
 usage: kb-mcp check [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
                     -v | --log-level {debug,info,warning,error}]
-                    [--format {text,json}] [--summary {short,detailed}]
+                    [--format {text,json}] [--detail {short,detailed}]
 
 options:
   -h, --help            show this help message and exit
@@ -73,7 +73,7 @@ options:
   --log-level {debug,info,warning,error}
                         say what is of this level or above; warning by default
   --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
+  --detail {short,detailed}
                         write what matters of the result, or all of it
 
 With --format json: settings, secrets masked; layers, the layer of each setting that
@@ -101,7 +101,7 @@ options:
 ```text
 usage: kb-mcp doctor [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
                      -v | --log-level {debug,info,warning,error}]
-                     [--format {text,json}] [--summary {short,detailed}]
+                     [--format {text,json}] [--detail {short,detailed}]
 
 options:
   -h, --help            show this help message and exit
@@ -113,7 +113,7 @@ options:
   --log-level {debug,info,warning,error}
                         say what is of this level or above; warning by default
   --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
+  --detail {short,detailed}
                         write what matters of the result, or all of it
 
 With --format json: a list of verdicts, each a check's name, what it found, and its
@@ -125,7 +125,7 @@ state: well, failed, or sign in.
 ```text
 usage: kb-mcp embed [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
                     -v | --log-level {debug,info,warning,error}]
-                    [--format {text,json}] [--summary {short,detailed}] [-y]
+                    [--format {text,json}] [--detail {short,detailed}] [-y]
                     [--allow-remote-embeddings]
 
 options:
@@ -138,7 +138,7 @@ options:
   --log-level {debug,info,warning,error}
                         say what is of this level or above; warning by default
   --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
+  --detail {short,detailed}
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
   --allow-remote-embeddings
@@ -158,7 +158,7 @@ did not prune.
 ```text
 usage: kb-mcp eval [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
                    -v | --log-level {debug,info,warning,error}] [--format {text,json}]
-                   [--summary {short,detailed}] [-y] [--allow-remote-embeddings]
+                   [--detail {short,detailed}] [-y] [--allow-remote-embeddings]
                    [--model MODEL]
                    [--chunking {sections,windows,section-paths,small-to-big}]
                    golden
@@ -176,7 +176,7 @@ options:
   --log-level {debug,info,warning,error}
                         say what is of this level or above; warning by default
   --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
+  --detail {short,detailed}
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
   --allow-remote-embeddings
@@ -196,7 +196,7 @@ chunking by the rule; results, the file that keeps them.
 
 ```text
 usage: kb-mcp eval-agents [-h] [-q | -v | --log-level {debug,info,warning,error}]
-                          [--format {text,json}] [--summary {short,detailed}]
+                          [--format {text,json}] [--detail {short,detailed}]
                           step ...
 
 positional arguments:
@@ -213,7 +213,7 @@ options:
   --log-level {debug,info,warning,error}
                         say what is of this level or above; warning by default
   --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
+  --detail {short,detailed}
                         write what matters of the result, or all of it
 
 Its options of output come before the step. With --format json: prepare, the runs
@@ -315,7 +315,7 @@ options:
 ```text
 usage: kb-mcp eval-rerank [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE]
                           [-q | -v | --log-level {debug,info,warning,error}]
-                          [--format {text,json}] [--summary {short,detailed}] [-y]
+                          [--format {text,json}] [--detail {short,detailed}] [-y]
                           [--allow-remote-embeddings] [--depth DEPTH]
                           [--sample SAMPLE] [--seed SEED]
                           golden
@@ -333,7 +333,7 @@ options:
   --log-level {debug,info,warning,error}
                         say what is of this level or above; warning by default
   --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
+  --detail {short,detailed}
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
   --allow-remote-embeddings
@@ -354,7 +354,7 @@ verdicts and default depth; results, the file that keeps them.
 ```text
 usage: kb-mcp fetch [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
                     -v | --log-level {debug,info,warning,error}]
-                    [--format {text,json}] [--summary {short,detailed}] [-y]
+                    [--format {text,json}] [--detail {short,detailed}] [-y]
                     [--dry-run] [--space SPACE] [--since SINCE] [--until UNTIL]
                     [--max-file-mb MAX_FILE_MB] [--project PROJECT]
                     [{confluence,jira} ...]
@@ -373,7 +373,7 @@ options:
   --log-level {debug,info,warning,error}
                         say what is of this level or above; warning by default
   --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
+  --detail {short,detailed}
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
   --dry-run             say what a run would fetch, and fetch nothing
@@ -413,7 +413,7 @@ planned.
 ```text
 usage: kb-mcp index [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
                     -v | --log-level {debug,info,warning,error}]
-                    [--format {text,json}] [--summary {short,detailed}] [-y]
+                    [--format {text,json}] [--detail {short,detailed}] [-y]
                     [--rebuild]
 
 options:
@@ -426,7 +426,7 @@ options:
   --log-level {debug,info,warning,error}
                         say what is of this level or above; warning by default
   --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
+  --detail {short,detailed}
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
   --rebuild             build the index whole, keeping nothing of it
@@ -443,7 +443,7 @@ pruned, null.
 ```text
 usage: kb-mcp login [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
                     -v | --log-level {debug,info,warning,error}]
-                    [--format {text,json}] [--summary {short,detailed}] [-y]
+                    [--format {text,json}] [--detail {short,detailed}] [-y]
                     [--chrome CHROME] [--keep-extensions]
                     {atlassian}
 
@@ -460,7 +460,7 @@ options:
   --log-level {debug,info,warning,error}
                         say what is of this level or above; warning by default
   --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
+  --detail {short,detailed}
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
   --chrome CHROME       Chrome's executable, where the chrome channel fails
@@ -475,7 +475,7 @@ session.
 ```text
 usage: kb-mcp model [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
                     -v | --log-level {debug,info,warning,error}]
-                    [--format {text,json}] [--summary {short,detailed}]
+                    [--format {text,json}] [--detail {short,detailed}]
                     [--allow-remote-embeddings]
                     {check} [name]
 
@@ -493,7 +493,7 @@ options:
   --log-level {debug,info,warning,error}
                         say what is of this level or above; warning by default
   --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
+  --detail {short,detailed}
                         write what matters of the result, or all of it
   --allow-remote-embeddings
                         let this run send the mirror's text to an embedding endpoint
@@ -508,7 +508,7 @@ model's, empty when the endpoint reports none.
 ```text
 usage: kb-mcp prepare [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
                       -v | --log-level {debug,info,warning,error}]
-                      [--format {text,json}] [--summary {short,detailed}] [-y]
+                      [--format {text,json}] [--detail {short,detailed}] [-y]
                       [--dry-run]
                       [{confluence,jira,worklog} ...]
 
@@ -527,7 +527,7 @@ options:
   --log-level {debug,info,warning,error}
                         say what is of this level or above; warning by default
   --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
+  --detail {short,detailed}
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
   --dry-run             count what a run would convert and remove, where a source can
@@ -565,7 +565,7 @@ problems.
 ```text
 usage: kb-mcp reranker [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE]
                        [-q | -v | --log-level {debug,info,warning,error}]
-                       [--format {text,json}] [--summary {short,detailed}]
+                       [--format {text,json}] [--detail {short,detailed}]
                        {check} [name]
 
 positional arguments:
@@ -582,7 +582,7 @@ options:
   --log-level {debug,info,warning,error}
                         say what is of this level or above; warning by default
   --format {text,json}  write the result as text, or as one JSON document
-  --summary {short,detailed}
+  --detail {short,detailed}
                         write what matters of the result, or all of it
 
 With --format json: model, the one checked; url, the server; served, the models that

@@ -549,7 +549,7 @@ def test_the_atlassian_preparer_writes_and_says_what_prepare_does(
     for declared in (CONFLUENCE, JIRA):
         result = preparer_of(declared).prepare(run_of(declared, stored))
         said += row_text(declared.name, result.ending, result.text("detailed"))
-    command = ["prepare", "--yes", "--config", str(home / "none.toml"), "--summary", "detailed"]
+    command = ["prepare", "--yes", "--config", str(home / "none.toml"), "--detail", "detailed"]
     capsys.readouterr()  # what the prepares logged, outside a run, which has no log file
     assert main([*command, "--data-dir", str(other), "--site", SITE]) == ExitStatus.OK
     assert capsys.readouterr().out == said
@@ -630,7 +630,7 @@ def test_the_work_log_s_text_is_what_prepare_writes_under_its_row(
     config = home / "config.toml"
     config.write_text(f'[sources.worklog]\npath = "{copied}"\n', "utf-8")
     command = ["prepare", "--yes", "--config", str(config), "worklog"]
-    given = [*command, "--data-dir", str(home / "other"), "--summary", "detailed"]
+    given = [*command, "--data-dir", str(home / "other"), "--detail", "detailed"]
     capsys.readouterr()  # what the prepare logged, outside a run, which has no log file
     assert main(given) == ExitStatus.OK
     out = capsys.readouterr().out

@@ -172,7 +172,7 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
     assert first[1] == "  documents: 1"
     converted = first[2].removeprefix("  converted by pandoc: ")
     written = first[4].removeprefix("  files written: ")
-    assert main(arguments(home, "--summary", "detailed")) == 0
+    assert main(arguments(home, "--detail", "detailed")) == 0
     assert capsys.readouterr().out == (
         "confluence: done\n"
         "  documents: 1\n"
@@ -505,7 +505,7 @@ def test_what_a_fetch_reads_is_not_read_by_a_prepare(
     config = home / "mine.toml"
     config.write_text('[sources.confluence]\nspaces = ["MFS"]\n', "utf-8")
     command = ["prepare", "--yes", "--config", str(config), "--data-dir", str(home / "data")]
-    assert main([*command, "--summary", "detailed"]) == 0
+    assert main([*command, "--detail", "detailed"]) == 0
     assert "ignored: sources.confluence.spaces (mine.toml): not read by prepare\n" in (
         capsys.readouterr().err
     )

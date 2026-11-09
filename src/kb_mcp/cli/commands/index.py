@@ -37,13 +37,13 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Inde
     return ExitStatus.OK if indexed and indexed.report.whole else ExitStatus.FAILED, indexed
 
 
-def text(indexed: Indexed, summary: Detail) -> str:
+def text(indexed: Indexed, detail: Detail) -> str:
     """Write the documents and sections held, then what changed, or that nothing did.
 
     Short gives each count, the documents awaiting vectors when the index names a model,
     and why it was rebuilt whole, if it was; detailed says it in a line, as ``detailed``.
     """
-    if summary != "short":
+    if detail != "short":
         return detailed(indexed)
     report = indexed.report
     lines = [f"documents: {report.types.total()}", f"sections: {report.sections}"]

@@ -152,16 +152,16 @@ FIRST_DETAILED = (
 
 
 @pytest.mark.parametrize(
-    ("summary", "shown"), [("short", FIRST_SHORT), ("detailed", FIRST_DETAILED)]
+    ("detail", "shown"), [("short", FIRST_SHORT), ("detailed", FIRST_DETAILED)]
 )
 def test_by_words_alone_the_command_shows_documents_and_sections(
-    data: Path, capsys: CaptureFixture[str], summary: str, shown: str
+    data: Path, capsys: CaptureFixture[str], detail: str, shown: str
 ) -> None:
     """Short gives the counts; detailed, the documents by type and the index too; no chunks."""
     write(data / "docs", page("196845", "Kafka"), BODY)
     config = data.parent / "config.toml"
     config.write_text('search_mode = "lexical"\n', encoding="utf-8")
-    options = ["--config", str(config), "--data-dir", str(data), "--summary", summary]
+    options = ["--config", str(config), "--data-dir", str(data), "--detail", detail]
     assert main(["index", "--yes", *options]) == 0
     assert capsys.readouterr().out == shown.format(index=(data / "index.sqlite").resolve())
 

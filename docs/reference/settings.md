@@ -14,7 +14,7 @@ A run takes each setting from the strongest layer that gives it. From the weakes
 default; the settings file; the environment; the flags of the run. A stronger layer's
 value replaces a weaker one's whole, a list included, as
 [`settings_of`](../../src/kb_mcp/config/domain/settings.py) merges them;
-`check --summary detailed` names the layer that gave each setting.
+`check --detail detailed` names the layer that gave each setting.
 
 - **The settings file** is TOML: `~/.config/kb-mcp/config.toml`, unless
   `--config` names another; a missing file holds no settings. A key with dots, such as

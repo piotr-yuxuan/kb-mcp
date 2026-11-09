@@ -109,7 +109,7 @@ def test_a_fetch_in_detail_shows_each_window_every_count_then_the_failures(
     With what short leaves out: listings, files skipped or failed. Each window starts at
     --since, and the coverage of each target grew.
     """
-    assert main([*signed_in, "--summary", "detailed"]) == SOME_FAILED
+    assert main([*signed_in, "--detail", "detailed"]) == SOME_FAILED
     confluence, jira = capsys.readouterr().out.split("jira: done\n")
     row, space, *counts, failures, _, _ = confluence.splitlines()
     project, *issues, none_failed, _, _ = jira.splitlines()
@@ -335,7 +335,7 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite(spaces=[])
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
-    options = ("--site", SITE, "--space", "NOPE", "--since", "7d", "--summary", "detailed")
+    options = ("--site", SITE, "--space", "NOPE", "--since", "7d", "--detail", "detailed")
     assert main(command(home, *options)) == SOME_FAILED
     captured = capsys.readouterr()
     assert ("warning", "fetch.target_failed") in said(captured.err)
@@ -518,7 +518,7 @@ def test_names_split_by_an_option_are_refused_by_the_parser(
 ) -> None:
     """Argparse takes one run of names: exit 2, nothing fetched."""
     with pytest.raises(SystemExit) as stopped:
-        main([*signed_in, "confluence", "--summary", "short", "jira"])
+        main([*signed_in, "confluence", "--detail", "short", "jira"])
     assert stopped.value.code == REFUSED
     assert "unrecognized arguments: jira" in capsys.readouterr().err
 

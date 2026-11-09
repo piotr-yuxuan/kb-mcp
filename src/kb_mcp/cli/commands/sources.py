@@ -63,10 +63,10 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran 
     return ran.exit_status, ran
 
 
-def text(ran: Ran, summary: Detail) -> str:
+def text(ran: Ran, detail: Detail) -> str:
     """Write a row per source, how it ended, then its outcome's own text, indented."""
     written: list[str] = []
     for row in ran.sources:
         written.append(f"{row.source}: {row.ending}\n")
-        written.extend(f"  {line}\n" for line in row.text(summary).splitlines())
+        written.extend(f"  {line}\n" for line in row.text(detail).splitlines())
     return "".join(written)

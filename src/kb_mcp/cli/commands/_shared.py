@@ -68,7 +68,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
     command: Command = arguments.command
     output = Output(
         arguments.level,
-        arguments.summary,
+        arguments.detail,
         arguments.format,
         quiet=arguments.quiet,
         stdin_terminal=sys.stdin.isatty(),
@@ -135,6 +135,6 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
         if result is not None and output.format == "json":
             sys.stdout.write(f"{to_json(result, indent=2, inf_nan_mode='null').decode()}\n")
         elif result is not None and not output.quiet:
-            sys.stdout.write(module.text(result, output.summary))
+            sys.stdout.write(module.text(result, output.detail))
         run.status = int(status)
     return run.status

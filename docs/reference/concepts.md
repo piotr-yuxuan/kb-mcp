@@ -872,7 +872,7 @@ One axis of how a [run](#run)'s result is written, beside its format and level: 
 or `detailed`. JSON ignores it.
 
 - **In the code.** [`Detail`](../../src/kb_mcp/kernel/output.py) and
-  [`DETAILS`](../../src/kb_mcp/kernel/output.py); the option `--summary`.
+  [`DETAILS`](../../src/kb_mcp/kernel/output.py); the option `--detail`.
 
 ### setting
 

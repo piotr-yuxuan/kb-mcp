@@ -58,11 +58,11 @@ def test_only_the_site_cookies_of_the_browser_are_saved(
     ]
 
 
-@pytest.mark.parametrize("summary", ["short", "detailed"])
+@pytest.mark.parametrize("detail", ["short", "detailed"])
 def test_the_command_says_what_to_do_on_stderr_and_its_result_on_stdout(
-    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], summary: str
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], detail: str
 ) -> None:
-    """The instruction is a message, after the summary; the result, the same in each detail.
+    """The instruction is a message, after the echo; the result, the same in each detail.
 
     As JSON, the result is one document.
     """
@@ -77,7 +77,7 @@ def test_the_command_says_what_to_do_on_stderr_and_its_result_on_stdout(
         "--site",
         SITE,
     ]
-    assert main([*options, "--summary", summary]) == 0
+    assert main([*options, "--detail", detail]) == 0
     out, err = capsys.readouterr()
     assert out == SIGNED_IN
     assert err.endswith(INSTRUCTION)

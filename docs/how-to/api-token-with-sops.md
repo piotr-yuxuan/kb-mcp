@@ -64,7 +64,7 @@ Check the sign-in first:
 sops exec-env ~/secrets/atlassian.sops.json 'KB_MCP_ACCOUNTS__ATLASSIAN__SITE="$ATLASSIAN_SITE" \
   KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL="$ATLASSIAN_EMAIL" \
   KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN="$ATLASSIAN_API_TOKEN" \
-  kb-mcp doctor --summary detailed'
+  kb-mcp doctor --detail detailed'
 ```
 
 It says `sign-in: an API token`, then `confluence: signed in` and `jira: signed in`.

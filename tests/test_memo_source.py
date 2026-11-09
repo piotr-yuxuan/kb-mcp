@@ -157,7 +157,7 @@ def test_check_lists_its_setting(
     assert main(["check", "--config", str(config)], registry) == ExitStatus.OK
     folder = config.parent / "notes"
     assert f"sources.memo.folder: {folder}\n" in capsys.readouterr().out
-    detailed = ["check", "--config", str(config), "--summary", "detailed"]
+    detailed = ["check", "--config", str(config), "--detail", "detailed"]
     assert main(detailed, registry) == ExitStatus.OK
     out, err = capsys.readouterr()
     assert f"sources.memo.folder: {folder} " in out

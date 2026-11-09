@@ -27,9 +27,9 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, list
     return folded("done" if each.state == "well" else each.state for each in checks), checks
 
 
-def text(checks: list[Check], summary: Detail) -> str:
+def text(checks: list[Check], detail: Detail) -> str:
     """Write what the checks not well found, in detail every one, then how many are well."""
-    shown = [each for each in checks if summary == "detailed" or each.state != "well"]
+    shown = [each for each in checks if detail == "detailed" or each.state != "well"]
     well = sum(each.state == "well" for each in checks)
     return "".join(f"{each.name}: {each.found}\n" for each in shown) + (
         f"{well} of {len(checks)} checks well\n"

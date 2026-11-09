@@ -310,7 +310,7 @@ def test_a_list_left_at_none_reads_as_no_value(tmp_path: Path, capsys: CaptureFi
     added = replace(
         WORKLOG, name="added", settings=("values", "more"), table_path=f"{__name__}:{Tags.__name__}"
     )
-    given = ["check", "--summary", "detailed", "--config", str(config)]
+    given = ["check", "--detail", "detailed", "--config", str(config)]
     assert main([*given, "--data-dir", str(tmp_path / "data")], (added,)) == ExitStatus.OK
     assert "sources.added.more: (none) [default]" in capsys.readouterr().out
 
@@ -499,7 +499,7 @@ def test_a_source_that_the_registry_leaves_out_has_no_setting(
 
     variable = f"KB_MCP_SOURCES__{left_out.upper()}"
     monkeypatch.setenv(variable, "{}")
-    none = ["check", "--config", str(tmp_path / "none.toml"), "--summary", "detailed"]
+    none = ["check", "--config", str(tmp_path / "none.toml"), "--detail", "detailed"]
     assert main(none, registry) == ExitStatus.OK
     out, err = capsys.readouterr()
     assert f"sources.{left_out}." not in out

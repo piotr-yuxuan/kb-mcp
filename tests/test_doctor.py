@@ -94,7 +94,7 @@ def test_a_check_that_fails_makes_the_doctor_exit_1(
 
 
 @pytest.mark.parametrize(
-    ("summary", "named"),
+    ("detail", "named"),
     [
         ("short", ["pandoc", "site"]),
         ("detailed", ["python", "pandoc", "data directory", "site"]),
@@ -104,14 +104,14 @@ def test_the_doctor_shows_the_checks_not_well_or_in_detail_every_one(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
     capsys: CaptureFixture[str],
-    summary: str,
+    detail: str,
     named: list[str],
 ) -> None:
     """Without pandoc nor a site: those two in short, all four in detail, then the count well."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path))
     monkeypatch.setenv(A_SOURCE, '["PRB"]')
-    options = ["doctor", "--config", str(tmp_path / "none.toml"), "--summary", summary]
+    options = ["doctor", "--config", str(tmp_path / "none.toml"), "--detail", detail]
     assert main(options) == SOME_FAILED
     *checks, count = capsys.readouterr().out.splitlines()
     assert [check.split(": ")[0] for check in checks] == named
@@ -178,7 +178,7 @@ def test_a_sign_in_not_checked_is_said_so_and_the_settings_that_choose_it_are_re
     assert "no site nor source of it: its sign-in not checked" in err
     assert "token-sentinel-7f2b" not in err
     monkeypatch.setenv(A_SOURCE, '["PRB"]')
-    assert main([*options, "--summary", "detailed"]) == SOME_FAILED
+    assert main([*options, "--detail", "detailed"]) == SOME_FAILED
     assert f"{A_SOURCE}): not read by doctor" not in capsys.readouterr().err
 
 

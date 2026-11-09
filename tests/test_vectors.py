@@ -352,7 +352,7 @@ def test_the_command_embeds_with_the_settings_model(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
     """``embed`` names the model and what it embedded; the next run writes nothing."""
-    detailed = ["--summary", "detailed"]
+    detailed = ["--detail", "detailed"]
     model = "with tiny (no prefixes known: texts as they are)"
     with serving(Scripted()) as url:
         assert chained(data, capsys, url, *detailed) == 0

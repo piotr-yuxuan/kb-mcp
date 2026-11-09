@@ -22,7 +22,7 @@ def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Loa
     return ExitStatus.OK, loaded
 
 
-def text(loaded: Loaded, summary: Detail) -> str:
+def text(loaded: Loaded, detail: Detail) -> str:
     """Write each setting that a layer gave, and its value; in detail, every one and its layer.
 
     A setting is named by its path, its names joined by dots; a secret is said to be set
@@ -32,7 +32,7 @@ def text(loaded: Loaded, summary: Detail) -> str:
     lines = []
     for path, kind in loaded.paths.items():
         setting = ".".join(path)
-        if kind == "table" or (summary == "short" and setting not in loaded.layers):
+        if kind == "table" or (detail == "short" and setting not in loaded.layers):
             continue
-        lines.append(setting_line(loaded, setting, detailed=summary == "detailed"))
+        lines.append(setting_line(loaded, setting, detailed=detail == "detailed"))
     return "".join(f"{line}\n" for line in lines)
