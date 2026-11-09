@@ -163,7 +163,7 @@ class Placed(Record):
 
 
 def readable[T](items: Iterable[T | Unreadable], problems: list[Problem]) -> list[T]:
-    """Keep what the store could read, and report each item it could not."""
+    """Keep what the raw store could read, and report each item it could not."""
     kept: list[T] = []
     for item in items:
         if isinstance(item, Unreadable):
@@ -341,7 +341,7 @@ def prepare_atlassian(
     ``document_classes`` are all of one source's, as ``PREPARED`` gives them; any other
     raises KeyError, a caller's error, before anything is read. ``conversions`` writes HTML
     as Markdown, through the source's rows of the cache.
-    Every document of the store is placed, so that links and images reach the other
+    Every document of the raw store is placed, so that links and images reach the other
     source's files, but only those of ``document_classes`` are built and written, with
     the files they attach, and each space's tree when pages are among them. The source then
     removes its files that are no longer wanted, and prunes its conversions that this
@@ -352,7 +352,7 @@ def prepare_atlassian(
     none of its files, and a last good copy links what its document wanted. The task
     named after the source, as ``confluence documents``, reports the documents' files
     built, each by its path. The spans ``prepare.read``, ``prepare.build`` and
-    ``prepare.write`` hold reading the store, building the files and writing them, the
+    ``prepare.write`` hold reading the raw store, building the files and writing them, the
     prune included; ``prepare.placed``
     and ``prepare.written`` say at INFO, with the source, how many of its documents were
     placed, and files written and conversions run, reused and pruned, ``prepare.document``

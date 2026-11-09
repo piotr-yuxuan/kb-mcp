@@ -93,9 +93,9 @@ class IndexReport(Record):
     sections: int = 0
     skipped: list[tuple[str, str]] = Field(default_factory=list)  # each path and reason
     pieces: int = 0  # pieces with a vector
-    embedded: int = 0  # texts that the model embedded, the store lacking them
+    embedded: int = 0  # texts that the model embedded, the vector store lacking them
     unembedded: list[str] = Field(default_factory=list)  # paths with a piece refused
-    characters: int = 0  # of the texts that the pieces embed, whatever the store held
+    characters: int = 0  # of the texts that the pieces embed, whatever the vector store held
     persons: JoinOutcome = Field(default_factory=JoinOutcome)  # that the documents' people make
     # An update's documents: kept from the index in place, new to it, put in place of
     # its own, or gone; those awaiting vectors, of an index that names a model.
@@ -505,7 +505,7 @@ class Filled(Record):
     """What ``embed`` did to the index's pieces, then what the prune that followed did.
 
     ``added`` and ``removed`` count pieces; ``embedded`` the texts that the model embedded,
-    the store lacking them; ``found`` those that the store held; ``refused`` names the
+    the vector store lacking them; ``found`` those that it held; ``refused`` names the
     documents with a piece whose text the model refused, which stays wanted. ``pieces``
     counts what the index then holds, ``documents`` its documents and ``skipped`` the
     files that it lacks. ``unchanged`` says that nothing was written. ``kept`` holds the
@@ -559,7 +559,7 @@ def filling(index: SearchIndex, indexing: Indexing) -> Filled:
     with it: ``embed.mirror_changed`` warns of any difference, naming ``kb-mcp index``,
     and changes nothing else. The documents' bodies are cut again by this code, each
     piece keyed by the model's fingerprint: those wanted and not held are added, their
-    vectors from the store, else from the model, under the store's lock shared; those
+    vectors from the vector store, else from the model, under its lock shared; those
     held and not wanted are removed; nothing to add or remove, the same model, nothing
     is written, nor when the model refuses every piece to add. Another run that wrote
     the index meanwhile starts the fill again, once, then raises ChangedMeanwhileError.

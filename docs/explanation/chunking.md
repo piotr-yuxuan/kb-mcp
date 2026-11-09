@@ -166,8 +166,8 @@ MB against 38 MB. What it costs:
 - **Edits.** A change to a page re-embeds more windows than sections, as the next
   section shows.
 - **The first `embed` after upgrading** embeds every window of the mirror: no window's
-  text is a section's, and vectors are kept by text, so none is found in the store
-  (unless an `eval` of `windows` with the same model embedded them already). On the
+  text is a section's, and vectors are kept by text, so none is found in the vector
+  store (unless an `eval` of `windows` with the same model embedded them already). On the
   sandbox that is 1.11 times the tokens of `sections`. The prune after it deletes the
   sections' vectors from `<data>/vectors.sqlite`, unless an evaluation's index cut by
   `sections` keeps them (plan 023).
@@ -212,7 +212,7 @@ depend on the cuts alone, not on the model), after editing one page of 17 sectio
 | `section-paths` | 6,729 | 1 | 2 |
 | `small-to-big` | 9,149 | 2 | 4 |
 
-A vector stays in the store when its text leaves the mirror, read by nothing until the
+A vector stays in the vector store when its text leaves the mirror, read by nothing until the
 prune after the next `embed` deletes it. Once `index` has run, the index holds no vector
 whose text the mirror no longer has, as a document changed or gone loses its pieces;
 until then, an edited page keeps its old text in the index, pieces included.

@@ -106,9 +106,9 @@ def too_many_gone(answers: Mapping[tuple[str, str], ProbeAnswer], stored: int) -
 def answer_of(found_space: str, status: str, kept: Collection[str], *, named: bool) -> ProbeAnswer:
     """Say what a probe that the site answered found.
 
-    ``kept`` are the spaces whose listings the store keeps; ``named`` says whether the
+    ``kept`` are the spaces whose listings the raw store keeps; ``named`` says whether the
     found space's stored listing names the document. A document trashed, or in a space
-    the store never listed, is gone; one that a stored listing names has moved there, and
+    the raw store never listed, is gone; one that a stored listing names has moved there, and
     is followed by that space's own listing; any other is still somewhere, unsettled,
     and probed again on a later run, so that its tracking never ends unseen.
     """

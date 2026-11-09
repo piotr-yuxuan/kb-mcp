@@ -516,7 +516,7 @@ plan 019's rule kept:
 uv run kb-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --summary detailed
 ```
 
-The first run embeds each chunking's pieces that the store lacks, which took 31
+The first run embeds each chunking's pieces that the vector store lacks, which took 31
 minutes for `sections` on this laptop's CPU; a later run embeds only what changed, and
 the sandbox run of all four chunkings took 6 minutes once every vector was kept.
 

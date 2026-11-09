@@ -454,7 +454,7 @@ class Fetching:
     def fetch_listed(
         self, target: Target, documents: Sequence[Listed], window: FetchWindow
     ) -> None:
-        """Fetch what a target lists in its window and the store lacks; complete what it has.
+        """Fetch what a target lists in its window and the raw store lacks; complete what it has.
 
         ``fetch.listed`` says at INFO how many documents the target lists, how many are
         in its window, stored already and to fetch, with the window's start and reason.

@@ -337,7 +337,7 @@ document's file:
   [`load`](../../src/kb_mcp/mirror/adapters/markdown.py), so the two agree
   on every key, type and quotation.
 
-A document whose conversion fails is reported by its place in the store, and the others
+A document whose conversion fails is reported by its place in the raw store, and the others
 go on. The space's tree, `_tree.md`, is written from the listings
 ([`Catalogue.tree`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py)). Last,
 [`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py) writes each file
@@ -440,7 +440,7 @@ texts a request, and kept, [`BATCH`](../../src/kb_mcp/search/adapters/vector_sto
 texts a commit, so that an interrupted build loses little. The digest is read again
 before and after ([`ApiEmbedder.check`](../../src/kb_mcp/search/adapters/embedding.py)),
 so that no vector of other weights is kept under this fingerprint. Only the texts that
-the store lacks reach the endpoint: [the internals](internals.md#4-vectors-reused-by-the-key-of-model-and-text)
+the vector store lacks reach the endpoint: [the internals](internals.md#4-vectors-reused-by-the-key-of-model-and-text)
 say which an edit changes.
 [`SqliteIndex.fill`](../../src/kb_mcp/search/adapters/sqlite_index.py)
 copies the vectors into the index, each piece naming its section by path and number.

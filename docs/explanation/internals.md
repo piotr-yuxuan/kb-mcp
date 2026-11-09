@@ -86,7 +86,7 @@ which makes GETs alone, one at a time and paced, signed in by the saved session 
 token ([`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
 For each Confluence space, it lists every page, blog post and folder, and stores the
 listings whole; for each Jira project, it searches the issues updated in its fetch window.
-Then it fetches each document updated in the fetch window whose revision the store lacks
+Then it fetches each document updated in the fetch window whose revision the raw store lacks
 ([`Fetching.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)),
 its files first, the snapshot last
 ([`Fetching.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)),
@@ -165,7 +165,7 @@ trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost
   its source that the run did not use are deleted, unless it reported anything
   ([`Conversions.drop_unused`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 - **One document's failure**, a field refused or pandoc failing, is reported by its place
-  in the store, never its content; the run goes on. A source that reported anything
+  in the raw store, never its content; the run goes on. A source that reported anything
   removes no file of its own but those of documents gone or moved, and no conversion, so
   that the last good copy of each stays; the other source's removals go on, but under
   `docs/assets/`, where any snapshot or listing not read stops them, since the files
@@ -361,8 +361,8 @@ the page updated within the period it covers, sees that this revision is not sto
 and fetches it as a new snapshot, beside the old one, which stays. An issue edited in
 Jira has a new update time, its revision, and is fetched the same way.
 
-- **Moved** to another space that the run keeps, a page is listed there, and the store
-  notes when each space was listed.
+- **Moved** to another space that the run keeps, a page is listed there, and the raw
+  store notes when each space was listed.
 - **Deleted**, a page is absent from its space's listing. The run records a
   [`Tombstone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py) and
   probes the page; a second answer of gone, an hour or more after the first, confirms
@@ -393,7 +393,7 @@ at the last run, is reused. What an edit reaches beyond its own page lies in tha
 too, and is converted again where it shows: a new title, in the page's own heading, in
 the space's tree and in each link that leads to its renamed file; a page stored for the
 first time, in the links to it, now relative, and in the tree; a user's name changed in
-the store's users, in the headings of that user's comments. A child's breadcrumb is in
+the raw store's users, in the headings of that user's comments. A child's breadcrumb is in
 its front matter, written after pandoc, and costs no conversion. The edited page's old
 conversion is deleted once the files are written, with those of documents gone, unless
 the run reported a problem
@@ -511,7 +511,7 @@ pieces record: the index in place, the one that `embed` wrote, should an `index`
 renamed another in meanwhile, and those that `eval` keeps under
 `<data>/eval/indexes/`, so that the next evaluation embeds nothing again. The vectors of
 deleted pages, of texts since edited, and of chunkings and models that no index uses
-go. It takes the store's lock exclusive, or waits for the next `embed` while a build
+go. It takes the vector store's lock exclusive, or waits for the next `embed` while a build
 holds it, so that no build loses what it embedded; and it deletes nothing while the
 index lacks a file of the mirror or holds no document, or while an index there cannot
 say what it reads. A store made from plan 023 on gives the space freed back to the file
