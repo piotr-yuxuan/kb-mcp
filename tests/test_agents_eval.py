@@ -690,6 +690,32 @@ def test_grade_exits_1_past_twice_the_estimates(world: World, capsys: CaptureFix
     assert (out / "results.json").exists()
 
 
+@pytest.mark.parametrize("consented", [False, True])
+def test_runs_prepared_with_the_consent_in_their_server_s_command_need_each_call_s(
+    world: World, monkeypatch: MonkeyPatch, *, consented: bool
+) -> None:
+    """A runs.json written before plan 063: the flag in it reaches no server by itself."""
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    written = json.loads((out / "runs.json").read_text("utf-8"))
+    server = written["server"]
+    del written["remote_embeddings"]
+    written["server"] = [*server, "--allow-remote-embeddings"]
+    (out / "runs.json").write_text(json.dumps(written), "utf-8")
+    started: list[list[str]] = []
+
+    def recorded(command: list[str], *_: object) -> Answered:
+        started.append(command)
+        return Answered(text="an answer", refused=False)
+
+    monkeypatch.setattr(agents, "called", recorded)
+    run = runs_of(out)[0]
+    flag = ["--allow-remote-embeddings"] if consented else []
+    status = main([*bridged(out, run["id"], "search", {"query": "kafka"}), *flag])
+    tools = ["--tools", ",".join(run["tools"])]
+    assert (status, started) == ((0, [[*server, *flag, *tools]]) if consented else (REFUSED, []))
+
+
 @pytest.mark.parametrize("given", [[], ["--data-dir", "DATA"]])
 def test_each_call_starts_the_server_that_prepare_named(
     world: World, monkeypatch: MonkeyPatch, given: list[str]

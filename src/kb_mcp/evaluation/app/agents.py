@@ -289,12 +289,20 @@ def prepare(
 
 
 def readied(directory: Path) -> Runs:
-    """Read ``runs.json``, as ``prepare`` wrote it; refuse a directory without one."""
+    """Read ``runs.json``, as ``prepare`` wrote it; refuse a directory without one.
+
+    One prepared before plan 063 holds the consent in its server's command: it is read
+    as runs that need it, without it, so that each call gives its own.
+    """
     try:
-        return Runs.model_validate_json((directory / "runs.json").read_text(encoding="utf-8"))
+        runs = Runs.model_validate_json((directory / "runs.json").read_text(encoding="utf-8"))
     except OSError, ValidationError:
         message = "runs.json: missing or not as prepare writes it"
         raise AgentsError(message) from None
+    if EMBEDDINGS.flag not in runs.server:
+        return runs
+    server = tuple(each for each in runs.server if each != EMBEDDINGS.flag)
+    return runs.model_copy(update={"server": server, "remote_embeddings": True})
 
 
 class Logged(BaseModel):
