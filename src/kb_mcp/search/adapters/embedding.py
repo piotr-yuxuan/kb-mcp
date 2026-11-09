@@ -26,6 +26,7 @@ from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.http import client_span, server
 from kb_mcp.search.adapters.model_api import (
     OPERATION_DURATION,
+    REFUSING,
     TOKEN_USAGE,
     WAITS_S,
     Bounds,
@@ -45,10 +46,6 @@ KEY_VARIABLE = "KB_MCP_EMBEDDING_API_KEY"
 # Texts sent in one request; a piece is at most about 1,500 characters.
 BATCH = 32
 MAX_DIMENSIONS = 8192
-# Statuses that may point at what was sent, so that a text sent alone may still embed:
-# 500 too, as bge-m3 answers to some Markdown. A gateway's 502, 503 or 504, and a 429,
-# are the endpoint's, never the text's.
-REFUSING = frozenset({400, 413, 422, 500})
 PROBE = "probe"
 # The version of how this module turns texts into vectors; a change that alters any
 # vector raises it, so that no vector embedded before is reused.

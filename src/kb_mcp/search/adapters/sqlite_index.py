@@ -29,6 +29,7 @@ import numpy as np
 from opentelemetry import trace
 
 from kb_mcp.kernel.chunking import CHUNKINGS
+from kb_mcp.mirror.adapters.conversions import damaged
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.domain import people
@@ -393,12 +394,6 @@ class DuplicateDocumentError(ValueError):
 def moment(value: datetime) -> str:
     """Write a time as the index stores it: ISO 8601 in UTC, to the second, so it sorts."""
     return value.astimezone(UTC).isoformat(timespec="seconds")
-
-
-def damaged(error: sqlite3.DatabaseError) -> bool:
-    """Say whether an error of SQLite's is that of a damaged file, not of its use or its disk."""
-    code = getattr(error, "sqlite_errorcode", 0) & 0xFF  # the primary code
-    return code in {sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB}
 
 
 def awaiting(connection: sqlite3.Connection, chunking: Chunking) -> int:

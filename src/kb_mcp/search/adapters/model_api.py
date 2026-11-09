@@ -45,6 +45,10 @@ TOKEN_USAGE = metrics.get_meter(__name__).create_histogram(
     description="Number of input and output tokens used.",
     explicit_bucket_boundaries_advisory=TOKEN_BUCKETS,
 )
+# Statuses that may point at what was sent, not at the server: 500 too, as bge-m3 answers
+# to some Markdown and llama.cpp fails a whole request for one document that it cannot
+# score. A gateway's 502, 503 or 504, and a 429, are the server's, never what was sent.
+REFUSING = frozenset({400, 413, 422, 500})
 # Statuses worth another attempt: the endpoint busy, or failing for a while.
 RETRIED = frozenset({429, 500, 502, 503, 504})
 # Seconds waited before the second attempt, and before the third.
