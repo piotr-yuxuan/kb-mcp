@@ -1,6 +1,6 @@
 """Fetching the documents of spaces and projects updated in a period.
 
-Each space, project, round of probes and merge of users is a span of the run's trace;
+Each space, project, round of probes and merge of site users is a span of the run's trace;
 each document fetched is a trace of its own, ``fetch.document``, linked to the run's,
 since Tempo drops a trace past 5 MB, which one trace of all a run's requests could pass.
 What is fetched, failed or skipped is counted and logged, as
@@ -88,8 +88,8 @@ MAX_FOLDERS = 1000
 # Documents absent from their listing that one run probes, at most; the rest wait.
 MAX_PROBES = 200
 HTTP_NOT_FOUND = 404
-# Jira reads JQL dates in the user's time zone, up to 14 hours off UTC, and a date
-# stands for its midnight: two days on each side always cover the period.
+# Jira reads JQL dates in the signed-in site user's time zone, up to 14 hours off UTC, and
+# a date stands for its midnight: two days on each side always cover the period.
 JQL_MARGIN = timedelta(days=2)
 # The counts that a short result shows: the documents fetched, or to fetch, of each type,
 # and the files downloaded, or to download; then how a run stopped, if it did.
@@ -190,7 +190,7 @@ class Fetching:
         holds. A source that does not answer at all (a site without Jira) is counted as a
         failure, and its targets skipped. A target without a window is skipped too, and
         asked nothing. The task ``targets`` reports those of the sources that answer,
-        each by its key. Confluence's probes and users follow its spaces alone, so that a
+        each by its key. Confluence's probes and site users follow its spaces alone, so that a
         run of projects alone does and counts nothing of Confluence's.
         """
         self.held |= {target: "after --until" for target, w in self.windows.items() if w is None}
@@ -219,7 +219,7 @@ class Fetching:
             self.users()
 
     def reachable(self, source: str, request: Request, signed_in: Callable[[Fields], bool]) -> bool:
-        """GET the signed-in user of a source; say whether the source answers.
+        """GET the signed-in site user of a source; say whether the source answers.
 
         Raises SignInNeededError when it answers as to nobody.
         """
@@ -648,7 +648,7 @@ class Fetching:
         return blobs, whole
 
     def users(self) -> None:
-        """Merge the names of the Confluence authors seen into the users kept.
+        """Merge the names of the Confluence authors seen into the site users kept.
 
         All is the span ``fetch.users``.
         """

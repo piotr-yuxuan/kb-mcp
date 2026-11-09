@@ -1,9 +1,9 @@
-"""What the listings and users say beyond the snapshots, and each document's front matter.
+"""What the listings and site users say beyond the snapshots, and each document's front matter.
 
 A snapshot holds one document and its comments; the listings of its space give its
 place in the tree, its fresher status and the names of the folders above it, and the
-users give its people's names. The front matter of a document of the mirror is built here
-from all of them, as the table of ``docs/reference/data-layout.md`` says.
+site users give its people's names. The front matter of a document of the mirror is built
+here from all of them, as the table of ``docs/reference/data-layout.md`` says.
 """
 
 from __future__ import annotations
@@ -82,7 +82,7 @@ class AtlassianFrontMatter(FrontMatter):
 
 
 class Catalogue(Record):
-    """The spaces, the users' names, and the documents and folders last listed.
+    """The spaces, the site users' names, and the documents and folders last listed.
 
     ``spaces`` are by id, ``names`` by account id, ``listed`` pages and blog posts by id,
     and ``folders`` by the id of the space that listed them.
@@ -101,7 +101,7 @@ class Catalogue(Record):
         return {**folders, **pages}
 
     def name(self, person: SiteUser | None) -> str | None:
-        """Name a person: by the display name given, else the users', else the account id."""
+        """Name a person: by the display name given, else the site users', else the account id."""
         if person is None:
             return None
         return one_line(person.display_name or self.names.get(person.account_id) or "") or (

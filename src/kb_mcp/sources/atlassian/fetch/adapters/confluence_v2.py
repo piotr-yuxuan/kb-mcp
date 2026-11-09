@@ -58,7 +58,7 @@ def folder(fields: Fields) -> Folder:
 
 
 def person(fields: Fields) -> SiteUser:
-    """Read a user of GET /wiki/rest/api/user/bulk; the email address is left behind."""
+    """Read a site user of GET /wiki/rest/api/user/bulk; the email address is left behind."""
     with fields.refusals():
         return SiteUser(
             account_id=fields.text("accountId"), display_name=fields.optional_text("displayName")
@@ -153,7 +153,7 @@ def snapshot(document_class: type[Page | BlogPost], responses: Mapping[str, obje
 # _links.next gives, query included.
 LISTING_LIMIT = "250"
 LISTED_STATUSES = {Page: "current,archived", BlogPost: "current"}
-# How many account ids one GET of users names.
+# How many account ids one GET of site users names.
 USERS_PER_REQUEST = 50
 
 
@@ -238,7 +238,7 @@ def attachments_request(document: Listed) -> Request:
 
 
 def users_request(account_ids: Sequence[str]) -> Request:
-    """GET the users with these account ids, at most ``USERS_PER_REQUEST``."""
+    """GET the site users with these account ids, at most ``USERS_PER_REQUEST``."""
     return Request(
         path=f"{WIKI}/rest/api/user/bulk",
         params={"accountId": list(account_ids), "limit": str(USERS_PER_REQUEST)},
@@ -246,12 +246,12 @@ def users_request(account_ids: Sequence[str]) -> Request:
 
 
 def current_user_request() -> Request:
-    """GET the user whom the session signs in."""
+    """GET the site user whom the session signs in."""
     return Request(path=f"{WIKI}/rest/api/user/current")
 
 
 def is_signed_in(response: Fields) -> bool:
-    """Say whether the current user is someone; an expired session reads as anonymous."""
+    """Say whether the current site user is someone; an expired session reads as anonymous."""
     return response.optional_text("accountId", absent=True) is not None
 
 
@@ -263,5 +263,5 @@ def listing_page(response: Fields, _: Request) -> tuple[list[Fields], Request | 
 
 
 def users_page(response: Fields, _: Request) -> tuple[list[Fields], Request | None]:
-    """Read the users of a bulk GET, which names them all on one page."""
+    """Read the site users of a bulk GET, which names them all on one page."""
     return response.objects("results"), None

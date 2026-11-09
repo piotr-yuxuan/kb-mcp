@@ -182,7 +182,7 @@ class RawStore:
     per response plus the store's record. It is written whole into a hidden folder and
     renamed into place, so it is either complete or absent, and its responses never
     change. A space's listings are ``<root>/confluence/spaces/<id>/*.json``, each
-    replaced whole; users are ``<root>/confluence/users.json``, merged. A file is
+    replaced whole; site users are ``<root>/confluence/users.json``, merged. A file is
     ``<root>/blobs/<digest[:2]>/<digest>``. One run at a time writes, inside ``writing``.
     """
 
@@ -420,7 +420,7 @@ class RawStore:
         return self._entries(self._space(space_id) / "folders.json", confluence_v2.folder)
 
     def put_users(self, users: list[object]) -> None:
-        """Merge users, as received, into those kept from earlier runs, by account id."""
+        """Merge site users, as received, into those kept from earlier runs, by account id."""
         self._check_writing()
         path = self.root / CONFLUENCE / "users.json"
         kept = _decode(path) if path.exists() else []
@@ -434,7 +434,7 @@ class RawStore:
         _replace_synced(path, _encode([merged[key] for key in sorted(merged)]))
 
     def users(self) -> list[SiteUser | Unreadable]:
-        """Read every user kept."""
+        """Read every site user kept."""
         return self._entries(self.root / CONFLUENCE / "users.json", confluence_v2.person)
 
     def _entries[T](self, path: Path, read: Callable[[Fields], T]) -> list[T | Unreadable]:

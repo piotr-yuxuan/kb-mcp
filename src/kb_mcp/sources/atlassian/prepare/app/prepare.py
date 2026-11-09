@@ -192,7 +192,7 @@ def listed_at(store: RawStore, space_id: str, problems: list[Problem]) -> dateti
 def read_catalogue(
     store: RawStore, problems: list[Problem]
 ) -> tuple[Catalogue, set[str], dict[str, datetime]]:
-    """Read the spaces, users and listings.
+    """Read the spaces, site users and listings.
 
     Also return the spaces whose listing failed, and when each space was listed.
     """

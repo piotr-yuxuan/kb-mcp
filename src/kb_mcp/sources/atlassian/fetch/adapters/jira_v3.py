@@ -44,7 +44,7 @@ CONTENT_PATH = "/rest/api/"
 
 
 def person(fields: Fields) -> SiteUser:
-    """Read a user; the email address, when there is one, is left behind."""
+    """Read a site user; the email address, when there is one, is left behind."""
     with fields.refusals():
         return SiteUser(
             account_id=fields.text("accountId"), display_name=fields.optional_text("displayName")
@@ -143,8 +143,9 @@ PAGE_SIZE = "100"
 def search_request(project: str, start: date, end: date) -> Request:
     """GET the issues of a project updated from ``start`` until before ``end``, by date.
 
-    Jira reads these dates in the user's time zone, so a caller widens them and decides
-    on each issue's ``updated`` time. The key is quoted, as JQL needs for some keys.
+    Jira reads these dates in the signed-in site user's time zone, so a caller widens them
+    and decides on each issue's ``updated`` time. The key is quoted, as JQL needs for some
+    keys.
     """
     jql = (
         f'project = "{project}" AND updated >= "{start.isoformat()}"'
@@ -214,10 +215,10 @@ def comments_page(response: Fields, request: Request) -> tuple[list[Fields], Req
 
 
 def myself_request() -> Request:
-    """GET the user whom the session signs in; Jira answers 401 to an expired session."""
+    """GET the site user whom the session signs in; Jira answers 401 to an expired session."""
     return Request(path="/rest/api/3/myself")
 
 
 def is_signed_in(response: Fields) -> bool:
-    """Say whether the user answered is someone."""
+    """Say whether the site user answered is someone."""
     return response.optional_text("accountId", absent=True) is not None
