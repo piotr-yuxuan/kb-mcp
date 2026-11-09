@@ -654,7 +654,7 @@ build, row for row, and ranks the golden questions alike
   [`VectorIndex`](../../src/kb_mcp/search/domain/indexes.py), hold only what search
   needs, and a networked backend's adapter would bring its own pool and retries.
 - **Settled** by [plan
-  035](../work/plans/035-incremental-index-and-embed.md#decisions), its first question
+  035](../work/changelog/035-incremental-index-and-embed.md#decisions), its first question
   answered by the maintainer, aside, and its fourth too: `embed` warns of a mirror
   changed since the index, and goes on.
 
