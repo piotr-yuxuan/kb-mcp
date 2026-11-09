@@ -73,6 +73,35 @@ PARSER = MarkdownIt("commonmark").enable("table")
 # What GitHub drops from a heading's text to make its anchor: all but letters, digits,
 # underscores, hyphens and spaces.
 UNSLUGGED = re.compile(r"[^\w\- ]")
+# A plan named by its number, as history names it: "plan 034", "plans 021 and 024".
+PLAN_NUMBER = re.compile(r"\b[Pp]lans? \d{3}\b")
+# The pages that name plans, being history told outside the records; none may join them.
+TELLING_HISTORY = (
+    "docs/README.md",
+    "docs/explanation/chunking.md",
+    "docs/explanation/code-layout.md",
+    "docs/explanation/code-walkthrough.md",
+    "docs/explanation/internals.md",
+    "docs/explanation/mcp-surface.md",
+    "docs/explanation/observability.md",
+    "docs/explanation/reranking.md",
+    "docs/explanation/search-evaluation.md",
+    "docs/explanation/sources.md",
+    "docs/explanation/trade-offs.md",
+    "docs/how-to/agents.md",
+    "docs/how-to/embeddings.md",
+    "docs/how-to/evaluate-with-agents.md",
+    "docs/how-to/golden-questions.md",
+    "docs/how-to/reranking.md",
+    "docs/reference/data-layout.md",
+    "docs/reference/mcp-tools.md",
+    "docs/reference/telemetry/embed.md",
+    "docs/reference/telemetry/fetch.md",
+    "docs/reference/telemetry/index.md",
+    "docs/reference/telemetry/prepare.md",
+    "docs/tutorials/first-mirror.md",
+    "spikes/README.md",
+)
 # The four kinds of page, by Diataxis, each a folder of docs/.
 KINDS = frozenset({"tutorials", "how-to", "reference", "explanation"})
 # A fragment naming lines, as GitHub's view of a file reads it: lines move, names stay.
@@ -267,6 +296,26 @@ def defined(statements: Iterable[ast.stmt]) -> set[str]:
             case ast.Assign(targets=targets):
                 names.update(target.id for target in targets if isinstance(target, ast.Name))
     return names
+
+
+def test_no_page_names_a_plan_but_those_that_still_tell_their_history(
+    checkout: frozenset[str],
+) -> None:
+    """A page says what is true now; a plan's number is history, kept in ``docs/work/``.
+
+    The pages that name plans when this check came are listed, so that the list only
+    shrinks; no other page may name one.
+    """
+    pages = sorted(
+        path
+        for path in checkout
+        if path.endswith(".md")
+        and not path.startswith("docs/work/")
+        and not any(path.startswith(f"{folder}/") for folder in SEEDED)
+    )
+    naming = [path for path in pages if PLAN_NUMBER.search((ROOT / path).read_text("utf-8"))]
+    assert [path for path in naming if path not in TELLING_HISTORY] == []
+    assert [path for path in TELLING_HISTORY if path not in naming] == []
 
 
 def test_each_code_link_into_the_source_names_what_its_file_defines(
