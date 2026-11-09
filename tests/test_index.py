@@ -1971,3 +1971,8 @@ def test_the_index_s_sql_names_roles_types_and_relations_as_the_mirror_does() ->
     assert said["roles"] <= set(ROLES)
     assert said["types"] <= set(WORKLOG_TYPES)
     assert said["relations"] <= set(RELATIONS)
+
+
+def test_the_index_lists_the_values_of_each_role_s_filter() -> None:
+    """Plan 052: each role of ``ROLES`` has its values, as ``browse`` and ``status`` list them."""
+    assert [role for role in ROLES if role not in sqlite_index.VALUES] == []

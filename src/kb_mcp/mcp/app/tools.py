@@ -28,7 +28,7 @@ from kb_mcp.kernel.names import WORKLOG_ID
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from kb_mcp.mcp.app import responses
-from kb_mcp.mirror.domain.mirror import ref_of
+from kb_mcp.mirror.domain.mirror import ROLES, ref_of
 from kb_mcp.search.app.meaning import Nearest
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS, PASSAGE_CHARS, around
@@ -382,15 +382,9 @@ def narrowed(reader: SearchReader, given: Mapping[str, str]) -> Filters:
     )
 
 
-# Each filter that names a person, and the role it keeps them in: person, any.
-PERSON_FILTERS = {
-    "person": None,
-    "author": "author",
-    "creator": "creator",
-    "assignee": "assignee",
-    "commenter": "commenter",
-    "participant": "participant",
-}
+# Each filter that names a person, and the role it keeps them in: person, any; then
+# each role, by its name.
+PERSON_FILTERS: dict[str, str | None] = {"person": None, **{role: role for role in ROLES}}
 
 
 def who(reader: SearchReader, name: str, value: str | None) -> str | None:

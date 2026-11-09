@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import re
+import typing
 from copy import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
 
-from kb_mcp.mcp.app.tools import Library, UnanswerableError
-from kb_mcp.mirror.domain.mirror import Link, PersonRole
+from kb_mcp.mcp.app.tools import PERSON_FILTERS, Library, SearchFilters, UnanswerableError
+from kb_mcp.mirror.domain.mirror import ROLES, Link, PersonRole
 from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import build_index
+from kb_mcp.sources.registry import SOURCES
 from tests.answers import built, continuation, follow, parts
 from tests.mirrors import (
     CREATED,
@@ -1517,3 +1519,15 @@ def test_a_document_shows_ten_labels_at_most(tmp_path: Path) -> None:
     library = built(tmp_path, [(page("196845", "Kafka", labels=labels), None)])
     shown = parts(library.read("196845"))[1]
     assert f"\nlabels: {', '.join(labels[:10])}\n" in shown
+
+
+def test_the_search_filters_spell_each_source_and_each_role_as_the_registry_and_mirror_do() -> None:
+    """Plan 052: the filters' schema, which agents read, names the sources and the roles.
+
+    Contract E keeps the server from importing the registry, so the Literal of ``source``
+    copies the sources' names, held here to ``SOURCES``. Each person filter, each role
+    of ``ROLES`` among them, is a filter of the schema.
+    """
+    hints = typing.get_type_hints(SearchFilters)
+    assert typing.get_args(hints["source"]) == tuple(each.name for each in SOURCES)
+    assert [name for name in [*ROLES, *PERSON_FILTERS] if name not in hints] == []
