@@ -224,22 +224,23 @@ def facts(front: FrontMatter) -> str:
     return " | ".join(part for part in shown if part)
 
 
+def dated(front: FrontMatter, held: str | None) -> str:
+    """Say when a ranked document was updated and mirrored, what it is, and who holds it.
+
+    ``held``, unless None, ends it: a person's roles there, as ``roles`` says them.
+    """
+    when = f"updated {stamp(front.updated)} | mirrored {front.fetched_at:%Y-%m-%d}"
+    return f"{when} | {facts(front)}" + (f" | {held}" if held else "")
+
+
 def hit(
     number: int, entry: IndexedDocument, passage: Passage, opening: str, held: str | None
 ) -> str:
-    """Write one hit of a search: what and where it is, its best section and a snippet.
-
-    ``held``, unless None, ends the line of who and when: a person's roles there, as
-    ``roles`` says them.
-    """
+    """Write one hit of a search: what and where it is, its best section and a snippet."""
     front = entry.front
     lines = [
         f"{number}. {short(front.title)}",
-        (
-            f"   {ref_of(front.key, front.id)} | {entry.path} | updated {stamp(front.updated)}"
-            f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}"
-            + (f" | {held}" if held else "")
-        ),
+        f"   {ref_of(front.key, front.id)} | {entry.path} | {dated(front, held)}",
     ]
     if front.breadcrumb:
         lines.append(f"   in {short(' / '.join(front.breadcrumb))}")
@@ -255,15 +256,13 @@ def passage(
 ) -> str:
     """Write one passage that ask quotes: what and where it is, then its text, verbatim.
 
-    ``passage`` holds the text whole, where a search's holds a snippet; ``held`` ends the
-    line of who and when, as a hit's.
+    ``passage`` holds the text whole, where a search's holds a snippet.
     """
     front = entry.front
     heading = f": {short(passage.heading)}" if passage.heading else ""
     about = (
         f"{number}. {short(front.title)} | {ref_of(front.key, front.id)} | section"
-        f" {passage.number}{heading} | updated {stamp(front.updated)}"
-        f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}" + (f" | {held}" if held else "")
+        f" {passage.number}{heading} | {dated(front, held)}"
     )
     return f"{about}\n{short(front.url or entry.path)} | {opening}\n{passage.text}"
 
