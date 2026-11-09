@@ -996,7 +996,7 @@ def issue_damaged(sandbox: Sandbox) -> None:
 
 
 def prepared(sandbox: Sandbox, source: str) -> tuple[AtlassianPrepared, list[dict[str, object]]]:
-    """Prepare one source as its role does; give how it ended, and what it warned."""
+    """Prepare one source as its preparer does; give how it ended, and what it warned."""
     settings = MODEL(data_dir=sandbox.data)
     with capture_logs() as events:
         done = prepare_classes(settings, SITE, Pandoc.find(), source, PREPARED[source])

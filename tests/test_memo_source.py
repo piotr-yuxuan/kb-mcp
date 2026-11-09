@@ -107,8 +107,8 @@ def test_help_lists_it_and_imports_none_of_the_runs_packages(tmp_path: Path) -> 
     """In a fresh interpreter, ``prepare --help`` offers it, having imported its declaration alone.
 
     ``-X importtime`` names each module that the child imports, so that a package it does
-    not name never reached ``sys.modules``: neither one of G's, nor the source's table
-    or role.
+    not name never reached ``sys.modules``: neither one of G's, nor the source's table,
+    fetcher or preparer.
     """
     child = subprocess.run(
         [

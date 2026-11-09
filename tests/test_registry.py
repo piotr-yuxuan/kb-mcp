@@ -3,7 +3,8 @@
 The expectations come from plan 030: the registry lists Confluence, Jira and the work
 log in name order; any registry that the entry is given is refused, naming the
 declaration, for a name off the rule, ``assets``, a name declared twice, a name that a
-model holds, an account that two declarations name differently, no setting, no role,
+model holds, an account that two declarations name differently, no setting, neither
+fetcher nor preparer,
 settings that are not its table's, a type read in a way that the help has no words for,
 or an option that is no flag, that another source declares otherwise, or that is
 ``fetch``'s own; an option's value takes no name that the program holds; each
@@ -528,7 +529,7 @@ def test_a_source_that_the_registry_leaves_out_cannot_be_prepared(
 
 
 @pytest.mark.parametrize(
-    ("role", "path", "said"),
+    ("field", "path", "said"),
     [
         ("fetcher", "kb_mcp.sources.atlassian.fetch.app.absent", "does not load"),
         ("fetcher", "kb_absent.fetcher", "does not load"),
@@ -537,17 +538,17 @@ def test_a_source_that_the_registry_leaves_out_cannot_be_prepared(
         ("preparers", "kb_mcp.sources.atlassian.fetch.app.fetcher", "not a Preparer"),
     ],
 )
-def test_a_role_that_does_not_load_refuses_the_run_of_its_source_naming_the_path(
-    tmp_path: Path, capsys: CaptureFixture[str], role: str, path: str, said: str
+def test_a_fetcher_or_preparer_that_does_not_load_refuses_the_run_of_its_source(
+    tmp_path: Path, capsys: CaptureFixture[str], field: str, path: str, said: str
 ) -> None:
-    """Criterion 3: a declaration naming a role that does not load, or is not the role.
+    """Criterion 3: a declaration naming a fetcher or a preparer that does not load, or not one.
 
-    The command of its role, of that source, exits 2 before any row, naming the source and
+    The command of its stage, of that source, exits 2 before any row, naming the source and
     the path; with the registry's own declaration, the same run goes on, a fetch to sign
     in, no session being saved, a prepare not counted.
     """
-    named = path if role == "fetcher" else (path,)
-    registry = (replace(CONFLUENCE, **{role: named}), JIRA, WORKLOG)
+    named = path if field == "fetcher" else (path,)
+    registry = (replace(CONFLUENCE, **{field: named}), JIRA, WORKLOG)
     config = tmp_path / "config.toml"
     config.write_text(
         '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n'
@@ -555,12 +556,12 @@ def test_a_role_that_does_not_load_refuses_the_run_of_its_source_naming_the_path
         "utf-8",
     )
     data = tmp_path / "data"
-    step, status = ("fetch", ExitStatus.SIGN_IN_AGAIN) if role == "fetcher" else ("prepare", 0)
-    given = [step, "--yes", "--config", str(config), "--data-dir", str(data)]
+    stage, status = ("fetch", ExitStatus.SIGN_IN_AGAIN) if field == "fetcher" else ("prepare", 0)
+    given = [stage, "--yes", "--config", str(config), "--data-dir", str(data)]
     given += ["confluence", "--dry-run", "--format", "json"]
     assert main(given, registry) == ExitStatus.REFUSED
     err = capsys.readouterr().err
-    assert f"{step}.refused" in err
+    assert f"{stage}.refused" in err
     assert f"source 'confluence': {path}: {said}" in err
     assert not data.exists()
     assert main(given) == status

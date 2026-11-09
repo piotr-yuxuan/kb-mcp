@@ -390,7 +390,8 @@ def test_json_is_one_document_with_a_row_per_source(
     """exit_status, then each source's row; one shape for a fetch as for a prepare.
 
     The file that fails, a page's, fails Confluence's fetch alone. A row's result is its
-    role's: its outcome, and what the source gives, under ``downloaded`` or ``mirrored``.
+    fetcher's or preparer's: its outcome, and what the source gives, under ``downloaded``
+    or ``mirrored``.
     """
     config = settings_file(home, worklog, atlassian=True)
     given = ("--yes", "--since", "2026-10-02", "--format", "json")
@@ -992,7 +993,7 @@ def test_with_the_work_log_alone_the_index_still_holds_every_page(
 
 
 def interrupting(*_: object) -> None:
-    """Stop a role as Ctrl-C would."""
+    """Stop a fetcher or a preparer as Ctrl-C would."""
     raise KeyboardInterrupt
 
 

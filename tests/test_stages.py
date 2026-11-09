@@ -1,11 +1,11 @@
-"""The roles of a source, each one that the registry names, as plan 030 defines them.
+"""A source's part in each stage, each one that the registry names, as plan 030 defines it.
 
 The expectations come from the plan's "A source's declaration, and the roles'
 interfaces": a declaration names its fetcher, if any, and its preparers by module path,
 which ``--help`` never imports; one fetcher and one preparer serve Confluence and Jira,
 each reading from ``run.source`` the source that it runs for, so its kinds and its
 rows of the cache of conversions; the work log, read in place, has no fetcher;
-``preflight`` says what a role cannot go on with before any source starts; each
+``preflight`` says what a fetcher or a preparer cannot go on with before any source starts; each
 preparer that converts finds pandoc itself, so that pandoc gone fails its result alone;
 a dry run plans the fetch, counts the work log and leaves Atlassian's prepare alone; and
 a result's ``text`` writes what its command writes. The site is plan 004's scripted one,
@@ -170,7 +170,7 @@ def run_of(
 
 
 def fetcher_of(declared: Source) -> Fetcher:
-    """Load the fetcher that a declaration names, checked against its role."""
+    """Load the fetcher that a declaration names, checked against its interface."""
     assert declared.fetcher is not None
     fetcher = pkgutil.resolve_name(declared.fetcher)
     assert isinstance(fetcher, Fetcher)
@@ -178,7 +178,7 @@ def fetcher_of(declared: Source) -> Fetcher:
 
 
 def preparer_of(declared: Source) -> Preparer:
-    """Load the one preparer that a declaration names, checked against its role."""
+    """Load the one preparer that a declaration names, checked against its interface."""
     (path,) = declared.preparers
     preparer = pkgutil.resolve_name(path)
     assert isinstance(preparer, Preparer)
@@ -215,13 +215,13 @@ def row_text(name: str, outcome: str, text: str) -> str:
     sorted({each.fetcher for each in SOURCES if each.fetcher is not None}),
 )
 def test_each_fetcher_that_the_registry_names_loads_as_a_fetcher(path: str) -> None:
-    """Loaded by its module path, it has the role's methods."""
+    """Loaded by its module path, it has the interface's methods."""
     assert isinstance(pkgutil.resolve_name(path), Fetcher)
 
 
 @pytest.mark.parametrize("path", sorted({path for each in SOURCES for path in each.preparers}))
 def test_each_preparer_that_the_registry_names_loads_as_a_preparer(path: str) -> None:
-    """Loaded by its module path, it has the role's methods."""
+    """Loaded by its module path, it has the interface's methods."""
     assert isinstance(pkgutil.resolve_name(path), Preparer)
 
 
