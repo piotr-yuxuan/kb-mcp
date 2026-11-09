@@ -20,8 +20,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.cli.main import main
+from kb_mcp.kernel.names import WORKLOG_TYPES
 from kb_mcp.mirror.adapters.markdown import dump
-from kb_mcp.mirror.domain.mirror import Link, PersonRole
+from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, Link, PersonRole
 from kb_mcp.search.adapters import sqlite_index, vector_store
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app import indexing as indexing_module
@@ -1944,3 +1945,26 @@ def test_a_whole_update_s_own_damage_is_raised_once_not_retried(
     lock = data / "index.sqlite.lock"
     with lock.open("a") as file:
         fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)  # free, or this raises
+
+
+def test_the_index_s_sql_names_roles_types_and_relations_as_the_mirror_does() -> None:
+    """Plan 052: each role, type and relation that the SQL spells is one the mirror names.
+
+    The SQL holds them as text, which Ruff's S608 keeps from being built from the mirror's
+    constants: a role it compares is one of ``ROLES``, a type one of the work log's, a
+    relation one of ``RELATIONS``, so that a role or a relation renamed in the mirror
+    fails here rather than matching nothing.
+    """
+    sql = "\n".join(
+        [value for value in vars(sqlite_index).values() if isinstance(value, str)]
+        + list(sqlite_index.VALUES.values())
+    )
+    said = {
+        "roles": set(re.findall(r"role = '(\w+)'", sql)),
+        "types": set(re.findall(r"type (?:=|<>) '(\w+)'", sql)),
+        "relations": set(re.findall(r"'\$\.relation'\) = '(\w+)'", sql)),
+    }
+    assert all(said.values())
+    assert said["roles"] <= set(ROLES)
+    assert said["types"] <= set(WORKLOG_TYPES)
+    assert said["relations"] <= set(RELATIONS)
