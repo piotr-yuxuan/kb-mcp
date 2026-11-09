@@ -31,7 +31,7 @@ def save_session(settings: Settings, site: str, chrome: Path | None, *, extensio
     """Open the sign-in window, wait for the user, and save the site's cookies.
 
     The browser profile and the cookies stay under ``Settings.session``, readable by the
-    user alone. Raises SignInTimeoutError when the user does not finish in time.
+    user alone. Raises SignInFailedError when the user does not finish in time.
     """
     profile = settings.session / PROFILE
     profile.mkdir(parents=True, exist_ok=True, mode=0o700)

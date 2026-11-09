@@ -65,7 +65,7 @@ class ConfluenceTable(BaseModel):
     model_config = TABLE
 
     spaces: tuple[SpaceKey, ...] = Field(
-        default=(), description="The spaces to download when no --space is given, by key."
+        default=(), description="The spaces to fetch when no --space is given, by key."
     )
 
 
@@ -75,5 +75,5 @@ class JiraTable(BaseModel):
     model_config = TABLE
 
     projects: tuple[ProjectKey, ...] = Field(
-        default=(), description="The projects to download when no --project is given, by key."
+        default=(), description="The projects to fetch when no --project is given, by key."
     )

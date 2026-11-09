@@ -23,7 +23,7 @@ Knowledge base MCP: an offline mirror of Confluence and Jira Cloud, served over 
 
 positional arguments:
   command
-    check        validate the settings and the data directory
+    check        validate the settings and where the data directory is
     completion   print the code that completes the command in bash and zsh
     doctor       check the machine and each sign-in
     embed        give the index's pieces their vectors, then prune the vector store
@@ -393,7 +393,7 @@ several sources:
                         target's last fetch
   --until UNTIL         12h, 7d, or an ISO date or time, excluded; by default, now
   --max-file-mb MAX_FILE_MB
-                        the largest file kept, in MB; 50 by default
+                        the largest file kept, in MiB; 50 by default
 
 With --format json: exit_status, the run's; sources, a row per source taken, in the
 registry's order, each with its source, its outcome (done, failed, sign in,

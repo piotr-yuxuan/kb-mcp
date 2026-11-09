@@ -49,7 +49,7 @@ class ResourceType:
     A source's types are read whole: no role reads some of them until a plan chooses among
     them, and a role whose removals cover them all may refuse some, as Atlassian's preparer
     does. The name, the options and ``read`` are read so far, the last in the help of
-    ``fetch`` and ``prepare``, each source's group: plan 033 reads ``help``.
+    ``fetch`` and ``prepare``, each source's group, where ``help`` is not read yet.
     """
 
     name: str

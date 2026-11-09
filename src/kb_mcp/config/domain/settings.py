@@ -299,7 +299,7 @@ class Settings(BaseSettings):
     )
     model: ModelName = Field(
         default=DEFAULT_MODEL,
-        description="The embedding model that indexes by meaning, as the endpoint names it.",
+        description="The embedding model that embed embeds with, as the endpoint names it.",
     )
     search_mode: SearchMode = Field(
         default=DEFAULT_SEARCH_MODE,
@@ -311,9 +311,9 @@ class Settings(BaseSettings):
     chunking: Chunking = Field(
         default=DEFAULT_CHUNKING,
         description=(
-            f"How index cuts documents into the pieces it embeds: {', '.join(CHUNKINGS)};"
-            " search follows the index. By default windows, which ranked best on plan"
-            " 019's sandbox."
+            f"How embed cuts documents into the pieces it embeds: {', '.join(CHUNKINGS)};"
+            " search follows the index. By default windows, which ranked best when the"
+            " chunkings were compared."
         ),
     )
     embedding_url: EmbeddingUrl = Field(

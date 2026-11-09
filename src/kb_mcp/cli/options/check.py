@@ -41,7 +41,7 @@ def register(
     """Add ``check`` to the command, which reads every setting of the registry's model."""
     parser = subparsers.add_parser(
         "check",
-        help="validate the settings and the data directory",
+        help="validate the settings and where the data directory is",
         epilog=(
             "With --format json: settings, secrets masked; layers, the layer of each setting"
             " that one gave; ignored, each value ignored, with its setting, layer and why."

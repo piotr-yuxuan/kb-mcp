@@ -574,7 +574,7 @@ class Shown(Record):
 
 
 class Library:
-    """The four tools, over one index."""
+    """The tools that the server offers, over one index."""
 
     def __init__(
         self,

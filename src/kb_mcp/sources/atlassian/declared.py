@@ -72,7 +72,7 @@ SINCE, UNTIL, MAX_FILE_MB = PERIOD = (
     Option(flag=UNTIL_FLAG, help="12h, 7d, or an ISO date or time, excluded; by default, now"),
     Option(
         flag=MAX_FILE_MB_FLAG,
-        help=f"the largest file kept, in MB; {DEFAULT_MAX_FILE_MB} by default",
+        help=f"the largest file kept, in MiB; {DEFAULT_MAX_FILE_MB} by default",
         parse=int,
     ),
 )

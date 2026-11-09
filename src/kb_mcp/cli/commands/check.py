@@ -1,4 +1,4 @@
-"""``check``: validate the settings and the data directory, and show them."""
+"""``check``: validate the settings and where the data directory is, and show them."""
 
 from __future__ import annotations
 

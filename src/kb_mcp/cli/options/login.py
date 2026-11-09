@@ -33,7 +33,7 @@ def in_the_browser(
 def site_not_set(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
     """Refuse a sign-in without the first setting of the account named: where it signs in.
 
-    ``--site`` is offered only for the setting that it sets, until plan 032 gives each its flag.
+    ``--site`` is offered only for the setting that it sets.
     """
     site = accounts_of(arguments.sources)[arguments.account].paths[0]
     if settings[site] is not None:
